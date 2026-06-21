@@ -16,6 +16,7 @@ const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
 const IMAGE_EDIT_CACHE = path.join(STATE_DIR, 'image-edit-capabilities.json');
 const UPSCALE_CACHE = path.join(STATE_DIR, 'upscale-capabilities.json');
 const MODEL_STAGE_CACHE = path.join(STATE_DIR, 'model-stage-cache.json');
+const SDXL_SMOKE_CACHE = path.join(STATE_DIR, 'sdxl-smoke-cache.json');
 const MODEL_STAGE_ROOT = '/Volumes/wc2tb/ImageGen';
 const MODEL_INVENTORY_CACHE = path.join(STATE_DIR, 'model-inventory-cache.json');
 const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md';
@@ -390,7 +391,7 @@ function readJsonCache(filePath) {
   try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch (_) { return null; }
 }
 
-function summarizeModelStage(cache) {
+function summarizeModelStage(cache, smokeCache) {
   const empty = {
     present: false,
     stale: true,
@@ -406,6 +407,7 @@ function summarizeModelStage(cache) {
     fluxStagedState: 'missing',
     sdxlStaged: false,
     sdxlStagedState: 'missing',
+    sdxlSmokeProven: false,
     invalidCandidateCount: 0,
     invalidCandidates: [],
     metalSupportObserved: false,
@@ -420,6 +422,7 @@ function summarizeModelStage(cache) {
   const fluxT5 = cache.flux_t5xxl_candidates || [];
   const invalidCandidates = cache.invalid_candidates || [];
   const help = cache.stable_diffusion_cpp_help_summary || {};
+  const smokeProven = !!(cache.runtime_smoke_proven || (smokeCache && smokeCache.runtime_smoke_proven) || (smokeCache && smokeCache.png_valid));
   const turboState = cache.sdxl_turbo_staged_state || (turboCandidates.length > 0 ? 'true' : 'missing');
   const sdxlState = cache.sdxl_staged_state || ((cache.sdxl_candidates || []).length > 0 ? 'true' : 'missing');
   const fluxState = cache.flux_staged_state || (
@@ -454,7 +457,8 @@ function summarizeModelStage(cache) {
     invalidCandidateCount: cache.invalid_candidate_count || invalidCandidates.length,
     invalidCandidates,
     metalSupportObserved: !!cache.metal_support_observed,
-    supportProven: !!cache.runtime_smoke_proven,
+    supportProven: smokeProven,
+    sdxlSmokeProven: smokeProven,
     recommended_next_step: cache.recommended_next_step || empty.recommended_next_step
   };
 }
@@ -531,7 +535,7 @@ function buildModelGate(kind, stage) {
     docs: MODEL_STAGE_DOC
   };
   if (kind === 'sdxlTurbo') {
-    if (stage.supportProven && stage.sdxlTurboStaged && stage.metalSupportObserved) {
+    if (stage.sdxlTurboSmokeProven && stage.sdxlTurboStaged && stage.metalSupportObserved) {
       return { ...base, staged: true, supported: true, reason: 'SDXL Turbo staged and runtime smoke proof recorded.' };
     }
     if (stage.sdxlTurboStaged) {
@@ -540,7 +544,7 @@ function buildModelGate(kind, stage) {
     return { ...base, staged: false, supported: false, reason: 'SDXL Turbo model missing on BigMac wc2tb; ignore the 0B q6p/q8p placeholder.', unlock_requires: `Stage ${root}/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors, then run model-stage check.` };
   }
   if (kind === 'flux') {
-    if (stage.supportProven && stage.fluxStaged && stage.metalSupportObserved) {
+    if (stage.fluxSmokeProven && stage.fluxStaged && stage.metalSupportObserved) {
       return { ...base, staged: true, supported: true, reason: 'Flux staged and runtime smoke proof recorded.' };
     }
     if (stage.fluxStagedState === 'true') {
@@ -551,8 +555,11 @@ function buildModelGate(kind, stage) {
     }
     return { ...base, staged: false, supported: false, reason: 'Flux model/component files missing on BigMac wc2tb.', unlock_requires: `Stage Flux Schnell files under ${root}/flux/flux1-schnell and ${root}/flux/shared, then run model-stage check.` };
   }
+  if (stage.sdxlStaged && stage.sdxlSmokeProven) {
+    return { ...base, staged: true, supported: true, reason: 'SDXL base staged and bounded smoke proof passed.' };
+  }
   if (stage.sdxlStaged) {
-    return { ...base, staged: true, reason: 'SDXL base staged; BigMac Metal smoke proof still required.', unlock_requires: 'Probe BigMac sd-cli flags and run a bounded SDXL smoke.' };
+    return { ...base, staged: true, supported: false, reason: 'SDXL base staged; bounded smoke proof still required.', unlock_requires: 'Run POST /api/actions/sdxl-smoke to prove the staged SDXL base checkpoint.' };
   }
   return { ...base, staged: false, reason: 'SDXL checkpoint missing on BigMac wc2tb.', unlock_requires: `Stage an SDXL checkpoint under ${root}/checkpoints/sdxl, then run model-stage check.` };
 }
@@ -601,7 +608,7 @@ app.get('/api/capabilities', (req, res) => {
   const assets = readJsonCache(ASSETS_CACHE);
   const editCap = readJsonCache(IMAGE_EDIT_CACHE);
   const upscaleCap = readJsonCache(UPSCALE_CACHE);
-  const modelStage = summarizeModelStage(readJsonCache(MODEL_STAGE_CACHE));
+  const modelStage = summarizeModelStage(readJsonCache(MODEL_STAGE_CACHE), readJsonCache(SDXL_SMOKE_CACHE));
   const modelInventory = summarizeModelInventory(readJsonCache(MODEL_INVENTORY_CACHE));
 
   // Build models list from cache or fall back to configured model
@@ -815,13 +822,20 @@ app.get('/api/assets', (req, res) => {
 
 app.get('/api/model-stage', (req, res) => {
   const cache = readJsonCache(MODEL_STAGE_CACHE);
-  if (!cache) return res.json({ stale: true, missing: true, summary: summarizeModelStage(null) });
-  res.json({ stale: false, missing: false, summary: summarizeModelStage(cache), ...cache });
+  const smokeCache = readJsonCache(SDXL_SMOKE_CACHE);
+  if (!cache) return res.json({ stale: true, missing: true, summary: summarizeModelStage(null, smokeCache) });
+  res.json({ stale: false, missing: false, summary: summarizeModelStage(cache, smokeCache), ...cache });
 });
 
 app.post('/api/actions/check-model-stage', (req, res) => {
   const jobId = createJob('check-model-stage', 'bin/sdcpp-model-stage-check.sh');
   runAction(jobId, 'bin/sdcpp-model-stage-check.sh', []);
+  res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
+app.post('/api/actions/sdxl-smoke', (req, res) => {
+  const jobId = createJob('sdxl-smoke', 'bin/sdcpp-sdxl-smoke.sh');
+  runAction(jobId, 'bin/sdcpp-sdxl-smoke.sh', []);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 

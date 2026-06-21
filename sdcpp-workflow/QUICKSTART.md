@@ -139,6 +139,7 @@ Validate staging:
 ```sh
 cd /Users/andrew/Image_Gen/sdcpp-workflow
 bin/sdcpp-model-stage-check.sh
+bin/sdcpp-sdxl-smoke.sh
 ```
 
 Operator Console:
@@ -148,7 +149,7 @@ curl -s http://127.0.0.1:31337/api/model-stage | python3 -m json.tool
 curl -s -X POST http://127.0.0.1:31337/api/actions/check-model-stage | python3 -m json.tool
 ```
 
-Staged files do not mean supported. SDXL Turbo, Flux, and SDXL remain gated until BigMac Metal smoke output proves a real PNG.
+Staged files do not mean supported. SDXL Turbo and Flux remain gated; SDXL base now has a dedicated bounded smoke proof path.
 
 ## Live staging note
 
@@ -156,3 +157,4 @@ Staged files do not mean supported. SDXL Turbo, Flux, and SDXL remain gated unti
 - SDXL Turbo remains blocked until `sd_xl_turbo_1.0_fp16.safetensors` exists; do not use the 0B `sd_xl_turbo_q6p_q8p.ckpt` placeholder.
 - Flux is partial: `flux1-schnell-fp8.safetensors` and `ae.safetensors` are staged, but CLIP-L and T5XXL are still missing unless BigMac `sd-cli --help` proves an embedded path.
 - `bin/sdcpp-model-stage-check.sh` now rejects zero-byte and tiny placeholder files in the stage cache.
+- `bin/sdcpp-sdxl-smoke.sh` runs the bounded SDXL base proof, writes `state/sdxl-smoke-cache.json`, and flips `sdxl` to supported after a real PNG is verified.

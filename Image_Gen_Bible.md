@@ -1300,3 +1300,21 @@ The inventory cache was also refreshed so the remaining high-confidence review s
 - SDXL Turbo remains blocked until the fp16 file is staged.
 - Flux remains partial until CLIP-L/T5XXL are staged or the binary proves an embedded component path.
 - The stage checker now rejects zero-byte and tiny placeholder files.
+
+## Entry 15 — SDXL base smoke proof and gate promotion (2026-06-21)
+
+This pass added the bounded SDXL base proof path and verified it on BigMac:
+
+- `sdcpp-workflow/bin/sdcpp-sdxl-smoke.sh` — route-gated BigMac smoke that checks the staged SDXL base checkpoint is nonzero and larger than 1 GiB, probes the discovered `sd-cli` binary for required flags, runs a 512x512 / 4-step render, and writes `runs/<timestamp>-sdxl-smoke/{sdxl-smoke.png,sdxl-smoke-report.md,sdxl-smoke-manifest.json}` plus `state/sdxl-smoke-cache.json`.
+- `sdcpp-workflow/bin/sdcpp-model-stage-check.sh` — now preserves the SDXL smoke proof when the dedicated proof cache exists, instead of losing it on the next stage scan.
+- `operator-console/server.js` — `/api/capabilities` and `/api/model-stage` now read the smoke cache, and `featureGates.sdxl.supported` flips to `true` only after the bounded proof passes.
+- `operator-console/public/index.html` / `operator-console/public/app.js` — added a `Run SDXL base smoke` action on the Models screen.
+- `sdcpp-workflow/docs/command-reference.md`, `sdcpp-workflow/QUICKSTART.md`, `operator-console/docs/a1111-workbench-implementation.md`, `operator-console/docs/advanced-feature-decision.md` — updated to describe the dedicated SDXL proof path.
+
+Validation:
+
+- `bash /Users/andrew/Image_Gen/sdcpp-workflow/bin/sdcpp-sdxl-smoke.sh` → PASS
+  - `sdxl-smoke.png` verified as a 512x512 PNG.
+  - `state/sdxl-smoke-cache.json` written with `runtime_smoke_proven=true`, `png_valid=true`, and `prompt_redacted=true`.
+- `curl -s http://127.0.0.1:31337/api/capabilities` → `modelStage.supportProven=true`, `featureGates.sdxl.supported=true`
+- `featureGates.sdxlTurbo.supported=false` and `featureGates.flux.supported=false` remain unchanged.

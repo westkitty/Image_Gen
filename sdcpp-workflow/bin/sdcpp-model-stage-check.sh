@@ -11,6 +11,7 @@ MODEL_VOLUME="wc2tb"
 MODEL_VOLUME_PATH="/Volumes/wc2tb"
 EXTERNAL_ROOT="/Volumes/wc2tb/ImageGen"
 CACHE="$SDCPP_STATE_DIR/model-stage-cache.json"
+SMOKE_CACHE="$SDCPP_STATE_DIR/sdxl-smoke-cache.json"
 TMP_TSV="$(mktemp /tmp/sdcpp_model_stage_XXXXXX.tsv)"
 cleanup_tmp() { rm -f "$TMP_TSV"; }
 trap cleanup_tmp EXIT
@@ -141,11 +142,11 @@ if ! grep -q '__SDCPP_MODEL_STAGE_DONE__' "$TMP_TSV"; then
   fail "model-stage-ssh" "Remote model-stage probe did not complete."
 fi
 
-python3 - "$TMP_TSV" "$CACHE" "$MODEL_VOLUME" "$MODEL_VOLUME_PATH" "$EXTERNAL_ROOT" <<'PYCACHE'
+python3 - "$TMP_TSV" "$CACHE" "$MODEL_VOLUME" "$MODEL_VOLUME_PATH" "$EXTERNAL_ROOT" "$SMOKE_CACHE" <<'PYCACHE'
 import sys, json, datetime, os
 from pathlib import Path
 
-tsv, out, model_volume, model_volume_path, root = sys.argv[1:]
+tsv, out, model_volume, model_volume_path, root, smoke_cache_path = sys.argv[1:]
 
 obj = {
     "checked_at": datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z"),
@@ -307,6 +308,17 @@ elif root_exists:
     obj["recommended_next_step"] = "Model root exists but required SDXL Turbo, SDXL base, or Flux files are missing; stage files on wc2tb and rerun this check."
 else:
     obj["recommended_next_step"] = "Create /Volumes/wc2tb/ImageGen and stage SDXL Turbo or Flux files there."
+
+smoke = Path(smoke_cache_path)
+if smoke.exists():
+    try:
+        smoke_obj = json.loads(smoke.read_text())
+        if smoke_obj.get("runtime_smoke_proven") or smoke_obj.get("png_valid"):
+            obj["runtime_smoke_proven"] = True
+            if obj["sdxl_staged_state"] == "true":
+                obj["recommended_next_step"] = "SDXL base smoke proof passed."
+    except Exception:
+        pass
 
 with open(out, "w") as f:
     json.dump(obj, f, indent=2)

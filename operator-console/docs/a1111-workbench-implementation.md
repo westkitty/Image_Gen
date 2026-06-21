@@ -41,7 +41,7 @@ These are fully wired and validated:
 - **X/Y/Z Plot** (`POST /api/actions/xyz-plot`): script and endpoint exist, max 16 cells, client-side validation. Requires running BigMac server tunnel. Not end-to-end validated with real images.
 - **Upscale (AI/Extras)**: Pillow local resize is available; Real-ESRGAN and A1111 Extras parity are not implemented.
 - **PNG Info**: tEXt/iTXt chunks from run images via `/api/runs/:runId/metadata`; arbitrary PNG upload not supported.
-- **SDXL Turbo / Flux / SDXL**: top next model paths, gated until files are manually staged on `/Volumes/wc2tb/ImageGen` and BigMac Metal runtime smoke proof exists.
+- **SDXL Turbo / Flux**: still gated until files are manually staged on `/Volumes/wc2tb/ImageGen` and their own bounded smoke proofs exist. SDXL base now has a dedicated proof path and becomes supported after that smoke passes.
 
 ## Gated (not wired)
 
@@ -130,10 +130,11 @@ curl -s http://127.0.0.1:31337/api/model-stage | python3 -m json.tool
 curl -s -X POST http://127.0.0.1:31337/api/actions/check-model-stage | python3 -m json.tool
 ```
 
-The staging root is `/Volumes/wc2tb/ImageGen`. SDXL Turbo first target is `sd_xl_turbo_1.0_fp16.safetensors`; Flux Schnell accepts official safetensors files or stable-diffusion.cpp-compatible GGUF/quantized candidates. The capability gates remain false from staged files alone; smoke output must prove support.
+The staging root is `/Volumes/wc2tb/ImageGen`. SDXL Turbo first target is `sd_xl_turbo_1.0_fp16.safetensors`; Flux Schnell accepts official safetensors files or stable-diffusion.cpp-compatible GGUF/quantized candidates. The capability gates remain false from staged files alone; smoke output must prove support. SDXL base now has a bounded proof action at `POST /api/actions/sdxl-smoke`.
 
 Live state update:
 - SDXL base is now staged and nonzero, so it is the best next runtime proof target.
+- SDXL base smoke proof now exists; the `sdxl` gate flips to supported only after `bin/sdcpp-sdxl-smoke.sh` completes and the proof cache is written.
 - SDXL Turbo remains blocked on the missing fp16 file; do not use the 0B q6p/q8p placeholder.
 - Flux remains partial: model and VAE are staged, but CLIP-L and T5XXL are still missing unless BigMac `sd-cli --help` proves an embedded path.
 - The Models screen now has a direct `/api/model-inventory` read path and handles a missing endpoint or missing cache without crashing.

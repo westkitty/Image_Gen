@@ -545,6 +545,28 @@ async function runModelStageCheck() {
   }
 }
 
+async function runSdxlSmoke() {
+  const btn = $('btn-sdxl-smoke');
+  if (btn) btn.disabled = true;
+  try {
+    const result = await api('/api/actions/sdxl-smoke', { method: 'POST', body: '{}' });
+    trackJob(result.job_id, 'Running SDXL base smoke…');
+    const poller = setInterval(async () => {
+      try {
+        const job = await api('/api/jobs/' + result.job_id);
+        if (job.status !== 'running' && job.status !== 'queued') {
+          clearInterval(poller);
+          await loadCapabilities();
+          if (btn) btn.disabled = false;
+        }
+      } catch (_) { clearInterval(poller); if (btn) btn.disabled = false; }
+    }, 1500);
+  } catch (err) {
+    notifyLog('SDXL smoke error: ' + err.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function loadGallery() {
   try {
     // Use run-index for hasUpscaled flag; fall back to /api/runs for image lists
@@ -719,6 +741,7 @@ function bindEvents() {
     if (action) {
       if (action.dataset.action === 'discover-assets') runDiscoverAssets();
       else if (action.dataset.action === 'check-model-stage') runModelStageCheck();
+      else if (action.dataset.action === 'sdxl-smoke') runSdxlSmoke();
       else if (action.dataset.action === 'inventory-models') runModelInventory();
       else runSimpleAction(action.dataset.action);
     }
