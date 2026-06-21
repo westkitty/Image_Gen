@@ -1,1008 +1,394 @@
-// Operator Console — Client Controller
-// Security note: all dynamic user content is passed through escapeHtml() before
-// insertion into innerHTML. No raw user input is ever set as innerHTML directly.
+'use strict';
 
-let activeJobInterval = null;
-let allRunsCache = [];
+const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null };
+const $ = id => document.getElementById(id);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
 
-const PRESETS = {
-  smoke:        { steps: 1,  cfg: 7.0, sampler: 'euler_a', width: 512, height: 512 },
-  thumbnail:    { steps: 4,  cfg: 7.0, sampler: 'euler_a', width: 384, height: 384 },
-  fast:         { steps: 8,  cfg: 7.0, sampler: 'euler_a', width: 512, height: 512 },
-  balanced:     { steps: 16, cfg: 7.0, sampler: 'euler_a', width: 512, height: 512 },
-  quality:      { steps: 20, cfg: 7.0, sampler: 'euler_a', width: 512, height: 512 },
-  quality_plus: { steps: 30, cfg: 7.0, sampler: 'euler_a', width: 512, height: 512 }
+const DEFAULT_PRESETS = {
+  smoke: { steps: 1, cfg_scale: 7, sampler: 'euler_a', width: 512, height: 512 },
+  thumbnail: { steps: 4, cfg_scale: 7, sampler: 'euler_a', width: 384, height: 384 },
+  fast: { steps: 8, cfg_scale: 7, sampler: 'euler_a', width: 512, height: 512 },
+  balanced: { steps: 16, cfg_scale: 7, sampler: 'euler_a', width: 512, height: 512 },
+  quality: { steps: 20, cfg_scale: 7, sampler: 'euler_a', width: 512, height: 512 },
+  quality_plus: { steps: 30, cfg_scale: 7, sampler: 'euler_a', width: 512, height: 512 }
 };
+const ASPECTS = [
+  ['1:1', 512, 512], ['Portrait', 512, 768], ['Landscape', 768, 512], ['Wide', 1024, 576], ['Tall', 576, 1024], ['HD', 1024, 1024]
+];
 
-// All user-controlled values are sanitized before HTML insertion
-function escapeHtml(unsafe) {
-  if (unsafe === undefined || unsafe === null) return '';
-  if (typeof unsafe !== 'string') return String(unsafe);
-  return unsafe
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-// ============================================================
-// SETTINGS
-// ============================================================
-function loadSettings() {
-  const preset      = localStorage.getItem('defPreset')     || 'fast';
-  const mode        = localStorage.getItem('defMode')       || 'cli';
-  const steps       = localStorage.getItem('defSteps')      || '8';
-  const cfg         = localStorage.getItem('defCfg')        || '7.0';
-  const sampler     = localStorage.getItem('defSampler')    || 'euler_a';
-  const width       = localStorage.getItem('defWidth')      || '512';
-  const height      = localStorage.getItem('defHeight')     || '512';
-  const count       = localStorage.getItem('defBatchCount') || '3';
-  const autoOpen    = localStorage.getItem('autoOpen')    === 'true';
-  const savePrompts = localStorage.getItem('savePrompts') === 'true';
-
-  document.getElementById('set-default-preset').value = preset;
-  document.getElementById('set-default-mode').value   = mode;
-  document.getElementById('set-default-steps').value  = steps;
-  document.getElementById('set-default-cfg').value    = cfg;
-  document.getElementById('set-default-width').value  = width;
-  document.getElementById('set-default-height').value = height;
-  document.getElementById('set-batch-count').value    = count;
-  document.getElementById('set-auto-open').checked    = autoOpen;
-  document.getElementById('set-save-prompts').checked = savePrompts;
-
-  document.getElementById('gen-preset').value   = preset;
-  document.getElementById('gen-mode').value     = mode;
-  document.getElementById('gen-steps').value    = steps;
-  document.getElementById('gen-cfg').value      = cfg;
-  document.getElementById('gen-sampler').value  = sampler;
-  document.getElementById('gen-width').value    = width;
-  document.getElementById('gen-height').value   = height;
-
-  document.getElementById('batch-preset').value = preset;
-  document.getElementById('batch-mode').value   = mode;
-  document.getElementById('batch-count').value  = count;
-
-  updatePrivacyIndicator();
-  updatePrivacyWarning();
-}
-
-function saveSettings() {
-  const preset      = document.getElementById('set-default-preset').value;
-  const mode        = document.getElementById('set-default-mode').value;
-  const steps       = document.getElementById('set-default-steps').value;
-  const cfg         = document.getElementById('set-default-cfg').value;
-  const width       = document.getElementById('set-default-width').value;
-  const height      = document.getElementById('set-default-height').value;
-  const count       = document.getElementById('set-batch-count').value;
-  const autoOpen    = document.getElementById('set-auto-open').checked;
-  const savePrompts = document.getElementById('set-save-prompts').checked;
-
-  localStorage.setItem('defPreset',     preset);
-  localStorage.setItem('defMode',       mode);
-  localStorage.setItem('defSteps',      steps);
-  localStorage.setItem('defCfg',        cfg);
-  localStorage.setItem('defWidth',      width);
-  localStorage.setItem('defHeight',     height);
-  localStorage.setItem('defBatchCount', count);
-  localStorage.setItem('autoOpen',      autoOpen    ? 'true' : 'false');
-  localStorage.setItem('savePrompts',   savePrompts ? 'true' : 'false');
-
-  updatePrivacyIndicator();
-  updatePrivacyWarning();
-
-  const msg = document.getElementById('settings-saved-msg');
-  msg.classList.remove('hidden');
-  setTimeout(() => msg.classList.add('hidden'), 2200);
-}
-
-function updatePrivacyIndicator() {
-  const savePrompts = localStorage.getItem('savePrompts') === 'true';
-  const el = document.getElementById('gen-privacy-indicator');
-  if (!el) return;
-  // Use textContent for the text portion; build the element safely
-  el.className = savePrompts ? 'privacy-indicator privacy-warn' : 'privacy-indicator';
-  const icon = el.querySelector('svg');
-  const txt  = el.querySelector('span') || document.createTextNode('');
-  if (savePrompts) {
-    el.setAttribute('title', 'Prompts will be saved to run records');
-    if (icon) icon.innerHTML = '<path d="M6 1L1 10h10L6 1z"/><line x1="6" y1="5" x2="6" y2="7.5"/><circle cx="6" cy="9" r="0.5" fill="currentColor"/>';
-    if (txt instanceof Text) {
-      txt.nodeValue = ' Prompts saved in records';
-    } else {
-      txt.textContent = 'Prompts saved in records';
-    }
-  } else {
-    el.setAttribute('title', 'Prompt text is ephemeral and will not be saved to run records');
-    if (icon) icon.innerHTML = '<rect x="2" y="5" width="8" height="6" rx="1"/><path d="M4 5V3.5a2 2 0 014 0V5"/>';
-    if (txt instanceof Text) {
-      txt.nodeValue = ' Prompts redacted in records';
-    } else {
-      txt.textContent = 'Prompts redacted in records';
-    }
-  }
-}
-
-function updatePrivacyWarning() {
-  const savePrompts = document.getElementById('set-save-prompts').checked;
-  const warn = document.getElementById('settings-privacy-warning');
-  if (warn) warn.style.display = savePrompts ? 'block' : 'none';
-}
-
-document.getElementById('set-save-prompts').addEventListener('change', updatePrivacyWarning);
-
-// ============================================================
-// STATUS PILLS
-// ============================================================
-function setPillState(pillId, state, value) {
-  const pill = document.getElementById(pillId);
+function setPill(id, label, kind = '') {
+  const pill = $(id);
   if (!pill) return;
-  pill.className = 'status-pill' + (state ? ' pill-' + state : '');
-  const val = pill.querySelector('.pill-value');
-  if (val && value !== undefined) val.textContent = value;
+  pill.className = `status-pill ${kind}`;
+  const strong = pill.querySelector('strong');
+  if (strong) strong.textContent = label;
+}
+function notifyLog(text) { $('job-log').textContent = text || 'No log.'; }
+function saveBool(key, value) { localStorage.setItem(key, value ? 'true' : 'false'); }
+function loadBool(key) { return localStorage.getItem(key) === 'true'; }
+
+async function api(path, options = {}) {
+  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options });
+  const text = await res.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch { json = { raw: text }; }
+  if (!res.ok) throw new Error((json && json.error) || res.statusText);
+  return json;
 }
 
-function setGlobalStatus(backend, job, server, latest) {
-  if (backend !== undefined) {
-    const st = backend === 'Ready' ? 'ok' : backend === 'Checking' ? 'run' : 'err';
-    setPillState('pill-backend', st, backend);
-  }
-  if (job !== undefined) {
-    const st = job === 'Running' ? 'run' : job === 'Idle' ? 'ok' : 'warn';
-    setPillState('pill-job', st, job);
-    const genBtn = document.getElementById('btn-generate-submit');
-    document.querySelectorAll('button[type="submit"]').forEach(b => b.disabled = (job === 'Running'));
-    if (genBtn) {
-      if (job === 'Running') genBtn.classList.add('running');
-      else genBtn.classList.remove('running');
-    }
-  }
-  if (server !== undefined) {
-    const st = server === 'Running' ? 'ok' : (server.includes('Checking') ? 'run' : 'warn');
-    setPillState('pill-server', st, server);
-  }
-  if (latest !== undefined) {
-    const st = latest === 'PASS' ? 'ok' : latest === 'FAIL' ? 'err' : latest === 'PARTIAL' ? 'warn' : '';
-    setPillState('pill-latest', st, latest);
-  }
-}
-
-// ============================================================
-// NAVIGATION
-// ============================================================
-document.querySelectorAll('.nav-btn').forEach(btn => {
-  btn.addEventListener('click', e => {
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    e.currentTarget.classList.add('active');
-    const targetId = e.currentTarget.getAttribute('data-target');
-    const section  = document.getElementById(targetId);
-    if (section) section.classList.add('active');
-
-    if (targetId === 'dashboard') loadLatestRun();
-    if (targetId === 'gallery')   loadGallery();
-    if (targetId === 'history')   loadRuns();
-    if (targetId === 'server')    checkServerStatusSilent();
-  });
-});
-
-function navigateToRunDetail(runId) {
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  document.getElementById('run-detail').classList.add('active');
-  loadRunDetail(runId);
-}
-
-document.getElementById('btn-back-to-history').addEventListener('click', () => {
-  document.getElementById('btn-nav-history').click();
-});
-
-// ============================================================
-// PRESET SYNC
-// ============================================================
-document.getElementById('gen-preset').addEventListener('change', e => {
-  const val = e.target.value;
-  if (val && val !== 'Custom' && PRESETS[val]) {
-    const c = PRESETS[val];
-    document.getElementById('gen-steps').value   = c.steps;
-    document.getElementById('gen-cfg').value     = c.cfg;
-    document.getElementById('gen-sampler').value = c.sampler;
-    document.getElementById('gen-width').value   = c.width;
-    document.getElementById('gen-height').value  = c.height;
-  }
-});
-
-['gen-steps','gen-cfg','gen-sampler','gen-width','gen-height'].forEach(id => {
-  document.getElementById(id).addEventListener('input', () => {
-    document.getElementById('gen-preset').value = 'Custom';
-  });
-});
-
-// ============================================================
-// JOB DRAWER
-// ============================================================
-function openJobDrawer(title) {
-  document.getElementById('job-drawer').classList.remove('hidden');
-  document.getElementById('job-drawer-title').textContent = title;
-  document.getElementById('job-drawer-error').classList.add('hidden');
-  document.getElementById('job-drawer-log-wrap').classList.add('hidden');
-  document.getElementById('job-drawer-status').textContent = 'Starting…';
-  document.getElementById('job-drawer-log').textContent = '';
-}
-
-function closeJobDrawer() {
-  document.getElementById('job-drawer').classList.add('hidden');
-}
-
-function toggleJobLog() {
-  document.getElementById('job-drawer-log-wrap').classList.toggle('hidden');
-}
-
-// ============================================================
-// STAGE STATE
-// ============================================================
-function setStageLoading() {
-  const canvas = document.getElementById('preview-single');
-  if (!canvas) return;
-  canvas.className = 'stage-canvas';
-  const shimmer = document.createElement('div');
-  shimmer.className = 'stage-shimmer';
-  canvas.replaceChildren(shimmer);
-}
-
-function setStageEmpty() {
-  const canvas = document.getElementById('preview-single');
-  if (!canvas) return;
-  canvas.className = 'stage-canvas';
-
-  const wrap = document.createElement('div');
-  wrap.className = 'stage-empty';
-
-  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  icon.setAttribute('class', 'stage-empty-icon');
-  icon.setAttribute('viewBox', '0 0 40 40');
-  icon.setAttribute('fill', 'none');
-  icon.setAttribute('stroke', 'currentColor');
-  icon.setAttribute('stroke-width', '1.2');
-  icon.setAttribute('aria-hidden', 'true');
-  icon.innerHTML = '<rect x="4" y="4" width="32" height="32" rx="4"/><circle cx="14" cy="14" r="4"/><polyline points="4 28 14 18 22 26 28 20 36 28"/>';
-
-  const t1 = document.createElement('p');
-  t1.className = 'stage-empty-title';
-  t1.textContent = 'No verified image yet.';
-
-  const t2 = document.createElement('p');
-  t2.className = 'stage-empty-sub';
-  t2.textContent = 'Generate a fast SD 1.5 image and it will appear here, centered and ready.';
-
-  wrap.appendChild(icon);
-  wrap.appendChild(t1);
-  wrap.appendChild(t2);
-  canvas.replaceChildren(wrap);
-}
-
-// ============================================================
-// API JOB RUNNER
-// ============================================================
-async function runJob(endpoint, payload, actionName) {
-  setGlobalStatus('Checking', 'Running', undefined, undefined);
-  openJobDrawer(actionName || 'Job');
-  if (endpoint.includes('generate')) setStageLoading();
-
+async function loadCapabilities() {
   try {
-    const res  = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: payload ? JSON.stringify(payload) : undefined
-    });
-    const data = await res.json();
-    if (data.job_id) {
-      pollJob(data.job_id, endpoint);
-    } else {
-      document.getElementById('job-drawer-status').textContent =
-        'Error: ' + (data.error || JSON.stringify(data));
-      setGlobalStatus('Failed', 'Idle', undefined, undefined);
-      if (endpoint.includes('generate')) setStageEmpty();
-    }
+    state.capabilities = await api('/api/capabilities');
+    hydrateControls();
+    renderFeatureGates();
+    renderModels();
+    setPill('pill-backend', 'Ready', 'ok');
   } catch (err) {
-    document.getElementById('job-drawer-status').textContent = 'Fetch error: ' + err.message;
-    setGlobalStatus('Unknown', 'Idle', undefined, undefined);
-    if (endpoint.includes('generate')) setStageEmpty();
+    setPill('pill-backend', 'Error', 'bad');
+    notifyLog(err.message);
   }
 }
 
-function pollJob(jobId, endpoint) {
-  if (activeJobInterval) clearInterval(activeJobInterval);
-
-  activeJobInterval = setInterval(async () => {
-    try {
-      const [logRes, statusRes] = await Promise.all([
-        fetch('/api/jobs/' + jobId + '/log'),
-        fetch('/api/jobs/' + jobId)
-      ]);
-      const logData    = await logRes.json();
-      const statusData = await statusRes.json();
-
-      const logText = (logData.stdout || '') + '\n' + (logData.stderr || '');
-      document.getElementById('job-drawer-log').textContent = logText || 'Waiting for output…';
-      const logWrap = document.getElementById('job-drawer-log-wrap');
-      logWrap.scrollTop = logWrap.scrollHeight;
-
-      const elapsed = Math.floor((Date.now() - statusData.createdAt) / 1000);
-      document.getElementById('job-drawer-status').textContent =
-        'Elapsed: ' + elapsed + 's | Status: ' + statusData.status;
-
-      const terminal = ['PASS','FAIL','PARTIAL'].includes(statusData.status);
-      if (!terminal) return;
-
-      clearInterval(activeJobInterval);
-      setGlobalStatus(statusData.status === 'PASS' ? 'Ready' : 'Failed', 'Idle', undefined, statusData.status);
-
-      if (statusData.status === 'FAIL') {
-        document.getElementById('job-drawer-error').classList.remove('hidden');
-        document.getElementById('job-drawer-gate').textContent =
-          statusData.firstFailedGate || 'Unknown';
-      }
-
-      const isGen = statusData.commandAction &&
-        (statusData.commandAction.includes('generate') || statusData.commandAction.includes('cli'));
-      const autoOpen = localStorage.getItem('autoOpen') === 'true';
-
-      if (statusData.runId && statusData.status === 'PASS' && isGen) {
-        await renderInlinePreview(statusData.runId);
-        setTimeout(() => {
-          closeJobDrawer();
-          if (autoOpen) navigateToRunDetail(statusData.runId);
-        }, 800);
-      } else {
-        if (statusData.status !== 'PASS' && (endpoint || '').includes('generate')) {
-          setStageEmpty();
-        }
-        setTimeout(() => closeJobDrawer(), 1500);
-      }
-
-      loadLatestRun();
-    } catch (err) {
-      clearInterval(activeJobInterval);
-      setGlobalStatus('Unknown', 'Idle', undefined, undefined);
-    }
-  }, 1000);
+function hydrateControls() {
+  const caps = state.capabilities || {};
+  const presets = caps.presets || DEFAULT_PRESETS;
+  $('preset').innerHTML = Object.keys(presets).map(id => `<option value="${esc(id)}">${esc(id.replace('_', '+'))}</option>`).join('') + '<option value="Custom">Custom</option>';
+  $('preset').value = 'quality';
+  const models = caps.models || [];
+  $('model').innerHTML = models.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('') || '<option value="sd15">SD 1.5</option>';
+  $('vae').innerHTML = (caps.vaes || []).map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('') || '<option value="auto">Auto</option>';
+  $('sampler').innerHTML = (caps.samplers || []).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+  $('scheduler').innerHTML = (caps.schedulers || []).map(s => `<option value="${esc(s.id)}" ${s.supported ? '' : 'data-limited="1"'}>${esc(s.name)}${s.supported ? '' : ' — visible only'}</option>`).join('');
+  $('aspect-presets').innerHTML = ASPECTS.map(([label, w, h]) => `<button type="button" class="ghost small" data-size="${w}x${h}">${label} ${w}×${h}</button>`).join('');
+  $('set-save-prompts').checked = loadBool('savePrompts');
+  applyPreset('quality');
+  loadStyles();
 }
 
-// ============================================================
-// INLINE PREVIEW — maps to new stage-canvas layout
-// ============================================================
-async function renderInlinePreview(runId) {
-  const canvas    = document.getElementById('preview-single');
-  const metaPanel = document.getElementById('preview-metadata-panel');
-
-  canvas.className = 'stage-canvas';
-  setStageLoading();
-
-  try {
-    const res  = await fetch('/api/runs/' + encodeURIComponent(runId));
-    const data = await res.json();
-    if (data.error || !data.metadata) {
-      const errP = document.createElement('p');
-      errP.className = 'text-danger';
-      errP.style.padding = '20px';
-      errP.textContent = 'Failed to fetch run data.';
-      canvas.replaceChildren(errP);
-      return;
-    }
-
-    const m = data.metadata;
-    if (m.primaryImage) {
-      const imgSrc = '/api/run-file?path=' +
-        encodeURIComponent(runId) + '/' + encodeURIComponent(m.primaryImage);
-
-      canvas.className = 'stage-canvas stage-success';
-      const img = document.createElement('img');
-      img.src = imgSrc;
-      img.alt = 'Generated image';
-      canvas.replaceChildren(img);
-
-      metaPanel.classList.remove('hidden');
-      document.getElementById('preview-run-id').textContent = m.id;
-      document.getElementById('preview-meta-details').textContent = m.settings || m.status || '';
-
-      const valEl = document.getElementById('preview-prompt-val');
-      if (!m.prompt || m.prompt === '[REDACTED]') {
-        valEl.textContent = 'Prompt redacted';
-      } else {
-        const savePrompts = localStorage.getItem('savePrompts') === 'true';
-        valEl.textContent = savePrompts ? m.prompt : 'Prompt redacted (legacy run)';
-      }
-
-      document.getElementById('btn-preview-detail').onclick  = () => navigateToRunDetail(runId);
-      document.getElementById('btn-preview-gallery').onclick = () =>
-        document.getElementById('btn-nav-gallery').click();
-    } else {
-      canvas.className = 'stage-canvas';
-      const wrap = document.createElement('div');
-      wrap.className = 'stage-empty';
-      const t1 = document.createElement('p');
-      t1.className = 'stage-empty-title';
-      t1.style.color = 'var(--green)';
-      t1.textContent = 'Verified PNG ready.';
-      const t2 = document.createElement('p');
-      t2.className = 'stage-empty-sub';
-      t2.textContent = 'Run completed successfully but no previewable image found.';
-      wrap.appendChild(t1);
-      wrap.appendChild(t2);
-      canvas.replaceChildren(wrap);
-      metaPanel.classList.add('hidden');
-    }
-  } catch (e) {
-    const errP = document.createElement('p');
-    errP.className = 'text-danger';
-    errP.style.padding = '20px';
-    errP.textContent = 'Failed to load preview.';
-    canvas.replaceChildren(errP);
-    metaPanel.classList.add('hidden');
-  }
+function applyPreset(id) {
+  const preset = (state.capabilities && state.capabilities.presets && state.capabilities.presets[id]) || DEFAULT_PRESETS[id];
+  if (!preset) return;
+  $('steps').value = preset.steps;
+  $('cfg_scale').value = preset.cfg_scale;
+  $('sampler').value = preset.sampler;
+  $('width').value = preset.width;
+  $('height').value = preset.height;
 }
 
-// ============================================================
-// GENERATE FORMS
-// ============================================================
-function submitGenerateSingle() {
-  const prompt          = document.getElementById('gen-prompt').value;
-  const negative_prompt = document.getElementById('gen-negative').value;
-  const preset          = document.getElementById('gen-preset').value;
-  const mode            = document.getElementById('gen-mode').value;
-  const steps           = document.getElementById('gen-steps').value;
-  const cfg_scale       = document.getElementById('gen-cfg').value;
-  const sampler         = document.getElementById('gen-sampler').value;
-  const width           = document.getElementById('gen-width').value;
-  const height          = document.getElementById('gen-height').value;
-  const seed            = document.getElementById('gen-seed').value;
-  const save_prompts    = localStorage.getItem('savePrompts') === 'true';
-
-  const payload = {
-    prompt, negative_prompt, preset, mode,
-    steps:     steps     ? parseInt(steps)       : undefined,
-    cfg_scale: cfg_scale ? parseFloat(cfg_scale) : undefined,
-    sampler,
-    width:     width     ? parseInt(width)        : undefined,
-    height:    height    ? parseInt(height)       : undefined,
-    save_prompts
+function getCoreParams(source = '') {
+  const prefix = source ? `${source}_` : '';
+  return {
+    prompt: $(prefix + 'prompt') ? $(prefix + 'prompt').value.trim() : $('prompt').value.trim(),
+    negative_prompt: $(prefix + 'negative') ? $(prefix + 'negative').value.trim() : $('negative_prompt').value.trim(),
+    preset: $('preset').value,
+    model: $('model').value,
+    vae: $('vae').value,
+    steps: $('steps').value,
+    cfg_scale: $('cfg_scale').value,
+    sampler: $('sampler').value,
+    scheduler: $('scheduler').value,
+    width: $('width').value,
+    height: $('height').value,
+    seed: $('seed').value.trim(),
+    mode: $('mode').value,
+    api: $('api').value,
+    clip_skip: $('clip_skip').value,
+    tiling: $('tiling').checked,
+    save_prompts: $('set-save-prompts').checked
   };
-  if (seed) payload.seed = seed;
-  runJob('/api/actions/generate-single', payload, 'Generate Single');
 }
 
-function submitGenerateBatch() {
-  const prompt          = document.getElementById('batch-prompt').value;
-  const negative_prompt = document.getElementById('batch-negative').value;
-  const count           = document.getElementById('batch-count').value;
-  const preset          = document.getElementById('batch-preset').value;
-  const seedMode        = document.getElementById('batch-seed-mode').value;
-  const seedStart       = document.getElementById('batch-seed-start').value;
-  const mode            = document.getElementById('batch-mode').value;
-  const api             = document.getElementById('batch-api').value;
-  const save_prompts    = localStorage.getItem('savePrompts') === 'true';
-
-  runJob('/api/actions/generate-batch',
-    { prompt, negative_prompt, count: parseInt(count), preset, seedMode, seedStart, mode, api, save_prompts },
-    'Batch Explore');
+function setPreviewImage(url, title = 'Selected image') {
+  state.activeImage = url;
+  $('preview-stage').innerHTML = `<img src="${esc(url)}" alt="${esc(title)}" />`;
+  $('preview-subtitle').textContent = title;
 }
+function setPreviewMessage(message) { $('preview-stage').innerHTML = `<div class="empty-state">${esc(message)}</div>`; }
 
-function submitServerAction(action) {
-  runJob('/api/actions/' + action, null, action.toUpperCase().replace(/-/g, ' '));
-}
-
-function submitCleanup() {
-  const days = document.getElementById('cleanup-days').value;
-  if (confirm('Delete runs older than ' + days + ' days. This cannot be undone. Continue?')) {
-    runJob('/api/actions/clean-old-runs', { days: parseInt(days) }, 'Cleanup Old Runs');
-  }
-}
-
-// ============================================================
-// GALLERY
-// ============================================================
-async function loadGallery() {
-  const grid  = document.getElementById('gallery-grid');
-  const count = document.getElementById('gallery-count');
-
-  // Clear and show loading state (safe DOM, no innerHTML)
-  const loadP = document.createElement('p');
-  loadP.className = 'text-muted';
-  loadP.style.cssText = 'padding:8px;font-size:13px;';
-  loadP.textContent = 'Loading…';
-  grid.replaceChildren(loadP);
-  if (count) count.textContent = '—';
-
+async function submitCreate(event) {
+  event.preventDefault();
+  const params = getCoreParams();
+  state.lastParams = params;
   try {
-    const res      = await fetch('/api/runs');
-    const data     = await res.json();
-    const imageRuns = data.runs.filter(r =>
-      r.primaryImage && r.type !== 'verify' && r.type !== 'server-status'
-    );
-
-    grid.replaceChildren();
-    if (count) count.textContent = imageRuns.length + ' image' + (imageRuns.length !== 1 ? 's' : '');
-
-    if (imageRuns.length === 0) {
-      const p = document.createElement('p');
-      p.className = 'text-muted';
-      p.style.cssText = 'padding:8px;font-size:13px;';
-      p.textContent = 'No images yet. Generate some images to populate the gallery.';
-      grid.appendChild(p);
-      return;
-    }
-
-    imageRuns.forEach(run => {
-      const card    = document.createElement('div');
-      card.className = 'gallery-card';
-      card.setAttribute('role', 'button');
-      card.setAttribute('tabindex', '0');
-      card.addEventListener('click', () => navigateToRunDetail(run.id));
-      card.addEventListener('keydown', e => { if (e.key === 'Enter') navigateToRunDetail(run.id); });
-
-      const imgUrl = '/api/run-file?path=' +
-        encodeURIComponent(run.id) + '/' + encodeURIComponent(run.primaryImage);
-
-      // Image wrapper
-      const imgWrap = document.createElement('div');
-      imgWrap.className = 'gallery-card-img';
-      const img = document.createElement('img');
-      img.src     = imgUrl;
-      img.alt     = 'Generated image';
-      img.loading = 'lazy';
-      imgWrap.appendChild(img);
-
-      // Info
-      const info = document.createElement('div');
-      info.className = 'gallery-card-info';
-
-      const titleRow = document.createElement('div');
-      titleRow.className = 'gallery-card-title';
-      const titleSpan = document.createElement('span');
-      titleSpan.textContent = run.title || run.type;
-      const badge = document.createElement('span');
-      badge.className = 'badge ' + (run.status === 'PASS' ? 'badge-pass' : 'badge-fail');
-      badge.textContent = run.status;
-      titleRow.appendChild(titleSpan);
-      titleRow.appendChild(badge);
-
-      const meta = document.createElement('div');
-      meta.className = 'gallery-card-meta';
-      meta.textContent = run.id;
-
-      const promptEl = document.createElement('div');
-      const hasPrompt = run.prompt && run.prompt !== '[REDACTED]';
-      if (hasPrompt) {
-        promptEl.className = 'gallery-card-prompt';
-        promptEl.textContent = run.prompt;
-      } else {
-        promptEl.className = 'gallery-card-prompt text-muted';
-        promptEl.style.fontStyle = 'italic';
-        promptEl.style.opacity = '0.6';
-        promptEl.textContent = 'Prompt redacted';
-      }
-
-      info.appendChild(titleRow);
-      info.appendChild(meta);
-      info.appendChild(promptEl);
-
-      card.appendChild(imgWrap);
-      card.appendChild(info);
-      grid.appendChild(card);
-    });
-  } catch (e) {
-    const errP = document.createElement('p');
-    errP.className = 'text-danger';
-    errP.style.cssText = 'padding:8px;font-size:13px;';
-    errP.textContent = 'Failed to load gallery.';
-    grid.replaceChildren(errP);
-  }
-}
-
-// ============================================================
-// RUN HISTORY
-// ============================================================
-function applyPromptSearchState() {
-  const savePrompts = localStorage.getItem('savePrompts') === 'true';
-  const input = document.getElementById('filter-prompt');
-  const note  = document.getElementById('filter-prompt-note');
-  if (!input) return;
-  if (savePrompts) {
-    input.disabled    = false;
-    input.placeholder = 'Search prompts…';
-    if (note) note.textContent = '';
-  } else {
-    input.disabled    = true;
-    input.value       = '';
-    input.placeholder = 'Disabled (privacy on)';
-    if (note) note.textContent = 'Prompt search disabled while prompts are redacted.';
-  }
-}
-
-async function loadRuns() {
-  const res  = await fetch('/api/runs');
-  const data = await res.json();
-  allRunsCache = data.runs;
-  applyPromptSearchState();
-  renderRunHistory();
-}
-
-function renderRunHistory() {
-  const list = document.getElementById('run-list');
-  list.replaceChildren();
-
-  if (allRunsCache.length === 0) {
-    const p = document.createElement('p');
-    p.className   = 'text-muted';
-    p.style.fontSize = '13px';
-    p.textContent = 'No runs found.';
-    list.appendChild(p);
-    return;
-  }
-
-  const fType   = document.getElementById('filter-type').value;
-  const fStatus = document.getElementById('filter-status').value;
-  const fPrompt = document.getElementById('filter-prompt').value.toLowerCase();
-
-  const filtered = allRunsCache.filter(run => {
-    if (fType   && run.type   !== fType)   return false;
-    if (fStatus && run.status !== fStatus) return false;
-    if (fPrompt && (!run.prompt || !run.prompt.toLowerCase().includes(fPrompt))) return false;
-    return true;
-  });
-
-  if (filtered.length === 0) {
-    const p = document.createElement('p');
-    p.className   = 'text-muted';
-    p.style.fontSize = '13px';
-    p.textContent = 'No runs match filters.';
-    list.appendChild(p);
-    return;
-  }
-
-  filtered.forEach(run => {
-    const item = document.createElement('div');
-    item.className = 'run-table-row';
-    item.setAttribute('role', 'button');
-    item.setAttribute('tabindex', '0');
-    item.addEventListener('click', () => navigateToRunDetail(run.id));
-    item.addEventListener('keydown', e => { if (e.key === 'Enter') navigateToRunDetail(run.id); });
-
-    const hasPrompt = run.prompt && run.prompt !== '[REDACTED]';
-    const displayPrompt = hasPrompt
-      ? (localStorage.getItem('savePrompts') !== 'true' ? run.prompt + ' (legacy — stored)' : run.prompt)
-      : 'Prompt redacted';
-
-    const statusClass = run.status === 'PASS'    ? 'badge-pass'
-                      : run.status === 'FAIL'    ? 'badge-fail'
-                      : run.status === 'PARTIAL' ? 'badge-partial'
-                      : 'badge-log';
-
-    // Date/time from run ID e.g. 20260620-181408-cli
-    const parts   = run.id.split('-');
-    const dateRaw = parts[0] || '';
-    const timeRaw = parts[1] || '';
-    const dateStr = dateRaw.replace(/(\d{4})(\d{2})(\d{2})/, '$2/$3');
-    const timeStr = timeRaw.replace(/(\d{2})(\d{2})(\d{2})/, '$1:$2');
-
-    // Build cells using textContent (safe)
-    const badge = document.createElement('span');
-    badge.className = 'badge ' + statusClass;
-    badge.textContent = run.status;
-
-    const dt = document.createElement('span');
-    dt.className = 'mono text-muted';
-    dt.style.fontSize = '11px';
-    dt.textContent = dateStr + ' ' + timeStr;
-
-    const type = document.createElement('strong');
-    type.style.fontSize = '12.5px';
-    type.textContent = run.title || run.type;
-
-    const prompt = document.createElement('span');
-    prompt.className = 'text-muted';
-    prompt.style.cssText = 'font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    prompt.textContent = displayPrompt;
-
-    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    arrow.setAttribute('viewBox', '0 0 10 10');
-    arrow.setAttribute('fill', 'none');
-    arrow.setAttribute('stroke', 'currentColor');
-    arrow.setAttribute('stroke-width', '1.5');
-    arrow.setAttribute('width', '10');
-    arrow.setAttribute('height', '10');
-    arrow.setAttribute('aria-hidden', 'true');
-    arrow.style.cssText = 'color:var(--text-muted);flex-shrink:0;';
-    arrow.innerHTML = '<polyline points="3 2 7 5 3 8"/>';
-
-    item.appendChild(badge);
-    item.appendChild(dt);
-    item.appendChild(type);
-    item.appendChild(prompt);
-    item.appendChild(arrow);
-    list.appendChild(item);
-  });
-}
-
-// ============================================================
-// DASHBOARD — LATEST RUN
-// ============================================================
-async function loadLatestRun() {
-  try {
-    const res  = await fetch('/api/runs');
-    const data = await res.json();
-    if (!data.runs || data.runs.length === 0) return;
-
-    const latest    = data.runs[0];
-    const targetDiv = document.getElementById('dashboard-latest-run');
-    setGlobalStatus(undefined, undefined, undefined, latest.status);
-
-    let promptText = 'Prompt redacted';
-    if (latest.prompt && latest.prompt !== '[REDACTED]') {
-      promptText = latest.prompt;
-      if (localStorage.getItem('savePrompts') !== 'true') promptText += ' (legacy — stored)';
-    }
-
-    // Silently seed the generate preview if empty
-    if (latest.primaryImage && latest.type !== 'batch-generate') {
-      const imgUrl   = '/api/run-file?path=' +
-        encodeURIComponent(latest.id) + '/' + encodeURIComponent(latest.primaryImage);
-      const previewEl = document.getElementById('preview-single');
-      if (previewEl && previewEl.querySelector('.stage-empty')) {
-        previewEl.className = 'stage-canvas stage-success';
-        const seedImg = document.createElement('img');
-        seedImg.src = imgUrl;
-        seedImg.alt = 'Latest cached preview';
-        previewEl.replaceChildren(seedImg);
-
-        const metaPanel = document.getElementById('preview-metadata-panel');
-        if (metaPanel) {
-          metaPanel.classList.remove('hidden');
-          document.getElementById('preview-run-id').textContent       = latest.id;
-          document.getElementById('preview-meta-details').textContent = latest.status;
-          document.getElementById('preview-prompt-val').textContent   =
-            (latest.prompt && latest.prompt !== '[REDACTED]') ? latest.prompt : 'Prompt redacted';
-        }
-      }
-    }
-
-    // Build dashboard latest run block (safe DOM)
-    targetDiv.replaceChildren();
-    const grid = document.createElement('div');
-    grid.style.cssText = 'font-size:13px;display:grid;grid-template-columns:80px 1fr;gap:6px;';
-
-    const statusClass = latest.status === 'PASS' ? 'badge-pass' : 'badge-fail';
-
-    if (latest.type === 'verify' || latest.type === 'server-status') {
-      appendMetaRow(grid, 'Check', latest.title);
-      const statusBadge = document.createElement('span');
-      statusBadge.className = 'badge ' + statusClass;
-      statusBadge.textContent = latest.status;
-      appendMetaRowEl(grid, 'Status', statusBadge);
-      appendMetaRow(grid, 'ID', latest.id);
-    } else {
-      appendMetaRow(grid, 'Run ID', latest.id);
-      const statusBadge = document.createElement('span');
-      statusBadge.className = 'badge ' + statusClass;
-      statusBadge.textContent = latest.status;
-      appendMetaRowEl(grid, 'Status', statusBadge);
-      appendMetaRow(grid, 'Prompt', promptText);
-    }
-    targetDiv.appendChild(grid);
-
-    if (latest.primaryImage) {
-      const imgUrl = '/api/run-file?path=' +
-        encodeURIComponent(latest.id) + '/' + encodeURIComponent(latest.primaryImage);
-      const img = document.createElement('img');
-      img.src = imgUrl;
-      img.alt = 'Latest generated';
-      img.style.cssText = 'width:180px;border-radius:8px;cursor:pointer;border:1px solid var(--border-subtle);margin-top:10px;display:block;';
-      img.addEventListener('click', () => navigateToRunDetail(latest.id));
-      targetDiv.appendChild(img);
-    }
-  } catch (e) { /* silent */ }
-}
-
-function appendMetaRow(container, label, value) {
-  const lEl = document.createElement('strong');
-  lEl.style.color = 'var(--text-muted)';
-  lEl.textContent = label;
-  const vEl = document.createElement('span');
-  vEl.textContent = value;
-  container.appendChild(lEl);
-  container.appendChild(vEl);
-}
-
-function appendMetaRowEl(container, label, valueEl) {
-  const lEl = document.createElement('strong');
-  lEl.style.color = 'var(--text-muted)';
-  lEl.textContent = label;
-  container.appendChild(lEl);
-  container.appendChild(valueEl);
-}
-
-// ============================================================
-// RUN DETAIL
-// ============================================================
-async function loadRunDetail(runId) {
-  const container = document.getElementById('run-detail-content');
-  container.replaceChildren();
-  const loading = document.createElement('p');
-  loading.className   = 'text-muted';
-  loading.style.fontSize = '13px';
-  loading.textContent = 'Loading…';
-  container.appendChild(loading);
-
-  try {
-    const res  = await fetch('/api/runs/' + encodeURIComponent(runId));
-    const data = await res.json();
-    if (data.error) {
-      loading.className   = 'text-danger';
-      loading.textContent = 'Error: ' + data.error;
-      return;
-    }
-
-    container.replaceChildren();
-    const m = data.metadata;
-    const statusClass = m.status === 'PASS' ? 'badge-pass' : 'badge-fail';
-
-    // Metadata card
-    const metaCard = document.createElement('div');
-    metaCard.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--r-lg);padding:18px;margin-bottom:14px;';
-
-    const metaGrid = document.createElement('div');
-    metaGrid.className = 'metadata-grid';
-
-    const displayPrompt = (!m.prompt || m.prompt === '[REDACTED]')
-      ? 'Prompt redacted'
-      : (localStorage.getItem('savePrompts') !== 'true' ? m.prompt + ' (legacy — stored)' : m.prompt);
-
-    appendDetailRow(metaGrid, 'ID',     m.id);
-    appendDetailRow(metaGrid, 'Type',   m.type || m.run_type || 'unknown');
-    const stBadge = document.createElement('span');
-    stBadge.className = 'badge ' + statusClass;
-    stBadge.textContent = m.status;
-    appendDetailRowEl(metaGrid, 'Status', stBadge);
-    appendDetailRow(metaGrid, 'Prompt', displayPrompt);
-
-    if (m.negative_prompt && m.negative_prompt !== '[REDACTED]') {
-      appendDetailRow(metaGrid, 'Negative', m.negative_prompt);
-    }
-    if (m.settings) {
-      appendDetailRow(metaGrid, 'Settings', m.settings);
-    }
-    metaCard.appendChild(metaGrid);
-    container.appendChild(metaCard);
-
-    // Image hero
-    if (m.primary_image || m.primaryImage) {
-      const pimg   = m.primary_image || m.primaryImage;
-      const imgSrc = '/api/run-file?path=' + encodeURIComponent(m.id) + '/' + encodeURIComponent(pimg);
-
-      const hero = document.createElement('div');
-      hero.className = 'detail-hero';
-      hero.style.marginBottom = '14px';
-      const heroH = document.createElement('h3');
-      heroH.textContent = 'Generated Output';
-      const heroImg = document.createElement('img');
-      heroImg.src = imgSrc;
-      heroImg.alt = 'Primary result';
-      hero.appendChild(heroH);
-      hero.appendChild(heroImg);
-      container.appendChild(hero);
-    }
-
-    // Reports
-    if (data.reports && data.reports.length > 0) {
-      const rCard = document.createElement('div');
-      rCard.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--r-lg);padding:14px 18px;';
-      const rH = document.createElement('h3');
-      rH.style.cssText = 'font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;';
-      rH.textContent = 'Reports';
-      const ul = document.createElement('ul');
-      ul.className = 'report-list';
-      data.reports.forEach(r => {
-        const li = document.createElement('li');
-        const a  = document.createElement('a');
-        a.href   = '/api/run-file?path=' + encodeURIComponent(m.id) + '/' + encodeURIComponent(r);
-        a.target = '_blank';
-        a.rel    = 'noopener noreferrer';
-        a.textContent = r;
-        li.appendChild(a);
-        ul.appendChild(li);
-      });
-      rCard.appendChild(rH);
-      rCard.appendChild(ul);
-      container.appendChild(rCard);
-    }
-
-    // Batch manifest
-    if (data.manifest && data.manifest.images) {
-      const bCard = document.createElement('div');
-      bCard.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--r-lg);padding:14px 18px;margin-top:12px;';
-      const bH = document.createElement('h3');
-      bH.style.cssText = 'font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;';
-      bH.textContent = 'Batch Output';
-      const bGrid = document.createElement('div');
-      bGrid.className = 'batch-grid-out';
-      data.manifest.images.forEach(img => {
-        if (img.png_path) {
-          const imgSrc = '/api/run-file?path=' + encodeURIComponent(m.id) + '/' + encodeURIComponent(img.png_path);
-          const wrap = document.createElement('div');
-          wrap.style.textAlign = 'center';
-          const bi = document.createElement('img');
-          bi.src = imgSrc;
-          bi.alt = 'Batch image seed ' + img.seed;
-          const lbl = document.createElement('div');
-          lbl.className = 'mono text-muted';
-          lbl.style.cssText = 'font-size:10.5px;margin-top:4px;';
-          lbl.textContent = 'seed: ' + img.seed;
-          wrap.appendChild(bi);
-          wrap.appendChild(lbl);
-          bGrid.appendChild(wrap);
-        }
-      });
-      bCard.appendChild(bH);
-      bCard.appendChild(bGrid);
-      container.appendChild(bCard);
-    }
+    const result = await api('/api/actions/generate-single', { method: 'POST', body: JSON.stringify(params) });
+    trackJob(result.job_id, 'Generating image…');
   } catch (err) {
-    container.replaceChildren();
-    const errP = document.createElement('p');
-    errP.className   = 'text-danger';
-    errP.textContent = 'Error: ' + err.message;
-    container.appendChild(errP);
+    setPill('pill-job', 'Failed', 'bad');
+    notifyLog(err.message);
   }
 }
-
-function appendDetailRow(container, label, value) {
-  const lEl = document.createElement('strong');
-  lEl.textContent = label;
-  const vEl = document.createElement('span');
-  vEl.textContent = value;
-  container.appendChild(lEl);
-  container.appendChild(vEl);
-}
-
-function appendDetailRowEl(container, label, valueEl) {
-  const lEl = document.createElement('strong');
-  lEl.textContent = label;
-  container.appendChild(lEl);
-  container.appendChild(valueEl);
-}
-
-// ============================================================
-// SERVER STATUS (silent)
-// ============================================================
-async function checkServerStatusSilent() {
-  setGlobalStatus('Checking', undefined, 'Checking…', undefined);
+async function submitBatch(event) {
+  event.preventDefault();
+  const params = getCoreParams('batch');
+  params.count = $('batch_count').value;
+  params.seedMode = $('seedMode').value;
+  params.seedStart = $('seedStart').value.trim();
   try {
-    const res  = await fetch('/api/actions/server-status', { method: 'POST' });
-    const data = await res.json();
-    if (data.job_id) {
-      const sid = setInterval(async () => {
-        const stRes  = await fetch('/api/jobs/' + data.job_id);
-        const stData = await stRes.json();
-        if (stData.status === 'PASS' || stData.status === 'FAIL') {
-          clearInterval(sid);
-          const outRes  = await fetch('/api/jobs/' + data.job_id + '/log');
-          const outData = await outRes.json();
-          const srv = (outData.stdout || '').includes('Server + tunnel appear UP') ? 'Running' : 'Stopped';
-          setGlobalStatus('Ready', undefined, srv, undefined);
-        }
-      }, 1000);
+    const result = await api('/api/actions/generate-batch', { method: 'POST', body: JSON.stringify(params) });
+    trackJob(result.job_id, 'Running batch…');
+  } catch (err) { notifyLog(err.message); }
+}
+
+async function trackJob(jobId, label) {
+  state.lastJob = jobId;
+  setPill('pill-job', 'Running', 'run');
+  $('latest-job').textContent = label;
+  clearInterval(state.poller);
+  state.poller = setInterval(() => pollJob(jobId), 1200);
+  await pollJob(jobId);
+}
+async function pollJob(jobId) {
+  try {
+    const job = await api(`/api/jobs/${jobId}`);
+    const log = await api(`/api/jobs/${jobId}/log`);
+    notifyLog([log.stdout, log.stderr].filter(Boolean).join('\n\n'));
+    $('latest-job').innerHTML = `<strong>${esc(job.commandAction)}</strong><br>Status: ${esc(job.status)}${job.runId ? `<br>Run: ${esc(job.runId)}` : ''}`;
+    if (job.status !== 'running' && job.status !== 'queued') {
+      clearInterval(state.poller);
+      setPill('pill-job', job.status, job.status === 'PASS' ? 'ok' : job.status === 'PARTIAL' ? 'run' : 'bad');
+      setPill('pill-latest', job.status, job.status === 'PASS' ? 'ok' : 'bad');
+      if (job.runId) await loadRunIntoPreview(job.runId);
+      await loadGallery();
     }
-  } catch (e) {
-    setGlobalStatus('Unknown', undefined, 'Unknown', undefined);
+  } catch (err) { notifyLog(err.message); }
+}
+async function loadRunIntoPreview(runId) {
+  try {
+    const detail = await api(`/api/runs/${runId}`);
+    const image = detail.images && detail.images[0];
+    if (image) setPreviewImage(`/api/run-file?path=${encodeURIComponent(`${runId}/${image}`)}`, `Run ${runId}`);
+  } catch (_) {}
+}
+
+function renderFeatureGates() {
+  const gates = (state.capabilities && state.capabilities.featureGates) || {};
+  const editFeatures = [
+    ['img2img', 'Image to Image', 'Upload an input image, set denoising strength, then regenerate.'],
+    ['inpaint', 'Inpaint', 'Mask editor, upload-mask mode, masked content, inpaint area.'],
+    ['outpaint', 'Outpaint', 'Extend canvas edges and inpaint the new regions.']
+  ];
+  const enhanceFeatures = [
+    ['hiresFix', 'Hires Fix', 'Two-pass: low-res draft → upscale → second-pass detail. Not yet implemented.'],
+    ['upscale', 'AI / Extras Upscale', 'Real-ESRGAN, tiled finalization, A1111 Extras parity.'],
+    ['faceRestore', 'Face Restore', 'GFPGAN/CodeFormer-style restoration.'],
+    ['pngInfo', 'PNG Info', 'Recover generation parameters from image metadata.']
+  ];
+  $('edit-gates').innerHTML = editFeatures.map(f => featureCard(f, gates[f[0]])).join('');
+  $('enhance-gates').innerHTML = enhanceFeatures.map(f => featureCard(f, gates[f[0]])).join('');
+}
+function featureCard([id, title, desc], gate = {}) {
+  const supported = gate && gate.supported === true;
+  const partial = gate && gate.supported === 'partial';
+  const badgeLabel = supported ? 'Available' : partial ? 'Partial' : 'Backend missing';
+  return `<article class="feature-card"><h3>${esc(title)}</h3><p>${esc(desc)}</p><span class="badge">${badgeLabel}</span><p class="fineprint">${esc(gate.reason || gate.caveat || 'Ready.')}</p><button class="ghost" data-unsupported="${esc(title)}">${supported ? 'Open' : 'Explain blocker'}</button></article>`;
+}
+
+// ---- Pillow Upscale ----------------------------------------------------------
+async function loadEnhanceRuns() {
+  const sel = $('upscale-run');
+  try {
+    const data = await api('/api/runs');
+    const imageRuns = (data.runs || []).filter(r => r.images && r.images.length > 0);
+    if (!imageRuns.length) {
+      sel.innerHTML = '<option value="">No image runs found</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">Choose a run…</option>' +
+      imageRuns.map(r => '<option value="' + esc(r.id) + '">' + esc(r.id) + ' (' + r.images.length + ' image' + (r.images.length > 1 ? 's' : '') + ')</option>').join('');
+  } catch (_) {
+    sel.innerHTML = '<option value="">Error loading runs</option>';
   }
 }
 
-// ============================================================
-// INIT
-// ============================================================
-window.onload = () => {
-  loadSettings();
-  loadLatestRun();
-  checkServerStatusSilent();
-};
+async function onUpscaleRunChange() {
+  const runId = $('upscale-run').value;
+  const imgSel = $('upscale-image');
+  if (!runId) { imgSel.innerHTML = '<option value="">Select a run first</option>'; return; }
+  try {
+    const detail = await api('/api/runs/' + encodeURIComponent(runId));
+    const images = (detail.images || []).filter(f => !f.startsWith('upscaled/'));
+    imgSel.innerHTML = images.length
+      ? images.map(f => '<option value="' + esc(f) + '">' + esc(f) + '</option>').join('')
+      : '<option value="">No PNG images in this run</option>';
+  } catch (_) {
+    imgSel.innerHTML = '<option value="">Error loading images</option>';
+  }
+}
+
+async function submitUpscale(event) {
+  event.preventDefault();
+  const runId = $('upscale-run').value;
+  const image = $('upscale-image').value;
+  if (!runId || !image) { $('upscale-result').textContent = 'Select a run and image first.'; return; }
+  const scale = Number($('upscale-scale').value);
+  const resample = $('upscale-resample').value;
+  const overwrite = $('upscale-overwrite').checked;
+  $('upscale-result').textContent = 'Submitting upscale job…';
+  try {
+    const result = await api('/api/actions/upscale', {
+      method: 'POST',
+      body: JSON.stringify({ runId, image, scale, resample, overwrite })
+    });
+    trackUpscaleJob(result.job_id);
+  } catch (err) {
+    $('upscale-result').textContent = 'Error: ' + err.message;
+  }
+}
+
+function trackUpscaleJob(jobId) {
+  $('upscale-result').textContent = 'Upscale running…';
+  const poller = setInterval(async () => {
+    try {
+      const job = await api('/api/jobs/' + jobId);
+      if (job.status === 'running' || job.status === 'queued') return;
+      clearInterval(poller);
+      if (job.status === 'PASS' && job.upscaledImage) {
+        $('upscale-result').textContent = 'PASS — ' + job.upscaledImage;
+        const imgUrl = '/api/run-file?path=' + encodeURIComponent(job.upscaledImage);
+        setPreviewImage(imgUrl, 'Upscaled: ' + job.upscaledImage);
+        await loadGallery();
+      } else {
+        $('upscale-result').textContent = job.status + (job.firstFailedGate ? ' — gate: ' + job.firstFailedGate : '');
+      }
+    } catch (err) {
+      clearInterval(poller);
+      $('upscale-result').textContent = 'Poll error: ' + err.message;
+    }
+  }, 1200);
+}
+
+function sendToUpscale(runId, image) {
+  showScreen('enhance');
+  loadEnhanceRuns().then(() => {
+    $('upscale-run').value = runId;
+    onUpscaleRunChange().then(() => {
+      if (image) $('upscale-image').value = image;
+    });
+  });
+}
+
+function renderModels() {
+  const caps = state.capabilities || {};
+  $('model-list').innerHTML = (caps.models || []).map(m => `<div class="model-card"><h3>${esc(m.name)}</h3><p>${esc(m.filename || '')}</p><span class="badge">${esc(m.status || 'unknown')}</span></div>`).join('');
+  const gates = caps.featureGates || {};
+  const items = [['lora','LoRA'],['textualInversion','Textual Inversion'],['hypernetworks','Hypernetworks'],['vae','VAE switching']];
+  $('network-list').innerHTML = items.map(([id, label]) => `<div class="model-card"><h3>${esc(label)}</h3><p>${esc((gates[id] && gates[id].reason) || 'Visible for parity; backend missing.')}</p><span class="badge">${gates[id] && gates[id].supported ? 'Available' : 'Not wired'}</span></div>`).join('');
+}
+
+async function loadGallery() {
+  try {
+    const data = await api('/api/runs');
+    state.runs = data.runs || [];
+    const imageRuns = state.runs.filter(r => r.images && r.images.length);
+    $('gallery-grid').innerHTML = imageRuns.length ? imageRuns.map(runCard).join('') : '<div class="empty-state">No image runs found yet.</div>';
+  } catch (err) { $('gallery-grid').innerHTML = `<div class="empty-state danger">${esc(err.message)}</div>`; }
+}
+function runCard(run) {
+  const img = run.primaryImage || (run.images && run.images[0]);
+  const imgUrl = img ? '/api/run-file?path=' + encodeURIComponent(run.id + '/' + img) : '';
+  const prompt = run.prompt || 'Prompt unavailable';
+  const imgArg = img ? ' data-upscale-image="' + esc(img) + '"' : '';
+  return '<article class="image-card" data-run="' + esc(run.id) + '">' +
+    (imgUrl ? '<img src="' + esc(imgUrl) + '" alt="Generated image from ' + esc(run.id) + '" loading="lazy" />' : '') +
+    '<h3>' + esc(run.title || run.type) + '</h3>' +
+    '<p>' + esc(prompt) + '</p>' +
+    '<div class="quick-row">' +
+    '<button class="ghost small" data-open-run="' + esc(run.id) + '">Open</button>' +
+    '<button class="ghost small" data-reuse-run="' + esc(run.id) + '">Reuse</button>' +
+    '<button class="ghost small" data-copy-run="' + esc(run.id) + '">Copy</button>' +
+    (img ? '<button class="ghost small" data-send-upscale="' + esc(run.id) + '"' + imgArg + '>Upscale</button>' : '') +
+    '</div></article>';
+}
+async function openRun(id) {
+  const detail = await api(`/api/runs/${id}`);
+  const image = detail.images && detail.images[0];
+  if (image) setPreviewImage(`/api/run-file?path=${encodeURIComponent(`${id}/${image}`)}`, `Run ${id}`);
+  showScreen('create');
+}
+async function reuseRun(id) {
+  const detail = await api(`/api/runs/${id}`);
+  const m = detail.metadata || {};
+  if (m.prompt && m.prompt !== '[REDACTED]') $('prompt').value = m.prompt;
+  if (m.negative_prompt && m.negative_prompt !== '[REDACTED]') $('negative_prompt').value = m.negative_prompt;
+  showScreen('create');
+}
+async function copyRun(id) {
+  const detail = await api(`/api/runs/${id}`);
+  await navigator.clipboard.writeText(JSON.stringify(detail.metadata || detail.manifest || detail, null, 2));
+}
+
+async function runSimpleAction(action) {
+  try {
+    const result = await api(`/api/actions/${action}`, { method: 'POST', body: '{}' });
+    trackJob(result.job_id, `Running ${action}…`);
+  } catch (err) { notifyLog(err.message); }
+}
+async function explainUnsupported(feature) {
+  try { await api('/api/actions/unsupported', { method: 'POST', body: JSON.stringify({ feature }) }); }
+  catch (err) { notifyLog(err.message); }
+}
+function showScreen(id) { $$('.screen').forEach(el => el.classList.toggle('active', el.id === id)); $$('.nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.target === id)); if (id === 'library') loadGallery(); }
+function loadStyles() {
+  const styles = JSON.parse(localStorage.getItem('styles') || '[]');
+  $('style-select').innerHTML = '<option value="">No saved style</option>' + styles.map(s => `<option value="${esc(s.prompt)}">${esc(s.name)}</option>`).join('');
+}
+function saveCurrentStyle() {
+  const prompt = $('prompt').value.trim();
+  if (!prompt) return;
+  const name = prompt.slice(0, 38);
+  const styles = JSON.parse(localStorage.getItem('styles') || '[]');
+  styles.push({ name, prompt });
+  localStorage.setItem('styles', JSON.stringify(styles.slice(-40)));
+  loadStyles();
+}
+function insertAtPrompt(text) { $('prompt').value = `${$('prompt').value.trim()} <lora:${text}>`.trim(); $('prompt').dispatchEvent(new Event('input')); }
+function bindEvents() {
+  $$('.nav-btn').forEach(btn => btn.addEventListener('click', () => {
+    showScreen(btn.dataset.target);
+    if (btn.dataset.target === 'enhance') loadEnhanceRuns();
+  }));
+  $('form-create').addEventListener('submit', submitCreate);
+  $('form-batch').addEventListener('submit', submitBatch);
+  $('form-upscale').addEventListener('submit', submitUpscale);
+  $('upscale-run').addEventListener('change', onUpscaleRunChange);
+  $('preset').addEventListener('change', e => { if (e.target.value !== 'Custom') applyPreset(e.target.value); });
+  ['steps','cfg_scale','sampler','width','height'].forEach(id => $(id).addEventListener('input', () => { $('preset').value = 'Custom'; }));
+  $('prompt').addEventListener('input', () => $('prompt-count').textContent = `${$('prompt').value.length} chars`);
+  $('style-select').addEventListener('change', e => { if (e.target.value) $('prompt').value = `${$('prompt').value.trim()} ${e.target.value}`.trim(); });
+  $('btn-save-style').addEventListener('click', saveCurrentStyle);
+  $('set-save-prompts').addEventListener('change', e => saveBool('savePrompts', e.target.checked));
+  $('btn-random-seed').addEventListener('click', () => { $('seed').value = String(Math.floor(Math.random() * 2147483647)); });
+  $('btn-reuse-seed').addEventListener('click', () => { if (state.lastSeed) $('seed').value = state.lastSeed; });
+  $('btn-load-library').addEventListener('click', loadGallery);
+  $('btn-refresh-all').addEventListener('click', async () => { await loadCapabilities(); await loadGallery(); });
+  $('btn-copy-last').addEventListener('click', async () => { if (state.lastParams) await navigator.clipboard.writeText(JSON.stringify(state.lastParams, null, 2)); });
+  $('btn-send-img2img').addEventListener('click', () => explainUnsupported('img2img'));
+  $('btn-send-upscale').addEventListener('click', () => explainUnsupported('upscale'));
+  document.body.addEventListener('click', event => {
+    const sizeBtn = event.target.closest('[data-size]');
+    if (sizeBtn) { const [w,h] = sizeBtn.dataset.size.split('x'); $('width').value = w; $('height').value = h; $('preset').value = 'Custom'; }
+    const unsupported = event.target.closest('[data-unsupported]');
+    if (unsupported) explainUnsupported(unsupported.dataset.unsupported);
+    const action = event.target.closest('[data-action]');
+    if (action) runSimpleAction(action.dataset.action);
+    const lora = event.target.closest('[data-insert-lora]');
+    if (lora) insertAtPrompt(lora.dataset.insertLora);
+    const open = event.target.closest('[data-open-run]');
+    if (open) openRun(open.dataset.openRun);
+    const reuse = event.target.closest('[data-reuse-run]');
+    if (reuse) reuseRun(reuse.dataset.reuseRun);
+    const copy = event.target.closest('[data-copy-run]');
+    if (copy) copyRun(copy.dataset.copyRun);
+    const sendUpscale = event.target.closest('[data-send-upscale]');
+    if (sendUpscale) sendToUpscale(sendUpscale.dataset.sendUpscale, sendUpscale.dataset.upscaleImage);
+  });
+}
+
+async function init() {
+  bindEvents();
+  await loadCapabilities();
+  await loadGallery();
+  setPill('pill-server', 'Check manually', 'run');
+}
+init();

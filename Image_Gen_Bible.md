@@ -1,0 +1,581 @@
+# Image Gen Project Bible
+
+## Bootstrap Prompt for Successor AI
+
+Read `Image_Gen_Bible.md` first. Treat it as the authoritative append-only project state for the local `Image_Gen` repository unless direct repository inspection proves drift. Inspect the repository against this bible before substantive work. If anything has drifted, append a reconciliation note instead of rewriting prior entries. Continue work from the current state, append all future work additively, avoid rewriting prior entries, and use this bible plus the repository contents as the complete handoff source.
+
+## Project Goal
+
+Provide a local-only macOS/BigMac SDCPP image-generation workbench with an Automatic1111-style user experience while preserving the safety posture of the existing allowlisted command bridge.
+
+## Scope
+
+In scope:
+- `operator-console/` Express localhost bridge and vanilla frontend.
+- `sdcpp-workflow/` shell-script integration points.
+- A1111-style Create, Batch/Sweep, Edit, Enhance, Library, Models, and System user flows.
+- Honest feature gates for UI workflows that require backend scripts not currently present.
+
+Out of scope for the 2026-06-21 UI pass:
+- Adding actual SDCPP img2img, inpaint, outpaint, Hires Fix, upscaling, face restoration, LoRA scanning, VAE switching, hypernetwork browsing, or full PNG-info parsing unless new backend scripts/API support are implemented later.
+- Exposing arbitrary shell execution.
+- Public network binding.
+
+## Constraints
+
+- Keep Express bound to `127.0.0.1`.
+- Use allowlisted backend endpoints only.
+- Preserve prompt redaction default through `SDCPP_REDACT_PROMPTS=1` unless the user opts into prompt saving.
+- Do not pretend unsupported A1111 features work; surface them as gated/blocked until backend support exists.
+- Preserve existing SDCPP workflow scripts rather than deleting or rewriting them without need.
+
+## Assumptions
+
+- The source archive `/mnt/data/Image_Gen 3.zip` represents the current MacBook-local build at the time of this session.
+- The current SDCPP backend can generate txt2img through existing scripts but lacks wrapper scripts for img2img/inpaint/outpaint/upscale/Hires Fix/model ecosystem management.
+- A1111 parity should be approached as a product architecture plus staged backend enablement, not as fake UI toggles.
+
+## Architecture / Design
+
+- Frontend: vanilla HTML/CSS/JavaScript under `operator-console/public/`.
+- Backend bridge: Node/Express in `operator-console/server.js`.
+- Workflow scripts: `sdcpp-workflow/bin/*.sh`.
+- Capabilities are centralized through `GET /api/capabilities`.
+- Unsupported workflows are represented through `featureGates` and `POST /api/actions/unsupported`.
+- Navigation is task-centered: Create, Batch / Sweep, Edit, Enhance, Library, Models, System.
+
+## File Map
+
+- `operator-console/server.js` — Localhost Express bridge, validation, capabilities, job execution, run discovery, safe file serving.
+- `operator-console/public/index.html` — A1111-style workbench shell and screen markup.
+- `operator-console/public/app.js` — Frontend state, capability hydration, form submission, gallery, feature gates, job polling.
+- `operator-console/public/styles.css` — Dark workbench UI styling, responsive layout, accessible focus states.
+- `operator-console/docs/a1111-workbench-implementation.md` — Implementation notes, supported vs gated feature list, validation notes, next backend work.
+- `operator-console/README.md` — Updated launch, architecture, privacy, supported/gated feature summary.
+- `Image_Gen_Bible.md` — This append-only ledger.
+
+## Current State Summary
+
+As of 2026-06-21, the operator console has been reframed as an A1111-style workbench. Existing txt2img, batch, server, verification, seed-test, job polling, run discovery, and safe file-serving workflows are wired to the existing SDCPP scripts. Missing A1111-class workflows are visible but capability-gated.
+
+Validation performed:
+- `node --check server.js` passed.
+- `node --check public/app.js` passed.
+- Local server smoke test for `GET /api/capabilities` passed after correcting the smoke-test expectation from `features` to the implemented key `featureGates`.
+
+## Open Questions
+
+- Which SDCPP build/API features are actually available on BigMac for img2img, inpaint, outpaint, upscaling, and advanced model overrides?
+- Should parameter metadata be persisted even when prompt text is redacted, possibly with safe hashes/labels?
+- Should the frontend remain vanilla or be migrated to a component framework once backend feature count grows?
+- What local model/LoRA/VAE directory layout should the model discovery scripts scan?
+
+## Chronological Ledger
+
+### Entry 1 - A1111 Workbench UI/UX Upgrade
+
+Summary:
+- Rebuilt the uploaded Image_Gen operator console into an Automatic1111-style workbench UI with explicit capability gates for unsupported backend features.
+
+Reason / Intent:
+- The user requested implementation of the previously identified A1111-style UI/UX improvements: Create/Edit/Enhance/Library/Models/System IA, richer exposed generation controls, action-oriented library, model/network visibility, seed and batch controls, and visible surfaces for img2img/inpaint/outpaint/upscale/Hires Fix/X-Y-Z workflows.
+
+Files Changed:
+- `operator-console/server.js`
+- `operator-console/public/index.html`
+- `operator-console/public/app.js`
+- `operator-console/public/styles.css`
+- `operator-console/README.md`
+- `operator-console/docs/a1111-workbench-implementation.md`
+- `Image_Gen_Bible.md`
+
+Commands Run:
+
+```sh
+rm -rf /tmp/imagegen_a1111 /mnt/data/image_gen_a1111_work
+mkdir -p /tmp/imagegen_a1111
+unzip -q '/mnt/data/Image_Gen 3.zip' -d /tmp/imagegen_a1111
+cp -a /tmp/imagegen_a1111/Image_Gen /mnt/data/image_gen_a1111_work
+```
+
+```sh
+cd /mnt/data/image_gen_a1111_work/operator-console
+node --check server.js
+node --check public/app.js
+```
+
+```sh
+cd /mnt/data/image_gen_a1111_work/operator-console
+( node server.js > /tmp/imagegen_a1111_server3.log 2>&1 & echo $! > /tmp/imagegen_a1111_server3.pid )
+sleep 1
+curl -fsS http://127.0.0.1:31337/api/capabilities > /tmp/imagegen_a1111_capabilities.json
+python3 - <<'PY'
+import json
+p='/tmp/imagegen_a1111_capabilities.json'
+with open(p) as f: data=json.load(f)
+required=['app','backend','models','featureGates','samplers','schedulers']
+missing=[k for k in required if k not in data]
+assert not missing, missing
+assert data['featureGates']['txt2img']['supported'] is True
+assert data['featureGates']['img2img']['supported'] is False
+print('capability smoke ok')
+PY
+kill $(cat /tmp/imagegen_a1111_server3.pid) >/dev/null 2>&1 || true
+cat /tmp/imagegen_a1111_server3.log
+```
+
+Command Intent:
+- Extracted the uploaded archive into a working directory.
+- Validated JavaScript syntax for the rewritten bridge and frontend controller.
+- Started the local server briefly and verified the capabilities endpoint returns expected workbench/capability-gate data.
+
+Outputs Generated:
+- `operator-console/docs/a1111-workbench-implementation.md`
+- `Image_Gen_Bible.md`
+- Planned package output: `/mnt/data/Image_Gen_A1111_Workbench_Upgrade.zip`
+
+Decisions:
+- Keep unsupported A1111 workflows visible but gated rather than hiding them or pretending they work.
+- Use `featureGates` as the capability contract between backend and frontend.
+- Preserve prompt redaction defaults and make prompt-saving opt-in.
+- Expand dimension validation to multiples of 8 between 64 and 2048 instead of only 384/512.
+- Keep the frontend vanilla for this pass to minimize dependency churn.
+
+Bugs / Blockers:
+- Initial capability smoke assertion expected key `features`; actual implemented key is `featureGates`. Corrected the test expectation and reran successfully.
+- Full A1111 execution parity is blocked by missing SDCPP workflow scripts/API wrappers for img2img, inpaint, outpaint, Hires Fix, upscale, face restore, LoRA discovery, VAE switching, and X/Y/Z plot execution.
+
+Correction:
+- None to prior bible entries; this is the first entry.
+
+State After Completion:
+- Workbench UI and capability-gated backend bridge are implemented in the working copy.
+- Syntax validation passed for `server.js` and `public/app.js`.
+- `/api/capabilities` smoke test passed.
+- Unsupported advanced workflows are explicitly marked as backend-missing in the UI.
+
+Next Step / Handoff:
+- Package the working copy into `/mnt/data/Image_Gen_A1111_Workbench_Upgrade.zip`.
+- Next implementation phase should add real backend scripts for model discovery, img2img/inpaint/outpaint, Hires Fix/upscale, PNG-info recovery, and X/Y/Z plot orchestration.
+
+---
+
+### Entry 2 - A1111 Workbench Install to MacBook (2026-06-21)
+
+Summary:
+- Installed the A1111-style workbench from `Image_Gen_A1111_Workbench_Upgrade.zip` into the live `/Users/andrew/Image_Gen` project. Replaced the Dexter Walk UI/UX redesign (committed at 71bf480) with the capability-gated A1111 workbench architecture from the zip. Validated all acceptance criteria.
+
+Reason / Intent:
+- The upgrade zip was the output of Entry 1 (designed and smoke-tested in a ChatGPT/cloud session). The current repo's 71bf480 "Dexter Walk" commit had more elaborate UI but lacked the `/api/capabilities` / `featureGates` architecture. The upgrade restores the capability-gate contract so the frontend can honestly surface gated workflows.
+
+Backup Created:
+- `/Users/andrew/Image_Gen.backup-before-a1111-workbench-20260621-015246`
+
+Files Copied from Zip (`/tmp/image_gen_a1111_upgrade/Image_Gen/`):
+- `operator-console/server.js` — adds `/api/capabilities`, `featureGates`, `/api/actions/unsupported`
+- `operator-console/public/index.html` — A1111-style nav: Create/Batch/Edit/Enhance/Library/Models/System
+- `operator-console/public/app.js` — capability-hydrating frontend controller
+- `operator-console/public/styles.css` — dark workbench CSS (minified)
+- `operator-console/README.md` — updated architecture and feature summary
+- `operator-console/docs/a1111-workbench-implementation.md` — new doc, was missing from current project
+- `Image_Gen_Bible.md` — this file, created fresh from zip (Entry 1 was preserved, this appended)
+
+Files Explicitly NOT Overwritten:
+- `sdcpp-workflow/runs/` — preserved (contains live run data)
+- `sdcpp-workflow/logs/` — preserved
+- `sdcpp-workflow/state/` — preserved (contains `current-ports.env`)
+- `sdcpp-proof-20260620-172600/` — preserved
+- `operator-console/node_modules/` — preserved (npm install confirmed up-to-date)
+- All `.env` files — none found in zip or project
+
+Commands Run:
+
+```sh
+# Backup
+cd /Users/andrew
+ts=20260621-015246
+cp -a Image_Gen "Image_Gen.backup-before-a1111-workbench-$ts"
+
+# Unpack
+rm -rf /tmp/image_gen_a1111_upgrade
+unzip -q Image_Gen/Image_Gen_A1111_Workbench_Upgrade.zip -d /tmp/image_gen_a1111_upgrade
+
+# File copy (selective — no runs/logs/state/node_modules)
+cp "$S/operator-console/server.js" "$T/operator-console/server.js"
+cp "$S/operator-console/public/index.html" "$T/operator-console/public/index.html"
+cp "$S/operator-console/public/app.js" "$T/operator-console/public/app.js"
+cp "$S/operator-console/public/styles.css" "$T/operator-console/public/styles.css"
+cp "$S/operator-console/README.md" "$T/operator-console/README.md"
+cp "$S/operator-console/docs/a1111-workbench-implementation.md" "$T/operator-console/docs/"
+cp "$S/Image_Gen_Bible.md" "$T/Image_Gen_Bible.md"
+
+# Dependency check
+cd /Users/andrew/Image_Gen/operator-console
+npm install   # result: up to date, 0 vulnerabilities
+
+# Syntax checks
+npm run check         # node --check server.js — PASS
+node --check public/app.js  # PASS
+
+# Server start + validation
+node server.js &
+curl -fsS http://127.0.0.1:31337/api/capabilities | python3 -c "..."
+# capabilities smoke PASSED
+curl -fsS http://127.0.0.1:31337/ | head -20
+# HTML loads: title=SDCPP Workbench
+```
+
+Validation Results:
+- `npm run check` (node --check server.js): PASS
+- `node --check public/app.js`: PASS
+- Server started: `SDCPP Workbench listening on http://127.0.0.1:31337`
+- `/api/capabilities` returned valid JSON with all required keys: app, backend, models, featureGates, samplers, schedulers
+- `featureGates.txt2img.supported = true` ✓
+- `featureGates.img2img.supported = false` (correctly gated) ✓
+- All 10 unsupported workflows correctly gated: xyzPlot, img2img, inpaint, outpaint, upscale, hiresFix, faceRestore, lora, textualInversion, hypernetworks
+- HTML loads correctly, title "SDCPP Workbench"
+- Backend status pill shows "Ready" (capabilities hydrated)
+- Browser validation: Create/Batch/Edit/Enhance/Library/Models/System navigation confirmed
+- Edit screen: img2img, Inpaint, Outpaint shown with "Backend missing" badges ✓
+- Enhance screen: Hires Fix, Upscale/Extras, Face Restore, PNG Info shown with "Backend missing" badges ✓
+- Privacy toggle (prompt redaction) visible in sidebar ✓
+- Favicon 404 warning: benign — new HTML does not embed inline favicon (not a regression)
+- Existing run/log/state data: confirmed intact
+
+Unsupported / Backend-Gated Workflows:
+- **img2img**: No workflow script or server bridge. Show: Edit → Image to Image → "Backend missing"
+- **Inpaint**: No mask upload/editor endpoint. Show: Edit → Inpaint → "Backend missing"
+- **Outpaint**: No canvas-extend script. Show: Edit → Outpaint → "Backend missing"
+- **Hires Fix**: No second-pass generation bridge. Show: Enhance → Hires Fix → "Backend missing"
+- **Upscale/Extras**: No upscale workflow script. Show: Enhance → Upscale/Extras → "Backend missing"
+- **Face Restore**: No GFPGAN/CodeFormer equivalent. Show: Enhance → Face Restore → "Backend missing"
+- **PNG Info**: Run manifests exist; PNG chunk recovery not implemented. Show: Enhance → PNG Info → "Backend missing"
+- **X/Y/Z Plot**: No sweep script. Show: Batch/Sweep → X/Y/Z Plot → disabled, "Backend missing"
+- **LoRA**: No LoRA discovery/injection bridge. (Gated via featureGates)
+- **Textual Inversion / Hypernetworks**: No scanner. (Gated via featureGates)
+
+Known Next Backend Work:
+- `sdcpp-workflow/bin/sdcpp-img2img.sh` and `/api/actions/img2img` endpoint
+- `sdcpp-workflow/bin/sdcpp-inpaint.sh` and mask upload endpoint
+- `sdcpp-workflow/bin/sdcpp-upscale.sh` (Real-ESRGAN or equivalent)
+- `sdcpp-workflow/bin/sdcpp-hires-fix.sh` (txt2img → upscale pipeline)
+- `sdcpp-workflow/bin/sdcpp-xyz-plot.sh` and `/api/actions/xyz-plot`
+- Model/LoRA/VAE directory scanner feeding `/api/capabilities` `models` and `networks` arrays
+- PNG metadata chunk reader for PNG-info recovery
+
+Decisions:
+- Dexter Walk (71bf480) public files were replaced by the zip's A1111 workbench files because the Dexter Walk frontend had no capability hydration and the zip is the designated upgrade package.
+- node_modules from zip were NOT copied; existing modules are identical (`up to date, 0 vulnerabilities`).
+- `server-generate` route from Dexter Walk is not in upgrade server.js; generate-single/generate-batch handle all generation modes via the `mode` param.
+
+State After Completion:
+- Server at `http://127.0.0.1:31337` serves A1111-style workbench with capability gates.
+- txt2img generation routes through existing SDCPP bridge scripts.
+- All unsupported A1111 workflows visible and honestly gated.
+- Backup at `/Users/andrew/Image_Gen.backup-before-a1111-workbench-20260621-015246`.
+
+---
+
+### Entry 3 - Backend Phase Unlock: Discovery, Metadata, XYZ Plot, Capability Probes (2026-06-21)
+
+Summary:
+- Implemented Phases 1–5 of the backend unlock plan. Added five new workflow scripts and five new server endpoints. Updated /api/capabilities to read from cached probe results.
+
+Files Added:
+- `sdcpp-workflow/bin/sdcpp-discover-assets.sh` — SSH probe of BigMac staging dirs, writes `state/assets-cache.json`
+- `sdcpp-workflow/bin/sdcpp-read-run-metadata.sh` — CLI tool: reads local run directory, outputs JSON (run card, manifest, PNG chunks, metrics)
+- `sdcpp-workflow/bin/sdcpp-xyz-plot.sh` — Orchestrates X/Y sweep (max 16 cells) calling SDCPP server directly via curl; writes `xyz-manifest.json`
+- `sdcpp-workflow/bin/sdcpp-image-edit-capabilities.sh` — SSH probe of sd binary `--help` for img2img/inpaint flags, writes `state/image-edit-capabilities.json`
+- `sdcpp-workflow/bin/sdcpp-upscale-capabilities.sh` — Local + remote probe for Real-ESRGAN, Pillow, GFPGAN, CodeFormer; writes `state/upscale-capabilities.json`
+
+Files Modified:
+- `operator-console/server.js` — Added: `ASSETS_CACHE`, `IMAGE_EDIT_CACHE`, `UPSCALE_CACHE` constants; `readJsonCache()`, `readPngTextChunks()` helpers; `GET /api/assets`, `POST /api/actions/discover-assets`, `GET /api/runs/:runId/metadata`, `POST /api/actions/xyz-plot`, `POST /api/actions/probe-image-edit`, `POST /api/actions/probe-upscale`; updated `GET /api/capabilities` to hydrate models/VAEs/networks/featureGates from JSON caches
+
+New Endpoints:
+- `POST /api/actions/discover-assets` — runs sdcpp-discover-assets.sh, populates assets-cache.json
+- `GET /api/assets` — returns cached asset list (stale:true if cache missing)
+- `GET /api/runs/:runId/metadata` — rich local metadata: run card, manifest, PNG tEXt/iTXt chunks, metrics.tsv rows, file list
+- `POST /api/actions/xyz-plot` — validates params (max 16 cells, allowed axis types), spawns sdcpp-xyz-plot.sh
+- `POST /api/actions/probe-image-edit` — spawns sdcpp-image-edit-capabilities.sh (SSH probe)
+- `POST /api/actions/probe-upscale` — spawns sdcpp-upscale-capabilities.sh (local + SSH probe)
+
+Updated featureGates (now supported=true without running probes):
+- `xyzPlot` → supported, route `/api/actions/xyz-plot`
+- `metadataReuse` → supported, route `/api/runs/:runId/metadata`
+- `pngInfo` → supported, route `/api/runs/:runId/metadata`
+- `discoverAssets` → supported, route `/api/actions/discover-assets`
+- `probeImageEdit` → supported, route `/api/actions/probe-image-edit`
+- `probeUpscale` → supported, route `/api/actions/probe-upscale`
+
+Updated featureGates (conditional on running probes):
+- `img2img` → reads from `state/image-edit-capabilities.json`; false until probe runs
+- `inpaint` → reads from same; false until probe runs
+- `upscale` → reads from `state/upscale-capabilities.json`; false until probe runs
+- `hiresFix` → same cache
+- `faceRestore` → same cache
+- `lora` → reads lora count from assets cache; still false but count shown in reason
+
+Design Decisions:
+- `SDCPP_RUN_DIR_OVERRIDE` already existed in sdcpp-lib.sh (for benchmark scripts); XYZ plot does not need to use it — it makes its own curl calls per cell rather than invoking sub-scripts.
+- XYZ plot calls SDCPP server API directly (curl, same logic as sdcpp-server-generate.sh) to avoid cross-script run-dir conflicts.
+- Capability caches are JSON files in `state/` — plain read, no shell execution, no SSH for each page load.
+- readPngTextChunks() in server.js is pure Node.js Buffer operations (no child_process), handles both tEXt and iTXt PNG chunks.
+- Probe scripts print `==== PASS ====` even when remote tools are absent; PASS means "probe completed" not "tools found."
+- SSH heredocs use single-quoted `<<'REMOTE'` throughout so `$HOME` expands on BigMac.
+- Bash 3.2 compatibility maintained: no mapfile, no associative arrays, CSV parsing via `IFS=',' set --`.
+
+Validation Performed:
+- `node --check server.js` → PASS
+- `node --check public/app.js` → PASS
+- `bash -n` on all five new scripts → all PASS
+- Server smoke: `GET /api/capabilities` — all required keys present, all newly-unlocked gates show supported=true
+- `GET /api/assets` pre-discovery → stale=true, empty lists (correct)
+- `GET /api/runs/:runId/metadata` on existing run → files/images/run_card populated, png_info={} (verify run has no images)
+- `POST /api/actions/xyz-plot` 5×4=20 cells → 400 "Total cells (20) exceeds limit of 16" ✓
+- `POST /api/actions/xyz-plot` invalid x_type → 400 "Invalid x_type" ✓
+- `POST /api/actions/xyz-plot` valid 2-cell job → 200 job_id returned ✓
+- `POST /api/actions/discover-assets` → job_id returned ✓
+- Existing routes unbroken: generate-single, /api/runs, /api/actions/unsupported ✓
+
+Still Gated (not unblocked this session):
+- img2img/inpaint: probe script exists; actual workflow script (`sdcpp-img2img.sh`) not written — needs img2img confirmed on BigMac first
+- outpaint: blocked upstream (no SDCPP CLI support)
+- upscale/hiresFix/faceRestore: probe script exists; actual scripts not written — needs tools confirmed on BigMac first
+- lora/textualInversion/hypernetworks: asset counts now discoverable; injection bridge not implemented
+
+Next Steps:
+- Run `POST /api/actions/discover-assets` with BigMac tunnel up to populate asset cache
+- Run `POST /api/actions/probe-image-edit` and `POST /api/actions/probe-upscale` to populate capability caches
+- If img2img probe shows supported=true: write `sdcpp-workflow/bin/sdcpp-img2img.sh` and `/api/actions/img2img` endpoint
+- If upscale probe shows supported=true: write `sdcpp-workflow/bin/sdcpp-upscale.sh` and `/api/actions/upscale` endpoint
+- Hook up XYZ plot UI in app.js (Batch/Sweep screen) and wire discover-assets + probe buttons in System/Models screen
+
+---
+
+## Entry 4 — Backend Unlock Audit and Hardening (2026-06-21)
+
+**Session type:** Security/correctness audit — no new features added.
+**Constraint:** All 10 hard constraints from prior sessions remain in effect.
+
+### Bugs Found and Fixed
+
+**1. Privacy leak — `requestParams` exposed raw prompts**
+`GET /api/jobs/:jobId` returned the raw `prompt` and `negative_prompt` in `requestParams` even when `save_prompts: false`. Confirmed with canary `PRIVACY_CANARY_XYZ_DO_NOT_STORE_926431` — it appeared verbatim in the API response. Fixed by adding `sanitizeRequestParams(params, savePrompts)` helper in `server.js` and applying it at all three `createJob()` call sites (generate-single, generate-batch, xyz-plot). Post-fix canary test: `CANARY LEAKED: False`. Canary not found in runs/, state/, or operator-console/.
+
+**2. Feature gate overclaiming — img2img/inpaint/upscale/hiresFix/faceRestore**
+Injecting a fake probe cache with `supported: true` caused `/api/capabilities` to report `img2img.supported=true` with a route that does not exist. Fixed: all five probe-conditional gates are capped at `supported: false`. Probe cache results now only inform the `reason` string, never elevate `supported`. This is a hard invariant: `supported` can only be `true` when a workflow script AND an endpoint both exist and have been validated.
+
+**3. Feature gate overclaiming — pngInfo and xyzPlot**
+Both were set to `supported: true` but neither has full end-to-end validation. Fixed: `pngInfo → 'partial'` (only run images can be queried, not arbitrary uploads); `xyzPlot → 'partial'` (infrastructure exists but requires BigMac tunnel and hasn't been validated with real images).
+
+**4. PNG readFileSync unbounded**
+`readPngTextChunks()` called `fs.readFileSync()` with no size limit. Fixed: added `PNG_CHUNK_READ_LIMIT = 20 * 1024 * 1024` constant and `fs.statSync` pre-check.
+
+**5. PNG path traversal via `primary_image`**
+`primary_image` field from run card YAML frontmatter was trusted directly when building a file path for PNG chunk reading. A crafted run card could escape the run directory. Fixed: `path.resolve(runPath, primaryRaw)` + `path.relative(runPath, resolved)` containment check — rejects any path where `relative` starts with `..` or is absolute.
+
+**6. XYZ plot COL tracking bug (2D grids)**
+For a 2×2 grid (x="1,2", y="7,8"), `COL = CELL_INDEX % x_count + 1` produced `COL=1` for both x-values on the second x-iteration because `CELL_INDEX=2` at that point and `2 % 2 = 0`. All four cells received duplicate labels (`r1c1`, `r2c1` twice), causing output PNGs to overwrite each other. Fixed: introduced independent `X_INDEX` counter that increments once per x-value, decoupled from CELL_INDEX.
+
+**7. y_count double-counting (cleanup)**
+`sdcpp-xyz-plot.sh` computed y_count by first counting from 1, then resetting and recounting from 0 — two loops for no reason. Simplified to a single loop from 0. No behavioral change.
+
+### Validation Results
+
+| Check | Result |
+|---|---|
+| `bash -n` on all 5 new scripts | PASS |
+| `node --check server.js` | PASS |
+| `node --check public/app.js` | PASS |
+| `/api/capabilities` gate values | PASS — img2img/inpaint/upscale/hiresFix/faceRestore all false; xyzPlot/pngInfo partial |
+| `/api/assets` (no cache) | PASS — returns stale=true, empty arrays |
+| Privacy canary (save_prompts=false) | PASS — requestParams shows [REDACTED], canary not in filesystem |
+| BigMac identity (`ssh westcat whoami && hostname`) | PASS — bigmac/bigmac confirmed |
+| `POST /api/actions/discover-assets` | PASS — 1 checkpoint found, 0 VAEs/LoRAs |
+| `POST /api/actions/probe-image-edit` | PASS — img2img: false (SD binary not found on remote) |
+| `POST /api/actions/probe-upscale` | PASS — upscale: true (Pillow locally); realesrgan: false; faceRestore: false |
+
+### Probe Findings
+
+**discover-assets (BigMac):** 1 checkpoint (`v1-5-pruned-emaonly.safetensors`, 4.0 GB, active). No VAEs, LoRAs, embeddings, or hypernetworks in staging dirs.
+
+**probe-image-edit:** SD binary not found at expected paths (`$BUILD_DIR/bin/sd`, `$BUILD_DIR/sd`). Therefore `--init-img`/`--strength`/`--control-image` flags not detected. `img2img.supported = false` confirmed. **Implication:** `sdcpp-img2img.sh` cannot be implemented via CLI flags path until SD binary is locatable. May need server-mode img2img via OpenAI API endpoint if SDCPP server exposes it.
+
+**probe-upscale (local + remote):** Local: python3 ✓, Pillow ✓, convert ✓, ffmpeg ✓. Remote: python3 ✓, realesrgan ✗, gfpgan ✗, codeformer ✗, upscale_api ✓ (SDCPP server likely has `/sdapi/v1/extra-single-image`). A basic Pillow-based 2x Lanczos upscale script is feasible. `hiresFix` two-pass pipeline is also feasible. `faceRestore` is not feasible without GFPGAN/CodeFormer.
+
+### Current Feature Gate Summary (post-audit)
+
+| Feature | supported | Notes |
+|---|---|---|
+| txt2img | true | Working, validated |
+| batch | true | Working, validated |
+| xyzPlot | partial | Script+endpoint exist; not end-to-end validated with real images |
+| pngInfo | partial | Run-image chunks only; no arbitrary upload |
+| img2img | false | SD binary not found on remote; server-mode path unclear |
+| inpaint | false | Same blocker as img2img |
+| upscale | false | Pillow tools exist but sdcpp-upscale.sh not written yet |
+| hiresFix | false | Feasible (txt2img → Pillow upscale); script not written |
+| faceRestore | false | No GFPGAN/CodeFormer on remote |
+| assetBrowser | partial | Cache populated; UI browser not wired |
+
+### Next Safe Feature to Implement
+
+**Option A (recommended): Pillow upscale script** — `sdcpp-workflow/bin/sdcpp-upscale.sh` using local Pillow for 2x Lanczos, plus `/api/actions/upscale` endpoint. Clear prerequisites met, no SD binary dependency, useful immediately with existing run images.
+
+**Option B: XYZ plot end-to-end validation** — Run a real 2-cell XYZ sweep with BigMac tunnel up, validate output images and manifest, then promote gate from `partial` to `true`.
+
+**Option C: Fix SD binary discovery** — Update `sdcpp-image-edit-capabilities.sh` to also search `$HOME/sdcpp-staging/build/` and `$HOME/sdcpp-staging/` subdirs, or add a `sd_bin_path.txt` sentinel file to BigMac staging.
+
+---
+
+## Entry 5 — Local Pillow Upscale Implementation (2026-06-21)
+
+**Session type:** Feature implementation. Option A from Entry 4's next-steps was implemented in full.
+
+### Summary
+
+Implemented a complete local Pillow-based upscale workflow:
+- New shell script: `sdcpp-workflow/bin/sdcpp-upscale.sh`
+- New Express endpoint: `POST /api/actions/upscale`
+- New capabilities: `pillowUpscale: true`, `upscale: 'partial'`
+- New Enhance UI: real working Pillow Upscale panel + "Send to Upscale" on gallery cards
+
+This feature is described correctly as "local Pillow resize upscale". It is NOT Real-ESRGAN, GFPGAN, CodeFormer, face restoration, or A1111 Extras parity.
+
+### Files Changed
+
+- `sdcpp-workflow/bin/sdcpp-upscale.sh` — NEW script
+- `operator-console/server.js` — new `/api/actions/upscale` endpoint, capabilities update, job field additions
+- `operator-console/public/app.js` — Pillow Upscale form, `sendToUpscale()`, gallery "Upscale" buttons
+- `operator-console/public/index.html` — Enhance screen Pillow Upscale panel
+- `Image_Gen_Bible.md` — this entry
+
+### Script Specification
+
+`sdcpp-workflow/bin/sdcpp-upscale.sh`:
+- Runs locally on MacBook. No SSH. No inference. No prompt fields.
+- Accepts `--path <run-id>/<image>` or `--run-id <run-id> --image <relative>`
+- Gate: reject absolute paths → gate `path-absolute`
+- Gate: reject `..` traversal → gate `path-traversal` / `image-traversal`
+- Gate: reject non-PNG → gate `input-extension`
+- Gate: reject source > 30 MB → gate `input-size`
+- Gate: scale must be 2, 3, or 4 → gate `scale`
+- Gate: resample must be nearest/bilinear/bicubic/lanczos → gate `resample`
+- Gate: source dimensions max 4096 → gate `source-dimensions`
+- Gate: output dimensions max 4096 → gate `output-dimensions`
+- Gate: no overwrite without `--overwrite` → gate `overwrite`
+- Gate: Pillow must be importable → gate `pillow`
+- Output: `<run-dir>/upscaled/<base>-upscale-<N>x-<resample>.png`
+- Writes: `upscaled/upscale-manifest.json` (schema v1), `upscaled/upscale-report.md`
+- Prints: `UPSCALED_IMAGE: <run-id>/upscaled/<file>.png`
+- Prints: `UPSCALE_MANIFEST: <run-id>/upscaled/upscale-manifest.json`
+- Manifest fields: schema, source_run_id, source_image, output_image, scale, resample, source_width, source_height, output_width, output_height, output_bytes, status, created_at, first_failed_gate
+- NO prompt or negative_prompt fields in manifest
+- `bash -n` passes. No mapfile, no declare -A. bash 3.2 compatible.
+
+### Endpoint Specification
+
+`POST /api/actions/upscale`:
+- Accept `{ path: "run-id/image.png" }` or `{ runId, image }`
+- Validate: no absolute paths, no traversal, no non-alphanumeric/dash/slash/dot
+- Containment check: `path.resolve(RUNS_DIR, upscalePath)` vs `RUNS_DIR`
+- Allowlist scale: 2, 3, 4
+- Allowlist resample: nearest, bilinear, bicubic, lanczos
+- Spawn via argument array (`shell: false`)
+- `requestParams` stored: `{ path, scale, resample }` — no prompt fields
+- Job response includes: `upscaledImage`, `upscaleManifest` parsed from stdout
+
+### Capabilities
+
+```
+pillowUpscale: { supported: true, route: '/api/actions/upscale', reason: 'Local Pillow resize upscale...' }
+upscale:       { supported: 'partial', route: '/api/actions/upscale', reason: 'Local Pillow resize available... Real-ESRGAN not implemented.' }
+hiresFix:      { supported: false }
+faceRestore:   { supported: false }
+img2img:       { supported: false }
+inpaint:       { supported: false }
+```
+
+### Validation Commands and Results
+
+```
+# Script syntax check
+bash -n sdcpp-workflow/bin/sdcpp-upscale.sh  → OK
+
+# Node syntax checks
+node --check operator-console/server.js  → OK
+node --check operator-console/public/app.js  → OK
+
+# Direct script test
+cd sdcpp-workflow
+bin/sdcpp-upscale.sh --path "20260620-232537-cli/sd15_cli_20260620-232537.png" --scale 2 --resample lanczos
+→ PASS
+→ UPSCALED_IMAGE: 20260620-232537-cli/upscaled/sd15_cli_20260620-232537-upscale-2x-lanczos.png
+→ SOURCE_SIZE: 512x512
+→ OUTPUT_SIZE: 1024x1024
+→ OUTPUT_BYTES: 948566
+
+# File verify
+file runs/20260620-232537-cli/upscaled/sd15_cli_20260620-232537-upscale-2x-lanczos.png
+→ PNG image data, 1024 x 1024, 8-bit/color RGB, non-interlaced
+ls -lh → 926K
+
+# Endpoint test
+POST /api/actions/upscale {"runId":"20260620-182521-server-gen","image":"openai.png","scale":2,"resample":"lanczos"}
+→ job_id: 7e84ca3c-c591-4b92-a0a7-8418d7d79530
+→ status: PASS
+→ upscaledImage: 20260620-182521-server-gen/upscaled/openai-upscale-2x-lanczos.png
+→ upscaleManifest: 20260620-182521-server-gen/upscaled/upscale-manifest.json
+
+# Output verify
+file openai-upscale-2x-lanczos.png → PNG image data, 1024 x 1024, 8-bit/color RGB, non-interlaced
+ls -lh → 967K
+```
+
+### Security Test Results
+
+| Test | Expected | Result |
+|---|---|---|
+| `--path /tmp/evil.png` (absolute) | FAIL path-absolute | PASS (FAIL path-absolute) |
+| `--path ../secret.png` (traversal) | FAIL path-traversal | PASS (FAIL path-traversal) |
+| `--run-id x --image ../../state/y` (image traversal) | FAIL image-traversal | PASS (FAIL image-traversal) |
+| `--scale 99` | FAIL scale | PASS (FAIL scale) |
+| `--resample evil` | FAIL resample | PASS (FAIL resample) |
+| `--path run/ui-run-card.md` (non-PNG) | FAIL input-extension | PASS (FAIL input-extension) |
+| POST with `/tmp/evil.png` | 400 | 400 "Absolute paths are not accepted" |
+| POST with `../secret.png` | 400 | 400 "Path traversal is not allowed" |
+| POST with scale 99 | 400 | 400 "scale must be 2, 3, or 4" |
+| POST with resample evil | 400 | 400 "resample must be: nearest, bilinear, bicubic, lanczos" |
+
+### Privacy Canary
+
+Canary: `PRIVACY_CANARY_UPSCALE_DO_NOT_STORE_384219`
+Upscale involves no prompts; canary would only appear if somehow injected.
+```
+grep -R "PRIVACY_CANARY_UPSCALE_DO_NOT_STORE_384219" runs/ state/ operator-console/ → no matches
+```
+CLEAN. Manifest does not contain prompt or negative_prompt fields.
+
+### Still Gated
+
+- img2img: false (SD binary not found on remote)
+- inpaint: false (same)
+- outpaint: false (no SDCPP upstream support)
+- hiresFix: false (Pillow upscale exists now; two-pass script not yet written)
+- faceRestore: false (no GFPGAN/CodeFormer on remote)
+- Real-ESRGAN / A1111 Extras parity: not implemented
+- LoRA injection: not implemented
+
+### Gates Unlocked This Session
+
+- `pillowUpscale: true` — full local Pillow resize upscale, validated end-to-end
+- `upscale: 'partial'` — represents Pillow partial support; AI parity gated
+
+### Next Recommended Steps
+
+1. **Run index endpoint** (`GET /api/run-index`) — fast paginated run history with upscale status
+2. **Surface upscaled outputs in Library** — show derived outputs, "Upscaled" badge, per-run upscale section
+3. **Asset discovery UI** — show checkpoint/LoRA/VAE counts, "Run discovery" button on Models screen
+4. **XYZ plot UI hardening** — client-side validation, cell count limit display, honest partial labeling
+5. **HiresFix script** — use Pillow upscale as the upscale step in a two-pass txt2img → upscale pipeline
+6. **Capability status panel** — System screen shows gates grouped by status with action buttons
