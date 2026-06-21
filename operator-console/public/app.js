@@ -426,7 +426,7 @@ async function loadGallery() {
 
       card.innerHTML = `
         <div class="gallery-card-img">
-          <img src="${imgUrl}" alt="Gallery generation">
+          <img src="${imgUrl}" alt="Gallery generation" loading="lazy">
         </div>
         <div class="gallery-card-info">
           <div class="gallery-card-title">
@@ -445,10 +445,31 @@ async function loadGallery() {
 }
 
 // History loading & rendering
+// When prompt saving is OFF, stored prompts are redacted, so prompt search
+// can only ever match the current session's nothing-on-disk. Disable it and
+// say so, per the prompt-privacy contract.
+function applyPromptSearchState() {
+  const savePrompts = localStorage.getItem('savePrompts') === 'true';
+  const input = document.getElementById('filter-prompt');
+  const note = document.getElementById('filter-prompt-note');
+  if (!input) return;
+  if (savePrompts) {
+    input.disabled = false;
+    input.placeholder = 'Search prompts...';
+    if (note) note.textContent = '';
+  } else {
+    input.disabled = true;
+    input.value = '';
+    input.placeholder = 'Disabled (prompt privacy on)';
+    if (note) note.textContent = 'Prompt search is disabled while prompts are redacted. Enable "Save prompts" in Settings to search.';
+  }
+}
+
 async function loadRuns() {
   const res = await fetch('/api/runs');
   const data = await res.json();
   allRunsCache = data.runs;
+  applyPromptSearchState();
   renderRunHistory();
 }
 
@@ -496,7 +517,9 @@ function renderRunHistory() {
     }
 
     const typeLabel = escapeHtml(run.title || run.type);
-    const statusClass = run.status === 'PASS' ? 'badge-pass' : (run.status === 'FAIL' ? 'badge-fail' : 'badge-partial');
+    const statusClass = run.status === 'PASS' ? 'badge-pass'
+      : (run.status === 'FAIL' ? 'badge-fail'
+      : (run.status === 'PARTIAL' ? 'badge-partial' : 'badge-log'));
 
     item.innerHTML = `
       <span class="badge ${statusClass}">${escapeHtml(run.status)}</span>

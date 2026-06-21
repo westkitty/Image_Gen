@@ -26,6 +26,22 @@ To prevent sensitive prompt text from ever leaking onto disk, the privacy model 
 - All report generators, manifests, metrices, and image cards utilize these safe variables.
 - On-the-fly stream filtering is applied via Python stream filters to scrub any output printed by third-party remote/server APIs before the stdout logs or JSON files are written to disk.
 
+### Tokenizer token-array redaction (2026-06-20)
+`sd-cli` run with `-v` (verbose) emits BPE tokenizer debug lines of the form
+`split prompt "…" to tokens ["a</w>", "dog</w>", …]`. The token array fully
+reconstructs the prompt even after the literal prompt string has been replaced with
+`[REDACTED]`. A privacy canary (`PRIVACY_CANARY_DO_NOT_STORE_742913 a dog`) proved
+this leak: the literal string was redacted, but the word-piece tokens persisted to
+`runs/<id>/remote-stdout.log`. The in-stream Python filter in
+`sdcpp-cli-generate.sh` was extended to also rewrite any `to tokens [...]` array to
+`to tokens [REDACTED]` while redaction is active — at the stream, before the line is
+written to disk (still source-level, not a post-run recursive scrub). A re-test with
+`PRIVACY_CANARY_DO_NOT_STORE_842914 a dog` produced zero literal and zero token
+fragments on disk. This path is reached by both `sdcpp-run-fast.sh` /
+`sdcpp-run-quality.sh` (CLI mode) and direct `sdcpp-cli-generate.sh` calls. The
+server-generate path captures only API JSON responses locally (no verbose tokenizer
+output) and is unaffected.
+
 ## Gallery vs Run History
 - **Gallery**: An image-first card-based grid showcasing only successful generation runs (`cli-generate`, `server-generate`, `batch-generate`). It maps thumbnails and display details clearly. Redacted prompts show "Prompt redacted".
 - **Run History**: A technical table showing all runs (including backend verification, status logs, start/stop diagnostics, and seed tests) without fake thumbnails. It completely omits the prompt display if the run is redacted.

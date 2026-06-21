@@ -151,12 +151,20 @@ Q_NEG="$(printf '%q' "$ARG_NEG")"
 START_EPOCH="$(now_epoch)"
 if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
   ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" 2>&1 | python3 -c "
-import sys
+import sys, re
 p = sys.argv[1] if len(sys.argv) > 1 else ''
 n = sys.argv[2] if len(sys.argv) > 2 else ''
+# sd-cli -v emits BPE tokenizer debug that splits the prompt into word-piece
+# tokens (e.g. 'to tokens [\"a</w>\", \"dog</w>\"]'). That array fully
+# reconstructs the prompt even after the literal string is redacted, so when
+# redacting we neutralize the token array (and any conditioner parse echo)
+# at the stream, before it is ever written to disk.
+tok_re = re.compile(r'(to tokens\s*)\[.*\]')
 for line in sys.stdin:
     if p and p in line: line = line.replace(p, '[REDACTED]')
     if n and n in line: line = line.replace(n, '[REDACTED]')
+    if 'to tokens' in line or 'bpe_tokenizer' in line:
+        line = tok_re.sub(r'\1[REDACTED]', line)
     sys.stdout.write(line)
 " "$ARG_PROMPT" "$ARG_NEG" > "$RUN_DIR/remote-stdout.log" || true
 else

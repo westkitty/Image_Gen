@@ -780,7 +780,7 @@ input:checked + .slider:before {
   display: none;
 }
 
-/* REVENUE DETAIL GRID */
+/* RUN DETAIL METADATA GRID */
 .metadata-grid {
   display: grid;
   grid-template-columns: 140px 1fr;
@@ -827,6 +827,12 @@ input:checked + .slider:before {
   outline-offset: 2px;
 }
 
+.batch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+
 .batch-grid img {
   width: 100%;
   aspect-ratio: 1;
@@ -834,6 +840,38 @@ input:checked + .slider:before {
   background-color: #04090e;
   border-radius: 8px;
   border: 1px solid var(--border-subtle);
+}
+
+/* Run History: dashboard icon + neutral check badge + disabled search note */
+.dash-icon {
+  width: 26px;
+  height: 26px;
+  margin-bottom: 12px;
+  color: var(--blue);
+}
+
+.badge-log { background-color: rgba(148, 163, 184, 0.14); color: var(--text-secondary); }
+
+.filter-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* Respect reduced-motion preferences (a11y) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .interactive-card:hover,
+  .gallery-card:hover {
+    transform: none;
+  }
 }
 
 .legacy-warning-banner {

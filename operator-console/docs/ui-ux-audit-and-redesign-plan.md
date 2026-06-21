@@ -74,3 +74,77 @@ To align with a native-feeling macOS dark theme desktop console:
 - Gallery and Run History are separate views.
 - Aesthetic tokens, Outfit-like font, clean dark panels, and focus states are active.
 - Verification script passes successfully.
+
+---
+
+## Claude Walk Pass UI/UX Audit (2026-06-20)
+
+Performed against the live Operator Console (server on `127.0.0.1:31337`) with a real
+runs corpus (68 runs, 5 image runs). UI/UX intelligence was sourced from the
+`ui-ux-pro-max` skill (accessibility, reduced-motion, lazy-loading, no-emoji-icons
+guidance). Visual QA was done via Playwright DOM/console inspection (pixel screenshots
+stayed inside the MCP sandbox and were not retrievable; DOM-state assertions are
+recorded below instead).
+
+1. **Current visible UI verdict** — Strong. The redesign already delivers the
+   dark navy three-zone console: grouped sidebar (Create / Library / Session /
+   System), compact top status strip, split Generate workspace, image-first
+   Gallery, technical Run History, opt-in privacy Settings, and a non-blocking
+   bottom-right job drawer. This pass refined edges rather than rebuilding.
+2. **Primary user goal** — Generate a verified SD 1.5 image from a private prompt.
+3. **Primary action** — The full-width `Generate Image` primary button on the
+   Generate page (dominant blue, 44px).
+4. **Secondary actions** — Batch Explore, View Run Detail / Open in Gallery from
+   the preview, Warm Server control, Verify / Seed Test diagnostics.
+5. **Core hierarchy** — Sidebar nav → workspace tab → split controls/preview →
+   inline metadata + actions. Status strip is always-visible context.
+6. **Friction points found** — see severity list below.
+7. **Reference-direction alignment** — Matches the intended native desktop console
+   direction (rich navy/charcoal panels, 16px card radius, 40–44px controls,
+   visible focus rings, image-first gallery). No heavy framework; vanilla only.
+
+### Severity-ranked issues (this pass)
+
+- **blocker — Prompt reconstructable from tokenizer debug.** `sd-cli -v` emits a
+  BPE tokenizer line (`split prompt "…" to tokens ["a</w>","dog</w>",…]`) that
+  reconstructs the prompt even after the literal string is redacted. The first
+  live canary persisted these tokens to `remote-stdout.log`. → user impact: a
+  redacted run still leaks the prompt to anyone reading the log. → fix: the
+  in-stream redactor in `sdcpp-cli-generate.sh` now also neutralizes the token
+  array to `to tokens [REDACTED]` before the line is written to disk (source-level,
+  not a post-run scrub). Re-tested with a fresh canary: zero token fragments.
+- **major — Batch preview had no grid container.** `.batch-grid` styled only
+  `img`, so batch results stacked full-width. → user impact: unusable batch
+  review. → fix: added a responsive `repeat(auto-fill, minmax(180px,1fr))` grid.
+- **minor — Prompt search active while prompts redacted.** Run History exposed a
+  prompt search box that can never match redacted records. → user impact: silent
+  dead control, implies prompts are searchable/stored. → fix: the box is now
+  disabled with placeholder "Disabled (prompt privacy on)" and an explanatory note
+  whenever Save Prompts is OFF; it re-enables only when saving is ON.
+- **minor — Check runs shown as amber "UNKNOWN".** Verify/server-status runs have
+  no `ui-run-card` status and rendered with the amber PARTIAL badge. → user impact:
+  reads like a half-failure. → fix: a neutral `badge-log` style for non-PASS/FAIL/
+  PARTIAL states. No literal "undefined" appears anywhere (verified in DOM).
+- **polish — Emoji used as dashboard icons / missing reduced-motion / eager
+  images / favicon 404 / stray `REVENUE` CSS comment.** → fixes: replaced the four
+  dashboard emoji with inline stroke SVG icons; added a `prefers-reduced-motion`
+  block that disables transitions/transforms; added `loading="lazy"` to gallery
+  thumbnails; added an inline SVG favicon (console now error-free); renamed the
+  stray comment.
+
+### DOM-verified outcomes
+- Run History search: `disabled=true`, placeholder "Disabled (prompt privacy on)",
+  note present; 0 occurrences of "undefined"; check runs use `badge-log`.
+- Gallery: 5 cards, all `loading="lazy"`, all thumbnails decoded (naturalWidth
+  512/384 — no broken images), all prompts "Prompt redacted", no verify runs.
+- Settings: Save Prompts OFF, Auto-open OFF, privacy warning visible.
+- Dashboard: 4 inline-SVG icons; page console error-free after favicon fix.
+
+### Remaining open issues (not addressed this pass)
+- `/api/runs` reports check-run status as `UNKNOWN` because verify/status runs do
+  not emit a `ui-run-card.md`. The UI now renders this neutrally, but a backend
+  status surfaced from `verify-report.md` would be cleaner (out of scope; backend
+  contract change).
+- The remote BigMac-side log (`$REMOTE_LOG`, written by `tee` on the host under
+  `/Users/bigmac/...`) still contains verbose output; it is never copied to the
+  MacBook and is out of scope for local-repo privacy, but worth noting.

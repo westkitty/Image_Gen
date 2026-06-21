@@ -44,3 +44,7 @@ operator-console/.cache/
 operator-console/.env
 operator-console/server.log
 operator-console/*.log
+
+# Playwright / QA artifacts
+.playwright-mcp/
+oc-dashboard.png

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Operator Console - SDCPP Workspace</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='18' font-size='18'>%E2%9A%99</text></svg>">
   <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -81,22 +82,22 @@
           </div>
           <div class="dashboard-grid">
             <div class="card interactive-card" onclick="document.getElementById('btn-nav-generate').click()">
-              <div class="card-icon">⚡</div>
+              <svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
               <h3>Generate Single</h3>
               <p>Explore ideas using fast CLI single-image generation.</p>
             </div>
             <div class="card interactive-card" onclick="document.getElementById('btn-nav-batch').click()">
-              <div class="card-icon">🗂️</div>
+              <svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>
               <h3>Batch Explore</h3>
               <p>Run multiple seeds or API modes in parallel.</p>
             </div>
             <div class="card interactive-card" onclick="document.getElementById('btn-nav-gallery').click()">
-              <div class="card-icon">🖼️</div>
+              <svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
               <h3>Gallery</h3>
               <p>Browse image-producing generation outputs.</p>
             </div>
             <div class="card interactive-card" onclick="document.getElementById('btn-nav-server').click()">
-              <div class="card-icon">🔥</div>
+              <svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
               <h3>Warm Server</h3>
               <p>Manage the persistent model server state.</p>
             </div>
@@ -363,6 +364,7 @@
               <div class="form-group">
                 <label for="filter-prompt">Search Prompt</label>
                 <input type="text" id="filter-prompt" placeholder="Search prompts..." oninput="renderRunHistory()">
+                <span class="filter-note" id="filter-prompt-note"></span>
               </div>
             </div>
           </div>
