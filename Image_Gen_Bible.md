@@ -824,3 +824,67 @@ Upscale `requestParams` contains only `{ path, scale, resample }` — no prompt 
 ### Next recommended step
 
 Write `sdcpp-workflow/bin/sdcpp-hires-fix.sh` — a two-pass txt2img → Pillow upscale workflow. All prerequisites exist (txt2img works, Pillow upscale validated). Unlocks `hiresFix: true`.
+
+---
+
+## Entry 8 — Backlog validation and post-hardening state
+
+**Date:** 2026-06-21
+**Session type:** Autonomous Dexter Walk (continued)
+
+### Summary
+
+Post-hardening validation of Backlog items A-E. All items either confirmed correct from previous session or validated as part of hardening unit.
+
+### Backlog A — Regression smoke check: DONE
+
+`operator-console/scripts/smoke-check.sh` added in Entry 7. 12 tests all PASS:
+```
+node --check server.js/app.js, bash -n on all 3 scripts, all 5 endpoint rejection tests,
+limit=99999 cap test — 12/12 PASS
+```
+
+### Backlog B — Package source validation: DONE
+
+`scripts/package-source.sh` added in Entry 7. Uses `git archive HEAD`, verifies no forbidden paths.
+```
+bash scripts/package-source.sh
+# clean package ok (no forbidden paths)
+# Size: 210K  SHA256: e505695902b7549e74309fe042606532784bfea76a2c43a63512a2b6871ee5f6
+```
+
+### Backlog C — Run-index bounds: ALREADY CORRECT
+
+Current implementation:
+- `Number(req.query.limit) || 100` — NaN from non-numeric defaults to 100
+- `Math.min(N, RUN_INDEX_MAX)` — caps at 500
+- Tests: limit=99999 returned 85 (capped), limit=bad returned 85 (defaulted), no-limit returned 85
+
+No changes needed.
+
+### Backlog D — System diagnostics: ALREADY CORRECT
+
+`renderSystemGates()` in app.js groups capability gates from `/api/capabilities/featureGates` into:
+- ✓ Supported: txt2img, batch, server, gallery, metadataReuse, discoverAssets, probeImageEdit, probeUpscale, **pillowUpscale**
+- ⚡ Partial: xyzPlot, pngInfo, upscale (AI/Extras)
+- ✗ Gated: img2img, inpaint, outpaint, hiresFix, faceRestore, lora, textualInversion, hypernetworks
+
+Was implemented in Entry 6. No changes needed.
+
+### Backlog E — Documentation final sweep: DONE in Entry 7
+
+README, implementation doc, command-reference, QUICKSTART all updated in Entry 7. Memory file updated with commit hashes, startup command, full feature table, and security constraints.
+
+### Console state
+
+- PID: 57121 (restarted from 49245 to pick up server.js changes)
+- URL: http://127.0.0.1:31337
+- Log: /tmp/operator-console.log
+
+### Next best step
+
+Write `sdcpp-workflow/bin/sdcpp-hires-fix.sh`:
+- Pass 1: txt2img at target-size / 2 (e.g. 256×256 or 512×512 for a 1024 target)
+- Pass 2: `sdcpp-upscale.sh --path <run-id>/<image.png> --scale 2 --resample lanczos`
+- Unlocks `hiresFix: true` in featureGates
+- All prerequisites exist: txt2img validated, Pillow upscale validated and hardened
