@@ -969,3 +969,37 @@ All advanced paths remain blocked (no new model files staged):
 - Real-ESRGAN / face restore: not on BigMac
 
 Next: document blocker decision memo (`operator-console/docs/advanced-feature-decision.md`), then final sweep.
+
+---
+
+## Entry 10 — Gate card UI improvement + decision memo
+
+**Date:** 2026-06-21
+**Session type:** Autonomous Dexter Walk — Unit 9G/10
+
+### Summary
+
+Two small but impactful improvements after Hires Fix (Entry 9):
+
+**Gate card UI (Unit 9G):**
+- Feature gate badges now colored: green (supported), yellow (partial), red (blocked)
+- Blocked features show "To unlock:" section with specific BigMac requirements
+- `unlock_requires` field added to server.js featureGates for: img2img, inpaint, faceRestore, lora
+- `featureCard()` in app.js updated to render `unlock_requires` if present
+
+**Advanced feature decision memo (Unit 8):**
+- `operator-console/docs/advanced-feature-decision.md` written with evidence-based blocker analysis
+- All advanced paths (SDXL Turbo, Flux, img2img, Real-ESRGAN, face restore) confirmed blocked
+- Priority order documented: SDXL Turbo first once checkpoint staged, then img2img, Flux, Real-ESRGAN
+
+### Commits
+
+- `9b33aba` — feat: Hires Fix two-pass workflow
+- `677e885` — docs: evidence-based advanced feature decision memo
+- `b5bfa40` — feat: improve feature gate cards
+
+### Console state
+
+- URL: http://127.0.0.1:31337
+- Log: /tmp/operator-console.log
+- Smoke check: 15/15 PASS
