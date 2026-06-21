@@ -1003,3 +1003,65 @@ Two small but impactful improvements after Hires Fix (Entry 9):
 - URL: http://127.0.0.1:31337
 - Log: /tmp/operator-console.log
 - Smoke check: 15/15 PASS
+
+---
+
+## Entry 11 — Hires Fix hardening pass (2026-06-21)
+
+### What changed
+
+**UNIT 1 — Tighten `POST /api/actions/hires-fix` validation (server.js)**
+
+All optional parameters now run through existing validators before use:
+- `mode`: defaults to `cli`; any other value → HTTP 400.
+- `api` param: rejected with HTTP 400 if present and non-empty (CLI mode only).
+- `steps`: `validateIntRange(steps, 1, 150)`.
+- `cfg_scale` / `cfg`: `validateFloatRange(val, 1, 30)`.
+- `width` / `height`: `validateSize(val)`.
+- `sampler`: `validateSampler(val)`.
+- `seed`: `validateSeed(val)` then passed as `String(body.seed)` — preserves `"random"` and `"fixed"` strings instead of the previous `String(Number(body.seed))` which silently turned `"random"` → `"NaN"`.
+
+`/api/jobs/:jobId` response now includes `hiresRunId`, `hiresBaseImage`, `hiresFinalImage`, `hiresManifest` fields (were missing despite the parse logic already setting them on the job object).
+
+**UNIT 2 — Manifest schema upgrade (sdcpp-hires-fix.sh)**
+
+`hires-fix-manifest.json` now follows `sdcpp.hires_fix.v1`:
+- `schema: "sdcpp.hires_fix.v1"`, `status`, `mode`, `api: null`, `preset`, `seed`.
+- `base_width`, `base_height`, `final_width`, `final_height` (numeric, parsed from `WxH` strings).
+- `elapsed_seconds` (float, computed from `START_EPOCH` captured at script start via `now_epoch()`).
+- `cleanup_state: "none"`, `first_failed_gate: null`.
+
+`START_EPOCH="$(now_epoch)"` added immediately after `load_config`.
+`ELAPSED_SECONDS=$(elapsed_seconds "$START_EPOCH" "$(now_epoch)")` computed just before manifest write.
+Python manifest uses `sys.argv` exclusively — no shell interpolation into Python source.
+
+**UNIT 3 — Run index + metadata fix (server.js)**
+
+`buildRunIndex()`:
+- `hasManifest` check now includes `hires-fix-manifest.json` alongside `batch-manifest.json`, `xyz-manifest.json`, `upscale-manifest.json`.
+- `imageCount` now counts PNGs in `base/` and `upscaled/` subdirs one level deep (hires-fix runs have no top-level PNGs).
+
+`/api/runs/:runId/metadata` manifest candidates list extended with `upscale-manifest.json` and `hires-fix-manifest.json`.
+
+**UNIT 4 — Stale Generate-page copy (index.html)**
+
+Line 85 fineprint updated: no longer says "Hires Fix … requires new backend scripts." Now correctly notes that latent Hires Fix (A1111-style, single-pass) is not yet on the Generate screen, and points to the Enhance screen for two-pass Hires Fix.
+
+**UNIT 5 — Decision memo priority order (advanced-feature-decision.md)**
+
+Priority rewritten to: 1. SDXL Turbo, 2. Flux Schnell, 3. SDXL base, 4. img2img, 5. LoRA/VAE, 6. Real-ESRGAN/Face Restore, 7. Inpaint/Outpaint.
+
+### Validation
+
+- `bash -n sdcpp-hires-fix.sh` → OK
+- `node --check server.js`, `node --check app.js` → OK
+- Smoke check: **15/15 PASS** (including `==== PASS ====`)
+- Endpoint rejection tests: **11/11 PASS**
+  - mode=api, mode=server, api param, steps=9999, cfg=999, width=13, sampler=evil, seed="injection; rm -rf" → all HTTP 400
+  - seed=random, seed=fixed, seed=42 → HTTP 200
+- Privacy canary: clean (no `PRIVACY_CANARY_HIRES_POLISH_DO_NOT_STORE_530921` in runs/state/operator-console)
+- Package: clean (no forbidden paths)
+
+### Commits
+
+See commit following this entry.

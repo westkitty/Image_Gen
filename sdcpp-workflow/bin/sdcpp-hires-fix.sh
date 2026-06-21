@@ -24,6 +24,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/sdcpp-lib.sh"
 load_config
+START_EPOCH="$(now_epoch)"
 
 # ---- defaults ---------------------------------------------------------------
 PRESET="fast"
@@ -135,8 +136,10 @@ FINAL_IMAGE_FULL="$HIRES_DIR/$FINAL_IMAGE_REL"
 printf >&2 '    Pass 2 complete: %s\n' "$FINAL_IMAGE_FULL"
 
 # ---- write hires-fix-manifest.json (argv-based, no shell interpolation) -----
+ELAPSED_SECONDS="$(elapsed_seconds "$START_EPOCH" "$(now_epoch)")"
 MANIFEST_REL="hires-fix-manifest.json"
 MANIFEST_FULL="$HIRES_DIR/$MANIFEST_REL"
+_SEED_ARG="${ARG_SEED:-random}"
 
 python3 - \
   "$HIRES_RUN_ID" \
@@ -147,21 +150,51 @@ python3 - \
   "$SOURCE_SIZE" \
   "$OUTPUT_SIZE" \
   "$CREATED_AT" \
+  "$PRESET" \
+  "$_SEED_ARG" \
+  "$ELAPSED_SECONDS" \
   "$MANIFEST_FULL" \
   <<'PYMANIFEST'
 import sys, json
 (run_id, base_img, final_img,
  scale, resample, src_sz, out_sz,
- created, out_path) = sys.argv[1:]
+ created, preset, seed, elapsed,
+ out_path) = sys.argv[1:]
+
+def parse_dims(sz):
+    parts = sz.lower().split('x')
+    if len(parts) == 2:
+        try:
+            return int(parts[0]), int(parts[1])
+        except ValueError:
+            pass
+    return None, None
+
+bw, bh = parse_dims(src_sz)
+fw, fh = parse_dims(out_sz)
+
 obj = {
+    "schema": "sdcpp.hires_fix.v1",
     "run_id": run_id,
+    "status": "PASS",
+    "mode": "cli",
+    "api": None,
+    "preset": preset,
+    "seed": seed,
     "base_image": base_img,
     "final_image": final_img,
     "scale": int(scale),
     "resample": resample,
+    "base_width": bw,
+    "base_height": bh,
+    "final_width": fw,
+    "final_height": fh,
     "source_size": src_sz,
     "output_size": out_sz,
     "created_at": created,
+    "elapsed_seconds": float(elapsed),
+    "cleanup_state": "none",
+    "first_failed_gate": None,
     "workflow": "txt2img_pillow_upscale",
     "note": "NOT full A1111 latent Hires Fix — no denoising second pass"
 }

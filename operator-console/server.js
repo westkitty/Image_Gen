@@ -630,35 +630,59 @@ app.post('/api/actions/upscale', (req, res) => {
 // Hires Fix — two-pass txt2img → local Pillow upscale
 app.post('/api/actions/hires-fix', (req, res) => {
   const body = req.body || {};
-  const prompt = String(body.prompt || '').trim();
-  if (!prompt) return res.status(400).json({ error: 'prompt is required' });
 
+  // Prompt / negative prompt
+  if (!validatePrompt(body.prompt)) return res.status(400).json({ error: 'Invalid prompt' });
+  const prompt = String(body.prompt).trim();
+  if (!validateNegativePrompt(body.negative_prompt)) return res.status(400).json({ error: 'Invalid negative prompt' });
+
+  // Mode: CLI only; server mode not yet implemented
+  const mode = body.mode !== undefined ? String(body.mode) : 'cli';
+  if (mode !== 'cli') return res.status(400).json({ error: 'Only mode=cli is supported for hires-fix' });
+
+  // api param not meaningful for CLI mode — reject to avoid silent ignoring
+  if (body.api !== undefined && body.api !== null && body.api !== '') {
+    return res.status(400).json({ error: 'api param is not accepted for hires-fix (CLI mode only)' });
+  }
+
+  // Preset
   const preset = body.preset !== undefined ? String(body.preset) : 'fast';
   if (!PRESET_DEFAULTS[preset] && preset !== 'Custom') {
     return res.status(400).json({ error: `Unknown preset: ${preset}` });
   }
 
+  // Upscale params
   const scale = body.scale !== undefined ? Number(body.scale) : 2;
-  if (!ALLOWED_UPSCALE_SCALES.has(scale)) {
-    return res.status(400).json({ error: 'scale must be 2, 3, or 4' });
-  }
+  if (!ALLOWED_UPSCALE_SCALES.has(scale)) return res.status(400).json({ error: 'scale must be 2, 3, or 4' });
 
   const resample = body.resample !== undefined ? String(body.resample) : 'lanczos';
-  if (!ALLOWED_UPSCALE_RESAMPLES.has(resample)) {
-    return res.status(400).json({ error: 'resample must be: nearest, bilinear, bicubic, lanczos' });
+  if (!ALLOWED_UPSCALE_RESAMPLES.has(resample)) return res.status(400).json({ error: 'resample must be: nearest, bilinear, bicubic, lanczos' });
+
+  // Optional generation params — validated before use
+  if (!validateIntRange(body.steps, 1, 150)) return res.status(400).json({ error: 'Invalid steps' });
+  if (!validateFloatRange(body.cfg_scale !== undefined ? body.cfg_scale : body.cfg, 1, 30)) {
+    return res.status(400).json({ error: 'Invalid cfg_scale' });
   }
+  if (!validateSize(body.width)) return res.status(400).json({ error: 'Invalid width: use multiples of 8 between 64 and 2048' });
+  if (!validateSize(body.height)) return res.status(400).json({ error: 'Invalid height: use multiples of 8 between 64 and 2048' });
+  if (!validateSampler(body.sampler)) return res.status(400).json({ error: 'Invalid or unsupported sampler' });
+  if (!validateSeed(body.seed)) return res.status(400).json({ error: 'Invalid seed' });
 
   const savePrompts = !!(body.save_prompts);
   const params = sanitizeRequestParams({ prompt, preset, scale, resample }, savePrompts);
 
   const args = ['--preset', preset, '--prompt', prompt, '--scale', String(scale), '--resample', resample];
   if (body.negative_prompt) args.push('--negative', String(body.negative_prompt));
-  if (body.steps)   args.push('--steps', String(Number(body.steps)));
-  if (body.width)   args.push('--width', String(Number(body.width)));
-  if (body.height)  args.push('--height', String(Number(body.height)));
-  if (body.cfg_scale || body.cfg) args.push('--cfg-scale', String(Number(body.cfg_scale || body.cfg)));
-  if (body.sampler && ALLOWED_SAMPLERS.has(String(body.sampler))) args.push('--sampler', String(body.sampler));
-  if (body.seed !== undefined && body.seed !== '') args.push('--seed', String(Number(body.seed)));
+  if (body.steps)            args.push('--steps', String(Number(body.steps)));
+  if (body.width)            args.push('--width', String(Number(body.width)));
+  if (body.height)           args.push('--height', String(Number(body.height)));
+  const cfgVal = body.cfg_scale !== undefined ? body.cfg_scale : body.cfg;
+  if (cfgVal !== undefined && cfgVal !== null && cfgVal !== '') args.push('--cfg-scale', String(Number(cfgVal)));
+  if (body.sampler)          args.push('--sampler', String(body.sampler));
+  // Preserve "random", "fixed", and numeric seed strings — do NOT convert through Number()
+  if (body.seed !== undefined && body.seed !== null && String(body.seed) !== '') {
+    args.push('--seed', String(body.seed));
+  }
 
   const summary = `bin/sdcpp-hires-fix.sh --preset ${preset} --scale ${scale}x ${resample}`;
   const jobId = createJob('hires-fix', summary, params);
@@ -728,7 +752,11 @@ app.get('/api/jobs/:jobId', (req, res) => {
     firstFailedGate: job.firstFailedGate,
     runId: job.runId,
     upscaledImage: job.upscaledImage || null,
-    upscaleManifest: job.upscaleManifest || null
+    upscaleManifest: job.upscaleManifest || null,
+    hiresRunId: job.hiresRunId || null,
+    hiresBaseImage: job.hiresBaseImage || null,
+    hiresFinalImage: job.hiresFinalImage || null,
+    hiresManifest: job.hiresManifest || null
   });
 });
 app.get('/api/jobs/:jobId/log', (req, res) => {
@@ -803,7 +831,7 @@ app.get('/api/runs/:runId/metadata', (req, res) => {
 
   // Load manifest (batch or xyz)
   let manifest = null;
-  for (const candidate of ['batch-manifest.json', 'xyz-manifest.json']) {
+  for (const candidate of ['batch-manifest.json', 'xyz-manifest.json', 'upscale-manifest.json', 'hires-fix-manifest.json']) {
     const p = path.join(runPath, candidate);
     if (fs.existsSync(p)) { try { manifest = JSON.parse(fs.readFileSync(p, 'utf8')); break; } catch (_) {} }
   }
@@ -881,8 +909,17 @@ function buildRunIndex() {
       for (const e of entries) {
         if (e.isFile() && /\.(png|PNG)$/.test(e.name)) imageCount++;
         if (e.isDirectory() && e.name === 'upscaled') hasUpscaled = true;
-        if (e.isFile() && (e.name === 'batch-manifest.json' || e.name === 'xyz-manifest.json' || e.name === 'upscale-manifest.json')) hasManifest = true;
+        if (e.isFile() && (e.name === 'batch-manifest.json' || e.name === 'xyz-manifest.json' || e.name === 'upscale-manifest.json' || e.name === 'hires-fix-manifest.json')) hasManifest = true;
         if (e.isFile() && e.name === 'run-metadata.json') hasMetadata = true;
+        // Hires Fix stores images in base/ and upscaled/ subdirs — count one level deep
+        if (e.isDirectory() && (e.name === 'base' || e.name === 'upscaled')) {
+          try {
+            const subEntries = fs.readdirSync(path.join(runPath, e.name), { withFileTypes: true });
+            for (const se of subEntries) {
+              if (se.isFile() && /\.(png|PNG)$/.test(se.name)) imageCount++;
+            }
+          } catch (_) {}
+        }
       }
     } catch (_) {}
     return {

@@ -141,10 +141,12 @@ files are staged on BigMac.
 ### Priority order for next unlock (in sequence)
 
 1. **SDXL Turbo** — stage checkpoint on BigMac → update generate script → test
-2. **img2img** — rebuild or upgrade `sd-cli` on BigMac → test flags → write bridge
-3. **Flux Schnell** — stage all Flux files → write dedicated generate script
-4. **Real-ESRGAN** — install on BigMac → wire into upscale script
-5. **Face Restore** — install GFPGAN/CodeFormer → write bridge script
+2. **Flux Schnell** — stage all Flux model files → write dedicated generate script
+3. **SDXL (base)** — stage SDXL checkpoint → validate higher-res output
+4. **img2img** — rebuild or upgrade `sd-cli` on BigMac → test flags → write bridge
+5. **LoRA / VAE** — stage LoRA files → wire injection into generate script
+6. **Real-ESRGAN / Face Restore** — install realesrgan + GFPGAN/CodeFormer on BigMac → wire scripts
+7. **Inpaint / Outpaint** — blocked until upstream SDCPP adds CLI support
 
 ### What was done instead
 
