@@ -204,7 +204,6 @@ function renderFeatureGates() {
     ['outpaint', 'Outpaint', 'Extend canvas edges and inpaint the new regions.']
   ];
   const enhanceFeatures = [
-    ['hiresFix', 'Hires Fix', 'Two-pass: low-res draft → upscale → second-pass detail. Not yet implemented.'],
     ['upscale', 'AI / Extras Upscale', 'Real-ESRGAN, tiled finalization, A1111 Extras parity.'],
     ['faceRestore', 'Face Restore', 'GFPGAN/CodeFormer-style restoration.'],
     ['pngInfo', 'PNG Info', 'Recover generation parameters from image metadata.']
@@ -301,6 +300,53 @@ function sendToUpscale(runId, image) {
       if (image) $('upscale-image').value = image;
     });
   });
+}
+
+// ---- Hires Fix ---------------------------------------------------------------
+async function submitHiresFix(event) {
+  event.preventDefault();
+  const prompt = $('hf-prompt').value.trim();
+  if (!prompt) { $('hf-result').textContent = 'Prompt is required.'; return; }
+  const preset = $('hf-preset').value;
+  const scale = Number($('hf-scale').value);
+  const resample = $('hf-resample').value;
+  const seed = $('hf-seed').value.trim();
+  const body = { prompt, preset, scale, resample };
+  if (seed) body.seed = Number(seed);
+  $('hf-result').textContent = 'Submitting Hires Fix job…';
+  $('btn-hf-submit').disabled = true;
+  try {
+    const result = await api('/api/actions/hires-fix', { method: 'POST', body: JSON.stringify(body) });
+    trackHiresFixJob(result.job_id);
+  } catch (err) {
+    $('hf-result').textContent = 'Error: ' + err.message;
+    $('btn-hf-submit').disabled = false;
+  }
+}
+
+function trackHiresFixJob(jobId) {
+  $('hf-result').textContent = 'Hires Fix running (two passes)…';
+  const poller = setInterval(async () => {
+    try {
+      const job = await api('/api/jobs/' + jobId);
+      if (job.status === 'running' || job.status === 'queued') return;
+      clearInterval(poller);
+      $('btn-hf-submit').disabled = false;
+      if (job.status === 'PASS' && job.hiresFinalImage) {
+        $('hf-result').textContent = 'PASS — ' + job.hiresFinalImage;
+        const imgUrl = '/api/run-file?path=' + encodeURIComponent(job.hiresFinalImage);
+        const prev = $('hf-preview');
+        prev.innerHTML = '<img src="' + esc(imgUrl) + '" alt="Hires Fix result" style="max-width:100%;border-radius:12px;margin-top:8px" />';
+        await loadGallery();
+      } else {
+        $('hf-result').textContent = job.status + (job.firstFailedGate ? ' — gate: ' + job.firstFailedGate : '');
+      }
+    } catch (err) {
+      clearInterval(poller);
+      $('btn-hf-submit').disabled = false;
+      $('hf-result').textContent = 'Poll error: ' + err.message;
+    }
+  }, 1500);
 }
 
 function renderModels() {
@@ -509,6 +555,7 @@ function bindEvents() {
   $('form-batch').addEventListener('submit', submitBatch);
   $('form-upscale').addEventListener('submit', submitUpscale);
   $('upscale-run').addEventListener('change', onUpscaleRunChange);
+  $('form-hires-fix').addEventListener('submit', submitHiresFix);
   $('form-xyz').addEventListener('submit', submitXyz);
   $('xyz_x_values').addEventListener('input', updateXyzCellCount);
   $('xyz_y_values').addEventListener('input', updateXyzCellCount);

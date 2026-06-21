@@ -888,3 +888,84 @@ Write `sdcpp-workflow/bin/sdcpp-hires-fix.sh`:
 - Pass 2: `sdcpp-upscale.sh --path <run-id>/<image.png> --scale 2 --resample lanczos`
 - Unlocks `hiresFix: true` in featureGates
 - All prerequisites exist: txt2img validated, Pillow upscale validated and hardened
+
+---
+
+## Entry 9 — Hires Fix: two-pass txt2img → Pillow upscale
+
+**Date:** 2026-06-21
+**Session type:** Autonomous Dexter Walk (continued from Entry 8)
+
+### Summary
+
+Implemented the real Hires Fix two-pass workflow: txt2img via SSH to BigMac → local Pillow upscale. Not full A1111 latent Hires Fix (no denoising second pass), but a validated end-to-end workflow producing a resolution-doubled PNG.
+
+### What was built
+
+**Script:** `sdcpp-workflow/bin/sdcpp-hires-fix.sh`
+- Pass 1: `sdcpp-cli-generate.sh` with `SDCPP_RUN_DIR_OVERRIDE` → writes `base/base.png`
+- Pass 2: `sdcpp-upscale.sh --run-id <id> --image base/base.png --scale N --resample R`
+- Outputs: `hires-fix-manifest.json`, `hires-fix-report.md`, `ui-run-card.md` in run dir
+- Security: no shell interpolation of user values, bash 3.2 compatible, strict arg validation
+- Privacy: `SDCPP_REDACT_PROMPTS` honored via write_ui_run_card; prompt never in manifest
+- **Bug fixed:** bash 3.2 printf rejects format strings starting with `-`; use `printf '%s\n' "- text: ..."` instead
+
+**Backend:** `operator-console/server.js`
+- `POST /api/actions/hires-fix` endpoint added (validates prompt, preset, scale, resample)
+- Parses `HIRES_RUN_ID:`, `HIRES_BASE_IMAGE:`, `HIRES_FINAL_IMAGE:`, `HIRES_MANIFEST:` from stdout
+- `hiresGate` updated: `supported: true`, route: `/api/actions/hires-fix`
+- `inferRunType` updated: `-hires-fix` suffix → `['hires-fix', 'Hires Fix']`
+
+**UI:** `operator-console/public/index.html` + `app.js`
+- Hires Fix form panel added to Enhance screen (right column)
+- Fields: prompt, preset, seed, scale factor, resample filter
+- `hiresFix` removed from `enhanceFeatures` gate cards (has its own panel now)
+- Poll tracks `job.hiresFinalImage`, renders preview on PASS
+
+**Smoke check:** Updated to include `bash -n sdcpp-hires-fix.sh` and two Hires Fix rejection tests (missing prompt → 400, invalid scale → 400). Now 15/15 PASS.
+
+### End-to-end proof
+
+```
+Run ID: 20260621-113847-hires-fix
+Preset: smoke  Seed: 424242
+Pass 1: 512×512 PNG (sha256 local=remote) ← BigMac SSH
+Pass 2: 1024×1024 PNG (Pillow lanczos)
+Privacy canary: NOT stored in any run artifact
+==== PASS ====
+```
+
+Proof artifacts:
+- `runs/20260621-113847-hires-fix/base/base.png` — 512×512
+- `runs/20260621-113847-hires-fix/upscaled/base-upscale-2x-lanczos.png` — 1024×1024
+- `runs/20260621-113847-hires-fix/hires-fix-manifest.json`
+- `runs/20260621-113847-hires-fix/ui-run-card.md` (`run_type: "hires-fix"`, `status: "PASS"`)
+- `sdcpp-proof-20260621-113846/.proof-env`
+
+### Smoke check (post-update)
+
+```
+bash operator-console/scripts/smoke-check.sh
+# 15/15 PASS
+```
+
+### Capabilities
+
+Hires Fix promoted from `supported: false` → `supported: true`:
+```json
+"hiresFix": {
+  "supported": true,
+  "route": "/api/actions/hires-fix",
+  "reason": "Two-pass txt2img → local Pillow upscale. NOT full A1111 latent Hires Fix — no denoising second pass."
+}
+```
+
+### Out-of-scope blockers confirmed
+
+All advanced paths remain blocked (no new model files staged):
+- SDXL Turbo: no checkpoint on BigMac
+- Flux: no ae.safetensors / CLIP-L / T5XXL staged
+- img2img: SD binary not found
+- Real-ESRGAN / face restore: not on BigMac
+
+Next: document blocker decision memo (`operator-console/docs/advanced-feature-decision.md`), then final sweep.

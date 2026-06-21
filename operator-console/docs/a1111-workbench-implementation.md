@@ -27,6 +27,7 @@ These are fully wired and validated:
 - `POST /api/actions/probe-image-edit` — writes `state/image-edit-capabilities.json`
 - `POST /api/actions/probe-upscale` — writes `state/upscale-capabilities.json`
 - `POST /api/actions/upscale` — **Pillow local resize upscale** (NOT Real-ESRGAN; NOT AI)
+- `POST /api/actions/hires-fix` — **Two-pass txt2img → Pillow upscale** (NOT A1111 latent Hires Fix)
 - `GET /api/runs`, `GET /api/runs/:runId`, `GET /api/runs/:runId/metadata`
 - `GET /api/run-index?limit=N` — paginated listing with `hasUpscaled` flag, 8s cache, max 500
 - `GET /api/run-file?path=<safe-relative>` — path-contained, extension-allowlisted
@@ -41,7 +42,7 @@ These are fully wired and validated:
 
 ## Gated (not wired)
 
-img2img, inpaint, outpaint, Hires Fix, face restore (GFPGAN/CodeFormer), Real-ESRGAN, LoRA injection, VAE switching, textual inversion execution, hypernetwork execution.
+img2img, inpaint, outpaint, face restore (GFPGAN/CodeFormer), Real-ESRGAN, LoRA injection, VAE switching, textual inversion execution, hypernetwork execution.
 
 Visible in UI to keep the roadmap obvious rather than buried.
 
@@ -85,8 +86,28 @@ node --check public/app.js
 bash scripts/smoke-check.sh
 ```
 
+## Hires Fix
+
+Direct script:
+```sh
+cd /Users/andrew/Image_Gen/sdcpp-workflow
+bin/sdcpp-hires-fix.sh --preset smoke --prompt "..." --seed 42 --scale 2 --resample lanczos
+```
+
+Endpoint:
+```sh
+curl -s -X POST http://127.0.0.1:31337/api/actions/hires-fix \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"a small library","preset":"fast","scale":2,"resample":"lanczos"}' | python3 -m json.tool
+```
+
+- Two passes: txt2img via BigMac SSH → local Pillow resize
+- **NOT** full A1111 latent Hires Fix — there is no denoising second pass
+- Output: `runs/<id>/upscaled/<name>-upscale-<N>x-<resample>.png`
+- Manifest: `runs/<id>/hires-fix-manifest.json`
+
 ## Next backend work
 
-1. Hires Fix two-pass script: `sdcpp-workflow/bin/sdcpp-hires-fix.sh` — txt2img pass then Pillow upscale; all prerequisites exist.
-2. XYZ end-to-end validation with BigMac tunnel to promote `xyzPlot` from partial → true.
-3. Fix SD binary discovery in image-edit probe to unblock img2img path.
+1. XYZ end-to-end validation with BigMac tunnel to promote `xyzPlot` from partial → true.
+2. Fix SD binary discovery in image-edit probe to unblock img2img path.
+3. Document advanced-feature blockers: SDXL Turbo / Flux / img2img.

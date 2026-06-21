@@ -44,7 +44,7 @@ fi
 # Also check scripts in sdcpp-workflow/bin if accessible
 WORKFLOW_BIN="$(cd "$OC_DIR/../sdcpp-workflow/bin" 2>/dev/null && pwd)" || true
 if [ -n "$WORKFLOW_BIN" ] && [ -d "$WORKFLOW_BIN" ]; then
-  for sh in sdcpp-upscale.sh sdcpp-discover-assets.sh sdcpp-xyz-plot.sh; do
+  for sh in sdcpp-upscale.sh sdcpp-discover-assets.sh sdcpp-xyz-plot.sh sdcpp-hires-fix.sh; do
     if [ -f "$WORKFLOW_BIN/$sh" ]; then
       if bash -n "$WORKFLOW_BIN/$sh" 2>/dev/null; then
         pass "bash -n $sh"
@@ -107,6 +107,26 @@ else
     pass "Upscale rejects invalid scale (HTTP 400)"
   else
     fail "Upscale invalid scale should return 400 (got $STATUS)"
+  fi
+
+  # Hires Fix: missing prompt must be rejected (400)
+  STATUS="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/actions/hires-fix" \
+    -H 'Content-Type: application/json' \
+    -d '{"scale":2,"resample":"lanczos"}' 2>/dev/null)"
+  if [ "$STATUS" = "400" ]; then
+    pass "Hires Fix rejects missing prompt (HTTP 400)"
+  else
+    fail "Hires Fix missing prompt should return 400 (got $STATUS)"
+  fi
+
+  # Hires Fix: invalid scale must be rejected (400)
+  STATUS="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/actions/hires-fix" \
+    -H 'Content-Type: application/json' \
+    -d '{"prompt":"test","scale":99}' 2>/dev/null)"
+  if [ "$STATUS" = "400" ]; then
+    pass "Hires Fix rejects invalid scale (HTTP 400)"
+  else
+    fail "Hires Fix invalid scale should return 400 (got $STATUS)"
   fi
 
   # XYZ: >16 cells must be rejected (400)

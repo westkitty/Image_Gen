@@ -188,6 +188,14 @@ function runAction(jobId, scriptPath, args, savePrompts = false) {
     if (upscaledMatch) job.upscaledImage = upscaledMatch[1];
     const manifestMatch = out.match(/UPSCALE_MANIFEST:\s*(\S+)/);
     if (manifestMatch) job.upscaleManifest = manifestMatch[1];
+    const hiresRunIdMatch = out.match(/HIRES_RUN_ID:\s*(\S+)/);
+    if (hiresRunIdMatch) job.hiresRunId = hiresRunIdMatch[1];
+    const hiresBaseMatch = out.match(/HIRES_BASE_IMAGE:\s*(\S+)/);
+    if (hiresBaseMatch) job.hiresBaseImage = hiresBaseMatch[1];
+    const hiresFinalMatch = out.match(/HIRES_FINAL_IMAGE:\s*(\S+)/);
+    if (hiresFinalMatch) job.hiresFinalImage = hiresFinalMatch[1];
+    const hiresManifestMatch = out.match(/HIRES_MANIFEST:\s*(\S+)/);
+    if (hiresManifestMatch) job.hiresManifest = hiresManifestMatch[1];
   });
 }
 
@@ -280,6 +288,7 @@ function listRunFiles(runPath) {
 }
 function inferRunType(dirName) {
   if (dirName.includes('-verify')) return ['verify', 'Verify Backend'];
+  if (dirName.includes('-hires-fix')) return ['hires-fix', 'Hires Fix'];
   if (dirName.includes('-batch')) return ['batch-generate', 'Batch Generate'];
   if (dirName.includes('-cli')) return ['cli-generate', 'CLI Generate'];
   if (dirName.includes('-server-gen')) return ['server-generate', 'Server Generate'];
@@ -384,10 +393,9 @@ app.get('/api/capabilities', (req, res) => {
   };
 
   const hiresGate = {
-    supported: false,
-    reason: upscaleCap && upscaleCap.capabilities
-      ? 'Upscale tools detected; Hires Fix two-pass workflow script not yet implemented.'
-      : 'Run POST /api/actions/probe-upscale to detect available tools.'
+    supported: true,
+    route: '/api/actions/hires-fix',
+    reason: 'Two-pass txt2img → local Pillow upscale. NOT full A1111 latent Hires Fix — no denoising second pass.'
   };
 
   const faceGate = {
@@ -614,6 +622,48 @@ app.post('/api/actions/upscale', (req, res) => {
   const summary = `bin/sdcpp-upscale.sh --path ${upscalePath} --scale ${scale} --resample ${resample}`;
   const jobId = createJob('upscale', summary, safeParams);
   runAction(jobId, 'bin/sdcpp-upscale.sh', args);
+
+  res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
+// Hires Fix — two-pass txt2img → local Pillow upscale
+app.post('/api/actions/hires-fix', (req, res) => {
+  const body = req.body || {};
+  const prompt = String(body.prompt || '').trim();
+  if (!prompt) return res.status(400).json({ error: 'prompt is required' });
+
+  const preset = body.preset !== undefined ? String(body.preset) : 'fast';
+  if (!PRESET_DEFAULTS[preset] && preset !== 'Custom') {
+    return res.status(400).json({ error: `Unknown preset: ${preset}` });
+  }
+
+  const scale = body.scale !== undefined ? Number(body.scale) : 2;
+  if (!ALLOWED_UPSCALE_SCALES.has(scale)) {
+    return res.status(400).json({ error: 'scale must be 2, 3, or 4' });
+  }
+
+  const resample = body.resample !== undefined ? String(body.resample) : 'lanczos';
+  if (!ALLOWED_UPSCALE_RESAMPLES.has(resample)) {
+    return res.status(400).json({ error: 'resample must be: nearest, bilinear, bicubic, lanczos' });
+  }
+
+  const savePrompts = !!(body.save_prompts);
+  const params = sanitizeRequestParams({ prompt, preset, scale, resample }, savePrompts);
+
+  const args = ['--preset', preset, '--prompt', prompt, '--scale', String(scale), '--resample', resample];
+  if (body.negative_prompt) args.push('--negative', String(body.negative_prompt));
+  if (body.steps)   args.push('--steps', String(Number(body.steps)));
+  if (body.width)   args.push('--width', String(Number(body.width)));
+  if (body.height)  args.push('--height', String(Number(body.height)));
+  if (body.cfg_scale || body.cfg) args.push('--cfg-scale', String(Number(body.cfg_scale || body.cfg)));
+  if (body.sampler && ALLOWED_SAMPLERS.has(String(body.sampler))) args.push('--sampler', String(body.sampler));
+  if (body.seed !== undefined && body.seed !== '') args.push('--seed', String(Number(body.seed)));
+
+  const summary = `bin/sdcpp-hires-fix.sh --preset ${preset} --scale ${scale}x ${resample}`;
+  const jobId = createJob('hires-fix', summary, params);
+  const sensitives = savePrompts ? [] : [prompt, body.negative_prompt].filter(Boolean);
+  if (sensitives.length) jobSensitives[jobId] = sensitives;
+  runAction(jobId, 'bin/sdcpp-hires-fix.sh', args, savePrompts);
 
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });

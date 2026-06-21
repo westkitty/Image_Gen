@@ -51,6 +51,7 @@ Prompts are redacted by default. When **Save prompts in run records** is off, th
 | img2img probe | `POST /api/actions/probe-image-edit` | writes state/image-edit-capabilities.json |
 | Upscale probe | `POST /api/actions/probe-upscale` | writes state/upscale-capabilities.json |
 | **Pillow upscale** | `POST /api/actions/upscale` | local resize only — not AI, not Real-ESRGAN |
+| **Hires Fix** | `POST /api/actions/hires-fix` | two-pass txt2img → Pillow upscale — NOT A1111 latent Hires Fix |
 
 ### Pillow upscale direct usage
 
@@ -73,7 +74,7 @@ Manifest at `runs/<run-id>/upscaled/upscale-manifest.json` — no prompt or nega
 
 ## Gated (not wired)
 
-img2img, inpaint, outpaint, Hires Fix, face restore, Real-ESRGAN, GFPGAN, CodeFormer, LoRA injection, VAE switching, textual inversion execution, hypernetwork execution.
+img2img, inpaint, outpaint, face restore, Real-ESRGAN, GFPGAN, CodeFormer, LoRA injection, VAE switching, textual inversion execution, hypernetwork execution.
 
 These are visible in the UI so the missing backend work is obvious rather than buried.
 

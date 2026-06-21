@@ -172,9 +172,43 @@
               <div id="upscale-result" class="job-card muted" style="margin-top:12px">No upscale job yet.</div>
               <div id="upscale-preview" style="margin-top:10px"></div>
             </div>
-            <!-- Gated features -->
+            <!-- Hires Fix — two-pass txt2img → Pillow upscale -->
             <div>
-              <h2 style="margin:0 0 14px">Other Enhance features</h2>
+              <div class="panel">
+                <div class="panel-head"><div><h2>Hires Fix</h2><p>Two-pass: txt2img draft → local Pillow upscale. <strong>NOT</strong> full A1111 latent Hires Fix — no denoising second pass.</p></div></div>
+                <form id="form-hires-fix" class="stacked">
+                  <div class="field"><label for="hf-prompt">Prompt <span class="danger">*</span></label>
+                    <textarea id="hf-prompt" rows="3" placeholder="Describe your image…"></textarea></div>
+                  <div class="two-col">
+                    <div class="field"><label for="hf-preset">Preset</label>
+                      <select id="hf-preset">
+                        <option value="fast">Fast</option>
+                        <option value="smoke">Smoke (quick test)</option>
+                      </select></div>
+                    <div class="field"><label for="hf-seed">Seed (blank = random)</label>
+                      <input id="hf-seed" type="number" placeholder="e.g. 424242" /></div>
+                  </div>
+                  <div class="two-col">
+                    <div class="field"><label for="hf-scale">Upscale factor</label>
+                      <select id="hf-scale">
+                        <option value="2">2× (default)</option>
+                        <option value="3">3×</option>
+                        <option value="4">4×</option>
+                      </select></div>
+                    <div class="field"><label for="hf-resample">Resample filter</label>
+                      <select id="hf-resample">
+                        <option value="lanczos">Lanczos (default)</option>
+                        <option value="bicubic">Bicubic</option>
+                        <option value="bilinear">Bilinear</option>
+                        <option value="nearest">Nearest</option>
+                      </select></div>
+                  </div>
+                  <button class="primary" type="submit" id="btn-hf-submit">Run Hires Fix</button>
+                </form>
+                <div id="hf-result" class="job-card muted" style="margin-top:12px">No Hires Fix job yet.</div>
+                <div id="hf-preview" style="margin-top:10px"></div>
+              </div>
+              <h2 style="margin:18px 0 14px">Other Enhance features</h2>
               <div class="cards-grid" id="enhance-gates"></div>
             </div>
           </div>

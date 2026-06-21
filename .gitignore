@@ -61,6 +61,8 @@ Potential UI/
 # Proof env symlink and dir blobs
 latest-sdcpp-proof-env
 sdcpp-proof-*/.proof-env
+# Entire proof dirs at any depth (logs, PNGs, manifests all stay out of git)
+**/sdcpp-proof-*/
 
 # Packaging artifacts
 Image_Gen_*.zip
