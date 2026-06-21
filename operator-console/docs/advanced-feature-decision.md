@@ -40,7 +40,7 @@ No feature is marked blocked without verified evidence.
 
 **What is needed to unlock:**
 1. Stage `stabilityai/sdxl-turbo` on BigMac external storage, preferring:
-   `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors`
+   `/Volumes/wc2tb/ImageGen/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors`
 2. Do not use `/Volumes/wc2tb` for new heavy model growth.
 3. Verify the local BigMac stable-diffusion.cpp binary supports the required SDXL Turbo flags.
 4. Run a bounded smoke with 1-4 steps, starting at 512x512, without blindly applying SD 1.5 CFG/negative-prompt defaults.
@@ -65,8 +65,8 @@ once a checkpoint is staged.
 
 **What is needed to unlock:**
 1. Stage Flux model files on BigMac:
-   - `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/flux1-schnell/flux1-schnell.safetensors` or compatible GGUF/quantized Flux model file
-   - `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/shared/ae.safetensors`
+   - `/Volumes/wc2tb/ImageGen/flux/flux1-schnell/flux1-schnell.safetensors` or compatible GGUF/quantized Flux model file
+   - `/Volumes/wc2tb/ImageGen/flux/shared/ae.safetensors`
    - CLIP-L candidate
    - T5XXL candidate
 2. Accept Hugging Face model conditions first when required.
@@ -144,8 +144,8 @@ files are staged on BigMac.
 
 ### Priority order for next unlock (in sequence)
 
-1. **SDXL Turbo** — stage `sd_xl_turbo_1.0_fp16.safetensors` on BigMac wc1tb → probe flags → bounded smoke
-2. **Flux Schnell** — stage official or compatible Flux files on BigMac wc1tb → probe flags → bounded smoke
+1. **SDXL Turbo** — stage `sd_xl_turbo_1.0_fp16.safetensors` on BigMac wc2tb → probe flags → bounded smoke
+2. **Flux Schnell** — stage official or compatible Flux files on BigMac wc2tb → probe flags → bounded smoke
 3. **SDXL (base)** — stage SDXL checkpoint → validate higher-res output
 4. **img2img** — rebuild or upgrade `sd-cli` on BigMac → test flags → write bridge
 5. **LoRA / VAE** — stage LoRA files → wire injection into generate script

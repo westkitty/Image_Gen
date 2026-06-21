@@ -1182,3 +1182,47 @@ bin/sdcpp-model-stage-check.sh
 ```
 
 If SDXL Turbo or Flux files are then present, inspect BigMac `sd-cli --help` before writing any smoke script. Do not download models automatically.
+
+## 2026-06-21 wc2tb canonical root migration
+
+Canonical model home moved to:
+
+```text
+/Volumes/wc2tb/ImageGen
+```
+
+Route and volume checks on BigMac passed before the move:
+
+```text
+bigmac
+bigmac
+/Users/bigmac
+ProductName: macOS
+ProductVersion: 26.5.1
+BuildVersion: 25F80
+```
+
+Current audit artifacts:
+
+```text
+/Volumes/wc2tb/ImageGen/manifests/model-move-result-final.md
+/Volumes/wc2tb/ImageGen/manifests/model-inventory-20260621-132829.json
+/Volumes/wc2tb/ImageGen/manifests/model-move-plan-20260621-132829.md
+```
+
+Final move audit summary:
+
+- 41 model files now live under `/Volumes/wc2tb/ImageGen`
+- Families staged there: `controlnet`, `checkpoints/sd15`, `checkpoints/sdxl`, `checkpoints/sdxl-turbo`, `flux/flux1-schnell`, `flux/shared`, `loras`, `upscalers`, `vaes`
+- Current inventory snapshot after the move: 204 candidates, 19 high-confidence, 18 medium-confidence, 167 low-confidence, 1 skipped
+- The inventory is conservative. Remaining high-confidence items still exist outside the new root and should be handled separately, not auto-consumed
+
+Validation run after the migration:
+
+- `bash -n sdcpp-workflow/bin/sdcpp-model-inventory-wc2tb.sh` - PASS
+- `bash -n sdcpp-workflow/bin/sdcpp-model-stage-check.sh` - PASS
+- `node --check operator-console/server.js` - PASS
+- `node --check operator-console/public/app.js` - PASS
+- `bash -n scripts/package-source.sh` - PASS
+
+The operator console now points at `/Volumes/wc2tb/ImageGen`, exposes the inventory action, and reads the refreshed inventory cache. Runtime caches under `sdcpp-workflow/state/` are still ignored, which is correct.

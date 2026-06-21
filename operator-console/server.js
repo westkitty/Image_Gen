@@ -16,7 +16,8 @@ const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
 const IMAGE_EDIT_CACHE = path.join(STATE_DIR, 'image-edit-capabilities.json');
 const UPSCALE_CACHE = path.join(STATE_DIR, 'upscale-capabilities.json');
 const MODEL_STAGE_CACHE = path.join(STATE_DIR, 'model-stage-cache.json');
-const MODEL_STAGE_ROOT = '/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models';
+const MODEL_STAGE_ROOT = '/Volumes/wc2tb/ImageGen';
+const MODEL_INVENTORY_CACHE = path.join(STATE_DIR, 'model-inventory-cache.json');
 const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md';
 
 app.use(express.json({ limit: '2mb' }));
@@ -41,7 +42,7 @@ const PRESET_DEFAULTS = {
   quality_plus: { steps: 30, cfg_scale: 7, sampler: 'euler_a', width: 512, height: 512 }
 };
 
-const jobs = {};
+const jobs = {}; // in-memory job state
 const jobSensitives = {};
 
 function readKeyValueFile(filePath) {
@@ -394,13 +395,17 @@ function summarizeModelStage(cache) {
     present: false,
     stale: true,
     checked_at: null,
+    model_volume: 'wc2tb',
+    model_volume_path: '/Volumes/wc2tb',
+    model_volume_mounted: false,
+    model_volume_free_space: '',
     external_root: MODEL_STAGE_ROOT,
     sdxlTurboStaged: false,
     fluxStaged: false,
     sdxlStaged: false,
     metalSupportObserved: false,
     supportProven: false,
-    recommended_next_step: 'Run POST /api/actions/check-model-stage after staging model files on BigMac wc1tb.'
+    recommended_next_step: 'Run POST /api/actions/check-model-stage after staging model files on BigMac wc2tb.'
   };
   if (!cache) return empty;
   const turboCandidates = cache.sdxl_turbo_candidates || [];
@@ -415,9 +420,11 @@ function summarizeModelStage(cache) {
     checked_at: cache.checked_at || null,
     external_root: cache.external_root || MODEL_STAGE_ROOT,
     route_ok: !!cache.route_ok,
-    wc1tb_mounted: !!cache.wc1tb_mounted,
+    model_volume: cache.model_volume || 'wc2tb',
+    model_volume_path: cache.model_volume_path || '/Volumes/wc2tb',
+    model_volume_mounted: !!(cache.model_volume_mounted ?? cache.wc1tb_mounted),
+    model_volume_free_space: cache.model_volume_free_space || cache.free_space || '',
     write_test: cache.write_test || 'unknown',
-    free_space: cache.free_space || '',
     sdxlTurboStaged: turboCandidates.length > 0,
     sdxlTurboRecommended: cache.sdxl_turbo_recommended_candidate || null,
     sdxlStaged: (cache.sdxl_candidates || []).length > 0,
@@ -431,6 +438,52 @@ function summarizeModelStage(cache) {
     fluxGgufCandidates: cache.flux_gguf_candidates || [],
     metalSupportObserved: !!cache.metal_support_observed,
     supportProven: !!cache.runtime_smoke_proven,
+    recommended_next_step: cache.recommended_next_step || empty.recommended_next_step
+  };
+}
+
+function summarizeModelInventory(cache) {
+  const empty = {
+    present: false,
+    stale: true,
+    checked_at: null,
+    model_volume: 'wc2tb',
+    model_volume_path: '/Volumes/wc2tb',
+    model_volume_mounted: false,
+    model_volume_free_space: '',
+    external_root: MODEL_STAGE_ROOT,
+    total_candidates: 0,
+    high_confidence_candidates: 0,
+    moved_count: 0,
+    duplicate_count: 0,
+    collision_count: 0,
+    skipped_count: 0,
+    manual_review_count: 0,
+    inventory_path: null,
+    plan_path: null,
+    result_path: null,
+    recommended_next_step: 'Run POST /api/actions/inventory-models to scan /Volumes/wc2tb and produce a move plan.'
+  };
+  if (!cache) return empty;
+  return {
+    present: true,
+    stale: false,
+    checked_at: cache.checked_at || null,
+    model_volume: cache.model_volume || 'wc2tb',
+    model_volume_path: cache.model_volume_path || '/Volumes/wc2tb',
+    model_volume_mounted: !!cache.model_volume_mounted,
+    model_volume_free_space: cache.model_volume_free_space || '',
+    external_root: cache.external_root || MODEL_STAGE_ROOT,
+    total_candidates: cache.total_candidates || 0,
+    high_confidence_candidates: cache.high_confidence_candidates || 0,
+    moved_count: cache.moved_count || 0,
+    duplicate_count: cache.duplicate_count || 0,
+    collision_count: cache.collision_count || 0,
+    skipped_count: cache.skipped_count || 0,
+    manual_review_count: cache.manual_review_count || 0,
+    inventory_path: cache.inventory_path || null,
+    plan_path: cache.plan_path || null,
+    result_path: cache.result_path || null,
     recommended_next_step: cache.recommended_next_step || empty.recommended_next_step
   };
 }
@@ -449,7 +502,7 @@ function buildModelGate(kind, stage) {
     if (stage.sdxlTurboStaged) {
       return { ...base, reason: 'SDXL Turbo model staged; BigMac Metal smoke proof still required.', unlock_requires: 'Run a bounded SDXL Turbo smoke script after probing BigMac sd-cli flags.' };
     }
-    return { ...base, reason: 'SDXL Turbo model missing on BigMac wc1tb.', unlock_requires: `Stage ${root}/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors, then run model-stage check.` };
+    return { ...base, reason: 'SDXL Turbo model missing on BigMac wc2tb.', unlock_requires: `Stage ${root}/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors, then run model-stage check.` };
   }
   if (kind === 'flux') {
     if (stage.supportProven && stage.fluxStaged && stage.metalSupportObserved) {
@@ -458,12 +511,12 @@ function buildModelGate(kind, stage) {
     if (stage.fluxStaged) {
       return { ...base, reason: 'Flux component set staged; BigMac Metal smoke proof still required.', unlock_requires: 'Probe sd-cli flags for Flux model, VAE, CLIP-L, and T5XXL paths, then run bounded smoke.' };
     }
-    return { ...base, reason: 'Flux model/component files missing on BigMac wc1tb.', unlock_requires: `Stage Flux Schnell files under ${root}/flux/flux1-schnell and ${root}/flux/shared, then run model-stage check.` };
+    return { ...base, reason: 'Flux model/component files missing on BigMac wc2tb.', unlock_requires: `Stage Flux Schnell files under ${root}/flux/flux1-schnell and ${root}/flux/shared, then run model-stage check.` };
   }
   if (stage.sdxlStaged) {
     return { ...base, reason: 'SDXL checkpoint staged; runtime smoke proof still required.', unlock_requires: 'Probe BigMac sd-cli flags and run a bounded SDXL smoke.' };
   }
-  return { ...base, reason: 'SDXL checkpoint missing on BigMac wc1tb.', unlock_requires: `Stage an SDXL checkpoint under ${root}/checkpoints/sdxl, then run model-stage check.` };
+  return { ...base, reason: 'SDXL checkpoint missing on BigMac wc2tb.', unlock_requires: `Stage an SDXL checkpoint under ${root}/checkpoints/sdxl, then run model-stage check.` };
 }
 
 const PNG_CHUNK_READ_LIMIT = 20 * 1024 * 1024; // 20 MB
@@ -511,6 +564,7 @@ app.get('/api/capabilities', (req, res) => {
   const editCap = readJsonCache(IMAGE_EDIT_CACHE);
   const upscaleCap = readJsonCache(UPSCALE_CACHE);
   const modelStage = summarizeModelStage(readJsonCache(MODEL_STAGE_CACHE));
+  const modelInventory = summarizeModelInventory(readJsonCache(MODEL_INVENTORY_CACHE));
 
   // Build models list from cache or fall back to configured model
   let models, vaes;
@@ -587,6 +641,7 @@ app.get('/api/capabilities', (req, res) => {
     backend: { type: 'stable-diffusion.cpp workflow bridge', workflowRoot: WORKFLOW_ROOT, runsDir: RUNS_DIR, localTunnelPort: localPort },
     assetCache: { present: !!assets, cacheAgeMinutes, discoveredAt: assets ? assets.discovered_at_iso : null },
     modelStage,
+    modelInventory,
     models,
     vaes,
     networks: {
@@ -729,6 +784,18 @@ app.get('/api/model-stage', (req, res) => {
 app.post('/api/actions/check-model-stage', (req, res) => {
   const jobId = createJob('check-model-stage', 'bin/sdcpp-model-stage-check.sh');
   runAction(jobId, 'bin/sdcpp-model-stage-check.sh', []);
+  res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
+app.get('/api/model-inventory', (req, res) => {
+  const cache = readJsonCache(MODEL_INVENTORY_CACHE);
+  if (!cache) return res.json({ stale: true, missing: true, summary: summarizeModelInventory(null) });
+  res.json({ stale: false, missing: false, summary: summarizeModelInventory(cache), ...cache });
+});
+
+app.post('/api/actions/inventory-models', (req, res) => {
+  const jobId = createJob('inventory-models', 'bin/sdcpp-model-inventory-wc2tb.sh');
+  runAction(jobId, 'bin/sdcpp-model-inventory-wc2tb.sh', []);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 

@@ -7,8 +7,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/sdcpp-lib.sh"
 load_config
 
-EXTERNAL_ROOT="/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models"
-IMAGE_GEN_ROOT="/Volumes/wc1tb/Ai/Image_Gen"
+MODEL_VOLUME="wc2tb"
+MODEL_VOLUME_PATH="/Volumes/wc2tb"
+EXTERNAL_ROOT="/Volumes/wc2tb/ImageGen"
 CACHE="$SDCPP_STATE_DIR/model-stage-cache.json"
 TMP_TSV="$(mktemp /tmp/sdcpp_model_stage_XXXXXX.tsv)"
 cleanup_tmp() { rm -f "$TMP_TSV"; }
@@ -16,15 +17,18 @@ trap cleanup_tmp EXIT
 
 write_fail_cache() {
   local reason="$1"
-  python3 - "$CACHE" "$EXTERNAL_ROOT" "$reason" <<'PYFAIL'
+  python3 - "$CACHE" "$MODEL_VOLUME" "$MODEL_VOLUME_PATH" "$EXTERNAL_ROOT" "$reason" <<'PYFAIL'
 import sys, json, datetime
-out, root, reason = sys.argv[1:]
+out, model_volume, model_volume_path, root, reason = sys.argv[1:]
 obj = {
     "checked_at": datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z"),
     "route_ok": False,
+    "model_volume": model_volume,
+    "model_volume_path": model_volume_path,
+    "model_volume_mounted": False,
+    "model_volume_free_space": "",
     "external_root": root,
-    "wc1tb_mounted": False,
-    "free_space": "",
+    "root_exists": False,
     "write_test": "not-run",
     "sdxl_turbo_candidates": [],
     "sdxl_turbo_recommended_candidate": None,
@@ -36,6 +40,7 @@ obj = {
     "flux_gguf_candidates": [],
     "stable_diffusion_cpp_help_summary": {},
     "metal_support_observed": False,
+    "runtime_smoke_proven": False,
     "recommended_next_step": reason,
 }
 with open(out, "w") as f:
@@ -57,14 +62,21 @@ if [ "$ROUTE_USER" != "bigmac" ] || [ "$ROUTE_HOST" != "bigmac" ]; then
   fail "route-identity" "Expected bigmac/bigmac, got ${ROUTE_USER}/${ROUTE_HOST}."
 fi
 
-ssh -o ConnectTimeout=20 "$SSH_TARGET" 'ROOT="/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models"
-IMGROOT="/Volumes/wc1tb/Ai/Image_Gen"
+ssh -o ConnectTimeout=20 "$SSH_TARGET" 'ROOT="/Volumes/wc2tb/ImageGen"
+VOL="/Volumes/wc2tb"
 printf "ROUTE_OK\ttrue\n"
-if [ -d /Volumes/wc1tb ]; then printf "WC1TB_MOUNTED\ttrue\n"; else printf "WC1TB_MOUNTED\tfalse\n"; fi
-df -h /Volumes/wc1tb 2>/dev/null | tail -1 | awk "{print \"FREE_SPACE\t\" \$0}"
+printf "MODEL_VOLUME\twc2tb\n"
+printf "MODEL_VOLUME_PATH\t%s\n" "$VOL"
+if [ -d "$VOL" ]; then
+  printf "MODEL_VOLUME_MOUNTED\ttrue\n"
+  df -h "$VOL" 2>/dev/null | tail -1 | awk "{print \"MODEL_VOLUME_FREE_SPACE\t\" \$0}"
+else
+  printf "MODEL_VOLUME_MOUNTED\tfalse\n"
+  printf "MODEL_VOLUME_FREE_SPACE\t\n"
+fi
 if [ -d "$ROOT" ]; then printf "ROOT_EXISTS\ttrue\n"; else printf "ROOT_EXISTS\tfalse\n"; fi
-if mkdir -p "$IMGROOT" 2>/dev/null; then
-  PROBE="$IMGROOT/.sdcpp-model-stage-write-test-$$"
+if mkdir -p "$ROOT" 2>/dev/null; then
+  PROBE="$ROOT/.sdcpp-model-stage-write-test-$$"
   if printf "probe\n" > "$PROBE" 2>/dev/null && test -s "$PROBE" && rm -f "$PROBE" 2>/dev/null; then
     printf "WRITE_TEST\tpass\n"
   else
@@ -77,26 +89,28 @@ if [ -d "$ROOT" ]; then
   find "$ROOT" -maxdepth 5 -type f \( -name "*.safetensors" -o -name "*.gguf" -o -name "*.ckpt" \) 2>/dev/null | while IFS= read -r f; do
     size=$(wc -c < "$f" 2>/dev/null || printf "0")
     base=$(basename "$f")
-    case "$f/$base" in
-      *sd_xl_turbo_1.0_fp16.safetensors*|*sd_xl_turbo_1.0.safetensors*|*sdxl*turbo*.safetensors*|*sdxl*turbo*.gguf*) printf "CAND\tSDXL_TURBO\t%s\t%s\n" "$f" "$size" ;;
-    esac
-    case "$f/$base" in
-      *checkpoints/sdxl/*|*sd_xl_base*.safetensors*|*sdxl_base*.safetensors*) printf "CAND\tSDXL\t%s\t%s\n" "$f" "$size" ;;
-    esac
     case "$base" in
-      flux1-schnell.safetensors|flux1-schnell*.gguf|flux1-schnell*Q*.gguf|flux1-schnell*fp8*.safetensors) printf "CAND\tFLUX_MODEL\t%s\t%s\n" "$f" "$size" ;;
-    esac
-    case "$base" in
-      ae.safetensors|ae*.safetensors|ae*.gguf) printf "CAND\tFLUX_VAE\t%s\t%s\n" "$f" "$size" ;;
-    esac
-    case "$base" in
-      clip_l.safetensors|clip_l*.safetensors|clip_l*.gguf) printf "CAND\tFLUX_CLIP_L\t%s\t%s\n" "$f" "$size" ;;
-    esac
-    case "$base" in
-      t5xxl_fp16.safetensors|t5xxl_fp8*.safetensors|t5xxl*.gguf|t5-v1_1-xxl*.gguf) printf "CAND\tFLUX_T5XXL\t%s\t%s\n" "$f" "$size" ;;
-    esac
-    case "$base" in
-      *flux*.gguf|flux1-schnell*.gguf) printf "CAND\tFLUX_GGUF\t%s\t%s\n" "$f" "$size" ;;
+      sd_xl_turbo_1.0_fp16.safetensors|sd_xl_turbo_1.0.safetensors|*sdxl*turbo*.safetensors|*sdxl*turbo*.gguf)
+        printf "CAND\tSDXL_TURBO\t%s\t%s\n" "$f" "$size"
+        ;;
+      *sd_xl_base*.safetensors|*sdxl*base*.safetensors|*sdxl*.gguf|*xl*.safetensors|*xl*.ckpt)
+        printf "CAND\tSDXL\t%s\t%s\n" "$f" "$size"
+        ;;
+      flux1-schnell.safetensors|flux1-schnell*.gguf|flux1-schnell*Q*.gguf|flux1-schnell*fp8*.safetensors)
+        printf "CAND\tFLUX_MODEL\t%s\t%s\n" "$f" "$size"
+        ;;
+      ae.safetensors|ae*.safetensors|ae*.gguf)
+        printf "CAND\tFLUX_VAE\t%s\t%s\n" "$f" "$size"
+        ;;
+      clip_l.safetensors|clip_l*.safetensors|clip_l*.gguf)
+        printf "CAND\tFLUX_CLIP_L\t%s\t%s\n" "$f" "$size"
+        ;;
+      t5xxl_fp16.safetensors|t5xxl_fp8*.safetensors|t5xxl*.gguf|t5-v1_1-xxl*.gguf)
+        printf "CAND\tFLUX_T5XXL\t%s\t%s\n" "$f" "$size"
+        ;;
+      *flux*.gguf|flux1-schnell*.gguf)
+        printf "CAND\tFLUX_GGUF\t%s\t%s\n" "$f" "$size"
+        ;;
     esac
   done
 fi
@@ -125,16 +139,20 @@ if ! grep -q '__SDCPP_MODEL_STAGE_DONE__' "$TMP_TSV"; then
   fail "model-stage-ssh" "Remote model-stage probe did not complete."
 fi
 
-python3 - "$TMP_TSV" "$CACHE" "$EXTERNAL_ROOT" <<'PYCACHE'
-import sys, json, datetime
-tsv, out, root = sys.argv[1:]
+python3 - "$TMP_TSV" "$CACHE" "$MODEL_VOLUME" "$MODEL_VOLUME_PATH" "$EXTERNAL_ROOT" <<'PYCACHE'
+import sys, json, datetime, os
+
+tsv, out, model_volume, model_volume_path, root = sys.argv[1:]
 
 obj = {
     "checked_at": datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z"),
     "route_ok": False,
+    "model_volume": model_volume,
+    "model_volume_path": model_volume_path,
+    "model_volume_mounted": False,
+    "model_volume_free_space": "",
     "external_root": root,
-    "wc1tb_mounted": False,
-    "free_space": "",
+    "root_exists": False,
     "write_test": "unknown",
     "sdxl_turbo_candidates": [],
     "sdxl_turbo_recommended_candidate": None,
@@ -168,10 +186,14 @@ with open(tsv) as f:
         parts = line.split("\t")
         if parts[0] == "ROUTE_OK":
             obj["route_ok"] = parts[1] == "true"
-        elif parts[0] == "WC1TB_MOUNTED":
-            obj["wc1tb_mounted"] = parts[1] == "true"
-        elif parts[0] == "FREE_SPACE":
-            obj["free_space"] = parts[1] if len(parts) > 1 else ""
+        elif parts[0] == "MODEL_VOLUME":
+            obj["model_volume"] = parts[1]
+        elif parts[0] == "MODEL_VOLUME_PATH":
+            obj["model_volume_path"] = parts[1]
+        elif parts[0] == "MODEL_VOLUME_MOUNTED":
+            obj["model_volume_mounted"] = parts[1] == "true"
+        elif parts[0] == "MODEL_VOLUME_FREE_SPACE":
+            obj["model_volume_free_space"] = parts[1] if len(parts) > 1 else ""
         elif parts[0] == "ROOT_EXISTS":
             obj["root_exists"] = parts[1] == "true"
         elif parts[0] == "WRITE_TEST":
@@ -195,15 +217,21 @@ for cand in obj["sdxl_turbo_candidates"]:
 if not obj["sdxl_turbo_recommended_candidate"] and obj["sdxl_turbo_candidates"]:
     obj["sdxl_turbo_recommended_candidate"] = obj["sdxl_turbo_candidates"][0]["path"]
 
-flux_complete = bool(obj["flux_model_candidates"] and obj["flux_vae_candidates"] and obj["flux_clip_l_candidates"] and obj["flux_t5xxl_candidates"])
+root_exists = bool(obj["root_exists"])
+files_present = bool(
+    obj["sdxl_turbo_candidates"] or obj["sdxl_candidates"] or obj["flux_model_candidates"] or
+    obj["flux_vae_candidates"] or obj["flux_clip_l_candidates"] or obj["flux_t5xxl_candidates"] or
+    obj["flux_gguf_candidates"]
+)
+
 if obj["sdxl_turbo_recommended_candidate"]:
     obj["recommended_next_step"] = "SDXL Turbo is staged; probe BigMac sd-cli flags and run bounded 512x512, 1-4 step smoke before enabling support."
-elif flux_complete:
+elif obj["flux_model_candidates"] and obj["flux_vae_candidates"] and obj["flux_clip_l_candidates"] and obj["flux_t5xxl_candidates"]:
     obj["recommended_next_step"] = "Flux component set is staged; inspect sd-cli Flux flags and run bounded smoke before enabling support."
-elif obj.get("root_exists"):
-    obj["recommended_next_step"] = "Model root exists but required SDXL Turbo or Flux files are missing; stage files on wc1tb and rerun this check."
+elif root_exists:
+    obj["recommended_next_step"] = "Model root exists but required SDXL Turbo or Flux files are missing; stage files on wc2tb and rerun this check."
 else:
-    obj["recommended_next_step"] = "Create /Volumes/wc1tb/Ai/Image_Gen/sdcpp-models and stage SDXL Turbo or Flux files there."
+    obj["recommended_next_step"] = "Create /Volumes/wc2tb/ImageGen and stage SDXL Turbo or Flux files there."
 
 with open(out, "w") as f:
     json.dump(obj, f, indent=2)
@@ -214,7 +242,7 @@ set +e
 python3 - "$CACHE" <<'PYSTATUS'
 import sys, json
 d=json.load(open(sys.argv[1]))
-if not d.get("route_ok") or not d.get("wc1tb_mounted") or not d.get("root_exists"):
+if not d.get("route_ok") or not d.get("model_volume_mounted") or not d.get("root_exists"):
     sys.exit(2)
 if d.get("sdxl_turbo_recommended_candidate") or (d.get("flux_model_candidates") and d.get("flux_vae_candidates") and d.get("flux_clip_l_candidates") and d.get("flux_t5xxl_candidates")):
     sys.exit(0)
@@ -234,6 +262,6 @@ At least one SDXL Turbo or Flux minimum staging path is present. Runtime smoke p
     exit 0
     ;;
   *)
-    fail "external-root" "wc1tb or model root is unusable. Cache: $CACHE"
+    fail "external-root" "wc2tb or model root is unusable. Cache: $CACHE"
     ;;
 esac

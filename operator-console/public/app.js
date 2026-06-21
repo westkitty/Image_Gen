@@ -1,6 +1,6 @@
 'use strict';
 
-const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null };
+const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null };
 const $ = id => document.getElementById(id);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
@@ -355,6 +355,7 @@ function trackHiresFixJob(jobId) {
 
 function renderModels() {
   const caps = state.capabilities || {};
+  state.modelInventory = caps.modelInventory || state.modelInventory;
   $('model-list').innerHTML = (caps.models || []).map(m =>
     '<div class="model-card"><h3>' + esc(m.name) + '</h3><p>' + esc(m.filename || '') + '</p><span class="badge">' + esc(m.status || 'unknown') + '</span></div>'
   ).join('') || '<div class="muted fineprint">No checkpoints in cache. Run asset discovery.</div>';
@@ -391,7 +392,7 @@ function renderModels() {
   const stageEl = $('model-stage-status');
   if (stageEl) {
     const stage = caps.modelStage || {};
-    const root = stage.external_root || '/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models';
+    const root = stage.external_root || '/Volumes/wc2tb/ImageGen';
     const status = !stage.present ? 'Missing cache' : stage.supportProven ? 'Smoke proven' : 'Staged check only';
     const bits = [
       ['External root', root],
@@ -399,7 +400,7 @@ function renderModels() {
       ['SDXL Turbo', stage.sdxlTurboStaged ? 'staged; smoke proof required' : 'missing'],
       ['Flux', stage.fluxStaged ? 'component set staged; smoke proof required' : 'missing or incomplete'],
       ['SDXL', stage.sdxlStaged ? 'staged; smoke proof required' : 'missing'],
-      ['wc1tb write test', stage.write_test || 'unknown'],
+      ['wc2tb write test', stage.write_test || 'unknown'],
       ['Next', stage.recommended_next_step || 'Run Check BigMac model stage after staging files.']
     ];
     stageEl.innerHTML =
@@ -410,6 +411,25 @@ function renderModels() {
       '<div class="fineprint"><strong>Flux files:</strong> diffusion/model, ae.safetensors, CLIP-L candidate, T5XXL candidate</div>' +
       '<div class="fineprint">Flux GGUF/quantized variants are accepted if stable-diffusion.cpp supports their flags on BigMac.</div>' +
       '<div class="fineprint" style="margin-top:8px"><strong>Docs:</strong> operator-console/docs/model-staging-sdxl-turbo-flux.md</div>';
+  }
+
+  const invEl = $('model-inventory-status');
+  if (invEl) {
+    const inv = caps.modelInventory || state.modelInventory || {};
+    const status = !inv.present ? 'Inventory cache missing' : inv.stale ? 'Inventory stale' : 'Inventory cached';
+    const root = inv.external_root || '/Volumes/wc2tb/ImageGen';
+    invEl.innerHTML =
+      '<h3 style="margin:0 0 6px">Inventory / move plan</h3>' +
+      '<p class="fineprint" style="margin:0 0 8px">' + esc(status) + '</p>' +
+      '<div class="fineprint"><strong>Root:</strong> ' + esc(root) + '</div>' +
+      '<div class="fineprint"><strong>Total candidates:</strong> ' + esc(inv.total_candidates || 0) + '</div>' +
+      '<div class="fineprint"><strong>High confidence:</strong> ' + esc(inv.high_confidence_candidates || 0) + '</div>' +
+      '<div class="fineprint"><strong>Moved:</strong> ' + esc(inv.moved_count || 0) + ' · <strong>Duplicates:</strong> ' + esc(inv.duplicate_count || 0) + ' · <strong>Collisions:</strong> ' + esc(inv.collision_count || 0) + '</div>' +
+      '<div class="fineprint"><strong>Manual review:</strong> ' + esc(inv.manual_review_count || 0) + ' · <strong>Skipped:</strong> ' + esc(inv.skipped_count || 0) + '</div>' +
+      '<div class="fineprint" style="margin-top:8px">Moves are conservative. Unknown files require manual review.</div>' +
+      '<div class="fineprint" style="margin-top:8px"><strong>Inventory:</strong> ' + esc(inv.inventory_path || 'not yet written') + '</div>' +
+      '<div class="fineprint"><strong>Plan:</strong> ' + esc(inv.plan_path || 'not yet written') + '</div>' +
+      '<div class="fineprint"><strong>Result:</strong> ' + esc(inv.result_path || 'not yet written') + '</div>';
   }
 }
 
@@ -432,6 +452,28 @@ async function runDiscoverAssets() {
     }, 1500);
   } catch (err) {
     notifyLog('Discover assets error: ' + err.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function runModelInventory() {
+  const btn = $('btn-inventory-models');
+  if (btn) btn.disabled = true;
+  try {
+    const result = await api('/api/actions/inventory-models', { method: 'POST', body: '{}' });
+    trackJob(result.job_id, 'Inventorying wc2tb models…');
+    const poller = setInterval(async () => {
+      try {
+        const job = await api('/api/jobs/' + result.job_id);
+        if (job.status !== 'running' && job.status !== 'queued') {
+          clearInterval(poller);
+          await loadCapabilities();
+          if (btn) btn.disabled = false;
+        }
+      } catch (_) { clearInterval(poller); if (btn) btn.disabled = false; }
+    }, 1500);
+  } catch (err) {
+    notifyLog('Inventory models error: ' + err.message);
     if (btn) btn.disabled = false;
   }
 }
@@ -632,6 +674,7 @@ function bindEvents() {
     if (action) {
       if (action.dataset.action === 'discover-assets') runDiscoverAssets();
       else if (action.dataset.action === 'check-model-stage') runModelStageCheck();
+      else if (action.dataset.action === 'inventory-models') runModelInventory();
       else runSimpleAction(action.dataset.action);
     }
     const lora = event.target.closest('[data-insert-lora]');

@@ -114,22 +114,22 @@ curl -s -X POST http://127.0.0.1:31337/api/actions/upscale \
 Do not download models automatically. Stage files manually on BigMac external storage:
 
 ```text
-/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models
+/Volumes/wc2tb/ImageGen
 ```
 
 First SDXL Turbo target:
 
 ```text
-/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors
+/Volumes/wc2tb/ImageGen/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors
 ```
 
 Flux Schnell targets:
 
 ```text
-/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/flux1-schnell/flux1-schnell.safetensors
-/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/shared/ae.safetensors
-/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/shared/clip_l.safetensors
-/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/shared/t5xxl_fp16.safetensors
+/Volumes/wc2tb/ImageGen/flux/flux1-schnell/flux1-schnell.safetensors
+/Volumes/wc2tb/ImageGen/flux/shared/ae.safetensors
+/Volumes/wc2tb/ImageGen/flux/shared/clip_l.safetensors
+/Volumes/wc2tb/ImageGen/flux/shared/t5xxl_fp16.safetensors
 ```
 
 Compatible GGUF or quantized Flux candidates are accepted if the BigMac stable-diffusion.cpp binary proves the required flags.

@@ -4,18 +4,18 @@ Last updated: 2026-06-21
 
 ## Target Root
 
-Stage new BigMac image-generation models on:
+Stage new BigMac image-generation models on the canonical home:
 
 ```text
-/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models
+/Volumes/wc2tb/ImageGen
 ```
 
-Do not use `/Volumes/wc2tb` for new heavy model growth. The existing SD 1.5 compatibility path under `$HOME/sdcpp-staging/models` remains valid and should not be blindly replaced with a symlink.
+Do not use the old `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models` or older wc1tb proposal. The existing SD 1.5 compatibility path under `$HOME/sdcpp-staging/models` remains valid and should not be blindly replaced with a symlink.
 
 ## Directory Layout
 
 ```text
-/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/
+/Volumes/wc2tb/ImageGen/
   checkpoints/
     sd15/
       v1-5-pruned-emaonly.safetensors
@@ -58,7 +58,7 @@ Codex must not download models automatically. Download with a browser or Hugging
 - Stage at:
 
 ```text
-/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors
+/Volumes/wc2tb/ImageGen/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors
 ```
 
 Do not use the full fp32 `sd_xl_turbo_1.0.safetensors` as the first smoke target unless it is deliberately staged. Turbo smoke defaults should be low-step, usually 1-4 steps, start at 512x512, and should not depend on negative prompts or ordinary Stable Diffusion 1.5 classifier-free guidance (CFG) assumptions unless the local BigMac binary proves the exact flags.
@@ -74,8 +74,8 @@ Do not use the full fp32 `sd_xl_turbo_1.0.safetensors` as the first smoke target
 Stage official or compatible files under:
 
 ```text
-/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/flux1-schnell/
-/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/shared/
+/Volumes/wc2tb/ImageGen/flux/flux1-schnell/
+/Volumes/wc2tb/ImageGen/flux/shared/
 ```
 
 Flux minimum staging requires a diffusion/model candidate, VAE candidate, and text encoder candidates unless the local BigMac binary clearly proves an embedded/no-component path.
@@ -85,8 +85,8 @@ Flux minimum staging requires a diffusion/model candidate, VAE candidate, and te
 Use these as user-facing setup commands. They are not model downloads.
 
 ```sh
-ssh westcat 'whoami && hostname && test -d /Volumes/wc1tb && df -h /Volumes/wc1tb'
-ssh westcat 'mkdir -p /Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/{checkpoints/sd15,checkpoints/sdxl-turbo,checkpoints/sdxl,flux/flux1-schnell,flux/shared,loras,vaes,embeddings,hypernetworks}'
+ssh westcat 'whoami && hostname && test -d /Volumes/wc2tb && df -h /Volumes/wc2tb'
+ssh westcat 'mkdir -p /Volumes/wc2tb/ImageGen/{checkpoints/sd15,checkpoints/sdxl-turbo,checkpoints/sdxl,flux/flux1-schnell,flux/shared,loras,vaes,embeddings,hypernetworks}'
 ```
 
 If SSH write fails with `Operation not permitted` or similar macOS Transparency, Consent, and Control (TCC) restrictions, do not chmod, chown, wipe access control lists (ACLs), or change FileVault/SecureToken state. Create folders and copy files with Finder, Server Message Block (SMB), or BigMac local Terminal, then rerun the validation script.
@@ -94,7 +94,7 @@ If SSH write fails with `Operation not permitted` or similar macOS Transparency,
 ## Validate After Staging
 
 ```sh
-ssh westcat 'find /Volumes/wc1tb/Ai/Image_Gen/sdcpp-models -maxdepth 4 -type f \( -name "*.safetensors" -o -name "*.gguf" -o -name "*.ckpt" \) -print -exec ls -lh {} \;'
+ssh westcat 'find /Volumes/wc2tb/ImageGen -maxdepth 4 -type f \( -name "*.safetensors" -o -name "*.gguf" -o -name "*.ckpt" \) -print -exec ls -lh {} \;'
 ```
 
 From this project:
