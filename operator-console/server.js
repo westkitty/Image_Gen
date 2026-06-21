@@ -168,13 +168,20 @@ function runAction(jobId, scriptPath, args, savePrompts = false) {
     job.exitCode = code;
     job.completedAt = Date.now();
     const out = job.stdout;
+    const errOut = job.stderr;
+    const combined = out + errOut;
     if (out.includes('==== PASS ====')) job.status = 'PASS';
     else if (out.includes('status: PARTIAL') || out.includes('==== PARTIAL ====')) job.status = 'PARTIAL';
-    else if (out.includes('==== FAIL ====')) job.status = 'FAIL';
+    else if (combined.includes('==== FAIL ====')) job.status = 'FAIL';
     else job.status = code === 0 ? 'PASS' : 'FAIL';
-    const failMatch = out.match(/FAIL:\s*(.+?)(?=\n|$)/);
-    if (failMatch) job.firstFailedGate = failMatch[1].trim();
-    else if ((out + job.stderr).includes('Unknown argument')) job.firstFailedGate = 'args';
+    const gateMatch = combined.match(/First failed gate:\s*(.+?)(?=\n|$)/);
+    if (gateMatch) {
+      job.firstFailedGate = gateMatch[1].trim();
+    } else {
+      const failMatch = out.match(/FAIL:\s*(.+?)(?=\n|$)/);
+      if (failMatch) job.firstFailedGate = failMatch[1].trim();
+      else if (combined.includes('Unknown argument')) job.firstFailedGate = 'args';
+    }
     const runMatch = out.match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
     if (runMatch) job.runId = runMatch[1];
     const upscaledMatch = out.match(/UPSCALED_IMAGE:\s*(\S+)/);

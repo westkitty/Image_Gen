@@ -81,3 +81,30 @@ bin/sdcpp-clean-old-runs.sh --delete --older-than-days 14
   - `*.png` — verified images.
   - `*-response.json`, `*.b64`, `*.log` — raw evidence.
 - `state/` — live server session, ports, SSH control socket (managed for you).
+
+## 8. Operator Console (local UI)
+
+```sh
+cd /Users/andrew/Image_Gen/operator-console
+node server.js > /tmp/operator-console.log 2>&1 &
+# Then open: http://127.0.0.1:31337/
+```
+
+Provides an A1111-style web UI bound to 127.0.0.1 only. Supported screens: Create, Batch/Sweep, Enhance (Pillow upscale), Library, Models, System.
+
+## 9. Pillow upscale (local, no inference, no SSH)
+
+```sh
+cd /Users/andrew/Image_Gen/sdcpp-workflow
+bin/sdcpp-upscale.sh --path "<run-id>/<image.png>" --scale 2 --resample lanczos
+```
+
+Output written to `runs/<run-id>/upscaled/`. Manifest at `runs/<run-id>/upscaled/upscale-manifest.json`.
+
+Or via the Operator Console Enhance screen, or directly:
+
+```sh
+curl -s -X POST http://127.0.0.1:31337/api/actions/upscale \
+  -H 'Content-Type: application/json' \
+  -d '{"path":"<run-id>/<image.png>","scale":2,"resample":"lanczos"}'
+```

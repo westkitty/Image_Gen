@@ -67,18 +67,27 @@ elif [ -z "$RUN_ID" ] || [ -z "$IMAGE_REL" ]; then
   fail "args" "Provide either --path <run-id>/<image> or both --run-id <run-id> --image <relative>"
 fi
 
-# ---- validate run-id ---------------------------------------------------------
-case "$RUN_ID" in
-  */*|*..*|*\ *|"")
-    fail "run-id" "Invalid run-id: $RUN_ID" ;;
-esac
+# ---- validate run-id (strict allowlist: A-Za-z0-9_- only) -------------------
+if [ -z "$RUN_ID" ]; then
+  fail "run-id" "run-id must not be empty"
+fi
+_rid_stripped="$(printf '%s' "$RUN_ID" | tr -d 'A-Za-z0-9_-')"
+if [ -n "$_rid_stripped" ]; then
+  fail "run-id" "Invalid run-id (only A-Za-z0-9_- allowed): $RUN_ID"
+fi
 
-# ---- validate image path (no absolute, no traversal) -------------------------
+# ---- validate image path (strict allowlist: A-Za-z0-9._/- only) -------------
+if [ -z "$IMAGE_REL" ]; then
+  fail "image-empty" "Image path must not be empty"
+fi
 case "$IMAGE_REL" in
   /*) fail "image-absolute" "Absolute image path not accepted: $IMAGE_REL" ;;
   ../*|*/../*|*/..) fail "image-traversal" "Image path traversal not allowed: $IMAGE_REL" ;;
-  "") fail "image-empty" "Image path must not be empty" ;;
 esac
+_img_stripped="$(printf '%s' "$IMAGE_REL" | tr -d 'A-Za-z0-9._/-')"
+if [ -n "$_img_stripped" ]; then
+  fail "image-chars" "Image path contains disallowed characters (only A-Za-z0-9._/- allowed): $IMAGE_REL"
+fi
 
 # ---- validate scale ----------------------------------------------------------
 case "$SCALE" in
@@ -97,14 +106,18 @@ RUN_PATH="$SDCPP_RUNS_DIR/$RUN_ID"
 [ -d "$RUN_PATH" ] || fail "run-dir" "Run directory not found: $RUN_PATH"
 
 # Resolve input path; ensure it stays inside SDCPP_RUNS_DIR
-INPUT_FULL="$(cd "$SDCPP_RUNS_DIR" && python3 -c "
+# Values are passed via argv — never interpolated into Python source.
+INPUT_FULL="$(cd "$SDCPP_RUNS_DIR" && python3 - "$RUN_ID" "$IMAGE_REL" <<'PYCONTAIN'
 import os, sys
-p = os.path.realpath(os.path.join('$RUN_ID', '$IMAGE_REL'))
+run_id  = sys.argv[1]
+img_rel = sys.argv[2]
+p    = os.path.realpath(os.path.join(run_id, img_rel))
 base = os.path.realpath('.')
 if not p.startswith(base + os.sep) and p != base:
     sys.exit(1)
 print(p)
-" 2>/dev/null)" || fail "path-containment" "Resolved path escapes RUNS_DIR: $RUN_ID/$IMAGE_REL"
+PYCONTAIN
+)" || fail "path-containment" "Resolved path escapes RUNS_DIR: $RUN_ID/$IMAGE_REL"
 
 [ -f "$INPUT_FULL" ] || fail "input-missing" "Source image not found: $INPUT_FULL"
 
@@ -115,7 +128,7 @@ case "$INPUT_FULL" in
 esac
 
 # ---- validate source file size -----------------------------------------------
-INPUT_BYTES="$(python3 -c "import os; print(os.path.getsize('$INPUT_FULL'))")"
+INPUT_BYTES="$(wc -c < "$INPUT_FULL" | tr -d ' \t')"
 if [ "$INPUT_BYTES" -gt "$MAX_SOURCE_BYTES" ]; then
   fail "input-size" "Source file too large: ${INPUT_BYTES} bytes (max ${MAX_SOURCE_BYTES})"
 fi
@@ -268,7 +281,7 @@ PYSCRIPT
 
 # ---- verify output file exists and is nonzero --------------------------------
 [ -f "$OUT_FULL" ] || fail "output-missing" "Output file not written: $OUT_FULL"
-OUT_BYTES="$(python3 -c "import os; print(os.path.getsize('$OUT_FULL'))")"
+OUT_BYTES="$(wc -c < "$OUT_FULL" | tr -d ' \t')"
 [ "$OUT_BYTES" -gt 0 ] || fail "output-empty" "Output file is empty: $OUT_FULL"
 
 # ---- verify output is a valid PNG via file command ---------------------------

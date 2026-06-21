@@ -662,3 +662,165 @@ img2img, inpaint, outpaint, hiresFix, faceRestore, Real-ESRGAN, LoRA injection, 
 2. **XYZ end-to-end validation** — run a real 2-cell sweep with BigMac tunnel, verify output PNGs, promote gate from `partial` to `true`.
 3. **Fix SD binary discovery** — update `sdcpp-image-edit-capabilities.sh` to search more paths; required before img2img can be implemented.
 4. **Run detail view** — dedicated panel showing run metadata, images, upscaled outputs, and manifest in one place.
+
+---
+
+## Entry 7 — Hardening pass: injection fix, firstFailedGate, gitignore, docs, packaging
+
+**Date:** 2026-06-21
+**Session type:** Autonomous hardening (Dexter Walk)
+
+### Summary
+
+QA found a direct-script Python injection bug in `sdcpp-upscale.sh`, incorrect `firstFailedGate` parsing in `server.js`, broken `.gitignore` quotes, a tracked proof symlink, and stale docs claiming upscale was gated. All issues fixed, validated, and pushed.
+
+### Fixed: Python injection in sdcpp-upscale.sh
+
+**Root cause:** The path containment check and file-size checks used `python3 -c "... '$RUN_ID' ... '$IMAGE_REL' ..."` — shell expansion of user-controlled values into Python source code.
+
+**Fix applied:**
+1. Tightened `RUN_ID` validation to allowlist `A-Za-z0-9_-` only (using `tr -d` for bash 3.2 compatibility).
+2. Tightened `IMAGE_REL` validation to allowlist `A-Za-z0-9._/-` only.
+3. Replaced `python3 -c` containment check with heredoc passing `$RUN_ID` and `$IMAGE_REL` via `sys.argv` — no shell interpolation into Python source.
+4. Replaced `python3 -c "import os; print(os.path.getsize('$INPUT_FULL'))"` with `wc -c < "$INPUT_FULL"`.
+5. Same replacement for `$OUT_FULL`.
+
+**Malicious regression test:**
+```sh
+bin/sdcpp-upscale.sh --run-id "x'));open('PWNED','w').write('1');#" --image "image.png" --scale 2 --resample lanczos
+# Result: First failed gate: run-id
+# PWNED file: NOT created
+find /Users/andrew/Image_Gen -name PWNED -print → (empty)
+```
+
+**All other security gates:**
+- Absolute path `/etc/passwd` → `path-absolute` FAIL
+- Traversal `../../etc/passwd` → `path-traversal` FAIL
+- Invalid scale `99` → `scale` FAIL
+- Invalid resample `evil` → `resample` FAIL
+- Image with bad chars `a;echo PWNED.png` → `image-chars` FAIL
+
+### Fixed: firstFailedGate parsing in server.js
+
+**Root cause:** `runAction` close handler only searched `job.stdout` for `FAIL:`. The `fail()` function in `sdcpp-lib.sh` writes `First failed gate: <gate>` to **stderr**. The pattern `/FAIL:\s*/` also would not match `==== FAIL ====`.
+
+**Fix:** Extended the close handler to search `combined = job.stdout + job.stderr` for `/First failed gate:\s*(.+)/` with priority over the old `FAIL:` fallback. Also check combined for `==== FAIL ====` when setting job status.
+
+**Proof:**
+```sh
+POST /api/actions/upscale { "path": "nonexistent-run-abc123/image.png", ... }
+# Job result: "firstFailedGate": "run-dir"   ← was null before
+```
+
+### Fixed: .gitignore
+
+- Removed broken quoted entry `"Potential UI/"` — the quotes made it ineffective.
+- Added unquoted: `Potential UI/`
+- Added: `oc-a1111-*.png`, `latest-sdcpp-proof-env`, `sdcpp-proof-*/.proof-env`, `Image_Gen_*.zip`, `__MACOSX/`
+- Removed tracked symlink: `git rm latest-sdcpp-proof-env`
+
+**Verify:**
+```
+.gitignore:59  Potential UI/ matches "Potential UI/ChatGPT Image Jun 20, 2026, 07_42_34 PM (1).png"
+.gitignore:56  oc-a1111-*.png matches oc-a1111-edit-screen.png
+.gitignore:63  sdcpp-proof-*/.proof-env matches sdcpp-proof-20260620-172600/.proof-env
+.gitignore:62  latest-sdcpp-proof-env matches itself
+.gitignore:66  Image_Gen_*.zip matches Image_Gen_A1111_Workbench_Upgrade.zip
+```
+
+### Docs updated
+
+- `operator-console/README.md` — rewrote to reflect supported/partial/gated reality including Pillow upscale, run-index, and asset discovery.
+- `operator-console/docs/a1111-workbench-implementation.md` — full rewrite to match current state including security posture, upscale details, and firstFailedGate note.
+- `sdcpp-workflow/docs/command-reference.md` — appended entries for all new scripts: `sdcpp-upscale.sh`, `sdcpp-discover-assets.sh`, `sdcpp-image-edit-capabilities.sh`, `sdcpp-upscale-capabilities.sh`, `sdcpp-read-run-metadata.sh`, `sdcpp-xyz-plot.sh`.
+- `sdcpp-workflow/QUICKSTART.md` — appended sections 8 (Operator Console) and 9 (Pillow upscale).
+
+### Added: scripts/package-source.sh
+
+Clean source packaging using `git archive HEAD` — produces `/tmp/Image_Gen_source_<ts>.zip` containing only tracked source files. Validation:
+```
+bash scripts/package-source.sh
+# clean package ok (no forbidden paths)
+# Size: 210K  SHA256: e505695...
+```
+
+### Added: operator-console/scripts/smoke-check.sh
+
+12-test regression script requiring no images, no BigMac, no model files:
+```
+PASS  node --check server.js
+PASS  node --check public/app.js
+PASS  bash -n sdcpp-upscale.sh
+PASS  bash -n sdcpp-discover-assets.sh
+PASS  bash -n sdcpp-xyz-plot.sh
+PASS  GET /api/capabilities responds
+PASS  GET /api/run-index?limit=5 responds
+PASS  Upscale rejects absolute path (HTTP 400)
+PASS  Upscale rejects traversal path (HTTP 400)
+PASS  Upscale rejects invalid scale (HTTP 400)
+PASS  XYZ plot rejects >16 cells (HTTP 400)
+PASS  GET /api/run-index?limit=99999 capped and returns runs array
+12/12 PASS
+```
+
+### Code slop check
+
+The QA report mentioned duplicate `--preset` push in xyz-plot and duplicate `model:` key in app.js. Grep confirms neither exists in current code — they were cleaned in the prior session.
+
+### Direct script upscale proof
+
+```sh
+bin/sdcpp-upscale.sh --path "20260620-232537-cli/sd15_cli_20260620-232537.png" --scale 2 --resample lanczos --overwrite
+# SOURCE_SIZE: 512x512 → OUTPUT_SIZE: 1024x1024 → OUTPUT_BYTES: 948566
+# file output: PNG image data, 1024 x 1024, 8-bit/color RGB
+# ==== PASS ====
+```
+
+### Endpoint upscale proof
+
+```sh
+POST /api/actions/upscale {"path":"20260620-232537-cli/sd15_cli_20260620-232537.png","scale":2,"resample":"lanczos","overwrite":true}
+# job status: PASS
+# upscaledImage: "20260620-232537-cli/upscaled/sd15_cli_20260620-232537-upscale-2x-lanczos.png"
+# upscaleManifest: "20260620-232537-cli/upscaled/upscale-manifest.json"
+```
+
+### Privacy proof
+
+Canary: `PRIVACY_CANARY_HARDENING_DO_NOT_STORE_762118`
+```
+grep -R "PRIVACY_CANARY_HARDENING_DO_NOT_STORE_762118" sdcpp-workflow/runs sdcpp-workflow/state operator-console
+→ no matches
+```
+Upscale `requestParams` contains only `{ path, scale, resample }` — no prompt or negative_prompt fields.
+
+### Console state
+
+- PID: 57121
+- URL: http://127.0.0.1:31337
+- Log: /tmp/operator-console.log
+
+### Files changed
+
+- `sdcpp-workflow/bin/sdcpp-upscale.sh` — injection fix, strict validation
+- `operator-console/server.js` — firstFailedGate parsing fix
+- `.gitignore` — fixed quoted entry, added missing patterns, removed tracked symlink
+- `operator-console/README.md` — full rewrite reflecting current state
+- `operator-console/docs/a1111-workbench-implementation.md` — full rewrite
+- `sdcpp-workflow/docs/command-reference.md` — appended new script entries
+- `sdcpp-workflow/QUICKSTART.md` — appended Operator Console and upscale sections
+- `scripts/package-source.sh` — new clean packaging script
+- `operator-console/scripts/smoke-check.sh` — new regression smoke check
+
+### Still gated
+
+- img2img, inpaint, outpaint
+- Hires Fix (two-pass script not yet written)
+- Face Restore (GFPGAN/CodeFormer not installed on BigMac)
+- Real-ESRGAN / A1111 Extras parity
+- LoRA injection, VAE switching
+- Textual inversion execution, hypernetwork execution
+
+### Next recommended step
+
+Write `sdcpp-workflow/bin/sdcpp-hires-fix.sh` — a two-pass txt2img → Pillow upscale workflow. All prerequisites exist (txt2img works, Pillow upscale validated). Unlocks `hiresFix: true`.

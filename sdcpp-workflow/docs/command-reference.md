@@ -190,3 +190,54 @@ Helper to list/inspect presets.
 bin/sdcpp-presets.sh            # list all presets
 bin/sdcpp-presets.sh fast       # show one preset's resolved values
 ```
+
+---
+
+## sdcpp-upscale.sh
+Local Pillow resize upscale for existing run images. No SSH, no inference, no prompt fields.
+```sh
+bin/sdcpp-upscale.sh --path "<run-id>/<image.png>" [--scale 2|3|4] [--resample lanczos|bicubic|bilinear|nearest] [--overwrite]
+bin/sdcpp-upscale.sh --run-id "<run-id>" --image "<relative.png>" [--scale 2] [--resample lanczos] [--overwrite]
+```
+- `run-id` must match `^[A-Za-z0-9_-]+$`. Image path must match `^[A-Za-z0-9._/-]+$`.
+- All values passed to Python via `sys.argv` — never interpolated into Python source.
+- Output: `runs/<run-id>/upscaled/<base>-upscale-<N>x-<resample>.png`
+- Manifest: `runs/<run-id>/upscaled/upscale-manifest.json` (schema `sdcpp-upscale-manifest-v1`, no prompt fields)
+- Also served via the Operator Console: `POST http://127.0.0.1:31337/api/actions/upscale`
+
+## sdcpp-discover-assets.sh
+Discover checkpoints, VAEs, LoRAs, embeddings, and hypernetworks on BigMac via SSH.
+```sh
+bin/sdcpp-discover-assets.sh
+```
+Writes `state/assets-cache.json`. Also available via `POST /api/actions/discover-assets`.
+
+## sdcpp-image-edit-capabilities.sh
+Probe BigMac for img2img / inpaint CLI support.
+```sh
+bin/sdcpp-image-edit-capabilities.sh
+```
+Writes `state/image-edit-capabilities.json`. Also via `POST /api/actions/probe-image-edit`.
+
+## sdcpp-upscale-capabilities.sh
+Probe BigMac for upscale tools (Pillow, Real-ESRGAN, face restore).
+```sh
+bin/sdcpp-upscale-capabilities.sh
+```
+Writes `state/upscale-capabilities.json`. Also via `POST /api/actions/probe-upscale`.
+
+## sdcpp-read-run-metadata.sh
+Read structured metadata from a run directory (run-card, manifest, PNG chunks, metrics).
+```sh
+bin/sdcpp-read-run-metadata.sh <run-id>
+```
+Also available via `GET /api/runs/<run-id>/metadata`.
+
+## sdcpp-xyz-plot.sh
+X/Y/Z parameter sweep — generate a grid of images varying two axes.
+```sh
+bin/sdcpp-xyz-plot.sh --prompt "..." --x-type steps --x-values "10,20,30" \
+  [--y-type cfg --y-values "5,7,9"] [--negative "..."] [--preset NAME] [...]
+```
+Max 16 cells (x_count × y_count). Requires running BigMac server tunnel.
+Also via `POST /api/actions/xyz-plot` (validated: max 16 cells enforced server-side).
