@@ -87,7 +87,9 @@ else
 fi
 if [ -d "$ROOT" ]; then
   find "$ROOT" -maxdepth 5 -type f \( -name "*.safetensors" -o -name "*.gguf" -o -name "*.ckpt" \) 2>/dev/null | while IFS= read -r f; do
-    size=$(wc -c < "$f" 2>/dev/null || printf "0")
+    size=$(stat -f%z "$f" 2>/dev/null || wc -c < "$f" 2>/dev/null || printf "0")
+    size=$(printf '%s' "$size" | tr -d '[:space:]')
+    [ -n "$size" ] || size=0
     base=$(basename "$f")
     case "$base" in
       sd_xl_turbo_1.0_fp16.safetensors|sd_xl_turbo_1.0.safetensors|*sdxl*turbo*.safetensors|*sdxl*turbo*.gguf)
@@ -141,6 +143,7 @@ fi
 
 python3 - "$TMP_TSV" "$CACHE" "$MODEL_VOLUME" "$MODEL_VOLUME_PATH" "$EXTERNAL_ROOT" <<'PYCACHE'
 import sys, json, datetime, os
+from pathlib import Path
 
 tsv, out, model_volume, model_volume_path, root = sys.argv[1:]
 
@@ -154,6 +157,8 @@ obj = {
     "external_root": root,
     "root_exists": False,
     "write_test": "unknown",
+    "invalid_candidates": [],
+    "invalid_candidate_count": 0,
     "sdxl_turbo_candidates": [],
     "sdxl_turbo_recommended_candidate": None,
     "sdxl_candidates": [],
@@ -165,6 +170,9 @@ obj = {
     "stable_diffusion_cpp_help_summary": {},
     "metal_support_observed": False,
     "runtime_smoke_proven": False,
+    "sdxl_turbo_staged_state": "missing",
+    "sdxl_staged_state": "missing",
+    "flux_staged_state": "missing",
     "recommended_next_step": "",
 }
 
@@ -177,6 +185,37 @@ kind_map = {
     "FLUX_T5XXL": "flux_t5xxl_candidates",
     "FLUX_GGUF": "flux_gguf_candidates",
 }
+
+MIN_BYTES = {
+    "SDXL_TURBO": 1 << 30,
+    "SDXL": 1 << 30,
+    "FLUX_MODEL": 1 << 30,
+    "FLUX_VAE": 1 << 20,
+    "FLUX_CLIP_L": 1 << 20,
+    "FLUX_T5XXL": 1 << 20,
+    "FLUX_GGUF": 1 << 30,
+}
+
+def validate_candidate(kind, path, size):
+    lower = path.lower()
+    if size <= 0:
+        return False, "zero-byte or placeholder file"
+    if kind == "SDXL_TURBO":
+        if "fp16" not in lower:
+            return False, "Turbo placeholder or quantized variant; require sd_xl_turbo_1.0_fp16.safetensors"
+    if kind == "SDXL" and "lora" in lower:
+        return False, "LoRA file, not an SDXL checkpoint"
+    threshold = MIN_BYTES.get(kind, 1)
+    if size < threshold:
+        return False, f"below minimum size threshold for {kind} ({threshold} bytes)"
+    return True, ""
+
+def local_size(path_text, fallback_text="0"):
+    try:
+        return Path(path_text).stat().st_size
+    except OSError:
+        size_digits = ''.join(ch for ch in fallback_text if ch.isdigit())
+        return int(size_digits) if size_digits else 0
 
 with open(tsv) as f:
     for raw in f:
@@ -207,7 +246,18 @@ with open(tsv) as f:
         elif parts[0] == "CAND" and len(parts) >= 4:
             arr = kind_map.get(parts[1])
             if arr:
-                obj[arr].append({"path": parts[2], "size_bytes": int(parts[3]) if parts[3].isdigit() else 0})
+                size = local_size(parts[2], parts[3])
+                valid, invalid_reason = validate_candidate(parts[1], parts[2], size)
+                candidate = {"path": parts[2], "size_bytes": size}
+                if valid:
+                    obj[arr].append(candidate)
+                else:
+                    obj["invalid_candidates"].append({
+                        "kind": parts[1],
+                        "path": parts[2],
+                        "size_bytes": size,
+                        "reason": invalid_reason,
+                    })
 
 preferred = root + "/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors"
 for cand in obj["sdxl_turbo_candidates"]:
@@ -217,19 +267,44 @@ for cand in obj["sdxl_turbo_candidates"]:
 if not obj["sdxl_turbo_recommended_candidate"] and obj["sdxl_turbo_candidates"]:
     obj["sdxl_turbo_recommended_candidate"] = obj["sdxl_turbo_candidates"][0]["path"]
 
-root_exists = bool(obj["root_exists"])
-files_present = bool(
-    obj["sdxl_turbo_candidates"] or obj["sdxl_candidates"] or obj["flux_model_candidates"] or
-    obj["flux_vae_candidates"] or obj["flux_clip_l_candidates"] or obj["flux_t5xxl_candidates"] or
-    obj["flux_gguf_candidates"]
-)
+obj["invalid_candidate_count"] = len(obj["invalid_candidates"])
 
-if obj["sdxl_turbo_recommended_candidate"]:
+root_exists = bool(obj["root_exists"])
+sdxl_valid = bool(obj["sdxl_candidates"])
+turbo_valid = bool(obj["sdxl_turbo_candidates"])
+flux_model_valid = bool(obj["flux_model_candidates"])
+flux_vae_valid = bool(obj["flux_vae_candidates"])
+flux_clip_valid = bool(obj["flux_clip_l_candidates"])
+flux_t5_valid = bool(obj["flux_t5xxl_candidates"])
+flux_gguf_valid = bool(obj["flux_gguf_candidates"])
+
+if turbo_valid:
+    obj["sdxl_turbo_staged_state"] = "true"
+elif any(item["kind"] == "SDXL_TURBO" for item in obj["invalid_candidates"]):
+    obj["sdxl_turbo_staged_state"] = "false"
+
+if sdxl_valid:
+    obj["sdxl_staged_state"] = "true"
+elif any(item["kind"] == "SDXL" for item in obj["invalid_candidates"]):
+    obj["sdxl_staged_state"] = "false"
+
+if flux_model_valid and flux_vae_valid and (flux_clip_valid and flux_t5_valid or flux_gguf_valid):
+    obj["flux_staged_state"] = "true"
+elif flux_model_valid and flux_vae_valid:
+    obj["flux_staged_state"] = "partial"
+elif flux_model_valid or flux_vae_valid or flux_clip_valid or flux_t5_valid or flux_gguf_valid:
+    obj["flux_staged_state"] = "partial"
+
+if obj["sdxl_staged_state"] == "true":
+    obj["recommended_next_step"] = "SDXL base is staged; BigMac Metal smoke proof is still required before enabling support."
+elif obj["sdxl_turbo_staged_state"] == "true":
     obj["recommended_next_step"] = "SDXL Turbo is staged; probe BigMac sd-cli flags and run bounded 512x512, 1-4 step smoke before enabling support."
-elif obj["flux_model_candidates"] and obj["flux_vae_candidates"] and obj["flux_clip_l_candidates"] and obj["flux_t5xxl_candidates"]:
+elif obj["flux_staged_state"] == "true":
     obj["recommended_next_step"] = "Flux component set is staged; inspect sd-cli Flux flags and run bounded smoke before enabling support."
+elif obj["flux_staged_state"] == "partial":
+    obj["recommended_next_step"] = "Flux model and VAE are staged, but CLIP-L/T5XXL are missing unless the BigMac CLI proves an embedded path."
 elif root_exists:
-    obj["recommended_next_step"] = "Model root exists but required SDXL Turbo or Flux files are missing; stage files on wc2tb and rerun this check."
+    obj["recommended_next_step"] = "Model root exists but required SDXL Turbo, SDXL base, or Flux files are missing; stage files on wc2tb and rerun this check."
 else:
     obj["recommended_next_step"] = "Create /Volumes/wc2tb/ImageGen and stage SDXL Turbo or Flux files there."
 
@@ -244,7 +319,7 @@ import sys, json
 d=json.load(open(sys.argv[1]))
 if not d.get("route_ok"):
     sys.exit(2)
-if d.get("runtime_smoke_proven") and (d.get("sdxl_turbo_recommended_candidate") or (d.get("flux_model_candidates") and d.get("flux_vae_candidates") and d.get("flux_clip_l_candidates") and d.get("flux_t5xxl_candidates"))):
+if d.get("runtime_smoke_proven") and (d.get("sdxl_staged_state") == "true" or d.get("sdxl_turbo_staged_state") == "true" or d.get("flux_staged_state") == "true"):
     sys.exit(0)
 sys.exit(1)
 PYSTATUS
@@ -267,8 +342,12 @@ elif not d.get("root_exists"):
     print("Model root /Volumes/wc2tb/ImageGen is missing on BigMac.")
 elif d.get("write_test") != "pass":
     print("Model root exists, but write test failed on BigMac.")
-elif d.get("sdxl_turbo_recommended_candidate") or (d.get("flux_model_candidates") and d.get("flux_vae_candidates") and d.get("flux_clip_l_candidates") and d.get("flux_t5xxl_candidates")):
-    print("Model files are staged, but runtime smoke proof is still missing.")
+elif d.get("sdxl_staged_state") == "true":
+    print("SDXL base is staged, but runtime smoke proof is still missing.")
+elif d.get("sdxl_turbo_staged_state") == "true":
+    print("SDXL Turbo is staged, but runtime smoke proof is still missing.")
+elif d.get("flux_staged_state") in {"true", "partial"}:
+    print("Flux files are staged, but runtime smoke proof or missing encoder components still block support.")
 else:
     print("Model root is usable, but required SDXL Turbo / Flux files are missing.")
 PYPARTIAL

@@ -52,8 +52,15 @@ without explicit approval, append-only Bible, verified-PNG = success).
 
 ## Phase 5 — SDXL base 768 / 1024
 - Goal: prove SDXL base after SDXL Turbo / Flux staging work is concrete.
-- Prereqs: SDXL checkpoint staged under `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/`, memory headroom checked.
+- Prereqs: SDXL checkpoint staged under `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/`, memory headroom checked. Current live state already has `sd_xl_base_1.0.safetensors` staged and nonzero, so this is now the best immediate runtime proof target if `sd-cli --help` supports the needed flags.
 - Exit: verified SDXL PNG on MacBook; documented timings/memory.
+
+## Live update — 2026-06-21
+
+- SDXL base is staged and nonzero, so it is ahead of SDXL Turbo for bounded smoke priority.
+- SDXL Turbo is still blocked on the missing fp16 file; the 0B q6p/q8p placeholder is not a smoke target.
+- Flux is partial: model and VAE are staged, but CLIP-L and T5XXL are still missing unless BigMac `sd-cli --help` proves an embedded path.
+- The stage checker now rejects zero-byte and tiny placeholder files instead of letting them masquerade as valid model candidates.
 
 ## Phase 6 — Minimal MacBook UI (only after server workflow is reliable)
 - Goal: thin local UI over the existing server scripts (no new inference path).

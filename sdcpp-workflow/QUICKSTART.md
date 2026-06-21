@@ -149,3 +149,10 @@ curl -s -X POST http://127.0.0.1:31337/api/actions/check-model-stage | python3 -
 ```
 
 Staged files do not mean supported. SDXL Turbo, Flux, and SDXL remain gated until BigMac Metal smoke output proves a real PNG.
+
+## Live staging note
+
+- SDXL base is staged and nonzero at `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/sd_xl_base_1.0.safetensors`.
+- SDXL Turbo remains blocked until `sd_xl_turbo_1.0_fp16.safetensors` exists; do not use the 0B `sd_xl_turbo_q6p_q8p.ckpt` placeholder.
+- Flux is partial: `flux1-schnell-fp8.safetensors` and `ae.safetensors` are staged, but CLIP-L and T5XXL are still missing unless BigMac `sd-cli --help` proves an embedded path.
+- `bin/sdcpp-model-stage-check.sh` now rejects zero-byte and tiny placeholder files in the stage cache.

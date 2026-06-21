@@ -260,3 +260,14 @@ bin/sdcpp-xyz-plot.sh --prompt "..." --x-type steps --x-values "10,20,30" \
 ```
 Max 16 cells (x_count × y_count). Requires running BigMac server tunnel.
 Also via `POST /api/actions/xyz-plot` (validated: max 16 cells enforced server-side).
+
+## sdcpp-model-stage-check.sh
+Validate staged SDXL Turbo / Flux / SDXL files on BigMac and write `state/model-stage-cache.json`.
+- Uses local `Path.stat()` on the mounted `/Volumes/wc2tb/ImageGen` tree for accurate size checks.
+- Rejects zero-byte and tiny placeholder files.
+- Emits `sdxl_staged_state`, `sdxl_turbo_staged_state`, `flux_staged_state`, and `invalid_candidates`.
+
+## sdcpp-model-inventory-wc2tb.sh
+Inventory model candidates and write the move plan/result manifests under `/Volumes/wc2tb/ImageGen/manifests/`.
+- Reports `remaining_high_confidence_outside_root`, `still_actionable_high_confidence_count`, `duplicate_skip_count`, `missing_source_skip_count`, and previews for each.
+- `GET /api/model-inventory` reads the cache and now exists in the live server again after restart.

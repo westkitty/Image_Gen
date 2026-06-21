@@ -132,6 +132,12 @@ curl -s -X POST http://127.0.0.1:31337/api/actions/check-model-stage | python3 -
 
 The staging root is `/Volumes/wc2tb/ImageGen`. SDXL Turbo first target is `sd_xl_turbo_1.0_fp16.safetensors`; Flux Schnell accepts official safetensors files or stable-diffusion.cpp-compatible GGUF/quantized candidates. The capability gates remain false from staged files alone; smoke output must prove support.
 
+Live state update:
+- SDXL base is now staged and nonzero, so it is the best next runtime proof target.
+- SDXL Turbo remains blocked on the missing fp16 file; do not use the 0B q6p/q8p placeholder.
+- Flux remains partial: model and VAE are staged, but CLIP-L and T5XXL are still missing unless BigMac `sd-cli --help` proves an embedded path.
+- The Models screen now has a direct `/api/model-inventory` read path and handles a missing endpoint or missing cache without crashing.
+
 ## Next backend work
 
 1. Stage SDXL Turbo fp16 or Flux Schnell assets on BigMac wc2tb.

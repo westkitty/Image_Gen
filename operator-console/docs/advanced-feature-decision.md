@@ -185,3 +185,13 @@ State files updated at:
 - `sdcpp-workflow/state/assets-cache.json`
 - `sdcpp-workflow/state/image-edit-capabilities.json`
 - `sdcpp-workflow/state/upscale-capabilities.json`
+
+## Live Update — 2026-06-21
+
+The current runtime state has moved past the original “no SDXL checkpoint” assumption:
+
+- `sd_xl_base_1.0.safetensors` is staged on BigMac wc2tb and is nonzero.
+- `sdxlTurbo` is still blocked because the required fp16 file is missing; ignore the 0B `sd_xl_turbo_q6p_q8p.ckpt` placeholder.
+- Flux is now partial, not ready: Flux model and VAE are staged, but CLIP-L and T5XXL are still missing unless the BigMac binary proves an embedded path.
+- `sdxl` should be treated as staged but unsupported until a real PNG smoke run proves support.
+- The next runtime proof target is SDXL base, not SDXL Turbo.

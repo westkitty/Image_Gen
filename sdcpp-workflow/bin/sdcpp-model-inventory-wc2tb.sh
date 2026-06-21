@@ -370,8 +370,6 @@ records = list(walk_candidates(volume_root))
 high_candidates = [r for r in records if r["confidence"] == "high" and r["action"] == "move"]
 medium_candidates = [r for r in records if r["confidence"] == "medium" and r["action"] == "manual_review"]
 low_candidates = [r for r in records if r["confidence"] == "low"]
-remaining_high_confidence_paths = [r["source_path"] for r in high_candidates]
-manual_review_paths = [r["source_path"] for r in records if r["action"] == "manual_review"]
 
 selected = [r for r in records if r["confidence"] == "high" or (include_medium and r["confidence"] == "medium")]
 inventory_write_ok = True
@@ -417,8 +415,15 @@ if apply_requested:
             rec["moved_to"] = str(dest)
             moved_count += 1
 
+remaining_high_confidence_paths = [r["source_path"] for r in records if r["confidence"] == "high" and r["action"] == "move"]
+manual_review_paths = [r["source_path"] for r in records if r["action"] == "manual_review"]
+duplicate_skip_paths = [r["source_path"] for r in records if r["action"] == "duplicate_skip"]
+missing_source_paths = [r["source_path"] for r in records if r["action"] == "missing_skip"]
+
 total_candidates = len(records)
 manual_review_count = len([r for r in records if r["action"] == "manual_review"])
+duplicate_skip_count = len(duplicate_skip_paths)
+missing_source_skip_count = len(missing_source_paths)
 skipped_count = skipped_count + len([r for r in records if r["action"] == "skip"])
 if remaining_high_confidence_paths:
     recommended_next_step = "Review the remaining high-confidence model candidates outside the new root, then rerun with --apply only if their destinations are correct."
@@ -443,8 +448,14 @@ summary = {
     "low_confidence_candidates": len(low_candidates),
     "manual_review_count": manual_review_count,
     "remaining_high_confidence_outside_root": len(remaining_high_confidence_paths),
+    "still_actionable_high_confidence_count": len(remaining_high_confidence_paths),
     "remaining_high_confidence_preview": remaining_high_confidence_paths[:20],
+    "still_actionable_high_confidence_preview": remaining_high_confidence_paths[:20],
     "manual_review_preview": manual_review_paths[:20],
+    "duplicate_skip_count": duplicate_skip_count,
+    "duplicate_skip_preview": duplicate_skip_paths[:20],
+    "missing_source_skip_count": missing_source_skip_count,
+    "missing_source_preview": missing_source_paths[:20],
     "recommended_next_step": recommended_next_step,
     "moved_count": moved_count,
     "duplicate_count": duplicate_count,

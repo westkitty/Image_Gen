@@ -1264,3 +1264,39 @@ Cleaned up the wc2tb model-home migration after `66560f3`:
 - The current high-confidence review set is still visible in the console.
 - The remaining paths are all model assets outside the new root, but the apply pass did not move anything in this session because the live source paths were already missing or already staged as duplicates.
 - Current canonical model home remains `/Volumes/wc2tb/ImageGen`.
+
+---
+
+## Entry 10 — Stage cache size fix, inventory refresh, and live priority shift
+
+**Date:** 2026-06-21
+**Session type:** Live inventory/staging repair
+
+### Summary
+
+Fixed the stage-check size detection so mounted BigMac model files no longer get serialized as zero-byte placeholders. The stage cache now reports the actual mounted-file sizes from the local MacBook side, and the capability summary reflects the live priority shift:
+
+- SDXL base is staged and nonzero.
+- SDXL Turbo is still blocked on the missing fp16 file; the 0B q6p/q8p placeholder is not a valid target.
+- Flux is partial: model and VAE are staged, but CLIP-L and T5XXL are still missing unless the BigMac binary proves an embedded path.
+
+The inventory cache was also refreshed so the remaining high-confidence review set is now empty after applying the already-existing moves and duplicate/missing-source skips.
+
+### Validation
+
+- `bash /Users/andrew/Image_Gen/sdcpp-workflow/bin/sdcpp-model-stage-check.sh` → `PARTIAL`
+  - Message: `SDXL base is staged, but runtime smoke proof is still missing.`
+- `bash /Users/andrew/Image_Gen/sdcpp-workflow/bin/sdcpp-model-inventory-wc2tb.sh --apply` → PASS
+  - `remaining_high_confidence_outside_root`: `0`
+  - `still_actionable_high_confidence_count`: `0`
+  - `duplicate_skip_count`: `2`
+  - `missing_source_skip_count`: `11`
+- `GET /api/model-inventory` now returns the live cache again from the restarted Node server.
+- `GET /api/capabilities` now reports `sdxlStagedState=true`, `sdxlTurboStagedState=missing`, `fluxStagedState=partial`.
+
+### State After Completion
+
+- SDXL base is the next best runtime proof target.
+- SDXL Turbo remains blocked until the fp16 file is staged.
+- Flux remains partial until CLIP-L/T5XXL are staged or the binary proves an embedded component path.
+- The stage checker now rejects zero-byte and tiny placeholder files.

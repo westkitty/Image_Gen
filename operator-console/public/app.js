@@ -40,6 +40,7 @@ async function api(path, options = {}) {
 async function loadCapabilities() {
   try {
     state.capabilities = await api('/api/capabilities');
+    await loadModelInventory();
     hydrateControls();
     renderFeatureGates();
     renderModels();
@@ -48,6 +49,28 @@ async function loadCapabilities() {
   } catch (err) {
     setPill('pill-backend', 'Error', 'bad');
     notifyLog(err.message);
+  }
+}
+
+async function loadModelInventory() {
+  try {
+    const inv = await api('/api/model-inventory');
+    state.modelInventory = inv.summary ? { ...inv.summary, ...inv } : inv;
+  } catch (err) {
+    if (String(err.message || '').includes('Not Found')) {
+      state.modelInventory = {
+        present: false,
+        stale: true,
+        missing: true,
+        endpointMissing: true,
+        model_volume: 'wc2tb',
+        model_volume_path: '/Volumes/wc2tb',
+        external_root: '/Volumes/wc2tb/ImageGen',
+        recommended_next_step: 'Inventory endpoint missing from the running server; restart the local operator console.'
+      };
+      return;
+    }
+    throw err;
   }
 }
 
@@ -394,13 +417,17 @@ function renderModels() {
     const stage = caps.modelStage || {};
     const root = stage.external_root || '/Volumes/wc2tb/ImageGen';
     const status = !stage.present ? 'Missing cache' : stage.supportProven ? 'Smoke proven' : 'Staged check only';
+    const sdxlState = stage.sdxlStagedState || (stage.sdxlStaged ? 'true' : 'missing');
+    const turboState = stage.sdxlTurboStagedState || (stage.sdxlTurboStaged ? 'true' : 'missing');
+    const fluxState = stage.fluxStagedState || (stage.fluxStaged ? 'true' : 'missing');
     const bits = [
       ['External root', root],
       ['Last checked', stage.checked_at || 'never'],
-      ['SDXL Turbo', stage.sdxlTurboStaged ? 'staged; smoke proof required' : 'missing'],
-      ['Flux', stage.fluxStaged ? 'component set staged; smoke proof required' : 'missing or incomplete'],
-      ['SDXL', stage.sdxlStaged ? 'staged; smoke proof required' : 'missing'],
+      ['SDXL Turbo', turboState === 'true' ? 'staged; smoke proof required' : 'missing or placeholder-only'],
+      ['Flux', fluxState === 'true' ? 'component set staged; smoke proof required' : fluxState === 'partial' ? 'partial; CLIP-L/T5XXL missing unless CLI proves embedded path' : 'missing or incomplete'],
+      ['SDXL', sdxlState === 'true' ? 'staged; smoke proof required' : 'missing'],
       ['wc2tb write test', stage.write_test || 'unknown'],
+      ['Invalid candidates', String(stage.invalidCandidateCount || 0)],
       ['Next', stage.recommended_next_step || 'Run Check BigMac model stage after staging files.']
     ];
     stageEl.innerHTML =
@@ -408,6 +435,7 @@ function renderModels() {
       '<p class="fineprint" style="margin:0 0 8px">' + esc(status) + '</p>' +
       bits.map(([k, v]) => '<div class="fineprint"><strong>' + esc(k) + ':</strong> ' + esc(v) + '</div>').join('') +
       '<div class="fineprint" style="margin-top:8px"><strong>SDXL Turbo file:</strong> sd_xl_turbo_1.0_fp16.safetensors</div>' +
+      '<div class="fineprint"><strong>Ignore:</strong> 0B q6p/q8p Turbo placeholders</div>' +
       '<div class="fineprint"><strong>Flux files:</strong> diffusion/model, ae.safetensors, CLIP-L candidate, T5XXL candidate</div>' +
       '<div class="fineprint">Flux GGUF/quantized variants are accepted if stable-diffusion.cpp supports their flags on BigMac.</div>' +
       '<div class="fineprint" style="margin-top:8px"><strong>Docs:</strong> operator-console/docs/model-staging-sdxl-turbo-flux.md</div>';
@@ -416,7 +444,7 @@ function renderModels() {
   const invEl = $('model-inventory-status');
   if (invEl) {
     const inv = caps.modelInventory || state.modelInventory || {};
-    const status = !inv.present ? 'Inventory cache missing' : inv.stale ? 'Inventory stale' : 'Inventory cached';
+    const status = inv.endpointMissing ? 'Inventory endpoint missing' : !inv.present ? 'Inventory cache missing' : inv.stale ? 'Inventory stale' : 'Inventory cached';
     const root = inv.external_root || '/Volumes/wc2tb/ImageGen';
     invEl.innerHTML =
       '<h3 style="margin:0 0 6px">Inventory / move plan</h3>' +
@@ -424,10 +452,10 @@ function renderModels() {
       '<div class="fineprint"><strong>Root:</strong> ' + esc(root) + '</div>' +
       '<div class="fineprint"><strong>Total candidates:</strong> ' + esc(inv.total_candidates || 0) + '</div>' +
       '<div class="fineprint"><strong>High confidence:</strong> ' + esc(inv.high_confidence_candidates || 0) + '</div>' +
-      '<div class="fineprint"><strong>Moved:</strong> ' + esc(inv.moved_count || 0) + ' · <strong>Duplicates:</strong> ' + esc(inv.duplicate_count || 0) + ' · <strong>Collisions:</strong> ' + esc(inv.collision_count || 0) + '</div>' +
+      '<div class="fineprint"><strong>Moved:</strong> ' + esc(inv.moved_count || 0) + ' · <strong>Duplicate skips:</strong> ' + esc(inv.duplicate_skip_count || inv.duplicate_count || 0) + ' · <strong>Missing-source skips:</strong> ' + esc(inv.missing_source_skip_count || 0) + ' · <strong>Collisions:</strong> ' + esc(inv.collision_count || 0) + '</div>' +
       '<div class="fineprint"><strong>Manual review:</strong> ' + esc(inv.manual_review_count || 0) + ' · <strong>Skipped:</strong> ' + esc(inv.skipped_count || 0) + '</div>' +
       '<div class="fineprint" style="margin-top:8px">Moves are conservative. Unknown files require manual review.</div>' +
-      '<div class="fineprint" style="margin-top:8px"><strong>Remaining high-confidence outside root:</strong> ' + esc(inv.remaining_high_confidence_outside_root || 0) + '</div>' +
+      '<div class="fineprint" style="margin-top:8px"><strong>Remaining high-confidence outside root:</strong> ' + esc(inv.remaining_high_confidence_outside_root || 0) + ' · <strong>Still actionable:</strong> ' + esc(inv.still_actionable_high_confidence_count || 0) + '</div>' +
       '<div class="fineprint"><strong>Next:</strong> ' + esc(inv.recommended_next_step || 'Run the inventory action again after review.') + '</div>' +
       '<div class="fineprint" style="margin-top:8px"><strong>Inventory:</strong> ' + esc(inv.inventory_path || 'not yet written') + '</div>' +
       '<div class="fineprint"><strong>Plan:</strong> ' + esc(inv.plan_path || 'not yet written') + '</div>' +
@@ -435,8 +463,17 @@ function renderModels() {
       (Array.isArray(inv.remaining_high_confidence_preview) && inv.remaining_high_confidence_preview.length
         ? '<div class="fineprint" style="margin-top:8px"><strong>High-confidence preview:</strong> ' + esc(inv.remaining_high_confidence_preview.slice(0, 6).join(' · ')) + '</div>'
         : '') +
+      (Array.isArray(inv.still_actionable_high_confidence_preview) && inv.still_actionable_high_confidence_preview.length
+        ? '<div class="fineprint"><strong>Still actionable preview:</strong> ' + esc(inv.still_actionable_high_confidence_preview.slice(0, 6).join(' · ')) + '</div>'
+        : '') +
       (Array.isArray(inv.manual_review_preview) && inv.manual_review_preview.length
         ? '<div class="fineprint"><strong>Manual-review preview:</strong> ' + esc(inv.manual_review_preview.slice(0, 6).join(' · ')) + '</div>'
+        : '') +
+      (Array.isArray(inv.duplicate_skip_preview) && inv.duplicate_skip_preview.length
+        ? '<div class="fineprint"><strong>Duplicate skips:</strong> ' + esc(inv.duplicate_skip_preview.slice(0, 4).join(' · ')) + '</div>'
+        : '') +
+      (Array.isArray(inv.missing_source_preview) && inv.missing_source_preview.length
+        ? '<div class="fineprint"><strong>Missing sources:</strong> ' + esc(inv.missing_source_preview.slice(0, 4).join(' · ')) + '</div>'
         : '');
   }
 }

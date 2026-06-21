@@ -401,8 +401,13 @@ function summarizeModelStage(cache) {
     model_volume_free_space: '',
     external_root: MODEL_STAGE_ROOT,
     sdxlTurboStaged: false,
+    sdxlTurboStagedState: 'missing',
     fluxStaged: false,
+    fluxStagedState: 'missing',
     sdxlStaged: false,
+    sdxlStagedState: 'missing',
+    invalidCandidateCount: 0,
+    invalidCandidates: [],
     metalSupportObserved: false,
     supportProven: false,
     recommended_next_step: 'Run POST /api/actions/check-model-stage after staging model files on BigMac wc2tb.'
@@ -413,7 +418,16 @@ function summarizeModelStage(cache) {
   const fluxVaes = cache.flux_vae_candidates || [];
   const fluxClip = cache.flux_clip_l_candidates || [];
   const fluxT5 = cache.flux_t5xxl_candidates || [];
+  const invalidCandidates = cache.invalid_candidates || [];
   const help = cache.stable_diffusion_cpp_help_summary || {};
+  const turboState = cache.sdxl_turbo_staged_state || (turboCandidates.length > 0 ? 'true' : 'missing');
+  const sdxlState = cache.sdxl_staged_state || ((cache.sdxl_candidates || []).length > 0 ? 'true' : 'missing');
+  const fluxState = cache.flux_staged_state || (
+    fluxModels.length > 0 && fluxVaes.length > 0 &&
+    ((fluxClip.length > 0 && fluxT5.length > 0) || !!help.flux_without_clip_l_observed || !!help.flux_without_t5xxl_observed)
+      ? 'true'
+      : (fluxModels.length > 0 || fluxVaes.length > 0 || fluxClip.length > 0 || fluxT5.length > 0 ? 'partial' : 'missing')
+  );
   return {
     present: true,
     stale: false,
@@ -425,17 +439,20 @@ function summarizeModelStage(cache) {
     model_volume_mounted: !!(cache.model_volume_mounted ?? cache.wc1tb_mounted),
     model_volume_free_space: cache.model_volume_free_space || cache.free_space || '',
     write_test: cache.write_test || 'unknown',
-    sdxlTurboStaged: turboCandidates.length > 0,
+    sdxlTurboStaged: turboState === 'true',
+    sdxlTurboStagedState: turboState,
     sdxlTurboRecommended: cache.sdxl_turbo_recommended_candidate || null,
-    sdxlStaged: (cache.sdxl_candidates || []).length > 0,
-    fluxStaged: fluxModels.length > 0 && fluxVaes.length > 0 &&
-      (fluxClip.length > 0 || !!help.flux_without_clip_l_observed) &&
-      (fluxT5.length > 0 || !!help.flux_without_t5xxl_observed),
+    sdxlStaged: sdxlState === 'true',
+    sdxlStagedState: sdxlState,
+    fluxStaged: fluxState === 'true',
+    fluxStagedState: fluxState,
     fluxModelCandidates: fluxModels,
     fluxVaeCandidates: fluxVaes,
     fluxClipLCandidates: fluxClip,
     fluxT5xxlCandidates: fluxT5,
     fluxGgufCandidates: cache.flux_gguf_candidates || [],
+    invalidCandidateCount: cache.invalid_candidate_count || invalidCandidates.length,
+    invalidCandidates,
     metalSupportObserved: !!cache.metal_support_observed,
     supportProven: !!cache.runtime_smoke_proven,
     recommended_next_step: cache.recommended_next_step || empty.recommended_next_step
@@ -456,12 +473,18 @@ function summarizeModelInventory(cache) {
     high_confidence_candidates: 0,
     moved_count: 0,
     duplicate_count: 0,
+    duplicate_skip_count: 0,
     collision_count: 0,
     skipped_count: 0,
     manual_review_count: 0,
     remaining_high_confidence_outside_root: 0,
+    still_actionable_high_confidence_count: 0,
     remaining_high_confidence_preview: [],
+    still_actionable_high_confidence_preview: [],
     manual_review_preview: [],
+    duplicate_skip_preview: [],
+    missing_source_skip_count: 0,
+    missing_source_preview: [],
     inventory_path: null,
     plan_path: null,
     result_path: null,
@@ -481,12 +504,18 @@ function summarizeModelInventory(cache) {
     high_confidence_candidates: cache.high_confidence_candidates || 0,
     moved_count: cache.moved_count || 0,
     duplicate_count: cache.duplicate_count || 0,
+    duplicate_skip_count: cache.duplicate_skip_count || cache.duplicate_count || 0,
     collision_count: cache.collision_count || 0,
     skipped_count: cache.skipped_count || 0,
     manual_review_count: cache.manual_review_count || 0,
     remaining_high_confidence_outside_root: cache.remaining_high_confidence_outside_root || 0,
     remaining_high_confidence_preview: cache.remaining_high_confidence_preview || [],
+    still_actionable_high_confidence_count: cache.still_actionable_high_confidence_count || cache.remaining_high_confidence_outside_root || 0,
+    still_actionable_high_confidence_preview: cache.still_actionable_high_confidence_preview || cache.remaining_high_confidence_preview || [],
     manual_review_preview: cache.manual_review_preview || [],
+    duplicate_skip_preview: cache.duplicate_skip_preview || [],
+    missing_source_skip_count: cache.missing_source_skip_count || 0,
+    missing_source_preview: cache.missing_source_preview || [],
     inventory_path: cache.inventory_path || null,
     plan_path: cache.plan_path || null,
     result_path: cache.result_path || null,
@@ -503,26 +532,29 @@ function buildModelGate(kind, stage) {
   };
   if (kind === 'sdxlTurbo') {
     if (stage.supportProven && stage.sdxlTurboStaged && stage.metalSupportObserved) {
-      return { ...base, supported: true, reason: 'SDXL Turbo staged and runtime smoke proof recorded.' };
+      return { ...base, staged: true, supported: true, reason: 'SDXL Turbo staged and runtime smoke proof recorded.' };
     }
     if (stage.sdxlTurboStaged) {
-      return { ...base, reason: 'SDXL Turbo model staged; BigMac Metal smoke proof still required.', unlock_requires: 'Run a bounded SDXL Turbo smoke script after probing BigMac sd-cli flags.' };
+      return { ...base, staged: true, supported: false, reason: 'SDXL Turbo model staged; BigMac Metal smoke proof still required.', unlock_requires: 'Run a bounded SDXL Turbo smoke script after probing BigMac sd-cli flags.' };
     }
-    return { ...base, reason: 'SDXL Turbo model missing on BigMac wc2tb.', unlock_requires: `Stage ${root}/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors, then run model-stage check.` };
+    return { ...base, staged: false, supported: false, reason: 'SDXL Turbo model missing on BigMac wc2tb; ignore the 0B q6p/q8p placeholder.', unlock_requires: `Stage ${root}/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors, then run model-stage check.` };
   }
   if (kind === 'flux') {
     if (stage.supportProven && stage.fluxStaged && stage.metalSupportObserved) {
-      return { ...base, supported: true, reason: 'Flux staged and runtime smoke proof recorded.' };
+      return { ...base, staged: true, supported: true, reason: 'Flux staged and runtime smoke proof recorded.' };
     }
-    if (stage.fluxStaged) {
-      return { ...base, reason: 'Flux component set staged; BigMac Metal smoke proof still required.', unlock_requires: 'Probe sd-cli flags for Flux model, VAE, CLIP-L, and T5XXL paths, then run bounded smoke.' };
+    if (stage.fluxStagedState === 'true') {
+      return { ...base, staged: true, supported: false, reason: 'Flux component set staged; BigMac Metal smoke proof still required.', unlock_requires: 'Probe sd-cli flags for Flux model, VAE, CLIP-L, and T5XXL paths, then run bounded smoke.' };
     }
-    return { ...base, reason: 'Flux model/component files missing on BigMac wc2tb.', unlock_requires: `Stage Flux Schnell files under ${root}/flux/flux1-schnell and ${root}/flux/shared, then run model-stage check.` };
+    if (stage.fluxStagedState === 'partial') {
+      return { ...base, staged: 'partial', supported: false, reason: 'Flux model and VAE staged, but CLIP-L/T5XXL are missing unless the BigMac CLI proves an embedded path.', unlock_requires: `Stage Flux Schnell files under ${root}/flux/flux1-schnell and ${root}/flux/shared, then run model-stage check.` };
+    }
+    return { ...base, staged: false, supported: false, reason: 'Flux model/component files missing on BigMac wc2tb.', unlock_requires: `Stage Flux Schnell files under ${root}/flux/flux1-schnell and ${root}/flux/shared, then run model-stage check.` };
   }
   if (stage.sdxlStaged) {
-    return { ...base, reason: 'SDXL checkpoint staged; runtime smoke proof still required.', unlock_requires: 'Probe BigMac sd-cli flags and run a bounded SDXL smoke.' };
+    return { ...base, staged: true, reason: 'SDXL base staged; BigMac Metal smoke proof still required.', unlock_requires: 'Probe BigMac sd-cli flags and run a bounded SDXL smoke.' };
   }
-  return { ...base, reason: 'SDXL checkpoint missing on BigMac wc2tb.', unlock_requires: `Stage an SDXL checkpoint under ${root}/checkpoints/sdxl, then run model-stage check.` };
+  return { ...base, staged: false, reason: 'SDXL checkpoint missing on BigMac wc2tb.', unlock_requires: `Stage an SDXL checkpoint under ${root}/checkpoints/sdxl, then run model-stage check.` };
 }
 
 const PNG_CHUNK_READ_LIMIT = 20 * 1024 * 1024; // 20 MB
