@@ -8,12 +8,12 @@
 </head>
 <body>
   <div class="app-container">
-    <nav class="sidebar">
+    <nav class="sidebar" aria-label="Main Navigation">
       <div class="sidebar-header">
         <h2>BigMac Control</h2>
       </div>
       <ul class="nav-links">
-        <li><button class="nav-btn active" data-target="dashboard">Dashboard</button></li>
+        <li><button class="nav-btn active" data-target="dashboard" aria-current="page">Dashboard</button></li>
         <li><button class="nav-btn" data-target="generate">Generate Single</button></li>
         <li><button class="nav-btn" data-target="batch">Batch Generate</button></li>
         <li><button class="nav-btn" data-target="server">Warm Server</button></li>
@@ -25,11 +25,11 @@
 
     <main class="main-content">
       <header class="top-strip">
-        <div class="status-indicator" id="global-backend-status">
+        <div class="status-indicator" id="global-backend-status" aria-live="polite">
           <span class="indicator-dot unknown"></span>
           <span class="indicator-text">Backend Status: Unknown</span>
         </div>
-        <div class="active-job-indicator hidden" id="global-job-status">
+        <div class="active-job-indicator hidden" id="global-job-status" aria-live="assertive">
           <span class="spinner"></span>
           <span class="job-text">Job running...</span>
         </div>
@@ -38,19 +38,19 @@
       <div class="content-scroll">
         
         <!-- DASHBOARD -->
-        <section id="dashboard" class="tab-content active">
-          <h1>Control Dashboard</h1>
+        <section id="dashboard" class="tab-content active" aria-labelledby="heading-dashboard">
+          <h1 id="heading-dashboard">Control Dashboard</h1>
           <div class="card-grid">
             <div class="card">
               <h3>Quick Actions</h3>
               <div class="action-buttons">
-                <button onclick="runJob('/api/actions/verify')">Verify Backend</button>
-                <button onclick="runJob('/api/actions/server-status')">Check Server Status</button>
+                <button onclick="runJob('/api/actions/verify')" id="btn-verify-dash">Verify Backend</button>
+                <button onclick="runJob('/api/actions/server-status')" id="btn-status-dash">Check Server Status</button>
               </div>
             </div>
             <div class="card">
               <h3>Latest Run</h3>
-              <div id="dashboard-latest-run">
+              <div id="dashboard-latest-run" aria-live="polite">
                 <p>Loading runs...</p>
               </div>
             </div>
@@ -58,14 +58,18 @@
         </section>
 
         <!-- GENERATE SINGLE -->
-        <section id="generate" class="tab-content">
-          <h1>Generate Single</h1>
+        <section id="generate" class="tab-content" aria-labelledby="heading-generate">
+          <h1 id="heading-generate">Generate Single</h1>
           <div class="layout-split">
             <div class="form-panel card">
               <form id="form-generate-single" onsubmit="event.preventDefault(); submitGenerateSingle();">
                 <div class="form-group">
                   <label for="gen-prompt">Prompt</label>
-                  <textarea id="gen-prompt" rows="4" required></textarea>
+                  <textarea id="gen-prompt" rows="3" required aria-required="true"></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="gen-negative">Negative Prompt</label>
+                  <textarea id="gen-negative" rows="2"></textarea>
                 </div>
                 <div class="form-group">
                   <label for="gen-preset">Preset</label>
@@ -88,12 +92,12 @@
                   <label for="gen-seed">Seed (Optional)</label>
                   <input type="text" id="gen-seed" placeholder="e.g. 42 or random">
                 </div>
-                <button type="submit" class="primary-btn">Generate</button>
+                <button type="submit" class="primary-btn" id="btn-submit-single">Generate</button>
               </form>
             </div>
             <div class="preview-panel card">
               <h3>Preview</h3>
-              <div class="image-preview" id="preview-single">
+              <div class="image-preview" id="preview-single" aria-live="polite">
                 <div class="empty-state">No image generated yet.</div>
               </div>
             </div>
@@ -101,18 +105,22 @@
         </section>
 
         <!-- BATCH GENERATE -->
-        <section id="batch" class="tab-content">
-          <h1>Batch Generate</h1>
+        <section id="batch" class="tab-content" aria-labelledby="heading-batch">
+          <h1 id="heading-batch">Batch Generate</h1>
           <div class="layout-split">
             <div class="form-panel card">
               <form id="form-generate-batch" onsubmit="event.preventDefault(); submitGenerateBatch();">
                 <div class="form-group">
                   <label for="batch-prompt">Prompt</label>
-                  <textarea id="batch-prompt" rows="4" required></textarea>
+                  <textarea id="batch-prompt" rows="3" required aria-required="true"></textarea>
                 </div>
                 <div class="form-group">
-                  <label for="batch-count">Count</label>
-                  <input type="number" id="batch-count" value="3" min="1" max="12">
+                  <label for="batch-negative">Negative Prompt</label>
+                  <textarea id="batch-negative" rows="2"></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="batch-count">Count (1-12)</label>
+                  <input type="number" id="batch-count" value="3" min="1" max="12" required>
                 </div>
                 <div class="form-group">
                   <label for="batch-preset">Preset</label>
@@ -123,6 +131,20 @@
                   </select>
                 </div>
                 <div class="form-group">
+                  <label for="batch-mode">Mode</label>
+                  <select id="batch-mode">
+                    <option value="cli" selected>CLI</option>
+                    <option value="server">Server</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="batch-api">API (for Server Mode)</label>
+                  <select id="batch-api">
+                    <option value="openai" selected>OpenAI (default)</option>
+                    <option value="sdapi">SDAPI</option>
+                  </select>
+                </div>
+                <div class="form-group">
                   <label for="batch-seed-mode">Seed Mode</label>
                   <select id="batch-seed-mode">
                     <option value="increment" selected>Increment</option>
@@ -130,12 +152,16 @@
                     <option value="random">Random</option>
                   </select>
                 </div>
-                <button type="submit" class="primary-btn">Batch Generate</button>
+                <div class="form-group">
+                  <label for="batch-seed-start">Seed Start</label>
+                  <input type="number" id="batch-seed-start" value="42" required>
+                </div>
+                <button type="submit" class="primary-btn" id="btn-submit-batch">Batch Generate</button>
               </form>
             </div>
             <div class="preview-panel card">
               <h3>Batch Output</h3>
-              <div class="image-grid" id="preview-batch">
+              <div class="image-grid" id="preview-batch" aria-live="polite">
                 <div class="empty-state">No batch runs yet.</div>
               </div>
             </div>
@@ -143,48 +169,139 @@
         </section>
 
         <!-- WARM SERVER -->
-        <section id="server" class="tab-content">
-          <h1>Warm Server Session</h1>
-          <div class="card">
-            <h3>Server Controls</h3>
+        <section id="server" class="tab-content" aria-labelledby="heading-server">
+          <h1 id="heading-server">Warm Server Session</h1>
+          <div class="card" id="server-status-card">
+            <h3>Server Status & Controls</h3>
             <p>Use a warm server to keep models loaded for faster sequential generations.</p>
             <div class="action-buttons">
-              <button onclick="runJob('/api/actions/server-start')" class="primary-btn">Start Server</button>
-              <button onclick="runJob('/api/actions/server-stop')" class="danger-btn">Stop Server</button>
-              <button onclick="runJob('/api/actions/server-status')">Refresh Status</button>
+              <button onclick="runJob('/api/actions/server-start')" class="primary-btn" id="btn-server-start">Start Server</button>
+              <button onclick="runJob('/api/actions/server-stop')" class="danger-btn" id="btn-server-stop">Stop Server</button>
+              <button onclick="runJob('/api/actions/server-status')" id="btn-server-refresh">Refresh Status</button>
             </div>
+          </div>
+
+          <div class="card">
+            <h3>Generate via Server</h3>
+            <form id="form-server-generate" onsubmit="event.preventDefault(); submitServerGenerate();">
+              <div class="form-group">
+                <label for="srv-prompt">Prompt</label>
+                <textarea id="srv-prompt" rows="3" required></textarea>
+              </div>
+              <div class="form-group">
+                <label for="srv-negative">Negative Prompt</label>
+                <textarea id="srv-negative" rows="2"></textarea>
+              </div>
+              <div class="form-group">
+                <label for="srv-preset">Preset</label>
+                <select id="srv-preset">
+                  <option value="fast" selected>Fast (8 steps)</option>
+                  <option value="balanced">Balanced (16 steps)</option>
+                  <option value="quality">Quality (20 steps)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="srv-api">API</label>
+                <select id="srv-api">
+                  <option value="openai" selected>OpenAI</option>
+                  <option value="sdapi">SDAPI</option>
+                  <option value="native">Native</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="srv-seed">Seed (Optional)</label>
+                <input type="text" id="srv-seed" placeholder="e.g. 42 or random">
+              </div>
+              <button type="submit" class="primary-btn" id="btn-submit-srv">Generate on Server</button>
+            </form>
           </div>
         </section>
 
         <!-- RUN HISTORY -->
-        <section id="history" class="tab-content">
-          <h1>Run History</h1>
+        <section id="history" class="tab-content" aria-labelledby="heading-history">
+          <h1 id="heading-history">Run History</h1>
           <div class="card">
-            <button onclick="loadRuns()">Refresh History</button>
-            <div id="run-list" class="run-list">
+            <div class="filters">
+              <input type="text" id="filter-prompt" placeholder="Search prompts..." oninput="renderRunHistory()">
+              <select id="filter-type" onchange="renderRunHistory()">
+                <option value="">All Types</option>
+                <option value="cli">CLI</option>
+                <option value="batch">Batch</option>
+                <option value="server">Server</option>
+              </select>
+              <select id="filter-status" onchange="renderRunHistory()">
+                <option value="">All Statuses</option>
+                <option value="PASS">PASS</option>
+                <option value="FAIL">FAIL</option>
+                <option value="PARTIAL">PARTIAL</option>
+              </select>
+              <button onclick="loadRuns()">Refresh History</button>
+            </div>
+            <div id="run-list" class="run-list" aria-live="polite">
               <p>Loading...</p>
             </div>
           </div>
         </section>
 
         <!-- ADVANCED -->
-        <section id="advanced" class="tab-content">
-          <h1>Advanced & Diagnostics</h1>
+        <section id="advanced" class="tab-content" aria-labelledby="heading-advanced">
+          <h1 id="heading-advanced">Advanced & Diagnostics</h1>
           <div class="card">
             <h3>Tools</h3>
-            <div class="action-buttons">
-              <button onclick="runJob('/api/actions/verify')">Run Verify Script</button>
-              <button onclick="runJob('/api/actions/seed-test')">Run Seed Test (Smoke)</button>
+            <div class="action-buttons" style="margin-bottom: 20px;">
+              <button onclick="runJob('/api/actions/verify')" id="btn-adv-verify">Run Verify Script</button>
+              <button onclick="runJob('/api/actions/seed-test')" id="btn-adv-seed">Run Seed Test (Smoke)</button>
+              <button onclick="runJob('/api/actions/server-status')" id="btn-adv-status">Check Server Status</button>
             </div>
+
+            <h3>Cleanup</h3>
+            <div class="form-group">
+              <label for="cleanup-days">Delete runs older than (days):</label>
+              <input type="number" id="cleanup-days" value="7" min="1">
+            </div>
+            <button onclick="submitCleanup()" class="danger-btn" id="btn-adv-cleanup">Cleanup Old Runs</button>
           </div>
         </section>
 
         <!-- SETTINGS -->
-        <section id="settings" class="tab-content">
-          <h1>Settings</h1>
+        <section id="settings" class="tab-content" aria-labelledby="heading-settings">
+          <h1 id="heading-settings">Settings</h1>
           <div class="card">
-            <p>UI preferences only. Does not mutate backend state.</p>
-            <!-- Add real settings if needed later -->
+            <p>UI preferences are stored locally in the browser.</p>
+            <form onsubmit="event.preventDefault(); saveSettings();" style="margin-top: 16px;">
+              <div class="form-group">
+                <label for="set-default-preset">Default Preset</label>
+                <select id="set-default-preset">
+                  <option value="fast">Fast</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="quality">Quality</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="set-default-mode">Default Mode</label>
+                <select id="set-default-mode">
+                  <option value="cli">CLI</option>
+                  <option value="server">Server</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="set-batch-count">Default Batch Count</label>
+                <input type="number" id="set-batch-count" value="3" min="1" max="12">
+              </div>
+              <button type="submit" class="primary-btn">Save Settings</button>
+              <span id="settings-saved-msg" class="hidden" style="margin-left:10px; color:var(--color-status-pass);">Saved!</span>
+            </form>
+          </div>
+        </section>
+
+        <!-- RUN DETAIL (Hidden by default) -->
+        <section id="run-detail" class="tab-content" aria-labelledby="heading-rundetail">
+          <div style="display:flex; justify-content: space-between; align-items:center;">
+            <h1 id="heading-rundetail">Run Details</h1>
+            <button onclick="closeRunDetail()" class="primary-btn" style="background:var(--color-bg-panel); color:var(--color-text-primary);">Back</button>
+          </div>
+          <div class="card" id="run-detail-content" aria-live="polite">
+            <p>Loading...</p>
           </div>
         </section>
 
@@ -193,14 +310,14 @@
   </div>
 
   <!-- Terminal Output Modal / Overlay -->
-  <div id="job-modal" class="modal hidden">
+  <div id="job-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-content card">
       <div class="modal-header">
-        <h3>Job Console</h3>
-        <button onclick="closeJobModal()" class="close-btn">&times;</button>
+        <h3 id="modal-title">Job Console</h3>
+        <button onclick="closeJobModal()" class="close-btn" aria-label="Close modal">&times;</button>
       </div>
       <div class="modal-body">
-        <pre id="job-log-output">Waiting for logs...</pre>
+        <pre id="job-log-output" aria-live="polite">Waiting for logs...</pre>
       </div>
     </div>
   </div>

@@ -14,17 +14,39 @@ const RUNS_DIR = path.join(WORKFLOW_ROOT, 'runs');
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ---- VALIDATION CONSTANTS ----
+const ALLOWED_PRESETS = new Set(["smoke", "thumbnail", "fast", "balanced", "quality", "quality_plus"]);
+const ALLOWED_MODES = new Set(["cli", "server"]);
+const ALLOWED_APIS = new Set(["openai", "sdapi", "native"]);
+const ALLOWED_SEED_MODES = new Set(["same", "increment", "random"]);
+
+function validatePrompt(prompt) {
+  if (typeof prompt !== 'string') return false;
+  return prompt.length > 0 && prompt.length <= 4000;
+}
+
+function validateNegativePrompt(neg) {
+  if (neg === undefined || neg === null || neg === '') return true;
+  if (typeof neg !== 'string') return false;
+  return neg.length <= 2000;
+}
+
 // In-memory job store
 const jobs = {};
 
-function createJob() {
+function createJob(commandAction) {
   const jobId = crypto.randomUUID();
   jobs[jobId] = {
     id: jobId,
+    commandAction: commandAction,
     status: 'queued', // queued, running, PASS, PARTIAL, FAIL
     stdout: '',
     stderr: '',
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    completedAt: null,
+    exitCode: null,
+    firstFailedGate: null,
+    runId: null
   };
   return jobId;
 }
@@ -46,8 +68,11 @@ function runAction(jobId, scriptPath, args) {
   });
 
   process.on('close', (code) => {
-    // Determine PASS/FAIL/PARTIAL from stdout if possible, or fallback to code.
+    jobs[jobId].exitCode = code;
+    jobs[jobId].completedAt = Date.now();
+    
     const out = jobs[jobId].stdout;
+    
     if (out.includes('==== PASS ====')) {
       jobs[jobId].status = 'PASS';
     } else if (out.includes('status: PARTIAL') || out.includes('==== PARTIAL ====')) {
@@ -57,87 +82,176 @@ function runAction(jobId, scriptPath, args) {
     } else {
       jobs[jobId].status = code === 0 ? 'PASS' : 'FAIL';
     }
+
+    // Try to extract failed gate
+    const failMatch = out.match(/FAIL:\s*(.+?)(?=\n|$)/);
+    if (failMatch) {
+      jobs[jobId].firstFailedGate = failMatch[1].trim();
+    }
+
+    // Try to extract run ID. Usually printed like "Report: .../runs/20260620-123456-cli/..."
+    // Or we can just grab the last created run ID if it's very recent.
+    const runIdMatch = out.match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9]+)/);
+    if (runIdMatch) {
+      jobs[jobId].runId = runIdMatch[1];
+    }
   });
 }
 
 // ---- ACTIONS ----
 
 app.post('/api/actions/verify', (req, res) => {
-  const jobId = createJob();
+  const jobId = createJob('verify');
   runAction(jobId, 'bin/sdcpp-verify.sh', []);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
+app.post('/api/actions/server-status', (req, res) => {
+  const jobId = createJob('server-status');
+  runAction(jobId, 'bin/sdcpp-server-status.sh', []);
+  res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
 app.post('/api/actions/generate-fast', (req, res) => {
-  const { prompt, seed, mode } = req.body;
-  if (!prompt) return res.status(400).json({ error: "Missing prompt" });
+  const { prompt, negative_prompt, seed, mode, preset } = req.body;
+  if (!validatePrompt(prompt)) return res.status(400).json({ error: "Invalid prompt" });
+  if (!validateNegativePrompt(negative_prompt)) return res.status(400).json({ error: "Invalid negative prompt" });
   
-  const args = ['--mode', mode || 'cli', '--prompt', prompt];
-  if (seed) {
+  const m = mode || 'cli';
+  if (!ALLOWED_MODES.has(m)) return res.status(400).json({ error: "Invalid mode" });
+
+  const args = ['--mode', m, '--prompt', prompt];
+  
+  if (negative_prompt) {
+    args.push('--negative', negative_prompt);
+  }
+  if (seed && /^(random|\d+)$/.test(String(seed))) {
     args.push('--seed', String(seed));
   }
+  if (preset && ALLOWED_PRESETS.has(preset)) {
+    args.push('--preset', preset);
+  }
 
-  const jobId = createJob();
+  const jobId = createJob('generate-fast');
   runAction(jobId, 'bin/sdcpp-run-fast.sh', args);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
 app.post('/api/actions/generate-batch', (req, res) => {
-  const { prompt, count, preset, seedMode, seedStart, mode, api } = req.body;
-  if (!prompt) return res.status(400).json({ error: "Missing prompt" });
+  const { prompt, negative_prompt, count, preset, seedMode, seedStart, mode, api } = req.body;
+  if (!validatePrompt(prompt)) return res.status(400).json({ error: "Invalid prompt" });
+  if (!validateNegativePrompt(negative_prompt)) return res.status(400).json({ error: "Invalid negative prompt" });
 
   const args = ['--prompt', prompt];
-  if (mode) args.push('--mode', mode);
-  if (count) args.push('--count', String(count));
-  if (preset) args.push('--preset', preset);
-  if (seedMode) args.push('--seed-mode', seedMode);
-  if (seedStart) args.push('--seed-start', String(seedStart));
-  if (api) args.push('--api', api);
+  
+  if (negative_prompt) args.push('--negative', negative_prompt);
 
-  const jobId = createJob();
+  const m = mode || 'cli';
+  if (!ALLOWED_MODES.has(m)) return res.status(400).json({ error: "Invalid mode" });
+  args.push('--mode', m);
+
+  if (count) {
+    const c = parseInt(count);
+    if (isNaN(c) || c < 1 || c > 12) return res.status(400).json({ error: "Invalid count (1-12)" });
+    args.push('--count', String(c));
+  }
+
+  if (preset) {
+    if (!ALLOWED_PRESETS.has(preset)) return res.status(400).json({ error: "Invalid preset" });
+    args.push('--preset', preset);
+  }
+
+  if (seedMode) {
+    if (!ALLOWED_SEED_MODES.has(seedMode)) return res.status(400).json({ error: "Invalid seed mode" });
+    args.push('--seed-mode', seedMode);
+  }
+
+  if (seedStart) {
+    if (!/^\d+$/.test(String(seedStart))) return res.status(400).json({ error: "Invalid seed start" });
+    args.push('--seed-start', String(seedStart));
+  }
+
+  if (api) {
+    if (!ALLOWED_APIS.has(api)) return res.status(400).json({ error: "Invalid API" });
+    args.push('--api', api);
+  }
+
+  const jobId = createJob('generate-batch');
   runAction(jobId, 'bin/sdcpp-batch-generate.sh', args);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
 app.post('/api/actions/server-start', (req, res) => {
-  const jobId = createJob();
+  const jobId = createJob('server-start');
   runAction(jobId, 'bin/sdcpp-server-start.sh', []);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
 app.post('/api/actions/server-stop', (req, res) => {
-  const jobId = createJob();
+  const jobId = createJob('server-stop');
   runAction(jobId, 'bin/sdcpp-server-stop.sh', []);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
 app.post('/api/actions/server-generate', (req, res) => {
-  const { prompt, preset, api, seed } = req.body;
-  if (!prompt) return res.status(400).json({ error: "Missing prompt" });
+  const { prompt, negative_prompt, preset, api, seed } = req.body;
+  if (!validatePrompt(prompt)) return res.status(400).json({ error: "Invalid prompt" });
+  if (!validateNegativePrompt(negative_prompt)) return res.status(400).json({ error: "Invalid negative prompt" });
 
   const args = ['--prompt', prompt];
-  if (preset) args.push('--preset', preset);
-  if (api) args.push('--api', api);
-  if (seed) args.push('--seed', String(seed));
+  if (negative_prompt) args.push('--negative', negative_prompt);
 
-  const jobId = createJob();
+  if (preset) {
+    if (!ALLOWED_PRESETS.has(preset)) return res.status(400).json({ error: "Invalid preset" });
+    args.push('--preset', preset);
+  }
+
+  if (api) {
+    if (!ALLOWED_APIS.has(api)) return res.status(400).json({ error: "Invalid API" });
+    args.push('--api', api);
+  }
+
+  if (seed && /^(random|\d+)$/.test(String(seed))) {
+    args.push('--seed', String(seed));
+  }
+
+  const jobId = createJob('server-generate');
   runAction(jobId, 'bin/sdcpp-server-generate.sh', args);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
 app.post('/api/actions/seed-test', (req, res) => {
-  const jobId = createJob();
+  const jobId = createJob('seed-test');
   runAction(jobId, 'bin/sdcpp-seed-test.sh', ['--preset', 'smoke', '--seed', '424242', '--mode', 'cli']);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
+app.post('/api/actions/clean-old-runs', (req, res) => {
+  const { days } = req.body;
+  const d = parseInt(days);
+  if (isNaN(d) || d < 1) return res.status(400).json({ error: "Invalid days (must be >= 1)" });
+
+  const jobId = createJob('clean-old-runs');
+  runAction(jobId, 'bin/sdcpp-clean-old-runs.sh', ['--delete', '--older-than-days', String(d)]);
+  res.json({ job_id: jobId, status: jobs[jobId].status });
+});
 
 // ---- JOBS ----
 
 app.get('/api/jobs/:jobId', (req, res) => {
   const job = jobs[req.params.jobId];
   if (!job) return res.status(404).json({ error: 'Job not found' });
-  res.json({ id: job.id, status: job.status });
+  
+  res.json({ 
+    id: job.id, 
+    commandAction: job.commandAction,
+    status: job.status,
+    createdAt: job.createdAt,
+    completedAt: job.completedAt,
+    exitCode: job.exitCode,
+    firstFailedGate: job.firstFailedGate,
+    runId: job.runId
+  });
 });
 
 app.get('/api/jobs/:jobId/log', (req, res) => {
@@ -148,6 +262,29 @@ app.get('/api/jobs/:jobId/log', (req, res) => {
 
 
 // ---- RUNS & DISCOVERY ----
+
+function parseUiRunCard(cardPath) {
+  let metadata = {};
+  if (fs.existsSync(cardPath)) {
+    const content = fs.readFileSync(cardPath, 'utf8');
+    const frontMatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (frontMatterMatch) {
+      const lines = frontMatterMatch[1].split('\n');
+      lines.forEach(line => {
+        const splitIdx = line.indexOf(':');
+        if (splitIdx > -1) {
+          const key = line.slice(0, splitIdx).trim();
+          let value = line.slice(splitIdx + 1).trim();
+          if (value.startsWith('"') && value.endsWith('"')) {
+            value = value.slice(1, -1);
+          }
+          metadata[key] = value;
+        }
+      });
+    }
+  }
+  return metadata;
+}
 
 app.get('/api/runs', (req, res) => {
   if (!fs.existsSync(RUNS_DIR)) return res.json({ runs: [] });
@@ -161,41 +298,78 @@ app.get('/api/runs', (req, res) => {
     const runPath = path.join(RUNS_DIR, dirName);
     const cardPath = path.join(runPath, 'ui-run-card.md');
     let metadata = { id: dirName };
-    
-    if (fs.existsSync(cardPath)) {
-      const content = fs.readFileSync(cardPath, 'utf8');
-      const frontMatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      if (frontMatterMatch) {
-        const lines = frontMatterMatch[1].split('\n');
-        lines.forEach(line => {
-          const splitIdx = line.indexOf(':');
-          if (splitIdx > -1) {
-            const key = line.slice(0, splitIdx).trim();
-            let value = line.slice(splitIdx + 1).trim();
-            if (value.startsWith('"') && value.endsWith('"')) {
-              value = value.slice(1, -1);
-            }
-            metadata[key] = value;
-          }
-        });
-      }
-    }
+    Object.assign(metadata, parseUiRunCard(cardPath));
     return metadata;
   });
 
   res.json({ runs });
 });
 
+app.get('/api/runs/:runId', (req, res) => {
+  const runId = req.params.runId;
+  if (!/^[a-zA-Z0-9-]+$/.test(runId)) return res.status(400).json({ error: "Invalid runId" });
+
+  const runPath = path.join(RUNS_DIR, runId);
+  if (!fs.existsSync(runPath)) return res.status(404).json({ error: "Run not found" });
+
+  const cardPath = path.join(runPath, 'ui-run-card.md');
+  const metadata = parseUiRunCard(cardPath);
+  metadata.id = runId;
+
+  // Manifest
+  const manifestPath = path.join(runPath, metadata.manifest_json || 'batch-manifest.json');
+  let manifest = null;
+  if (fs.existsSync(manifestPath)) {
+    try {
+      manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    } catch (e) {
+      console.error("Failed to parse manifest", e);
+    }
+  }
+
+  // Reports
+  const reports = [];
+  const candidateReports = ['cli-run-report.md', 'batch-report.md', 'verify-report.md', 'server-generate-report.md', 'metrics.tsv'];
+  candidateReports.forEach(filename => {
+    if (fs.existsSync(path.join(runPath, filename))) {
+      reports.push(filename);
+    }
+  });
+
+  res.json({ metadata, manifest, reports });
+});
+
+app.get('/api/runs/:runId/files', (req, res) => {
+  const runId = req.params.runId;
+  if (!/^[a-zA-Z0-9-]+$/.test(runId)) return res.status(400).json({ error: "Invalid runId" });
+
+  const runPath = path.join(RUNS_DIR, runId);
+  if (!fs.existsSync(runPath)) return res.status(404).json({ error: "Run not found" });
+
+  let files = [];
+  try {
+    const allItems = fs.readdirSync(runPath, { recursive: true, withFileTypes: true });
+    for (const item of allItems) {
+      if (item.isFile()) {
+        const fullPath = path.join(item.path, item.name);
+        const relPath = path.relative(runPath, fullPath);
+        files.push(relPath);
+      }
+    }
+  } catch (e) {
+    console.error(e);
+  }
+
+  res.json({ files });
+});
+
 // ---- SERVER STATUS ----
 
 app.get('/api/server-status', (req, res) => {
-  // Rather than spawning a job, this is small enough to block or run quickly
-  // But to be safe and consistent with non-blocking, we'll spawn a quick job
-  const jobId = createJob();
+  const jobId = createJob('server-status-get');
   runAction(jobId, 'bin/sdcpp-server-status.sh', []);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
-
 
 // ---- SAFE STATIC FILE SERVING ----
 
@@ -203,15 +377,12 @@ app.get('/api/run-file', (req, res) => {
   const queryPath = req.query.path;
   if (!queryPath) return res.status(400).send('Missing path');
 
-  if (queryPath.includes('..') || path.isAbsolute(queryPath)) {
-    return res.status(403).send('Forbidden: Path traversal not allowed');
-  }
-
   const fullPath = path.resolve(RUNS_DIR, queryPath);
-  
-  // Extra boundary check
-  if (!fullPath.startsWith(RUNS_DIR)) {
-    return res.status(403).send('Forbidden: Outside boundaries');
+  const relPath = path.relative(RUNS_DIR, fullPath);
+
+  // Hard boundary check
+  if (relPath.startsWith('..') || path.isAbsolute(relPath)) {
+    return res.status(403).send('Forbidden: Path traversal not allowed');
   }
 
   const allowedExts = ['.png', '.md', '.json', '.tsv', '.txt', '.log'];

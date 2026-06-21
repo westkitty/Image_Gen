@@ -710,3 +710,43 @@ Correction: None
 State After Completion: UI is locally functional, jobs can be polled, and backend remains clean and verified.
 
 Next Step / Handoff: Commit and push the `operator-console` implementation to GitHub.
+
+### Entry 21 - Operator Console Hardening
+
+Timestamp: Sat Jun 20 20:41:00 EDT 2026
+Summary:
+Completed the UI hardening pass for the Operator Console.
+
+Reason / Intent:
+Make the MVP console fully functional according to the UI Build Specification while preserving absolute safety boundaries.
+
+Files Changed:
+- operator-console/package.json
+- operator-console/server.js
+- operator-console/public/index.html
+- operator-console/public/styles.css
+- operator-console/public/app.js
+- .gitignore
+
+Commands Run:
+- `npm run check` and `npm start`
+- `bin/sdcpp-verify.sh`
+- `curl` tests against `/api/actions/verify` and `/api/runs`
+
+Command Intent: Validate bridge hardening and UI rendering.
+
+Outputs Generated: A hardened UI that includes safe validation, escaped HTML, full Run Details, Run History filters, Batch generation UI, Settings, and Advanced Diagnostics.
+
+Decisions:
+1. Operator Console hardening pass started.
+2. Bridge validation/argument hardening implemented (Sets and strict regexes for prompt, seed, API, count).
+3. UI screen completion and run detail/history improvements added (modals, auto-poll, safe HTML escaping).
+4. Validation results confirmed everything remains safely bounded to localhost with no shell exposure.
+
+Bugs / Blockers: None
+
+Correction: None
+
+State After Completion: The UI is completely usable and robust for single, batch, and server-based generations. Safe directory traversal implemented for image serving.
+
+Next Step / Handoff: Commit and push the hardened UI to GitHub.

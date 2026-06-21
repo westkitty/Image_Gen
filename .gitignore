@@ -42,3 +42,5 @@ operator-console/node_modules/
 operator-console/dist/
 operator-console/.cache/
 operator-console/.env
+operator-console/server.log
+operator-console/*.log
