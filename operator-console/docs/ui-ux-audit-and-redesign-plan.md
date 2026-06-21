@@ -148,3 +148,52 @@ recorded below instead).
 - The remote BigMac-side log (`$REMOTE_LOG`, written by `tee` on the host under
   `/Users/bigmac/...`) still contains verbose output; it is never copied to the
   MacBook and is out of scope for local-repo privacy, but worth noting.
+
+---
+
+## Dexter Walk Redesign Audit — 2026-06-20
+
+Full UI/UX redesign executed while Andrew was away walking Dexter. All five screens
+verified with Playwright screenshots. No page scroll; no prompt leaks.
+
+### Goals delivered
+- **No-body-scroll app shell**: `html,body { overflow:hidden }`, `.shell { height:100dvh }`.
+  Each tab section manages its own contained scroll only for inner overflow panels.
+- **3-panel Generate layout**: 300px controls rail (sticky Generate button footer) +
+  centered image stage (flex centering, `object-fit:contain`) + optional metadata strip.
+  All essential controls visible without scrolling — negative prompt and size/scheduler
+  collapsed in `<details>` elements.
+- **CSS design tokens**: Full palette of `--bg-*`, `--text-*`, `--border-*`, `--motion-*`,
+  `--ease-*` custom properties. Consistent throughout all 1584 lines of styles.css.
+- **Animations**: `fadeScaleIn`, `shimmer` (loading skeleton), `genPulse` (button running
+  state), `pillPulse` (status indicator), `drawerSlideUp`. All gated by
+  `@media (prefers-reduced-motion: reduce)`.
+- **Gallery as distinct surface**: Image grid with hover overlay, lazy thumbnails, PASS badge.
+- **Run History as distinct surface**: Separate scrollable list; prompt search disabled with
+  explanatory label when privacy is on.
+- **Settings**: Two-card layout (Generation Defaults + Behavior & Privacy). Save prompts
+  toggle OFF by default with amber "ephemeral" label. Animated toggle CSS.
+- **Diagnostics**: Backend Checks card + Cleanup danger-zone card (red border).
+- **XSS-safe DOM**: All dynamic content built via `document.createElement()` + `textContent`
+  + `replaceChildren()`. No `innerHTML` for user-controlled content. `escapeHtml()` guard
+  for any remaining innerHTML usage.
+- **Prompt privacy**: Source-level redaction (`SDCPP_REDACT_PROMPTS=1`). `run-metadata.json`,
+  `ui-run-card.md`, `cli-run-report.md`, and `remote-stdout.log` all write `[REDACTED]`
+  (including BPE token lines). Prompt never stored in localStorage or job object.
+
+### Canary test result (2026-06-20)
+- Canary prompt: `PRIVACY_CANARY_DO_NOT_STORE_742913 a dog`
+- Run ID: `20260620-232537-cli` — status PASS, image produced (512×512)
+- grep across `sdcpp-workflow/runs/`, `operator-console/`, `/tmp/`: **CLEAN**
+- `remote-stdout.log` BPE line: `split prompt "[REDACTED]" to tokens [REDACTED]` — **CLEAN**
+- Canary string appears only in documentation files (grep examples, history) — not runtime data
+
+### Screen verification
+| Screen | Result | Notes |
+|--------|--------|-------|
+| Dashboard | PASS | SVG icons, status pills, privacy-redacted run display |
+| Generate | PASS | 3-panel no-scroll, controls rail, centered image stage, metadata strip |
+| Gallery | PASS | Image grid, PASS badges, lazy thumbnails |
+| Run History | PASS | Prompt redacted on all entries, search disabled with note |
+| Settings | PASS | Save Prompts OFF + amber "ephemeral" label, two-card layout |
+| Diagnostics | PASS | Backend Checks + Cleanup danger zone |

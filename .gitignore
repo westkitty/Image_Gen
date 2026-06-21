@@ -48,3 +48,11 @@ operator-console/*.log
 # Playwright / QA artifacts
 .playwright-mcp/
 oc-dashboard.png
+oc-generate.png
+oc-gallery.png
+oc-history.png
+oc-settings.png
+oc-advanced.png
+
+# Potential UI reference images (unapproved)
+"Potential UI/"

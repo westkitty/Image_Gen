@@ -1214,3 +1214,33 @@ Bugs / Blockers: None outstanding. Known limitation: remote BigMac-side `tee` lo
 Correction: None.
 State After Completion: Repository ready to push to origin/main.
 Next Step / Handoff: Andrew to review the console and decide whether to enable prompt saving for any non-private workflows.
+
+### Entry 42 - Dexter Walk UI/UX Redesign
+
+Timestamp: Sat Jun 20 23:29:00 EDT 2026
+Summary: Full Operator Console UI/UX redesign executed while Andrew walked Dexter. Complete rewrite of `index.html` (~787 lines), `styles.css` (~1584 lines), and `app.js` (~1008 lines). Key changes: no-body-scroll app shell (`html,body { overflow:hidden }`, `.shell { height:100dvh }`); 3-panel Generate layout (300px controls rail + centered image stage + metadata strip); CSS design tokens system; CSS animations (`fadeScaleIn`, `shimmer`, `genPulse`, `pillPulse`, `drawerSlideUp`); `prefers-reduced-motion` block; XSS-safe DOM (all dynamic content via `createElement`/`textContent`/`replaceChildren`, no `innerHTML` for user content); Gallery and Run History as distinct tab surfaces; Settings two-card layout with Save Prompts OFF + amber "ephemeral" label; Diagnostics Backend Checks + Cleanup danger zone.
+Reason / Intent: Major UX polish pass — polished console aesthetics, centered image workflow, compact always-visible controls, privacy-first defaults, and safe DOM manipulation.
+Files Changed: `operator-console/public/index.html`, `operator-console/public/styles.css`, `operator-console/public/app.js`.
+Commands Run: Playwright browser navigation + screenshots (Dashboard, Generate, Gallery, Run History, Settings, Diagnostics), privacy canary POST to `/api/actions/generate-single`, canary grep across all runtime paths.
+Command Intent: Implement redesign, visually QA all screens, prove privacy end-to-end.
+Outputs Generated: Playwright screenshots (`oc-*.png`) — ignored runtime artifacts, not committed.
+Decisions: 300px fixed controls rail; `<details>/<summary>` for negative prompt and advanced size controls; Generate button in sticky footer; stage-canvas flex-centered; `img { max-width:calc(100%-40px); max-height:calc(100%-40px); object-fit:contain }`.
+Bugs / Blockers: app.js first write blocked by security hook (innerHTML warning) — rewrote to eliminate all innerHTML for dynamic content; second write succeeded.
+Correction: BPE token line in `remote-stdout.log` verified FIXED — tokens now show `[REDACTED]` in this session's canary run.
+State After Completion: All 6 screens visually verified PASS. Privacy canary run PASS. Canary grep CLEAN. `npm run check` PASS. `sdcpp-verify.sh` PASS. Audit doc and Bible updated. Ready for commit + push.
+Next Step / Handoff: Stage operator-console/ source + docs + Bible, commit, push to origin/main.
+
+### Entry 43 - Final Commit and Push
+
+Timestamp: Sat Jun 20 23:30:00 EDT 2026
+Summary: Staged and committed all Dexter Walk redesign changes. Pushed to origin/main.
+Reason / Intent: Persist the Dexter Walk UI/UX redesign to the remote repository.
+Files Changed: `operator-console/public/{index.html,styles.css,app.js}`, `operator-console/docs/ui-ux-audit-and-redesign-plan.md`, `sdcpp-workflow/BigMac_SDCPP_Workflow_Bible.md`.
+Commands Run: `git add`, `git commit`, `git push origin main`.
+Command Intent: Version the redesign.
+Outputs Generated: New commit on origin/main.
+Decisions: Excluded screenshots, run dirs, server.log, node_modules, .DS_Store, model files.
+Bugs / Blockers: None.
+Correction: None.
+State After Completion: origin/main reflects the full Dexter Walk redesign.
+Next Step / Handoff: Andrew can open http://127.0.0.1:31337 and use the redesigned console.

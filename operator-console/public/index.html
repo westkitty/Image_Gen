@@ -3,301 +3,425 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Operator Console - SDCPP Workspace</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='18' font-size='18'>%E2%9A%99</text></svg>">
+  <title>Operator Console</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='10' fill='%2338bdf8'/><text y='17' x='7' font-size='13' fill='%2302070c' font-weight='700'>OP</text></svg>">
   <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-  
-  <div class="shell">
-    <!-- SIDEBAR -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <h1>Operator Console</h1>
-        <p class="subtitle">BigMac SDCPP Workspace</p>
+
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <svg class="sidebar-logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect x="2" y="2" width="28" height="28" rx="7" fill="rgba(56,189,248,0.1)" stroke="rgba(56,189,248,0.35)" stroke-width="1.5"/>
+        <circle cx="16" cy="16" r="6" stroke="#38bdf8" stroke-width="1.5"/>
+        <circle cx="16" cy="16" r="2" fill="#38bdf8"/>
+        <line x1="16" y1="2" x2="16" y2="8"  stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="16" y1="24" x2="16" y2="30" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="2"  y1="16" x2="8"  y2="16" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="24" y1="16" x2="30" y2="16" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <div class="sidebar-brand">
+        <span class="sidebar-title">Operator</span>
+        <span class="sidebar-subtitle">BigMac SDCPP</span>
       </div>
-      
-      <nav class="sidebar-nav">
-        <div class="nav-group">
-          <h2>Create</h2>
-          <button class="nav-btn active" id="btn-nav-dashboard" data-target="dashboard" aria-label="Navigate to Dashboard">Dashboard</button>
-          <button class="nav-btn" id="btn-nav-generate" data-target="generate-single" aria-label="Navigate to Generate">Generate</button>
-          <button class="nav-btn" id="btn-nav-batch" data-target="batch" aria-label="Navigate to Batch Explore">Batch</button>
-        </div>
-        
-        <div class="nav-group">
-          <h2>Library</h2>
-          <button class="nav-btn" id="btn-nav-gallery" data-target="gallery" aria-label="Navigate to Gallery">Gallery</button>
-          <button class="nav-btn" id="btn-nav-history" data-target="history" aria-label="Navigate to Run History">Run History</button>
-        </div>
-        
-        <div class="nav-group">
-          <h2>Session</h2>
-          <button class="nav-btn" id="btn-nav-server" data-target="server" aria-label="Navigate to Warm Server">Warm Server</button>
-        </div>
-        
-        <div class="nav-group">
-          <h2>System</h2>
-          <button class="nav-btn" id="btn-nav-settings" data-target="settings" aria-label="Navigate to Settings">Settings</button>
-          <button class="nav-btn" id="btn-nav-advanced" data-target="advanced" aria-label="Navigate to Advanced Diagnostics">Advanced Diagnostics</button>
-        </div>
-      </nav>
-    </aside>
+    </div>
 
-    <!-- MAIN CONTENT AREA -->
-    <div class="main-column">
-      
-      <!-- TOP STRIP STATUS -->
-      <header class="top-strip">
-        <div class="status-pills">
-          <div class="status-pill" id="pill-backend">
-            <span class="pill-label">Backend</span>
-            <span class="pill-value" id="val-backend">Checking...</span>
+    <nav class="sidebar-nav" aria-label="Main navigation">
+
+      <div class="nav-group">
+        <span class="nav-group-label">Workspace</span>
+
+        <button class="nav-btn active" id="btn-nav-dashboard" data-target="dashboard" aria-label="Dashboard">
+          <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <rect x="1" y="1" width="6" height="6" rx="1.5"/>
+            <rect x="9" y="1" width="6" height="6" rx="1.5"/>
+            <rect x="1" y="9" width="6" height="6" rx="1.5"/>
+            <rect x="9" y="9" width="6" height="6" rx="1.5"/>
+          </svg>
+          Dashboard
+        </button>
+
+        <button class="nav-btn" id="btn-nav-generate" data-target="generate-single" aria-label="Generate">
+          <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <polygon points="8 1 10.5 6 16 6.9 12 10.8 12.9 16 8 13.5 3.1 16 4 10.8 0 6.9 5.5 6"/>
+          </svg>
+          Generate
+        </button>
+
+        <button class="nav-btn" id="btn-nav-batch" data-target="batch" aria-label="Batch Explore">
+          <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <rect x="1" y="1" width="5.5" height="5.5" rx="1"/>
+            <rect x="9.5" y="1" width="5.5" height="5.5" rx="1"/>
+            <rect x="1" y="9.5" width="5.5" height="5.5" rx="1"/>
+            <rect x="9.5" y="9.5" width="5.5" height="5.5" rx="1"/>
+          </svg>
+          Batch
+        </button>
+      </div>
+
+      <div class="nav-group">
+        <span class="nav-group-label">Library</span>
+
+        <button class="nav-btn" id="btn-nav-gallery" data-target="gallery" aria-label="Gallery">
+          <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <rect x="1" y="1" width="14" height="14" rx="2"/>
+            <circle cx="5.5" cy="5.5" r="1.5"/>
+            <polyline points="1 11 5 7 8 10 11 7 15 11"/>
+          </svg>
+          Gallery
+        </button>
+
+        <button class="nav-btn" id="btn-nav-history" data-target="history" aria-label="Run History">
+          <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.5"/>
+            <polyline points="8 4 8 8 10.5 10.5"/>
+          </svg>
+          Run History
+        </button>
+      </div>
+
+      <div class="nav-group">
+        <span class="nav-group-label">Session</span>
+
+        <button class="nav-btn" id="btn-nav-server" data-target="server" aria-label="Warm Server">
+          <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <rect x="1" y="2" width="14" height="5" rx="1.5"/>
+            <rect x="1" y="9" width="14" height="5" rx="1.5"/>
+            <circle cx="12.5" cy="4.5" r="1"/>
+            <circle cx="12.5" cy="11.5" r="1"/>
+          </svg>
+          Warm Server
+        </button>
+      </div>
+
+      <div class="nav-group">
+        <span class="nav-group-label">System</span>
+
+        <button class="nav-btn" id="btn-nav-settings" data-target="settings" aria-label="Settings">
+          <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <circle cx="8" cy="8" r="2.5"/>
+            <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/>
+          </svg>
+          Settings
+        </button>
+
+        <button class="nav-btn" id="btn-nav-advanced" data-target="advanced" aria-label="Advanced Diagnostics">
+          <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <polyline points="1 4 4 4 4 1"/>
+            <polyline points="15 4 12 4 12 1"/>
+            <polyline points="1 12 4 12 4 15"/>
+            <polyline points="15 12 12 12 12 15"/>
+            <rect x="5" y="5" width="6" height="6" rx="1"/>
+          </svg>
+          Diagnostics
+        </button>
+      </div>
+
+    </nav>
+  </aside>
+
+  <!-- MAIN COLUMN -->
+  <div class="main-column">
+
+    <!-- TOP STATUS STRIP -->
+    <header class="top-strip">
+      <div class="status-pills">
+        <div class="status-pill" id="pill-backend">
+          <span class="pill-dot"></span>
+          <span class="pill-label">Backend</span>
+          <span class="pill-value" id="val-backend">Checking…</span>
+        </div>
+        <div class="status-pill" id="pill-job">
+          <span class="pill-dot"></span>
+          <span class="pill-label">Job</span>
+          <span class="pill-value" id="val-job">Idle</span>
+        </div>
+        <div class="status-pill" id="pill-server">
+          <span class="pill-dot"></span>
+          <span class="pill-label">Server</span>
+          <span class="pill-value" id="val-server">Checking…</span>
+        </div>
+        <div class="status-pill" id="pill-latest">
+          <span class="pill-dot"></span>
+          <span class="pill-label">Latest</span>
+          <span class="pill-value" id="val-latest">None</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- WORKSPACE -->
+    <main class="workspace" aria-live="polite">
+
+      <!-- ====================================================
+           DASHBOARD
+           ==================================================== -->
+      <section id="dashboard" class="tab-content active">
+        <div class="page-header">
+          <h2>Dashboard</h2>
+          <p>SD 1.5 / Fast CLI image generation</p>
+        </div>
+        <div class="dashboard-grid">
+          <div class="card interactive-card" role="button" tabindex="0" onclick="document.getElementById('btn-nav-generate').click()" onkeydown="if(event.key==='Enter')this.click()">
+            <svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <h3>Generate</h3>
+            <p>Fast SD 1.5 single-image generation.</p>
           </div>
-          <div class="status-pill" id="pill-job">
-            <span class="pill-label">Job</span>
-            <span class="pill-value" id="val-job">Idle</span>
+          <div class="card interactive-card" role="button" tabindex="0" onclick="document.getElementById('btn-nav-batch').click()" onkeydown="if(event.key==='Enter')this.click()">
+            <svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            <h3>Batch</h3>
+            <p>Multiple seeds or API modes in parallel.</p>
           </div>
-          <div class="status-pill" id="pill-server">
-            <span class="pill-label">Server</span>
-            <span class="pill-value" id="val-server">Checking...</span>
+          <div class="card interactive-card" role="button" tabindex="0" onclick="document.getElementById('btn-nav-gallery').click()" onkeydown="if(event.key==='Enter')this.click()">
+            <svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <h3>Gallery</h3>
+            <p>Browse image-producing outputs.</p>
           </div>
-          <div class="status-pill" id="pill-latest">
-            <span class="pill-label">Latest Status</span>
-            <span class="pill-value" id="val-latest">None</span>
+          <div class="card interactive-card" role="button" tabindex="0" onclick="document.getElementById('btn-nav-server').click()" onkeydown="if(event.key==='Enter')this.click()">
+            <svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            <h3>Warm Server</h3>
+            <p>Manage persistent model server session.</p>
           </div>
         </div>
-      </header>
 
-      <!-- WORKSPACE -->
-      <main class="workspace" aria-live="polite">
-        
-        <!-- DASHBOARD TAB -->
-        <section id="dashboard" class="tab-content active">
-          <div class="page-header">
-            <h2>Dashboard</h2>
+        <div class="card" style="margin-top:16px;">
+          <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">Latest Run</h3>
+          <div id="dashboard-latest-run">
+            <p class="text-muted" style="font-size:13px;">No runs detected yet.</p>
           </div>
-          <div class="dashboard-grid">
-            <div class="card interactive-card" onclick="document.getElementById('btn-nav-generate').click()">
-              <svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-              <h3>Generate Single</h3>
-              <p>Explore ideas using fast CLI single-image generation.</p>
-            </div>
-            <div class="card interactive-card" onclick="document.getElementById('btn-nav-batch').click()">
-              <svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>
-              <h3>Batch Explore</h3>
-              <p>Run multiple seeds or API modes in parallel.</p>
-            </div>
-            <div class="card interactive-card" onclick="document.getElementById('btn-nav-gallery').click()">
-              <svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-              <h3>Gallery</h3>
-              <p>Browse image-producing generation outputs.</p>
-            </div>
-            <div class="card interactive-card" onclick="document.getElementById('btn-nav-server').click()">
-              <svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-              <h3>Warm Server</h3>
-              <p>Manage the persistent model server state.</p>
-            </div>
-          </div>
-          
-          <div class="card" style="margin-top:24px;">
-            <h3>Latest Run Activity</h3>
-            <div id="dashboard-latest-run">
-              <p class="text-muted">No runs detected yet.</p>
-            </div>
-          </div>
-        </section>
+        </div>
+      </section>
 
-        <!-- GENERATE SINGLE TAB -->
-        <section id="generate-single" class="tab-content">
-          <div class="page-header">
-            <h2>Generate Single</h2>
-          </div>
-          
-          <div class="split-view">
-            <!-- Left Controls -->
-            <div class="controls-panel card">
+      <!-- ====================================================
+           GENERATE SINGLE — 3-PANEL NO-SCROLL LAYOUT
+           ==================================================== -->
+      <section id="generate-single" class="tab-content">
+        <div class="gen-shell">
+
+          <!-- Left controls rail -->
+          <div class="gen-controls-rail">
+            <div class="gen-controls-inner">
               <form id="form-generate-single" onsubmit="event.preventDefault(); submitGenerateSingle();">
-                <div class="form-group">
-                  <label for="gen-model">Model</label>
-                  <select id="gen-model" disabled>
-                    <option value="sd15">SD 1.5 — v1-5-pruned-emaonly.safetensors</option>
-                  </select>
-                  <span class="helper-text">Only staged model available. SDXL/Flux not enabled.</span>
+
+                <!-- Privacy indicator -->
+                <div class="privacy-indicator" id="gen-privacy-indicator" title="Prompt text is ephemeral and will not be saved to run records">
+                  <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="5" width="8" height="6" rx="1"/><path d="M4 5V3.5a2 2 0 014 0V5"/></svg>
+                  Prompts redacted in records
                 </div>
 
-                <div class="form-group">
-                  <label for="gen-prompt">Prompt</label>
-                  <textarea id="gen-prompt" placeholder="a cinematic photo of a cozy anarchist library..." required></textarea>
+                <!-- Model -->
+                <span class="gen-section-label">Model</span>
+                <div class="form-group" style="margin-bottom:10px;">
+                  <select id="gen-model" disabled aria-label="Model">
+                    <option value="sd15">SD 1.5 — v1-5-pruned-emaonly</option>
+                  </select>
                 </div>
-                <div class="form-group">
-                  <label for="gen-negative">Negative Prompt</label>
-                  <textarea id="gen-negative" placeholder="blurry, low quality, distorted..."></textarea>
-                </div>
-                
-                <div class="form-row">
-                  <div class="form-group half">
+
+                <!-- Preset + Mode -->
+                <span class="gen-section-label">Preset &amp; Mode</span>
+                <div class="form-grid-2" style="margin-bottom:10px;">
+                  <div class="form-group" style="margin-bottom:0;">
                     <label for="gen-preset">Preset</label>
-                    <select id="gen-preset">
+                    <select id="gen-preset" aria-label="Preset">
                       <option value="fast">Fast</option>
+                      <option value="balanced">Balanced</option>
                       <option value="quality">Quality</option>
+                      <option value="quality_plus">Quality+</option>
                       <option value="smoke">Smoke</option>
                       <option value="thumbnail">Thumbnail</option>
-                      <option value="balanced">Balanced</option>
-                      <option value="quality_plus">Quality Plus</option>
                       <option value="Custom">Custom</option>
                     </select>
                   </div>
-                  <div class="form-group half">
+                  <div class="form-group" style="margin-bottom:0;">
                     <label for="gen-mode">Mode</label>
-                    <select id="gen-mode">
+                    <select id="gen-mode" aria-label="Mode">
                       <option value="cli">CLI</option>
                       <option value="server">Server</option>
                     </select>
                   </div>
                 </div>
 
-                <div class="form-row">
-                  <div class="form-group half">
-                    <label for="gen-steps">Steps</label>
-                    <input type="number" id="gen-steps" min="1" max="40" value="8">
+                <!-- Prompt -->
+                <span class="gen-section-label">Prompt</span>
+                <div class="form-group">
+                  <textarea id="gen-prompt" class="gen-prompt-area" placeholder="a cinematic photo of a cozy anarchist library, warm light, bokeh…" required aria-label="Prompt" rows="3"></textarea>
+                </div>
+
+                <!-- Negative (collapsible) -->
+                <details class="gen-advanced-block" id="gen-neg-details">
+                  <summary class="gen-advanced-toggle">
+                    <span>Negative Prompt</span>
+                    <svg class="gen-toggle-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="3 5 6 8 9 5"/></svg>
+                  </summary>
+                  <div class="form-group" style="margin-top:6px;">
+                    <textarea id="gen-negative" class="gen-neg-area" placeholder="blurry, low quality, distorted…" aria-label="Negative prompt" rows="2"></textarea>
                   </div>
-                  <div class="form-group half">
-                    <label for="gen-cfg">CFG Scale</label>
-                    <input type="number" id="gen-cfg" min="1.0" max="20.0" step="0.5" value="7.0">
+                </details>
+
+                <!-- Steps + CFG -->
+                <span class="gen-section-label" style="margin-top:10px;">Parameters</span>
+                <div class="form-grid-2" style="margin-bottom:8px;">
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label for="gen-steps">Steps</label>
+                    <input type="number" id="gen-steps" min="1" max="40" value="8" aria-label="Steps">
+                  </div>
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label for="gen-cfg">CFG</label>
+                    <input type="number" id="gen-cfg" min="1.0" max="20.0" step="0.5" value="7.0" aria-label="CFG Scale">
                   </div>
                 </div>
 
-                <div class="form-row">
-                  <div class="form-group half">
+                <!-- Sampler + Seed -->
+                <div class="form-grid-2" style="margin-bottom:8px;">
+                  <div class="form-group" style="margin-bottom:0;">
                     <label for="gen-sampler">Sampler</label>
-                    <select id="gen-sampler">
+                    <select id="gen-sampler" aria-label="Sampler">
                       <option value="euler_a">euler_a</option>
                     </select>
                   </div>
-                  <div class="form-group half">
-                    <label for="gen-scheduler">Scheduler</label>
-                    <select id="gen-scheduler" disabled>
-                      <option value="discrete">discrete (fixed/API-only)</option>
-                    </select>
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label for="gen-seed">Seed</label>
+                    <input type="text" id="gen-seed" placeholder="random" aria-label="Seed">
                   </div>
                 </div>
 
-                <div class="form-row">
-                  <div class="form-group half">
-                    <label for="gen-width">Width</label>
-                    <select id="gen-width">
-                      <option value="512">512</option>
-                      <option value="384">384</option>
-                    </select>
+                <!-- Size (advanced details) -->
+                <details class="gen-advanced-block">
+                  <summary class="gen-advanced-toggle">
+                    <span>Size &amp; Sampler</span>
+                    <svg class="gen-toggle-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="3 5 6 8 9 5"/></svg>
+                  </summary>
+                  <div style="margin-top:6px;">
+                    <div class="form-grid-2" style="margin-bottom:8px;">
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label for="gen-width">Width</label>
+                        <select id="gen-width" aria-label="Width">
+                          <option value="512">512</option>
+                          <option value="384">384</option>
+                        </select>
+                      </div>
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label for="gen-height">Height</label>
+                        <select id="gen-height" aria-label="Height">
+                          <option value="512">512</option>
+                          <option value="384">384</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label for="gen-scheduler">Scheduler</label>
+                      <select id="gen-scheduler" disabled aria-label="Scheduler">
+                        <option value="discrete">discrete (fixed)</option>
+                      </select>
+                    </div>
                   </div>
-                  <div class="form-group half">
-                    <label for="gen-height">Height</label>
-                    <select id="gen-height">
-                      <option value="512">512</option>
-                      <option value="384">384</option>
-                    </select>
-                  </div>
-                </div>
+                </details>
 
-                <div class="form-group">
-                  <label for="gen-seed">Seed</label>
-                  <input type="text" id="gen-seed" placeholder="blank/random/default">
-                </div>
-
-                <button type="submit" class="btn btn-primary btn-large" id="btn-generate-submit">Generate Image</button>
               </form>
             </div>
-            
-            <!-- Right Preview -->
-            <div class="preview-panel card">
-              <div id="preview-single" class="preview-container">
-                <div class="empty-state">
-                  <p class="empty-title">No verified image yet.</p>
-                  <p class="text-muted">Generate a fast SD 1.5 image and it will appear here.</p>
-                </div>
+
+            <!-- Sticky footer: Generate button -->
+            <div class="gen-controls-footer">
+              <button type="submit" class="btn btn-primary btn-generate" id="btn-generate-submit" onclick="document.getElementById('form-generate-single').requestSubmit()">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><polygon points="6 1 15 8 6 15 6 1"/></svg>
+                Generate
+              </button>
+            </div>
+          </div>
+
+          <!-- Center image stage -->
+          <div class="gen-stage">
+            <div id="preview-single" class="stage-canvas" role="img" aria-label="Generated image preview">
+              <div class="stage-empty">
+                <svg class="stage-empty-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+                  <rect x="4" y="4" width="32" height="32" rx="4"/>
+                  <circle cx="14" cy="14" r="4"/>
+                  <polyline points="4 28 14 18 22 26 28 20 36 28"/>
+                </svg>
+                <p class="stage-empty-title">No verified image yet.</p>
+                <p class="stage-empty-sub">Generate a fast SD 1.5 image and it will appear here, centered and ready.</p>
               </div>
-              <div id="preview-metadata-panel" class="preview-metadata hidden">
-                <div class="meta-row">
-                  <span class="meta-label">Run ID:</span>
-                  <span class="meta-val mono" id="preview-run-id">None</span>
-                </div>
-                <div class="meta-row">
-                  <span class="meta-label">Details:</span>
-                  <span class="meta-val" id="preview-meta-details">None</span>
-                </div>
-                <div class="meta-row" id="preview-prompt-wrap">
-                  <span class="meta-label">Prompt:</span>
-                  <span class="meta-val" id="preview-prompt-val">redacted</span>
-                </div>
-                <div class="meta-actions">
-                  <button class="btn btn-small" id="btn-preview-detail">View Run Detail</button>
-                  <button class="btn btn-small" id="btn-preview-gallery">Open in Gallery</button>
-                </div>
+            </div>
+
+            <!-- Metadata strip (hidden until generation) -->
+            <div id="preview-metadata-panel" class="stage-meta hidden">
+              <div class="stage-meta-row">
+                <span class="stage-meta-label">Run</span>
+                <span class="stage-meta-val mono" id="preview-run-id">—</span>
+              </div>
+              <div class="stage-meta-row">
+                <span class="stage-meta-label">Info</span>
+                <span class="stage-meta-val" id="preview-meta-details">—</span>
+              </div>
+              <div class="stage-meta-row" id="preview-prompt-wrap">
+                <span class="stage-privacy-badge">
+                  <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" width="9" height="9" aria-hidden="true"><rect x="1" y="4" width="8" height="6" rx="1"/><path d="M3 4V3a2 2 0 014 0v1"/></svg>
+                  <span id="preview-prompt-val">Prompt redacted</span>
+                </span>
+              </div>
+              <div class="stage-meta-actions">
+                <button class="btn btn-secondary btn-small" id="btn-preview-detail">View Detail</button>
+                <button class="btn btn-secondary btn-small" id="btn-preview-gallery">Gallery</button>
               </div>
             </div>
           </div>
-        </section>
 
-        <!-- BATCH EXPLORE TAB -->
-        <section id="batch" class="tab-content">
-          <div class="page-header">
-            <h2>Batch Explore</h2>
-          </div>
-          <div class="split-view">
-            <!-- Controls -->
-            <div class="controls-panel card">
+        </div>
+      </section>
+
+      <!-- ====================================================
+           BATCH EXPLORE
+           ==================================================== -->
+      <section id="batch" class="tab-content">
+        <div class="batch-shell">
+
+          <div class="batch-controls-rail">
+            <div style="padding-bottom:8px;">
+              <div class="page-header" style="padding:0 2px 14px;">
+                <h2 style="font-size:14px;font-weight:600;color:var(--text-primary);">Batch Explore</h2>
+              </div>
               <form id="form-batch" onsubmit="event.preventDefault(); submitGenerateBatch();">
+
                 <div class="form-group">
                   <label for="batch-prompt">Prompt</label>
-                  <textarea id="batch-prompt" placeholder="a cinematic photo..." required></textarea>
+                  <textarea id="batch-prompt" rows="3" class="gen-prompt-area" placeholder="a cinematic photo…" required aria-label="Batch prompt"></textarea>
                 </div>
                 <div class="form-group">
                   <label for="batch-negative">Negative Prompt</label>
-                  <textarea id="batch-negative" placeholder="blurry..."></textarea>
+                  <textarea id="batch-negative" rows="2" class="gen-neg-area" placeholder="blurry…" aria-label="Batch negative prompt"></textarea>
                 </div>
-                
-                <div class="form-row">
-                  <div class="form-group third">
+
+                <div class="form-grid-2" style="margin-bottom:8px;">
+                  <div class="form-group" style="margin-bottom:0;">
                     <label for="batch-count">Count</label>
-                    <input type="number" id="batch-count" value="3" min="1" max="12" required>
+                    <input type="number" id="batch-count" value="3" min="1" max="12" required aria-label="Count">
                   </div>
-                  <div class="form-group third">
+                  <div class="form-group" style="margin-bottom:0;">
                     <label for="batch-preset">Preset</label>
-                    <select id="batch-preset">
+                    <select id="batch-preset" aria-label="Preset">
                       <option value="fast">Fast</option>
-                      <option value="quality">Quality</option>
                       <option value="smoke">Smoke</option>
+                      <option value="quality">Quality</option>
                     </select>
                   </div>
-                  <div class="form-group third">
+                </div>
+
+                <div class="form-grid-2" style="margin-bottom:8px;">
+                  <div class="form-group" style="margin-bottom:0;">
                     <label for="batch-mode">Mode</label>
-                    <select id="batch-mode">
+                    <select id="batch-mode" aria-label="Mode">
                       <option value="cli">CLI</option>
                       <option value="server">Server</option>
                     </select>
                   </div>
-                </div>
-
-                <div class="form-row">
-                  <div class="form-group third">
-                    <label for="batch-seed-start">Seed Start</label>
-                    <input type="number" id="batch-seed-start" value="42">
-                  </div>
-                  <div class="form-group third">
-                    <label for="batch-seed-mode">Seed Mode</label>
-                    <select id="batch-seed-mode">
-                      <option value="increment">Increment</option>
-                      <option value="same">Same</option>
-                      <option value="random">Random</option>
-                    </select>
-                  </div>
-                  <div class="form-group third">
-                    <label for="batch-api">API (Server)</label>
-                    <select id="batch-api">
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label for="batch-api">API</label>
+                    <select id="batch-api" aria-label="API">
                       <option value="openai">OpenAI</option>
                       <option value="sdapi">SDAPI</option>
                       <option value="native">Native</option>
@@ -305,250 +429,359 @@
                   </div>
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-large" id="btn-batch-submit">Start Batch</button>
+                <div class="form-grid-2" style="margin-bottom:12px;">
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label for="batch-seed-start">Seed Start</label>
+                    <input type="number" id="batch-seed-start" value="42" aria-label="Seed start">
+                  </div>
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label for="batch-seed-mode">Seed Mode</label>
+                    <select id="batch-seed-mode" aria-label="Seed mode">
+                      <option value="increment">Increment</option>
+                      <option value="same">Same</option>
+                      <option value="random">Random</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-generate" id="btn-batch-submit">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><rect x="1" y="1" width="5.5" height="5.5" rx="1"/><rect x="9.5" y="1" width="5.5" height="5.5" rx="1"/><rect x="1" y="9.5" width="5.5" height="5.5" rx="1"/><rect x="9.5" y="9.5" width="5.5" height="5.5" rx="1"/></svg>
+                  Start Batch
+                </button>
               </form>
             </div>
-            
-            <div class="preview-panel card">
-              <div id="preview-batch" class="preview-container batch-grid">
-                <div class="empty-state">
-                  <p>No batch images yet.</p>
-                </div>
-              </div>
-            </div>
           </div>
-        </section>
 
-        <!-- GALLERY TAB -->
-        <section id="gallery" class="tab-content">
-          <div class="page-header">
-            <h2>Gallery</h2>
-          </div>
-          <div class="gallery-layout">
-            <div id="gallery-grid" class="gallery-grid">
-              <!-- Cards populated by app.js -->
+          <div class="batch-stage">
+            <div id="preview-batch" class="batch-grid-out">
+              <div class="empty-state" style="grid-column:1/-1;">
+                <p>No batch images yet.</p>
+              </div>
             </div>
           </div>
-        </section>
 
-        <!-- RUN HISTORY TAB -->
-        <section id="history" class="tab-content">
-          <div class="page-header">
-            <h2>Run History</h2>
-          </div>
-          <div class="card filters-card">
-            <div class="filters">
-              <div class="form-group">
-                <label for="filter-type">Type</label>
-                <select id="filter-type" onchange="renderRunHistory()">
-                  <option value="">All Types</option>
-                  <option value="cli-generate">CLI Generate</option>
-                  <option value="server-generate">Server Generate</option>
-                  <option value="batch-generate">Batch Generate</option>
-                  <option value="verify">Verify</option>
-                  <option value="server-status">Status/Checks</option>
-                  <option value="server-start">Server Start</option>
-                  <option value="server-stop">Server Stop</option>
-                  <option value="seed-test">Seed Test</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="filter-status">Status</label>
-                <select id="filter-status" onchange="renderRunHistory()">
-                  <option value="">All Statuses</option>
-                  <option value="PASS">PASS</option>
-                  <option value="FAIL">FAIL</option>
-                  <option value="PARTIAL">PARTIAL</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="filter-prompt">Search Prompt</label>
-                <input type="text" id="filter-prompt" placeholder="Search prompts..." oninput="renderRunHistory()">
-                <span class="filter-note" id="filter-prompt-note"></span>
-              </div>
+        </div>
+      </section>
+
+      <!-- ====================================================
+           GALLERY
+           ==================================================== -->
+      <section id="gallery" class="tab-content">
+
+        <div class="gallery-header">
+          <div class="gallery-header-row">
+            <span class="gallery-title">Gallery</span>
+            <div class="gallery-filters">
+              <span class="gallery-count" id="gallery-count">— images</span>
             </div>
           </div>
-          
+        </div>
+
+        <div class="gallery-scroll">
+          <div id="gallery-grid" class="gallery-grid">
+            <!-- populated by app.js -->
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ====================================================
+           RUN HISTORY
+           ==================================================== -->
+      <section id="history" class="tab-content">
+
+        <div class="history-header">
+          <div class="history-title">Run History</div>
+          <div class="filters">
+            <div class="form-group">
+              <label for="filter-type">Type</label>
+              <select id="filter-type" onchange="renderRunHistory()" aria-label="Filter by type">
+                <option value="">All Types</option>
+                <option value="cli-generate">CLI Generate</option>
+                <option value="server-generate">Server Generate</option>
+                <option value="batch-generate">Batch Generate</option>
+                <option value="verify">Verify</option>
+                <option value="server-status">Status/Checks</option>
+                <option value="server-start">Server Start</option>
+                <option value="server-stop">Server Stop</option>
+                <option value="seed-test">Seed Test</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="filter-status">Status</label>
+              <select id="filter-status" onchange="renderRunHistory()" aria-label="Filter by status">
+                <option value="">All</option>
+                <option value="PASS">PASS</option>
+                <option value="FAIL">FAIL</option>
+                <option value="PARTIAL">PARTIAL</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:2;">
+              <label for="filter-prompt">Search Prompt</label>
+              <input type="text" id="filter-prompt" placeholder="Search prompts…" oninput="renderRunHistory()" aria-label="Search by prompt">
+              <span class="filter-note" id="filter-prompt-note"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="history-scroll">
           <div id="run-list" class="run-list-table">
-            <!-- Run items populated by app.js -->
+            <!-- populated by app.js -->
           </div>
-        </section>
+        </div>
 
-        <!-- RUN DETAIL VIEW -->
-        <section id="run-detail" class="tab-content">
-          <div class="page-header">
-            <h2>Run Detail</h2>
-            <button class="btn btn-secondary" id="btn-back-to-history">← Back to History</button>
-          </div>
-          <div id="run-detail-content" class="card">
-            <!-- Detail populated by app.js -->
-          </div>
-        </section>
+      </section>
 
-        <!-- WARM SERVER TAB -->
-        <section id="server" class="tab-content">
+      <!-- ====================================================
+           RUN DETAIL
+           ==================================================== -->
+      <section id="run-detail" class="tab-content">
+        <div class="run-detail-back">
+          <button class="btn btn-secondary btn-small" id="btn-back-to-history">← History</button>
+          <h2>Run Detail</h2>
+        </div>
+        <div id="run-detail-content" style="flex:1;overflow-y:auto;padding:0 24px 20px;">
+          <!-- populated by app.js -->
+        </div>
+      </section>
+
+      <!-- ====================================================
+           WARM SERVER
+           ==================================================== -->
+      <section id="server" class="tab-content">
+        <div style="overflow-y:auto;flex:1;padding:20px 24px;">
           <div class="page-header">
             <h2>Warm Server</h2>
           </div>
-          <div class="card server-control-card">
+          <div class="server-control-card">
             <h3>Server Session Controls</h3>
-            <p class="server-desc">Keep a warm inference session active to execute rapid sequential server-generations.</p>
+            <p class="server-desc">Keep a warm inference session active for rapid sequential server-mode generations. Uses GPU VRAM on the BigMac host.</p>
             <div class="server-actions">
               <button class="btn btn-primary" onclick="submitServerAction('server-start')">Start Server</button>
-              <button class="btn btn-danger" onclick="submitServerAction('server-stop')">Stop Server</button>
+              <button class="btn btn-danger"  onclick="submitServerAction('server-stop')">Stop Server</button>
               <button class="btn btn-secondary" onclick="checkServerStatusSilent()">Check Status</button>
             </div>
-            <p class="warning-text">⚠️ Note: Leaving the server running consumes GPU VRAM on the host. Stop it when done generating.</p>
+            <div class="warning-text">Stop the server when done generating to free GPU VRAM on the host.</div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <!-- SETTINGS TAB -->
-        <section id="settings" class="tab-content">
-          <div class="page-header">
-            <h2>Settings</h2>
-          </div>
-          
-          <div class="settings-grid">
-            <div class="card settings-card">
-              <h3>Generation Defaults</h3>
-              <form onsubmit="event.preventDefault(); saveSettings();">
-                <div class="form-group">
-                  <label for="set-default-preset">Default Preset</label>
-                  <select id="set-default-preset">
+      <!-- ====================================================
+           SETTINGS
+           ==================================================== -->
+      <section id="settings" class="tab-content">
+
+        <div class="settings-header" style="padding:14px 20px 0;">
+          <h2 style="font-size:16px;font-weight:600;color:var(--text-primary);">Settings</h2>
+        </div>
+
+        <div class="settings-grid" style="padding:14px 20px 20px;">
+
+          <!-- Generation Defaults -->
+          <div class="settings-card">
+            <h3>Generation Defaults</h3>
+            <form onsubmit="event.preventDefault(); saveSettings();" id="form-settings">
+              <div class="form-grid-2">
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label for="set-default-preset">Preset</label>
+                  <select id="set-default-preset" aria-label="Default preset">
                     <option value="fast">Fast</option>
-                    <option value="quality">Quality</option>
                     <option value="balanced">Balanced</option>
+                    <option value="quality">Quality</option>
                   </select>
                 </div>
-                <div class="form-group">
-                  <label for="set-default-mode">Default Mode</label>
-                  <select id="set-default-mode">
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label for="set-default-mode">Mode</label>
+                  <select id="set-default-mode" aria-label="Default mode">
                     <option value="cli">CLI</option>
                     <option value="server">Server</option>
                   </select>
                 </div>
-                <div class="form-row">
-                  <div class="form-group half">
-                    <label for="set-default-steps">Default Steps</label>
-                    <input type="number" id="set-default-steps" min="1" max="40" value="8">
-                  </div>
-                  <div class="form-group half">
-                    <label for="set-default-cfg">Default CFG Scale</label>
-                    <input type="number" id="set-default-cfg" min="1.0" max="20.0" step="0.5" value="7.0">
-                  </div>
-                </div>
-                <div class="form-row">
-                  <div class="form-group half">
-                    <label for="set-default-width">Default Width</label>
-                    <select id="set-default-width">
-                      <option value="512">512</option>
-                      <option value="384">384</option>
-                    </select>
-                  </div>
-                  <div class="form-group half">
-                    <label for="set-default-height">Default Height</label>
-                    <select id="set-default-height">
-                      <option value="512">512</option>
-                      <option value="384">384</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label for="set-batch-count">Default Batch Count</label>
-                  <input type="number" id="set-batch-count" value="3" min="1" max="12">
-                </div>
-
-                <hr class="settings-divider">
-
-                <h3>UX Preferences</h3>
-                <div class="toggle-group">
-                  <label class="switch">
-                    <input type="checkbox" id="set-auto-open">
-                    <span class="slider round"></span>
-                  </label>
-                  <div class="toggle-info">
-                    <span class="toggle-title">Auto-open Run Detail after generation</span>
-                    <span class="toggle-desc">Automatically switch tabs when single image generation completes.</span>
-                  </div>
-                </div>
-
-                <hr class="settings-divider">
-
-                <h3>Prompt Privacy</h3>
-                <div class="toggle-group">
-                  <label class="switch">
-                    <input type="checkbox" id="set-save-prompts">
-                    <span class="slider round"></span>
-                  </label>
-                  <div class="toggle-info">
-                    <span class="toggle-title">Save prompts in run records</span>
-                    <span class="toggle-desc text-danger">OFF by default. Leave off to ensure prompt text remains ephemeral.</span>
-                  </div>
-                </div>
-                <div class="privacy-warning">
-                  Prompt text will be stored in backend Markdown/JSON run records for future history and search. Leave this off for private prompts.
-                </div>
-
-                <button type="submit" class="btn btn-primary" style="margin-top:20px;">Save Settings</button>
-                <span id="settings-saved-msg" class="text-success hidden" style="margin-left:10px;">Saved successfully!</span>
-              </form>
-            </div>
-          </div>
-        </section>
-
-        <!-- ADVANCED TAB -->
-        <section id="advanced" class="tab-content">
-          <div class="page-header">
-            <h2>Advanced Diagnostics</h2>
-          </div>
-          <div class="card">
-            <div class="diagnostic-actions">
-              <button class="btn btn-secondary" onclick="submitServerAction('verify')">Run Backend Verify</button>
-              <button class="btn btn-secondary" onclick="submitServerAction('seed-test')">Run Seed Test</button>
-            </div>
-            
-            <hr class="separator">
-            
-            <h3>Log Cleanups</h3>
-            <div class="form-row" style="align-items:flex-end;">
-              <div class="form-group" style="margin-bottom:0;">
-                <label for="cleanup-days">Delete runs older than (days)</label>
-                <input type="number" id="cleanup-days" value="30" min="1">
               </div>
-              <button class="btn btn-danger" onclick="submitCleanup()">Run Cleanup</button>
+              <div class="form-grid-2">
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label for="set-default-steps">Steps</label>
+                  <input type="number" id="set-default-steps" min="1" max="40" value="8" aria-label="Default steps">
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label for="set-default-cfg">CFG Scale</label>
+                  <input type="number" id="set-default-cfg" min="1.0" max="20.0" step="0.5" value="7.0" aria-label="Default CFG">
+                </div>
+              </div>
+              <div class="form-grid-2">
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label for="set-default-width">Width</label>
+                  <select id="set-default-width" aria-label="Default width">
+                    <option value="512">512</option>
+                    <option value="384">384</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label for="set-default-height">Height</label>
+                  <select id="set-default-height" aria-label="Default height">
+                    <option value="512">512</option>
+                    <option value="384">384</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="set-batch-count">Batch Count</label>
+                <input type="number" id="set-batch-count" value="3" min="1" max="12" aria-label="Default batch count">
+              </div>
+            </form>
+          </div>
+
+          <!-- UX & Privacy -->
+          <div class="settings-card">
+            <h3>Behavior &amp; Privacy</h3>
+
+            <label class="toggle-group" for="set-auto-open">
+              <label class="switch">
+                <input type="checkbox" id="set-auto-open" aria-label="Auto-open run detail">
+                <span class="slider"></span>
+              </label>
+              <div class="toggle-info">
+                <span class="toggle-title">Auto-open Run Detail</span>
+                <span class="toggle-desc">Switch tabs automatically when generation completes.</span>
+              </div>
+            </label>
+
+            <label class="toggle-group" for="set-save-prompts">
+              <label class="switch">
+                <input type="checkbox" id="set-save-prompts" aria-label="Save prompts in run records">
+                <span class="slider"></span>
+              </label>
+              <div class="toggle-info">
+                <span class="toggle-title">Save prompts in run records</span>
+                <span class="toggle-desc" style="color:var(--red)">OFF by default — prompts are ephemeral.</span>
+              </div>
+            </label>
+
+            <div class="privacy-warning" id="settings-privacy-warning" style="display:none;">
+              When ON, prompt text is written to backend Markdown and JSON run records. Leave OFF for private creative prompts.
+            </div>
+
+            <div class="settings-save-row">
+              <button type="button" class="btn btn-primary btn-small" onclick="saveSettings()">Save Settings</button>
+              <span id="settings-saved-msg" class="text-success hidden" style="font-size:12px;">Saved!</span>
             </div>
           </div>
-        </section>
 
-      </main>
-    </div>
-  </div>
-
-  <!-- INLINE JOB DRAWER -->
-  <div id="job-drawer" class="job-drawer hidden" aria-live="assertive">
-    <div class="drawer-header">
-      <h3 id="job-drawer-title">Job Running...</h3>
-      <button class="btn-close" onclick="closeJobDrawer()">×</button>
-    </div>
-    <div class="drawer-body">
-      <div id="job-drawer-status" class="job-status-text text-muted">Starting job...</div>
-      
-      <div id="job-drawer-error" class="job-error-card hidden">
-        <h4>Generation failed before verified output.</h4>
-        <p><strong>First failed gate:</strong> <span id="job-drawer-gate"></span></p>
-        <p>Backend script rejected arguments or failed execution.</p>
-        <div class="error-actions" style="margin-top:10px;">
-          <button class="btn btn-secondary btn-small" onclick="toggleJobLog()">Toggle Log</button>
-          <button class="btn btn-secondary btn-small" onclick="submitServerAction('verify')">Run Verify</button>
         </div>
-      </div>
+      </section>
 
-      <div class="drawer-log-container hidden" id="job-drawer-log-wrap">
-        <pre id="job-drawer-log"></pre>
+      <!-- ====================================================
+           ADVANCED DIAGNOSTICS
+           ==================================================== -->
+      <section id="advanced" class="tab-content">
+        <div class="page-header" style="padding:14px 20px 0;">
+          <h2>Diagnostics</h2>
+        </div>
+
+        <div style="padding:14px 20px;overflow-y:auto;flex:1;">
+
+          <div class="advanced-card">
+            <h3>Backend Checks</h3>
+            <div class="diagnostic-actions">
+              <button class="btn btn-secondary" onclick="submitServerAction('verify')">
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" width="13" height="13" aria-hidden="true"><polyline points="2 7 6 11 12 3"/></svg>
+                Run Backend Verify
+              </button>
+              <button class="btn btn-secondary" onclick="submitServerAction('seed-test')">
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" width="13" height="13" aria-hidden="true"><circle cx="7" cy="7" r="5.5"/><polyline points="7 4 7 7 9 9"/></svg>
+                Run Seed Test
+              </button>
+            </div>
+          </div>
+
+          <div class="advanced-card danger-zone">
+            <h3>Cleanup</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Delete run directories older than N days. Requires confirmation.</p>
+            <div style="display:flex;align-items:flex-end;gap:10px;">
+              <div class="form-group" style="margin-bottom:0;flex:0 0 140px;">
+                <label for="cleanup-days">Older than (days)</label>
+                <input type="number" id="cleanup-days" value="30" min="1" aria-label="Days to keep">
+              </div>
+              <button class="btn btn-danger btn-small" onclick="submitCleanup()" style="height:34px;">Run Cleanup</button>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- INLINE JOB DRAWER (fixed overlay) -->
+<div id="job-drawer" class="job-drawer hidden" aria-live="assertive" role="status">
+  <div class="drawer-header">
+    <h3 id="job-drawer-title">Job Running…</h3>
+    <button class="btn-close" onclick="closeJobDrawer()" aria-label="Close job drawer">×</button>
+  </div>
+  <div class="drawer-body">
+    <div id="job-drawer-status" class="job-status-text text-muted">Starting…</div>
+
+    <div id="job-drawer-error" class="job-error-card hidden">
+      <h4>Generation failed before verified output.</h4>
+      <p><strong>First failed gate:</strong> <span id="job-drawer-gate">—</span></p>
+      <p>Backend script rejected arguments or failed execution.</p>
+      <div class="error-actions">
+        <button class="btn btn-secondary btn-small" onclick="toggleJobLog()">Toggle Log</button>
+        <button class="btn btn-secondary btn-small" onclick="submitServerAction('verify')">Run Verify</button>
       </div>
     </div>
-  </div>
 
-  <script src="app.js"></script>
+    <div class="drawer-log-container hidden" id="job-drawer-log-wrap">
+      <pre id="job-drawer-log"></pre>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Collapsible advanced toggles */
+.gen-advanced-block {
+  margin-bottom: 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
+.gen-advanced-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  list-style: none;
+  transition: color var(--motion-fast);
+  user-select: none;
+}
+
+.gen-advanced-toggle:hover { color: var(--text-secondary); }
+
+.gen-advanced-block > summary::-webkit-details-marker { display: none; }
+
+.gen-toggle-chevron {
+  width: 12px;
+  height: 12px;
+  transition: transform var(--motion-fast) var(--ease-out);
+  flex-shrink: 0;
+}
+
+.gen-advanced-block[open] .gen-toggle-chevron { transform: rotate(180deg); }
+
+.gen-advanced-block > *:not(summary) {
+  padding: 0 10px 10px;
+}
+</style>
+
+<script src="app.js"></script>
 </body>
 </html>
