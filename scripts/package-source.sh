@@ -52,11 +52,14 @@ git archive --format=zip --output "$OUT" HEAD
 
 echo ""
 echo "Contents (first 60 entries):"
-unzip -l "$OUT" | head -65
+LISTING="$(mktemp /tmp/image_gen_zip_listing_XXXXXX.txt)"
+trap 'rm -f "$LISTING"' EXIT
+unzip -l "$OUT" > "$LISTING"
+sed -n '1,65p' "$LISTING"
 
 echo ""
 echo "Checking for forbidden paths …"
-FORBIDDEN="$(unzip -l "$OUT" | grep -E '(^|[/ ])(\.git|node_modules|runs|logs|state|\.playwright-mcp|Potential UI|\.DS_Store|\.proof-env)([/ ]|$)' | head -5 || true)"
+FORBIDDEN="$(grep -E '(^|[/ ])(\.git|node_modules|runs|logs|state|\.playwright-mcp|Potential UI|\.DS_Store|\.proof-env)([/ ]|$)' "$LISTING" | sed -n '1,5p' || true)"
 if [ -n "$FORBIDDEN" ]; then
   echo "ERROR: forbidden paths found in archive:" >&2
   echo "$FORBIDDEN" >&2

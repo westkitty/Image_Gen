@@ -1226,3 +1226,41 @@ Validation run after the migration:
 - `bash -n scripts/package-source.sh` - PASS
 
 The operator console now points at `/Volumes/wc2tb/ImageGen`, exposes the inventory action, and reads the refreshed inventory cache. Runtime caches under `sdcpp-workflow/state/` are still ignored, which is correct.
+
+---
+
+## Entry 9 — wc2tb inventory reconciliation and packaging hardening
+
+**Date:** 2026-06-21
+**Session type:** Workflow hardening and inventory reconciliation
+
+### Summary
+
+Cleaned up the wc2tb model-home migration after `66560f3`:
+
+- `scripts/package-source.sh` no longer trips `141` from the `unzip -l | head` pipe under `pipefail`.
+- `sdcpp-workflow/bin/sdcpp-model-stage-check.sh` now reports non-ready model-root states as `PARTIAL` instead of `FAIL`.
+- `sdcpp-workflow/bin/sdcpp-model-inventory-wc2tb.sh` and the operator console now surface the remaining high-confidence review set and the recommended next step.
+
+### Validation
+
+- `bash /Users/andrew/Image_Gen/scripts/package-source.sh --allow-dirty` → PASS
+  - Output: `/tmp/Image_Gen_source_20260621-140913.zip`
+  - SHA256: `c723fe37e30b3a4624607b2cd96058085cacdfbe8c67601a290b9510368d075f`
+  - Forbidden-path scan: clean
+- `bash /Users/andrew/Image_Gen/sdcpp-workflow/bin/sdcpp-model-stage-check.sh` → `PARTIAL`
+  - Message: `Model root is usable, but required SDXL Turbo / Flux files are missing.`
+- `bash /Users/andrew/Image_Gen/sdcpp-workflow/bin/sdcpp-model-inventory-wc2tb.sh --apply` → PASS
+  - Candidates: `198`
+  - High confidence: `13`
+  - Moved: `0`
+  - Live outcome: `2` duplicate skips, `12` missing-source skips
+- `node --check /Users/andrew/Image_Gen/operator-console/server.js` → PASS
+- `node --check /Users/andrew/Image_Gen/operator-console/public/app.js` → PASS
+- `bash -n` on the edited shell scripts → PASS
+
+### Inventory Notes
+
+- The current high-confidence review set is still visible in the console.
+- The remaining paths are all model assets outside the new root, but the apply pass did not move anything in this session because the live source paths were already missing or already staged as duplicates.
+- Current canonical model home remains `/Volumes/wc2tb/ImageGen`.

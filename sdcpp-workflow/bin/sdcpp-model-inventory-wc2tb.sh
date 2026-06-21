@@ -370,6 +370,8 @@ records = list(walk_candidates(volume_root))
 high_candidates = [r for r in records if r["confidence"] == "high" and r["action"] == "move"]
 medium_candidates = [r for r in records if r["confidence"] == "medium" and r["action"] == "manual_review"]
 low_candidates = [r for r in records if r["confidence"] == "low"]
+remaining_high_confidence_paths = [r["source_path"] for r in high_candidates]
+manual_review_paths = [r["source_path"] for r in records if r["action"] == "manual_review"]
 
 selected = [r for r in records if r["confidence"] == "high" or (include_medium and r["confidence"] == "medium")]
 inventory_write_ok = True
@@ -418,6 +420,10 @@ if apply_requested:
 total_candidates = len(records)
 manual_review_count = len([r for r in records if r["action"] == "manual_review"])
 skipped_count = skipped_count + len([r for r in records if r["action"] == "skip"])
+if remaining_high_confidence_paths:
+    recommended_next_step = "Review the remaining high-confidence model candidates outside the new root, then rerun with --apply only if their destinations are correct."
+else:
+    recommended_next_step = "Inventory complete; rerun the stage check to confirm the current root state."
 
 summary = {
     "checked_at": iso_now(),
@@ -436,6 +442,10 @@ summary = {
     "medium_confidence_candidates": len(medium_candidates),
     "low_confidence_candidates": len(low_candidates),
     "manual_review_count": manual_review_count,
+    "remaining_high_confidence_outside_root": len(remaining_high_confidence_paths),
+    "remaining_high_confidence_preview": remaining_high_confidence_paths[:20],
+    "manual_review_preview": manual_review_paths[:20],
+    "recommended_next_step": recommended_next_step,
     "moved_count": moved_count,
     "duplicate_count": duplicate_count,
     "collision_count": collision_count,
@@ -466,9 +476,10 @@ plan_lines = [
     f"- Apply requested: `{str(apply_requested).lower()}`",
     f"- Include medium confidence: `{str(include_medium).lower()}`",
     f"- Total candidates: `{total_candidates}`",
-    f"- High confidence: `{len(high_candidates)}`",
-    f"- Medium confidence: `{len(medium_candidates)}`",
-    f"- Manual review: `{manual_review_count}`",
+f"- High confidence: `{len(high_candidates)}`",
+f"- Medium confidence: `{len(medium_candidates)}`",
+f"- Manual review: `{manual_review_count}`",
+f"- Remaining high-confidence outside root: `{len(remaining_high_confidence_paths)}`",
     "",
     "## Candidates",
     "",

@@ -242,9 +242,9 @@ set +e
 python3 - "$CACHE" <<'PYSTATUS'
 import sys, json
 d=json.load(open(sys.argv[1]))
-if not d.get("route_ok") or not d.get("model_volume_mounted") or not d.get("root_exists"):
+if not d.get("route_ok"):
     sys.exit(2)
-if d.get("sdxl_turbo_recommended_candidate") or (d.get("flux_model_candidates") and d.get("flux_vae_candidates") and d.get("flux_clip_l_candidates") and d.get("flux_t5xxl_candidates")):
+if d.get("runtime_smoke_proven") and (d.get("sdxl_turbo_recommended_candidate") or (d.get("flux_model_candidates") and d.get("flux_vae_candidates") and d.get("flux_clip_l_candidates") and d.get("flux_t5xxl_candidates"))):
     sys.exit(0)
 sys.exit(1)
 PYSTATUS
@@ -255,13 +255,28 @@ case "$STATUS" in
   0)
     pass_banner "Model stage check complete.
 Cache: $CACHE
-At least one SDXL Turbo or Flux minimum staging path is present. Runtime smoke proof is still required."
+Runtime smoke proof recorded."
     ;;
   1)
-    printf '\n==== PARTIAL ====\nModel root is usable, but required SDXL Turbo / Flux files are missing.\nCache: %s\n' "$CACHE"
+    PARTIAL_REASON="$(python3 - "$CACHE" <<'PYPARTIAL'
+import sys, json
+d=json.load(open(sys.argv[1]))
+if not d.get("model_volume_mounted"):
+    print("Model volume /Volumes/wc2tb is not mounted or not readable on BigMac.")
+elif not d.get("root_exists"):
+    print("Model root /Volumes/wc2tb/ImageGen is missing on BigMac.")
+elif d.get("write_test") != "pass":
+    print("Model root exists, but write test failed on BigMac.")
+elif d.get("sdxl_turbo_recommended_candidate") or (d.get("flux_model_candidates") and d.get("flux_vae_candidates") and d.get("flux_clip_l_candidates") and d.get("flux_t5xxl_candidates")):
+    print("Model files are staged, but runtime smoke proof is still missing.")
+else:
+    print("Model root is usable, but required SDXL Turbo / Flux files are missing.")
+PYPARTIAL
+)"
+    printf '\n==== PARTIAL ====\n%s\nCache: %s\n' "$PARTIAL_REASON" "$CACHE"
     exit 0
     ;;
   *)
-    fail "external-root" "wc2tb or model root is unusable. Cache: $CACHE"
+    fail "external-root" "Model stage cache could not be evaluated. Cache: $CACHE"
     ;;
 esac

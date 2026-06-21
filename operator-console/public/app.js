@@ -427,9 +427,17 @@ function renderModels() {
       '<div class="fineprint"><strong>Moved:</strong> ' + esc(inv.moved_count || 0) + ' · <strong>Duplicates:</strong> ' + esc(inv.duplicate_count || 0) + ' · <strong>Collisions:</strong> ' + esc(inv.collision_count || 0) + '</div>' +
       '<div class="fineprint"><strong>Manual review:</strong> ' + esc(inv.manual_review_count || 0) + ' · <strong>Skipped:</strong> ' + esc(inv.skipped_count || 0) + '</div>' +
       '<div class="fineprint" style="margin-top:8px">Moves are conservative. Unknown files require manual review.</div>' +
+      '<div class="fineprint" style="margin-top:8px"><strong>Remaining high-confidence outside root:</strong> ' + esc(inv.remaining_high_confidence_outside_root || 0) + '</div>' +
+      '<div class="fineprint"><strong>Next:</strong> ' + esc(inv.recommended_next_step || 'Run the inventory action again after review.') + '</div>' +
       '<div class="fineprint" style="margin-top:8px"><strong>Inventory:</strong> ' + esc(inv.inventory_path || 'not yet written') + '</div>' +
       '<div class="fineprint"><strong>Plan:</strong> ' + esc(inv.plan_path || 'not yet written') + '</div>' +
-      '<div class="fineprint"><strong>Result:</strong> ' + esc(inv.result_path || 'not yet written') + '</div>';
+      '<div class="fineprint"><strong>Result:</strong> ' + esc(inv.result_path || 'not yet written') + '</div>' +
+      (Array.isArray(inv.remaining_high_confidence_preview) && inv.remaining_high_confidence_preview.length
+        ? '<div class="fineprint" style="margin-top:8px"><strong>High-confidence preview:</strong> ' + esc(inv.remaining_high_confidence_preview.slice(0, 6).join(' · ')) + '</div>'
+        : '') +
+      (Array.isArray(inv.manual_review_preview) && inv.manual_review_preview.length
+        ? '<div class="fineprint"><strong>Manual-review preview:</strong> ' + esc(inv.manual_review_preview.slice(0, 6).join(' · ')) + '</div>'
+        : '');
   }
 }
 
