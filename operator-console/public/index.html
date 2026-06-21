@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Operator Console - SDCPP Workflow</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <nav class="sidebar">
+      <div class="sidebar-header">
+        <h2>BigMac Control</h2>
+      </div>
+      <ul class="nav-links">
+        <li><button class="nav-btn active" data-target="dashboard">Dashboard</button></li>
+        <li><button class="nav-btn" data-target="generate">Generate Single</button></li>
+        <li><button class="nav-btn" data-target="batch">Batch Generate</button></li>
+        <li><button class="nav-btn" data-target="server">Warm Server</button></li>
+        <li><button class="nav-btn" data-target="history">Run History</button></li>
+        <li><button class="nav-btn" data-target="advanced">Advanced / Diag</button></li>
+        <li><button class="nav-btn" data-target="settings">Settings</button></li>
+      </ul>
+    </nav>
+
+    <main class="main-content">
+      <header class="top-strip">
+        <div class="status-indicator" id="global-backend-status">
+          <span class="indicator-dot unknown"></span>
+          <span class="indicator-text">Backend Status: Unknown</span>
+        </div>
+        <div class="active-job-indicator hidden" id="global-job-status">
+          <span class="spinner"></span>
+          <span class="job-text">Job running...</span>
+        </div>
+      </header>
+
+      <div class="content-scroll">
+        
+        <!-- DASHBOARD -->
+        <section id="dashboard" class="tab-content active">
+          <h1>Control Dashboard</h1>
+          <div class="card-grid">
+            <div class="card">
+              <h3>Quick Actions</h3>
+              <div class="action-buttons">
+                <button onclick="runJob('/api/actions/verify')">Verify Backend</button>
+                <button onclick="runJob('/api/actions/server-status')">Check Server Status</button>
+              </div>
+            </div>
+            <div class="card">
+              <h3>Latest Run</h3>
+              <div id="dashboard-latest-run">
+                <p>Loading runs...</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- GENERATE SINGLE -->
+        <section id="generate" class="tab-content">
+          <h1>Generate Single</h1>
+          <div class="layout-split">
+            <div class="form-panel card">
+              <form id="form-generate-single" onsubmit="event.preventDefault(); submitGenerateSingle();">
+                <div class="form-group">
+                  <label for="gen-prompt">Prompt</label>
+                  <textarea id="gen-prompt" rows="4" required></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="gen-preset">Preset</label>
+                  <select id="gen-preset">
+                    <option value="fast" selected>Fast (8 steps)</option>
+                    <option value="balanced">Balanced (16 steps)</option>
+                    <option value="quality">Quality (20 steps)</option>
+                    <option value="quality_plus">Quality Plus (30 steps)</option>
+                    <option value="smoke">Smoke (1 step)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="gen-mode">Mode</label>
+                  <select id="gen-mode">
+                    <option value="cli" selected>CLI (Cold Start)</option>
+                    <option value="server">Server (Warm)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="gen-seed">Seed (Optional)</label>
+                  <input type="text" id="gen-seed" placeholder="e.g. 42 or random">
+                </div>
+                <button type="submit" class="primary-btn">Generate</button>
+              </form>
+            </div>
+            <div class="preview-panel card">
+              <h3>Preview</h3>
+              <div class="image-preview" id="preview-single">
+                <div class="empty-state">No image generated yet.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- BATCH GENERATE -->
+        <section id="batch" class="tab-content">
+          <h1>Batch Generate</h1>
+          <div class="layout-split">
+            <div class="form-panel card">
+              <form id="form-generate-batch" onsubmit="event.preventDefault(); submitGenerateBatch();">
+                <div class="form-group">
+                  <label for="batch-prompt">Prompt</label>
+                  <textarea id="batch-prompt" rows="4" required></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="batch-count">Count</label>
+                  <input type="number" id="batch-count" value="3" min="1" max="12">
+                </div>
+                <div class="form-group">
+                  <label for="batch-preset">Preset</label>
+                  <select id="batch-preset">
+                    <option value="fast" selected>Fast</option>
+                    <option value="balanced">Balanced</option>
+                    <option value="quality">Quality</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="batch-seed-mode">Seed Mode</label>
+                  <select id="batch-seed-mode">
+                    <option value="increment" selected>Increment</option>
+                    <option value="same">Same</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+                <button type="submit" class="primary-btn">Batch Generate</button>
+              </form>
+            </div>
+            <div class="preview-panel card">
+              <h3>Batch Output</h3>
+              <div class="image-grid" id="preview-batch">
+                <div class="empty-state">No batch runs yet.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- WARM SERVER -->
+        <section id="server" class="tab-content">
+          <h1>Warm Server Session</h1>
+          <div class="card">
+            <h3>Server Controls</h3>
+            <p>Use a warm server to keep models loaded for faster sequential generations.</p>
+            <div class="action-buttons">
+              <button onclick="runJob('/api/actions/server-start')" class="primary-btn">Start Server</button>
+              <button onclick="runJob('/api/actions/server-stop')" class="danger-btn">Stop Server</button>
+              <button onclick="runJob('/api/actions/server-status')">Refresh Status</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- RUN HISTORY -->
+        <section id="history" class="tab-content">
+          <h1>Run History</h1>
+          <div class="card">
+            <button onclick="loadRuns()">Refresh History</button>
+            <div id="run-list" class="run-list">
+              <p>Loading...</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ADVANCED -->
+        <section id="advanced" class="tab-content">
+          <h1>Advanced & Diagnostics</h1>
+          <div class="card">
+            <h3>Tools</h3>
+            <div class="action-buttons">
+              <button onclick="runJob('/api/actions/verify')">Run Verify Script</button>
+              <button onclick="runJob('/api/actions/seed-test')">Run Seed Test (Smoke)</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- SETTINGS -->
+        <section id="settings" class="tab-content">
+          <h1>Settings</h1>
+          <div class="card">
+            <p>UI preferences only. Does not mutate backend state.</p>
+            <!-- Add real settings if needed later -->
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Terminal Output Modal / Overlay -->
+  <div id="job-modal" class="modal hidden">
+    <div class="modal-content card">
+      <div class="modal-header">
+        <h3>Job Console</h3>
+        <button onclick="closeJobModal()" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <pre id="job-log-output">Waiting for logs...</pre>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

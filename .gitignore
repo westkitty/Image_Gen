@@ -36,3 +36,9 @@ sdcpp-proof-*/**/sdcpp-native-submit-response.json
 !sdcpp-workflow/config/sdcpp.env.example
 !sdcpp-proof-*/BigMac_SDCPP_Image_Gen_Proof_Bible.md
 !sdcpp-proof-*/final-proof-report.md
+
+# Operator Console UI
+operator-console/node_modules/
+operator-console/dist/
+operator-console/.cache/
+operator-console/.env
