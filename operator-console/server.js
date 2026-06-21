@@ -369,14 +369,14 @@ app.get('/api/capabilities', (req, res) => {
         ? 'Remote CLI flags detected; workflow script (sdcpp-img2img.sh) not yet implemented.'
         : editCap.capabilities.img2img.reason)
     : 'Run POST /api/actions/probe-image-edit to check remote support.';
-  const img2imgGate = { supported: false, reason: img2imgProbeReason };
+  const img2imgGate = { supported: false, reason: img2imgProbeReason, unlock_requires: 'Rebuild sd-cli on BigMac with --init-img flag support, then write sdcpp-img2img.sh.' };
 
   const inpaintProbeReason = editCap && editCap.capabilities
     ? (editCap.capabilities.inpaint.supported
         ? 'Remote CLI flags detected; inpaint workflow script not yet implemented.'
         : editCap.capabilities.inpaint.reason)
     : 'Run POST /api/actions/probe-image-edit to check remote support.';
-  const inpaintGate = { supported: false, reason: inpaintProbeReason };
+  const inpaintGate = { supported: false, reason: inpaintProbeReason, unlock_requires: 'Requires img2img support first, plus mask-editor UI.' };
 
   // pillowUpscale — local Pillow resize upscale; script and endpoint exist, validated.
   const pillowUpscaleGate = {
@@ -402,13 +402,14 @@ app.get('/api/capabilities', (req, res) => {
     supported: false,
     reason: upscaleCap && upscaleCap.capabilities && upscaleCap.capabilities.faceRestore
       ? upscaleCap.capabilities.faceRestore.reason
-      : 'Run POST /api/actions/probe-upscale to detect available tools.'
+      : 'Run POST /api/actions/probe-upscale to detect available tools.',
+    unlock_requires: 'Install GFPGAN or CodeFormer on BigMac, then write sdcpp-face-restore.sh.'
   };
 
   // LoRA / embeddings / hypernetworks: discoverable via asset cache
   const loraGate = assets && assets.loras && assets.loras.length > 0
-    ? { supported: false, reason: `${assets.loras.length} LoRA(s) found on remote — injection bridge not yet implemented.` }
-    : { supported: false, reason: assets ? 'No LoRA files found on remote (run discover-assets to refresh).' : 'No LoRA discovery/injection bridge exists yet.' };
+    ? { supported: false, reason: `${assets.loras.length} LoRA(s) found on remote — injection bridge not yet implemented.`, unlock_requires: 'Write sdcpp-cli-generate.sh --lora flag support and wire to UI.' }
+    : { supported: false, reason: assets ? 'No LoRA files found on remote (run discover-assets to refresh).' : 'No LoRA discovery/injection bridge exists yet.', unlock_requires: 'Stage LoRA .safetensors on BigMac, then run discover-assets.' };
   const embeddingGate = assets && assets.embeddings && assets.embeddings.length > 0
     ? { supported: false, reason: `${assets.embeddings.length} embedding(s) found — injection bridge not yet implemented.` }
     : { supported: false, reason: 'No embeddings discovery path exists yet.' };

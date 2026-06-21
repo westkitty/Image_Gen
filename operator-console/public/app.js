@@ -214,8 +214,11 @@ function renderFeatureGates() {
 function featureCard([id, title, desc], gate = {}) {
   const supported = gate && gate.supported === true;
   const partial = gate && gate.supported === 'partial';
-  const badgeLabel = supported ? 'Available' : partial ? 'Partial' : 'Backend missing';
-  return `<article class="feature-card"><h3>${esc(title)}</h3><p>${esc(desc)}</p><span class="badge">${badgeLabel}</span><p class="fineprint">${esc(gate.reason || gate.caveat || 'Ready.')}</p><button class="ghost" data-unsupported="${esc(title)}">${supported ? 'Open' : 'Explain blocker'}</button></article>`;
+  const badgeCls = supported ? 'badge-ok' : partial ? 'badge-partial' : 'badge-blocked';
+  const badgeLabel = supported ? 'Available' : partial ? 'Partial' : 'Blocked';
+  const unlockHtml = (!supported && !partial && gate.unlock_requires)
+    ? `<div class="unlock-needs"><strong>To unlock:</strong> ${esc(gate.unlock_requires)}</div>` : '';
+  return `<article class="feature-card"><h3>${esc(title)}</h3><p>${esc(desc)}</p><span class="badge ${badgeCls}">${badgeLabel}</span><p class="fineprint">${esc(gate.reason || gate.caveat || 'Ready.')}</p>${unlockHtml}</article>`;
 }
 
 // ---- Pillow Upscale ----------------------------------------------------------
