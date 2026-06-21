@@ -1,0 +1,83 @@
+# QUICKSTART
+
+All commands run from the project root:
+```sh
+cd /Users/andrew/Image_Gen/sdcpp-workflow
+```
+
+## 1. One-command smoke test (recommended first run)
+Runs verify → CLI generate → server start → server generate (OpenAI, then SDAPI) → server stop, and checks the repo stays clean.
+```sh
+bin/sdcpp-run-smoke.sh
+```
+On PASS it prints the CLI PNG path, the OpenAI PNG path, the SDAPI PNG path, cleanup status, and the report path.
+
+## 2. CLI-only generation
+```sh
+bin/sdcpp-cli-generate.sh --prompt "a lovely cat"
+# more control:
+bin/sdcpp-cli-generate.sh --prompt "a fox in snow" --negative "blurry" \
+  --steps 20 --width 512 --height 512 --seed 1234 --out-name fox_snow
+```
+
+## 3. Server flow (manual)
+```sh
+bin/sdcpp-server-start.sh                         # start sd-server + tunnel
+bin/sdcpp-server-generate.sh --prompt "a lovely cat" --api openai
+bin/sdcpp-server-generate.sh --prompt "a lovely cat" --api both   # openai + sdapi
+bin/sdcpp-server-status.sh                        # read-only health view
+bin/sdcpp-server-stop.sh                          # safe shutdown
+```
+Pick non-default ports if needed:
+```sh
+bin/sdcpp-server-start.sh --remote-port 7871 --local-port 17871
+```
+
+## 4. Fast / quality presets (daily use)
+```sh
+bin/sdcpp-run-fast.sh --mode cli --prompt "a cozy concrete library"      # ~15s
+bin/sdcpp-run-fast.sh --mode server --prompt "..." --keep-server-running  # warm, reuse
+bin/sdcpp-run-quality.sh --mode both --prompt "..."                       # quality, CLI + server
+# any generator also takes --preset smoke|thumbnail|fast|balanced|quality|quality_plus
+bin/sdcpp-cli-generate.sh --preset balanced --prompt "..."
+```
+
+## 5. Benchmark & recommend
+```sh
+bin/sdcpp-benchmark.sh --modes both --presets smoke,fast,balanced,quality --repeats 1
+bin/sdcpp-benchmark-server-warm.sh
+bin/sdcpp-summarize-benchmarks.sh        # writes benchmark-summary.md + prints ranking
+```
+
+## 6. Seed & batch (Phase 2)
+```sh
+# deterministic single image:
+bin/sdcpp-cli-generate.sh --preset fast --seed 42 --prompt "..."
+# batch of 3, incrementing seeds, with a manifest:
+bin/sdcpp-batch-generate.sh --mode cli --count 3 --preset fast --seed-mode increment --seed-start 42 --prompt "..."
+# batch on a warm server (sdapi gives direct seed control):
+bin/sdcpp-batch-generate.sh --mode server --api sdapi --count 3 --preset fast --prompt "..."
+# prove reproducibility (same seed twice -> compare sha256):
+bin/sdcpp-seed-test.sh --preset smoke --seed 424242 --mode cli
+# hand the latest run to a UI (prints paths + ui-run-card.md):
+bin/sdcpp-export-latest-markdown.sh
+```
+Batch outputs live in `runs/<ts>-batch/`: `images/`, `records/`, `batch-manifest.json`/`.tsv`, `batch-report.md`, `ui-run-card.md`.
+
+## 7. See your images
+```sh
+bin/sdcpp-open-latest.sh        # prints + opens the newest PNG
+```
+
+## 5. Housekeeping (optional, safe)
+```sh
+bin/sdcpp-clean-old-runs.sh                          # dry run (lists only)
+bin/sdcpp-clean-old-runs.sh --delete --older-than-days 14
+```
+
+## Where outputs appear
+- `runs/<timestamp>-<kind>/` — one folder per command.
+  - `*-report.md` — human-readable result.
+  - `*.png` — verified images.
+  - `*-response.json`, `*.b64`, `*.log` — raw evidence.
+- `state/` — live server session, ports, SSH control socket (managed for you).

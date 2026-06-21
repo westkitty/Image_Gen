@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+__MACOSX/
+
+# Runtime output
+sdcpp-workflow/runs/
+sdcpp-workflow/logs/
+sdcpp-workflow/state/
+
+# Machine-local config
+sdcpp-workflow/config/sdcpp.env
+
+# Sockets / temp files
+*.sock
+*.tmp
+
+# Generated proof/runtime blobs
+sdcpp-proof-*/**/*.png
+sdcpp-proof-*/**/*.b64
+sdcpp-proof-*/**/*response*.json
+sdcpp-proof-*/**/capabilities.json
+sdcpp-proof-*/**/models.json
+sdcpp-proof-*/**/sdcpp-native-job-id.txt
+sdcpp-proof-*/**/sdcpp-native-submit-response.txt
+sdcpp-proof-*/**/sdcpp-native-submit-response.json
+
+# Do not ever commit model files
+*.safetensors
+*.ckpt
+*.gguf
+*.pt
+*.pth
+*.onnx
+
+# Keep source docs/examples
+!sdcpp-workflow/config/sdcpp.env.example
+!sdcpp-proof-*/BigMac_SDCPP_Image_Gen_Proof_Bible.md
+!sdcpp-proof-*/final-proof-report.md

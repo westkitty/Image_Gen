@@ -1,0 +1,13 @@
+# Local secrets / machine-specific config
+config/sdcpp.env
+
+# Runtime state (sockets, live session markers, chosen ports)
+state/
+runs/
+logs/
+
+# OS cruft
+.DS_Store
+
+# Keep the examples / docs tracked:
+!config/sdcpp.env.example
