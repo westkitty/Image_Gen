@@ -1,23 +1,43 @@
-# UI Validation Checks
+# UI Validation & Command Mapping
 
-To validate the UI and ensure the backend is untouched:
+This document lists the exact mapping from Operator Console UI actions to backend scripts to ensure safe boundaries and correct parameter passing.
 
-1. **Verify Backend**
-   ```sh
-   cd /Users/andrew/Image_Gen/sdcpp-workflow
-   bin/sdcpp-verify.sh
-   ```
-   Must output `==== PASS ====`.
+## Generate Fast CLI
+- **Script**: `bin/sdcpp-run-fast.sh`
+- **Arguments**: `--mode cli --prompt "..." [--negative "..."] [--seed <seed>]`
+- **When**: UI "Generate Single" form with Preset = Fast, Mode = CLI.
 
-2. **Start the UI**
-   ```sh
-   cd /Users/andrew/Image_Gen/operator-console
-   npm install
-   node server.js
-   ```
+## Generate Quality CLI
+- **Script**: `bin/sdcpp-run-quality.sh`
+- **Arguments**: `--mode cli --prompt "..." [--negative "..."] [--seed <seed>]`
+- **When**: UI "Generate Single" form with Preset = Quality, Mode = CLI.
 
-3. **Check Safety**
-   - No `0.0.0.0` binding.
-   - Access `http://127.0.0.1:31337/`
-   - Run a "Verify" job through the UI Dashboard. Watch the Job Console stream output.
-   - Confirm History populates from local Markdown logs.
+## Generate Selected Preset CLI (Arbitrary Preset)
+- **Script**: `bin/sdcpp-cli-generate.sh`
+- **Arguments**: `--prompt "..." --preset <preset> [--negative "..."] [--seed <seed>]`
+- **When**: UI "Generate Single" form with Preset = [smoke, thumbnail, balanced, quality_plus], Mode = CLI.
+
+## Batch Generate CLI
+- **Script**: `bin/sdcpp-batch-generate.sh`
+- **Arguments**: `--prompt "..." --mode cli [--negative "..."] [--count <N>] [--preset <preset>] [--seed-mode <mode>] [--seed-start <N>]`
+- **When**: UI "Batch Explore" form, Mode = CLI.
+
+## Server Generate
+- **Script**: `bin/sdcpp-server-generate.sh`
+- **Arguments**: `--prompt "..." [--negative "..."] [--preset <preset>] [--api <api>] [--seed <seed>]`
+- **When**: UI "Generate Single" form with Mode = Server AND Preset not fast/quality. (If Preset is fast/quality, we use the wrappers: `sdcpp-run-fast.sh --mode server` or `sdcpp-run-quality.sh --mode server`).
+
+## Verify
+- **Script**: `bin/sdcpp-verify.sh`
+- **Arguments**: (none)
+- **When**: UI "Advanced Diagnostics" -> "Run Backend Verify".
+
+## Server Status
+- **Script**: `bin/sdcpp-server-status.sh`
+- **Arguments**: (none)
+- **When**: UI top status bar automated polling, or "Warm Server" -> "Check Status".
+
+## Stop Server
+- **Script**: `bin/sdcpp-server-stop.sh`
+- **Arguments**: (none)
+- **When**: UI "Warm Server" -> "Stop Server".

@@ -750,3 +750,48 @@ Correction: None
 State After Completion: The UI is completely usable and robust for single, batch, and server-based generations. Safe directory traversal implemented for image serving.
 
 Next Step / Handoff: Commit and push the hardened UI to GitHub.
+
+### Entry 22 - Operator Console Repair Pass
+
+Timestamp: Sat Jun 20 21:07:00 EDT 2026
+Summary:
+Completed a full repair pass on the Operator Console after the initial UI hardening was rejected for poor command mapping, bad state models, and unacceptable visual layout.
+
+Reason / Intent:
+To fix the Generate Single command mapping (which incorrectly passed `--preset` to wrappers), separate job states from backend readiness, fix `/api/runs` metadata parsing, and redesign the UI to match the intended Operator Console three-zone specification.
+
+Files Changed:
+- operator-console/server.js
+- operator-console/public/index.html
+- operator-console/public/styles.css
+- operator-console/public/app.js
+- operator-console/docs/ui-validation.md
+
+Commands Run:
+- Script help extraction for all wrappers
+- `npm run check` and `npm start`
+- Custom validation suite (`curl` to /api/runs, server-status, verify)
+- `bin/sdcpp-verify.sh`
+
+Command Intent: Validate exact arguments supported by backend scripts, confirm UI boundaries, and prove no shell or path escapes exist.
+
+Outputs Generated:
+1. `server.js` completely rewritten to map commands strictly based on their `--help` specifications.
+2. UI redesigned with a dark, high-contrast three-zone layout (sidebar, top strip, main workspace).
+3. "Job Drawer" implemented to replace the blocking job modal, with clear extraction of the "first failed gate" if a backend script rejects arguments.
+4. Run parsing fixed so missing keys return null, not undefined.
+
+Decisions:
+1. UI repair pass started after user rejection.
+2. Command mapping bug fixed: fast/quality presets route to wrapper scripts without `--preset`, while arbitrary presets route to the low-level `sdcpp-cli-generate.sh`.
+3. State model and run parsing fixed: Run Type and Backend states are correctly decoupled.
+4. Visual redesign pass completed utilizing requested CSS tokens, typography, and interactive cards.
+5. Validation completed with `sdcpp-verify.sh`.
+
+Bugs / Blockers: None remaining. The mapping now strictly honors script `--help`.
+
+Correction: Fixed previous erroneous assumption that `sdcpp-run-fast.sh` accepted `--preset`.
+
+State After Completion: The Operator Console is now functionally sound, strictly bounded to safe arguments, and visually representative of a robust system monitor.
+
+Next Step / Handoff: Commit and push the repaired UI.

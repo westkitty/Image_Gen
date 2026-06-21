@@ -38,7 +38,7 @@ function createJob(commandAction) {
   const jobId = crypto.randomUUID();
   jobs[jobId] = {
     id: jobId,
-    commandAction: commandAction,
+    commandAction: commandAction, // verify, server-status, cli-generate, server-generate, batch-generate, etc.
     status: 'queued', // queued, running, PASS, PARTIAL, FAIL
     stdout: '',
     stderr: '',
@@ -87,11 +87,12 @@ function runAction(jobId, scriptPath, args) {
     const failMatch = out.match(/FAIL:\s*(.+?)(?=\n|$)/);
     if (failMatch) {
       jobs[jobId].firstFailedGate = failMatch[1].trim();
+    } else if (out.includes('Unknown argument')) {
+      jobs[jobId].firstFailedGate = 'args';
     }
 
-    // Try to extract run ID. Usually printed like "Report: .../runs/20260620-123456-cli/..."
-    // Or we can just grab the last created run ID if it's very recent.
-    const runIdMatch = out.match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9]+)/);
+    // Try to extract run ID
+    const runIdMatch = out.match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
     if (runIdMatch) {
       jobs[jobId].runId = runIdMatch[1];
     }
@@ -112,28 +113,50 @@ app.post('/api/actions/server-status', (req, res) => {
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
-app.post('/api/actions/generate-fast', (req, res) => {
+app.post('/api/actions/generate-single', (req, res) => {
   const { prompt, negative_prompt, seed, mode, preset } = req.body;
   if (!validatePrompt(prompt)) return res.status(400).json({ error: "Invalid prompt" });
   if (!validateNegativePrompt(negative_prompt)) return res.status(400).json({ error: "Invalid negative prompt" });
+  if (preset && !ALLOWED_PRESETS.has(preset)) return res.status(400).json({ error: "Invalid preset" });
   
   const m = mode || 'cli';
   if (!ALLOWED_MODES.has(m)) return res.status(400).json({ error: "Invalid mode" });
 
-  const args = ['--mode', m, '--prompt', prompt];
-  
-  if (negative_prompt) {
-    args.push('--negative', negative_prompt);
-  }
-  if (seed && /^(random|\d+)$/.test(String(seed))) {
-    args.push('--seed', String(seed));
-  }
-  if (preset && ALLOWED_PRESETS.has(preset)) {
-    args.push('--preset', preset);
+  let script = '';
+  let args = [];
+
+  if (m === 'cli') {
+    if (preset === 'fast' || preset === 'quality') {
+      script = preset === 'fast' ? 'bin/sdcpp-run-fast.sh' : 'bin/sdcpp-run-quality.sh';
+      args.push('--mode', 'cli', '--prompt', prompt);
+      if (negative_prompt) args.push('--negative', negative_prompt);
+      if (seed && /^(random|\d+)$/.test(String(seed))) args.push('--seed', String(seed));
+    } else {
+      script = 'bin/sdcpp-cli-generate.sh';
+      args.push('--prompt', prompt);
+      if (preset) args.push('--preset', preset);
+      if (negative_prompt) args.push('--negative', negative_prompt);
+      if (seed && /^(random|\d+)$/.test(String(seed))) args.push('--seed', String(seed));
+    }
+  } else {
+    // server mode
+    if (preset === 'fast' || preset === 'quality') {
+      script = preset === 'fast' ? 'bin/sdcpp-run-fast.sh' : 'bin/sdcpp-run-quality.sh';
+      args.push('--mode', 'server', '--prompt', prompt);
+      if (negative_prompt) args.push('--negative', negative_prompt);
+      if (seed && /^(random|\d+)$/.test(String(seed))) args.push('--seed', String(seed));
+    } else {
+      script = 'bin/sdcpp-server-generate.sh';
+      args.push('--prompt', prompt);
+      if (preset) args.push('--preset', preset);
+      if (negative_prompt) args.push('--negative', negative_prompt);
+      if (seed && /^(random|\d+)$/.test(String(seed))) args.push('--seed', String(seed));
+    }
   }
 
-  const jobId = createJob('generate-fast');
-  runAction(jobId, 'bin/sdcpp-run-fast.sh', args);
+  const jobType = m === 'cli' ? 'cli-generate' : 'server-generate';
+  const jobId = createJob(jobType);
+  runAction(jobId, script, args);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
@@ -143,7 +166,6 @@ app.post('/api/actions/generate-batch', (req, res) => {
   if (!validateNegativePrompt(negative_prompt)) return res.status(400).json({ error: "Invalid negative prompt" });
 
   const args = ['--prompt', prompt];
-  
   if (negative_prompt) args.push('--negative', negative_prompt);
 
   const m = mode || 'cli';
@@ -171,12 +193,12 @@ app.post('/api/actions/generate-batch', (req, res) => {
     args.push('--seed-start', String(seedStart));
   }
 
-  if (api) {
+  if (api && m === 'server') {
     if (!ALLOWED_APIS.has(api)) return res.status(400).json({ error: "Invalid API" });
     args.push('--api', api);
   }
 
-  const jobId = createJob('generate-batch');
+  const jobId = createJob('batch-generate');
   runAction(jobId, 'bin/sdcpp-batch-generate.sh', args);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
@@ -297,8 +319,43 @@ app.get('/api/runs', (req, res) => {
   const runs = dirs.map(dirName => {
     const runPath = path.join(RUNS_DIR, dirName);
     const cardPath = path.join(runPath, 'ui-run-card.md');
-    let metadata = { id: dirName };
-    Object.assign(metadata, parseUiRunCard(cardPath));
+    let metadata = { id: dirName, type: 'unknown', status: 'UNKNOWN', title: dirName, prompt: null, primaryImage: null };
+    
+    // Infer basic info from dir name
+    if (dirName.includes('-verify')) {
+      metadata.type = 'verify';
+      metadata.title = 'Verify Backend';
+    } else if (dirName.includes('-cli')) {
+      metadata.type = 'cli-generate';
+      metadata.title = 'CLI Generate';
+    } else if (dirName.includes('-batch')) {
+      metadata.type = 'batch-generate';
+      metadata.title = 'Batch Generate';
+    } else if (dirName.includes('-server-gen')) {
+      metadata.type = 'server-generate';
+      metadata.title = 'Server Generate';
+    } else if (dirName.includes('-server-start')) {
+      metadata.type = 'server-start';
+      metadata.title = 'Server Start';
+    } else if (dirName.includes('-server-stop')) {
+      metadata.type = 'server-stop';
+      metadata.title = 'Server Stop';
+    } else if (dirName.includes('-seedtest')) {
+      metadata.type = 'seed-test';
+      metadata.title = 'Seed Test';
+    } else if (dirName.includes('-benchmark')) {
+      metadata.type = 'benchmark';
+      metadata.title = 'Benchmark';
+    }
+
+    if (fs.existsSync(cardPath)) {
+      const parsed = parseUiRunCard(cardPath);
+      metadata.status = parsed.status || metadata.status;
+      metadata.prompt = parsed.prompt || null;
+      if (parsed.run_type) metadata.type = parsed.run_type;
+      metadata.primaryImage = parsed.primary_image || null;
+    }
+
     return metadata;
   });
 
@@ -366,7 +423,7 @@ app.get('/api/runs/:runId/files', (req, res) => {
 // ---- SERVER STATUS ----
 
 app.get('/api/server-status', (req, res) => {
-  const jobId = createJob('server-status-get');
+  const jobId = createJob('server-status');
   runAction(jobId, 'bin/sdcpp-server-status.sh', []);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
