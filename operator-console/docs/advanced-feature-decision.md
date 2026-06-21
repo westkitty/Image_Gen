@@ -39,10 +39,12 @@ No feature is marked blocked without verified evidence.
 - No SDXL Turbo checkpoint (`sd_xl_turbo_1.0_fp16.safetensors` or equivalent) present
 
 **What is needed to unlock:**
-1. Stage an SDXL or SDXL Turbo checkpoint on BigMac at the expected model path
-2. Verify `sd-cli` on BigMac supports `--model` switching to SDXL format
-3. Update `sdcpp-cli-generate.sh` to handle SDXL aspect-ratio defaults (512×512 is wrong for SDXL)
-4. Re-run asset discovery
+1. Stage `stabilityai/sdxl-turbo` on BigMac external storage, preferring:
+   `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors`
+2. Do not use `/Volumes/wc2tb` for new heavy model growth.
+3. Verify the local BigMac stable-diffusion.cpp binary supports the required SDXL Turbo flags.
+4. Run a bounded smoke with 1-4 steps, starting at 512x512, without blindly applying SD 1.5 CFG/negative-prompt defaults.
+5. Only after real PNG proof should the `sdxlTurbo` gate become supported.
 
 **Why it matters:**
 SDXL Turbo produces usable images at 1–4 steps (vs SD1.5's 20–50), making it the
@@ -63,12 +65,14 @@ once a checkpoint is staged.
 
 **What is needed to unlock:**
 1. Stage Flux model files on BigMac:
-   - `ae.safetensors` (Flux autoencoder)
-   - `clip_l.safetensors` (CLIP-L text encoder)
-   - T5XXL weights (or a quantized variant)
-   - Flux base checkpoint (`flux1-dev.safetensors` or `flux1-schnell.safetensors`)
-2. Verify `sd-cli` on BigMac supports Flux inference (`--flux` or equivalent flag)
-3. Write `sdcpp-flux-generate.sh` (separate from sd1.5 path)
+   - `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/flux1-schnell/flux1-schnell.safetensors` or compatible GGUF/quantized Flux model file
+   - `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/shared/ae.safetensors`
+   - CLIP-L candidate
+   - T5XXL candidate
+2. Accept Hugging Face model conditions first when required.
+3. Verify the actual BigMac `sd-cli --help` output for model, VAE, CLIP-L, and T5XXL flags before inventing a command.
+4. Write a bounded Flux smoke script only after flag support is proven.
+5. Only after real PNG proof should the `flux` gate become supported.
 
 **Why it matters:**
 Flux is state-of-the-art for text-to-image quality as of mid-2026. Schnell variant
@@ -140,8 +144,8 @@ files are staged on BigMac.
 
 ### Priority order for next unlock (in sequence)
 
-1. **SDXL Turbo** — stage checkpoint on BigMac → update generate script → test
-2. **Flux Schnell** — stage all Flux model files → write dedicated generate script
+1. **SDXL Turbo** — stage `sd_xl_turbo_1.0_fp16.safetensors` on BigMac wc1tb → probe flags → bounded smoke
+2. **Flux Schnell** — stage official or compatible Flux files on BigMac wc1tb → probe flags → bounded smoke
 3. **SDXL (base)** — stage SDXL checkpoint → validate higher-res output
 4. **img2img** — rebuild or upgrade `sd-cli` on BigMac → test flags → write bridge
 5. **LoRA / VAE** — stage LoRA files → wire injection into generate script
@@ -155,6 +159,16 @@ In the absence of advanced model support, the session completed:
 - Smoke check expanded to 15 tests
 - This decision memo
 - Honest capability gates with `reason` fields explaining blockers
+
+### Model staging foundation added after this memo
+
+- Manual staging guide: `operator-console/docs/model-staging-sdxl-turbo-flux.md`
+- Validation script: `sdcpp-workflow/bin/sdcpp-model-stage-check.sh`
+- API cache: `GET /api/model-stage`
+- Job action: `POST /api/actions/check-model-stage`
+- Capability gates: `sdxlTurbo`, `flux`, and `sdxl`
+
+These detect staged files only. They do not mark runtime support true without a bounded BigMac Metal smoke run.
 
 ---
 

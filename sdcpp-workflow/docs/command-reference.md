@@ -212,6 +212,25 @@ bin/sdcpp-discover-assets.sh
 ```
 Writes `state/assets-cache.json`. Also available via `POST /api/actions/discover-assets`.
 
+## sdcpp-model-stage-check.sh
+Validate SDXL Turbo / Flux staging on BigMac wc1tb without downloading or moving models.
+```sh
+bin/sdcpp-model-stage-check.sh
+```
+Checks `ssh westcat` identity (`bigmac` / `bigmac`), `/Volumes/wc1tb`, write access under `/Volumes/wc1tb/Ai/Image_Gen`, staged SDXL Turbo/SDXL/Flux candidates, GGUF candidates, and stable-diffusion.cpp help observations. Writes `state/model-stage-cache.json`. Also available via `POST /api/actions/check-model-stage`; read the cache through `GET /api/model-stage`.
+
+Target root:
+```text
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models
+```
+
+First SDXL Turbo target:
+```text
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors
+```
+
+Flux targets: `flux1-schnell.safetensors` or compatible GGUF/quantized model candidates under `flux/flux1-schnell/`, plus `ae.safetensors`, CLIP-L, and T5XXL candidates under `flux/shared/`. File presence is not support; a bounded BigMac Metal smoke run must produce a real PNG before enabling the gates.
+
 ## sdcpp-image-edit-capabilities.sh
 Probe BigMac for img2img / inpaint CLI support.
 ```sh

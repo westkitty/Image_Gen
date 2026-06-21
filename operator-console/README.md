@@ -48,10 +48,12 @@ Prompts are redacted by default. When **Save prompts in run records** is off, th
 | Run metadata | `GET /api/runs/:runId/metadata` | tEXt/iTXt chunks, metrics.tsv |
 | Safe file serving | `GET /api/run-file?path=...` | allowlisted extensions, path containment |
 | Asset discovery | `POST /api/actions/discover-assets` → `GET /api/assets` | |
+| Model staging check | `POST /api/actions/check-model-stage` → `GET /api/model-stage` | SDXL Turbo / Flux staging on BigMac wc1tb |
 | img2img probe | `POST /api/actions/probe-image-edit` | writes state/image-edit-capabilities.json |
 | Upscale probe | `POST /api/actions/probe-upscale` | writes state/upscale-capabilities.json |
 | **Pillow upscale** | `POST /api/actions/upscale` | local resize only — not AI, not Real-ESRGAN |
 | **Hires Fix** | `POST /api/actions/hires-fix` | two-pass txt2img → Pillow upscale — NOT A1111 latent Hires Fix |
+| Hires Fix validation | `POST /api/validate/hires-fix` | validation-only; does not spawn generation |
 
 ### Pillow upscale direct usage
 
@@ -71,6 +73,7 @@ Manifest at `runs/<run-id>/upscaled/upscale-manifest.json` — no prompt or nega
 | X/Y/Z Plot | Script and endpoint exist (max 16 cells). Requires running BigMac server tunnel. Not end-to-end validated with real images. |
 | Upscale (AI/Extras) | Pillow local resize exists; Real-ESRGAN, A1111 Extras parity not implemented. |
 | PNG Info | tEXt/iTXt chunks from run images via metadata endpoint; arbitrary PNG upload not supported. |
+| SDXL Turbo / Flux / SDXL | Highest-priority next model paths, but still gated until files are staged on `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models` and BigMac Metal smoke output proves runtime support. |
 
 ## Gated (not wired)
 
@@ -99,3 +102,27 @@ bash scripts/package-source.sh
 ```
 
 Writes `/tmp/Image_Gen_source_<timestamp>.zip` from `git archive HEAD` — excludes `.git/`, `node_modules/`, `runs/`, `logs/`, `state/`, `.proof-env`, runtime junk.
+
+By default this refuses a dirty working tree because `git archive HEAD` packages committed source only. Use `--allow-dirty` only when you deliberately want the current `HEAD` while local changes remain uncommitted, and `--output /path/file.zip` to choose a target.
+
+## SDXL Turbo / Flux staging
+
+Manual staging guide:
+
+```text
+operator-console/docs/model-staging-sdxl-turbo-flux.md
+```
+
+External model root:
+
+```text
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models
+```
+
+First SDXL Turbo BigMac Metal target:
+
+```text
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors
+```
+
+Flux first targets are `flux1-schnell.safetensors` or compatible GGUF/quantized diffusion files under `flux/flux1-schnell/`, plus `ae.safetensors`, CLIP-L, and T5XXL candidates under `flux/shared/`. File presence only changes the gate reason; support stays false until a bounded BigMac Metal smoke run produces a real PNG.

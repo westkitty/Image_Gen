@@ -108,3 +108,44 @@ curl -s -X POST http://127.0.0.1:31337/api/actions/upscale \
   -H 'Content-Type: application/json' \
   -d '{"path":"<run-id>/<image.png>","scale":2,"resample":"lanczos"}'
 ```
+
+## 10. SDXL Turbo / Flux staging check
+
+Do not download models automatically. Stage files manually on BigMac external storage:
+
+```text
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models
+```
+
+First SDXL Turbo target:
+
+```text
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors
+```
+
+Flux Schnell targets:
+
+```text
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/flux1-schnell/flux1-schnell.safetensors
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/shared/ae.safetensors
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/shared/clip_l.safetensors
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/shared/t5xxl_fp16.safetensors
+```
+
+Compatible GGUF or quantized Flux candidates are accepted if the BigMac stable-diffusion.cpp binary proves the required flags.
+
+Validate staging:
+
+```sh
+cd /Users/andrew/Image_Gen/sdcpp-workflow
+bin/sdcpp-model-stage-check.sh
+```
+
+Operator Console:
+
+```sh
+curl -s http://127.0.0.1:31337/api/model-stage | python3 -m json.tool
+curl -s -X POST http://127.0.0.1:31337/api/actions/check-model-stage | python3 -m json.tool
+```
+
+Staged files do not mean supported. SDXL Turbo, Flux, and SDXL remain gated until BigMac Metal smoke output proves a real PNG.

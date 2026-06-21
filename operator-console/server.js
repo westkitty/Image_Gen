@@ -15,6 +15,9 @@ const STATE_DIR = path.join(WORKFLOW_ROOT, 'state');
 const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
 const IMAGE_EDIT_CACHE = path.join(STATE_DIR, 'image-edit-capabilities.json');
 const UPSCALE_CACHE = path.join(STATE_DIR, 'upscale-capabilities.json');
+const MODEL_STAGE_CACHE = path.join(STATE_DIR, 'model-stage-cache.json');
+const MODEL_STAGE_ROOT = '/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models';
+const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md';
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -254,6 +257,88 @@ function buildGenerateArgs(params, includeApi = false) {
   return args;
 }
 
+function normalizeHiresFixBody(body) {
+  body = body || {};
+
+  if (!validatePrompt(body.prompt)) return { ok: false, status: 400, error: 'Invalid prompt' };
+  const prompt = String(body.prompt).trim();
+  if (!validateNegativePrompt(body.negative_prompt)) return { ok: false, status: 400, error: 'Invalid negative prompt' };
+  const negativePrompt = body.negative_prompt ? String(body.negative_prompt) : '';
+
+  const mode = body.mode !== undefined ? String(body.mode) : 'cli';
+  if (mode !== 'cli') return { ok: false, status: 400, error: 'Only mode=cli is supported for hires-fix' };
+
+  if (body.api !== undefined && body.api !== null && body.api !== '') {
+    return { ok: false, status: 400, error: 'api param is not accepted for hires-fix (CLI mode only)' };
+  }
+
+  const preset = body.preset !== undefined ? String(body.preset) : 'fast';
+  if (!PRESET_DEFAULTS[preset] && preset !== 'Custom') {
+    return { ok: false, status: 400, error: `Unknown preset: ${preset}` };
+  }
+
+  const scale = body.scale !== undefined ? Number(body.scale) : 2;
+  if (!ALLOWED_UPSCALE_SCALES.has(scale)) return { ok: false, status: 400, error: 'scale must be 2, 3, or 4' };
+
+  const resample = body.resample !== undefined ? String(body.resample) : 'lanczos';
+  if (!ALLOWED_UPSCALE_RESAMPLES.has(resample)) {
+    return { ok: false, status: 400, error: 'resample must be: nearest, bilinear, bicubic, lanczos' };
+  }
+
+  if (!validateIntRange(body.steps, 1, 150)) return { ok: false, status: 400, error: 'Invalid steps' };
+  const cfgVal = body.cfg_scale !== undefined ? body.cfg_scale : body.cfg;
+  if (!validateFloatRange(cfgVal, 1, 30)) return { ok: false, status: 400, error: 'Invalid cfg_scale' };
+  if (!validateSize(body.width)) return { ok: false, status: 400, error: 'Invalid width: use multiples of 8 between 64 and 2048' };
+  if (!validateSize(body.height)) return { ok: false, status: 400, error: 'Invalid height: use multiples of 8 between 64 and 2048' };
+  if (!validateSampler(body.sampler)) return { ok: false, status: 400, error: 'Invalid or unsupported sampler' };
+  if (!validateSeed(body.seed)) return { ok: false, status: 400, error: 'Invalid seed' };
+
+  const savePrompts = !!body.save_prompts;
+  const params = { prompt, negative_prompt: negativePrompt, preset, mode, scale, resample, save_prompts: savePrompts };
+  const args = ['--preset', preset, '--prompt', prompt, '--scale', String(scale), '--resample', resample];
+  if (negativePrompt) args.push('--negative', negativePrompt);
+  if (body.steps) { params.steps = Number(body.steps); args.push('--steps', String(Number(body.steps))); }
+  if (body.width) { params.width = Number(body.width); args.push('--width', String(Number(body.width))); }
+  if (body.height) { params.height = Number(body.height); args.push('--height', String(Number(body.height))); }
+  if (cfgVal !== undefined && cfgVal !== null && cfgVal !== '') {
+    params.cfg_scale = Number(cfgVal);
+    args.push('--cfg-scale', String(Number(cfgVal)));
+  }
+  if (body.sampler) { params.sampler = String(body.sampler); args.push('--sampler', String(body.sampler)); }
+  if (body.seed !== undefined && body.seed !== null && String(body.seed) !== '') {
+    params.seed = String(body.seed);
+    args.push('--seed', String(body.seed));
+  }
+
+  return {
+    ok: true,
+    params,
+    args,
+    sensitives: savePrompts ? [] : [prompt, negativePrompt].filter(Boolean),
+    savePrompts
+  };
+}
+
+function hiresFixValidationResponse(normalized) {
+  const p = normalized.params;
+  const save = normalized.savePrompts;
+  const out = {
+    ok: true,
+    preset: p.preset,
+    mode: p.mode,
+    scale: p.scale,
+    resample: p.resample,
+    seed: p.seed || '',
+    prompt_saved: save,
+    prompt: save ? p.prompt : '[REDACTED]',
+    negative_prompt: save ? p.negative_prompt : '[REDACTED]'
+  };
+  ['steps', 'width', 'height', 'sampler'].forEach(key => {
+    if (p[key] !== undefined) out[key] = p[key];
+  });
+  return out;
+}
+
 function safeRunId(id) {
   return /^[a-zA-Z0-9_-]+$/.test(id || '');
 }
@@ -304,6 +389,83 @@ function readJsonCache(filePath) {
   try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch (_) { return null; }
 }
 
+function summarizeModelStage(cache) {
+  const empty = {
+    present: false,
+    stale: true,
+    checked_at: null,
+    external_root: MODEL_STAGE_ROOT,
+    sdxlTurboStaged: false,
+    fluxStaged: false,
+    sdxlStaged: false,
+    metalSupportObserved: false,
+    supportProven: false,
+    recommended_next_step: 'Run POST /api/actions/check-model-stage after staging model files on BigMac wc1tb.'
+  };
+  if (!cache) return empty;
+  const turboCandidates = cache.sdxl_turbo_candidates || [];
+  const fluxModels = cache.flux_model_candidates || [];
+  const fluxVaes = cache.flux_vae_candidates || [];
+  const fluxClip = cache.flux_clip_l_candidates || [];
+  const fluxT5 = cache.flux_t5xxl_candidates || [];
+  const help = cache.stable_diffusion_cpp_help_summary || {};
+  return {
+    present: true,
+    stale: false,
+    checked_at: cache.checked_at || null,
+    external_root: cache.external_root || MODEL_STAGE_ROOT,
+    route_ok: !!cache.route_ok,
+    wc1tb_mounted: !!cache.wc1tb_mounted,
+    write_test: cache.write_test || 'unknown',
+    free_space: cache.free_space || '',
+    sdxlTurboStaged: turboCandidates.length > 0,
+    sdxlTurboRecommended: cache.sdxl_turbo_recommended_candidate || null,
+    sdxlStaged: (cache.sdxl_candidates || []).length > 0,
+    fluxStaged: fluxModels.length > 0 && fluxVaes.length > 0 &&
+      (fluxClip.length > 0 || !!help.flux_without_clip_l_observed) &&
+      (fluxT5.length > 0 || !!help.flux_without_t5xxl_observed),
+    fluxModelCandidates: fluxModels,
+    fluxVaeCandidates: fluxVaes,
+    fluxClipLCandidates: fluxClip,
+    fluxT5xxlCandidates: fluxT5,
+    fluxGgufCandidates: cache.flux_gguf_candidates || [],
+    metalSupportObserved: !!cache.metal_support_observed,
+    supportProven: !!cache.runtime_smoke_proven,
+    recommended_next_step: cache.recommended_next_step || empty.recommended_next_step
+  };
+}
+
+function buildModelGate(kind, stage) {
+  const root = stage.external_root || MODEL_STAGE_ROOT;
+  const base = {
+    supported: false,
+    expected_external_root: root,
+    docs: MODEL_STAGE_DOC
+  };
+  if (kind === 'sdxlTurbo') {
+    if (stage.supportProven && stage.sdxlTurboStaged && stage.metalSupportObserved) {
+      return { ...base, supported: true, reason: 'SDXL Turbo staged and runtime smoke proof recorded.' };
+    }
+    if (stage.sdxlTurboStaged) {
+      return { ...base, reason: 'SDXL Turbo model staged; BigMac Metal smoke proof still required.', unlock_requires: 'Run a bounded SDXL Turbo smoke script after probing BigMac sd-cli flags.' };
+    }
+    return { ...base, reason: 'SDXL Turbo model missing on BigMac wc1tb.', unlock_requires: `Stage ${root}/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors, then run model-stage check.` };
+  }
+  if (kind === 'flux') {
+    if (stage.supportProven && stage.fluxStaged && stage.metalSupportObserved) {
+      return { ...base, supported: true, reason: 'Flux staged and runtime smoke proof recorded.' };
+    }
+    if (stage.fluxStaged) {
+      return { ...base, reason: 'Flux component set staged; BigMac Metal smoke proof still required.', unlock_requires: 'Probe sd-cli flags for Flux model, VAE, CLIP-L, and T5XXL paths, then run bounded smoke.' };
+    }
+    return { ...base, reason: 'Flux model/component files missing on BigMac wc1tb.', unlock_requires: `Stage Flux Schnell files under ${root}/flux/flux1-schnell and ${root}/flux/shared, then run model-stage check.` };
+  }
+  if (stage.sdxlStaged) {
+    return { ...base, reason: 'SDXL checkpoint staged; runtime smoke proof still required.', unlock_requires: 'Probe BigMac sd-cli flags and run a bounded SDXL smoke.' };
+  }
+  return { ...base, reason: 'SDXL checkpoint missing on BigMac wc1tb.', unlock_requires: `Stage an SDXL checkpoint under ${root}/checkpoints/sdxl, then run model-stage check.` };
+}
+
 const PNG_CHUNK_READ_LIMIT = 20 * 1024 * 1024; // 20 MB
 
 function readPngTextChunks(filePath) {
@@ -348,6 +510,7 @@ app.get('/api/capabilities', (req, res) => {
   const assets = readJsonCache(ASSETS_CACHE);
   const editCap = readJsonCache(IMAGE_EDIT_CACHE);
   const upscaleCap = readJsonCache(UPSCALE_CACHE);
+  const modelStage = summarizeModelStage(readJsonCache(MODEL_STAGE_CACHE));
 
   // Build models list from cache or fall back to configured model
   let models, vaes;
@@ -423,6 +586,7 @@ app.get('/api/capabilities', (req, res) => {
     app: { name: 'SDCPP Workbench', version: 'a1111-workbench-2026-06-21' },
     backend: { type: 'stable-diffusion.cpp workflow bridge', workflowRoot: WORKFLOW_ROOT, runsDir: RUNS_DIR, localTunnelPort: localPort },
     assetCache: { present: !!assets, cacheAgeMinutes, discoveredAt: assets ? assets.discovered_at_iso : null },
+    modelStage,
     models,
     vaes,
     networks: {
@@ -445,6 +609,9 @@ app.get('/api/capabilities', (req, res) => {
       probeImageEdit: { supported: true, route: '/api/actions/probe-image-edit' },
       probeUpscale: { supported: true, route: '/api/actions/probe-upscale' },
       pillowUpscale: pillowUpscaleGate,
+      sdxlTurbo: buildModelGate('sdxlTurbo', modelStage),
+      flux: buildModelGate('flux', modelStage),
+      sdxl: buildModelGate('sdxl', modelStage),
       img2img: img2imgGate,
       inpaint: inpaintGate,
       outpaint: { supported: false, reason: 'Outpaint requires canvas-extend pre-processing not present in SDCPP CLI.' },
@@ -553,6 +720,18 @@ app.get('/api/assets', (req, res) => {
   res.json({ stale: false, cacheAgeMinutes: ageMinutes, ...cache });
 });
 
+app.get('/api/model-stage', (req, res) => {
+  const cache = readJsonCache(MODEL_STAGE_CACHE);
+  if (!cache) return res.json({ stale: true, missing: true, summary: summarizeModelStage(null) });
+  res.json({ stale: false, missing: false, summary: summarizeModelStage(cache), ...cache });
+});
+
+app.post('/api/actions/check-model-stage', (req, res) => {
+  const jobId = createJob('check-model-stage', 'bin/sdcpp-model-stage-check.sh');
+  runAction(jobId, 'bin/sdcpp-model-stage-check.sh', []);
+  res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
 // Phase 4 — image-edit capability probe
 app.post('/api/actions/probe-image-edit', (req, res) => {
   const jobId = createJob('probe-image-edit', 'bin/sdcpp-image-edit-capabilities.sh');
@@ -629,68 +808,23 @@ app.post('/api/actions/upscale', (req, res) => {
 
 // Hires Fix — two-pass txt2img → local Pillow upscale
 app.post('/api/actions/hires-fix', (req, res) => {
-  const body = req.body || {};
+  const normalized = normalizeHiresFixBody(req.body || {});
+  if (!normalized.ok) return res.status(normalized.status).json({ error: normalized.error });
 
-  // Prompt / negative prompt
-  if (!validatePrompt(body.prompt)) return res.status(400).json({ error: 'Invalid prompt' });
-  const prompt = String(body.prompt).trim();
-  if (!validateNegativePrompt(body.negative_prompt)) return res.status(400).json({ error: 'Invalid negative prompt' });
-
-  // Mode: CLI only; server mode not yet implemented
-  const mode = body.mode !== undefined ? String(body.mode) : 'cli';
-  if (mode !== 'cli') return res.status(400).json({ error: 'Only mode=cli is supported for hires-fix' });
-
-  // api param not meaningful for CLI mode — reject to avoid silent ignoring
-  if (body.api !== undefined && body.api !== null && body.api !== '') {
-    return res.status(400).json({ error: 'api param is not accepted for hires-fix (CLI mode only)' });
-  }
-
-  // Preset
-  const preset = body.preset !== undefined ? String(body.preset) : 'fast';
-  if (!PRESET_DEFAULTS[preset] && preset !== 'Custom') {
-    return res.status(400).json({ error: `Unknown preset: ${preset}` });
-  }
-
-  // Upscale params
-  const scale = body.scale !== undefined ? Number(body.scale) : 2;
-  if (!ALLOWED_UPSCALE_SCALES.has(scale)) return res.status(400).json({ error: 'scale must be 2, 3, or 4' });
-
-  const resample = body.resample !== undefined ? String(body.resample) : 'lanczos';
-  if (!ALLOWED_UPSCALE_RESAMPLES.has(resample)) return res.status(400).json({ error: 'resample must be: nearest, bilinear, bicubic, lanczos' });
-
-  // Optional generation params — validated before use
-  if (!validateIntRange(body.steps, 1, 150)) return res.status(400).json({ error: 'Invalid steps' });
-  if (!validateFloatRange(body.cfg_scale !== undefined ? body.cfg_scale : body.cfg, 1, 30)) {
-    return res.status(400).json({ error: 'Invalid cfg_scale' });
-  }
-  if (!validateSize(body.width)) return res.status(400).json({ error: 'Invalid width: use multiples of 8 between 64 and 2048' });
-  if (!validateSize(body.height)) return res.status(400).json({ error: 'Invalid height: use multiples of 8 between 64 and 2048' });
-  if (!validateSampler(body.sampler)) return res.status(400).json({ error: 'Invalid or unsupported sampler' });
-  if (!validateSeed(body.seed)) return res.status(400).json({ error: 'Invalid seed' });
-
-  const savePrompts = !!(body.save_prompts);
-  const params = sanitizeRequestParams({ prompt, preset, scale, resample }, savePrompts);
-
-  const args = ['--preset', preset, '--prompt', prompt, '--scale', String(scale), '--resample', resample];
-  if (body.negative_prompt) args.push('--negative', String(body.negative_prompt));
-  if (body.steps)            args.push('--steps', String(Number(body.steps)));
-  if (body.width)            args.push('--width', String(Number(body.width)));
-  if (body.height)           args.push('--height', String(Number(body.height)));
-  const cfgVal = body.cfg_scale !== undefined ? body.cfg_scale : body.cfg;
-  if (cfgVal !== undefined && cfgVal !== null && cfgVal !== '') args.push('--cfg-scale', String(Number(cfgVal)));
-  if (body.sampler)          args.push('--sampler', String(body.sampler));
-  // Preserve "random", "fixed", and numeric seed strings — do NOT convert through Number()
-  if (body.seed !== undefined && body.seed !== null && String(body.seed) !== '') {
-    args.push('--seed', String(body.seed));
-  }
-
-  const summary = `bin/sdcpp-hires-fix.sh --preset ${preset} --scale ${scale}x ${resample}`;
-  const jobId = createJob('hires-fix', summary, params);
-  const sensitives = savePrompts ? [] : [prompt, body.negative_prompt].filter(Boolean);
+  const p = normalized.params;
+  const summary = `bin/sdcpp-hires-fix.sh --preset ${p.preset} --scale ${p.scale}x ${p.resample}`;
+  const jobId = createJob('hires-fix', summary, sanitizeRequestParams(p, normalized.savePrompts));
+  const sensitives = normalized.sensitives;
   if (sensitives.length) jobSensitives[jobId] = sensitives;
-  runAction(jobId, 'bin/sdcpp-hires-fix.sh', args, savePrompts);
+  runAction(jobId, 'bin/sdcpp-hires-fix.sh', normalized.args, normalized.savePrompts);
 
   res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
+app.post('/api/validate/hires-fix', (req, res) => {
+  const normalized = normalizeHiresFixBody(req.body || {});
+  if (!normalized.ok) return res.status(normalized.status).json({ error: normalized.error });
+  res.json(hiresFixValidationResponse(normalized));
 });
 
 const ALLOWED_XYZ_AXIS_TYPES = new Set(['steps', 'cfg', 'sampler', 'seed', 'width', 'height']);

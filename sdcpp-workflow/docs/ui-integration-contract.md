@@ -46,6 +46,7 @@ bin/sdcpp-seed-test.sh --preset smoke --seed 424242 --mode cli
 bin/sdcpp-export-latest-markdown.sh [--type batch|cli|server|seedtest]
 bin/sdcpp-open-latest.sh
 bin/sdcpp-presets.sh
+bin/sdcpp-model-stage-check.sh
 ```
 
 ## 6. Commands to gate behind "advanced mode"
@@ -177,4 +178,27 @@ override. Inspect via `bin/sdcpp-presets.sh`. Measured: fast ≈15s, balanced �
 ## 23. Future extension points (not implemented)
 - Persistent "session mode" wrapper (keep one warm server for a UI session).
 - A `runs/index.json` history aggregator for fast browsing.
-- SDXL/Flux/larger sizes — **out of scope**; do not enable without explicit approval.
+- SDXL/Flux/larger sizes — highest-priority next model paths, but still gated. Stage files under `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models`, run `bin/sdcpp-model-stage-check.sh`, then require bounded BigMac Metal PNG proof before enabling.
+
+## 24. SDXL Turbo / Flux staging contract
+
+- API read: `GET /api/model-stage`
+- API action: `POST /api/actions/check-model-stage`
+- Cache: `state/model-stage-cache.json`
+- Docs: `operator-console/docs/model-staging-sdxl-turbo-flux.md`
+- Root: `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models`
+
+SDXL Turbo first target:
+
+```text
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors
+```
+
+Flux first targets:
+
+```text
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/flux1-schnell/flux1-schnell.safetensors
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/shared/ae.safetensors
+```
+
+The UI must show staged/missing/smoke-required states separately. It must not mark `sdxlTurbo`, `flux`, or `sdxl` supported from file presence alone.

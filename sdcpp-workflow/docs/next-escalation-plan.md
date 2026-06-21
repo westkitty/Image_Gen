@@ -36,21 +36,24 @@ without explicit approval, append-only Bible, verified-PNG = success).
   aggregator and/or a persistent warm-server "session mode" wrapper.
 - Exit: a UI agent can list runs and reuse one warm server across a session.
 
-## Phase 3 — SDXL 768 smoke
-- Goal: prove SDXL base at 768×768, 1-step smoke.
-- Prereqs: SDXL checkpoint **already staged on BigMac** (no auto-download), memory headroom checked.
-- Work: model-family abstraction in config; SDXL-specific defaults; new run kind.
-- Exit: verified 768×768 SDXL PNG on MacBook (CLI + one server path).
+## Phase 3 — SDXL Turbo staging and smoke
+- Goal: prove `stabilityai/sdxl-turbo` on BigMac Metal with a bounded 1-4 step smoke.
+- First target: `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors`.
+- Prereqs: model file already staged on BigMac wc1tb (no auto-download), `bin/sdcpp-model-stage-check.sh` PASS or PARTIAL-with-file, and actual `sd-cli --help` flags inspected.
+- Work: SDXL Turbo smoke script, low-step defaults, no SD 1.5 CFG/negative-prompt assumptions unless the local binary proves them.
+- Exit: verified 512x512 SDXL Turbo PNG on MacBook; then and only then update the `sdxlTurbo` capability gate.
 
-## Phase 4 — SDXL 1024
-- Goal: full-resolution SDXL.
-- Prereqs: Phase 3 stable; confirm 32 GB unified memory is sufficient at 1024.
-- Exit: verified 1024×1024 SDXL PNG; documented timings/memory.
+## Phase 4 — Flux Schnell staging and smoke
+- Goal: prove Flux Schnell can work on BigMac Metal.
+- First targets: official `flux1-schnell.safetensors` if staged, `ae.safetensors`, CLIP-L, T5XXL, or stable-diffusion.cpp-compatible GGUF/quantized variants.
+- Prereqs: files staged under `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/`, actual `sd-cli --help` flags inspected for model/VAE/CLIP-L/T5XXL components.
+- Work: dedicated Flux smoke script only after flags are known.
+- Exit: verified Flux PNG on MacBook; then and only then update the `flux` capability gate.
 
-## Phase 5 — Flux (only after SDXL stable)
-- Goal: Flux generation.
-- Prereqs: Phases 3–4 reliable; Flux weights staged; backend/quantization validated.
-- Exit: verified Flux PNG; documented constraints.
+## Phase 5 — SDXL base 768 / 1024
+- Goal: prove SDXL base after SDXL Turbo / Flux staging work is concrete.
+- Prereqs: SDXL checkpoint staged under `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/checkpoints/sdxl/`, memory headroom checked.
+- Exit: verified SDXL PNG on MacBook; documented timings/memory.
 
 ## Phase 6 — Minimal MacBook UI (only after server workflow is reliable)
 - Goal: thin local UI over the existing server scripts (no new inference path).

@@ -22,6 +22,7 @@ RESULTS=()
 
 pass() { PASS_COUNT=$((PASS_COUNT+1)); RESULTS+=("PASS  $1"); }
 fail() { FAIL_COUNT=$((FAIL_COUNT+1)); RESULTS+=("FAIL  $1"); }
+warn() { RESULTS+=("WARN  $1"); }
 
 echo "=== SDCPP Workbench Smoke Check ==="
 echo "OC dir: $OC_DIR"
@@ -44,12 +45,17 @@ fi
 # Also check scripts in sdcpp-workflow/bin if accessible
 WORKFLOW_BIN="$(cd "$OC_DIR/../sdcpp-workflow/bin" 2>/dev/null && pwd)" || true
 if [ -n "$WORKFLOW_BIN" ] && [ -d "$WORKFLOW_BIN" ]; then
-  for sh in sdcpp-upscale.sh sdcpp-discover-assets.sh sdcpp-xyz-plot.sh sdcpp-hires-fix.sh; do
+  for sh in sdcpp-upscale.sh sdcpp-discover-assets.sh sdcpp-xyz-plot.sh sdcpp-hires-fix.sh sdcpp-model-stage-check.sh; do
     if [ -f "$WORKFLOW_BIN/$sh" ]; then
       if bash -n "$WORKFLOW_BIN/$sh" 2>/dev/null; then
         pass "bash -n $sh"
       else
         fail "bash -n $sh"
+      fi
+      if [ -x "$WORKFLOW_BIN/$sh" ]; then
+        pass "executable bit set on $sh"
+      else
+        warn "$sh is not executable; bash $sh still works, but repair with git update-index --chmod=+x if needed"
       fi
     fi
   done
@@ -64,6 +70,14 @@ else
   echo "-- Live endpoints (http://127.0.0.1:31337) --"
 
   BASE="http://127.0.0.1:31337"
+
+  post_status() {
+    local path="$1"
+    local payload="$2"
+    curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE$path" \
+      -H 'Content-Type: application/json' \
+      -d "$payload" 2>/dev/null
+  }
 
   # /api/capabilities
   if curl -fsS "$BASE/api/capabilities" -o /dev/null 2>/dev/null; then
@@ -120,14 +134,48 @@ else
   fi
 
   # Hires Fix: invalid scale must be rejected (400)
-  STATUS="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/actions/hires-fix" \
-    -H 'Content-Type: application/json' \
-    -d '{"prompt":"test","scale":99}' 2>/dev/null)"
+  STATUS="$(post_status "/api/actions/hires-fix" '{"prompt":"test","scale":99}')"
   if [ "$STATUS" = "400" ]; then
     pass "Hires Fix rejects invalid scale (HTTP 400)"
   else
     fail "Hires Fix invalid scale should return 400 (got $STATUS)"
   fi
+
+  # Hires Fix validation-only endpoint: invalid cases must be rejected without spawning jobs
+  for case_name in \
+    "invalid steps|{\"prompt\":\"test\",\"steps\":\"evil\",\"scale\":2}" \
+    "invalid width|{\"prompt\":\"test\",\"width\":7,\"scale\":2}" \
+    "invalid sampler|{\"prompt\":\"test\",\"sampler\":\"evil\",\"scale\":2}" \
+    "invalid mode|{\"prompt\":\"test\",\"mode\":\"evil\",\"scale\":2}" \
+    "invalid api|{\"prompt\":\"test\",\"api\":\"evil\",\"scale\":2}" \
+    "invalid scale|{\"prompt\":\"test\",\"scale\":99}" \
+    "invalid resample|{\"prompt\":\"test\",\"resample\":\"evil\"}" \
+    "invalid seed|{\"prompt\":\"test\",\"seed\":\"bad-seed\",\"scale\":2}"; do
+    NAME="${case_name%%|*}"
+    PAYLOAD="${case_name#*|}"
+    STATUS="$(post_status "/api/validate/hires-fix" "$PAYLOAD")"
+    if [ "$STATUS" = "400" ]; then
+      pass "Validate Hires Fix rejects $NAME (HTTP 400)"
+    else
+      fail "Validate Hires Fix $NAME should return 400 (got $STATUS)"
+    fi
+  done
+
+  for case_name in \
+    "seed random|{\"prompt\":\"test\",\"preset\":\"smoke\",\"mode\":\"cli\",\"seed\":\"random\",\"scale\":2,\"resample\":\"lanczos\",\"save_prompts\":false}" \
+    "seed fixed|{\"prompt\":\"test\",\"preset\":\"smoke\",\"mode\":\"cli\",\"seed\":\"fixed\",\"scale\":2,\"resample\":\"lanczos\",\"save_prompts\":false}" \
+    "numeric seed|{\"prompt\":\"test\",\"preset\":\"smoke\",\"mode\":\"cli\",\"seed\":\"424242\",\"scale\":2,\"resample\":\"lanczos\",\"save_prompts\":false}"; do
+    NAME="${case_name%%|*}"
+    PAYLOAD="${case_name#*|}"
+    BODY="$(curl -fsS -X POST "$BASE/api/validate/hires-fix" \
+      -H 'Content-Type: application/json' \
+      -d "$PAYLOAD" 2>/dev/null || true)"
+    if printf '%s' "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['ok'] is True; assert d['prompt']=='[REDACTED]'; assert d['prompt_saved'] is False" 2>/dev/null; then
+      pass "Validate Hires Fix accepts $NAME and redacts prompt"
+    else
+      fail "Validate Hires Fix $NAME should return 200 with redacted prompt"
+    fi
+  done
 
   # XYZ: >16 cells must be rejected (400)
   STATUS="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/actions/xyz-plot" \

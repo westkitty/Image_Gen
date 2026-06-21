@@ -28,6 +28,8 @@ These are fully wired and validated:
 - `POST /api/actions/probe-upscale` — writes `state/upscale-capabilities.json`
 - `POST /api/actions/upscale` — **Pillow local resize upscale** (NOT Real-ESRGAN; NOT AI)
 - `POST /api/actions/hires-fix` — **Two-pass txt2img → Pillow upscale** (NOT A1111 latent Hires Fix)
+- `POST /api/validate/hires-fix` — validation-only Hires Fix dry run, no job and no generation
+- `POST /api/actions/check-model-stage` → `GET /api/model-stage` — BigMac wc1tb SDXL Turbo / Flux staging cache
 - `GET /api/runs`, `GET /api/runs/:runId`, `GET /api/runs/:runId/metadata`
 - `GET /api/run-index?limit=N` — paginated listing with `hasUpscaled` flag, 8s cache, max 500
 - `GET /api/run-file?path=<safe-relative>` — path-contained, extension-allowlisted
@@ -39,6 +41,7 @@ These are fully wired and validated:
 - **X/Y/Z Plot** (`POST /api/actions/xyz-plot`): script and endpoint exist, max 16 cells, client-side validation. Requires running BigMac server tunnel. Not end-to-end validated with real images.
 - **Upscale (AI/Extras)**: Pillow local resize is available; Real-ESRGAN and A1111 Extras parity are not implemented.
 - **PNG Info**: tEXt/iTXt chunks from run images via `/api/runs/:runId/metadata`; arbitrary PNG upload not supported.
+- **SDXL Turbo / Flux / SDXL**: top next model paths, gated until files are manually staged on `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models` and BigMac Metal runtime smoke proof exists.
 
 ## Gated (not wired)
 
@@ -105,9 +108,34 @@ curl -s -X POST http://127.0.0.1:31337/api/actions/hires-fix \
 - **NOT** full A1111 latent Hires Fix — there is no denoising second pass
 - Output: `runs/<id>/upscaled/<name>-upscale-<N>x-<resample>.png`
 - Manifest: `runs/<id>/hires-fix-manifest.json`
+- Validation-only endpoint: `POST /api/validate/hires-fix`
+- The validation endpoint returns normalized safe values and redacts `prompt` / `negative_prompt` unless `save_prompts` is true. It does not create a job and does not spawn `sdcpp-hires-fix.sh`.
+
+## SDXL Turbo / Flux staging
+
+Manual guide:
+```text
+operator-console/docs/model-staging-sdxl-turbo-flux.md
+```
+
+Script:
+```sh
+cd /Users/andrew/Image_Gen/sdcpp-workflow
+bin/sdcpp-model-stage-check.sh
+```
+
+API:
+```sh
+curl -s http://127.0.0.1:31337/api/model-stage | python3 -m json.tool
+curl -s -X POST http://127.0.0.1:31337/api/actions/check-model-stage | python3 -m json.tool
+```
+
+The staging root is `/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models`. SDXL Turbo first target is `sd_xl_turbo_1.0_fp16.safetensors`; Flux Schnell accepts official safetensors files or stable-diffusion.cpp-compatible GGUF/quantized candidates. The capability gates remain false from staged files alone; smoke output must prove support.
 
 ## Next backend work
 
-1. XYZ end-to-end validation with BigMac tunnel to promote `xyzPlot` from partial → true.
-2. Fix SD binary discovery in image-edit probe to unblock img2img path.
-3. Document advanced-feature blockers: SDXL Turbo / Flux / img2img.
+1. Stage SDXL Turbo fp16 or Flux Schnell assets on BigMac wc1tb.
+2. Run `bin/sdcpp-model-stage-check.sh` and inspect `/api/model-stage`.
+3. Probe the actual BigMac `sd-cli --help` flags before writing SDXL Turbo or Flux smoke scripts.
+4. XYZ end-to-end validation with BigMac tunnel to promote `xyzPlot` from partial → true.
+5. Fix SD binary discovery in image-edit probe to unblock img2img path.

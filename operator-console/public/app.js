@@ -62,6 +62,7 @@ function renderSystemGates() {
     discoverAssets: 'Discover assets', probeImageEdit: 'Probe img2img', probeUpscale: 'Probe upscale',
     pillowUpscale: 'Pillow Upscale', img2img: 'img2img', inpaint: 'Inpaint', outpaint: 'Outpaint',
     upscale: 'Upscale (AI/Extras)', hiresFix: 'Hires Fix', faceRestore: 'Face Restore',
+    sdxlTurbo: 'SDXL Turbo', flux: 'Flux', sdxl: 'SDXL',
     lora: 'LoRA', textualInversion: 'Textual Inversion', hypernetworks: 'Hypernetworks'
   };
   for (const [key, gate] of Object.entries(gates)) {
@@ -386,6 +387,30 @@ function renderModels() {
       '<p style="margin:0">LoRAs: ' + lc + ' &nbsp;·&nbsp; Embeddings: ' + ec + ' &nbsp;·&nbsp; Hypernetworks: ' + hc + '</p>' +
       '<p class="fineprint" style="margin:4px 0 0">Injection bridge not yet implemented. Counts are visibility only.</p>';
   }
+
+  const stageEl = $('model-stage-status');
+  if (stageEl) {
+    const stage = caps.modelStage || {};
+    const root = stage.external_root || '/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models';
+    const status = !stage.present ? 'Missing cache' : stage.supportProven ? 'Smoke proven' : 'Staged check only';
+    const bits = [
+      ['External root', root],
+      ['Last checked', stage.checked_at || 'never'],
+      ['SDXL Turbo', stage.sdxlTurboStaged ? 'staged; smoke proof required' : 'missing'],
+      ['Flux', stage.fluxStaged ? 'component set staged; smoke proof required' : 'missing or incomplete'],
+      ['SDXL', stage.sdxlStaged ? 'staged; smoke proof required' : 'missing'],
+      ['wc1tb write test', stage.write_test || 'unknown'],
+      ['Next', stage.recommended_next_step || 'Run Check BigMac model stage after staging files.']
+    ];
+    stageEl.innerHTML =
+      '<h3 style="margin:0 0 6px">SDXL Turbo / Flux staging</h3>' +
+      '<p class="fineprint" style="margin:0 0 8px">' + esc(status) + '</p>' +
+      bits.map(([k, v]) => '<div class="fineprint"><strong>' + esc(k) + ':</strong> ' + esc(v) + '</div>').join('') +
+      '<div class="fineprint" style="margin-top:8px"><strong>SDXL Turbo file:</strong> sd_xl_turbo_1.0_fp16.safetensors</div>' +
+      '<div class="fineprint"><strong>Flux files:</strong> diffusion/model, ae.safetensors, CLIP-L candidate, T5XXL candidate</div>' +
+      '<div class="fineprint">Flux GGUF/quantized variants are accepted if stable-diffusion.cpp supports their flags on BigMac.</div>' +
+      '<div class="fineprint" style="margin-top:8px"><strong>Docs:</strong> operator-console/docs/model-staging-sdxl-turbo-flux.md</div>';
+  }
 }
 
 async function runDiscoverAssets() {
@@ -407,6 +432,28 @@ async function runDiscoverAssets() {
     }, 1500);
   } catch (err) {
     notifyLog('Discover assets error: ' + err.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function runModelStageCheck() {
+  const btn = $('btn-check-model-stage');
+  if (btn) btn.disabled = true;
+  try {
+    const result = await api('/api/actions/check-model-stage', { method: 'POST', body: '{}' });
+    trackJob(result.job_id, 'Checking BigMac model stage…');
+    const poller = setInterval(async () => {
+      try {
+        const job = await api('/api/jobs/' + result.job_id);
+        if (job.status !== 'running' && job.status !== 'queued') {
+          clearInterval(poller);
+          await loadCapabilities();
+          if (btn) btn.disabled = false;
+        }
+      } catch (_) { clearInterval(poller); if (btn) btn.disabled = false; }
+    }, 1500);
+  } catch (err) {
+    notifyLog('Model stage check error: ' + err.message);
     if (btn) btn.disabled = false;
   }
 }
@@ -584,6 +631,7 @@ function bindEvents() {
     const action = event.target.closest('[data-action]');
     if (action) {
       if (action.dataset.action === 'discover-assets') runDiscoverAssets();
+      else if (action.dataset.action === 'check-model-stage') runModelStageCheck();
       else runSimpleAction(action.dataset.action);
     }
     const lora = event.target.closest('[data-insert-lora]');

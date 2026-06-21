@@ -1065,3 +1065,120 @@ Priority rewritten to: 1. SDXL Turbo, 2. Flux Schnell, 3. SDXL base, 4. img2img,
 ### Commits
 
 See commit following this entry.
+
+---
+
+## Entry 12 — SDXL Turbo / Flux model staging foundation (2026-06-21)
+
+### What changed
+
+**Hires Fix validation-only endpoint**
+- Extracted Hires Fix request normalization into `normalizeHiresFixBody(body)` in `operator-console/server.js`.
+- `POST /api/actions/hires-fix` now reuses that helper and preserves current generation semantics.
+- Added `POST /api/validate/hires-fix` for dry-run validation without creating a job or spawning generation.
+- Validation response returns normalized safe fields and redacts `prompt` / `negative_prompt` unless `save_prompts` is true.
+
+**Model staging**
+- Added `operator-console/docs/model-staging-sdxl-turbo-flux.md`.
+- Added `sdcpp-workflow/bin/sdcpp-model-stage-check.sh`.
+- Added `GET /api/model-stage`.
+- Added `POST /api/actions/check-model-stage`.
+- Added `modelStage` and `featureGates.sdxlTurbo`, `featureGates.flux`, `featureGates.sdxl` to `/api/capabilities`.
+- Updated the Models screen with `Check BigMac model stage`, external root status, SDXL Turbo target, Flux component targets, and docs pointer.
+
+**Packaging / executable guardrails**
+- `operator-console/scripts/smoke-check.sh` now checks executable bits for key scripts and warns if missing.
+- `scripts/package-source.sh` now refuses a dirty worktree by default because it packages `HEAD` only, supports `--allow-dirty`, and supports `--output /path/file.zip`.
+
+**Docs**
+- Updated `operator-console/README.md`.
+- Updated `operator-console/docs/a1111-workbench-implementation.md`.
+- Updated `operator-console/docs/advanced-feature-decision.md`.
+- Updated `sdcpp-workflow/docs/command-reference.md`.
+- Updated `sdcpp-workflow/QUICKSTART.md`.
+- Updated `sdcpp-workflow/docs/next-escalation-plan.md`.
+- Updated `sdcpp-workflow/docs/ui-integration-contract.md`.
+
+### Model staging targets
+
+External root:
+
+```text
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models
+```
+
+First SDXL Turbo target:
+
+```text
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors
+```
+
+Flux official targets:
+
+```text
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/flux1-schnell/flux1-schnell.safetensors
+/Volumes/wc1tb/Ai/Image_Gen/sdcpp-models/flux/shared/ae.safetensors
+```
+
+Flux also accepts staged stable-diffusion.cpp-compatible GGUF or quantized candidates if the BigMac binary proves the flags.
+
+### Validation so far
+
+- `node --check operator-console/server.js` — PASS
+- `node --check operator-console/public/app.js` — PASS
+- `npm run check` — PASS
+- `bash -n operator-console/scripts/smoke-check.sh` — PASS
+- `bash -n sdcpp-workflow/bin/sdcpp-model-stage-check.sh` — PASS
+- `bash -n scripts/package-source.sh` — PASS
+- `operator-console/scripts/smoke-check.sh` — 32 PASS / 0 FAIL
+- `GET /api/capabilities` — PASS, includes `modelStage` and SDXL Turbo / Flux gates.
+- `GET /api/model-stage` — PASS, reads cache.
+- `POST /api/validate/hires-fix` — PASS for seed `random`; prompt redacted.
+- Privacy canary `PRIVACY_CANARY_MODEL_STAGE_DO_NOT_STORE_883140` — no matches in `sdcpp-workflow/runs`, `sdcpp-workflow/state`, or `operator-console`.
+
+### BigMac result
+
+Route gate:
+
+```text
+bigmac
+bigmac
+/Users/bigmac
+ProductName: macOS
+ProductVersion: 26.5.1
+BuildVersion: 25F80
+```
+
+`bin/sdcpp-model-stage-check.sh` result:
+- FAIL at `external-root`.
+- Cache written to `sdcpp-workflow/state/model-stage-cache.json` (ignored runtime state).
+- `route_ok: true`
+- `wc1tb_mounted: false`
+- `root_exists: false`
+- `write_test: fail`
+- SDXL Turbo candidates: none
+- Flux candidates: none
+- stable-diffusion.cpp help summary found local BigMac binary and observed `metal: true`, `flux: true`; `safetensors: false`, `gguf: false` from current help grep.
+
+This is not a code failure. It means `/Volumes/wc1tb` is not mounted or unavailable to the BigMac SSH context, so model staging cannot be proven yet.
+
+### Server state
+
+- URL: `http://127.0.0.1:31337`
+- Active validation server was started from `/Users/andrew/Image_Gen/operator-console` with `node server.js`.
+- PID at validation time: see final report; re-check with `lsof -nP -iTCP:31337 -sTCP:LISTEN`.
+
+### Staged / unstaged state
+
+Before commit, changed source files are the implementation, docs, smoke check, package script, new staging guide, new staging script, and this Bible entry. Runtime cache under `sdcpp-workflow/state/` remains ignored and must not be committed.
+
+### Next command for successor
+
+After Andrew mounts or makes `/Volumes/wc1tb` available on BigMac:
+
+```sh
+cd /Users/andrew/Image_Gen/sdcpp-workflow
+bin/sdcpp-model-stage-check.sh
+```
+
+If SDXL Turbo or Flux files are then present, inspect BigMac `sd-cli --help` before writing any smoke script. Do not download models automatically.
