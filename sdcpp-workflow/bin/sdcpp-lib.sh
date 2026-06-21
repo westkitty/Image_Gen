@@ -517,6 +517,10 @@ write_ui_run_card() {
   local dir="$1" rtype="$2" status="$3" primary="$4" manifest="$5" prompt="$6" settings="$7" created="$8" extra="${9:-}"
   local card="$dir/ui-run-card.md" run_id
   run_id="$(basename "$dir")"
+  local report_prompt="$prompt"
+  if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+    report_prompt="[REDACTED]"
+  fi
   {
     echo "---"
     echo "schema: sdcpp.run.v1"
@@ -537,7 +541,7 @@ write_ui_run_card() {
     if [ -n "$primary" ]; then echo "![Primary image]($primary)"; else echo "(none)"; fi
     echo
     echo "## Prompt"
-    echo "$prompt"
+    echo "$report_prompt"
     echo
     echo "## Settings"
     echo "$settings"

@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Operator Console - SDCPP Workflow</title>
+  <title>Operator Console - SDCPP Workspace</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
   
@@ -13,27 +16,32 @@
     <aside class="sidebar">
       <div class="sidebar-header">
         <h1>Operator Console</h1>
-        <p class="subtitle">BigMac SDCPP</p>
+        <p class="subtitle">BigMac SDCPP Workspace</p>
       </div>
       
       <nav class="sidebar-nav">
         <div class="nav-group">
           <h2>Create</h2>
-          <button class="nav-btn active" data-target="generate-single" aria-label="Navigate to Generate Single">Generate Fast</button>
-          <button class="nav-btn" data-target="batch" aria-label="Navigate to Batch Explore">Batch Explore</button>
-          <button class="nav-btn" data-target="dashboard" aria-label="Navigate to Dashboard">Dashboard</button>
+          <button class="nav-btn active" id="btn-nav-dashboard" data-target="dashboard" aria-label="Navigate to Dashboard">Dashboard</button>
+          <button class="nav-btn" id="btn-nav-generate" data-target="generate-single" aria-label="Navigate to Generate">Generate</button>
+          <button class="nav-btn" id="btn-nav-batch" data-target="batch" aria-label="Navigate to Batch Explore">Batch</button>
+        </div>
+        
+        <div class="nav-group">
+          <h2>Library</h2>
+          <button class="nav-btn" id="btn-nav-gallery" data-target="gallery" aria-label="Navigate to Gallery">Gallery</button>
+          <button class="nav-btn" id="btn-nav-history" data-target="history" aria-label="Navigate to Run History">Run History</button>
         </div>
         
         <div class="nav-group">
           <h2>Session</h2>
-          <button class="nav-btn" data-target="server" aria-label="Navigate to Warm Server">Warm Server</button>
-          <button class="nav-btn" data-target="history" aria-label="Navigate to Run History">Run History</button>
+          <button class="nav-btn" id="btn-nav-server" data-target="server" aria-label="Navigate to Warm Server">Warm Server</button>
         </div>
         
         <div class="nav-group">
           <h2>System</h2>
-          <button class="nav-btn" data-target="settings" aria-label="Navigate to Settings">Settings</button>
-          <button class="nav-btn" data-target="advanced" aria-label="Navigate to Advanced Diagnostics">Advanced Diagnostics</button>
+          <button class="nav-btn" id="btn-nav-settings" data-target="settings" aria-label="Navigate to Settings">Settings</button>
+          <button class="nav-btn" id="btn-nav-advanced" data-target="advanced" aria-label="Navigate to Advanced Diagnostics">Advanced Diagnostics</button>
         </div>
       </nav>
     </aside>
@@ -46,7 +54,7 @@
         <div class="status-pills">
           <div class="status-pill" id="pill-backend">
             <span class="pill-label">Backend</span>
-            <span class="pill-value" id="val-backend">Unknown</span>
+            <span class="pill-value" id="val-backend">Checking...</span>
           </div>
           <div class="status-pill" id="pill-job">
             <span class="pill-label">Job</span>
@@ -54,10 +62,10 @@
           </div>
           <div class="status-pill" id="pill-server">
             <span class="pill-label">Server</span>
-            <span class="pill-value" id="val-server">Unknown</span>
+            <span class="pill-value" id="val-server">Checking...</span>
           </div>
           <div class="status-pill" id="pill-latest">
-            <span class="pill-label">Latest</span>
+            <span class="pill-label">Latest Status</span>
             <span class="pill-value" id="val-latest">None</span>
           </div>
         </div>
@@ -67,30 +75,34 @@
       <main class="workspace" aria-live="polite">
         
         <!-- DASHBOARD TAB -->
-        <section id="dashboard" class="tab-content">
+        <section id="dashboard" class="tab-content active">
           <div class="page-header">
             <h2>Dashboard</h2>
           </div>
           <div class="dashboard-grid">
-            <div class="card interactive-card" onclick="document.querySelector('[data-target=\'generate-single\']').click()">
-              <h3>Generate Fast</h3>
-              <p>Quick CLI single-image generation.</p>
+            <div class="card interactive-card" onclick="document.getElementById('btn-nav-generate').click()">
+              <div class="card-icon">⚡</div>
+              <h3>Generate Single</h3>
+              <p>Explore ideas using fast CLI single-image generation.</p>
             </div>
-            <div class="card interactive-card" onclick="document.querySelector('[data-target=\'batch\']').click()">
+            <div class="card interactive-card" onclick="document.getElementById('btn-nav-batch').click()">
+              <div class="card-icon">🗂️</div>
               <h3>Batch Explore</h3>
-              <p>Run multiple seeds or API modes.</p>
+              <p>Run multiple seeds or API modes in parallel.</p>
             </div>
-            <div class="card interactive-card" onclick="document.querySelector('[data-target=\'server\']').click()">
+            <div class="card interactive-card" onclick="document.getElementById('btn-nav-gallery').click()">
+              <div class="card-icon">🖼️</div>
+              <h3>Gallery</h3>
+              <p>Browse image-producing generation outputs.</p>
+            </div>
+            <div class="card interactive-card" onclick="document.getElementById('btn-nav-server').click()">
+              <div class="card-icon">🔥</div>
               <h3>Warm Server</h3>
-              <p>Manage the persistent model server.</p>
-            </div>
-            <div class="card interactive-card" onclick="document.querySelector('[data-target=\'history\']').click()">
-              <h3>Run History</h3>
-              <p>View previous runs and reports.</p>
+              <p>Manage the persistent model server state.</p>
             </div>
           </div>
           
-          <div class="card" style="margin-top:20px;">
+          <div class="card" style="margin-top:24px;">
             <h3>Latest Run Activity</h3>
             <div id="dashboard-latest-run">
               <p class="text-muted">No runs detected yet.</p>
@@ -99,7 +111,7 @@
         </section>
 
         <!-- GENERATE SINGLE TAB -->
-        <section id="generate-single" class="tab-content active">
+        <section id="generate-single" class="tab-content">
           <div class="page-header">
             <h2>Generate Single</h2>
           </div>
@@ -109,12 +121,20 @@
             <div class="controls-panel card">
               <form id="form-generate-single" onsubmit="event.preventDefault(); submitGenerateSingle();">
                 <div class="form-group">
+                  <label for="gen-model">Model</label>
+                  <select id="gen-model" disabled>
+                    <option value="sd15">SD 1.5 — v1-5-pruned-emaonly.safetensors</option>
+                  </select>
+                  <span class="helper-text">Only staged model available. SDXL/Flux not enabled.</span>
+                </div>
+
+                <div class="form-group">
                   <label for="gen-prompt">Prompt</label>
-                  <textarea id="gen-prompt" required></textarea>
+                  <textarea id="gen-prompt" placeholder="a cinematic photo of a cozy anarchist library..." required></textarea>
                 </div>
                 <div class="form-group">
                   <label for="gen-negative">Negative Prompt</label>
-                  <textarea id="gen-negative"></textarea>
+                  <textarea id="gen-negative" placeholder="blurry, low quality, distorted..."></textarea>
                 </div>
                 
                 <div class="form-row">
@@ -127,6 +147,7 @@
                       <option value="thumbnail">Thumbnail</option>
                       <option value="balanced">Balanced</option>
                       <option value="quality_plus">Quality Plus</option>
+                      <option value="Custom">Custom</option>
                     </select>
                   </div>
                   <div class="form-group half">
@@ -138,12 +159,55 @@
                   </div>
                 </div>
 
-                <div class="form-group">
-                  <label for="gen-seed">Seed (Optional)</label>
-                  <input type="text" id="gen-seed" placeholder="e.g. 42 or random">
+                <div class="form-row">
+                  <div class="form-group half">
+                    <label for="gen-steps">Steps</label>
+                    <input type="number" id="gen-steps" min="1" max="40" value="8">
+                  </div>
+                  <div class="form-group half">
+                    <label for="gen-cfg">CFG Scale</label>
+                    <input type="number" id="gen-cfg" min="1.0" max="20.0" step="0.5" value="7.0">
+                  </div>
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-large">Generate Image</button>
+                <div class="form-row">
+                  <div class="form-group half">
+                    <label for="gen-sampler">Sampler</label>
+                    <select id="gen-sampler">
+                      <option value="euler_a">euler_a</option>
+                    </select>
+                  </div>
+                  <div class="form-group half">
+                    <label for="gen-scheduler">Scheduler</label>
+                    <select id="gen-scheduler" disabled>
+                      <option value="discrete">discrete (fixed/API-only)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group half">
+                    <label for="gen-width">Width</label>
+                    <select id="gen-width">
+                      <option value="512">512</option>
+                      <option value="384">384</option>
+                    </select>
+                  </div>
+                  <div class="form-group half">
+                    <label for="gen-height">Height</label>
+                    <select id="gen-height">
+                      <option value="512">512</option>
+                      <option value="384">384</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="gen-seed">Seed</label>
+                  <input type="text" id="gen-seed" placeholder="blank/random/default">
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-large" id="btn-generate-submit">Generate Image</button>
               </form>
             </div>
             
@@ -151,8 +215,26 @@
             <div class="preview-panel card">
               <div id="preview-single" class="preview-container">
                 <div class="empty-state">
-                  <p>No verified image yet.</p>
-                  <p class="text-muted">Generate a fast image to preview it here.</p>
+                  <p class="empty-title">No verified image yet.</p>
+                  <p class="text-muted">Generate a fast SD 1.5 image and it will appear here.</p>
+                </div>
+              </div>
+              <div id="preview-metadata-panel" class="preview-metadata hidden">
+                <div class="meta-row">
+                  <span class="meta-label">Run ID:</span>
+                  <span class="meta-val mono" id="preview-run-id">None</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Details:</span>
+                  <span class="meta-val" id="preview-meta-details">None</span>
+                </div>
+                <div class="meta-row" id="preview-prompt-wrap">
+                  <span class="meta-label">Prompt:</span>
+                  <span class="meta-val" id="preview-prompt-val">redacted</span>
+                </div>
+                <div class="meta-actions">
+                  <button class="btn btn-small" id="btn-preview-detail">View Run Detail</button>
+                  <button class="btn btn-small" id="btn-preview-gallery">Open in Gallery</button>
                 </div>
               </div>
             </div>
@@ -170,11 +252,11 @@
               <form id="form-batch" onsubmit="event.preventDefault(); submitGenerateBatch();">
                 <div class="form-group">
                   <label for="batch-prompt">Prompt</label>
-                  <textarea id="batch-prompt" required></textarea>
+                  <textarea id="batch-prompt" placeholder="a cinematic photo..." required></textarea>
                 </div>
                 <div class="form-group">
                   <label for="batch-negative">Negative Prompt</label>
-                  <textarea id="batch-negative"></textarea>
+                  <textarea id="batch-negative" placeholder="blurry..."></textarea>
                 </div>
                 
                 <div class="form-row">
@@ -222,7 +304,7 @@
                   </div>
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-large">Start Batch</button>
+                <button type="submit" class="btn btn-primary btn-large" id="btn-batch-submit">Start Batch</button>
               </form>
             </div>
             
@@ -236,23 +318,19 @@
           </div>
         </section>
 
-        <!-- WARM SERVER TAB -->
-        <section id="server" class="tab-content">
+        <!-- GALLERY TAB -->
+        <section id="gallery" class="tab-content">
           <div class="page-header">
-            <h2>Warm Server</h2>
+            <h2>Gallery</h2>
           </div>
-          <div class="card server-control-card">
-            <h3>Server Session Controls</h3>
-            <div class="server-actions">
-              <button class="btn btn-primary" onclick="submitServerAction('server-start')">Start Server</button>
-              <button class="btn btn-danger" onclick="submitServerAction('server-stop')">Stop Server</button>
-              <button class="btn btn-secondary" onclick="checkServerStatusSilent()">Check Status</button>
+          <div class="gallery-layout">
+            <div id="gallery-grid" class="gallery-grid">
+              <!-- Cards populated by app.js -->
             </div>
-            <p class="warning-text">⚠️ Note: Leaving the server running consumes VRAM. Stop it when returning to heavy CPU tasks.</p>
           </div>
         </section>
 
-        <!-- HISTORY TAB -->
+        <!-- RUN HISTORY TAB -->
         <section id="history" class="tab-content">
           <div class="page-header">
             <h2>Run History</h2>
@@ -268,6 +346,9 @@
                   <option value="batch-generate">Batch Generate</option>
                   <option value="verify">Verify</option>
                   <option value="server-status">Status/Checks</option>
+                  <option value="server-start">Server Start</option>
+                  <option value="server-stop">Server Stop</option>
+                  <option value="seed-test">Seed Test</option>
                 </select>
               </div>
               <div class="form-group">
@@ -281,12 +362,12 @@
               </div>
               <div class="form-group">
                 <label for="filter-prompt">Search Prompt</label>
-                <input type="text" id="filter-prompt" placeholder="Search..." oninput="renderRunHistory()">
+                <input type="text" id="filter-prompt" placeholder="Search prompts..." oninput="renderRunHistory()">
               </div>
             </div>
           </div>
           
-          <div id="run-list" class="run-list-grid">
+          <div id="run-list" class="run-list-table">
             <!-- Run items populated by app.js -->
           </div>
         </section>
@@ -295,10 +376,27 @@
         <section id="run-detail" class="tab-content">
           <div class="page-header">
             <h2>Run Detail</h2>
-            <button class="btn btn-secondary" onclick="closeRunDetail()">← Back to History</button>
+            <button class="btn btn-secondary" id="btn-back-to-history">← Back to History</button>
           </div>
           <div id="run-detail-content" class="card">
             <!-- Detail populated by app.js -->
+          </div>
+        </section>
+
+        <!-- WARM SERVER TAB -->
+        <section id="server" class="tab-content">
+          <div class="page-header">
+            <h2>Warm Server</h2>
+          </div>
+          <div class="card server-control-card">
+            <h3>Server Session Controls</h3>
+            <p class="server-desc">Keep a warm inference session active to execute rapid sequential server-generations.</p>
+            <div class="server-actions">
+              <button class="btn btn-primary" onclick="submitServerAction('server-start')">Start Server</button>
+              <button class="btn btn-danger" onclick="submitServerAction('server-stop')">Stop Server</button>
+              <button class="btn btn-secondary" onclick="checkServerStatusSilent()">Check Status</button>
+            </div>
+            <p class="warning-text">⚠️ Note: Leaving the server running consumes GPU VRAM on the host. Stop it when done generating.</p>
           </div>
         </section>
 
@@ -307,29 +405,92 @@
           <div class="page-header">
             <h2>Settings</h2>
           </div>
-          <div class="card">
-            <form onsubmit="event.preventDefault(); saveSettings();">
-              <div class="form-group">
-                <label for="set-default-preset">Default Preset</label>
-                <select id="set-default-preset">
-                  <option value="fast">Fast</option>
-                  <option value="quality">Quality</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="set-default-mode">Default Mode</label>
-                <select id="set-default-mode">
-                  <option value="cli">CLI</option>
-                  <option value="server">Server</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="set-batch-count">Default Batch Count</label>
-                <input type="number" id="set-batch-count" value="3" min="1" max="12">
-              </div>
-              <button type="submit" class="btn btn-primary">Save Settings</button>
-              <span id="settings-saved-msg" class="text-success hidden" style="margin-left:10px;">Saved!</span>
-            </form>
+          
+          <div class="settings-grid">
+            <div class="card settings-card">
+              <h3>Generation Defaults</h3>
+              <form onsubmit="event.preventDefault(); saveSettings();">
+                <div class="form-group">
+                  <label for="set-default-preset">Default Preset</label>
+                  <select id="set-default-preset">
+                    <option value="fast">Fast</option>
+                    <option value="quality">Quality</option>
+                    <option value="balanced">Balanced</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="set-default-mode">Default Mode</label>
+                  <select id="set-default-mode">
+                    <option value="cli">CLI</option>
+                    <option value="server">Server</option>
+                  </select>
+                </div>
+                <div class="form-row">
+                  <div class="form-group half">
+                    <label for="set-default-steps">Default Steps</label>
+                    <input type="number" id="set-default-steps" min="1" max="40" value="8">
+                  </div>
+                  <div class="form-group half">
+                    <label for="set-default-cfg">Default CFG Scale</label>
+                    <input type="number" id="set-default-cfg" min="1.0" max="20.0" step="0.5" value="7.0">
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group half">
+                    <label for="set-default-width">Default Width</label>
+                    <select id="set-default-width">
+                      <option value="512">512</option>
+                      <option value="384">384</option>
+                    </select>
+                  </div>
+                  <div class="form-group half">
+                    <label for="set-default-height">Default Height</label>
+                    <select id="set-default-height">
+                      <option value="512">512</option>
+                      <option value="384">384</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="set-batch-count">Default Batch Count</label>
+                  <input type="number" id="set-batch-count" value="3" min="1" max="12">
+                </div>
+
+                <hr class="settings-divider">
+
+                <h3>UX Preferences</h3>
+                <div class="toggle-group">
+                  <label class="switch">
+                    <input type="checkbox" id="set-auto-open">
+                    <span class="slider round"></span>
+                  </label>
+                  <div class="toggle-info">
+                    <span class="toggle-title">Auto-open Run Detail after generation</span>
+                    <span class="toggle-desc">Automatically switch tabs when single image generation completes.</span>
+                  </div>
+                </div>
+
+                <hr class="settings-divider">
+
+                <h3>Prompt Privacy</h3>
+                <div class="toggle-group">
+                  <label class="switch">
+                    <input type="checkbox" id="set-save-prompts">
+                    <span class="slider round"></span>
+                  </label>
+                  <div class="toggle-info">
+                    <span class="toggle-title">Save prompts in run records</span>
+                    <span class="toggle-desc text-danger">OFF by default. Leave off to ensure prompt text remains ephemeral.</span>
+                  </div>
+                </div>
+                <div class="privacy-warning">
+                  Prompt text will be stored in backend Markdown/JSON run records for future history and search. Leave this off for private prompts.
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="margin-top:20px;">Save Settings</button>
+                <span id="settings-saved-msg" class="text-success hidden" style="margin-left:10px;">Saved successfully!</span>
+              </form>
+            </div>
           </div>
         </section>
 
@@ -346,7 +507,7 @@
             
             <hr class="separator">
             
-            <h3>Cleanup</h3>
+            <h3>Log Cleanups</h3>
             <div class="form-row" style="align-items:flex-end;">
               <div class="form-group" style="margin-bottom:0;">
                 <label for="cleanup-days">Delete runs older than (days)</label>

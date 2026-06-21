@@ -75,6 +75,13 @@ REPORT="$RUN_DIR/cli-run-report.md"
 NAME="${ARG_OUT_NAME:-sd15_cli_$(timestamp)}"
 LOCAL_PNG="$RUN_DIR/$NAME.png"
 
+REPORT_PROMPT="$ARG_PROMPT"
+REPORT_NEGATIVE_PROMPT="$ARG_NEG"
+if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+  REPORT_PROMPT="[REDACTED]"
+  REPORT_NEGATIVE_PROMPT="[REDACTED]"
+fi
+
 log "=== Pre-flight verification ==="
 verify_route >/dev/null
 verify_repo_clean 7f0e728 >/dev/null
@@ -100,8 +107,8 @@ cat > "$RUN_DIR/run-metadata.json" <<EOF
 {
   "kind": "cli",
   "timestamp": "$(date)",
-  "prompt": $(printf '%s' "$ARG_PROMPT" | jq -Rs .),
-  "negative_prompt": $(printf '%s' "$ARG_NEG" | jq -Rs .),
+  "prompt": $(printf '%s' "$REPORT_PROMPT" | jq -Rs .),
+  "negative_prompt": $(printf '%s' "$REPORT_NEGATIVE_PROMPT" | jq -Rs .),
   "preset": "$PRESET_LABEL",
   "width": $ARG_W,
   "height": $ARG_H,
@@ -122,8 +129,8 @@ EOF
   echo
   echo "- Timestamp: $(date)"
   echo "- Preset: $PRESET_LABEL"
-  echo "- Prompt: $ARG_PROMPT"
-  echo "- Negative: $ARG_NEG"
+  echo "- Prompt: $REPORT_PROMPT"
+  echo "- Negative: $REPORT_NEGATIVE_PROMPT"
   echo "- Size: ${ARG_W}x${ARG_H}, steps=$ARG_STEPS, cfg=$ARG_CFG, sampler=$ARG_SAMPLER, seed=$SEED_LABEL"
   echo "- Build dir: $BUILD_DIR"
   echo "- Remote PNG: $REMOTE_PNG"
@@ -142,7 +149,19 @@ Q_NEG="$(printf '%q' "$ARG_NEG")"
 # exit status of the generation; we judge success by the remote PNG it produces
 # (and ultimately by the verified copy on the MacBook).
 START_EPOCH="$(now_epoch)"
-ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" > "$RUN_DIR/remote-stdout.log" 2>&1 || true
+if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" 2>&1 | python3 -c "
+import sys
+p = sys.argv[1] if len(sys.argv) > 1 else ''
+n = sys.argv[2] if len(sys.argv) > 2 else ''
+for line in sys.stdin:
+    if p and p in line: line = line.replace(p, '[REDACTED]')
+    if n and n in line: line = line.replace(n, '[REDACTED]')
+    sys.stdout.write(line)
+" "$ARG_PROMPT" "$ARG_NEG" > "$RUN_DIR/remote-stdout.log" || true
+else
+  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" > "$RUN_DIR/remote-stdout.log" 2>&1 || true
+fi
 END_EPOCH="$(now_epoch)"
 ELAPSED="$(elapsed_seconds "$START_EPOCH" "$END_EPOCH")"
 REMOTE_ELAPSED="$(grep -hoE 'generate_image completed in [0-9.]+s' "$RUN_DIR/remote-stdout.log" 2>/dev/null | tail -1 | grep -oE '[0-9.]+' || true)"
@@ -209,7 +228,7 @@ PNG_BYTES="$(png_bytes "$LOCAL_PNG")"
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$(date '+%Y-%m-%d %H:%M:%S')" "$(sanitize_tsv "$REMOTE_HOST_EXPECTED")" "$SSH_TARGET" "7f0e728" \
     "$(sanitize_tsv "$BUILD_DIR")" "$(sanitize_tsv "$REMOTE_MODEL")" "cli" "$PRESET_LABEL" \
-    "$(sanitize_tsv "$ARG_PROMPT")" "$(sanitize_tsv "$ARG_NEG")" "$ARG_W" "$ARG_H" "$ARG_STEPS" "$ARG_CFG" "$ARG_SAMPLER" \
+    "$(sanitize_tsv "$REPORT_PROMPT")" "$(sanitize_tsv "$REPORT_NEGATIVE_PROMPT")" "$ARG_W" "$ARG_H" "$ARG_STEPS" "$ARG_CFG" "$ARG_SAMPLER" \
     "$SEED_VALUE" "$START_EPOCH" "$END_EPOCH" "$ELAPSED" "$REMOTE_ELAPSED" "n/a" \
     "$(sanitize_tsv "$LOCAL_PNG")" "$PNG_BYTES" "$LOCAL_SUM" "cold" "n/a" "n/a" "cli-local" "PASS"
 } > "$RUN_DIR/metrics.tsv"
@@ -217,7 +236,7 @@ PNG_BYTES="$(png_bytes "$LOCAL_PNG")"
 # ----- UI run card (schema sdcpp.run.v1) -------------------------------------
 PRIMARY_REL="$(basename "$LOCAL_PNG")"
 write_ui_run_card "$RUN_DIR" "cli" "PASS" "$PRIMARY_REL" "run-metadata.json" \
-  "$ARG_PROMPT" \
+  "$REPORT_PROMPT" \
   "preset=$PRESET_LABEL size=${ARG_W}x${ARG_H} steps=$ARG_STEPS cfg=$ARG_CFG sampler=$ARG_SAMPLER seed=$SEED_LABEL elapsed=${ELAPSED}s" \
   "$CREATED_AT" >/dev/null
 

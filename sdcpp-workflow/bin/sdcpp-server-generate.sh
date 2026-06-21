@@ -101,6 +101,13 @@ SDCPP_LOGFILE="$RUN_DIR/server-gen.log"; export SDCPP_LOGFILE
 REPORT="$RUN_DIR/server-generate-report.md"
 SIZE="${ARG_W}x${ARG_H}"
 
+REPORT_PROMPT="$ARG_PROMPT"
+REPORT_NEGATIVE_PROMPT="$ARG_NEG"
+if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+  REPORT_PROMPT="[REDACTED]"
+  REPORT_NEGATIVE_PROMPT="[REDACTED]"
+fi
+
 {
   echo "# SDCPP Server Generate Report"
   echo
@@ -109,7 +116,7 @@ SIZE="${ARG_W}x${ARG_H}"
   echo "- Preset: $PRESET_LABEL"
   echo "- Warm state: $ARG_WARM"
   echo "- Endpoint base: $BASE"
-  echo "- Prompt: $ARG_PROMPT"
+  echo "- Prompt: $REPORT_PROMPT"
   echo "- Size: $SIZE steps=$ARG_STEPS cfg=$ARG_CFG sampler=$ARG_SAMPLER seed=$SEED_LABEL"
   echo
 } > "$REPORT"
@@ -125,7 +132,7 @@ emit_server_metric() {
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$(date '+%Y-%m-%d %H:%M:%S')" "$REMOTE_HOST_EXPECTED" "$SSH_TARGET" "7f0e728" \
     "n/a" "$(sanitize_tsv "$REMOTE_MODEL")" "$mode" "$PRESET_LABEL" \
-    "$(sanitize_tsv "$ARG_PROMPT")" "$(sanitize_tsv "$ARG_NEG")" "$ARG_W" "$ARG_H" "$ARG_STEPS" "$ARG_CFG" "$ARG_SAMPLER" \
+    "$(sanitize_tsv "$REPORT_PROMPT")" "$(sanitize_tsv "$REPORT_NEGATIVE_PROMPT")" "$ARG_W" "$ARG_H" "$ARG_STEPS" "$ARG_CFG" "$ARG_SAMPLER" \
     "$SEED_FIELD" "n/a" "n/a" "$el" "n/a" "$dec" \
     "$(sanitize_tsv "$png")" "$bytes" "$sum" "$ARG_WARM" "$RPORT" "$LPORT" "tunnel" "$st" \
     >> "$RUN_DIR/metrics.tsv"
@@ -163,8 +170,19 @@ gen_openai() {
   payload="$(jq -n --arg p "$full_prompt" --arg s "$SIZE" \
     '{prompt:$p, n:1, size:$s, output_format:"png"}')"
   t0="$(now_epoch)"
-  curl -s "$BASE/v1/images/generations" -H 'Content-Type: application/json' -d "$payload" -o "$resp" \
-    || { log "openai curl failed"; emit_server_metric "server-openai" "$png" "n/a" "n/a" "FAIL"; return 1; }
+  if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+    curl -s "$BASE/v1/images/generations" -H 'Content-Type: application/json' -d "$payload" | python3 -c "
+import sys
+p = sys.argv[1] if len(sys.argv) > 1 else ''
+for line in sys.stdin:
+    if p and p in line: line = line.replace(p, '[REDACTED]')
+    sys.stdout.write(line)
+" "$ARG_PROMPT" > "$resp" \
+      || { log "openai curl failed"; emit_server_metric "server-openai" "$png" "n/a" "n/a" "FAIL"; return 1; }
+  else
+    curl -s "$BASE/v1/images/generations" -H 'Content-Type: application/json' -d "$payload" -o "$resp" \
+      || { log "openai curl failed"; emit_server_metric "server-openai" "$png" "n/a" "n/a" "FAIL"; return 1; }
+  fi
   t1="$(now_epoch)"; elapsed="$(elapsed_seconds "$t0" "$t1")"
   if ! jq -e '.data[0].b64_json' "$resp" >/dev/null 2>&1; then
     log "openai: no .data[0].b64_json in response"; head -c 400 "$resp" >&2; echo >&2
@@ -195,8 +213,21 @@ gen_sdapi() {
     --argjson w "$ARG_W" --argjson h "$ARG_H" --argjson st "$ARG_STEPS" --argjson cfg "$ARG_CFG" --arg sm "$ARG_SAMPLER" --argjson sd "$seedarg" \
     '{prompt:$p, negative_prompt:$n, width:$w, height:$h, steps:$st, cfg_scale:$cfg, sampler_name:$sm, scheduler:"discrete", batch_size:1, seed:$sd}')"
   t0="$(now_epoch)"
-  curl -s "$BASE/sdapi/v1/txt2img" -H 'Content-Type: application/json' -d "$payload" -o "$resp" \
-    || { log "sdapi curl failed"; emit_server_metric "server-sdapi" "$png" "n/a" "n/a" "FAIL"; return 1; }
+  if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+    curl -s "$BASE/sdapi/v1/txt2img" -H 'Content-Type: application/json' -d "$payload" | python3 -c "
+import sys
+p = sys.argv[1] if len(sys.argv) > 1 else ''
+n = sys.argv[2] if len(sys.argv) > 2 else ''
+for line in sys.stdin:
+    if p and p in line: line = line.replace(p, '[REDACTED]')
+    if n and n in line: line = line.replace(n, '[REDACTED]')
+    sys.stdout.write(line)
+" "$ARG_PROMPT" "$ARG_NEG" > "$resp" \
+      || { log "sdapi curl failed"; emit_server_metric "server-sdapi" "$png" "n/a" "n/a" "FAIL"; return 1; }
+  else
+    curl -s "$BASE/sdapi/v1/txt2img" -H 'Content-Type: application/json' -d "$payload" -o "$resp" \
+      || { log "sdapi curl failed"; emit_server_metric "server-sdapi" "$png" "n/a" "n/a" "FAIL"; return 1; }
+  fi
   t1="$(now_epoch)"; elapsed="$(elapsed_seconds "$t0" "$t1")"
   if ! jq -e '.images[0]' "$resp" >/dev/null 2>&1; then
     log "sdapi: no .images[0] in response"; head -c 400 "$resp" >&2; echo >&2
@@ -229,15 +260,40 @@ gen_native() {
     '{prompt:$p, negative_prompt:$n, width:$w, height:$h, seed:$sd, batch_count:1,
       sample_params:{scheduler:"discrete", sample_method:$sm, sample_steps:$st, guidance:{txt_cfg:$cfg}},
       output_format:"png"}')"
-  curl -s -i "$BASE/sdcpp/v1/img_gen" -H 'Content-Type: application/json' -d "$payload" -o "$submit" \
-    || { log "native submit curl failed"; return 1; }
+  if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+    curl -s -i "$BASE/sdcpp/v1/img_gen" -H 'Content-Type: application/json' -d "$payload" | python3 -c "
+import sys
+p = sys.argv[1] if len(sys.argv) > 1 else ''
+n = sys.argv[2] if len(sys.argv) > 2 else ''
+for line in sys.stdin:
+    if p and p in line: line = line.replace(p, '[REDACTED]')
+    if n and n in line: line = line.replace(n, '[REDACTED]')
+    sys.stdout.write(line)
+" "$ARG_PROMPT" "$ARG_NEG" > "$submit" \
+      || { log "native submit curl failed"; return 1; }
+  else
+    curl -s -i "$BASE/sdcpp/v1/img_gen" -H 'Content-Type: application/json' -d "$payload" -o "$submit" \
+      || { log "native submit curl failed"; return 1; }
+  fi
   sed -n '/^{/,$p' "$submit" > "$sjson"
   local job; job="$(jq -r '.id // empty' "$sjson" 2>/dev/null)"
   if [ -z "$job" ]; then log "native: no job id"; head -c 400 "$sjson" >&2; echo >&2; return 1; fi
   log "native job id: $job"
   local i status=""
   for i in $(seq 1 30); do
-    curl -s "$BASE/sdcpp/v1/jobs/$job" -o "$jresp" || true
+    if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+      curl -s "$BASE/sdcpp/v1/jobs/$job" | python3 -c "
+import sys
+p = sys.argv[1] if len(sys.argv) > 1 else ''
+n = sys.argv[2] if len(sys.argv) > 2 else ''
+for line in sys.stdin:
+    if p and p in line: line = line.replace(p, '[REDACTED]')
+    if n and n in line: line = line.replace(n, '[REDACTED]')
+    sys.stdout.write(line)
+" "$ARG_PROMPT" "$ARG_NEG" > "$jresp" || true
+    else
+      curl -s "$BASE/sdcpp/v1/jobs/$job" -o "$jresp" || true
+    fi
     status="$(jq -r '.status // empty' "$jresp" 2>/dev/null || true)"
     log "native poll $i: status=$status"
     [ "$status" = "completed" ] && break
@@ -289,7 +345,7 @@ if [ "$VERIFIED" -ge 1 ]; then
     [ -f "$RUN_DIR/$cand" ] && { PRIMARY_REL="$cand"; break; }
   done
   write_ui_run_card "$RUN_DIR" "server-$ARG_API" "PASS" "$PRIMARY_REL" "metrics.tsv" \
-    "$ARG_PROMPT" \
+    "$REPORT_PROMPT" \
     "preset=$PRESET_LABEL api=$ARG_API size=${SIZE} steps=$ARG_STEPS cfg=$ARG_CFG sampler=$ARG_SAMPLER seed=$SEED_LABEL warm=$ARG_WARM" \
     "$CREATED_AT" >/dev/null
   pass_banner "SERVER GENERATE PASS ($VERIFIED verified PNG(s), seed=$SEED_LABEL).

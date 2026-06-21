@@ -15,7 +15,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---- VALIDATION CONSTANTS ----
-const ALLOWED_PRESETS = new Set(["smoke", "thumbnail", "fast", "balanced", "quality", "quality_plus"]);
+const ALLOWED_PRESETS = new Set(["smoke", "thumbnail", "fast", "balanced", "quality", "quality_plus", "Custom"]);
 const ALLOWED_MODES = new Set(["cli", "server"]);
 const ALLOWED_APIS = new Set(["openai", "sdapi", "native"]);
 const ALLOWED_SEED_MODES = new Set(["same", "increment", "random"]);
@@ -31,14 +31,82 @@ function validateNegativePrompt(neg) {
   return neg.length <= 2000;
 }
 
+function validateSteps(steps) {
+  if (steps === undefined || steps === null || steps === '') return true;
+  const val = parseInt(steps);
+  return !isNaN(val) && val >= 1 && val <= 40;
+}
+
+function validateCfgScale(cfg) {
+  if (cfg === undefined || cfg === null || cfg === '') return true;
+  const val = parseFloat(cfg);
+  return !isNaN(val) && val >= 1.0 && val <= 20.0;
+}
+
+function validateSize(val) {
+  if (val === undefined || val === null || val === '') return true;
+  const num = parseInt(val);
+  return num === 384 || num === 512;
+}
+
+function validateSampler(sampler) {
+  if (sampler === undefined || sampler === null || sampler === '') return true;
+  return typeof sampler === 'string' && /^[a-zA-Z0-9_-]+$/.test(sampler);
+}
+
+function isCustomized(preset, steps, cfg_scale, sampler, width, height) {
+  if (preset === 'fast') {
+    const s = steps ? parseInt(steps) : 8;
+    const c = cfg_scale ? parseFloat(cfg_scale) : 7.0;
+    const sm = sampler || 'euler_a';
+    const w = width ? parseInt(width) : 512;
+    const h = height ? parseInt(height) : 512;
+    return s !== 8 || c !== 7.0 || sm !== 'euler_a' || w !== 512 || h !== 512;
+  }
+  if (preset === 'quality') {
+    const s = steps ? parseInt(steps) : 20;
+    const c = cfg_scale ? parseFloat(cfg_scale) : 7.0;
+    const sm = sampler || 'euler_a';
+    const w = width ? parseInt(width) : 512;
+    const h = height ? parseInt(height) : 512;
+    return s !== 20 || c !== 7.0 || sm !== 'euler_a' || w !== 512 || h !== 512;
+  }
+  return true;
+}
+
 // In-memory job store
 const jobs = {};
+const jobSensitives = {};
 
-function createJob(commandAction) {
+function redactSensitiveText(text, sensitiveValues) {
+  if (!text || !sensitiveValues || sensitiveValues.length === 0) return text;
+  let redacted = text;
+  for (const val of sensitiveValues) {
+    if (val && val.length > 0) {
+      const escaped = val.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const regex = new RegExp(escaped, 'gi');
+      redacted = redacted.replace(regex, '[REDACTED]');
+    }
+  }
+  return redacted;
+}
+
+function getRedactedCommandSummary(scriptPath, args, sensitiveValues) {
+  const redactedArgs = args.map((arg, idx) => {
+    if (idx > 0 && (args[idx - 1] === '--prompt' || args[idx - 1] === '--negative')) {
+      return '[REDACTED]';
+    }
+    return redactSensitiveText(arg, sensitiveValues);
+  });
+  return `${scriptPath} ${redactedArgs.join(' ')}`;
+}
+
+function createJob(commandAction, commandSummary) {
   const jobId = crypto.randomUUID();
   jobs[jobId] = {
     id: jobId,
     commandAction: commandAction, // verify, server-status, cli-generate, server-generate, batch-generate, etc.
+    commandSummary: commandSummary || commandAction,
     status: 'queued', // queued, running, PASS, PARTIAL, FAIL
     stdout: '',
     stderr: '',
@@ -51,23 +119,31 @@ function createJob(commandAction) {
   return jobId;
 }
 
-function runAction(jobId, scriptPath, args) {
+function runAction(jobId, scriptPath, args, savePrompts = false) {
   jobs[jobId].status = 'running';
   
-  const process = spawn(scriptPath, args, {
+  const env = {
+    ...process.env,
+    SDCPP_REDACT_PROMPTS: savePrompts ? '0' : '1'
+  };
+
+  const child = spawn(scriptPath, args, {
     cwd: WORKFLOW_ROOT,
-    shell: false
+    shell: false,
+    env: env
   });
 
-  process.stdout.on('data', (data) => {
-    jobs[jobId].stdout += data.toString();
+  const sensitives = jobSensitives[jobId] || [];
+
+  child.stdout.on('data', (data) => {
+    jobs[jobId].stdout += redactSensitiveText(data.toString(), sensitives);
   });
 
-  process.stderr.on('data', (data) => {
-    jobs[jobId].stderr += data.toString();
+  child.stderr.on('data', (data) => {
+    jobs[jobId].stderr += redactSensitiveText(data.toString(), sensitives);
   });
 
-  process.on('close', (code) => {
+  child.on('close', (code) => {
     jobs[jobId].exitCode = code;
     jobs[jobId].completedAt = Date.now();
     
@@ -114,19 +190,26 @@ app.post('/api/actions/server-status', (req, res) => {
 });
 
 app.post('/api/actions/generate-single', (req, res) => {
-  const { prompt, negative_prompt, seed, mode, preset } = req.body;
+  const { prompt, negative_prompt, seed, mode, preset, steps, cfg_scale, sampler, width, height, save_prompts } = req.body;
   if (!validatePrompt(prompt)) return res.status(400).json({ error: "Invalid prompt" });
   if (!validateNegativePrompt(negative_prompt)) return res.status(400).json({ error: "Invalid negative prompt" });
   if (preset && !ALLOWED_PRESETS.has(preset)) return res.status(400).json({ error: "Invalid preset" });
-  
+  if (!validateSteps(steps)) return res.status(400).json({ error: "Invalid steps" });
+  if (!validateCfgScale(cfg_scale)) return res.status(400).json({ error: "Invalid cfg_scale" });
+  if (!validateSize(width)) return res.status(400).json({ error: "Invalid width" });
+  if (!validateSize(height)) return res.status(400).json({ error: "Invalid height" });
+  if (!validateSampler(sampler)) return res.status(400).json({ error: "Invalid sampler" });
+
   const m = mode || 'cli';
   if (!ALLOWED_MODES.has(m)) return res.status(400).json({ error: "Invalid mode" });
 
   let script = '';
   let args = [];
 
+  const customized = isCustomized(preset, steps, cfg_scale, sampler, width, height);
+
   if (m === 'cli') {
-    if (preset === 'fast' || preset === 'quality') {
+    if ((preset === 'fast' || preset === 'quality') && !customized) {
       script = preset === 'fast' ? 'bin/sdcpp-run-fast.sh' : 'bin/sdcpp-run-quality.sh';
       args.push('--mode', 'cli', '--prompt', prompt);
       if (negative_prompt) args.push('--negative', negative_prompt);
@@ -134,13 +217,18 @@ app.post('/api/actions/generate-single', (req, res) => {
     } else {
       script = 'bin/sdcpp-cli-generate.sh';
       args.push('--prompt', prompt);
-      if (preset) args.push('--preset', preset);
+      if (preset && preset !== 'Custom') args.push('--preset', preset);
       if (negative_prompt) args.push('--negative', negative_prompt);
+      if (steps) args.push('--steps', String(steps));
+      if (width) args.push('--width', String(width));
+      if (height) args.push('--height', String(height));
+      if (cfg_scale) args.push('--cfg', String(cfg_scale));
+      if (sampler) args.push('--sampler', sampler);
       if (seed && /^(random|\d+)$/.test(String(seed))) args.push('--seed', String(seed));
     }
   } else {
     // server mode
-    if (preset === 'fast' || preset === 'quality') {
+    if ((preset === 'fast' || preset === 'quality') && !customized) {
       script = preset === 'fast' ? 'bin/sdcpp-run-fast.sh' : 'bin/sdcpp-run-quality.sh';
       args.push('--mode', 'server', '--prompt', prompt);
       if (negative_prompt) args.push('--negative', negative_prompt);
@@ -148,20 +236,30 @@ app.post('/api/actions/generate-single', (req, res) => {
     } else {
       script = 'bin/sdcpp-server-generate.sh';
       args.push('--prompt', prompt);
-      if (preset) args.push('--preset', preset);
+      if (preset && preset !== 'Custom') args.push('--preset', preset);
       if (negative_prompt) args.push('--negative', negative_prompt);
+      if (steps) args.push('--steps', String(steps));
+      if (width) args.push('--width', String(width));
+      if (height) args.push('--height', String(height));
+      if (cfg_scale) args.push('--cfg', String(cfg_scale));
+      if (sampler) args.push('--sampler', sampler);
       if (seed && /^(random|\d+)$/.test(String(seed))) args.push('--seed', String(seed));
+      args.push('--api', 'openai');
     }
   }
 
   const jobType = m === 'cli' ? 'cli-generate' : 'server-generate';
-  const jobId = createJob(jobType);
-  runAction(jobId, script, args);
+  const sensitives = [prompt, negative_prompt].filter(Boolean);
+  const summary = getRedactedCommandSummary(script, args, sensitives);
+  const jobId = createJob(jobType, summary);
+  jobSensitives[jobId] = sensitives;
+  
+  runAction(jobId, script, args, !!save_prompts);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
 app.post('/api/actions/generate-batch', (req, res) => {
-  const { prompt, negative_prompt, count, preset, seedMode, seedStart, mode, api } = req.body;
+  const { prompt, negative_prompt, count, preset, seedMode, seedStart, mode, api, save_prompts } = req.body;
   if (!validatePrompt(prompt)) return res.status(400).json({ error: "Invalid prompt" });
   if (!validateNegativePrompt(negative_prompt)) return res.status(400).json({ error: "Invalid negative prompt" });
 
@@ -198,8 +296,12 @@ app.post('/api/actions/generate-batch', (req, res) => {
     args.push('--api', api);
   }
 
-  const jobId = createJob('batch-generate');
-  runAction(jobId, 'bin/sdcpp-batch-generate.sh', args);
+  const sensitives = [prompt, negative_prompt].filter(Boolean);
+  const summary = getRedactedCommandSummary('bin/sdcpp-batch-generate.sh', args, sensitives);
+  const jobId = createJob('batch-generate', summary);
+  jobSensitives[jobId] = sensitives;
+  
+  runAction(jobId, 'bin/sdcpp-batch-generate.sh', args, !!save_prompts);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
@@ -216,7 +318,7 @@ app.post('/api/actions/server-stop', (req, res) => {
 });
 
 app.post('/api/actions/server-generate', (req, res) => {
-  const { prompt, negative_prompt, preset, api, seed } = req.body;
+  const { prompt, negative_prompt, preset, api, seed, save_prompts } = req.body;
   if (!validatePrompt(prompt)) return res.status(400).json({ error: "Invalid prompt" });
   if (!validateNegativePrompt(negative_prompt)) return res.status(400).json({ error: "Invalid negative prompt" });
 
@@ -237,8 +339,12 @@ app.post('/api/actions/server-generate', (req, res) => {
     args.push('--seed', String(seed));
   }
 
-  const jobId = createJob('server-generate');
-  runAction(jobId, 'bin/sdcpp-server-generate.sh', args);
+  const sensitives = [prompt, negative_prompt].filter(Boolean);
+  const summary = getRedactedCommandSummary('bin/sdcpp-server-generate.sh', args, sensitives);
+  const jobId = createJob('server-generate', summary);
+  jobSensitives[jobId] = sensitives;
+
+  runAction(jobId, 'bin/sdcpp-server-generate.sh', args, !!save_prompts);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 

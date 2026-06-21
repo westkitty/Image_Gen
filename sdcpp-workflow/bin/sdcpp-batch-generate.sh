@@ -91,6 +91,13 @@ MANIFEST_JSON="$RUN_DIR/batch-manifest.json"
 MANIFEST_TSV="$RUN_DIR/batch-manifest.tsv"
 NDJSON="$RUN_DIR/.images.ndjson"
 RUN_ID="$(basename "$RUN_DIR")"
+
+REPORT_PROMPT="$ARG_PROMPT"
+REPORT_NEGATIVE_PROMPT="$ARG_NEG"
+if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+  REPORT_PROMPT="[REDACTED]"
+  REPORT_NEGATIVE_PROMPT="[REDACTED]"
+fi
 CREATED_AT="$(iso_now)"
 START_EPOCH="$(now_epoch)"
 : > "$NDJSON"
@@ -214,8 +221,8 @@ while [ "$i" -le "$COUNT" ]; do
     echo
     echo "- Status: $status"
     echo "- Seed: $seed"
-    echo "- Prompt: $ARG_PROMPT"
-    echo "- Negative: $ARG_NEG"
+    echo "- Prompt: $REPORT_PROMPT"
+    echo "- Negative: $REPORT_NEGATIVE_PROMPT"
     echo "- Settings: ${B_W}x${B_H} steps=$B_STEPS cfg=$B_CFG sampler=$B_SAMPLER"
     echo "- Mode: $MODE${API:+ / api=$API}"
     echo "- Verification: ${file_out:-n/a}"
@@ -265,7 +272,7 @@ PRIMARY_REL="$([ -n "$FIRST_PNG" ] && echo "images/$(basename "$FIRST_PNG")" || 
 # ----- batch-manifest.json ---------------------------------------------------
 jq -n \
   --arg schema "sdcpp.run.v1" --arg run_id "$RUN_ID" --arg status "$STATUS" --arg run_type "batch" \
-  --arg mode "$MODE" --arg preset "$PRESET" --arg prompt "$ARG_PROMPT" --arg neg "$ARG_NEG" \
+  --arg mode "$MODE" --arg preset "$PRESET" --arg prompt "$REPORT_PROMPT" --arg neg "$REPORT_NEGATIVE_PROMPT" \
   --argjson w "$B_W" --argjson h "$B_H" --argjson st "$B_STEPS" --argjson cfg "$B_CFG" --arg sm "$B_SAMPLER" \
   --arg seed_mode "$SEED_MODE" --argjson seed_start "$BASE_SEED" \
   --argjson count_req "$COUNT" --argjson count_ok "$SUCCEEDED" \
@@ -293,8 +300,8 @@ jq -n \
   echo "created_at: \"$CREATED_AT\""
   echo "mode: \"$MODE\""
   echo "preset: \"$PRESET\""
-  echo "prompt: \"$(yaml_escape "$ARG_PROMPT")\""
-  echo "negative_prompt: \"$(yaml_escape "$ARG_NEG")\""
+  echo "prompt: \"$(yaml_escape "$REPORT_PROMPT")\""
+  echo "negative_prompt: \"$(yaml_escape "$REPORT_NEGATIVE_PROMPT")\""
   echo "count: $COUNT"
   echo "verified_png_count: $SUCCEEDED"
   echo "seed_mode: \"$SEED_MODE\""
@@ -315,8 +322,8 @@ jq -n \
   echo "- mode: $MODE$([ "$MODE" = server ] && echo " (api=$API)")"
   echo "- preset: $PRESET (${B_W}x${B_H} steps=$B_STEPS cfg=$B_CFG sampler=$B_SAMPLER)"
   echo "- seed-mode: $SEED_MODE, base seed: $BASE_SEED"
-  echo "- prompt: $ARG_PROMPT"
-  echo "- negative: $ARG_NEG"
+  echo "- prompt: $REPORT_PROMPT"
+  echo "- negative: $REPORT_NEGATIVE_PROMPT"
   echo "- elapsed: ${TOTAL_ELAPSED}s"
   echo "- cleanup: $KEEP_NOTE"
   echo
@@ -341,7 +348,7 @@ jq -n \
 
 # ----- ui-run-card.md --------------------------------------------------------
 write_ui_run_card "$RUN_DIR" "batch" "$STATUS" "$PRIMARY_REL" "batch-manifest.json" \
-  "$ARG_PROMPT" \
+  "$REPORT_PROMPT" \
   "mode=$MODE preset=$PRESET count=$SUCCEEDED/$COUNT seed-mode=$SEED_MODE base=$BASE_SEED elapsed=${TOTAL_ELAPSED}s" \
   "$CREATED_AT" >/dev/null
 

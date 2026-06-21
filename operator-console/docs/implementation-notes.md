@@ -14,3 +14,22 @@ The UI treats the `runs/` directory as its primary database.
 - To prevent browser timeouts during generation (which takes 15-30 seconds), commands are spawned as background jobs in Express.
 - The UI immediately receives a `{ job_id }` and polls `/api/jobs/:jobId/log` to stream stdout/stderr.
 - Once complete, `loadLatestRun()` triggers to parse the resulting Markdown artifacts.
+
+## Prompt Privacy and Markdown/JSON Run Records
+
+The backend owns run records. It emits Markdown and JSON files after generation so the UI can display verified outputs. By default, the Operator Console runs generation with prompt redaction enabled. Run records preserve status, image paths, seeds, presets, dimensions, timings, checksums, and verification data, but do not store full prompt text unless the user explicitly enables prompt saving. The UI does not use Markdown as frontend state, and UI preferences live in localStorage. Prompt text is not stored in localStorage.
+
+## Source-Level Redaction
+To prevent sensitive prompt text from ever leaking onto disk, the privacy model uses source-level redaction at write-time, rather than destructive post-generation scrubbing:
+- When "Save prompts in run records" is OFF (default), Express sets environment variable `SDCPP_REDACT_PROMPTS=1` before spawning the generation jobs.
+- The backend scripts (`sdcpp-cli-generate.sh`, `sdcpp-server-generate.sh`, `sdcpp-batch-generate.sh`) compute safe `REPORT_PROMPT` and `REPORT_NEGATIVE_PROMPT` variables set to `[REDACTED]`.
+- All report generators, manifests, metrices, and image cards utilize these safe variables.
+- On-the-fly stream filtering is applied via Python stream filters to scrub any output printed by third-party remote/server APIs before the stdout logs or JSON files are written to disk.
+
+## Gallery vs Run History
+- **Gallery**: An image-first card-based grid showcasing only successful generation runs (`cli-generate`, `server-generate`, `batch-generate`). It maps thumbnails and display details clearly. Redacted prompts show "Prompt redacted".
+- **Run History**: A technical table showing all runs (including backend verification, status logs, start/stop diagnostics, and seed tests) without fake thumbnails. It completely omits the prompt display if the run is redacted.
+
+## Post-Generation Behavior
+- By default, completing a generation job does not auto-shunt the viewport away to the details page. Instead, it updates the right preview pane with the generated image and metadata inline.
+- An option "Auto-open Run Detail after generation" in Settings can be toggled on if the user prefers immediate navigation.
