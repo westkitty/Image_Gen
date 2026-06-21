@@ -793,6 +793,65 @@ app.get('/api/runs/:runId/metadata', (req, res) => {
     retrieved_at: new Date().toISOString()
   });
 });
+// Run index — fast paginated listing with upscale status; no raw prompts from redacted runs
+const RUN_INDEX_MAX = 500;
+const RUN_INDEX_TTL_MS = 8000;
+let runIndexCache = null;
+let runIndexCacheAt = 0;
+
+function buildRunIndex() {
+  if (!fs.existsSync(RUNS_DIR)) return [];
+  const dirs = fs.readdirSync(RUNS_DIR, { withFileTypes: true })
+    .filter(d => d.isDirectory())
+    .map(d => d.name)
+    .sort((a, b) => b.localeCompare(a))
+    .slice(0, RUN_INDEX_MAX);
+  return dirs.map(dirName => {
+    const runPath = path.join(RUNS_DIR, dirName);
+    const [type, title] = inferRunType(dirName);
+    let status = 'UNKNOWN', runTitle = title, primaryImage = null, runType = type;
+    let imageCount = 0, hasUpscaled = false, hasManifest = false, hasMetadata = false;
+    try {
+      const parsed = parseUiRunCard(path.join(runPath, 'ui-run-card.md'));
+      status = parsed.status || status;
+      runTitle = parsed.title || title;
+      primaryImage = parsed.primary_image || null;
+      if (parsed.run_type) runType = parsed.run_type;
+    } catch (_) {}
+    try {
+      const entries = fs.readdirSync(runPath, { withFileTypes: true });
+      for (const e of entries) {
+        if (e.isFile() && /\.(png|PNG)$/.test(e.name)) imageCount++;
+        if (e.isDirectory() && e.name === 'upscaled') hasUpscaled = true;
+        if (e.isFile() && (e.name === 'batch-manifest.json' || e.name === 'xyz-manifest.json' || e.name === 'upscale-manifest.json')) hasManifest = true;
+        if (e.isFile() && e.name === 'run-metadata.json') hasMetadata = true;
+      }
+    } catch (_) {}
+    return {
+      id: dirName,
+      type: runType,
+      status,
+      title: runTitle,
+      primaryImage,
+      imageCount,
+      hasUpscaled,
+      hasManifest,
+      hasMetadata,
+      createdAt: dirName.slice(0, 15)
+    };
+  });
+}
+
+app.get('/api/run-index', (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 100, RUN_INDEX_MAX);
+  const now = Date.now();
+  if (!runIndexCache || now - runIndexCacheAt > RUN_INDEX_TTL_MS) {
+    runIndexCache = buildRunIndex();
+    runIndexCacheAt = now;
+  }
+  res.json({ runs: runIndexCache.slice(0, limit), total: runIndexCache.length, cachedAt: new Date(runIndexCacheAt).toISOString() });
+});
+
 app.get('/api/run-file', (req, res) => {
   const queryPath = req.query.path;
   if (!queryPath) return res.status(400).send('Missing path');

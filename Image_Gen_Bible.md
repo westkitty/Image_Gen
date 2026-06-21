@@ -579,3 +579,86 @@ CLEAN. Manifest does not contain prompt or negative_prompt fields.
 4. **XYZ plot UI hardening** — client-side validation, cell count limit display, honest partial labeling
 5. **HiresFix script** — use Pillow upscale as the upscale step in a two-pass txt2img → upscale pipeline
 6. **Capability status panel** — System screen shows gates grouped by status with action buttons
+
+---
+
+## Entry 6 — Backlog A–E: Run Index, Upscaled Library, Asset Discovery UI, XYZ Plot UI, System Gates (2026-06-21)
+
+**Session type:** Feature expansion (backlog items A–E). All committed as one unit after shared validation pass.
+
+### Summary
+
+Five backlog items implemented as clean additions on top of the Pillow Upscale commit (Entry 5).
+
+### Files Changed
+
+- `operator-console/server.js` — added `GET /api/run-index` endpoint with 8s in-memory cache
+- `operator-console/public/app.js` — run-index integration in gallery, `viewUpscaledOutputs()`, `runDiscoverAssets()`, `renderSystemGates()`, XYZ form wiring, Pillow Upscale form wiring, `derived-badge` on gallery cards
+- `operator-console/public/index.html` — Models screen asset discovery UI, real XYZ Plot form (Batch/Sweep panel), System screen capability gates list, Enhance screen Pillow Upscale panel
+- `operator-console/public/styles.css` — `.derived-badge` CSS class
+- `Image_Gen_Bible.md` — this entry
+
+### Backlog A — Run Index Endpoint (`GET /api/run-index`)
+
+- Scans `sdcpp-workflow/runs/` safely (no shell, no unbounded reads)
+- Returns per-run: id, type, status, title, primaryImage, imageCount, hasUpscaled, hasManifest, hasMetadata, createdAt
+- Sorted newest first; max 500 runs (configurable via `limit` query param, default 100)
+- In-memory cache with 8s TTL; cache always built to `RUN_INDEX_MAX` so slice works correctly
+- Does not read prompt text from run cards; no raw prompts exposed
+- Tolerates malformed run dirs via per-entry try/catch
+- Validated: `total: 85`, 2 upscaled runs correctly flagged `hasUpscaled: true`
+
+### Backlog B — Upscaled Outputs in Library
+
+- Gallery now loads `/api/run-index` alongside `/api/runs` for `hasUpscaled` flag
+- Run cards show green `Upscaled ✓` derived badge when upscaled outputs exist
+- "View upscaled" button on tagged cards: opens first upscaled PNG in preview, logs all upscaled paths
+- "Upscale" button on all image cards sends run+image to Enhance → Pillow Upscale form
+- Upscaled images (under `upscaled/`) excluded from source-image selectors
+
+### Backlog C — Asset Discovery UI (Models screen)
+
+- Asset cache status line shows: missing / age in minutes / discovered-at date
+- Checkpoint count, VAE count rendered from capabilities
+- LoRA / Embedding / Hypernetwork counts shown from asset cache; labeled "visibility only"
+- "Discover assets" button wired to `POST /api/actions/discover-assets`; polls job, refreshes capabilities on PASS
+- Injection bridge intentionally gated
+
+### Backlog D — XYZ Plot UI Hardening (Batch/Sweep screen)
+
+- Old disabled placeholder XYZ panel replaced with real form
+- Axis dropdowns: steps, cfg, sampler, seed, width, height
+- Live cell-count display: "Cells: N / 16"
+- Client-side validation: empty X values, Y values without Y type, total cells > 16 all caught before submission
+- Server-side validation still enforces same limits (defense in depth)
+- Feature labeled "Partial" in the UI; caveat text honest about BigMac tunnel requirement
+- Form wired to `POST /api/actions/xyz-plot`; uses existing job polling
+
+### Backlog E — Capability Status Panel (System screen)
+
+- System screen now shows capability gates grouped: ✓ Supported / ⚡ Partial / ✗ Gated
+- Each gate shows label, route (if any), reason/caveat text
+- System screen action grid expanded with: Probe img2img, Probe upscale, Discover assets buttons
+- `renderSystemGates()` called on every `loadCapabilities()` refresh
+
+### Validation
+
+| Test | Result |
+|---|---|
+| `GET /api/run-index?limit=200` — total 85, 2 upscaled | PASS |
+| `GET /api/run-index?limit=5` — returns 5, total still 85 | PASS |
+| XYZ endpoint with 5×4=20 cells | REJECTED: "Total cells (20) exceeds limit of 16" |
+| `POST /api/actions/upscale` 3×bicubic via runId form | PASS — 1152×1536 PNG |
+| node --check server.js | OK |
+| node --check public/app.js | OK |
+
+### Still Gated (unchanged from Entry 5)
+
+img2img, inpaint, outpaint, hiresFix, faceRestore, Real-ESRGAN, LoRA injection, VAE switching.
+
+### Next Recommended Steps
+
+1. **Hires Fix script** — two-pass: txt2img at draft size → Pillow upscale → second txt2img pass. Pillow upscale now exists as a local tool.
+2. **XYZ end-to-end validation** — run a real 2-cell sweep with BigMac tunnel, verify output PNGs, promote gate from `partial` to `true`.
+3. **Fix SD binary discovery** — update `sdcpp-image-edit-capabilities.sh` to search more paths; required before img2img can be implemented.
+4. **Run detail view** — dedicated panel showing run metadata, images, upscaled outputs, and manifest in one place.

@@ -43,11 +43,46 @@ async function loadCapabilities() {
     hydrateControls();
     renderFeatureGates();
     renderModels();
+    renderSystemGates();
     setPill('pill-backend', 'Ready', 'ok');
   } catch (err) {
     setPill('pill-backend', 'Error', 'bad');
     notifyLog(err.message);
   }
+}
+
+function renderSystemGates() {
+  const el = $('system-gates');
+  if (!el) return;
+  const gates = (state.capabilities && state.capabilities.featureGates) || {};
+  const groups = { supported: [], partial: [], gated: [] };
+  const labels = {
+    txt2img: 'txt2img', batch: 'Batch', xyzPlot: 'X/Y/Z Plot', server: 'Server lifecycle',
+    gallery: 'Gallery', metadataReuse: 'Metadata reuse', pngInfo: 'PNG Info',
+    discoverAssets: 'Discover assets', probeImageEdit: 'Probe img2img', probeUpscale: 'Probe upscale',
+    pillowUpscale: 'Pillow Upscale', img2img: 'img2img', inpaint: 'Inpaint', outpaint: 'Outpaint',
+    upscale: 'Upscale (AI/Extras)', hiresFix: 'Hires Fix', faceRestore: 'Face Restore',
+    lora: 'LoRA', textualInversion: 'Textual Inversion', hypernetworks: 'Hypernetworks'
+  };
+  for (const [key, gate] of Object.entries(gates)) {
+    const s = gate.supported;
+    const label = labels[key] || key;
+    const route = gate.route ? ' · ' + gate.route : '';
+    const reason = gate.reason || gate.caveat || '';
+    if (s === true) groups.supported.push({ label, route, reason });
+    else if (s === 'partial') groups.partial.push({ label, route, reason });
+    else groups.gated.push({ label, route, reason });
+  }
+  const renderGroup = (title, items, cls) =>
+    items.length ? '<div class="model-card"><h3 style="margin:0 0 6px">' + title + '</h3>' +
+      items.map(i => '<div style="margin:3px 0"><span class="' + cls + '">' + esc(i.label) + '</span>' +
+        (i.route ? '<span class="muted" style="font-size:11px"> ' + esc(i.route) + '</span>' : '') +
+        (i.reason ? '<br><span class="fineprint" style="font-size:11px">' + esc(i.reason) + '</span>' : '') +
+        '</div>').join('') + '</div>' : '';
+  el.innerHTML =
+    renderGroup('✓ Supported', groups.supported, 'derived-badge') +
+    renderGroup('⚡ Partial', groups.partial, 'gate') +
+    renderGroup('✗ Gated / not wired', groups.gated, 'muted');
 }
 
 function hydrateControls() {
@@ -270,35 +305,106 @@ function sendToUpscale(runId, image) {
 
 function renderModels() {
   const caps = state.capabilities || {};
-  $('model-list').innerHTML = (caps.models || []).map(m => `<div class="model-card"><h3>${esc(m.name)}</h3><p>${esc(m.filename || '')}</p><span class="badge">${esc(m.status || 'unknown')}</span></div>`).join('');
+  $('model-list').innerHTML = (caps.models || []).map(m =>
+    '<div class="model-card"><h3>' + esc(m.name) + '</h3><p>' + esc(m.filename || '') + '</p><span class="badge">' + esc(m.status || 'unknown') + '</span></div>'
+  ).join('') || '<div class="muted fineprint">No checkpoints in cache. Run asset discovery.</div>';
+
   const gates = caps.featureGates || {};
   const items = [['lora','LoRA'],['textualInversion','Textual Inversion'],['hypernetworks','Hypernetworks'],['vae','VAE switching']];
-  $('network-list').innerHTML = items.map(([id, label]) => `<div class="model-card"><h3>${esc(label)}</h3><p>${esc((gates[id] && gates[id].reason) || 'Visible for parity; backend missing.')}</p><span class="badge">${gates[id] && gates[id].supported ? 'Available' : 'Not wired'}</span></div>`).join('');
+  $('network-list').innerHTML = items.map(([id, label]) =>
+    '<div class="model-card"><h3>' + esc(label) + '</h3><p>' + esc((gates[id] && gates[id].reason) || 'Visible for parity; backend missing.') + '</p><span class="badge">' + (gates[id] && gates[id].supported ? 'Available' : 'Not wired') + '</span></div>'
+  ).join('');
+
+  // Asset cache status
+  const ac = caps.assetCache || {};
+  const net = caps.networks || {};
+  const statusEl = $('asset-cache-status');
+  const countsEl = $('asset-counts');
+  if (statusEl) {
+    if (!ac.present) {
+      statusEl.textContent = 'Asset cache: not present — click "Discover assets" to scan BigMac staging dirs.';
+    } else {
+      const age = ac.cacheAgeMinutes !== null ? ac.cacheAgeMinutes + ' min ago' : 'unknown age';
+      statusEl.textContent = 'Asset cache: fresh · last updated ' + age + (ac.discoveredAt ? ' (' + ac.discoveredAt.slice(0, 10) + ')' : '');
+    }
+  }
+  if (countsEl) {
+    const lc = (net.loras || []).length;
+    const ec = (net.embeddings || []).length;
+    const hc = (net.hypernetworks || []).length;
+    countsEl.innerHTML =
+      '<h3 style="margin:0 0 6px">Discovered counts</h3>' +
+      '<p style="margin:0">LoRAs: ' + lc + ' &nbsp;·&nbsp; Embeddings: ' + ec + ' &nbsp;·&nbsp; Hypernetworks: ' + hc + '</p>' +
+      '<p class="fineprint" style="margin:4px 0 0">Injection bridge not yet implemented. Counts are visibility only.</p>';
+  }
+}
+
+async function runDiscoverAssets() {
+  const btn = $('btn-discover-assets');
+  if (btn) btn.disabled = true;
+  try {
+    const result = await api('/api/actions/discover-assets', { method: 'POST', body: '{}' });
+    trackJob(result.job_id, 'Discovering assets…');
+    // After job completes, reload capabilities to refresh counts
+    const poller = setInterval(async () => {
+      try {
+        const job = await api('/api/jobs/' + result.job_id);
+        if (job.status !== 'running' && job.status !== 'queued') {
+          clearInterval(poller);
+          await loadCapabilities();
+          if (btn) btn.disabled = false;
+        }
+      } catch (_) { clearInterval(poller); if (btn) btn.disabled = false; }
+    }, 1500);
+  } catch (err) {
+    notifyLog('Discover assets error: ' + err.message);
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function loadGallery() {
   try {
-    const data = await api('/api/runs');
-    state.runs = data.runs || [];
+    // Use run-index for hasUpscaled flag; fall back to /api/runs for image lists
+    const [indexData, runsData] = await Promise.all([api('/api/run-index?limit=100'), api('/api/runs')]);
+    state.runs = runsData.runs || [];
+    const indexMap = {};
+    (indexData.runs || []).forEach(r => { indexMap[r.id] = r; });
     const imageRuns = state.runs.filter(r => r.images && r.images.length);
-    $('gallery-grid').innerHTML = imageRuns.length ? imageRuns.map(runCard).join('') : '<div class="empty-state">No image runs found yet.</div>';
-  } catch (err) { $('gallery-grid').innerHTML = `<div class="empty-state danger">${esc(err.message)}</div>`; }
+    $('gallery-grid').innerHTML = imageRuns.length
+      ? imageRuns.map(r => runCard(r, indexMap[r.id])).join('')
+      : '<div class="empty-state">No image runs found yet.</div>';
+  } catch (err) { $('gallery-grid').innerHTML = '<div class="empty-state danger">' + esc(err.message) + '</div>'; }
 }
-function runCard(run) {
+function runCard(run, indexEntry) {
   const img = run.primaryImage || (run.images && run.images[0]);
   const imgUrl = img ? '/api/run-file?path=' + encodeURIComponent(run.id + '/' + img) : '';
   const prompt = run.prompt || 'Prompt unavailable';
   const imgArg = img ? ' data-upscale-image="' + esc(img) + '"' : '';
+  const hasUpscaled = indexEntry && indexEntry.hasUpscaled;
+  const upscaledBadge = hasUpscaled ? '<span class="derived-badge">Upscaled ✓</span>' : '';
   return '<article class="image-card" data-run="' + esc(run.id) + '">' +
     (imgUrl ? '<img src="' + esc(imgUrl) + '" alt="Generated image from ' + esc(run.id) + '" loading="lazy" />' : '') +
-    '<h3>' + esc(run.title || run.type) + '</h3>' +
+    '<h3>' + esc(run.title || run.type) + upscaledBadge + '</h3>' +
     '<p>' + esc(prompt) + '</p>' +
     '<div class="quick-row">' +
     '<button class="ghost small" data-open-run="' + esc(run.id) + '">Open</button>' +
     '<button class="ghost small" data-reuse-run="' + esc(run.id) + '">Reuse</button>' +
     '<button class="ghost small" data-copy-run="' + esc(run.id) + '">Copy</button>' +
     (img ? '<button class="ghost small" data-send-upscale="' + esc(run.id) + '"' + imgArg + '>Upscale</button>' : '') +
+    (hasUpscaled ? '<button class="ghost small" data-view-upscaled="' + esc(run.id) + '">View upscaled</button>' : '') +
     '</div></article>';
+}
+
+async function viewUpscaledOutputs(runId) {
+  try {
+    const detail = await api('/api/runs/' + encodeURIComponent(runId));
+    const upscaledImages = (detail.images || []).filter(f => f.startsWith('upscaled/') && /\.(png|PNG)$/.test(f));
+    if (!upscaledImages.length) { notifyLog('No upscaled images found in ' + runId); return; }
+    const first = upscaledImages[0];
+    setPreviewImage('/api/run-file?path=' + encodeURIComponent(runId + '/' + first), 'Upscaled: ' + first);
+    showScreen('create');
+    notifyLog('Upscaled outputs in run ' + runId + ':\n' + upscaledImages.join('\n'));
+  } catch (err) { notifyLog('Error loading upscaled outputs: ' + err.message); }
 }
 async function openRun(id) {
   const detail = await api(`/api/runs/${id}`);
@@ -316,6 +422,57 @@ async function reuseRun(id) {
 async function copyRun(id) {
   const detail = await api(`/api/runs/${id}`);
   await navigator.clipboard.writeText(JSON.stringify(detail.metadata || detail.manifest || detail, null, 2));
+}
+
+// ---- X/Y/Z Plot --------------------------------------------------------------
+function updateXyzCellCount() {
+  const xVals = $('xyz_x_values').value.split(',').filter(v => v.trim()).length;
+  const yType = $('xyz_y_type').value;
+  const yVals = yType ? $('xyz_y_values').value.split(',').filter(v => v.trim()).length : 1;
+  const cells = xVals * (yVals || 1);
+  const el = $('xyz-cell-count');
+  const msg = $('xyz-validation-msg');
+  if (el) el.textContent = 'Cells: ' + cells + ' / 16';
+  if (msg) {
+    if (cells > 16) msg.textContent = 'Too many cells (' + cells + '). Max is 16. Reduce X or Y values.';
+    else if (yType && !$('xyz_y_values').value.trim()) msg.textContent = 'Y values required when Y axis is set.';
+    else msg.textContent = '';
+  }
+}
+
+async function submitXyz(event) {
+  event.preventDefault();
+  const prompt = $('xyz_prompt').value.trim();
+  const negative = $('xyz_negative').value.trim();
+  const xType = $('xyz_x_type').value;
+  const xValues = $('xyz_x_values').value.trim();
+  const yType = $('xyz_y_type').value;
+  const yValues = $('xyz_y_values').value.trim();
+  const msg = $('xyz-validation-msg');
+
+  if (!xValues) { if (msg) msg.textContent = 'X values are required.'; return; }
+  const xCount = xValues.split(',').filter(v => v.trim()).length;
+  const yCount = yType ? yValues.split(',').filter(v => v.trim()).length : 1;
+  if (yType && !yValues) { if (msg) msg.textContent = 'Y values required when Y axis is set.'; return; }
+  if (xCount * yCount > 16) { if (msg) msg.textContent = 'Too many cells (' + (xCount * yCount) + '). Max is 16.'; return; }
+  if (msg) msg.textContent = '';
+
+  const params = {
+    prompt,
+    negative_prompt: negative,
+    x_type: xType,
+    x_values: xValues,
+    save_prompts: $('set-save-prompts').checked
+  };
+  if (yType) { params.y_type = yType; params.y_values = yValues; }
+
+  try {
+    const result = await api('/api/actions/xyz-plot', { method: 'POST', body: JSON.stringify(params) });
+    trackJob(result.job_id, 'Running X/Y/Z plot (' + (xCount * yCount) + ' cells)…');
+  } catch (err) {
+    if (msg) msg.textContent = 'Error: ' + err.message;
+    notifyLog(err.message);
+  }
 }
 
 async function runSimpleAction(action) {
@@ -352,6 +509,10 @@ function bindEvents() {
   $('form-batch').addEventListener('submit', submitBatch);
   $('form-upscale').addEventListener('submit', submitUpscale);
   $('upscale-run').addEventListener('change', onUpscaleRunChange);
+  $('form-xyz').addEventListener('submit', submitXyz);
+  $('xyz_x_values').addEventListener('input', updateXyzCellCount);
+  $('xyz_y_values').addEventListener('input', updateXyzCellCount);
+  $('xyz_y_type').addEventListener('change', updateXyzCellCount);
   $('preset').addEventListener('change', e => { if (e.target.value !== 'Custom') applyPreset(e.target.value); });
   ['steps','cfg_scale','sampler','width','height'].forEach(id => $(id).addEventListener('input', () => { $('preset').value = 'Custom'; }));
   $('prompt').addEventListener('input', () => $('prompt-count').textContent = `${$('prompt').value.length} chars`);
@@ -371,7 +532,10 @@ function bindEvents() {
     const unsupported = event.target.closest('[data-unsupported]');
     if (unsupported) explainUnsupported(unsupported.dataset.unsupported);
     const action = event.target.closest('[data-action]');
-    if (action) runSimpleAction(action.dataset.action);
+    if (action) {
+      if (action.dataset.action === 'discover-assets') runDiscoverAssets();
+      else runSimpleAction(action.dataset.action);
+    }
     const lora = event.target.closest('[data-insert-lora]');
     if (lora) insertAtPrompt(lora.dataset.insertLora);
     const open = event.target.closest('[data-open-run]');
@@ -382,6 +546,8 @@ function bindEvents() {
     if (copy) copyRun(copy.dataset.copyRun);
     const sendUpscale = event.target.closest('[data-send-upscale]');
     if (sendUpscale) sendToUpscale(sendUpscale.dataset.sendUpscale, sendUpscale.dataset.upscaleImage);
+    const viewUpscaled = event.target.closest('[data-view-upscaled]');
+    if (viewUpscaled) viewUpscaledOutputs(viewUpscaled.dataset.viewUpscaled);
   });
 }
 

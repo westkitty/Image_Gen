@@ -99,7 +99,46 @@
           </div>
         </section>
 
-        <section id="batch" class="screen"><div class="split-grid"><div class="panel"><h2>Batch generation</h2><p>Supported: count, mode/API, seed mode, and core txt2img params.</p><form id="form-batch" class="stacked"><div class="field"><label for="batch_prompt">Prompt</label><textarea id="batch_prompt" required rows="4"></textarea></div><div class="field"><label for="batch_negative">Negative prompt</label><textarea id="batch_negative" rows="2"></textarea></div><div class="three-col"><div class="field"><label for="batch_count">Count</label><input id="batch_count" type="number" min="1" max="24" value="4" /></div><div class="field"><label for="seedMode">Seed mode</label><select id="seedMode"><option value="increment">Increment</option><option value="same">Same</option><option value="random">Random</option></select></div><div class="field"><label for="seedStart">Seed start</label><input id="seedStart" placeholder="optional" /></div></div><button class="primary" type="submit">Run batch</button></form></div><div class="panel"><h2>X/Y/Z Plot</h2><p>Visible for A1111 parity. Disabled until a sweep script exists.</p><div class="three-col"><div class="field"><label>X type</label><select disabled><option>CFG scale</option></select></div><div class="field"><label>Y type</label><select disabled><option>Steps</option></select></div><div class="field"><label>Z type</label><select disabled><option>Sampler</option></select></div></div><textarea disabled rows="8">Backend missing: add sdcpp-xyz-plot.sh and /api/actions/xyz-plot.</textarea><button class="ghost" data-unsupported="X/Y/Z plot">Explain blocker</button></div></div></section>
+        <section id="batch" class="screen"><div class="split-grid">
+          <div class="panel"><h2>Batch generation</h2><p>Supported: count, mode/API, seed mode, and core txt2img params.</p><form id="form-batch" class="stacked"><div class="field"><label for="batch_prompt">Prompt</label><textarea id="batch_prompt" required rows="4"></textarea></div><div class="field"><label for="batch_negative">Negative prompt</label><textarea id="batch_negative" rows="2"></textarea></div><div class="three-col"><div class="field"><label for="batch_count">Count</label><input id="batch_count" type="number" min="1" max="24" value="4" /></div><div class="field"><label for="seedMode">Seed mode</label><select id="seedMode"><option value="increment">Increment</option><option value="same">Same</option><option value="random">Random</option></select></div><div class="field"><label for="seedStart">Seed start</label><input id="seedStart" placeholder="optional" /></div></div><button class="primary" type="submit">Run batch</button></form></div>
+          <div class="panel">
+            <div class="panel-head"><div><h2>X/Y/Z Plot</h2><p><span class="gate">Partial</span> — requires BigMac server tunnel. Max 16 cells.</p></div></div>
+            <form id="form-xyz" class="stacked">
+              <div class="field"><label for="xyz_prompt">Prompt</label><textarea id="xyz_prompt" required rows="3" placeholder="Describe the image…"></textarea></div>
+              <div class="field"><label for="xyz_negative">Negative prompt</label><textarea id="xyz_negative" rows="2"></textarea></div>
+              <div class="two-col">
+                <div class="field"><label for="xyz_x_type">X axis</label>
+                  <select id="xyz_x_type">
+                    <option value="steps">Steps</option>
+                    <option value="cfg">CFG scale</option>
+                    <option value="sampler">Sampler</option>
+                    <option value="seed">Seed</option>
+                    <option value="width">Width</option>
+                    <option value="height">Height</option>
+                  </select></div>
+                <div class="field"><label for="xyz_x_values">X values (comma-separated)</label>
+                  <input id="xyz_x_values" placeholder="e.g. 10,20,30" /></div>
+              </div>
+              <div class="two-col">
+                <div class="field"><label for="xyz_y_type">Y axis (optional)</label>
+                  <select id="xyz_y_type">
+                    <option value="">— none —</option>
+                    <option value="steps">Steps</option>
+                    <option value="cfg">CFG scale</option>
+                    <option value="sampler">Sampler</option>
+                    <option value="seed">Seed</option>
+                    <option value="width">Width</option>
+                    <option value="height">Height</option>
+                  </select></div>
+                <div class="field"><label for="xyz_y_values">Y values (comma-separated)</label>
+                  <input id="xyz_y_values" placeholder="optional" /></div>
+              </div>
+              <div id="xyz-cell-count" class="fineprint muted">Cells: 0 / 16</div>
+              <div id="xyz-validation-msg" class="gate" style="min-height:1.2em"></div>
+              <button class="primary" type="submit" id="btn-xyz-submit">Run X/Y/Z plot</button>
+            </form>
+          </div>
+        </div></section>
 
         <section id="edit" class="screen"><div class="cards-grid" id="edit-gates"></div></section>
         <section id="enhance" class="screen">
@@ -141,8 +180,43 @@
           </div>
         </section>
         <section id="library" class="screen"><div class="panel"><div class="panel-head"><div><h2>Library</h2><p>Every output is a workflow starting point.</p></div><button class="ghost" id="btn-load-library">Reload</button></div><div id="gallery-grid" class="gallery-grid"></div></div></section>
-        <section id="models" class="screen"><div class="split-grid"><div class="panel"><h2>Checkpoints</h2><div id="model-list" class="model-list"></div></div><div class="panel"><h2>Extra networks</h2><div id="network-list" class="model-list"></div></div></div></section>
-        <section id="system" class="screen"><div class="split-grid"><div class="panel"><h2>Server & diagnostics</h2><div class="action-grid"><button class="ghost" data-action="verify">Verify backend</button><button class="ghost" data-action="server-status">Server status</button><button class="ghost" data-action="server-start">Start server</button><button class="ghost" data-action="server-stop">Stop server</button><button class="ghost" data-action="seed-test">Seed test</button></div></div><div class="panel"><h2>Job log</h2><pre id="job-log">No log yet.</pre></div></div></section>
+        <section id="models" class="screen">
+          <div class="split-grid">
+            <div class="panel">
+              <div class="panel-head">
+                <div><h2>Checkpoints</h2></div>
+                <button class="ghost small" data-action="discover-assets" id="btn-discover-assets">Discover assets</button>
+              </div>
+              <div id="asset-cache-status" class="muted fineprint" style="margin-bottom:10px">Asset cache: loading…</div>
+              <div id="model-list" class="model-list"></div>
+            </div>
+            <div class="panel">
+              <h2>Extra networks</h2>
+              <div id="asset-counts" class="model-card" style="margin-bottom:10px"></div>
+              <div id="network-list" class="model-list"></div>
+            </div>
+          </div>
+        </section>
+        <section id="system" class="screen">
+          <div class="split-grid">
+            <div class="panel">
+              <h2>Server &amp; diagnostics</h2>
+              <div class="action-grid">
+                <button class="ghost" data-action="verify">Verify backend</button>
+                <button class="ghost" data-action="server-status">Server status</button>
+                <button class="ghost" data-action="server-start">Start server</button>
+                <button class="ghost" data-action="server-stop">Stop server</button>
+                <button class="ghost" data-action="seed-test">Seed test</button>
+                <button class="ghost" data-action="probe-image-edit">Probe img2img</button>
+                <button class="ghost" data-action="probe-upscale">Probe upscale</button>
+                <button class="ghost" data-action="discover-assets">Discover assets</button>
+              </div>
+              <h2 style="margin-top:18px">Capability gates</h2>
+              <div id="system-gates" class="model-list"></div>
+            </div>
+            <div class="panel"><h2>Job log</h2><pre id="job-log">No log yet.</pre></div>
+          </div>
+        </section>
       </main>
     </div>
   </div>
