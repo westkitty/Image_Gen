@@ -1724,7 +1724,9 @@ Validation commands:
 Package:
 - Pre-commit package: `/tmp/Image_Gen_library_replay_precommit.zip`
 - Pre-commit SHA256: 33efe422b67e6b3ee9f9a9991e0426425438669c5ec420ff0832956f6c610833
-- Final package: `/tmp/Image_Gen_library_replay_final.zip` — to be recorded after push
+- Final package: `/tmp/Image_Gen_library_replay_final.zip`
+- Final SHA256: 8bbda0059c4d3c047a749bb69bff5f5f668b9797a11fd4a29f593efc12c30a64
+- Final commit: e3124ac
 
 Remaining limitations:
 - All existing runs used save_prompts=false, so `replay.prompt_saved` is always false in practice; prompt replay is implemented but untested end-to-end.
