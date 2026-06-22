@@ -813,10 +813,11 @@ async function showRunDetail(runId) {
   const btnCopyId = $('btn-detail-copy-id');
   const btnCopyPath = $('btn-detail-copy-path');
   const btnSendUpscale = $('btn-detail-send-upscale');
+  const btnCopySettings = $('btn-detail-copy-settings');
   const btnManifest = $('btn-detail-view-manifest');
 
   // Remove previous listeners by cloning; hide reuse until metadata confirms availability
-  [btnBack, btnReuse, btnCopyId, btnCopyPath, btnSendUpscale, btnManifest].forEach(b => {
+  [btnBack, btnReuse, btnCopyId, btnCopyPath, btnSendUpscale, btnCopySettings, btnManifest].forEach(b => {
     if (b) { const n = b.cloneNode(true); b.parentNode.replaceChild(n, b); }
   });
   $('btn-detail-back').addEventListener('click', closeRunDetail);
@@ -942,6 +943,22 @@ async function showRunDetail(runId) {
     showScreen('system');
     closeRunDetail();
   });
+
+  // Copy settings JSON — generation params only, prompt omitted if redacted
+  const copySettingsBtn = $('btn-detail-copy-settings');
+  if (copySettingsBtn) {
+    if (!cm) {
+      copySettingsBtn.disabled = true;
+      copySettingsBtn.title = 'No generation settings for this run type';
+    } else {
+      copySettingsBtn.addEventListener('click', () => {
+        const settings = { target: cm.controlledTarget, width: cm.width, height: cm.height, steps: cm.steps, cfg_scale: cm.cfg_scale, seed: cm.seed_label || null };
+        if (!promptPrivate && cm.prompt) settings.prompt = cm.prompt;
+        if (!promptPrivate && cm.negative_prompt) settings.negative_prompt = cm.negative_prompt;
+        navigator.clipboard.writeText(JSON.stringify(settings, null, 2)).catch(() => {});
+      });
+    }
+  }
 
   // Reuse in Create button
   const replayData = detail.replay || {};
