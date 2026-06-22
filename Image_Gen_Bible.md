@@ -1359,3 +1359,28 @@ Residual scope:
 
 - Historical handoff/proof Markdown intentionally still contains legacy or superseded context.
 - No runtime outputs, caches, or release artifacts were committed.
+
+## Entry 18 — Deep file sweep, audit lock, and release packaging pass (2026-06-22)
+
+This pass is the current release-candidate sweep for the repo root at `/Users/andrew/Image_Gen`.
+It adds the durable audit lock and the deep-sweep summary location so the next model has a
+single, current source of truth instead of rediscovering the same boundaries:
+
+- `docs/deep-audits/imagegen-ai-context-lock.md` — current operating constraints, package rules,
+  model-path boundaries, and proof-only exceptions.
+- `docs/deep-audits/imagegen-deep-file-sweep-20260622.md` — human-readable summary of the full file
+  sweep and the release-risk notes that matter.
+- `/tmp/imagegen_full_file_inventory.jsonl` — full file inventory emitted for every file in the
+  tree, including tracked/untracked classification and package eligibility.
+
+Verification:
+
+- Deep text audit rerun against project-owned docs, shell, JS, HTML, JSON, CSS, and ignore files.
+- `bash -n` / `node --check` sanity checks remained clean for the maintained scripts and console code.
+- Source packaging remains bounded by `scripts/package-source.sh` and its dirty-tree refusal by default.
+
+Residual scope:
+
+- Runtime outputs, caches, model files, screenshots, packaging archives, and server logs remain
+  excluded from commits.
+- Only the proof-only SDXL base smoke path is supported beyond the normal blocked-feature set.
