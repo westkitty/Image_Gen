@@ -22,7 +22,7 @@ It exists to stop the same release facts from drifting.
   generated proof blobs.
 - Keep Express bound to localhost only.
 
-## Library / run history truth (updated 2026-06-22, Entries 25–33)
+## Library / run history truth (updated 2026-06-22, Entries 25–34)
 
 - `GET /api/run-index` returns paginated results (`limit`, `offset`, `filter`; default 50/page, max 200) with `filterCategory` and `controlledTargetLabel` per entry. Unknown filter → 400.
 - `GET /api/runs/:runId/metadata` returns all manifest types under `manifests`, plus `run_type`, `status`, `created_at`, `primary_image`, `first_failed_gate`, `filter_category`, `controlled_target_label`, `controlled_target_caveat`, `prompt_private`, and a `replay` object.
@@ -31,6 +31,8 @@ It exists to stop the same release facts from drifting.
 - The Create screen has a collapsible "Import / paste settings JSON" block (id=settings-import-input). `loadSettingsJson()` validates against a closed key allowlist and the four-target allowlist; blocks modelPath/checkpoint/lora/vae/controlnet and unknown keys; accepts target/width/height/steps/cfg_scale/seed/prompt/negative_prompt. Two buttons: Load into Create (from textarea) and Paste from clipboard. No auto-submit.
 - When a controlled generation job finishes with FAIL or ERROR, `pollJob()` appends the first failed gate to the job status card and shows a Retry button that re-submits `state.lastParams` via generate-controlled. The button disables itself on click to prevent double-submit.
 - `replayInCreate()` appends a note showing the restored seed value and instructs users to click "Random seed" to vary output.
+- The Create screen has a "Controlled sweep planner" collapsible block. Supports seed sweep (N jobs, 2–8, optional start seed) and CFG scale sweep (comma-separated values, 2–8, each 0–30). Target validated against `SWEEP_TARGET_ALLOWLIST` (same 4-target closed set). Jobs run sequentially. Inherits all generate-controlled server validators. No model path, no LoRA/VAE/ControlNet, not full XYZ plot parity.
+- Both prompt and negative prompt fields show live character count and rough token estimate (~chars/4, labeled approx, local heuristic only).
 - Prompt privacy: `prompt_private` is derived from `manifest.prompt_redacted` for controlled runs (authoritative). For save_prompts=false runs: `prompt_private=true`, replay prompt null, privacy note shown. For save_prompts=true runs: `prompt_private=false`, replay prompt set, "Reuse in Create" fills the prompt field. Default is always save_prompts=false.
 - `filter_category` and `run_type` in the metadata endpoint now fall back to directory-name inference when `ui-run-card.md` is absent or has no `run_type` field, making them consistent with run-index for UNKNOWN/incomplete runs.
 

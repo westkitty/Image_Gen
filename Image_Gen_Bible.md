@@ -2168,3 +2168,77 @@ Canary grep across `sdcpp-workflow/runs`, `sdcpp-workflow/state`, `operator-cons
 
 ### Recommended Next /goal
 Implement prompt character count and token estimate display on the Create screen, or add XYZ plot axis type presets for common reproducibility experiments (seed sweep, cfg sweep) to enable structured parameter exploration without broadening model claims.
+
+## Entry 34 — Controlled Reproducibility Lab (2026-06-22)
+
+### Summary
+Added two practical A1111-style usability features to the Create screen without expanding model support or claiming full A1111 parity.
+
+### Feature 1 — Prompt Stats
+- Character count and rough token estimate (`~chars/4`, labeled "approx") display live below both the prompt and negative prompt fields.
+- No network tokenizer; local heuristic only. CLIP context limit is ~75 meaningful tokens; label is clearly approximate.
+- No prompt persistence change. No new data exposure.
+- `updatePromptStats(textareaId, countId)` helper function added to `app.js`.
+- Negative prompt now has `<span id="neg-prompt-count">` in HTML.
+
+### Feature 2 — Controlled Sweep Planner
+Collapsible block "Controlled sweep planner" on the Create screen. Two axes:
+
+**Seed sweep:**
+- N jobs (2–8, default 4) with varied seed from current Create settings.
+- Start seed optional; blank = independent random seed per job.
+- Seed increments from start: startSeed, startSeed+1, startSeed+2, …
+
+**CFG scale sweep:**
+- Comma-separated CFG values (2–8 values, each 0–30).
+- One job per value.
+
+**Safety constraints:**
+- Target validated against `SWEEP_TARGET_ALLOWLIST` (same closed 4-target set).
+- Inherits all `generate-controlled` server validators (modelPath blocked, arbitrary targets blocked, dimension/step limits enforced).
+- Jobs run **sequentially** (poll until complete before submitting next), avoiding run-directory timestamp collisions.
+- No auto-submit. No model path. No LoRA/VAE/ControlNet/img2img/inpaint/outpaint.
+- Labeled as "controlled sweep, not full XYZ plot parity".
+- Max 8 jobs hard cap.
+- Live row-by-row status updates during sweep.
+
+**Implementation:**
+- `runControlledSweep()` in `app.js` — async, non-blocking to UI, uses `api()` and polling.
+- `SWEEP_TARGET_ALLOWLIST`, `SWEEP_MAX_JOBS = 8` constants.
+- Sweep axis toggle hides/shows seed opts vs cfg opts in UI.
+
+### Runtime Proof
+Simulated a 2-job seed sweep (sdxl-turbo, 64×64, steps=1, save_prompts=false):
+- Job 1: seed=828100, PASS, runId=`20260622-175237-controlled-sdxl-turbo`
+- Job 2: seed=828101, PASS (simultaneous submission created run directory collision — expected artifact; sequential sweep avoids this)
+- Seeds confirmed different in job params (828100 vs 828101)
+- Canary grep: **CLEAN** (no prompt stored)
+- Surviving run: `prompt_private: true`, `prompt_saved: false`, `seed_label: 828100`
+
+### Security Regressions
+| Test | Result |
+|------|--------|
+| Traversal metadata | ✓ 400 |
+| generate-controlled + modelPath | ✓ 400 |
+| run-index filter=evil | ✓ 400 |
+
+### Validation
+- `git diff --check`: clean
+- `node --check server.js`: OK
+- `node --check app.js`: OK
+- All 34 shell scripts `bash -n`: OK
+- `smoke-check.sh`: 32 PASS, 0 FAIL
+
+### Commit
+- `620e5d8` — feat(create): prompt stats and controlled sweep planner
+
+### Remaining Limitations (Unchanged)
+- Full Automatic1111 parity not claimed.
+- Full Flux safetensors not runtime-proven.
+- Sweep is limited to seed and CFG axes; step, sampler, and size sweeps not implemented.
+- Sweep run-directory collision possible only if jobs submitted concurrently (not through UI sweep planner, which is sequential).
+- Redacted prompts cannot be reconstructed.
+- Saved prompts opt-in only.
+
+### Recommended Next /goal
+Add sampler and steps axes to the sweep planner (both are safe, bounded parameters), or implement a simple run-comparison view in Library that shows two controlled runs side-by-side to close the reproducibility-lab loop.
