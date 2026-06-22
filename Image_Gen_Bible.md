@@ -1476,3 +1476,28 @@ Residual scope:
 
 - The durable lock now matches the proven runtime state.
 - No feature surface changed.
+
+## Entry 22 — Controlled generation allowlist for proofed targets (2026-06-22)
+
+Summary:
+- Added a closed controlled-generation path for SD1.5 standard, SDXL base, SDXL Turbo, and Flux fp8 so the Create screen can pick only the proofed targets without exposing arbitrary model paths.
+
+Reason / Intent:
+- The repo had proofed smoke paths, but the user wanted those proofed targets promoted into an explicit UI/API flow instead of leaving them implicit behind the smoke-only actions.
+
+Files Changed:
+- `operator-console/server.js`
+- `operator-console/public/app.js`
+- `operator-console/public/index.html`
+- `sdcpp-workflow/bin/sdcpp-controlled-generate.sh`
+- `docs/deep-audits/imagegen-ai-context-lock.md`
+- `Image_Gen_Bible.md`
+
+Verification:
+- `node --check operator-console/server.js`
+- `node --check operator-console/public/app.js`
+- `bash -n sdcpp-workflow/bin/sdcpp-controlled-generate.sh`
+- `git diff --check`
+
+State After Completion:
+- The Create flow now points at a closed allowlist and the durable docs call out that proof-only support still does not mean full Automatic1111 parity.

@@ -1,6 +1,6 @@
 'use strict';
 
-const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null };
+const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null, controlledTargets: [], controlledTargetMap: {} };
 const $ = id => document.getElementById(id);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
@@ -17,6 +17,13 @@ const ASPECTS = [
   ['1:1', 512, 512], ['Portrait', 512, 768], ['Landscape', 768, 512], ['Wide', 1024, 576], ['Tall', 576, 1024], ['HD', 1024, 1024]
 ];
 
+const FALLBACK_CONTROLLED_TARGETS = [
+  { id: 'sd15', label: 'SD1.5 standard', status: 'supported', mode: 'existing supported txt2img', caveat: 'Normal supported generation path. Full Automatic1111 parity is still not claimed.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 20, defaultCfgScale: 7, defaultSampler: 'euler_a' },
+  { id: 'sdxl-base', label: 'SDXL base', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Controlled proofed path; not full A1111 parity.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 7, defaultSampler: 'euler_a' },
+  { id: 'sdxl-turbo', label: 'SDXL Turbo', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Controlled proofed path; not full A1111 parity.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 0, defaultSampler: 'euler_a' },
+  { id: 'flux-fp8', label: 'Flux fp8', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Controlled proofed path; not full A1111 parity. Uses the fp8 runtime-proven Flux file, not the full Flux file.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 3.5, defaultSampler: 'euler' }
+];
+
 function setPill(id, label, kind = '') {
   const pill = $(id);
   if (!pill) return;
@@ -27,6 +34,31 @@ function setPill(id, label, kind = '') {
 function notifyLog(text) { $('job-log').textContent = text || 'No log.'; }
 function saveBool(key, value) { localStorage.setItem(key, value ? 'true' : 'false'); }
 function loadBool(key) { return localStorage.getItem(key) === 'true'; }
+function getControlledTargets() {
+  return (state.capabilities && state.capabilities.modelTargets && state.capabilities.modelTargets.length)
+    ? state.capabilities.modelTargets
+    : FALLBACK_CONTROLLED_TARGETS;
+}
+function getControlledTargetSpec(targetId) {
+  return state.controlledTargetMap[targetId] || getControlledTargets().find(t => t.id === targetId) || FALLBACK_CONTROLLED_TARGETS[0];
+}
+function renderControlledTargetCaveat(targetId) {
+  const caveat = $('target-caveat');
+  if (!caveat) return;
+  const spec = getControlledTargetSpec(targetId);
+  caveat.textContent = spec && spec.caveat ? spec.caveat : 'Controlled proofed path; not full A1111 parity.';
+}
+function applyControlledTargetDefaults(targetId) {
+  const spec = getControlledTargetSpec(targetId);
+  if (!spec) return;
+  $('preset').value = 'Custom';
+  if (spec.defaultSteps !== undefined) $('steps').value = spec.defaultSteps;
+  if (spec.defaultCfgScale !== undefined) $('cfg_scale').value = spec.defaultCfgScale;
+  if (spec.defaultSampler) $('sampler').value = spec.defaultSampler;
+  if (spec.defaultWidth !== undefined) $('width').value = spec.defaultWidth;
+  if (spec.defaultHeight !== undefined) $('height').value = spec.defaultHeight;
+  renderControlledTargetCaveat(targetId);
+}
 
 async function api(path, options = {}) {
   const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options });
@@ -114,14 +146,18 @@ function hydrateControls() {
   const presets = caps.presets || DEFAULT_PRESETS;
   $('preset').innerHTML = Object.keys(presets).map(id => `<option value="${esc(id)}">${esc(id.replace('_', '+'))}</option>`).join('') + '<option value="Custom">Custom</option>';
   $('preset').value = 'quality';
-  const models = caps.models || [];
-  $('model').innerHTML = models.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('') || '<option value="sd15">SD 1.5</option>';
+  state.controlledTargets = getControlledTargets();
+  state.controlledTargetMap = Object.fromEntries(state.controlledTargets.map(t => [t.id, t]));
+  const modelOptions = state.controlledTargets.map(t => `<option value="${esc(t.id)}">${esc(t.label)}${t.status ? ` — ${esc(t.status)}` : ''}</option>`).join('');
+  $('model').innerHTML = modelOptions || '<option value="sd15">SD1.5 standard</option>';
   $('vae').innerHTML = (caps.vaes || []).map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('') || '<option value="auto">Auto</option>';
   $('sampler').innerHTML = (caps.samplers || []).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
   $('scheduler').innerHTML = (caps.schedulers || []).map(s => `<option value="${esc(s.id)}" ${s.supported ? '' : 'data-limited="1"'}>${esc(s.name)}${s.supported ? '' : ' — visible only'}</option>`).join('');
   $('aspect-presets').innerHTML = ASPECTS.map(([label, w, h]) => `<button type="button" class="ghost small" data-size="${w}x${h}">${label} ${w}×${h}</button>`).join('');
   $('set-save-prompts').checked = loadBool('savePrompts');
   applyPreset('quality');
+  const selectedTarget = $('model').value || 'sd15';
+  applyControlledTargetDefaults(selectedTarget);
   loadStyles();
 }
 
@@ -141,6 +177,7 @@ function getCoreParams(source = '') {
     prompt: $(prefix + 'prompt') ? $(prefix + 'prompt').value.trim() : $('prompt').value.trim(),
     negative_prompt: $(prefix + 'negative') ? $(prefix + 'negative').value.trim() : $('negative_prompt').value.trim(),
     preset: $('preset').value,
+    target: $('model').value,
     model: $('model').value,
     vae: $('vae').value,
     steps: $('steps').value,
@@ -168,10 +205,12 @@ function setPreviewMessage(message) { $('preview-stage').innerHTML = `<div class
 async function submitCreate(event) {
   event.preventDefault();
   const params = getCoreParams();
+  params.target = $('model').value;
   state.lastParams = params;
   try {
-    const result = await api('/api/actions/generate-single', { method: 'POST', body: JSON.stringify(params) });
-    trackJob(result.job_id, 'Generating image…');
+    const result = await api('/api/actions/generate-controlled', { method: 'POST', body: JSON.stringify(params) });
+    const target = getControlledTargetSpec(params.target);
+    trackJob(result.job_id, `Generating ${target.label || params.target}…`);
   } catch (err) {
     setPill('pill-job', 'Failed', 'bad');
     notifyLog(err.message);
@@ -202,7 +241,9 @@ async function pollJob(jobId) {
     const job = await api(`/api/jobs/${jobId}`);
     const log = await api(`/api/jobs/${jobId}/log`);
     notifyLog([log.stdout, log.stderr].filter(Boolean).join('\n\n'));
-    $('latest-job').innerHTML = `<strong>${esc(job.commandAction)}</strong><br>Status: ${esc(job.status)}${job.runId ? `<br>Run: ${esc(job.runId)}` : ''}`;
+    const targetLine = job.controlledTarget ? `<br>Target: ${esc(job.controlledTarget)}` : '';
+    const outputLine = job.controlledOutputImage ? `<br>Output: ${esc(job.controlledOutputImage)}` : '';
+    $('latest-job').innerHTML = `<strong>${esc(job.commandAction)}</strong><br>Status: ${esc(job.status)}${targetLine}${outputLine}${job.runId ? `<br>Run: ${esc(job.runId)}` : ''}`;
     if (job.status !== 'running' && job.status !== 'queued') {
       clearInterval(state.poller);
       setPill('pill-job', job.status, job.status === 'PASS' ? 'ok' : job.status === 'PARTIAL' ? 'run' : 'bad');
@@ -763,6 +804,7 @@ function bindEvents() {
   $('upscale-run').addEventListener('change', onUpscaleRunChange);
   $('form-hires-fix').addEventListener('submit', submitHiresFix);
   $('form-xyz').addEventListener('submit', submitXyz);
+  $('model').addEventListener('change', e => applyControlledTargetDefaults(e.target.value));
   $('xyz_x_values').addEventListener('input', updateXyzCellCount);
   $('xyz_y_values').addEventListener('input', updateXyzCellCount);
   $('xyz_y_type').addEventListener('change', updateXyzCellCount);

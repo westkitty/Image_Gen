@@ -35,6 +35,89 @@ const ALLOWED_SAMPLERS = new Set([
   'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm'
 ]);
 const ALLOWED_SCHEDULERS = new Set(['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple', 'normal']);
+const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8']);
+const CONTROLLED_TARGETS = [
+  {
+    id: 'sd15',
+    label: 'SD1.5 standard',
+    status: 'supported',
+    mode: 'existing supported txt2img',
+    route: '/api/actions/generate-controlled',
+    caveat: 'Normal supported generation path. Full Automatic1111 parity is still not claimed.',
+    proofDerived: false,
+    fullParityClaim: false,
+    defaultWidth: 512,
+    defaultHeight: 512,
+    defaultSteps: 20,
+    defaultCfgScale: 7,
+    defaultSampler: 'euler_a',
+    maxWidth: 2048,
+    maxHeight: 2048,
+    minSteps: 1,
+    maxSteps: 150
+  },
+  {
+    id: 'sdxl-base',
+    label: 'SDXL base',
+    status: 'proofed',
+    mode: 'proofed controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'Controlled proofed path; not full A1111 parity.',
+    proofDerived: true,
+    fullParityClaim: false,
+    defaultWidth: 512,
+    defaultHeight: 512,
+    defaultSteps: 4,
+    defaultCfgScale: 7,
+    defaultSampler: 'euler_a',
+    maxWidth: 1024,
+    maxHeight: 1024,
+    minSteps: 1,
+    maxSteps: 8
+  },
+  {
+    id: 'sdxl-turbo',
+    label: 'SDXL Turbo',
+    status: 'proofed',
+    mode: 'proofed controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'Controlled proofed path; not full A1111 parity.',
+    proofDerived: true,
+    fullParityClaim: false,
+    defaultWidth: 512,
+    defaultHeight: 512,
+    defaultSteps: 4,
+    defaultCfgScale: 0,
+    defaultSampler: 'euler_a',
+    maxWidth: 1024,
+    maxHeight: 1024,
+    minSteps: 1,
+    maxSteps: 4
+  },
+  {
+    id: 'flux-fp8',
+    label: 'Flux fp8',
+    status: 'proofed',
+    mode: 'proofed controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'Controlled proofed path; not full A1111 parity. Uses the fp8 runtime-proven Flux file, not the full Flux file.',
+    proofDerived: true,
+    fullParityClaim: false,
+    defaultWidth: 512,
+    defaultHeight: 512,
+    defaultSteps: 4,
+    defaultCfgScale: 3.5,
+    defaultSampler: 'euler',
+    maxWidth: 1024,
+    maxHeight: 1024,
+    minSteps: 1,
+    maxSteps: 8
+  }
+];
+const CONTROLLED_TARGET_BY_ID = CONTROLLED_TARGETS.reduce((acc, target) => {
+  acc[target.id] = target;
+  return acc;
+}, {});
 
 const PRESET_DEFAULTS = {
   smoke: { steps: 1, cfg_scale: 7, sampler: 'euler_a', width: 512, height: 512 },
@@ -103,6 +186,12 @@ function validateSampler(sampler) {
 function validateScheduler(scheduler) {
   if (!scheduler) return true;
   return typeof scheduler === 'string' && ALLOWED_SCHEDULERS.has(scheduler);
+}
+function validateSavePrompts(value) {
+  return value === undefined || value === null || typeof value === 'boolean';
+}
+function validateControlledTarget(target) {
+  return typeof target === 'string' && CONTROLLED_TARGET_IDS.has(target);
 }
 
 function redactSensitiveText(text, values) {
@@ -195,6 +284,12 @@ function runAction(jobId, scriptPath, args, savePrompts = false) {
     if (upscaledMatch) job.upscaledImage = upscaledMatch[1];
     const manifestMatch = out.match(/UPSCALE_MANIFEST:\s*(\S+)/);
     if (manifestMatch) job.upscaleManifest = manifestMatch[1];
+    const controlledTargetMatch = out.match(/CONTROLLED_TARGET:\s*(\S+)/);
+    if (controlledTargetMatch) job.controlledTarget = controlledTargetMatch[1];
+    const controlledImageMatch = out.match(/CONTROLLED_OUTPUT_IMAGE:\s*(\S+)/);
+    if (controlledImageMatch) job.controlledOutputImage = controlledImageMatch[1];
+    const controlledManifestMatch = out.match(/CONTROLLED_MANIFEST:\s*(\S+)/);
+    if (controlledManifestMatch) job.controlledManifest = controlledManifestMatch[1];
     const hiresRunIdMatch = out.match(/HIRES_RUN_ID:\s*(\S+)/);
     if (hiresRunIdMatch) job.hiresRunId = hiresRunIdMatch[1];
     const hiresBaseMatch = out.match(/HIRES_BASE_IMAGE:\s*(\S+)/);
@@ -230,6 +325,27 @@ function normalizeGenerationBody(body) {
   return params;
 }
 
+function normalizeControlledGenerationBody(body) {
+  const target = String(body.target || body.model_target || '').trim();
+  const cfgValue = body.cfg_scale !== undefined && body.cfg_scale !== null && body.cfg_scale !== ''
+    ? body.cfg_scale
+    : (body.cfg !== undefined && body.cfg !== null && body.cfg !== '' ? body.cfg : '');
+  const params = {
+    target,
+    prompt: body.prompt,
+    negative_prompt: body.negative_prompt !== undefined && body.negative_prompt !== null
+      ? body.negative_prompt
+      : (body.negativePrompt !== undefined && body.negativePrompt !== null ? body.negativePrompt : ''),
+    width: body.width !== undefined && body.width !== null && body.width !== '' ? body.width : '',
+    height: body.height !== undefined && body.height !== null && body.height !== '' ? body.height : '',
+    steps: body.steps !== undefined && body.steps !== null && body.steps !== '' ? body.steps : '',
+    cfg_scale: cfgValue,
+    seed: body.seed !== undefined && body.seed !== null && body.seed !== '' ? body.seed : '',
+    save_prompts: !!body.save_prompts
+  };
+  return params;
+}
+
 function validateGenerationParams(params) {
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
   if (!validateNegativePrompt(params.negative_prompt)) return 'Invalid negative prompt';
@@ -244,6 +360,44 @@ function validateGenerationParams(params) {
   if (!validateScheduler(params.scheduler)) return 'Invalid scheduler';
   if (!validateSeed(params.seed)) return 'Invalid seed';
   if (!validateIntRange(params.clip_skip, 1, 12)) return 'Invalid CLIP skip';
+  return null;
+}
+
+function validateControlledGenerationParams(params) {
+  if (!validateControlledTarget(params.target)) return 'Invalid target';
+  if (!validatePrompt(params.prompt)) return 'Invalid prompt';
+  if (!validateNegativePrompt(params.negative_prompt)) return 'Invalid negative prompt';
+  if (!validateSize(params.width)) return 'Invalid width: use multiples of 8 between 64 and target max';
+  if (!validateSize(params.height)) return 'Invalid height: use multiples of 8 between 64 and target max';
+  if (!validateSeed(params.seed)) return 'Invalid seed';
+  if (!validateSavePrompts(params.save_prompts)) return 'Invalid save_prompts';
+
+  const spec = CONTROLLED_TARGET_BY_ID[params.target];
+  const steps = params.steps === undefined || params.steps === null || params.steps === ''
+    ? spec.defaultSteps
+    : Number(params.steps);
+  if (!validateIntRange(steps, spec.minSteps, spec.maxSteps, false)) return `Invalid steps for ${spec.label}`;
+
+  const cfgScale = params.cfg_scale === undefined || params.cfg_scale === null || params.cfg_scale === ''
+    ? spec.defaultCfgScale
+    : Number(params.cfg_scale);
+  if (!Number.isFinite(cfgScale)) return `Invalid cfg_scale for ${spec.label}`;
+
+  if (params.width !== undefined && params.width !== null && params.width !== '') {
+    const width = Number(params.width);
+    if (!Number.isInteger(width) || width < 64 || width > spec.maxWidth || width % 8 !== 0) {
+      return `Invalid width for ${spec.label}`;
+    }
+  }
+  if (params.height !== undefined && params.height !== null && params.height !== '') {
+    const height = Number(params.height);
+    if (!Number.isInteger(height) || height < 64 || height > spec.maxHeight || height % 8 !== 0) {
+      return `Invalid height for ${spec.label}`;
+    }
+  }
+
+  if (params.target === 'sdxl-turbo' && cfgScale !== 0) return 'SDXL Turbo requires cfg_scale 0';
+  if (params.target === 'flux-fp8' && cfgScale !== 3.5) return 'Flux fp8 requires cfg_scale 3.5';
   return null;
 }
 
@@ -688,6 +842,25 @@ app.get('/api/capabilities', (req, res) => {
     : { supported: false, reason: 'No hypernetwork support exists in the current SDCPP scripts.' };
 
   const cacheAgeMinutes = assets ? Math.round((Date.now() / 1000 - assets.discovered_at) / 60) : null;
+  const modelTargets = CONTROLLED_TARGETS.map(target => ({
+    id: target.id,
+    label: target.label,
+    status: target.status,
+    mode: target.mode,
+    caveat: target.caveat,
+    route: target.route,
+    proofDerived: target.proofDerived,
+    fullParityClaim: target.fullParityClaim,
+    defaultWidth: target.defaultWidth,
+    defaultHeight: target.defaultHeight,
+    defaultSteps: target.defaultSteps,
+    defaultCfgScale: target.defaultCfgScale,
+    defaultSampler: target.defaultSampler,
+    maxWidth: target.maxWidth,
+    maxHeight: target.maxHeight,
+    minSteps: target.minSteps,
+    maxSteps: target.maxSteps
+  }));
 
   res.json({
     app: { name: 'SDCPP Workbench', version: 'a1111-workbench-2026-06-22' },
@@ -695,6 +868,7 @@ app.get('/api/capabilities', (req, res) => {
     assetCache: { present: !!assets, cacheAgeMinutes, discoveredAt: assets ? assets.discovered_at_iso : null },
     modelStage,
     modelInventory,
+    modelTargets,
     models,
     vaes,
     networks: {
@@ -791,6 +965,40 @@ app.post('/api/actions/generate-batch', (req, res) => {
   jobSensitives[jobId] = sensitives;
   runAction(jobId, 'bin/sdcpp-batch-generate.sh', args, params.save_prompts);
   res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
+app.post('/api/actions/generate-controlled', (req, res) => {
+  const params = normalizeControlledGenerationBody(req.body || {});
+  const err = validateControlledGenerationParams(params);
+  if (err) return res.status(400).json({ error: err });
+
+  const spec = CONTROLLED_TARGET_BY_ID[params.target];
+  const args = ['--target', params.target, '--prompt', params.prompt];
+  if (params.negative_prompt) args.push('--negative-prompt', params.negative_prompt);
+  if (params.width) args.push('--width', String(params.width));
+  if (params.height) args.push('--height', String(params.height));
+  if (params.steps) args.push('--steps', String(params.steps));
+  if (params.cfg_scale !== undefined && params.cfg_scale !== null && params.cfg_scale !== '') {
+    args.push('--cfg', String(params.cfg_scale));
+  }
+  if (params.seed !== undefined && params.seed !== null && params.seed !== '') {
+    args.push('--seed', String(params.seed));
+  }
+  args.push('--save-prompts', params.save_prompts ? 'true' : 'false');
+
+  const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
+  const summary = getRedactedCommandSummary('bin/sdcpp-controlled-generate.sh', args, sensitives);
+  const jobId = createJob('controlled-generate', summary, sanitizeRequestParams({ ...params, target: spec.id }, params.save_prompts));
+  jobSensitives[jobId] = sensitives;
+  runAction(jobId, 'bin/sdcpp-controlled-generate.sh', args, params.save_prompts);
+  res.json({
+    job_id: jobId,
+    status: jobs[jobId].status,
+    controlledTarget: spec.id,
+    controlledOutputImage: null,
+    controlledManifest: null,
+    firstFailedGate: null
+  });
 });
 
 app.post('/api/actions/unsupported', (req, res) => {
@@ -1030,6 +1238,9 @@ app.get('/api/jobs/:jobId', (req, res) => {
     runId: job.runId,
     upscaledImage: job.upscaledImage || null,
     upscaleManifest: job.upscaleManifest || null,
+    controlledTarget: job.controlledTarget || null,
+    controlledOutputImage: job.controlledOutputImage || null,
+    controlledManifest: job.controlledManifest || null,
     hiresRunId: job.hiresRunId || null,
     hiresBaseImage: job.hiresBaseImage || null,
     hiresFinalImage: job.hiresFinalImage || null,

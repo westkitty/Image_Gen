@@ -27,6 +27,8 @@ It exists to stop the same release facts from drifting.
 - SDXL base, SDXL Turbo, and Flux each have bounded proof-only smoke paths.
 - `POST /api/actions/sdxl-smoke`, `POST /api/actions/sdxl-turbo-smoke`, and `POST /api/actions/flux-smoke` are proof-only and do not mean full Automatic1111 parity.
 - Flux proof uses `/Volumes/wc2tb/ImageGen/flux/flux1-schnell/flux1-schnell-fp8.safetensors`; the full `/Volumes/wc2tb/ImageGen/flux/flux1-schnell/flux1-schnell.safetensors` file was acquired but is not the runtime-proven file.
+- `POST /api/actions/generate-controlled` now exposes a closed allowlist for SD1.5 standard, SDXL base, SDXL Turbo, and Flux fp8 only; it uses fixed proofed model behavior and does not imply arbitrary checkpoint switching.
+- Proof-only support does not mean full Automatic1111 parity.
 - `scripts/package-source.sh` packages `git archive HEAD` and refuses dirty trees by default.
 - `sdcpp-workflow/bin/sdcpp-model-stage-check.sh` must preserve the SDXL smoke proof cache.
 - Model files, runtime runs, smoke caches, logs, screenshots, zips, and generated artifacts remain outside git.
