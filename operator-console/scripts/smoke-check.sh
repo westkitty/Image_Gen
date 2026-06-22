@@ -190,8 +190,8 @@ else
 
   # Run-index: huge limit should be capped, not error
   BODY="$(curl -fsS "$BASE/api/run-index?limit=99999" 2>/dev/null)"
-  if printf '%s' "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'runs' in d" 2>/dev/null; then
-    pass "GET /api/run-index?limit=99999 capped and returns runs array"
+  if printf '%s' "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'items' in d and 'total' in d and 'hasMore' in d" 2>/dev/null; then
+    pass "GET /api/run-index?limit=99999 capped and returns paginated items"
   else
     fail "GET /api/run-index?limit=99999 unexpected response"
   fi

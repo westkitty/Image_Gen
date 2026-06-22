@@ -232,6 +232,10 @@
               <button class="filter-btn" data-filter="failed">Failed</button>
             </div>
             <div id="gallery-grid" class="gallery-grid"></div>
+            <div id="library-load-more-row" class="library-load-more-row" style="display:none">
+              <button class="ghost" id="btn-load-more">Load More</button>
+              <span id="library-count-info" class="fineprint" style="margin-left:10px"></span>
+            </div>
           </div>
 
           <!-- Run detail overlay -->
@@ -248,6 +252,21 @@
               </div>
               <div id="run-detail-content" class="run-detail-content">
                 <div class="empty-state">Loading…</div>
+              </div>
+            </div>
+          <!-- Full-size image viewer / lightbox -->
+          <div id="image-viewer-overlay" class="image-viewer-overlay" hidden tabindex="-1" role="dialog" aria-modal="true" aria-label="Full-size image viewer">
+            <div class="image-viewer-panel">
+              <div class="image-viewer-header">
+                <div id="image-viewer-info" class="image-viewer-info fineprint"></div>
+                <div class="run-detail-actions">
+                  <button class="ghost small" id="btn-viewer-copy-path">Copy path</button>
+                  <button class="ghost small" id="btn-viewer-upscale">Send to Upscale</button>
+                  <button class="ghost small" id="btn-viewer-close" aria-label="Close image viewer">&#10005; Close</button>
+                </div>
+              </div>
+              <div class="image-viewer-stage">
+                <img id="image-viewer-img" src="" alt="Full-size image" />
               </div>
             </div>
           </div>

@@ -1461,6 +1461,12 @@ app.get('/api/runs/:runId/metadata', (req, res) => {
 // Run index — fast paginated listing with upscale status; no raw prompts from redacted runs
 const RUN_INDEX_MAX = 500;
 const RUN_INDEX_TTL_MS = 8000;
+const RUN_INDEX_DEFAULT_LIMIT = 50;
+const RUN_INDEX_MAX_LIMIT = 200;
+const ALLOWED_INDEX_FILTERS = new Set([
+  'all', 'controlled', 'controlled-sd15', 'controlled-sdxl-base', 'controlled-sdxl-turbo',
+  'controlled-flux-fp8', 'hires-fix', 'upscale', 'smoke', 'failed'
+]);
 let runIndexCache = null;
 let runIndexCacheAt = 0;
 
@@ -1527,13 +1533,45 @@ function buildRunIndex() {
 }
 
 app.get('/api/run-index', (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 100, RUN_INDEX_MAX);
+  // Validate filter first
+  const filter = req.query.filter || 'all';
+  if (!ALLOWED_INDEX_FILTERS.has(filter)) {
+    return res.status(400).json({ error: `Unknown filter '${filter}'. Allowed: ${[...ALLOWED_INDEX_FILTERS].join(', ')}` });
+  }
+
+  // Parse and clamp limit / offset
+  const rawLimit = parseInt(req.query.limit, 10);
+  const limit = (Number.isInteger(rawLimit) && rawLimit > 0) ? Math.min(rawLimit, RUN_INDEX_MAX_LIMIT) : RUN_INDEX_DEFAULT_LIMIT;
+  const rawOffset = parseInt(req.query.offset, 10);
+  const offset = (Number.isInteger(rawOffset) && rawOffset >= 0) ? rawOffset : 0;
+
+  // Rebuild cache if stale
   const now = Date.now();
   if (!runIndexCache || now - runIndexCacheAt > RUN_INDEX_TTL_MS) {
     runIndexCache = buildRunIndex();
     runIndexCacheAt = now;
   }
-  res.json({ runs: runIndexCache.slice(0, limit), total: runIndexCache.length, cachedAt: new Date(runIndexCacheAt).toISOString() });
+
+  // Apply server-side filter
+  let filtered = runIndexCache;
+  if (filter !== 'all') {
+    filtered = runIndexCache.filter(r => {
+      if (filter === 'failed') return r.status === 'FAIL';
+      if (filter === 'controlled') return r.filterCategory === 'controlled';
+      if (filter === 'smoke') return r.filterCategory === 'smoke';
+      if (filter === 'hires-fix') return r.filterCategory === 'hires-fix';
+      if (filter === 'upscale') return r.filterCategory === 'upscale';
+      // specific controlled target types
+      return r.type === filter;
+    });
+  }
+
+  const total = filtered.length;
+  const items = filtered.slice(offset, offset + limit);
+  const nextOffset = offset + items.length;
+  const hasMore = nextOffset < total;
+
+  res.json({ items, total, limit, offset, nextOffset, hasMore, cachedAt: new Date(runIndexCacheAt).toISOString() });
 });
 
 app.get('/api/run-file', (req, res) => {

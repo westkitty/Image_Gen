@@ -6,7 +6,7 @@ A local-only Automatic1111-style workbench for the BigMac SDCPP image-generation
 - **Batch / Sweep** — batch generation + X/Y/Z plot (partial: requires server tunnel)
 - **Edit** — gated img2img, inpaint, and outpaint workflows
 - **Enhance** — Pillow upscale (working) + gated AI upscale / Hires Fix / face restore
-- **Library** — run history with filter bar (All / Controlled / per-target / Hires Fix / Upscale / Smoke proofs / Failed), run cards with type badges, and a full detail overlay (parameters, manifests, image thumbnails, copy/action buttons)
+- **Library** — run history with filter bar (All / Controlled / per-target / Hires Fix / Upscale / Smoke proofs / Failed), paginated run cards (50/page, Load More), full detail overlay (parameters, manifests, image thumbnails, copy/action buttons), and a full-size image viewer/lightbox for any output image
 - **Models** — checkpoint, VAE, and extra-network visibility + asset discovery
 - **System** — server lifecycle, diagnostics, capability gate panel, job logs
 
@@ -43,7 +43,7 @@ Prompts are redacted by default. When **Save prompts in run records** is off, th
 | Server start/stop/status | `POST /api/actions/server-{start,stop,status}` | |
 | Verification | `POST /api/actions/verify` | |
 | Seed test | `POST /api/actions/seed-test` | |
-| Run history / Library | `GET /api/run-index?limit=N` | max 500, 8s cache; includes `filterCategory`, `controlledTargetLabel` |
+| Run history / Library | `GET /api/run-index?limit=N&offset=N&filter=F` | paginated (default 50, max 200); 8s cache; response: `{ items, total, limit, offset, nextOffset, hasMore }`; unknown filter → 400 |
 | Run detail | `GET /api/runs/:runId/metadata` | all manifest types, `first_failed_gate`, `prompt_private`, `controlled_target_label`, `controlled_target_caveat` |
 | Run files | `GET /api/runs`, `GET /api/runs/:runId` | image lists, simple manifest |
 | Safe file serving | `GET /api/run-file?path=...` | allowlisted extensions, path containment |

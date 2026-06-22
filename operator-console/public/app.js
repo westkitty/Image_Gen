@@ -1,6 +1,6 @@
 'use strict';
 
-const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null, controlledTargets: [], controlledTargetMap: {}, libraryFilter: 'all', libraryIndex: [] };
+const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null, controlledTargets: [], controlledTargetMap: {}, libraryFilter: 'all', libraryIndex: [], libraryOffset: 0, libraryHasMore: false, libraryLoading: false };
 const $ = id => document.getElementById(id);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
@@ -249,7 +249,7 @@ async function pollJob(jobId) {
       setPill('pill-job', job.status, job.status === 'PASS' ? 'ok' : job.status === 'PARTIAL' ? 'run' : 'bad');
       setPill('pill-latest', job.status, job.status === 'PASS' ? 'ok' : 'bad');
       if (job.runId) await loadRunIntoPreview(job.runId);
-      await loadGallery();
+      await loadGallery(true);
     }
   } catch (err) { notifyLog(err.message); }
 }
@@ -349,7 +349,7 @@ function trackUpscaleJob(jobId) {
         $('upscale-result').textContent = 'PASS — ' + job.upscaledImage;
         const imgUrl = '/api/run-file?path=' + encodeURIComponent(job.upscaledImage);
         setPreviewImage(imgUrl, 'Upscaled: ' + job.upscaledImage);
-        await loadGallery();
+        await loadGallery(true);
       } else {
         $('upscale-result').textContent = job.status + (job.firstFailedGate ? ' — gate: ' + job.firstFailedGate : '');
       }
@@ -405,7 +405,7 @@ function trackHiresFixJob(jobId) {
         const imgUrl = '/api/run-file?path=' + encodeURIComponent(job.hiresFinalImage);
         const prev = $('hf-preview');
         prev.innerHTML = '<img src="' + esc(imgUrl) + '" alt="Hires Fix result" style="max-width:100%;border-radius:12px;margin-top:8px" />';
-        await loadGallery();
+        await loadGallery(true);
       } else {
         $('hf-result').textContent = job.status + (job.firstFailedGate ? ' — gate: ' + job.firstFailedGate : '');
       }
@@ -655,47 +655,74 @@ async function runFluxSmoke() {
   }
 }
 
-function runTypeFilterMatch(indexEntry, filter) {
-  if (filter === 'all') return true;
-  if (filter === 'failed') return indexEntry.status === 'FAIL';
-  if (filter === 'controlled') return indexEntry.filterCategory === 'controlled';
-  if (filter === 'smoke') return indexEntry.filterCategory === 'smoke';
-  if (filter === 'hires-fix') return indexEntry.filterCategory === 'hires-fix';
-  if (filter === 'upscale') return indexEntry.filterCategory === 'upscale';
-  if (filter === 'controlled-sd15') return indexEntry.type === 'controlled-sd15';
-  if (filter === 'controlled-sdxl-base') return indexEntry.type === 'controlled-sdxl-base';
-  if (filter === 'controlled-sdxl-turbo') return indexEntry.type === 'controlled-sdxl-turbo';
-  if (filter === 'controlled-flux-fp8') return indexEntry.type === 'controlled-flux-fp8';
-  return true;
-}
-
-async function loadGallery() {
-  try {
-    const indexData = await api('/api/run-index?limit=200');
-    state.libraryIndex = indexData.runs || [];
-    renderGallery();
-  } catch (err) {
-    const el = $('gallery-grid');
+async function loadGallery(reset = false) {
+  if (state.libraryLoading) return;
+  state.libraryLoading = true;
+  const el = $('gallery-grid');
+  if (reset) {
+    state.libraryOffset = 0;
     el.textContent = '';
+  }
+  try {
+    const url = '/api/run-index?limit=50&offset=' + state.libraryOffset + '&filter=' + encodeURIComponent(state.libraryFilter);
+    const data = await api(url);
+    const items = data.items || [];
+    if (items.length) {
+      el.insertAdjacentHTML('beforeend', items.map(r => runIndexCard(r)).join(''));
+    } else if (reset) {
+      const msg = document.createElement('div');
+      msg.className = 'empty-state';
+      msg.textContent = 'No runs match this filter.';
+      el.appendChild(msg);
+    }
+    state.libraryOffset = typeof data.nextOffset === 'number' ? data.nextOffset : state.libraryOffset + items.length;
+    state.libraryHasMore = data.hasMore === true;
+    updateLoadMoreBtn(data.total || 0);
+  } catch (err) {
+    if (reset) el.textContent = '';
     const msg = document.createElement('div');
     msg.className = 'empty-state danger';
     msg.textContent = err.message;
     el.appendChild(msg);
+    state.libraryHasMore = false;
+    updateLoadMoreBtn(0);
+  } finally {
+    state.libraryLoading = false;
   }
 }
 
-function renderGallery() {
-  const filtered = state.libraryIndex.filter(r => runTypeFilterMatch(r, state.libraryFilter));
-  const el = $('gallery-grid');
-  if (!filtered.length) {
-    el.textContent = '';
-    const msg = document.createElement('div');
-    msg.className = 'empty-state';
-    msg.textContent = 'No runs match this filter.';
-    el.appendChild(msg);
-    return;
-  }
-  el.innerHTML = filtered.map(r => runIndexCard(r)).join('');
+function updateLoadMoreBtn(total) {
+  const row = $('library-load-more-row');
+  const info = $('library-count-info');
+  if (row) row.style.display = state.libraryHasMore ? '' : 'none';
+  if (info) info.textContent = total > 0 ? state.libraryOffset + ' of ' + total + ' runs' : '';
+}
+
+function openImageViewer(imgPath, runId, filename) {
+  const overlay = $('image-viewer-overlay');
+  const img = $('image-viewer-img');
+  const info = $('image-viewer-info');
+  if (!overlay || !img) return;
+  img.src = '/api/run-file?path=' + encodeURIComponent(imgPath);
+  img.alt = filename || imgPath;
+  if (info) info.textContent = (runId ? runId + '  ·  ' : '') + (filename || imgPath);
+  overlay.hidden = false;
+  overlay.focus();
+  [['btn-viewer-copy-path', () => navigator.clipboard.writeText(imgPath).catch(() => {})],
+   ['btn-viewer-upscale', () => { closeImageViewer(); const parts = imgPath.split('/'); sendToUpscale(runId, parts.slice(1).join('/')); }],
+   ['btn-viewer-close', closeImageViewer]
+  ].forEach(([id, handler]) => {
+    const b = $(id);
+    if (!b) return;
+    const n = b.cloneNode(true);
+    b.parentNode.replaceChild(n, b);
+    $(id).addEventListener('click', handler);
+  });
+}
+
+function closeImageViewer() {
+  const overlay = $('image-viewer-overlay');
+  if (overlay) overlay.hidden = true;
 }
 function runTypeBadgeClass(filterCategory, status) {
   if (status === 'FAIL') return 'badge-fail';
@@ -869,12 +896,19 @@ async function showRunDetail(runId) {
     closeRunDetail();
   });
 
-  // Thumbnail click → update primary preview
+  // Primary image click → open viewer
+  const primaryImgEl = content.querySelector('.run-detail-primary img');
+  if (primaryImgEl && primaryImage) {
+    primaryImgEl.style.cursor = 'zoom-in';
+    primaryImgEl.addEventListener('click', () => openImageViewer(runId + '/' + primaryImage, runId, primaryImage));
+  }
+
+  // Thumbnail click → open viewer
   content.querySelectorAll('[data-thumb-img]').forEach(el => {
     el.addEventListener('click', () => {
       const imgPath = el.dataset.thumbImg;
-      const primary = content.querySelector('.run-detail-primary img');
-      if (primary) primary.src = '/api/run-file?path=' + encodeURIComponent(imgPath);
+      const filename = imgPath.split('/').pop();
+      openImageViewer(imgPath, runId, filename);
     });
   });
 }
@@ -969,7 +1003,7 @@ async function explainUnsupported(feature) {
   try { await api('/api/actions/unsupported', { method: 'POST', body: JSON.stringify({ feature }) }); }
   catch (err) { notifyLog(err.message); }
 }
-function showScreen(id) { $$('.screen').forEach(el => el.classList.toggle('active', el.id === id)); $$('.nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.target === id)); if (id === 'library') loadGallery(); }
+function showScreen(id) { $$('.screen').forEach(el => el.classList.toggle('active', el.id === id)); $$('.nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.target === id)); if (id === 'library') loadGallery(true); }
 function loadStyles() {
   const styles = JSON.parse(localStorage.getItem('styles') || '[]');
   $('style-select').innerHTML = '<option value="">No saved style</option>' + styles.map(s => `<option value="${esc(s.prompt)}">${esc(s.name)}</option>`).join('');
@@ -1007,8 +1041,8 @@ function bindEvents() {
   $('set-save-prompts').addEventListener('change', e => saveBool('savePrompts', e.target.checked));
   $('btn-random-seed').addEventListener('click', () => { $('seed').value = String(Math.floor(Math.random() * 2147483647)); });
   $('btn-reuse-seed').addEventListener('click', () => { if (state.lastSeed) $('seed').value = state.lastSeed; });
-  $('btn-load-library').addEventListener('click', loadGallery);
-  $('btn-refresh-all').addEventListener('click', async () => { await loadCapabilities(); await loadGallery(); });
+  $('btn-load-library').addEventListener('click', () => loadGallery(true));
+  $('btn-refresh-all').addEventListener('click', async () => { await loadCapabilities(); await loadGallery(true); });
   // Library filter buttons
   const filterEl = $('library-filters');
   if (filterEl) {
@@ -1017,12 +1051,23 @@ function bindEvents() {
       if (!btn) return;
       state.libraryFilter = btn.dataset.filter || 'all';
       filterEl.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b === btn));
-      renderGallery();
+      loadGallery(true);
     });
   }
   // Close detail overlay on background click
   const overlay = $('run-detail-overlay');
   if (overlay) overlay.addEventListener('click', e => { if (e.target === overlay) closeRunDetail(); });
+  const loadMoreBtn = $('btn-load-more');
+  if (loadMoreBtn) loadMoreBtn.addEventListener('click', () => loadGallery(false));
+  const viewerOverlay = $('image-viewer-overlay');
+  if (viewerOverlay) viewerOverlay.addEventListener('click', e => { if (e.target === viewerOverlay) closeImageViewer(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      const vo = $('image-viewer-overlay');
+      if (vo && !vo.hidden) { closeImageViewer(); return; }
+      closeRunDetail();
+    }
+  });
   $('btn-copy-last').addEventListener('click', async () => { if (state.lastParams) await navigator.clipboard.writeText(JSON.stringify(state.lastParams, null, 2)); });
   $('btn-send-img2img').addEventListener('click', () => explainUnsupported('img2img'));
   $('btn-send-upscale').addEventListener('click', () => explainUnsupported('upscale'));
@@ -1061,7 +1106,7 @@ function bindEvents() {
 async function init() {
   bindEvents();
   await loadCapabilities();
-  await loadGallery();
+  await loadGallery(true);
   setPill('pill-server', 'Check manually', 'run');
 }
 init();

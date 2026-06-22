@@ -1646,3 +1646,34 @@ Remaining limitations:
 
 State After Completion:
 - Library now has a filter bar and a full detail panel for all run types, with proper caveats for controlled/proof paths.
+
+## Entry 26 — Library pagination and full-size image viewer (2026-06-22)
+
+What changed:
+- `GET /api/run-index` now accepts `limit` (default 50, max 200), `offset` (default 0), and `filter` parameters. Returns `{ items, total, limit, offset, nextOffset, hasMore, cachedAt }`. Unknown filter → 400. Server-side filtering replaces the client-side `runTypeFilterMatch` function.
+- Library UI now loads 50 runs at a time. A "Load More" button appears when `hasMore=true` and fetches the next page via `loadGallery(false)` (appends). Filter changes call `loadGallery(true)` which resets `libraryOffset=0` and clears the grid before fetching page 1.
+- Full-size image viewer/lightbox (`#image-viewer-overlay`) added. Clicking the primary image in the run detail panel, or any thumbnail, opens the viewer at full size. The viewer shows the run ID, filename, a "Copy path" button, a "Send to Upscale" button, and a Close button. Escape closes the viewer (then the detail panel if viewer was already closed). Clicking the backdrop also closes. The image URL always uses `/api/run-file?path=...` — no raw path is exposed as editable input.
+- `state.libraryLoading` guard prevents concurrent fetches.
+- `state.libraryIndex` is retained in state but no longer populated (server-side filter made it redundant).
+- All `loadGallery()` call sites updated to `loadGallery(true)` (reset) except the new Load More button which calls `loadGallery(false)`.
+
+Files changed:
+- `operator-console/server.js`: `GET /api/run-index` route — added `limit`/`offset` params, server-side filter, paginated response shape.
+- `operator-console/public/app.js`: replaced `runTypeFilterMatch`/`loadGallery`/`renderGallery` with paginated `loadGallery(reset)` + `updateLoadMoreBtn` + `openImageViewer` + `closeImageViewer`. Updated `showRunDetail` thumbnail/primary click handlers. Added Load More, Escape, and viewer backdrop event bindings.
+- `operator-console/public/index.html`: added `#library-load-more-row` with `#btn-load-more` and `#library-count-info`; added `#image-viewer-overlay` with `#image-viewer-panel`, `#image-viewer-stage img#image-viewer-img`, copy-path, send-to-upscale, and close buttons.
+- `operator-console/public/styles.css`: added `.library-load-more-row`, `.image-viewer-overlay`, `.image-viewer-panel`, `.image-viewer-header`, `.image-viewer-info`, `.image-viewer-stage` styles.
+
+Privacy boundary preserved:
+- `/api/run-index` items contain no prompt or negative_prompt fields.
+- Image viewer sets `img.src` via `/api/run-file?path=...` and shows only runId + filename in the info line — no raw prompt text.
+- Copy path copies the encoded path string, not any prompt text.
+
+Validation:
+- `node --check` passes on both server.js and app.js
+- `/api/run-index?limit=5&offset=0&filter=all` → `{ items: [...], total: 109, hasMore: true, nextOffset: 5 }`
+- `/api/run-index?filter=bogus` → HTTP 400
+- `/api/run-index?filter=controlled` → items only of filterCategory=controlled, hasMore=false (10 total)
+- Second page `/api/run-index?limit=50&offset=50&filter=all` → 50 items, nextOffset=100, hasMore=true
+
+State After Completion:
+- Library has server-side pagination (50/page), Load More button, count display, and a full-size image viewer/lightbox for all output images.
