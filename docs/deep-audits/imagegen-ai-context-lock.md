@@ -22,12 +22,15 @@ It exists to stop the same release facts from drifting.
   generated proof blobs.
 - Keep Express bound to localhost only.
 
-## Library / run history truth (updated 2026-06-22, Entries 25–27)
+## Library / run history truth (updated 2026-06-22, Entries 25–32)
 
 - `GET /api/run-index` returns paginated results (`limit`, `offset`, `filter`; default 50/page, max 200) with `filterCategory` and `controlledTargetLabel` per entry. Unknown filter → 400.
 - `GET /api/runs/:runId/metadata` returns all manifest types under `manifests`, plus `run_type`, `status`, `created_at`, `primary_image`, `first_failed_gate`, `filter_category`, `controlled_target_label`, `controlled_target_caveat`, `prompt_private`, and a `replay` object.
 - `replay` object: `{ available, target, width, height, steps, cfg_scale, seed, prompt_saved, prompt, negative_prompt, privacy_note, flux_caveat }`. `available` is true only for controlled runs with a valid manifest and allowlisted target. Target is always from the closed allowlist (`sd15`, `sdxl-base`, `sdxl-turbo`, `flux-fp8`). Prompts are null for redacted runs; `prompt` and `negative_prompt` are set for save_prompts=true runs.
-- The Library screen has a filter bar (filter-aware empty states), paginated run cards (50/page) with Load More, a full detail overlay, a full-size image viewer/lightbox, and a "Reuse in Create" button for controlled runs. Detail overlay shows "🔒 Prompt redacted" or "📋 Prompt saved" correctly per run. FAIL runs always show a failure block (with gate or generic message). "Send to Upscale" is disabled when no primary image exists.
+- The Library screen has a filter bar (filter-aware empty states), paginated run cards (50/page) with Load More, a full detail overlay, a full-size image viewer/lightbox, and a "Reuse in Create" button for controlled runs. Detail overlay shows "🔒 Prompt redacted" or "📋 Prompt saved" correctly per run. FAIL runs always show a failure block (with gate or generic message). "Send to Upscale" is disabled when no primary image exists. "Copy settings JSON" exports generation params with prompt privacy.
+- The Create screen has a collapsible "Import / paste settings JSON" block (id=settings-import-input). `loadSettingsJson()` validates against a closed key allowlist and the four-target allowlist; blocks modelPath/checkpoint/lora/vae/controlnet and unknown keys; accepts target/width/height/steps/cfg_scale/seed/prompt/negative_prompt. Two buttons: Load into Create (from textarea) and Paste from clipboard. No auto-submit.
+- When a controlled generation job finishes with FAIL or ERROR, `pollJob()` appends the first failed gate to the job status card and shows a Retry button that re-submits `state.lastParams` via generate-controlled. The button disables itself on click to prevent double-submit.
+- `replayInCreate()` appends a note showing the restored seed value and instructs users to click "Random seed" to vary output.
 - Prompt privacy: `prompt_private` is derived from `manifest.prompt_redacted` for controlled runs (authoritative). For save_prompts=false runs: `prompt_private=true`, replay prompt null, privacy note shown. For save_prompts=true runs: `prompt_private=false`, replay prompt set, "Reuse in Create" fills the prompt field. Default is always save_prompts=false.
 - `filter_category` and `run_type` in the metadata endpoint now fall back to directory-name inference when `ui-run-card.md` is absent or has no `run_type` field, making them consistent with run-index for UNKNOWN/incomplete runs.
 

@@ -2020,3 +2020,54 @@ Added a "Copy settings JSON" button (`#btn-detail-copy-settings`) to the run det
 
 ### Suggested Next Goal
 - Controlled generation with explicit seed locking: prove that a fixed seed round-trips through the replay → generate → replay chain, producing metadata-consistent seed values and enabling reproducible generation.
+
+## Entry 32 — Release-Candidate Polish: Seed Note, Settings JSON Import, Failure Retry (2026-06-22)
+
+### Summary
+Second /goal release-candidate closure: M2, M3, M4. These milestones tighten the reproducibility loop, add a settings-import shortcut, and improve job failure visibility.
+
+### M2 — Reproducibility UI Polish (Seed Restored Note)
+`replayInCreate()` now appends to the create-note: _"Seed N restored — click 'Random seed' to vary output."_ This makes it clear to the user that the seed field was locked to the replayed value and must be deliberately cleared to vary output.
+
+### M3 — Settings JSON Import on Create Screen
+A collapsible "Import / paste settings JSON" block was added to the Create screen. Users can paste or click "Paste from clipboard" to fill in generation params directly from the "Copy settings JSON" JSON copied in Library.
+
+**Validation rules (all client-side, no server exposure):**
+- Blocked keys: `modelPath`, `model_path`, `checkpoint_path`, `checkpoint`, `lora`, `vae`, `controlnet`, `controlNet`, `version`, `modelVersion`
+- Allowed keys: `target`, `width`, `height`, `steps`, `cfg_scale`, `seed`, `prompt`, `negative_prompt`
+- Target must be on the closed allowlist: `sd15`, `sdxl-base`, `sdxl-turbo`, `flux-fp8`
+- `width`/`height`: 64–2048 (number), `steps`: 1–150 (number), `cfg_scale`: finite number
+- Rejected inputs show an amber note; accepted inputs fill the form and show "Settings loaded." with seed note
+- No auto-submit
+
+### M4 — Job Failure Polish (Failed Gate + Retry Button)
+When a job finishes with `FAIL` or `ERROR`, the job status card now shows:
+- **First failed gate** from `job.firstFailedGate` if available (e.g., "gate: sampling")
+- **Retry button** that re-submits the same `state.lastParams` via `generate-controlled` without navigating away. The button disables itself on click to prevent double-submit.
+
+### M5 — RC Package Verification
+`bash scripts/package-source.sh` ran clean on HEAD `cb9982f`:
+- No forbidden paths (no `node_modules/`, `runs/`, `logs/`, `state/`, `.DS_Store`)
+- Size: 300K
+- SHA256: `48da3f6534d25c58e4522482112a740ffec62bcfeedfea5b07ac0d6882548177`
+
+### Security Regression Checks (All Pass)
+| Test | Expected | Result |
+|------|----------|--------|
+| `GET /api/runs/..%2F..%2Fetc%2Fpasswd/metadata` | 400 | ✓ 400 |
+| `GET /api/run-index?filter=evil` | 400 | ✓ 400 |
+| `POST /api/actions/generate-controlled` with `modelPath` | 400 | ✓ 400 |
+
+### Commits
+- `704a923` — feat(create): seed note on replay + settings JSON import (M2 + M3)
+- `cb9982f` — feat(create): show first failed gate and retry button on job failure (M4)
+
+### Remaining Limitations (Unchanged)
+- Full Automatic1111 parity is not claimed.
+- Full Flux safetensors is not runtime-proven.
+- Flux 512×512 can hit Metal OOM on this hardware.
+- Redacted prompts cannot be reconstructed.
+
+### State After Entry
+- M1–M5 of second /goal complete.
+- M6 (docs truth lock), M7 (final RC audit), M8 (optional polish) remain.
