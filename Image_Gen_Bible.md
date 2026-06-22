@@ -1799,7 +1799,9 @@ if (isMinimal) { noteMsg += ' This replay came from a proof/minimal run. Review 
 - Commit: `3b6d5f1` — prove(replay): add minimal-settings warning and prove replay-to-generate loop
 
 ### Package
-- Package: TBD — recorded after package
+- Package: `/tmp/Image_Gen_replay_loop_proof.zip`
+- SHA256: `9f136a4b2c95f7289b8ebbe971b81cb97cd5ca9afb3e183b60f82971da57d65a`
+- Final commit included: `aed2b40` (docs: record commit hash for Entry 28)
 
 ### Limitations Resolved
 - "Replay uses actual steps/width/height from the manifest (smoke-proof values may be minimal)" — now surfaced as an explicit amber warning. User cannot miss it.
