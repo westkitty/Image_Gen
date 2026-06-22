@@ -1371,7 +1371,8 @@ single, current source of truth instead of rediscovering the same boundaries:
 - `docs/deep-audits/imagegen-deep-file-sweep-20260622.md` — human-readable summary of the full file
   sweep and the release-risk notes that matter.
 - `/tmp/imagegen_full_file_inventory.jsonl` — full file inventory emitted for every file in the
-  tree, including tracked/untracked classification and package eligibility.
+  tree, including tracked/untracked classification and package eligibility. Current counts:
+  1,317 files total, 76 tracked, 1,241 ignored/untracked, 76 package-eligible.
 
 Verification:
 

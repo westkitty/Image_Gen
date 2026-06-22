@@ -20,6 +20,10 @@ release-relevant takeaways.
   bounded proof semantics instead of implying full SDXL parity.
 - The packager still uses `git archive HEAD`, so the release bundle stays source-only.
 - Runtime outputs, caches, model files, screenshots, and logs remain out of scope for commits.
+- The full inventory currently contains 1,317 files total: 76 tracked source files and 1,241
+  ignored/untracked local artifacts.
+- The dominant non-source buckets are `.playwright-mcp/`, `Potential UI/`, proof artifacts, and
+  other local cache/output files.
 
 ## Current risk posture
 
@@ -27,6 +31,8 @@ release-relevant takeaways.
 - Low for the proof-only bridge path.
 - Residual risk remains in the historical handoff and Bible material, which intentionally keeps
   older context for traceability.
+- The source package itself is clean because only tracked files are eligible and the packager
+  rejects dirty trees by default.
 
 ## Files that matter most for future passes
 
