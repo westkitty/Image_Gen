@@ -1811,3 +1811,83 @@ if (isMinimal) { noteMsg += ' This replay came from a proof/minimal run. Review 
 - Replay-to-generate loop is end-to-end proven for SDXL Turbo (512×512, steps=4).
 - Minimal-settings warning live for proof-only replay sources.
 - Prompt privacy confirmed: no prompt text escapes for save_prompts=false runs.
+
+---
+
+## Entry 29 — Saved-Prompt Opt-In Proof (2026-06-22)
+
+### Context
+Entry 28 noted: "The `prompt_saved=true` code path is implemented but remains untested (no run with saved prompts exists)." This entry proves the full saved-prompt opt-in branch end-to-end and fixes a `prompt_private` bug discovered during the audit.
+
+### What Was Done
+
+**Bug fix — `prompt_private` for saved-prompt runs:**
+`server.js` line 1473: the original logic used `runCard.prompt` as a fallback, but the run-card YAML front matter never contains a `prompt` field — making `!runCard.prompt` always true, causing `prompt_private=true` even for opted-in saved-prompt runs. Fixed to use `manifests.controlled.prompt_redacted` as the authoritative source for controlled runs:
+```javascript
+// Before (buggy):
+const promptPrivate = (manifests.controlled && manifests.controlled.prompt_redacted === true) ||
+    (runCard.prompt === '[REDACTED]' || !runCard.prompt);
+
+// After (correct):
+const promptPrivate = manifests.controlled
+    ? manifests.controlled.prompt_redacted === true
+    : (runCard.prompt === '[REDACTED]' || !runCard.prompt);
+```
+Effect: `prompt_private` is now `false` for save_prompts=true controlled runs, so the Library detail overlay correctly shows "📋 Prompt saved with this run" instead of "🔒 Prompt redacted".
+
+**Runtime proof — default-redaction canary (save_prompts=false):**
+- Job ID: `45a50cd1-7a8b-4bc6-850a-a73907429543`
+- Run ID: `20260622-164905-controlled-sdxl-turbo` — PASS
+- `replay.prompt_saved=false`, `replay.prompt=null`, `privacy_note` set
+- `prompt_private=true` ✓
+- Canary string "ZXQV7291" found in: **zero** files under `runs/`, `state/`, or source tree ✓
+
+**Runtime proof — saved-prompt canary (save_prompts=true):**
+- Job ID: `8881f64d-89f8-4448-b8ca-af9c0199acb7`
+- Run ID: `20260622-164938-controlled-sdxl-turbo` — PASS
+- `replay.prompt_saved=true`, `replay.prompt="a unique saved-prompt canary AXBW8853"`, `privacy_note=null`
+- `prompt_private=false` after bug fix ✓
+- Canary string "AXBW8853" found in: `runs/20260622-164938-controlled-sdxl-turbo/` (runtime artifacts — git-ignored). Not in state/, source files, or Bible ✓
+
+**Static UI validation:**
+- `replayInCreate()` fills prompt only when `replay.prompt_saved && replay.prompt` — Line 781
+- Negative prompt same rule — Line 787
+- Privacy note shown only when `replay.privacy_note` is set (null for saved-prompt runs) — Line 790
+- No auto-submit found
+
+**Privacy audit — saved canary in runtime artifacts only:**
+- `remote-command.log`, `ui-run-card.md`, `controlled-generate-report.md`, `controlled-manifest.json` — all under `sdcpp-workflow/runs/` (git-ignored) ✓
+- NOT in `operator-console/state/` ✓
+- NOT in source files ✓
+- Final package `/tmp/Image_Gen_m1_saved_prompt_proof.zip` excludes canary ✓
+
+**Regression tests (all 400):**
+- Traversal: `GET /api/runs/..%2F..%2Fetc%2Fpasswd/metadata` → 400 ✓
+- modelPath rejection: `POST /api/actions/generate-controlled` with `modelPath` → 400 ✓
+- Invalid filter: `GET /api/run-index?filter=evil` → 400 ✓
+
+**Validation:**
+- `node --check server.js` → OK
+- `node --check public/app.js` → OK
+- All `.sh` files → OK
+- `smoke-check.sh` → 32 PASS, 0 FAIL
+
+### Commit
+- `8289497` — fix(metadata): use manifest.prompt_redacted as authoritative for prompt_private
+
+### Package
+- Package: `/tmp/Image_Gen_m1_saved_prompt_proof.zip`
+- SHA256: `4ef4399f3c3e9c2a1e6183c939c9963c6106408aac87d759e16c7d532ac4a14b`
+- Final commit: `8289497`
+
+### Limitations
+- Saved prompts intentionally stored only when save_prompts=true (opt-in).
+- Redacted prompts cannot be reconstructed.
+- Default is always save_prompts=false (redacted).
+- Full Automatic1111 parity is not claimed.
+- Full Flux safetensors is not runtime-proven.
+
+### State After Completion
+- Saved-prompt opt-in branch is end-to-end proven: run, replay object, UI fill, privacy audit.
+- `prompt_private` is now semantically correct for both redacted and saved-prompt controlled runs.
+- Default redaction boundary unchanged.
