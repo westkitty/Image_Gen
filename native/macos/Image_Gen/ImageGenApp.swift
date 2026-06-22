@@ -1,7 +1,7 @@
 import Cocoa
 import WebKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate {
     private var window: NSWindow!
     private var webView: WKWebView!
     private var statusLabel: NSTextField!
@@ -22,13 +22,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            window.makeKeyAndOrderFront(nil)
-        } else {
-            window.makeKeyAndOrderFront(nil)
-        }
-        NSApp.activate(ignoringOtherApps: true)
+        showMainWindow()
         return true
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        window = nil
+        webView = nil
+        statusLabel = nil
+    }
+
+    private func showMainWindow() {
+        if window == nil {
+            buildWindow()
+        }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -89,6 +102,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             defer: false
         )
         window.title = "Image_Gen"
+        window.isReleasedWhenClosed = false
+        window.delegate = self
         window.center()
         window.contentView = content
         window.makeKeyAndOrderFront(nil)
@@ -126,6 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             self.ensureOperatorConsole()
             self.ensureSdcppTunnel()
             DispatchQueue.main.async {
+                self.showMainWindow()
                 self.setStatus("Loading Image_Gen at \(self.consoleURL.absoluteString)")
                 self.webView.load(URLRequest(url: self.consoleURL))
             }
@@ -173,6 +189,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         appendLog(status.output)
         if status.output.contains("Server + tunnel appear UP") {
             DispatchQueue.main.async { self.setStatus("BigMac server and tunnel are up.") }
+            return
+        }
+        if commandOK("lsof -nP -iTCP:17870 -sTCP:LISTEN >/dev/null && curl -fsS --max-time 5 http://127.0.0.1:17870/v1/models >/dev/null", timeout: 8) {
+            appendLog("status script did not report UP, but local tunnel 127.0.0.1:17870 answered /v1/models; reusing existing tunnel")
+            DispatchQueue.main.async { self.setStatus("BigMac tunnel answered locally.") }
             return
         }
 
