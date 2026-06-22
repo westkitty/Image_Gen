@@ -1501,3 +1501,29 @@ Verification:
 
 State After Completion:
 - The Create flow now points at a closed allowlist and the durable docs call out that proof-only support still does not mean full Automatic1111 parity.
+
+## Entry 23 — Controlled generation validation hardened (2026-06-22)
+
+Summary:
+- Tightened the controlled-generation API and shell driver so proofed targets stay bounded instead of accepting arbitrary model-path overrides or absurd `cfg` values.
+
+Reason / Intent:
+- The new controlled path had the right allowlist shape, but validation was still too permissive. That left a security-shaped hole and made the direct script unusable outside server-populated config state.
+
+Files Changed:
+- `operator-console/server.js`
+- `sdcpp-workflow/bin/sdcpp-controlled-generate.sh`
+- `sdcpp-workflow/bin/sdcpp-lib.sh`
+- `docs/deep-audits/imagegen-ai-context-lock.md`
+- `Image_Gen_Bible.md`
+
+Verification:
+- `node --check operator-console/server.js`
+- `bash -n sdcpp-workflow/bin/sdcpp-lib.sh`
+- `bash -n sdcpp-workflow/bin/sdcpp-controlled-generate.sh`
+- Rejected `modelPath` injection and absurd `cfgScale` values with HTTP 400.
+- Direct controlled generation passed for `sdxl-base`, `sdxl-turbo`, and `flux-fp8`.
+- Privacy canary string did not persist in the controlled Turbo run tree.
+
+State After Completion:
+- Controlled generation remains proof-only, but the runtime now enforces the closed boundary instead of merely advertising it.

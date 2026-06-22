@@ -9,6 +9,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 load_config
 
+: "${MODEL_STAGE_ROOT:=/Volumes/wc2tb/ImageGen}"
+export MODEL_STAGE_ROOT
+
 ARG_TARGET=""
 ARG_PROMPT="$PROMPT"
 ARG_NEG=""

@@ -326,6 +326,25 @@ function normalizeGenerationBody(body) {
 }
 
 function normalizeControlledGenerationBody(body) {
+  const allowedKeys = new Set([
+    'target',
+    'model_target',
+    'prompt',
+    'negative_prompt',
+    'negativePrompt',
+    'width',
+    'height',
+    'steps',
+    'cfg_scale',
+    'cfg',
+    'seed',
+    'save_prompts'
+  ]);
+  for (const key of Object.keys(body || {})) {
+    if (!allowedKeys.has(key)) {
+      return { invalidKey: key };
+    }
+  }
   const target = String(body.target || body.model_target || '').trim();
   const cfgValue = body.cfg_scale !== undefined && body.cfg_scale !== null && body.cfg_scale !== ''
     ? body.cfg_scale
@@ -364,6 +383,7 @@ function validateGenerationParams(params) {
 }
 
 function validateControlledGenerationParams(params) {
+  if (params && params.invalidKey) return `Unexpected field: ${params.invalidKey}`;
   if (!validateControlledTarget(params.target)) return 'Invalid target';
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
   if (!validateNegativePrompt(params.negative_prompt)) return 'Invalid negative prompt';
@@ -382,6 +402,7 @@ function validateControlledGenerationParams(params) {
     ? spec.defaultCfgScale
     : Number(params.cfg_scale);
   if (!Number.isFinite(cfgScale)) return `Invalid cfg_scale for ${spec.label}`;
+  if (cfgScale < 0 || cfgScale > 30) return `Invalid cfg_scale for ${spec.label}`;
 
   if (params.width !== undefined && params.width !== null && params.width !== '') {
     const width = Number(params.width);

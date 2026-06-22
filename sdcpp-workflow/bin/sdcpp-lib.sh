@@ -196,6 +196,69 @@ now_epoch() {
   printf '%s\n' "$t"
 }
 
+validatePrompt() {
+  # validatePrompt <text>
+  [ "$#" -ge 1 ] || return 1
+  local prompt="$1"
+  [ -n "$prompt" ] && [ "${#prompt}" -le 4000 ]
+}
+
+validateNegativePrompt() {
+  # validateNegativePrompt <text>
+  [ "$#" -ge 1 ] || return 1
+  local text="$1"
+  [ -z "$text" ] || [ "${#text}" -le 2000 ]
+}
+
+validateIntRange() {
+  # validateIntRange <value> <min> <max> [optional=true]
+  [ "$#" -ge 3 ] || return 1
+  local value="$1" min="$2" max="$3" optional="${4:-true}" n
+  if [ "$optional" = "true" ] && [ -z "$value" ]; then
+    return 0
+  fi
+  case "$value" in
+    ''|*[!0-9-]*) return 1 ;;
+  esac
+  n="$value"
+  [ "$n" -ge "$min" ] 2>/dev/null && [ "$n" -le "$max" ] 2>/dev/null
+}
+
+validateFloatRange() {
+  # validateFloatRange <value> <min> <max> [optional=true]
+  [ "$#" -ge 3 ] || return 1
+  local value="$1" min="$2" max="$3" optional="${4:-true}" n
+  if [ "$optional" = "true" ] && [ -z "$value" ]; then
+    return 0
+  fi
+  case "$value" in
+    ''|*[!0-9.-]*) return 1 ;;
+  esac
+  n="$value"
+  awk -v n="$n" -v min="$min" -v max="$max" 'BEGIN{exit !(n+0==n && n>=min && n<=max)}'
+}
+
+validateSize() {
+  # validateSize <value>
+  [ "$#" -ge 1 ] || return 1
+  local value="$1" n
+  if [ -z "$value" ]; then
+    return 0
+  fi
+  case "$value" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  n="$value"
+  [ "$n" -ge 64 ] 2>/dev/null && [ "$n" -le 2048 ] 2>/dev/null && [ $((n % 8)) -eq 0 ]
+}
+
+validateSeed() {
+  # validateSeed <seed>
+  [ "$#" -ge 1 ] || return 1
+  local seed="$1"
+  [ -z "$seed" ] || printf '%s' "$seed" | grep -Eq '^(random|fixed|[0-9]+)$'
+}
+
 elapsed_seconds() {
   # elapsed_seconds <start> <end>  -> end-start, 2 decimals, never negative.
   awk -v a="$1" -v b="$2" 'BEGIN{d=b-a; if(d<0)d=0; printf "%.2f", d}'
