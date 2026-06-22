@@ -1891,3 +1891,82 @@ Effect: `prompt_private` is now `false` for save_prompts=true controlled runs, s
 - Saved-prompt opt-in branch is end-to-end proven: run, replay object, UI fill, privacy audit.
 - `prompt_private` is now semantically correct for both redacted and saved-prompt controlled runs.
 - Default redaction boundary unchanged.
+
+---
+
+## Entry 30 — Library Polish, Metadata Consistency, and Release Audit (2026-06-22)
+
+### Context
+Continuing the milestone sequence following Entry 29. Milestones 2 (minimal replay warning) was already done in Entry 28. Milestones 3–5 are covered here.
+
+### Milestone 3 — Library Quality-of-Life Polish
+
+**Three fixes to `operator-console/public/app.js`:**
+
+1. **Filter-aware empty state:** Library empty state now says "No SDXL Turbo runs found." instead of the generic "No runs match this filter." Uses a filter-label map keyed on `state.libraryFilter`.
+
+2. **FAIL run failure block:** `failedGateHtml` now shows for all FAIL-status runs. Previously only shown when `firstFailedGate` was also set; runs that failed without a recorded gate showed no failure detail. Now shows "Run failed — no gate failure detail recorded." as the fallback.
+
+3. **Send to Upscale guard:** "Send to Upscale" button in run detail is now disabled (with tooltip "No image available for this run") when the run has no primary image. Previously it would silently navigate to the Enhance screen empty-handed.
+
+Commit: `4a6e2f8`
+
+### Milestone 4 — Run Metadata Consistency
+
+**One fix to `operator-console/server.js`:**
+
+The metadata endpoint (`GET /api/runs/:runId/metadata`) derived `runType` from `runCard.run_type` only. For runs with no `ui-run-card.md` (UNKNOWN/incomplete runs), this was `null`, causing `filter_category` to default to `'other'` — inconsistent with the run-index, which derives `runType` from the directory name via `inferRunType()`.
+
+Fix: fall back to `inferRunType(path.basename(runPath))[0]` when `runCard.run_type` is absent. Both endpoints now agree on `type` and `filter_category` for all runs, including UNKNOWN ones.
+
+Verified: `20260622-140626-controlled-flux-fp8` (UNKNOWN Flux run) now returns `filter_category: controlled`, `run_type: controlled-flux-fp8`, `controlled_target_label: Flux fp8` from the metadata endpoint.
+
+Commit: `3bcc4e2`
+
+### Milestone 5 — Release Readiness Audit
+
+Audit results (no blocking issues found):
+
+- **Parity claims:** All capabilities return `fullParityClaim: false`. Bible line "A1111 parity should be approached as a product architecture…" is a recommendation, not a claim. No uncaveated parity assertions in docs.
+- **Context lock:** Updated in Entry 29 + this entry to reflect current behavior.
+- **Bible latest entry:** Matches HEAD commits and package SHA.
+- **README:** Correctly states "local-only" with `127.0.0.1:31337`. Express "bound exclusively to `127.0.0.1:31337`".
+- **package-source.sh:** Correctly excludes `node_modules/`, `runs/`, `logs/`, `state/`, `.proof-env`, `__MACOSX`. `git archive HEAD` approach inherits `.gitignore`.
+- **smoke-check shape:** Asserts `items`, `total`, `hasMore` — matches current paginated run-index shape.
+- **Historical packages in Bible:** All `/mnt/data/` or early `Image_Gen_A1111_*.zip` refs are in historical entries 1–22. Not current release claims.
+- **Stale model roots:** None found in server.js, app.js, scripts/, or sdcpp-workflow/bin/.
+- **Flux full safetensors:** Context lock explicitly states not runtime-proven. Source never presents it as proven.
+- **Proof-only wording:** All controlled-generation caveats use "Controlled proofed path; not full A1111 parity." Smoke proofs are labeled "validates the generation path only."
+
+Context lock committed: `2b8ffbf`
+
+### Full Validation
+- `node --check server.js` → OK
+- `node --check public/app.js` → OK
+- All `.sh` files `bash -n` → OK
+- `smoke-check.sh` → 32 PASS, 0 FAIL
+- Traversal `..%2F..%2Fetc%2Fpasswd` → 400
+- modelPath rejection → 400
+- Invalid filter `?filter=evil` → 400
+
+### Commits This Entry
+- `4a6e2f8` — feat(library): polish Library QoL — failed-gate, empty states, upscale guard
+- `3bcc4e2` — fix(metadata): fall back to dir-name inference for runType when run card absent
+- `2b8ffbf` — docs(context-lock): record M3/M4 Library polish and metadata consistency
+
+### Package
+- Package: `/tmp/Image_Gen_m3_m4_m5_release_audit.zip`
+- SHA256: `0fd4a8780be72b2888a29fddcf1c2368e02d1461aa6c78aad6eea2ac0e0c1018`
+- Final commit: `2b8ffbf`
+
+### Remaining Limitations
+- Full Automatic1111 parity is not claimed.
+- Full Flux safetensors (`flux1-schnell.safetensors`) is not runtime-proven; only `flux1-schnell-fp8.safetensors` is.
+- Flux 512×512 can hit Metal out-of-memory on this hardware.
+- img2img, inpaint, outpaint, Real-ESRGAN, Face Restore, LoRA, VAE switching, ControlNet are not implemented.
+- Saved prompts intentionally stored only when save_prompts=true (opt-in).
+
+### State After Completion
+- Milestones 1–5 complete.
+- Library is the primary output browser with consistent metadata, correct privacy display, filter-aware empty states, and safe degradation for runs without images.
+- Release readiness audit passed — no uncaveated parity claims, no stale model paths, no forbidden content in package.
