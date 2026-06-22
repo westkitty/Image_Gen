@@ -1970,3 +1970,53 @@ Context lock committed: `2b8ffbf`
 - Milestones 1–5 complete.
 - Library is the primary output browser with consistent metadata, correct privacy display, filter-aware empty states, and safe degradation for runs without images.
 - Release readiness audit passed — no uncaveated parity claims, no stale model paths, no forbidden content in package.
+
+---
+
+## Entry 31 — Copy Settings JSON (Milestone 6) (2026-06-22)
+
+### Context
+Milestone 6 optional product polish. Chosen item: A — "Copy generation settings JSON" in run detail, respecting prompt privacy.
+
+### What Was Done
+
+Added a "Copy settings JSON" button (`#btn-detail-copy-settings`) to the run detail header actions (between "Send to Upscale" and "View manifest JSON").
+
+**Behavior:**
+- For controlled runs: copies `{ target, width, height, steps, cfg_scale, seed }` to clipboard.
+- `prompt` and `negative_prompt` are included **only** when `prompt_private === false` (i.e. the run explicitly opted into `save_prompts=true`).
+- For non-controlled runs (smoke, hires-fix, upscale): button is disabled with tooltip "No generation settings for this run type".
+
+**Privacy validation:**
+- Saved-prompt run (`20260622-164938-controlled-sdxl-turbo`, `prompt_private=false`): settings JSON includes prompt ✓
+- Redacted run (`20260622-164905-controlled-sdxl-turbo`, `prompt_private=true`): settings JSON excludes prompt ✓
+
+**Files changed:**
+- `operator-console/public/index.html` — added `<button id="btn-detail-copy-settings">Copy settings JSON</button>`
+- `operator-console/public/app.js` — added to clone list, added click handler using `promptPrivate` gate
+
+**Validation:**
+- `node --check public/app.js` → OK
+- `smoke-check.sh` → 32 PASS, 0 FAIL
+
+### Commit
+- `a4c9696` — feat(library): add 'Copy settings JSON' in run detail with prompt privacy
+
+### Package
+- Package: `/tmp/Image_Gen_m6_copy_settings.zip`
+- SHA256: `53e5b361b12ed398d64cb62e5c230b65c169d78dfae65ee673b37e5420b3dfd0`
+- Final commit: `a4c9696`
+
+### Remaining Limitations
+- Full Automatic1111 parity is not claimed.
+- Full Flux safetensors is not runtime-proven.
+- Flux 512×512 can hit Metal OOM on this hardware.
+- Redacted prompts cannot be reconstructed.
+- Save_prompts=true prompt replay (prompt_saved=true branch) is proven end-to-end.
+
+### State After Completion
+- All 6 milestones complete.
+- "Copy settings JSON" enables users to extract exact generation parameters from any controlled run for reproducibility, with prompt privacy respected.
+
+### Suggested Next Goal
+- Controlled generation with explicit seed locking: prove that a fixed seed round-trips through the replay → generate → replay chain, producing metadata-consistent seed values and enabling reproducible generation.
