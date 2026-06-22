@@ -43,6 +43,7 @@
           <div class="workbench-grid">
             <form id="form-create" class="panel control-panel">
               <div class="panel-head"><div><h2>Create</h2><p>txt2img controls surfaced like an actual generation cockpit.</p></div><button type="submit" class="primary big">Generate</button></div>
+              <div id="create-note" class="create-note" hidden></div>
 
               <div class="field"><label for="prompt">Prompt</label><textarea id="prompt" required rows="5" placeholder="Describe the image. Use A1111 prompt syntax if your backend/model supports it."></textarea><div class="meta-row"><span id="prompt-count">0 chars</span><button type="button" class="ghost small" id="btn-save-style">Save style</button></div></div>
               <div class="field"><label for="negative_prompt">Negative prompt</label><textarea id="negative_prompt" rows="3" placeholder="low quality, blurry, bad anatomy…"></textarea></div>
@@ -244,6 +245,7 @@
               <div class="run-detail-header">
                 <button class="ghost small" id="btn-detail-back">&#8592; Library</button>
                 <div class="run-detail-actions">
+                  <button class="ghost small" id="btn-detail-reuse" hidden>Reuse in Create</button>
                   <button class="ghost small" id="btn-detail-copy-id">Copy run ID</button>
                   <button class="ghost small" id="btn-detail-copy-path">Copy image path</button>
                   <button class="ghost small" id="btn-detail-send-upscale">Send to Upscale</button>

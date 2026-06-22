@@ -756,6 +756,42 @@ function closeRunDetail() {
   if (overlay) overlay.hidden = true;
 }
 
+function showCreateNote(msg, variant) {
+  const note = $('create-note');
+  if (!note) return;
+  note.textContent = msg || '';
+  note.className = 'create-note' + (variant ? ' ' + variant : '');
+  note.hidden = !msg;
+}
+
+function replayInCreate(replay, runId) {
+  closeRunDetail();
+  showScreen('create');
+  const modelSel = $('model');
+  if (modelSel && replay.target) {
+    modelSel.value = replay.target;
+    applyControlledTargetDefaults(replay.target);
+  }
+  if (replay.width) $('width').value = replay.width;
+  if (replay.height) $('height').value = replay.height;
+  if (replay.steps) $('steps').value = replay.steps;
+  if (replay.cfg_scale != null) $('cfg_scale').value = replay.cfg_scale;
+  if (replay.seed != null) $('seed').value = String(replay.seed);
+  if ($('preset')) $('preset').value = 'Custom';
+  if (replay.prompt_saved && replay.prompt) {
+    $('prompt').value = replay.prompt;
+  } else {
+    $('prompt').value = '';
+  }
+  $('prompt').dispatchEvent(new Event('input'));
+  $('negative_prompt').value = (replay.prompt_saved && replay.negative_prompt) ? replay.negative_prompt : '';
+  let noteMsg = 'Loaded settings from run ' + runId + '.';
+  let noteVariant = '';
+  if (replay.privacy_note) { noteMsg += ' ' + replay.privacy_note; noteVariant = 'privacy'; }
+  if (replay.flux_caveat) { noteMsg += ' ' + replay.flux_caveat; noteVariant = noteVariant || 'flux'; }
+  showCreateNote(noteMsg, noteVariant);
+}
+
 function metaItem(label, value, valueClass) {
   return '<div class="run-detail-meta-item"><div class="label">' + esc(label) + '</div><div class="value' + (valueClass ? ' ' + esc(valueClass) : '') + '">' + esc(String(value ?? '—')) + '</div></div>';
 }
@@ -770,16 +806,18 @@ async function showRunDetail(runId) {
 
   // Wire up header action buttons with the runId
   const btnBack = $('btn-detail-back');
+  const btnReuse = $('btn-detail-reuse');
   const btnCopyId = $('btn-detail-copy-id');
   const btnCopyPath = $('btn-detail-copy-path');
   const btnSendUpscale = $('btn-detail-send-upscale');
   const btnManifest = $('btn-detail-view-manifest');
 
-  // Remove previous listeners by cloning
-  [btnBack, btnCopyId, btnCopyPath, btnSendUpscale, btnManifest].forEach(b => {
+  // Remove previous listeners by cloning; hide reuse until metadata confirms availability
+  [btnBack, btnReuse, btnCopyId, btnCopyPath, btnSendUpscale, btnManifest].forEach(b => {
     if (b) { const n = b.cloneNode(true); b.parentNode.replaceChild(n, b); }
   });
   $('btn-detail-back').addEventListener('click', closeRunDetail);
+  if ($('btn-detail-reuse')) $('btn-detail-reuse').hidden = true;
 
   let detail;
   try {
@@ -895,6 +933,16 @@ async function showRunDetail(runId) {
     showScreen('system');
     closeRunDetail();
   });
+
+  // Reuse in Create button
+  const replayData = detail.replay || {};
+  const reuseBtn = $('btn-detail-reuse');
+  if (reuseBtn) {
+    reuseBtn.hidden = !replayData.available;
+    if (replayData.available) {
+      reuseBtn.addEventListener('click', () => replayInCreate(replayData, runId));
+    }
+  }
 
   // Primary image click → open viewer
   const primaryImgEl = content.querySelector('.run-detail-primary img');

@@ -1349,6 +1349,44 @@ app.get('/api/runs/:runId/files', (req, res) => {
   res.json({ files: listRunFiles(runPath) });
 });
 
+// ---- Replay object for "Reuse in Create" -----------------------------------------
+const REPLAY_TARGET_ALLOWLIST = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8']);
+
+function buildReplayObject(runType, manifests) {
+  if (!runType || !runType.startsWith('controlled-')) return { available: false };
+  const cm = manifests.controlled;
+  if (!cm) return { available: false };
+  const target = cm.controlledTarget;
+  if (!target || !REPLAY_TARGET_ALLOWLIST.has(target)) return { available: false };
+  const width = Number.isInteger(cm.width) && cm.width > 0 ? cm.width : null;
+  const height = Number.isInteger(cm.height) && cm.height > 0 ? cm.height : null;
+  const steps = Number.isInteger(cm.steps) && cm.steps > 0 ? cm.steps : null;
+  const cfgScale = typeof cm.cfg_scale === 'number' && isFinite(cm.cfg_scale) ? cm.cfg_scale : null;
+  if (!width || !height || !steps || cfgScale == null) return { available: false };
+  let seed = null;
+  if (cm.seed_label) {
+    const m = cm.seed_label.match(/^(\d+)/);
+    if (m) seed = parseInt(m[1], 10);
+  }
+  const promptRedacted = cm.prompt_redacted === true || cm.prompt === '[REDACTED]' || !cm.prompt;
+  const promptVal = !promptRedacted && cm.prompt && cm.prompt !== '[REDACTED]' ? cm.prompt : null;
+  const negVal = !promptRedacted && cm.negative_prompt && cm.negative_prompt !== '[REDACTED]' ? cm.negative_prompt : null;
+  return {
+    available: true,
+    target,
+    width,
+    height,
+    steps,
+    cfg_scale: cfgScale,
+    seed,
+    prompt_saved: !promptRedacted,
+    prompt: promptVal,
+    negative_prompt: negVal,
+    privacy_note: promptRedacted ? 'Prompt was redacted for this run. Enter a new prompt to reuse these settings.' : null,
+    flux_caveat: target === 'flux-fp8' ? 'Flux replay uses the runtime-proven fp8 path only.' : null
+  };
+}
+
 // Phase 2 — rich run metadata (local read, no SSH)
 app.get('/api/runs/:runId/metadata', (req, res) => {
   const runId = req.params.runId;
@@ -1434,6 +1472,7 @@ app.get('/api/runs/:runId/metadata', (req, res) => {
   const controlledTargetCaveat = (manifests.controlled && manifests.controlled.controlledTargetCaveat) || null;
   const promptPrivate = (manifests.controlled && manifests.controlled.prompt_redacted === true) ||
     (runCard.prompt === '[REDACTED]' || !runCard.prompt);
+  const replay = buildReplayObject(runType, manifests);
 
   res.json({
     run_id: runId,
@@ -1455,6 +1494,7 @@ app.get('/api/runs/:runId/metadata', (req, res) => {
     controlled_target_label: controlledTargetLabel,
     controlled_target_caveat: controlledTargetCaveat,
     prompt_private: promptPrivate,
+    replay,
     retrieved_at: new Date().toISOString()
   });
 });

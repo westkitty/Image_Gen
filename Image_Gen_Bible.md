@@ -1677,3 +1677,60 @@ Validation:
 
 State After Completion:
 - Library has server-side pagination (50/page), Load More button, count display, and a full-size image viewer/lightbox for all output images.
+
+## Entry 27 — Library replay into Create (2026-06-22)
+
+Baseline commit: 9c5a8e0
+Final commit: (see below after push)
+
+What changed:
+- `GET /api/runs/:runId/metadata` now returns a `replay` object for controlled generation runs.
+- `replay.available` is `true` only when: run_type starts with `controlled-`, a controlled manifest exists, `controlledTarget` is in the closed allowlist (`sd15`, `sdxl-base`, `sdxl-turbo`, `flux-fp8`), and all numeric params (width, height, steps, cfg_scale) are valid integers/finite numbers.
+- `replay.target` is always from the allowlist — no arbitrary model path is returned.
+- `replay.seed` is parsed from `seed_label` (e.g. `"899378293(random)"` → `899378293`); null if unparseable.
+- `replay.prompt_saved` is `false` for all redacted runs; `replay.prompt` and `replay.negative_prompt` are `null` for redacted runs.
+- `replay.privacy_note` = "Prompt was redacted for this run. Enter a new prompt to reuse these settings." when prompts were redacted.
+- `replay.flux_caveat` = "Flux replay uses the runtime-proven fp8 path only." for `flux-fp8` target.
+- Non-controlled runs, smoke-proof runs, and runs with corrupt/missing manifests return `{ available: false }`.
+
+UI changes:
+- Run detail overlay now has a "Reuse in Create" button (hidden until metadata confirms `replay.available`).
+- Clicking it: closes the detail overlay, switches to Create screen, selects the replay target (fires `applyControlledTargetDefaults`), then overrides with actual run params (width/height/steps/cfg/seed), sets preset to Custom.
+- Prompt is filled only if `replay.prompt_saved` is true and `replay.prompt` is non-null. Otherwise prompt is cleared.
+- Negative prompt follows the same rule.
+- A `#create-note` info box appears at the top of the Create form showing: "Loaded settings from run <runId>." plus the privacy note if redacted, plus the Flux caveat if Flux target.
+- `.create-note.privacy` styling: amber/warning tone.
+- `.create-note.flux` styling: violet tone.
+- Generation does not auto-submit; user must click Generate manually.
+
+Privacy audit:
+- No prompt text is returned by the replay object for any currently-existing run (all runs used save_prompts=false).
+- `replay.prompt` and `replay.negative_prompt` are null for all tested runs.
+- The privacy note string lives only in server.js source — it is not a prompt value.
+- No model path is returned as a user-editable field.
+- Traversal rejection: `GET /api/runs/..%2F..%2Fetc%2Fpasswd/metadata` → 400.
+
+Validation commands:
+- `node --check operator-console/server.js` → OK
+- `node --check operator-console/public/app.js` → OK
+- `bash -n` all 35 shell scripts → all pass
+- `bin/sdcpp-model-stage-check.sh` → PASS
+- `bin/sdcpp-model-inventory-wc2tb.sh` → complete, 13 high-confidence candidates
+- `operator-console/scripts/smoke-check.sh` → 32 PASS, 0 FAIL
+- Replay object tests: SDXL Turbo / Flux fp8 / SDXL base / SD1.5 all return `available: true` with correct target, numeric params, null prompts, privacy_note set
+- Non-controlled run → `available: false`
+- Flux replay object includes `flux_caveat`
+
+Package:
+- Pre-commit package: `/tmp/Image_Gen_library_replay_precommit.zip`
+- Pre-commit SHA256: 33efe422b67e6b3ee9f9a9991e0426425438669c5ec420ff0832956f6c610833
+- Final package: `/tmp/Image_Gen_library_replay_final.zip` — to be recorded after push
+
+Remaining limitations:
+- All existing runs used save_prompts=false, so `replay.prompt_saved` is always false in practice; prompt replay is implemented but untested end-to-end.
+- Replay uses actual steps/width/height from the manifest (smoke-proof values may be minimal, e.g. 64×64 at steps=1 for Turbo); user should adjust before generating.
+- Full Automatic1111 parity is not claimed.
+- Full Flux safetensors is not runtime-proven.
+
+State After Completion:
+- Library run detail → Create parameter replay is live. Reuse in Create button visible for all four controlled targets. Prompt cleared for redacted runs with privacy note shown.

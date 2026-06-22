@@ -22,12 +22,13 @@ It exists to stop the same release facts from drifting.
   generated proof blobs.
 - Keep Express bound to localhost only.
 
-## Library / run history truth (added 2026-06-22, Entry 25)
+## Library / run history truth (updated 2026-06-22, Entries 25–27)
 
-- `GET /api/run-index` now returns `filterCategory` (`controlled`, `smoke`, `hires-fix`, `upscale`, `other`) and `controlledTargetLabel` per entry.
-- `GET /api/runs/:runId/metadata` now returns all manifest types under `manifests` (keyed `controlled`, `hires_fix`, `upscale`, `batch`, `xyz`, `smoke_sdxl`, `smoke_sdxl_turbo`, `smoke_flux`), plus `run_type`, `status`, `created_at`, `primary_image`, `first_failed_gate`, `filter_category`, `controlled_target_label`, `controlled_target_caveat`, `prompt_private`.
-- The Library screen has a filter bar (All / Controlled / SD1.5 / SDXL base / SDXL Turbo / Flux fp8 / Hires Fix / Upscale / Smoke proofs / Failed) and a run detail overlay panel.
-- Prompt privacy: `prompt_private` is `true` for all runs where `save_prompts` was false; the detail panel never shows raw prompt text for redacted runs.
+- `GET /api/run-index` returns paginated results (`limit`, `offset`, `filter`; default 50/page, max 200) with `filterCategory` and `controlledTargetLabel` per entry. Unknown filter → 400.
+- `GET /api/runs/:runId/metadata` returns all manifest types under `manifests`, plus `run_type`, `status`, `created_at`, `primary_image`, `first_failed_gate`, `filter_category`, `controlled_target_label`, `controlled_target_caveat`, `prompt_private`, and a `replay` object.
+- `replay` object: `{ available, target, width, height, steps, cfg_scale, seed, prompt_saved, prompt, negative_prompt, privacy_note, flux_caveat }`. `available` is true only for controlled runs with a valid manifest and allowlisted target. Target is always from the closed allowlist (`sd15`, `sdxl-base`, `sdxl-turbo`, `flux-fp8`). Prompts are null for redacted runs.
+- The Library screen has a filter bar, paginated run cards (50/page) with Load More, a full detail overlay, a full-size image viewer/lightbox, and a "Reuse in Create" button for controlled runs.
+- Prompt privacy: `prompt_private` is `true` for all runs where `save_prompts` was false; the detail panel and replay object never expose raw prompt text for redacted runs. The "Reuse in Create" button clears the prompt field and shows a privacy note for redacted runs.
 
 ## Current truth to preserve
 
