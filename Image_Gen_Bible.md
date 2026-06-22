@@ -1385,3 +1385,31 @@ Residual scope:
 - Runtime outputs, caches, model files, screenshots, packaging archives, and server logs remain
   excluded from commits.
 - Only the proof-only SDXL base smoke path is supported beyond the normal blocked-feature set.
+
+## Entry 19 — Model acquisition blocked on Hugging Face authentication (2026-06-22)
+
+This pass stopped before any model download because the local `hf` CLI is installed but not
+authenticated, and no `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` is present in the environment.
+
+Observed gate:
+
+- `hf version` → `1.4.1`
+- `hf auth whoami` → `Not logged in`
+
+Current status:
+
+- `/Volumes/wc2tb/ImageGen` exists and BigMac identity is correct.
+- `sd_xl_turbo_1.0_fp16.safetensors` is still missing.
+- `flux1-schnell.safetensors`, `clip_l.safetensors`, and `t5xxl_fp16.safetensors` are still missing.
+- The existing `flux1-schnell-fp8.safetensors` and `ae.safetensors` remain staged on BigMac.
+
+Next action required:
+
+- Authenticate Hugging Face locally with `hf auth login` or provide `HF_TOKEN`, then rerun the
+  acquisition pass.
+
+Residual scope:
+
+- No model files were downloaded.
+- No smoke scripts were created or run.
+- No runtime caches or package artifacts were committed.
