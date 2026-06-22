@@ -2071,3 +2071,97 @@ When a job finishes with `FAIL` or `ERROR`, the job status card now shows:
 ### State After Entry
 - M1–M5 of second /goal complete.
 - M6 (docs truth lock), M7 (final RC audit), M8 (optional polish) remain.
+
+## Entry 33 — Final Release-Candidate Closure (2026-06-22)
+
+### Summary
+Full 9-phase RC closure audit on HEAD `5509dd8`. All phases passed. This is the handoff-ready release package.
+
+### Starting State
+- Starting HEAD: `5509dd8` (polish: settings-import textarea UX)
+- Branch: `main`
+- Unpushed commits relative to `origin/main` (`39fcab1`): 4 commits (`704a923`, `cb9982f`, `7e36c6d`, `5509dd8`)
+
+### Phase 1 — Baseline
+- HEAD: `5509dd8` ✓
+- Working tree: clean (no uncommitted changes)
+- Server: running at PID 42289 (127.0.0.1:31337)
+
+### Phase 2 — Feature Presence
+All reported RC features confirmed present in live source:
+
+| Feature | File | Status |
+|---------|------|--------|
+| Settings JSON import (loadSettingsJson) | app.js | ✓ |
+| Settings blocked keys (modelPath, checkpoint, lora, vae, controlnet) | app.js:776 | ✓ |
+| Settings allowed targets (4-target allowlist) | app.js:777 | ✓ |
+| btn-paste-settings / btn-load-settings | index.html:86-89 | ✓ |
+| Copy settings JSON | index.html:261, app.js:993 | ✓ |
+| Retry button on FAIL/ERROR | app.js:255-264 | ✓ |
+| firstFailedGate in job card | app.js:254, server.js:1276 | ✓ |
+| Seed restored note in replayInCreate | app.js:836 | ✓ |
+| proof/minimal run warning | app.js:840 | ✓ |
+| prompt_private from manifest.prompt_redacted | server.js:1476 | ✓ |
+| REPLAY_TARGET_ALLOWLIST (server-side) | server.js:1353 | ✓ |
+| fullParityClaim: false for all 4 targets | server.js:48,67,86,103 | ✓ |
+| Flux fp8 caveat: "not the full Flux file" | server.js:103 | ✓ |
+
+### Phase 3 — Endpoint Validation
+- `GET /api/capabilities`: 4 controlled targets (sd15, sdxl-base, sdxl-turbo, flux-fp8), all with `fullParityClaim: false`
+- `GET /api/run-index`: paginated, `filterCategory` on every item, `total: 115+`
+- Run metadata: `replay.available: true`, `replay.seed: 123456789`, `prompt_private: true`, `privacy_note` present, no editable model path
+
+### Phase 4 — Security Regressions
+| Test | Expected | Result |
+|------|----------|--------|
+| Traversal: `GET /api/runs/..%2F..%2Fetc%2Fpasswd/metadata` | 400 | ✓ 400 |
+| modelPath: `POST /api/actions/generate-controlled` with `modelPath` | 400 | ✓ 400 |
+| Invalid filter: `GET /api/run-index?filter=evil` | 400 | ✓ 400 |
+
+### Phase 5 — Privacy Regression
+Generated one fast sdxl-turbo job with unique canary string, `save_prompts=false`, steps=1, 64×64. Result: PASS.
+Canary grep across `sdcpp-workflow/runs`, `sdcpp-workflow/state`, `operator-console`: **no matches**. Default redaction confirmed working end-to-end.
+
+### Phase 6 — Validation Sweep
+- `git diff --check`: clean
+- `node --check server.js`: OK
+- `node --check app.js`: OK
+- `bash -n` on all 34 shell scripts: all OK
+- `sdcpp-model-stage-check.sh`: PASS
+- `sdcpp-model-inventory-wc2tb.sh`: PASS (13 high-confidence models, 198 candidates)
+- `smoke-check.sh`: 32 PASS, 0 FAIL
+
+### Phase 7 — Final Package (pre-doc-commit HEAD `5509dd8`)
+- Path: `/tmp/Image_Gen_release_candidate_final.zip`
+- SHA256: `128c22d7414491bbca9205ffb838eb13be01b9a25a899d21abca552169a31ceb`
+- Size: 302K, 93 files
+- Forbidden scan: CLEAN (no .git, node_modules, runs, logs, state, model files, .DS_Store, __MACOSX)
+
+### Phase 8 — Install Test
+- Install dir: `/tmp/Image_Gen_install_test_20260622-174058`
+- All expected source files present
+- No forbidden artifacts
+- node --check on server.js and app.js: OK
+- bash -n on all shell scripts: OK
+- Result: **PASS**
+
+### Phase 9 — Doc Commit
+- Bible entry 33 appended (this entry)
+- Context lock updated with final package/install-test state
+- Docs committed and pushed
+
+### Final Package (post-doc-commit HEAD)
+See updated SHA below after push/rebuild.
+
+### Remaining Limitations (Unchanged)
+- Full Automatic1111 parity is not claimed.
+- Arbitrary model switching is not claimed.
+- Full Flux safetensors (`flux1-schnell.safetensors`) is acquired but not runtime-proven.
+- Flux fp8 (`flux1-schnell-fp8.safetensors`) is the runtime-proven Flux path.
+- Flux can hit Metal OOM at larger sizes (512×512 is the proven safe bound).
+- Redacted prompts cannot be reconstructed.
+- Saved prompts are stored only when the user explicitly opts in (`save_prompts=true`).
+- LoRA, VAE switching, ControlNet, img2img, inpaint, outpaint, Real-ESRGAN, Face Restore are not implemented.
+
+### Recommended Next /goal
+Implement prompt character count and token estimate display on the Create screen, or add XYZ plot axis type presets for common reproducibility experiments (seed sweep, cfg sweep) to enable structured parameter exploration without broadening model claims.
