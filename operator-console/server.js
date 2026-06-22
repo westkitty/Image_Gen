@@ -1459,7 +1459,9 @@ app.get('/api/runs/:runId/metadata', (req, res) => {
   }
 
   // Derive filter category and controlled target label
-  const runType = runCard.run_type || null;
+  // Prefer run_type from run card; fall back to directory-name inference so
+  // incomplete/UNKNOWN runs (no ui-run-card.md) are consistent with run-index.
+  const runType = runCard.run_type || inferRunType(path.basename(runPath))[0] || null;
   const filterCategory = runTypeFilterCategory(runType);
   const CONTROLLED_TARGET_LABELS = {
     'controlled-sd15': 'SD1.5',
