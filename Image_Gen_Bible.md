@@ -2150,8 +2150,11 @@ Canary grep across `sdcpp-workflow/runs`, `sdcpp-workflow/state`, `operator-cons
 - Context lock updated with final package/install-test state
 - Docs committed and pushed
 
-### Final Package (post-doc-commit HEAD)
-See updated SHA below after push/rebuild.
+### Final Package (post-doc-commit HEAD `f9c2106`)
+- Path: `/tmp/Image_Gen_release_candidate_final.zip`
+- SHA256: `1e2f3fb1841c99527cc1806f65543a689f73b9fd0c9a5ccba87eb4243248305e`
+- Size: 303K
+- Forbidden scan: CLEAN
 
 ### Remaining Limitations (Unchanged)
 - Full Automatic1111 parity is not claimed.
