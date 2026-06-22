@@ -259,6 +259,22 @@ validateSeed() {
   [ -z "$seed" ] || printf '%s' "$seed" | grep -Eq '^(random|fixed|[0-9]+)$'
 }
 
+strip_png_metadata() {
+  # strip_png_metadata <png-path>
+  [ "$#" -ge 1 ] || return 1
+  local png="$1"
+  [ -f "$png" ] || return 1
+  python3 - "$png" <<'PY'
+from PIL import Image, PngImagePlugin
+import sys
+
+path = sys.argv[1]
+with Image.open(path) as img:
+    stripped = img.copy()
+    stripped.save(path, pnginfo=PngImagePlugin.PngInfo())
+PY
+}
+
 elapsed_seconds() {
   # elapsed_seconds <start> <end>  -> end-start, 2 decimals, never negative.
   awk -v a="$1" -v b="$2" 'BEGIN{d=b-a; if(d<0)d=0; printf "%.2f", d}'

@@ -1527,3 +1527,52 @@ Verification:
 
 State After Completion:
 - Controlled generation remains proof-only, but the runtime now enforces the closed boundary instead of merely advertising it.
+
+## Entry 24 — Controlled generation API/UI runtime proof and privacy fix (2026-06-22)
+
+Summary:
+- Proved the controlled-generation API and Create-screen selector end to end, then fixed prompt privacy so `save_prompts=false` no longer leaves prompt text in PNG metadata.
+
+Reason / Intent:
+- The bridge was wired, but it still needed live proof through `POST /api/actions/generate-controlled` and the Create screen. During that proof we also found that PNG metadata still carried prompts, so the privacy boundary had to be tightened.
+
+Files Changed:
+- `operator-console/server.js`
+- `operator-console/public/app.js`
+- `operator-console/public/index.html`
+- `sdcpp-workflow/bin/sdcpp-controlled-generate.sh`
+- `sdcpp-workflow/bin/sdcpp-lib.sh`
+- `docs/deep-audits/imagegen-ai-context-lock.md`
+- `Image_Gen_Bible.md`
+
+Verification:
+- Baseline commit: `e6a5929`
+- API PASS:
+  - `sdxl-base` job `7ec46a43-72bb-4f1a-ac38-a981f3e53787`, run `20260622-135959-controlled-sdxl-base`, PNG [`controlled-sdxl-base.png`](/Users/andrew/Image_Gen/sdcpp-workflow/runs/20260622-135959-controlled-sdxl-base/controlled-sdxl-base.png), manifest [`controlled-manifest.json`](/Users/andrew/Image_Gen/sdcpp-workflow/runs/20260622-135959-controlled-sdxl-base/controlled-manifest.json)
+  - `sdxl-turbo` job `356b126a-7d65-44fc-922b-866ebf7a1a83`, run `20260622-140544-controlled-sdxl-turbo`, PNG [`controlled-sdxl-turbo.png`](/Users/andrew/Image_Gen/sdcpp-workflow/runs/20260622-140544-controlled-sdxl-turbo/controlled-sdxl-turbo.png), manifest [`controlled-manifest.json`](/Users/andrew/Image_Gen/sdcpp-workflow/runs/20260622-140544-controlled-sdxl-turbo/controlled-manifest.json)
+  - `sd15` job `d8a812ea-10f1-4ef7-9c76-785f9b95222b`, run `20260622-142210-controlled-sd15`, PNG [`controlled-sd15.png`](/Users/andrew/Image_Gen/sdcpp-workflow/runs/20260622-142210-controlled-sd15/controlled-sd15.png), manifest [`controlled-manifest.json`](/Users/andrew/Image_Gen/sdcpp-workflow/runs/20260622-142210-controlled-sd15/controlled-manifest.json)
+  - `flux-fp8` 512x512 job `03185841-93ab-4e76-858a-7c4b709b6d1b` failed with `remote-png` after BigMac Metal OOM
+  - `flux-fp8` bounded proof retry job `d484c7d0-b548-478a-8166-9c083374b9c6`, run `20260622-142332-controlled-flux-fp8`, PNG [`controlled-flux-fp8.png`](/Users/andrew/Image_Gen/sdcpp-workflow/runs/20260622-142332-controlled-flux-fp8/controlled-flux-fp8.png), manifest [`controlled-manifest.json`](/Users/andrew/Image_Gen/sdcpp-workflow/runs/20260622-142332-controlled-flux-fp8/controlled-manifest.json)
+- Privacy canary:
+  - job `b9608ef4-fea6-44f4-82b6-b4d34b15ef2b`, run `20260622-144331-controlled-sdxl-turbo`
+  - post-fix grep over `sdcpp-workflow/runs`, `sdcpp-workflow/state`, and `operator-console` found no `PRIVACY_CANARY_CONTROLLED_API_DO_NOT_STORE_195724` matches
+  - existing runtime PNGs were normalized to strip metadata when prompt saving is off
+- UI sanity:
+  - Create screen selector exists
+  - options include SD1.5, SDXL base, SDXL Turbo, and Flux fp8
+  - no editable model path field is exposed
+  - submit path is `/api/actions/generate-controlled`
+  - controlled output fields are rendered in the latest-job card
+- Rejection regression:
+  - unknown target → 400
+  - `modelPath` → 400
+  - bad width → 400
+  - bad steps → 400
+  - bad cfg → 400
+- Packaging:
+  - final package path and SHA256 to be recorded after the last commit in this proof pass
+- Final verdict:
+  - partial API/UI proof achieved; the controlled bridge is real, but Flux 512x512 still hits Metal out-of-memory on this hardware, so Flux proof remains bounded to accepted smaller sizes.
+
+State After Completion:
+- The Create screen now drives the closed controlled-generation endpoint, and prompt privacy holds for newly produced redacted runs.

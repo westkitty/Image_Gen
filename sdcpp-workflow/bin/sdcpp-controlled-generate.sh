@@ -526,6 +526,9 @@ fi
 
 REMOTE_PNG_ABS="$(remote_eval_path "$REMOTE_PNG")"
 scp "$SSH_TARGET:$REMOTE_PNG_ABS" "$LOCAL_PNG" >/dev/null 2>&1 || controlled_fail "scp" "Could not copy remote PNG to $LOCAL_PNG"
+if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+  strip_png_metadata "$LOCAL_PNG" || controlled_fail "png-redact" "Could not strip PNG metadata from $LOCAL_PNG"
+fi
 verify_png "$LOCAL_PNG" "Controlled PNG"
 RUN_STATUS="PASS"
 
