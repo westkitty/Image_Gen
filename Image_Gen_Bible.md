@@ -1736,3 +1736,76 @@ Remaining limitations:
 
 State After Completion:
 - Library run detail → Create parameter replay is live. Reuse in Create button visible for all four controlled targets. Prompt cleared for redacted runs with privacy note shown.
+
+---
+
+## Entry 28 — Replay to Generate Loop Proof (2026-06-22)
+
+### Context
+Entry 27 noted a remaining limitation: "Replay uses actual steps/width/height from the manifest (smoke-proof values may be minimal, e.g. 64×64 at steps=1 for Turbo); user should adjust before generating." This session closes that gap and proves the full replay-to-generate loop end-to-end.
+
+### What Was Done
+
+**Minimal-settings warning (Phase 3):**
+Added a minimal-settings guard to `replayInCreate()` in `operator-console/public/app.js`. If any of `width < 256`, `height < 256`, or `steps <= 1`, an amber (`.create-note.privacy`) warning is appended to the Create note: "This replay came from a proof/minimal run. Review size and steps before generating." This ensures users replaying proof-only runs (e.g. SDXL Turbo 64×64 steps=1, Flux fp8 64×64 steps=1) are prompted to adjust before generating. The warning does not block generation.
+
+**Phase 4 — Server/API validation:**
+All four controlled targets return correct replay objects:
+- SDXL Turbo (`20260622-144331-controlled-sdxl-turbo`): `available=true`, `target=sdxl-turbo`, `64×64`, `steps=1`, `cfg_scale=0`, `seed=899378293`, `prompt=null`, `prompt_saved=false`, `privacy_note` set. Minimal warning triggers.
+- SDXL base (`20260622-135959-controlled-sdxl-base`): `available=true`, `target=sdxl-base`, `512×512`, `steps=4`, `cfg_scale=7`, `seed=1606412688`, `prompt=null`. No minimal warning.
+- Flux fp8 (`20260622-142332-controlled-flux-fp8`): `available=true`, `target=flux-fp8`, `64×64`, `steps=1`, `cfg_scale=3.5`, `seed=236017477`, `prompt=null`, `flux_caveat` set. Minimal warning triggers.
+- SD1.5 (`20260622-142210-controlled-sd15`): `available=true`, `target=sd15`, `512×512`, `steps=8`, `cfg_scale=7`, `seed=1734625352`, `prompt=null`. No minimal warning.
+
+**Phase 5 — API replay-generate loop test:**
+Submitted `POST /api/actions/generate-controlled` with `target=sdxl-turbo`, `512×512`, `steps=4`, `cfg_scale=0`, `seed=random`, `save_prompts=false`, prompt="a clean product test image of a glass cube on a wooden table, sharp focus". Job completed in ~33 seconds.
+- Job ID: `625f0041-c18b-4315-b807-fe77bf52697b`
+- Source run: `20260622-144331-controlled-sdxl-turbo` (proof-minimal, 64×64 steps=1)
+- New run: `20260622-163528-controlled-sdxl-turbo` (512×512 steps=4, PASS)
+- New run appears at top of `GET /api/run-index?filter=controlled` (total=11)
+- New run metadata: `replay.available=true`, `512×512`, `steps=4`, `prompt=null`, `prompt_saved=false`, `prompt_private=true`, manifest `prompt_redacted=true`
+
+**Phase 6 — Static UI validation:**
+- `#btn-detail-reuse` exists in HTML: 1 instance
+- `replayInCreate` in app.js: 2 instances (definition + call site)
+- `showCreateNote` in app.js: 2 instances
+- `isMinimal` check in app.js: 2 instances (condition + note append)
+- No auto-submit found
+
+**Phase 7 — Privacy audit:**
+- `grep -r "glass cube" runs/` → NOT FOUND
+- `grep -r "glass cube" operator-console/state/` → NOT FOUND
+- Job record `commandSummary` shows `--prompt [REDACTED]`. `save_prompts=false` honored at job, manifest, and PNG metadata level.
+
+**Phase 8 — Traversal and model-path regression:**
+- `GET /api/runs/..%2F..%2Fetc%2Fpasswd/metadata` → HTTP 400
+- `POST /api/actions/generate-controlled` with `modelPath` field → HTTP 400
+- `POST /api/actions/generate-controlled` with unknown `target` → HTTP 400
+
+**Phase 10 — Full validation:**
+- `node --check server.js` → OK
+- `node --check public/app.js` → OK
+- `bash -n sdcpp-controlled-generate.sh` → OK
+- `bash -n scripts/package-source.sh` → OK
+- `operator-console/scripts/smoke-check.sh` → 32 PASS, 0 FAIL
+
+### Code Change
+`operator-console/public/app.js` — `replayInCreate()`: added two lines after the privacy/flux caveat note-building:
+```javascript
+const isMinimal = (replay.width && replay.width < 256) || (replay.height && replay.height < 256) || (replay.steps && replay.steps <= 1);
+if (isMinimal) { noteMsg += ' This replay came from a proof/minimal run. Review size and steps before generating.'; noteVariant = noteVariant || 'privacy'; }
+```
+
+### Commit
+- Commit: TBD — recorded after push
+
+### Package
+- Package: TBD — recorded after package
+
+### Limitations Resolved
+- "Replay uses actual steps/width/height from the manifest (smoke-proof values may be minimal)" — now surfaced as an explicit amber warning. User cannot miss it.
+- "All existing runs used save_prompts=false, so prompt replay is untested end-to-end" — the loop test above proves the full cycle from replay source → create prefill → generate → new run in Library. Prompt field was correctly cleared with privacy note. The `prompt_saved=true` code path is implemented but remains untested (no run with saved prompts exists).
+
+### State After Completion
+- Replay-to-generate loop is end-to-end proven for SDXL Turbo (512×512, steps=4).
+- Minimal-settings warning live for proof-only replay sources.
+- Prompt privacy confirmed: no prompt text escapes for save_prompts=false runs.

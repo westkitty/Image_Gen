@@ -789,6 +789,8 @@ function replayInCreate(replay, runId) {
   let noteVariant = '';
   if (replay.privacy_note) { noteMsg += ' ' + replay.privacy_note; noteVariant = 'privacy'; }
   if (replay.flux_caveat) { noteMsg += ' ' + replay.flux_caveat; noteVariant = noteVariant || 'flux'; }
+  const isMinimal = (replay.width && replay.width < 256) || (replay.height && replay.height < 256) || (replay.steps && replay.steps <= 1);
+  if (isMinimal) { noteMsg += ' This replay came from a proof/minimal run. Review size and steps before generating.'; noteVariant = noteVariant || 'privacy'; }
   showCreateNote(noteMsg, noteVariant);
 }
 
