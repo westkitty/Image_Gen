@@ -420,12 +420,13 @@ function renderModels() {
     const sdxlState = stage.sdxlStagedState || (stage.sdxlStaged ? 'true' : 'missing');
     const turboState = stage.sdxlTurboStagedState || (stage.sdxlTurboStaged ? 'true' : 'missing');
     const fluxState = stage.fluxStagedState || (stage.fluxStaged ? 'true' : 'missing');
+    const sdxlProofState = stage.sdxlSmokeProven ? 'bounded smoke proof passed' : (sdxlState === 'true' ? 'smoke proof required' : 'missing');
     const bits = [
       ['External root', root],
       ['Last checked', stage.checked_at || 'never'],
       ['SDXL Turbo', turboState === 'true' ? 'staged; smoke proof required' : 'missing or placeholder-only'],
       ['Flux', fluxState === 'true' ? 'component set staged; smoke proof required' : fluxState === 'partial' ? 'partial; CLIP-L/T5XXL missing unless CLI proves embedded path' : 'missing or incomplete'],
-      ['SDXL', sdxlState === 'true' ? 'staged; smoke proof required' : 'missing'],
+      ['SDXL', sdxlState === 'true' ? `staged; ${sdxlProofState}` : 'missing'],
       ['wc2tb write test', stage.write_test || 'unknown'],
       ['Invalid candidates', String(stage.invalidCandidateCount || 0)],
       ['Next', stage.recommended_next_step || 'Run Check BigMac model stage after staging files.']

@@ -1318,3 +1318,21 @@ Validation:
   - `state/sdxl-smoke-cache.json` written with `runtime_smoke_proven=true`, `png_valid=true`, and `prompt_redacted=true`.
 - `curl -s http://127.0.0.1:31337/api/capabilities` → `modelStage.supportProven=true`, `featureGates.sdxl.supported=true`
 - `featureGates.sdxlTurbo.supported=false` and `featureGates.flux.supported=false` remain unchanged.
+
+## Entry 16 — Release-candidate wording hardening after SDXL smoke proof (2026-06-21)
+
+This pass did not add new capabilities. It tightened the post-proof wording so the UI and release package continue to tell the truth about what `featureGates.sdxl.supported=true` means:
+
+- `operator-console/public/app.js` — the Models screen now says `SDXL` is `staged; bounded smoke proof passed` when the proof cache exists, instead of leaving the stale `smoke proof required` wording on screen after the proof has already passed.
+
+Verification:
+
+- `node --check /Users/andrew/Image_Gen/operator-console/public/app.js` → PASS
+- `node --check /Users/andrew/Image_Gen/operator-console/server.js` → PASS
+- `bash -n /Users/andrew/Image_Gen/sdcpp-workflow/bin/sdcpp-sdxl-smoke.sh` → PASS
+- `bash -n /Users/andrew/Image_Gen/sdcpp-workflow/bin/sdcpp-model-stage-check.sh` → PASS
+- `git diff --check` → PASS
+
+Residual scope:
+
+- Turbo, Flux, img2img, inpaint, outpaint, LoRA injection, VAE switching, Real-ESRGAN, Face Restore, ControlNet, textual inversion, and hypernetworks remain blocked as before.
