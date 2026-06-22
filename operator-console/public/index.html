@@ -46,7 +46,7 @@
               <div id="create-note" class="create-note" hidden></div>
 
               <div class="field"><label for="prompt">Prompt</label><textarea id="prompt" required rows="5" placeholder="Describe the image. Use A1111 prompt syntax if your backend/model supports it."></textarea><div class="meta-row"><span id="prompt-count">0 chars</span><button type="button" class="ghost small" id="btn-save-style">Save style</button></div></div>
-              <div class="field"><label for="negative_prompt">Negative prompt</label><textarea id="negative_prompt" rows="3" placeholder="low quality, blurry, bad anatomy…"></textarea></div>
+              <div class="field"><label for="negative_prompt">Negative prompt</label><textarea id="negative_prompt" rows="3" placeholder="low quality, blurry, bad anatomy…"></textarea><div class="meta-row"><span id="neg-prompt-count" class="muted">0 chars</span></div></div>
 
               <div class="two-col">
                 <div class="field"><label for="style-select">Styles</label><select id="style-select"><option value="">No saved style</option></select></div>
@@ -88,6 +88,25 @@
                   <button type="button" class="ghost small" id="btn-load-settings">Load into Create</button>
                   <button type="button" class="ghost small" id="btn-paste-settings">Paste from clipboard</button>
                 </div>
+              </details>
+
+              <details class="block"><summary>Controlled sweep planner</summary>
+                <p class="fineprint">Generate multiple controlled jobs from current settings with a varied seed or CFG. Seed and CFG axis only — not full XYZ plot parity. Max 8 jobs per sweep.</p>
+                <div class="two-col">
+                  <div class="field"><label for="sweep-axis">Sweep axis</label>
+                    <select id="sweep-axis"><option value="seed">Seed sweep</option><option value="cfg">CFG scale sweep</option></select>
+                  </div>
+                  <div class="field" id="sweep-count-wrap"><label for="sweep-count">Jobs (2–8)</label><input id="sweep-count" type="number" min="2" max="8" value="4" /></div>
+                </div>
+                <div id="sweep-seed-opts">
+                  <div class="field"><label for="sweep-seed-start">Start seed (blank = random per job)</label><input id="sweep-seed-start" placeholder="e.g. 1000 or leave blank" /></div>
+                </div>
+                <div id="sweep-cfg-opts" hidden>
+                  <div class="field"><label for="sweep-cfg-values">CFG values (comma-separated, 2–8 values, 0–30 each)</label><input id="sweep-cfg-values" placeholder="1, 3, 5, 7" /></div>
+                  <p class="fineprint">Job count field is unused for CFG sweep — one job per value.</p>
+                </div>
+                <button type="button" class="ghost" id="btn-run-sweep">Run sweep</button>
+                <div id="sweep-status" class="stacked" style="margin-top:10px" hidden></div>
               </details>
 
               <details class="block"><summary>Hires Fix / faces / tiling</summary>

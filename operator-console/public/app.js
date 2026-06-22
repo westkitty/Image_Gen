@@ -802,6 +802,83 @@ function loadSettingsJson(jsonStr) {
   showCreateNote('Settings loaded.' + seedNote + ' Review before generating.', '');
 }
 
+const SWEEP_TARGET_ALLOWLIST = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8']);
+const SWEEP_MAX_JOBS = 8;
+
+function updatePromptStats(textareaId, countId) {
+  const txt = ($( textareaId) || {}).value || '';
+  const el = $(countId);
+  if (!el) return;
+  const est = Math.max(0, Math.round(txt.trim().length / 4));
+  el.textContent = `${txt.length} chars · ~${est} tkn (approx)`;
+}
+
+async function runControlledSweep() {
+  const axis = ($('sweep-axis') || {}).value || 'seed';
+  const btn = $('btn-run-sweep');
+  const statusEl = $('sweep-status');
+  if (!statusEl) return;
+  const base = getCoreParams();
+  base.target = $('model').value;
+  if (!SWEEP_TARGET_ALLOWLIST.has(base.target)) { showCreateNote('Sweep rejected: select a controlled target first (sd15, sdxl-base, sdxl-turbo, flux-fp8).', 'privacy'); return; }
+  if (!base.prompt || !base.prompt.trim()) { showCreateNote('Enter a prompt before running a sweep.', 'privacy'); return; }
+  let jobs = [];
+  if (axis === 'seed') {
+    const n = Math.min(SWEEP_MAX_JOBS, Math.max(2, parseInt(($('sweep-count') || {}).value) || 4));
+    const startRaw = (($('sweep-seed-start') || {}).value || '').trim();
+    const startSeed = /^\d+$/.test(startRaw) ? parseInt(startRaw) : null;
+    for (let i = 0; i < n; i++) {
+      const seed = startSeed !== null ? String((startSeed + i) % 2147483647) : String(Math.floor(Math.random() * 2147483647));
+      jobs.push({ ...base, seed });
+    }
+  } else {
+    const raw = (($('sweep-cfg-values') || {}).value || '').trim();
+    const vals = raw.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v) && v >= 0 && v <= 30).slice(0, SWEEP_MAX_JOBS);
+    if (vals.length < 2) { showCreateNote('CFG sweep needs at least 2 valid values in the 0–30 range.', 'privacy'); return; }
+    for (const cfg of vals) { jobs.push({ ...base, cfg_scale: cfg }); }
+  }
+  if (btn) btn.disabled = true;
+  statusEl.innerHTML = '';
+  statusEl.hidden = false;
+  const rows = jobs.map((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'fineprint muted';
+    d.textContent = `Job ${i + 1}/${jobs.length}: pending`;
+    statusEl.appendChild(d);
+    return d;
+  });
+  showCreateNote(`Running ${jobs.length}-job ${axis === 'seed' ? 'seed' : 'CFG'} sweep…`, '');
+  const sweepResults = [];
+  for (let i = 0; i < jobs.length; i++) {
+    rows[i].textContent = `Job ${i + 1}/${jobs.length}: submitting…`;
+    try {
+      const { job_id } = await api('/api/actions/generate-controlled', { method: 'POST', body: JSON.stringify(jobs[i]) });
+      rows[i].textContent = `Job ${i + 1}/${jobs.length}: running (${job_id.slice(0, 8)}…)`;
+      rows[i].className = 'fineprint';
+      let finalJob = null;
+      for (let p = 0; p < 90; p++) {
+        await new Promise(r => setTimeout(r, 2000));
+        try { const jd = await api(`/api/jobs/${job_id}`); if (jd.status !== 'running' && jd.status !== 'queued') { finalJob = jd; break; } } catch (_) {}
+      }
+      const ok = finalJob && finalJob.status === 'PASS';
+      const axisLabel = axis === 'seed' ? `seed=${jobs[i].seed}` : `cfg=${jobs[i].cfg_scale}`;
+      rows[i].className = 'fineprint' + (ok ? '' : ' danger');
+      rows[i].textContent = finalJob
+        ? `Job ${i + 1}/${jobs.length}: ${finalJob.status}${finalJob.runId ? ' · ' + finalJob.runId : ''} · ${axisLabel}`
+        : `Job ${i + 1}/${jobs.length}: timeout · ${axisLabel}`;
+      sweepResults.push({ ok });
+    } catch (err) {
+      rows[i].className = 'fineprint danger';
+      rows[i].textContent = `Job ${i + 1}/${jobs.length}: error — ${err.message}`;
+      sweepResults.push({ ok: false });
+    }
+  }
+  if (btn) btn.disabled = false;
+  const passed = sweepResults.filter(r => r.ok).length;
+  showCreateNote(`Sweep done: ${passed}/${jobs.length} passed. See Library for results.`, passed === jobs.length ? '' : 'privacy');
+  await loadGallery(true);
+}
+
 function showCreateNote(msg, variant) {
   const note = $('create-note');
   if (!note) return;
@@ -1155,7 +1232,15 @@ function bindEvents() {
   $('xyz_y_type').addEventListener('change', updateXyzCellCount);
   $('preset').addEventListener('change', e => { if (e.target.value !== 'Custom') applyPreset(e.target.value); });
   ['steps','cfg_scale','sampler','width','height'].forEach(id => $(id).addEventListener('input', () => { $('preset').value = 'Custom'; }));
-  $('prompt').addEventListener('input', () => $('prompt-count').textContent = `${$('prompt').value.length} chars`);
+  $('prompt').addEventListener('input', () => updatePromptStats('prompt', 'prompt-count'));
+  $('negative_prompt').addEventListener('input', () => updatePromptStats('negative_prompt', 'neg-prompt-count'));
+  $('sweep-axis').addEventListener('change', e => {
+    const isCfg = e.target.value === 'cfg';
+    $('sweep-seed-opts').hidden = isCfg;
+    $('sweep-cfg-opts').hidden = !isCfg;
+    $('sweep-count-wrap').hidden = isCfg;
+  });
+  $('btn-run-sweep').addEventListener('click', runControlledSweep);
   $('style-select').addEventListener('change', e => { if (e.target.value) $('prompt').value = `${$('prompt').value.trim()} ${e.target.value}`.trim(); });
   $('btn-save-style').addEventListener('click', saveCurrentStyle);
   $('set-save-prompts').addEventListener('change', e => saveBool('savePrompts', e.target.checked));
