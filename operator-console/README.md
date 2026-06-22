@@ -6,7 +6,7 @@ A local-only Automatic1111-style workbench for the BigMac SDCPP image-generation
 - **Batch / Sweep** — batch generation + X/Y/Z plot (partial: requires server tunnel)
 - **Edit** — gated img2img, inpaint, and outpaint workflows
 - **Enhance** — Pillow upscale (working) + gated AI upscale / Hires Fix / face restore
-- **Library** — generated outputs with upscale badges and workflow reuse
+- **Library** — run history with filter bar (All / Controlled / per-target / Hires Fix / Upscale / Smoke proofs / Failed), run cards with type badges, and a full detail overlay (parameters, manifests, image thumbnails, copy/action buttons)
 - **Models** — checkpoint, VAE, and extra-network visibility + asset discovery
 - **System** — server lifecycle, diagnostics, capability gate panel, job logs
 
@@ -43,9 +43,9 @@ Prompts are redacted by default. When **Save prompts in run records** is off, th
 | Server start/stop/status | `POST /api/actions/server-{start,stop,status}` | |
 | Verification | `POST /api/actions/verify` | |
 | Seed test | `POST /api/actions/seed-test` | |
-| Gallery / run history | `GET /api/runs`, `GET /api/run-index` | |
-| Paginated run index | `GET /api/run-index?limit=N` | max 500, 8s cache |
-| Run metadata | `GET /api/runs/:runId/metadata` | tEXt/iTXt chunks, metrics.tsv |
+| Run history / Library | `GET /api/run-index?limit=N` | max 500, 8s cache; includes `filterCategory`, `controlledTargetLabel` |
+| Run detail | `GET /api/runs/:runId/metadata` | all manifest types, `first_failed_gate`, `prompt_private`, `controlled_target_label`, `controlled_target_caveat` |
+| Run files | `GET /api/runs`, `GET /api/runs/:runId` | image lists, simple manifest |
 | Safe file serving | `GET /api/run-file?path=...` | allowlisted extensions, path containment |
 | Asset discovery | `POST /api/actions/discover-assets` → `GET /api/assets` | |
 | Model staging check | `POST /api/actions/check-model-stage` → `GET /api/model-stage` | SDXL Turbo / Flux staging on BigMac wc2tb |

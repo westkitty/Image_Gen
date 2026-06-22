@@ -213,7 +213,45 @@
             </div>
           </div>
         </section>
-        <section id="library" class="screen"><div class="panel"><div class="panel-head"><div><h2>Library</h2><p>Every output is a workflow starting point.</p></div><button class="ghost" id="btn-load-library">Reload</button></div><div id="gallery-grid" class="gallery-grid"></div></div></section>
+        <section id="library" class="screen">
+          <div class="panel">
+            <div class="panel-head">
+              <div><h2>Library</h2><p>Every output is a workflow starting point.</p></div>
+              <button class="ghost" id="btn-load-library">Reload</button>
+            </div>
+            <div id="library-filters" class="library-filters">
+              <button class="filter-btn active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="controlled">Controlled</button>
+              <button class="filter-btn" data-filter="controlled-sd15">SD1.5</button>
+              <button class="filter-btn" data-filter="controlled-sdxl-base">SDXL base</button>
+              <button class="filter-btn" data-filter="controlled-sdxl-turbo">SDXL Turbo</button>
+              <button class="filter-btn" data-filter="controlled-flux-fp8">Flux fp8</button>
+              <button class="filter-btn" data-filter="hires-fix">Hires Fix</button>
+              <button class="filter-btn" data-filter="upscale">Upscale</button>
+              <button class="filter-btn" data-filter="smoke">Smoke proofs</button>
+              <button class="filter-btn" data-filter="failed">Failed</button>
+            </div>
+            <div id="gallery-grid" class="gallery-grid"></div>
+          </div>
+
+          <!-- Run detail overlay -->
+          <div id="run-detail-overlay" class="run-detail-overlay" hidden>
+            <div class="run-detail-panel">
+              <div class="run-detail-header">
+                <button class="ghost small" id="btn-detail-back">&#8592; Library</button>
+                <div class="run-detail-actions">
+                  <button class="ghost small" id="btn-detail-copy-id">Copy run ID</button>
+                  <button class="ghost small" id="btn-detail-copy-path">Copy image path</button>
+                  <button class="ghost small" id="btn-detail-send-upscale">Send to Upscale</button>
+                  <button class="ghost small" id="btn-detail-view-manifest">View manifest JSON</button>
+                </div>
+              </div>
+              <div id="run-detail-content" class="run-detail-content">
+                <div class="empty-state">Loading…</div>
+              </div>
+            </div>
+          </div>
+        </section>
         <section id="models" class="screen">
           <div class="split-grid">
             <div class="panel">

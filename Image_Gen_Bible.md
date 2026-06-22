@@ -1576,3 +1576,73 @@ Verification:
 
 State After Completion:
 - The Create screen now drives the closed controlled-generation endpoint, and prompt privacy holds for newly produced redacted runs.
+
+## Entry 25 — Library run detail and controlled-output polish (2026-06-22)
+
+Summary:
+- Added a run detail panel to the Library screen, filter bar, and hardened the `/api/runs/:runId/metadata` endpoint to load controlled-generation manifests and smoke manifests.
+
+Reason / Intent:
+- Post-proof cleanup: the controlled generation path was proven end-to-end, but the Library only showed run cards with image thumbnails and no way to inspect the generation parameters or manifest from within the UI.
+
+Baseline commit: `c99e18c`
+
+Files Changed:
+- `operator-console/server.js` — `inferRunType` now covers controlled and smoke types; `/api/runs/:runId/metadata` loads all manifest types (controlled, hires_fix, upscale, batch, xyz, smoke variants); `buildRunIndex` now returns `filterCategory` and `controlledTargetLabel`; simpler `/api/runs/:runId` also loads all manifest types.
+- `operator-console/public/app.js` — Added `state.libraryIndex`, `state.libraryFilter`; replaced `loadGallery`/`runCard` with `loadGallery`/`renderGallery`/`runIndexCard`; added `runTypeFilterMatch`, `showRunDetail`, `closeRunDetail`, `metaItem`; filter button event handling; detail overlay background click to close; `data-detail-run` click handler.
+- `operator-console/public/index.html` — Library section expanded to include a filter bar (All / Controlled / SD1.5 / SDXL base / SDXL Turbo / Flux fp8 / Hires Fix / Upscale / Smoke proofs / Failed) and a `#run-detail-overlay` panel with back button, action row (copy ID, copy path, send to upscale, view manifest JSON), and `#run-detail-content` container.
+- `operator-console/public/styles.css` — Added filter bar, filter-btn, run-type badges, run detail overlay/panel, meta grid, thumbnail strip, caveat box, failed gate notice, privacy badge styles.
+- `Image_Gen_Bible.md` — this entry.
+
+Endpoint changes:
+- `GET /api/runs/:runId/metadata` now returns: `run_type`, `status`, `created_at`, `manifests` (all types keyed by type), `manifest` (primary for compat), `primary_image`, `first_failed_gate`, `filter_category`, `controlled_target_label`, `controlled_target_caveat`, `prompt_private`.
+- `GET /api/run-index` now returns `filterCategory` and `controlledTargetLabel` per run entry.
+- `GET /api/runs/:runId` (simple endpoint) now also loads controlled and smoke manifests.
+
+Filters added:
+- All, Controlled, SD1.5, SDXL base, SDXL Turbo, Flux fp8, Hires Fix, Upscale, Smoke proofs, Failed
+
+Run detail panel features:
+- Run type badge (colored by category)
+- Status, created time, controlled target label, steps, CFG/guidance, seed, dimensions, elapsed time
+- Primary image preview with thumbnail strip for multi-image runs
+- Controlled generation caveat (including Flux fp8-specific wording)
+- Smoke proof label for proof-only runs
+- firstFailedGate notice for failed runs
+- Prompt privacy state badge
+- Manifest JSON expandable section
+- Actions: Copy run ID, Copy image path, Send to Upscale, View manifest JSON (→ Job Log), Back to Library
+
+Privacy audit:
+- All recent controlled generation manifests show `prompt: "[REDACTED]"`.
+- Canary phrase `PRIVACY_CANARY_LIBRARY_DETAIL_DO_NOT_STORE_804221` was not written to disk during this pass (not needed; no new generation was performed).
+- `prompt_private` field correctly returns `true` for all redacted runs.
+- `showRunDetail` never exposes raw prompt text from redacted runs (manifest shows `[REDACTED]`, prompt_private badge states redaction).
+- Older pre-fix runtime artifacts (e.g. `20260620-211126-cli/run-metadata.json` with `"prompt": "dog"`) predate the privacy fix and are not committed.
+
+Traversal rejection:
+- `GET /api/runs/..%2F..%2Fetc%2Fpasswd/metadata` → 400 (safeRunId validation)
+
+Validation commands:
+- `node --check operator-console/server.js`
+- `node --check operator-console/public/app.js`
+- `bash -n` all shell scripts → all pass
+- `bin/sdcpp-model-stage-check.sh` → PASS
+- `bin/sdcpp-model-inventory-wc2tb.sh` → complete, 13 high-confidence candidates
+- `operator-console/scripts/smoke-check.sh` → 32 PASS, 0 FAIL
+- `curl /api/run-index?limit=10` → returns `filterCategory` and `controlledTargetLabel` per entry
+- Traversal rejection → 400
+- Metadata for SDXL Turbo, Flux fp8, SDXL base, SD1.5 controlled runs → all PASS, manifests loaded
+
+Package:
+- Pre-commit package: `/tmp/Image_Gen_library_detail_precommit.zip` (SHA256 matches baseline c99e18c since uncommitted)
+- Final package after commit: `/tmp/Image_Gen_library_detail_final.zip` — to be recorded
+
+Remaining limitations:
+- Library currently loads from run-index only (no full `/api/runs` hydration), so runs without a `ui-run-card.md` have `primaryImage: null` in the grid.
+- Flux smoke runs that lack a ui-run-card.md (e.g. early `flux-smoke` runs) show no image in the card.
+- Full Automatic1111 parity is not claimed.
+- Flux controlled generation is bounded by hardware (Metal OOM at 512×512 on some configs).
+
+State After Completion:
+- Library now has a filter bar and a full detail panel for all run types, with proper caveats for controlled/proof paths.

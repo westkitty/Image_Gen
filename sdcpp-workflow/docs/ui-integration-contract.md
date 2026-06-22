@@ -202,3 +202,41 @@ Flux first targets:
 ```
 
 The UI must show staged/missing/smoke-required states separately. It must not mark `sdxlTurbo`, `flux`, or `sdxl` supported from file presence alone. When a smoke cache exists, the UI should reflect that the relevant path is proofed, not merely staged.
+
+## 25. Library run detail contract (2026-06-22)
+
+The Library screen now uses `/api/run-index` as its primary data source.
+
+### Run index entries
+
+Each entry includes:
+- `id`, `type` (run_type from card), `status`, `title`, `primaryImage`, `imageCount`, `hasUpscaled`, `hasManifest`, `hasMetadata`
+- `filterCategory` — one of `controlled`, `smoke`, `hires-fix`, `upscale`, `other`
+- `controlledTargetLabel` — one of `SD1.5`, `SDXL base`, `SDXL Turbo`, `Flux fp8`, or null
+
+### Filter bar
+
+Filter buttons map `data-filter` attribute to the following checks:
+- `all` — no filter
+- `controlled` — `filterCategory === 'controlled'`
+- `controlled-sd15`, `controlled-sdxl-base`, `controlled-sdxl-turbo`, `controlled-flux-fp8` — exact `type` match
+- `hires-fix`, `upscale`, `smoke` — `filterCategory` match
+- `failed` — `status === 'FAIL'`
+
+### Run detail overlay
+
+Triggered by `data-detail-run` on run cards; calls `GET /api/runs/:runId/metadata`.
+
+Key response fields consumed by the UI:
+- `run_type`, `status`, `created_at`
+- `primary_image`, `images`
+- `manifests.controlled` — for params (steps, cfg_scale, seed_label, width, height, wall_elapsed_seconds), caveat, prompt_redacted
+- `controlled_target_label`, `controlled_target_caveat`
+- `first_failed_gate`
+- `prompt_private` — true when save_prompts was off
+
+Display rules:
+- For controlled runs: show target label and caveat. For flux-fp8 specifically, caveat includes "Uses fp8 runtime-proven Flux file, not the full Flux file."
+- For smoke runs: label as "Smoke proof run — validates the generation path only."
+- For failed runs: show firstFailedGate notice.
+- Prompt: always show privacy badge; never show raw prompt text when `prompt_private` is true.

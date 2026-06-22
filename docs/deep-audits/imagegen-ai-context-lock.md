@@ -22,6 +22,13 @@ It exists to stop the same release facts from drifting.
   generated proof blobs.
 - Keep Express bound to localhost only.
 
+## Library / run history truth (added 2026-06-22, Entry 25)
+
+- `GET /api/run-index` now returns `filterCategory` (`controlled`, `smoke`, `hires-fix`, `upscale`, `other`) and `controlledTargetLabel` per entry.
+- `GET /api/runs/:runId/metadata` now returns all manifest types under `manifests` (keyed `controlled`, `hires_fix`, `upscale`, `batch`, `xyz`, `smoke_sdxl`, `smoke_sdxl_turbo`, `smoke_flux`), plus `run_type`, `status`, `created_at`, `primary_image`, `first_failed_gate`, `filter_category`, `controlled_target_label`, `controlled_target_caveat`, `prompt_private`.
+- The Library screen has a filter bar (All / Controlled / SD1.5 / SDXL base / SDXL Turbo / Flux fp8 / Hires Fix / Upscale / Smoke proofs / Failed) and a run detail overlay panel.
+- Prompt privacy: `prompt_private` is `true` for all runs where `save_prompts` was false; the detail panel never shows raw prompt text for redacted runs.
+
 ## Current truth to preserve
 
 - SDXL base, SDXL Turbo, and Flux each have bounded proof-only smoke paths.

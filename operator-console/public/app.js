@@ -1,6 +1,6 @@
 'use strict';
 
-const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null, controlledTargets: [], controlledTargetMap: {} };
+const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null, controlledTargets: [], controlledTargetMap: {}, libraryFilter: 'all', libraryIndex: [] };
 const $ = id => document.getElementById(id);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
@@ -655,37 +655,228 @@ async function runFluxSmoke() {
   }
 }
 
+function runTypeFilterMatch(indexEntry, filter) {
+  if (filter === 'all') return true;
+  if (filter === 'failed') return indexEntry.status === 'FAIL';
+  if (filter === 'controlled') return indexEntry.filterCategory === 'controlled';
+  if (filter === 'smoke') return indexEntry.filterCategory === 'smoke';
+  if (filter === 'hires-fix') return indexEntry.filterCategory === 'hires-fix';
+  if (filter === 'upscale') return indexEntry.filterCategory === 'upscale';
+  if (filter === 'controlled-sd15') return indexEntry.type === 'controlled-sd15';
+  if (filter === 'controlled-sdxl-base') return indexEntry.type === 'controlled-sdxl-base';
+  if (filter === 'controlled-sdxl-turbo') return indexEntry.type === 'controlled-sdxl-turbo';
+  if (filter === 'controlled-flux-fp8') return indexEntry.type === 'controlled-flux-fp8';
+  return true;
+}
+
 async function loadGallery() {
   try {
-    // Use run-index for hasUpscaled flag; fall back to /api/runs for image lists
-    const [indexData, runsData] = await Promise.all([api('/api/run-index?limit=100'), api('/api/runs')]);
-    state.runs = runsData.runs || [];
-    const indexMap = {};
-    (indexData.runs || []).forEach(r => { indexMap[r.id] = r; });
-    const imageRuns = state.runs.filter(r => r.images && r.images.length);
-    $('gallery-grid').innerHTML = imageRuns.length
-      ? imageRuns.map(r => runCard(r, indexMap[r.id])).join('')
-      : '<div class="empty-state">No image runs found yet.</div>';
-  } catch (err) { $('gallery-grid').innerHTML = '<div class="empty-state danger">' + esc(err.message) + '</div>'; }
+    const indexData = await api('/api/run-index?limit=200');
+    state.libraryIndex = indexData.runs || [];
+    renderGallery();
+  } catch (err) {
+    const el = $('gallery-grid');
+    el.textContent = '';
+    const msg = document.createElement('div');
+    msg.className = 'empty-state danger';
+    msg.textContent = err.message;
+    el.appendChild(msg);
+  }
 }
-function runCard(run, indexEntry) {
-  const img = run.primaryImage || (run.images && run.images[0]);
-  const imgUrl = img ? '/api/run-file?path=' + encodeURIComponent(run.id + '/' + img) : '';
-  const prompt = run.prompt || 'Prompt unavailable';
-  const imgArg = img ? ' data-upscale-image="' + esc(img) + '"' : '';
-  const hasUpscaled = indexEntry && indexEntry.hasUpscaled;
-  const upscaledBadge = hasUpscaled ? '<span class="derived-badge">Upscaled ✓</span>' : '';
-  return '<article class="image-card" data-run="' + esc(run.id) + '">' +
-    (imgUrl ? '<img src="' + esc(imgUrl) + '" alt="Generated image from ' + esc(run.id) + '" loading="lazy" />' : '') +
-    '<h3>' + esc(run.title || run.type) + upscaledBadge + '</h3>' +
-    '<p>' + esc(prompt) + '</p>' +
-    '<div class="quick-row">' +
-    '<button class="ghost small" data-open-run="' + esc(run.id) + '">Open</button>' +
-    '<button class="ghost small" data-reuse-run="' + esc(run.id) + '">Reuse</button>' +
-    '<button class="ghost small" data-copy-run="' + esc(run.id) + '">Copy</button>' +
-    (img ? '<button class="ghost small" data-send-upscale="' + esc(run.id) + '"' + imgArg + '>Upscale</button>' : '') +
-    (hasUpscaled ? '<button class="ghost small" data-view-upscaled="' + esc(run.id) + '">View upscaled</button>' : '') +
+
+function renderGallery() {
+  const filtered = state.libraryIndex.filter(r => runTypeFilterMatch(r, state.libraryFilter));
+  const el = $('gallery-grid');
+  if (!filtered.length) {
+    el.textContent = '';
+    const msg = document.createElement('div');
+    msg.className = 'empty-state';
+    msg.textContent = 'No runs match this filter.';
+    el.appendChild(msg);
+    return;
+  }
+  el.innerHTML = filtered.map(r => runIndexCard(r)).join('');
+}
+function runTypeBadgeClass(filterCategory, status) {
+  if (status === 'FAIL') return 'badge-fail';
+  if (filterCategory === 'controlled') return 'badge-controlled';
+  if (filterCategory === 'smoke') return 'badge-smoke';
+  if (filterCategory === 'hires-fix') return 'badge-hires';
+  if (filterCategory === 'upscale') return 'badge-upscale';
+  return 'badge-other';
+}
+
+function runIndexCard(r) {
+  const img = r.primaryImage;
+  const imgUrl = img ? '/api/run-file?path=' + encodeURIComponent(r.id + '/' + img) : '';
+  const badgeClass = runTypeBadgeClass(r.filterCategory, r.status);
+  const labelText = r.controlledTargetLabel || r.type || r.id;
+  const statusBadge = r.status === 'FAIL' ? ' <span class="run-type-badge badge-fail">FAIL</span>' : '';
+  const upscaledBadge = r.hasUpscaled ? '<span class="derived-badge">Upscaled ✓</span>' : '';
+  return '<article class="image-card" data-run="' + esc(r.id) + '">' +
+    (imgUrl ? '<img src="' + esc(imgUrl) + '" alt="Run ' + esc(r.id) + '" loading="lazy" />' : '<div style="height:120px;background:#071018;border-radius:14px;margin-bottom:8px"></div>') +
+    '<div class="run-type-badge ' + esc(badgeClass) + '">' + esc(labelText) + '</div>' + statusBadge + upscaledBadge +
+    '<h3 style="margin:4px 0 2px">' + esc(r.title || r.type) + '</h3>' +
+    '<p>' + esc(r.createdAt ? r.createdAt.replace(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/, '$1-$2-$3 $4:$5') : '') + ' · ' + esc(String(r.imageCount || 0)) + ' img</p>' +
+    '<div class="quick-row" style="margin-top:6px">' +
+    '<button class="ghost small" data-detail-run="' + esc(r.id) + '">Detail</button>' +
+    '<button class="ghost small" data-send-upscale="' + esc(r.id) + '"' + (img ? ' data-upscale-image="' + esc(img) + '"' : '') + '>Upscale</button>' +
     '</div></article>';
+}
+
+function closeRunDetail() {
+  const overlay = $('run-detail-overlay');
+  if (overlay) overlay.hidden = true;
+}
+
+function metaItem(label, value, valueClass) {
+  return '<div class="run-detail-meta-item"><div class="label">' + esc(label) + '</div><div class="value' + (valueClass ? ' ' + esc(valueClass) : '') + '">' + esc(String(value ?? '—')) + '</div></div>';
+}
+
+async function showRunDetail(runId) {
+  const overlay = $('run-detail-overlay');
+  const content = $('run-detail-content');
+  if (!overlay || !content) return;
+  content.innerHTML = '<div class="empty-state">Loading…</div>';
+  overlay.hidden = false;
+  overlay.scrollTop = 0;
+
+  // Wire up header action buttons with the runId
+  const btnBack = $('btn-detail-back');
+  const btnCopyId = $('btn-detail-copy-id');
+  const btnCopyPath = $('btn-detail-copy-path');
+  const btnSendUpscale = $('btn-detail-send-upscale');
+  const btnManifest = $('btn-detail-view-manifest');
+
+  // Remove previous listeners by cloning
+  [btnBack, btnCopyId, btnCopyPath, btnSendUpscale, btnManifest].forEach(b => {
+    if (b) { const n = b.cloneNode(true); b.parentNode.replaceChild(n, b); }
+  });
+  $('btn-detail-back').addEventListener('click', closeRunDetail);
+
+  let detail;
+  try {
+    detail = await api('/api/runs/' + encodeURIComponent(runId) + '/metadata');
+  } catch (err) {
+    content.textContent = '';
+    const msg = document.createElement('div');
+    msg.className = 'empty-state danger';
+    msg.textContent = 'Failed to load run: ' + err.message;
+    content.appendChild(msg);
+    return;
+  }
+
+  const rc = detail.run_card || {};
+  const cm = (detail.manifests && detail.manifests.controlled) || null;
+  const primaryImage = detail.primary_image || null;
+  const allImages = detail.images || [];
+  const runType = detail.run_type || rc.run_type || '';
+  const status = detail.status || rc.status || 'UNKNOWN';
+  const isControlled = runType.startsWith('controlled-');
+  const isSmoke = runType.endsWith('-smoke') || runType.includes('-smoke');
+  const isFlux = runType === 'controlled-flux-fp8';
+  const targetLabel = detail.controlled_target_label || '';
+  const targetCaveat = detail.controlled_target_caveat || '';
+  const promptPrivate = detail.prompt_private !== false;
+  const firstFailedGate = detail.first_failed_gate;
+
+  // Build parameter display from controlled manifest or run card
+  const steps = (cm && cm.steps) || rc.steps || null;
+  const cfgScale = (cm && cm.cfg_scale != null ? cm.cfg_scale : null) || rc.cfg_scale || null;
+  const seedLabel = (cm && cm.seed_label) || rc.seed || null;
+  const width = (cm && cm.width) || rc.width || null;
+  const height = (cm && cm.height) || rc.height || null;
+  const elapsedSec = cm && cm.wall_elapsed_seconds != null ? Math.round(cm.wall_elapsed_seconds) + 's' : null;
+
+  // Primary image
+  const primaryImgHtml = primaryImage
+    ? '<div class="run-detail-primary"><img src="' + esc('/api/run-file?path=' + encodeURIComponent(runId + '/' + primaryImage)) + '" alt="Primary output" /></div>'
+    : '<div class="run-detail-primary" style="padding:40px;text-align:center;color:var(--muted)">No image available</div>';
+
+  // Thumbnails for non-primary images
+  const thumbImages = allImages.filter(f => f !== primaryImage).slice(0, 12);
+  const thumbsHtml = thumbImages.length
+    ? '<div class="run-detail-thumbs">' + thumbImages.map(f =>
+        '<div class="run-detail-thumb" data-thumb-img="' + esc(runId + '/' + f) + '" title="' + esc(f) + '"><img src="' + esc('/api/run-file?path=' + encodeURIComponent(runId + '/' + f)) + '" alt="' + esc(f) + '" loading="lazy" /></div>'
+      ).join('') + '</div>'
+    : '';
+
+  // Type badge
+  const filterCat = isControlled ? 'controlled' : isSmoke ? 'smoke' : runType === 'hires-fix' ? 'hires-fix' : 'other';
+  const badgeClass = runTypeBadgeClass(filterCat, status);
+  const typeLabel = isControlled ? (targetLabel || runType) : isSmoke ? 'Smoke proof' : runType || 'Run';
+  const typeBadgeHtml = '<span class="run-type-badge ' + esc(badgeClass) + '">' + esc(typeLabel) + '</span>';
+
+  // Status badge
+  const statusClass = status === 'PASS' ? 'ok' : status === 'FAIL' ? 'fail' : '';
+
+  // Caveat section
+  let caveatHtml = '';
+  if (isControlled && targetCaveat) {
+    caveatHtml = '<div class="run-detail-caveat' + (isFlux ? ' caveat-flux' : '') + '">' + esc(targetCaveat) + '</div>';
+  }
+  if (isSmoke) {
+    caveatHtml = '<div class="run-detail-caveat">Smoke proof run — validates the generation path only. Not a full generation output.</div>';
+  }
+
+  // Failed gate
+  const failedGateHtml = (status === 'FAIL' && firstFailedGate)
+    ? '<div class="run-detail-failed-gate"><strong>First failed gate:</strong> ' + esc(firstFailedGate) + '</div>'
+    : '';
+
+  // Privacy notice
+  const privacyHtml = '<div class="run-detail-privacy">' +
+    (promptPrivate ? '🔒 Prompt redacted (save_prompts was off for this run)' : '📋 Prompt saved with this run') +
+    '</div>';
+
+  // Meta grid
+  const metaHtml = '<div class="run-detail-meta">' +
+    metaItem('Run ID', runId) +
+    metaItem('Status', status, statusClass) +
+    metaItem('Created', detail.created_at || rc.created_at || runId.slice(0, 15)) +
+    (targetLabel ? metaItem('Target', targetLabel) : '') +
+    (steps != null ? metaItem('Steps', steps) : '') +
+    (cfgScale != null ? metaItem('CFG / Guidance', cfgScale) : '') +
+    (seedLabel ? metaItem('Seed', seedLabel) : '') +
+    (width && height ? metaItem('Dimensions', width + '×' + height) : '') +
+    (elapsedSec ? metaItem('Elapsed', elapsedSec) : '') +
+    '</div>';
+
+  // Manifest section
+  const hasManifest = detail.manifests && Object.keys(detail.manifests).length > 0;
+  const manifestForView = detail.manifest;
+  const manifestHtml = hasManifest
+    ? '<details class="run-detail-manifest"><summary>Manifest JSON</summary><pre>' + esc(JSON.stringify(detail.manifests, null, 2)) + '</pre></details>'
+    : '';
+
+  // Assemble
+  content.innerHTML = typeBadgeHtml + failedGateHtml + caveatHtml + privacyHtml + primaryImgHtml + thumbsHtml + metaHtml + manifestHtml;
+
+  // Wire up copy/action buttons (after DOM is set)
+  $('btn-detail-copy-id').addEventListener('click', () => navigator.clipboard.writeText(runId).catch(() => {}));
+  $('btn-detail-copy-path').addEventListener('click', () => {
+    const p = primaryImage ? (runId + '/' + primaryImage) : runId;
+    navigator.clipboard.writeText(p).catch(() => {});
+  });
+  $('btn-detail-send-upscale').addEventListener('click', () => {
+    if (primaryImage) sendToUpscale(runId, primaryImage);
+    closeRunDetail();
+    showScreen('enhance');
+  });
+  $('btn-detail-view-manifest').addEventListener('click', () => {
+    if (manifestForView) notifyLog(JSON.stringify(manifestForView, null, 2));
+    showScreen('system');
+    closeRunDetail();
+  });
+
+  // Thumbnail click → update primary preview
+  content.querySelectorAll('[data-thumb-img]').forEach(el => {
+    el.addEventListener('click', () => {
+      const imgPath = el.dataset.thumbImg;
+      const primary = content.querySelector('.run-detail-primary img');
+      if (primary) primary.src = '/api/run-file?path=' + encodeURIComponent(imgPath);
+    });
+  });
 }
 
 async function viewUpscaledOutputs(runId) {
@@ -818,6 +1009,20 @@ function bindEvents() {
   $('btn-reuse-seed').addEventListener('click', () => { if (state.lastSeed) $('seed').value = state.lastSeed; });
   $('btn-load-library').addEventListener('click', loadGallery);
   $('btn-refresh-all').addEventListener('click', async () => { await loadCapabilities(); await loadGallery(); });
+  // Library filter buttons
+  const filterEl = $('library-filters');
+  if (filterEl) {
+    filterEl.addEventListener('click', e => {
+      const btn = e.target.closest('.filter-btn');
+      if (!btn) return;
+      state.libraryFilter = btn.dataset.filter || 'all';
+      filterEl.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b === btn));
+      renderGallery();
+    });
+  }
+  // Close detail overlay on background click
+  const overlay = $('run-detail-overlay');
+  if (overlay) overlay.addEventListener('click', e => { if (e.target === overlay) closeRunDetail(); });
   $('btn-copy-last').addEventListener('click', async () => { if (state.lastParams) await navigator.clipboard.writeText(JSON.stringify(state.lastParams, null, 2)); });
   $('btn-send-img2img').addEventListener('click', () => explainUnsupported('img2img'));
   $('btn-send-upscale').addEventListener('click', () => explainUnsupported('upscale'));
@@ -838,6 +1043,8 @@ function bindEvents() {
     }
     const lora = event.target.closest('[data-insert-lora]');
     if (lora) insertAtPrompt(lora.dataset.insertLora);
+    const detail = event.target.closest('[data-detail-run]');
+    if (detail) showRunDetail(detail.dataset.detailRun);
     const open = event.target.closest('[data-open-run]');
     if (open) openRun(open.dataset.openRun);
     const reuse = event.target.closest('[data-reuse-run]');

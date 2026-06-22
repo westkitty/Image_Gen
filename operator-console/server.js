@@ -551,6 +551,14 @@ function listRunFiles(runPath) {
   return files.sort();
 }
 function inferRunType(dirName) {
+  if (dirName.includes('-controlled-sdxl-turbo')) return ['controlled-sdxl-turbo', 'Controlled SDXL Turbo'];
+  if (dirName.includes('-controlled-sdxl-base')) return ['controlled-sdxl-base', 'Controlled SDXL base'];
+  if (dirName.includes('-controlled-flux-fp8')) return ['controlled-flux-fp8', 'Controlled Flux fp8'];
+  if (dirName.includes('-controlled-sd15')) return ['controlled-sd15', 'Controlled SD1.5'];
+  if (dirName.includes('-controlled-')) return ['controlled', 'Controlled Generation'];
+  if (dirName.includes('-sdxl-turbo-smoke')) return ['sdxl-turbo-smoke', 'SDXL Turbo Smoke'];
+  if (dirName.includes('-flux-smoke')) return ['flux-smoke', 'Flux Smoke'];
+  if (dirName.includes('-sdxl-smoke')) return ['sdxl-smoke', 'SDXL Smoke'];
   if (dirName.includes('-verify')) return ['verify', 'Verify Backend'];
   if (dirName.includes('-hires-fix')) return ['hires-fix', 'Hires Fix'];
   if (dirName.includes('-batch')) return ['batch-generate', 'Batch Generate'];
@@ -561,6 +569,16 @@ function inferRunType(dirName) {
   if (dirName.includes('-seedtest')) return ['seed-test', 'Seed Test'];
   if (dirName.includes('-benchmark')) return ['benchmark', 'Benchmark'];
   return ['unknown', dirName];
+}
+
+// Map run_type to filter category for client-side filtering
+function runTypeFilterCategory(runType) {
+  if (!runType) return 'other';
+  if (runType.startsWith('controlled-')) return 'controlled';
+  if (runType.endsWith('-smoke') || runType.includes('-smoke')) return 'smoke';
+  if (runType === 'hires-fix') return 'hires-fix';
+  if (runType === 'upscale' || runType === 'pillow-upscale') return 'upscale';
+  return 'other';
 }
 
 function readJsonCache(filePath) {
@@ -1309,9 +1327,13 @@ app.get('/api/runs/:runId', (req, res) => {
   const metadata = parseUiRunCard(path.join(runPath, 'ui-run-card.md'));
   metadata.id = runId;
   const files = listRunFiles(runPath);
-  const manifestFiles = ['batch-manifest.json', metadata.manifest_json].filter(Boolean);
+  const manifestCandidates = [
+    metadata.manifest_json, 'controlled-manifest.json', 'batch-manifest.json',
+    'xyz-manifest.json', 'upscale-manifest.json', 'hires-fix-manifest.json',
+    'sdxl-smoke-manifest.json', 'sdxl-turbo-smoke-manifest.json', 'flux-smoke-manifest.json'
+  ].filter(Boolean);
   let manifest = null;
-  for (const file of manifestFiles) {
+  for (const file of manifestCandidates) {
     const candidate = path.join(runPath, file);
     if (fs.existsSync(candidate)) {
       try { manifest = JSON.parse(fs.readFileSync(candidate, 'utf8')); break; } catch (_) {}
@@ -1338,12 +1360,35 @@ app.get('/api/runs/:runId/metadata', (req, res) => {
   const files = listRunFiles(runPath);
   const images = files.filter(f => f.toLowerCase().endsWith('.png'));
 
-  // Load manifest (batch or xyz)
-  let manifest = null;
-  for (const candidate of ['batch-manifest.json', 'xyz-manifest.json', 'upscale-manifest.json', 'hires-fix-manifest.json']) {
-    const p = path.join(runPath, candidate);
-    if (fs.existsSync(p)) { try { manifest = JSON.parse(fs.readFileSync(p, 'utf8')); break; } catch (_) {} }
+  // Load all known manifest types
+  const MANIFEST_LOOKUP = [
+    ['controlled', ['controlled-manifest.json', 'controlled-generation-manifest.json']],
+    ['hires_fix', ['hires-fix-manifest.json']],
+    ['upscale', ['upscale-manifest.json']],
+    ['batch', ['batch-manifest.json']],
+    ['xyz', ['xyz-manifest.json']],
+    ['smoke_sdxl', ['sdxl-smoke-manifest.json']],
+    ['smoke_sdxl_turbo', ['sdxl-turbo-smoke-manifest.json']],
+    ['smoke_flux', ['flux-smoke-manifest.json']]
+  ];
+  const manifests = {};
+  for (const [key, candidates] of MANIFEST_LOOKUP) {
+    for (const filename of candidates) {
+      const p = path.join(runPath, filename);
+      if (fs.existsSync(p)) {
+        try { manifests[key] = JSON.parse(fs.readFileSync(p, 'utf8')); break; } catch (_) {}
+      }
+    }
   }
+  // Primary manifest for backward compat — prefer controlled, then others
+  const manifest = manifests.controlled || manifests.hires_fix || manifests.upscale ||
+                   manifests.batch || manifests.xyz ||
+                   manifests.smoke_sdxl || manifests.smoke_sdxl_turbo || manifests.smoke_flux || null;
+
+  // first_failed_gate — from controlled manifest, then run card
+  const firstFailedGate =
+    (manifests.controlled && manifests.controlled.first_failed_gate != null ? manifests.controlled.first_failed_gate : undefined) ??
+    (runCard.first_failed_gate || null);
 
   // Load run-metadata.json (CLI runs)
   let runMeta = null;
@@ -1375,16 +1420,41 @@ app.get('/api/runs/:runId/metadata', (req, res) => {
     }
   }
 
+  // Derive filter category and controlled target label
+  const runType = runCard.run_type || null;
+  const filterCategory = runTypeFilterCategory(runType);
+  const CONTROLLED_TARGET_LABELS = {
+    'controlled-sd15': 'SD1.5',
+    'controlled-sdxl-base': 'SDXL base',
+    'controlled-sdxl-turbo': 'SDXL Turbo',
+    'controlled-flux-fp8': 'Flux fp8'
+  };
+  const controlledTargetLabel = CONTROLLED_TARGET_LABELS[runType] ||
+    (manifests.controlled && manifests.controlled.controlledTargetLabel) || null;
+  const controlledTargetCaveat = (manifests.controlled && manifests.controlled.controlledTargetCaveat) || null;
+  const promptPrivate = (manifests.controlled && manifests.controlled.prompt_redacted === true) ||
+    (runCard.prompt === '[REDACTED]' || !runCard.prompt);
+
   res.json({
     run_id: runId,
     run_dir: runPath,
+    run_type: runType,
+    status: runCard.status || 'UNKNOWN',
+    created_at: runCard.created_at || null,
     run_card: runCard,
+    manifests,
     manifest,
     run_meta: runMeta,
     png_info: pngInfo,
     metrics: metricsRows,
     files,
     images,
+    primary_image: runCard.primary_image || images[0] || null,
+    first_failed_gate: firstFailedGate,
+    filter_category: filterCategory,
+    controlled_target_label: controlledTargetLabel,
+    controlled_target_caveat: controlledTargetCaveat,
+    prompt_private: promptPrivate,
     retrieved_at: new Date().toISOString()
   });
 });
@@ -1431,6 +1501,14 @@ function buildRunIndex() {
         }
       }
     } catch (_) {}
+    const CONTROLLED_TARGET_LABELS_IDX = {
+      'controlled-sd15': 'SD1.5',
+      'controlled-sdxl-base': 'SDXL base',
+      'controlled-sdxl-turbo': 'SDXL Turbo',
+      'controlled-flux-fp8': 'Flux fp8'
+    };
+    const filterCategory = runTypeFilterCategory(runType);
+    const controlledTargetLabel = CONTROLLED_TARGET_LABELS_IDX[runType] || null;
     return {
       id: dirName,
       type: runType,
@@ -1441,6 +1519,8 @@ function buildRunIndex() {
       hasUpscaled,
       hasManifest,
       hasMetadata,
+      filterCategory,
+      controlledTargetLabel,
       createdAt: dirName.slice(0, 15)
     };
   });
