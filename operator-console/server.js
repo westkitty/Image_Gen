@@ -1470,8 +1470,9 @@ app.get('/api/runs/:runId/metadata', (req, res) => {
   const controlledTargetLabel = CONTROLLED_TARGET_LABELS[runType] ||
     (manifests.controlled && manifests.controlled.controlledTargetLabel) || null;
   const controlledTargetCaveat = (manifests.controlled && manifests.controlled.controlledTargetCaveat) || null;
-  const promptPrivate = (manifests.controlled && manifests.controlled.prompt_redacted === true) ||
-    (runCard.prompt === '[REDACTED]' || !runCard.prompt);
+  const promptPrivate = manifests.controlled
+    ? manifests.controlled.prompt_redacted === true
+    : (runCard.prompt === '[REDACTED]' || !runCard.prompt);
   const replay = buildReplayObject(runType, manifests);
 
   res.json({
