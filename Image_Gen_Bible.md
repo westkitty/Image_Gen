@@ -1796,7 +1796,7 @@ if (isMinimal) { noteMsg += ' This replay came from a proof/minimal run. Review 
 ```
 
 ### Commit
-- Commit: TBD — recorded after push
+- Commit: `3b6d5f1` — prove(replay): add minimal-settings warning and prove replay-to-generate loop
 
 ### Package
 - Package: TBD — recorded after package
