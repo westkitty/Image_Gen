@@ -2242,3 +2242,64 @@ Simulated a 2-job seed sweep (sdxl-turbo, 64×64, steps=1, save_prompts=false):
 
 ### Recommended Next /goal
 Add sampler and steps axes to the sweep planner (both are safe, bounded parameters), or implement a simple run-comparison view in Library that shows two controlled runs side-by-side to close the reproducibility-lab loop.
+
+## Entry 35 — Library comparison view (2026-06-22)
+
+### Summary
+Added a Library comparison view for existing controlled runs. The feature compares run metadata and already-saved images only; it does not regenerate, add model support, expose editable model paths, or claim full Automatic1111 parity.
+
+### UX
+- Library run cards now include a Compare checkbox for controlled runs.
+- Compare selected opens a side-by-side overlay for 2-4 controlled runs.
+- Cards show thumbnail or missing-image fallback, run ID, target, size, steps, CFG scale, seed, status, and prompt privacy.
+- Prompt text is shown only for saved-prompt runs. Redacted runs show `Prompt redacted`.
+- Copy comparison summary exports only display-safe fields and respects prompt privacy.
+- Compare latest sweep attempts to select the most recent 2-4 controlled runs sharing target/size/steps with adjacent seed values or varied CFG values.
+- The comparison surface explicitly states controlled-run comparison only and not full A1111 parity.
+
+### Implementation
+- `operator-console/public/index.html` adds the comparison toolbar and overlay.
+- `operator-console/public/app.js` adds controlled-run selection state, metadata extraction, side-by-side rendering, latest-sweep selection, and summary copying.
+- `operator-console/public/styles.css` adds comparison layout styles and an explicit `[hidden]` rule so hidden overlays cannot intercept clicks.
+- `operator-console/README.md` and the context lock document the new Library behavior.
+
+### Runtime Proof
+Used existing runs only; no generation was triggered.
+
+Proof run IDs:
+- `20260622-175237-controlled-sdxl-turbo` — SDXL Turbo, 64x64, steps=1, CFG=0, seed `828100`, prompt redacted, image present.
+- `20260622-173936-controlled-sdxl-turbo` — SDXL Turbo, 64x64, steps=1, CFG=0, seed `1175296153(random)`, prompt redacted, image present.
+- `20260622-140626-controlled-flux-fp8` — Flux fp8, metadata present, image missing; rendered safe missing-image fallback.
+- `missing-controlled-run` — metadata request failed; rendered non-crashing error card.
+
+Browser proof result:
+- Comparison loaded 2 cards for the SDXL Turbo runs.
+- Seeds differed (`828100` vs `1175296153(random)`).
+- Both cards showed `Prompt redacted`.
+- Copied comparison summary included privacy text and did not include literal `[REDACTED]` prompt payloads.
+- Missing image and missing metadata paths did not crash the overlay.
+
+### Security Regressions
+| Test | Result |
+|---|---|
+| Traversal metadata request | PASS — HTTP 400 |
+| generate-controlled with `modelPath` | PASS — HTTP 400 |
+| run-index `filter=evil` | PASS — HTTP 400 |
+
+### Validation
+- `git diff --check`: clean
+- `node --check operator-console/server.js`: OK
+- `node --check operator-console/public/app.js`: OK
+- All shell scripts excluding `.git`, `node_modules`, `runs`, `logs`, and `state`: `bash -n` OK
+- `sdcpp-workflow/bin/sdcpp-model-stage-check.sh`: PASS
+- `sdcpp-workflow/bin/sdcpp-model-inventory-wc2tb.sh`: PASS, 198 candidates, 13 high confidence, moved 0
+- `operator-console/scripts/smoke-check.sh`: PASS, 32 PASS / 0 FAIL
+
+### Remaining Limitations
+- Full Automatic1111 parity is still not claimed.
+- Full Flux safetensors is still not runtime-proven.
+- Comparison is display-only and metadata-only; it does not create an image grid or regenerate runs.
+- Prompt text cannot be recovered from redacted runs.
+
+### Recommended Next /goal
+Add step-axis and sampler-axis presets to the controlled sweep planner, then let Compare latest sweep recognize those new axis families without expanding model support.

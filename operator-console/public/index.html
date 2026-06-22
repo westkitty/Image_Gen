@@ -260,6 +260,18 @@
               <button class="filter-btn" data-filter="smoke">Smoke proofs</button>
               <button class="filter-btn" data-filter="failed">Failed</button>
             </div>
+            <div class="library-compare-bar" id="library-compare-bar">
+              <div>
+                <strong>Compare controlled runs</strong>
+                <span id="compare-selection-count" class="fineprint">Select 2-4 controlled runs.</span>
+              </div>
+              <div class="quick-row">
+                <button class="ghost small" id="btn-compare-selected" disabled>Compare selected</button>
+                <button class="ghost small" id="btn-compare-latest-sweep">Compare latest sweep</button>
+                <button class="ghost small" id="btn-clear-compare" disabled>Clear</button>
+              </div>
+            </div>
+            <p class="fineprint">Controlled-run comparison only; this is not full A1111 parity.</p>
             <div id="gallery-grid" class="gallery-grid"></div>
             <div id="library-load-more-row" class="library-load-more-row" style="display:none">
               <button class="ghost" id="btn-load-more">Load More</button>
@@ -285,6 +297,24 @@
                 <div class="empty-state">Loading…</div>
               </div>
             </div>
+          </div>
+
+          <!-- Controlled run comparison overlay -->
+          <div id="run-compare-overlay" class="run-detail-overlay" hidden>
+            <div class="run-compare-panel">
+              <div class="run-detail-header">
+                <button class="ghost small" id="btn-compare-back">&#8592; Library</button>
+                <div class="run-detail-actions">
+                  <button class="ghost small" id="btn-copy-comparison-summary">Copy comparison summary</button>
+                </div>
+              </div>
+              <div class="run-detail-caveat">Controlled-run comparison only. Existing metadata and images are shown as-is; no regeneration is performed and full A1111 parity is not claimed.</div>
+              <div id="run-compare-content" class="run-compare-content">
+                <div class="empty-state">Select 2-4 controlled runs.</div>
+              </div>
+            </div>
+          </div>
+
           <!-- Full-size image viewer / lightbox -->
           <div id="image-viewer-overlay" class="image-viewer-overlay" hidden tabindex="-1" role="dialog" aria-modal="true" aria-label="Full-size image viewer">
             <div class="image-viewer-panel">

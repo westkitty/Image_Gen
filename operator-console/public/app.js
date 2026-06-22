@@ -1,6 +1,6 @@
 'use strict';
 
-const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null, controlledTargets: [], controlledTargetMap: {}, libraryFilter: 'all', libraryIndex: [], libraryOffset: 0, libraryHasMore: false, libraryLoading: false };
+const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null, controlledTargets: [], controlledTargetMap: {}, libraryFilter: 'all', libraryIndex: [], libraryOffset: 0, libraryHasMore: false, libraryLoading: false, libraryCompareIds: [], lastComparisonRows: [] };
 const $ = id => document.getElementById(id);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
@@ -712,6 +712,7 @@ function updateLoadMoreBtn(total) {
   const info = $('library-count-info');
   if (row) row.style.display = state.libraryHasMore ? '' : 'none';
   if (info) info.textContent = total > 0 ? state.libraryOffset + ' of ' + total + ' runs' : '';
+  updateCompareControls();
 }
 
 function openImageViewer(imgPath, runId, filename) {
@@ -756,11 +757,15 @@ function runIndexCard(r) {
   const labelText = r.controlledTargetLabel || r.type || r.id;
   const statusBadge = r.status === 'FAIL' ? ' <span class="run-type-badge badge-fail">FAIL</span>' : '';
   const upscaledBadge = r.hasUpscaled ? '<span class="derived-badge">Upscaled ✓</span>' : '';
+  const canCompare = r.filterCategory === 'controlled' || String(r.type || '').startsWith('controlled-');
+  const compareChecked = state.libraryCompareIds.includes(r.id) ? ' checked' : '';
+  const compareDisabled = canCompare ? '' : ' disabled title="Comparison is controlled runs only"';
   return '<article class="image-card" data-run="' + esc(r.id) + '">' +
     (imgUrl ? '<img src="' + esc(imgUrl) + '" alt="Run ' + esc(r.id) + '" loading="lazy" />' : '<div style="height:120px;background:#071018;border-radius:14px;margin-bottom:8px"></div>') +
     '<div class="run-type-badge ' + esc(badgeClass) + '">' + esc(labelText) + '</div>' + statusBadge + upscaledBadge +
     '<h3 style="margin:4px 0 2px">' + esc(r.title || r.type) + '</h3>' +
     '<p>' + esc(r.createdAt ? r.createdAt.replace(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/, '$1-$2-$3 $4:$5') : '') + ' · ' + esc(String(r.imageCount || 0)) + ' img</p>' +
+    '<label class="compare-check"><input type="checkbox" data-compare-run="' + esc(r.id) + '" data-compare-enabled="' + (canCompare ? '1' : '0') + '"' + compareChecked + compareDisabled + ' /> Compare</label>' +
     '<div class="quick-row" style="margin-top:6px">' +
     '<button class="ghost small" data-detail-run="' + esc(r.id) + '">Detail</button>' +
     '<button class="ghost small" data-send-upscale="' + esc(r.id) + '"' + (img ? ' data-upscale-image="' + esc(img) + '"' : '') + '>Upscale</button>' +
@@ -770,6 +775,212 @@ function runIndexCard(r) {
 function closeRunDetail() {
   const overlay = $('run-detail-overlay');
   if (overlay) overlay.hidden = true;
+}
+
+function closeRunComparison() {
+  const overlay = $('run-compare-overlay');
+  if (overlay) overlay.hidden = true;
+}
+
+function updateCompareControls() {
+  const count = state.libraryCompareIds.length;
+  const countEl = $('compare-selection-count');
+  const compareBtn = $('btn-compare-selected');
+  const clearBtn = $('btn-clear-compare');
+  if (countEl) countEl.textContent = count ? count + ' selected. Select 2-4 controlled runs.' : 'Select 2-4 controlled runs.';
+  if (compareBtn) compareBtn.disabled = count < 2 || count > 4;
+  if (clearBtn) clearBtn.disabled = count === 0;
+  $$('[data-compare-run]').forEach(input => {
+    const enabled = input.dataset.compareEnabled === '1';
+    const selected = state.libraryCompareIds.includes(input.dataset.compareRun);
+    input.checked = selected;
+    input.disabled = !enabled || (!selected && count >= 4);
+  });
+}
+
+function toggleCompareRun(runId, checked) {
+  if (!runId) return;
+  const current = state.libraryCompareIds.filter(id => id !== runId);
+  if (checked) {
+    if (state.libraryCompareIds.length >= 4) {
+      notifyLog('Comparison is limited to 4 controlled runs.');
+      updateCompareControls();
+      return;
+    }
+    current.push(runId);
+  }
+  state.libraryCompareIds = current;
+  updateCompareControls();
+}
+
+function clearCompareSelection() {
+  state.libraryCompareIds = [];
+  state.lastComparisonRows = [];
+  updateCompareControls();
+}
+
+function firstPresent(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return null;
+}
+
+function extractComparisonRow(runId, detail, error) {
+  if (error) return { runId, error: error.message || String(error) };
+  const rc = detail.run_card || {};
+  const cm = (detail.manifests && detail.manifests.controlled) || null;
+  const runType = detail.run_type || rc.run_type || '';
+  if (!cm && !String(runType).startsWith('controlled-')) {
+    return { runId, error: 'Not a controlled run.' };
+  }
+  const width = firstPresent(cm && cm.width, rc.width);
+  const height = firstPresent(cm && cm.height, rc.height);
+  const promptPrivate = detail.prompt_private !== false || (cm && cm.prompt_redacted === true);
+  const promptText = !promptPrivate && cm && cm.prompt && cm.prompt !== '[REDACTED]' ? cm.prompt : null;
+  const negativePrompt = !promptPrivate && cm && cm.negative_prompt && cm.negative_prompt !== '[REDACTED]' ? cm.negative_prompt : null;
+  return {
+    runId,
+    status: firstPresent(detail.status, rc.status, 'UNKNOWN'),
+    target: firstPresent(detail.controlled_target_label, cm && cm.controlledTargetLabel, cm && cm.controlledTarget, runType.replace(/^controlled-/, '')),
+    targetId: firstPresent(cm && cm.controlledTarget, runType.replace(/^controlled-/, '')),
+    width,
+    height,
+    size: width && height ? width + 'x' + height : null,
+    steps: firstPresent(cm && cm.steps, rc.steps),
+    cfgScale: firstPresent(cm && cm.cfg_scale, rc.cfg_scale),
+    seed: firstPresent(cm && cm.seed_label, rc.seed),
+    promptPrivate,
+    promptText,
+    negativePrompt,
+    primaryImage: detail.primary_image || null,
+    imageCount: (detail.images || []).length,
+    createdAt: firstPresent(detail.created_at, rc.created_at, runId.slice(0, 15))
+  };
+}
+
+function comparisonMetaItem(label, value) {
+  return '<div class="comparison-meta-item"><span>' + esc(label) + '</span><strong>' + esc(value ?? '—') + '</strong></div>';
+}
+
+function renderComparisonCard(row) {
+  if (row.error) {
+    return '<article class="comparison-card comparison-card-error"><h3>' + esc(row.runId) + '</h3><div class="run-detail-failed-gate">' + esc(row.error) + '</div></article>';
+  }
+  const imageHtml = row.primaryImage
+    ? '<button type="button" class="comparison-thumb" data-compare-image="' + esc(row.runId + '/' + row.primaryImage) + '" data-compare-image-run="' + esc(row.runId) + '" data-compare-image-name="' + esc(row.primaryImage) + '"><img src="' + esc('/api/run-file?path=' + encodeURIComponent(row.runId + '/' + row.primaryImage)) + '" alt="Run ' + esc(row.runId) + '" loading="lazy" /></button>'
+    : '<div class="comparison-thumb comparison-thumb-missing">Image missing</div>';
+  const promptHtml = row.promptPrivate
+    ? '<div class="comparison-prompt redacted">Prompt redacted</div>'
+    : '<div class="comparison-prompt"><strong>Prompt</strong><p>' + esc(row.promptText || 'Prompt saved but unavailable') + '</p>' + (row.negativePrompt ? '<strong>Negative</strong><p>' + esc(row.negativePrompt) + '</p>' : '') + '</div>';
+  return '<article class="comparison-card">' +
+    imageHtml +
+    '<h3>' + esc(row.runId) + '</h3>' +
+    '<div class="run-type-badge badge-controlled">' + esc(row.target || 'Controlled') + '</div>' +
+    '<div class="comparison-meta">' +
+      comparisonMetaItem('Status', row.status) +
+      comparisonMetaItem('Size', row.size) +
+      comparisonMetaItem('Steps', row.steps) +
+      comparisonMetaItem('CFG', row.cfgScale) +
+      comparisonMetaItem('Seed', row.seed) +
+      comparisonMetaItem('Privacy', row.promptPrivate ? 'Prompt redacted' : 'Prompt saved') +
+    '</div>' +
+    promptHtml +
+    '</article>';
+}
+
+function buildComparisonSummary(rows) {
+  const lines = [
+    'Controlled run comparison',
+    'Existing metadata/images only. Not full A1111 parity.',
+    ''
+  ];
+  rows.forEach((row, idx) => {
+    lines.push((idx + 1) + '. ' + row.runId);
+    if (row.error) {
+      lines.push('   Error: ' + row.error, '');
+      return;
+    }
+    lines.push(
+      '   Target: ' + (row.target || 'unknown'),
+      '   Status: ' + (row.status || 'unknown'),
+      '   Size: ' + (row.size || 'unknown'),
+      '   Steps: ' + (row.steps ?? 'unknown'),
+      '   CFG: ' + (row.cfgScale ?? 'unknown'),
+      '   Seed: ' + (row.seed ?? 'unknown'),
+      '   Prompt privacy: ' + (row.promptPrivate ? 'Prompt redacted' : 'Prompt saved'),
+      '   Prompt: ' + (row.promptPrivate ? 'Prompt redacted' : (row.promptText || 'Prompt saved but unavailable')),
+      '   Image: ' + (row.primaryImage ? 'present' : 'missing'),
+      ''
+    );
+    if (!row.promptPrivate && row.negativePrompt) lines.splice(lines.length - 2, 0, '   Negative prompt: ' + row.negativePrompt);
+  });
+  return lines.join('\n').trim() + '\n';
+}
+
+async function showRunComparison(runIds = state.libraryCompareIds) {
+  const ids = [...new Set(runIds)].slice(0, 4);
+  if (ids.length < 2) { notifyLog('Select 2-4 controlled runs before comparing.'); updateCompareControls(); return; }
+  const overlay = $('run-compare-overlay');
+  const content = $('run-compare-content');
+  if (!overlay || !content) return;
+  content.innerHTML = '<div class="empty-state">Loading comparison…</div>';
+  overlay.hidden = false;
+  overlay.scrollTop = 0;
+  const details = await Promise.all(ids.map(async id => {
+    try {
+      const detail = await api('/api/runs/' + encodeURIComponent(id) + '/metadata');
+      return extractComparisonRow(id, detail, null);
+    } catch (err) {
+      return extractComparisonRow(id, null, err);
+    }
+  }));
+  state.lastComparisonRows = details;
+  content.innerHTML = details.map(renderComparisonCard).join('');
+}
+
+function numericSeed(row) {
+  if (!row.seed) return null;
+  const m = String(row.seed).match(/^(\d+)/);
+  return m ? Number(m[1]) : null;
+}
+
+async function compareLatestSweep() {
+  try {
+    const index = await api('/api/run-index?limit=50&offset=0&filter=controlled');
+    const items = (index.items || []).slice(0, 24);
+    if (items.length < 2) { notifyLog('No controlled runs available for latest-sweep comparison.'); return; }
+    const rows = await Promise.all(items.map(async item => {
+      try {
+        const detail = await api('/api/runs/' + encodeURIComponent(item.id) + '/metadata');
+        return extractComparisonRow(item.id, detail, null);
+      } catch (err) {
+        return null;
+      }
+    }));
+    const groups = new Map();
+    rows.filter(Boolean).filter(r => !r.error).forEach(row => {
+      const key = [row.targetId || row.target, row.size, row.steps].join('|');
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(row);
+    });
+    let best = null;
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const latest = group.slice(0, 4);
+      const seeds = latest.map(numericSeed).filter(n => Number.isFinite(n)).sort((a, b) => a - b);
+      const cfgs = [...new Set(latest.map(r => String(r.cfgScale)).filter(v => v !== 'null' && v !== 'undefined'))];
+      const adjacentSeed = seeds.some((seed, idx) => idx > 0 && Math.abs(seed - seeds[idx - 1]) === 1);
+      const variedCfg = cfgs.length > 1;
+      if (adjacentSeed || variedCfg) { best = latest; break; }
+    }
+    if (!best) { notifyLog('No recent controlled seed/CFG sweep group found. Select 2-4 runs manually.'); return; }
+    state.libraryCompareIds = best.slice(0, 4).map(r => r.runId);
+    updateCompareControls();
+    await showRunComparison(state.libraryCompareIds);
+  } catch (err) {
+    notifyLog('Compare latest sweep failed: ' + err.message);
+  }
 }
 
 const SETTINGS_ALLOWED_KEYS = new Set(['target', 'width', 'height', 'steps', 'cfg_scale', 'seed', 'prompt', 'negative_prompt']);
@@ -1249,6 +1460,15 @@ function bindEvents() {
   $('btn-load-settings').addEventListener('click', () => { const v = ($('settings-import-input') || {}).value || ''; if (v.trim()) loadSettingsJson(v); else showCreateNote('Paste settings JSON first.', 'privacy'); });
   $('btn-paste-settings').addEventListener('click', async () => { try { const t = await navigator.clipboard.readText(); $('settings-import-input').value = t; loadSettingsJson(t); } catch { showCreateNote('Clipboard read failed — paste manually.', 'privacy'); } });
   $('btn-load-library').addEventListener('click', () => loadGallery(true));
+  $('btn-compare-selected').addEventListener('click', () => showRunComparison());
+  $('btn-compare-latest-sweep').addEventListener('click', compareLatestSweep);
+  $('btn-clear-compare').addEventListener('click', clearCompareSelection);
+  $('btn-compare-back').addEventListener('click', closeRunComparison);
+  $('btn-copy-comparison-summary').addEventListener('click', async () => {
+    const rows = state.lastComparisonRows || [];
+    if (!rows.length) { notifyLog('No comparison summary to copy.'); return; }
+    await navigator.clipboard.writeText(buildComparisonSummary(rows)).catch(() => {});
+  });
   $('btn-refresh-all').addEventListener('click', async () => { await loadCapabilities(); await loadGallery(true); });
   // Library filter buttons
   const filterEl = $('library-filters');
@@ -1264,6 +1484,8 @@ function bindEvents() {
   // Close detail overlay on background click
   const overlay = $('run-detail-overlay');
   if (overlay) overlay.addEventListener('click', e => { if (e.target === overlay) closeRunDetail(); });
+  const compareOverlay = $('run-compare-overlay');
+  if (compareOverlay) compareOverlay.addEventListener('click', e => { if (e.target === compareOverlay) closeRunComparison(); });
   const loadMoreBtn = $('btn-load-more');
   if (loadMoreBtn) loadMoreBtn.addEventListener('click', () => loadGallery(false));
   const viewerOverlay = $('image-viewer-overlay');
@@ -1272,6 +1494,8 @@ function bindEvents() {
     if (e.key === 'Escape') {
       const vo = $('image-viewer-overlay');
       if (vo && !vo.hidden) { closeImageViewer(); return; }
+      const co = $('run-compare-overlay');
+      if (co && !co.hidden) { closeRunComparison(); return; }
       closeRunDetail();
     }
   });
@@ -1297,6 +1521,10 @@ function bindEvents() {
     if (lora) insertAtPrompt(lora.dataset.insertLora);
     const detail = event.target.closest('[data-detail-run]');
     if (detail) showRunDetail(detail.dataset.detailRun);
+    const compareInput = event.target.closest('[data-compare-run]');
+    if (compareInput) toggleCompareRun(compareInput.dataset.compareRun, compareInput.checked);
+    const compareImage = event.target.closest('[data-compare-image]');
+    if (compareImage) openImageViewer(compareImage.dataset.compareImage, compareImage.dataset.compareImageRun, compareImage.dataset.compareImageName);
     const open = event.target.closest('[data-open-run]');
     if (open) openRun(open.dataset.openRun);
     const reuse = event.target.closest('[data-reuse-run]');
