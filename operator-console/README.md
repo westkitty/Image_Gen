@@ -39,6 +39,7 @@ Prompts are redacted by default. When **Save prompts in run records** is off, th
 | Feature | Route | Notes |
 |---|---|---|
 | txt2img | `POST /api/actions/generate-single` | |
+| Controlled generation | `POST /api/actions/generate-controlled` | closed target set only: `sd15`, `sdxl-base`, `sdxl-turbo`, `flux-fp8`; no arbitrary model path; full A1111 parity not claimed |
 | Batch generation | `POST /api/actions/generate-batch` | max 24 |
 | Server start/stop/status | `POST /api/actions/server-{start,stop,status}` | |
 | Verification | `POST /api/actions/verify` | |
@@ -76,7 +77,7 @@ Manifest at `runs/<run-id>/upscaled/upscale-manifest.json` — no prompt or nega
 | X/Y/Z Plot | Script and endpoint exist (max 16 cells). Requires running BigMac server tunnel. Not end-to-end validated with real images. |
 | Upscale (AI/Extras) | Pillow local resize exists; Real-ESRGAN, A1111 Extras parity not implemented. |
 | PNG Info | tEXt/iTXt chunks from run images via metadata endpoint; arbitrary PNG upload not supported. |
-| SDXL Turbo / Flux | Highest-priority model paths. SDXL base, SDXL Turbo, and Flux each require staged files plus a real bounded smoke PNG before support flips on. |
+| SDXL base / SDXL Turbo / Flux fp8 | Bounded proof paths exist through controlled generation and smoke endpoints. Full Flux safetensors and full A1111 model parity are not runtime-proven. |
 
 ## Gated (not wired)
 

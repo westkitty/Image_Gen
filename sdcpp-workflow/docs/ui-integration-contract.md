@@ -1,14 +1,16 @@
 # BigMac SDCPP UI Integration Contract
 
-Standalone contract for a future UI-building agent. You can build the UI from this
-document alone. The UI is NOT built yet. **The Markdown + JSON outputs are the API**;
-do not scrape terminal text unless nothing else is available.
+Standalone contract for the Operator Console UI and any future UI-building agent. The
+local Operator Console now implements the primary contract, but the Markdown + JSON
+outputs remain the stable API; do not scrape terminal text unless nothing else is
+available.
 
 ## 1. Purpose
-Drive SD 1.5 image generation on BigMac (Apple M4, Metal) from a UI, by shelling out
-to the workflow scripts in `/Users/andrew/Image_Gen/sdcpp-workflow/bin` and reading
-their stable run folders. The backend handles inference, verification, lifecycle, and
-safety. The UI handles presentation and user intent.
+Drive the closed set of local controlled generation paths on BigMac (Apple M4, Metal)
+from a UI, by shelling out to the workflow scripts in
+`/Users/andrew/Image_Gen/sdcpp-workflow/bin` and reading their stable run folders. The
+backend handles inference, verification, lifecycle, and safety. The UI handles
+presentation and user intent.
 
 ## 2. What the UI owns
 - Presentation, input forms, image grids, history browsing.
@@ -27,7 +29,7 @@ safety. The UI handles presentation and user intent.
 - Never `--backend metal` (it fails; Metal auto-selects as `MTL0`).
 - Never broad-kill (`pkill`/`killall`), never kill ssh/sd-server directly.
 - Never touch the unrelated process on port **7860**.
-- Never edit `/Users/bigmac/stable-diffusion.cpp`; never use `/Volumes/wc2tb` for inference.
+- Never edit `/Users/bigmac/stable-diffusion.cpp`. Use `/Volumes/wc2tb/ImageGen` only for the bounded SDXL base, SDXL Turbo, and Flux fp8 proof paths; never use it for arbitrary model switching or uncontrolled model growth.
 - Never download weights; no Node/pnpm; no Python inference.
 - Remote booleans are derived from command OUTPUT, not ssh exit codes (BigMac masks them).
 
@@ -178,7 +180,7 @@ override. Inspect via `bin/sdcpp-presets.sh`. Measured: fast ≈15s, balanced �
 ## 23. Future extension points (not implemented)
 - Persistent "session mode" wrapper (keep one warm server for a UI session).
 - A `runs/index.json` history aggregator for fast browsing.
-- SDXL/Flux/larger sizes — highest-priority next model paths, but still gated. Stage files under `/Volumes/wc2tb/ImageGen`, run `bin/sdcpp-model-stage-check.sh`, then require bounded BigMac Metal PNG proof before enabling.
+- SDXL base, SDXL Turbo, and Flux fp8 have bounded proof paths. Stage files under `/Volumes/wc2tb/ImageGen`, run `bin/sdcpp-model-stage-check.sh`, and require bounded BigMac Metal PNG proof before marking any new target or file variant supported.
 
 ## 24. SDXL Turbo / Flux staging contract
 

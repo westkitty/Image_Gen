@@ -15,7 +15,7 @@ verified PNGs back to **this MacBook**. It packages the one-time proof
 ## What this is NOT
 - Not full SDXL / Flux / LoRA / ControlNet / ComfyUI parity. SD 1.5 @ 512×512 remains the main generation path; bounded SDXL base, SDXL Turbo, and Flux smoke proofs are available separately.
 - Not a model downloader (weights are staged manually on BigMac).
-- Not a UI. Not a Python pipeline. No Node/pnpm.
+- Not a Python pipeline. The local Operator Console UI lives in `../operator-console`; the workflow layer remains script-first.
 - Not a process manager for anything it didn't start.
 
 ## Proven baseline
@@ -82,7 +82,7 @@ bin/sdcpp-export-latest-markdown.sh --type batch                        # UI han
 - `--seed N|random|fixed` on all generators (fixed=42; random=recorded). Reports show the actual seed or `uncontrolled`.
 - Batch writes a stable folder: `images/`, `records/`, `batch-manifest.json`/`.tsv`, `batch-report.md`, `ui-run-card.md`.
 - **CLI is verified deterministic** (same seed → identical SHA256). For server, prefer `--api sdapi`/`native` for direct seed control.
-- Markdown + JSON outputs are the UI integration boundary — see `docs/ui-integration-contract.md`, `docs/markdown-output-contract.md`, `docs/seed-batch-controls.md`. **No UI is built yet.**
+- Markdown + JSON outputs are the UI integration boundary — see `docs/ui-integration-contract.md`, `docs/markdown-output-contract.md`, `docs/seed-batch-controls.md`. The local Operator Console now consumes this boundary.
 
 ## Where outputs go
 - Every command makes a timestamped folder under `runs/`, e.g. `runs/20260620-181500-cli/`.
@@ -98,7 +98,7 @@ bin/sdcpp-export-latest-markdown.sh --type batch                        # UI han
 - Never `--backend metal` (it fails in this build).
 - Never broad-kill (`pkill`, `killall`); only the workflow's own pieces.
 - Never touch the unrelated process that may hold port **7860**.
-- Never use `/Volumes/wc2tb` for routine inference or model growth. The bounded SDXL base proof is the only explicit proof-only exception and is tightly scripted. Never download weights. Never auto-install packages.
+- Never download weights or auto-install packages. `/Volumes/wc2tb/ImageGen` is the manual staging root for the bounded SDXL base, SDXL Turbo, and Flux fp8 proof paths only; do not treat it as arbitrary model switching or uncontrolled model growth.
 - Remote `$HOME` is discovered/expanded on BigMac, never hard-guessed locally.
 
 ## Known gotchas

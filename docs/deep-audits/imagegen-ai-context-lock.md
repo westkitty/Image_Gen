@@ -22,7 +22,7 @@ It exists to stop the same release facts from drifting.
   generated proof blobs.
 - Keep Express bound to localhost only.
 
-## Library / run history truth (updated 2026-06-22, Entries 25–34)
+## Library / run history truth (updated 2026-06-22, Entries 25–36)
 
 - `GET /api/run-index` returns paginated results (`limit`, `offset`, `filter`; default 50/page, max 200) with `filterCategory` and `controlledTargetLabel` per entry. Unknown filter → 400.
 - `GET /api/runs/:runId/metadata` returns all manifest types under `manifests`, plus `run_type`, `status`, `created_at`, `primary_image`, `first_failed_gate`, `filter_category`, `controlled_target_label`, `controlled_target_caveat`, `prompt_private`, and a `replay` object.
@@ -51,6 +51,7 @@ It exists to stop the same release facts from drifting.
 - `sdcpp-workflow/bin/sdcpp-model-stage-check.sh` must preserve the SDXL smoke proof cache.
 - Model files, runtime runs, smoke caches, logs, screenshots, zips, and generated artifacts remain outside git.
 - Final RC closure audit ran on HEAD `5509dd8` (2026-06-22). All 9 phases passed. Package SHA256 `128c22d7...` (pre-doc-commit); final post-commit SHA in Bible entry 33. Install test PASS from `/tmp/Image_Gen_install_test_20260622-174058`. Smoke check 32/32 PASS. Security regressions 3/3 PASS. Privacy canary CLEAN.
+- Final handoff freeze started from HEAD `b07e9bb` (2026-06-22). Release-facing docs now align on the local Operator Console, closed controlled target set, `/Volumes/wc2tb/ImageGen` as bounded proof-path staging only, and "DONE / freeze here" as the release posture.
 
 ## Preferred verification order
 

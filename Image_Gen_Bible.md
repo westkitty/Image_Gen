@@ -2303,3 +2303,85 @@ Browser proof result:
 
 ### Recommended Next /goal
 Add step-axis and sampler-axis presets to the controlled sweep planner, then let Compare latest sweep recognize those new axis families without expanding model support.
+
+## Entry 36 — Final handoff release freeze (2026-06-22)
+
+### Summary
+Finalization/freeze pass for a handoff-ready local release. This pass did not add product features. It corrected stale release-facing documentation, verified final behavior, and prepared the repo for a final clean package from committed source.
+
+### Starting State
+- Starting HEAD: `b07e9bb` (`feat(library): add controlled run comparison view`)
+- Branch: `main`
+- Baseline status: clean
+- Server: existing local server on `127.0.0.1:31337`
+
+### Source Audit Corrections
+- `operator-console/README.md` now explicitly lists `POST /api/actions/generate-controlled` as a closed-target route for `sd15`, `sdxl-base`, `sdxl-turbo`, and `flux-fp8`.
+- `operator-console/README.md` now states SDXL base, SDXL Turbo, and Flux fp8 have bounded proof paths, while full Flux safetensors and full A1111 model parity remain unproven.
+- `sdcpp-workflow/README.md` no longer says no UI exists; it points to the local Operator Console and keeps the workflow layer script-first.
+- `sdcpp-workflow/README.md` and `sdcpp-workflow/docs/ui-integration-contract.md` now describe `/Volumes/wc2tb/ImageGen` as the manual staging root for bounded proof paths only, not arbitrary model switching or uncontrolled model growth.
+- `sdcpp-workflow/docs/ui-integration-contract.md` now reflects that the Operator Console implements the primary UI contract.
+
+### Feature Presence
+Confirmed by source inspection:
+- Prompt stats: `prompt-count`, `neg-prompt-count`, `updatePromptStats()`
+- Settings JSON import: `settings-import-input`, `loadSettingsJson()`, closed allowed-key list
+- Controlled seed/CFG sweep planner: `SWEEP_TARGET_ALLOWLIST`, `runControlledSweep()`
+- Library comparison view: `libraryCompareIds`, `buildComparisonSummary()`, `btn-copy-comparison-summary`
+- Replay into Create: `replayInCreate()`
+- Copy settings JSON: `btn-detail-copy-settings`
+- Prompt privacy: `prompt_private` derived from controlled manifest `prompt_redacted`; replay prompts null for redacted runs
+- Path override rejection: server rejects unexpected fields including `modelPath`
+- Localhost bind: `const HOST = '127.0.0.1'`
+
+### Runtime Endpoint Check
+- `GET /api/capabilities`: four controlled targets present (`sd15`, `sdxl-base`, `sdxl-turbo`, `flux-fp8`), all `fullParityClaim=false`.
+- `GET /api/run-index?limit=20&offset=0`: paginated result, `total=116`, `nextOffset=20`, `hasMore=true`.
+- `GET /api/runs/20260622-175237-controlled-sdxl-turbo/metadata`: controlled metadata present, `prompt_private=true`, replay available, replay prompt fields null, no model path in replay.
+
+### Security / Privacy
+| Check | Result |
+|---|---|
+| Traversal metadata request | PASS — HTTP 400 |
+| `generate-controlled` with `modelPath` | PASS — HTTP 400 |
+| `run-index?filter=evil` | PASS — HTTP 400 |
+| Redacted controlled metadata replay | PASS — prompt and negative prompt null |
+
+No new generation was triggered in this freeze pass. Existing same-day privacy proof remains sufficient: prompt privacy defaults redacted, saved prompts are opt-in only, and redacted prompts cannot be reconstructed.
+
+### Full Validation
+- `git diff --check`: PASS
+- `node --check operator-console/server.js`: PASS
+- `node --check operator-console/public/app.js`: PASS
+- `bash -n` on all eligible `.sh` files excluding `.git`, `node_modules`, `runs`, `logs`, and `state`: PASS
+- `sdcpp-workflow/bin/sdcpp-model-stage-check.sh`: PASS, runtime smoke proof recorded
+- `sdcpp-workflow/bin/sdcpp-model-inventory-wc2tb.sh`: PASS, 198 candidates, 13 high confidence, moved 0
+- `operator-console/scripts/smoke-check.sh`: PASS, 32 PASS / 0 FAIL
+
+### Package / Install-Test Plan
+Final package path:
+
+```text
+/tmp/Image_Gen_final_handoff.zip
+```
+
+The final SHA256 and size are generated after this entry is committed, because `scripts/package-source.sh` packages `git archive HEAD`; embedding the package hash inside the same committed file would change the package hash. The final report for this freeze pass is the authoritative package checksum record.
+
+Required final package checks after this entry:
+- Build only with `scripts/package-source.sh --output /tmp/Image_Gen_final_handoff.zip`
+- Run forbidden scan for `.git`, `node_modules`, `runs`, `logs`, `state`, `Potential UI`, `__MACOSX`, `.DS_Store`, `.zip`, model artifacts, `server.log`, and `.playwright-mcp`
+- Extract to `/tmp/Image_Gen_final_install_test_<timestamp>`
+- Verify expected source files exist
+- Verify forbidden artifacts are absent
+- Run `node --check` on extracted server/app and `bash -n` on extracted scripts
+
+### Remaining Limitations
+- Full Automatic1111 parity is not claimed.
+- Arbitrary model switching is not claimed.
+- Full Flux safetensors is acquired but not runtime-proven; Flux fp8 is the runtime-proven Flux path.
+- LoRA, VAE switching, ControlNet, img2img, inpaint, outpaint, Real-ESRGAN, and Face Restore remain unimplemented or gated.
+- Comparison is display-only and metadata-only.
+- Redacted prompts cannot be recovered.
+
+### Freeze Recommendation
+DONE / freeze here. Image_Gen is handoff-ready as a local, proof-bounded release; future work should be treated as a new phase, not part of this release.
