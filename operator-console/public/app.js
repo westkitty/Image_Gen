@@ -250,6 +250,21 @@ async function pollJob(jobId) {
       setPill('pill-latest', job.status, job.status === 'PASS' ? 'ok' : 'bad');
       if (job.runId) await loadRunIntoPreview(job.runId);
       await loadGallery(true);
+      if (job.status === 'FAIL' || job.status === 'ERROR') {
+        const gateNote = job.firstFailedGate ? `<br><small>First failed gate: ${esc(job.firstFailedGate)}</small>` : '';
+        const retryHtml = state.lastParams ? ' <button type="button" class="ghost small" id="btn-retry-job">Retry</button>' : '';
+        $('latest-job').innerHTML += gateNote + retryHtml;
+        const retryBtn = $('btn-retry-job');
+        if (retryBtn) retryBtn.addEventListener('click', async () => {
+          if (!state.lastParams) return;
+          retryBtn.disabled = true;
+          try {
+            const result = await api('/api/actions/generate-controlled', { method: 'POST', body: JSON.stringify(state.lastParams) });
+            const target = getControlledTargetSpec(state.lastParams.target);
+            trackJob(result.job_id, `Retrying ${target.label || state.lastParams.target}…`);
+          } catch (err) { notifyLog(err.message); retryBtn.disabled = false; }
+        });
+      }
     }
   } catch (err) { notifyLog(err.message); }
 }
