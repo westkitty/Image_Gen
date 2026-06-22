@@ -1,5 +1,5 @@
 const express = require('express');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const app = express();
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
 const HOST = '127.0.0.1';
+const APP_VERSION = 'image-gen-console-2026-06-22-render-wrapper';
 
 const WORKFLOW_ROOT = path.resolve(__dirname, '../sdcpp-workflow');
 const RUNS_DIR = path.join(WORKFLOW_ROOT, 'runs');
@@ -151,6 +152,27 @@ function getWorkflowConfig() {
   return {
     ...readKeyValueFile(path.join(CONFIG_DIR, 'sdcpp.env')),
     ...readKeyValueFile(path.join(STATE_DIR, 'current-ports.env'))
+  };
+}
+
+function getBuildInfo() {
+  let gitHead = 'unknown';
+  try {
+    gitHead = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+      cwd: path.resolve(__dirname, '..'),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim();
+  } catch (_) {}
+  return {
+    name: 'Image_Gen Operator Console',
+    version: APP_VERSION,
+    gitHead,
+    pid: process.pid,
+    cwd: __dirname,
+    bind: `http://${HOST}:${PORT}`,
+    workflowRoot: WORKFLOW_ROOT,
+    startedAt: new Date().toISOString()
   };
 }
 
@@ -329,6 +351,16 @@ function normalizeControlledGenerationBody(body) {
   const allowedKeys = new Set([
     'target',
     'model_target',
+    'model',
+    'preset',
+    'mode',
+    'api',
+    'vae',
+    'sampler',
+    'scheduler',
+    'clip_skip',
+    'tiling',
+    'restore_faces',
     'prompt',
     'negative_prompt',
     'negativePrompt',
@@ -345,7 +377,9 @@ function normalizeControlledGenerationBody(body) {
       return { invalidKey: key };
     }
   }
-  const target = String(body.target || body.model_target || '').trim();
+  const target = String(body.target || body.model_target || body.model || '').trim();
+  const model = body.model !== undefined && body.model !== null ? String(body.model).trim() : '';
+  if (model && target && model !== target) return { invalidKey: 'model' };
   const cfgValue = body.cfg_scale !== undefined && body.cfg_scale !== null && body.cfg_scale !== ''
     ? body.cfg_scale
     : (body.cfg !== undefined && body.cfg !== null && body.cfg !== '' ? body.cfg : '');
@@ -360,6 +394,7 @@ function normalizeControlledGenerationBody(body) {
     steps: body.steps !== undefined && body.steps !== null && body.steps !== '' ? body.steps : '',
     cfg_scale: cfgValue,
     seed: body.seed !== undefined && body.seed !== null && body.seed !== '' ? body.seed : '',
+    api: body.api !== undefined && body.api !== null && body.api !== '' ? String(body.api) : 'openai',
     save_prompts: !!body.save_prompts
   };
   return params;
@@ -385,6 +420,7 @@ function validateGenerationParams(params) {
 function validateControlledGenerationParams(params) {
   if (params && params.invalidKey) return `Unexpected field: ${params.invalidKey}`;
   if (!validateControlledTarget(params.target)) return 'Invalid target';
+  if (params.api && !ALLOWED_APIS.has(params.api)) return 'Invalid API';
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
   if (!validateNegativePrompt(params.negative_prompt)) return 'Invalid negative prompt';
   if (!validateSize(params.width)) return 'Invalid width: use multiples of 8 between 64 and target max';
@@ -1023,6 +1059,7 @@ app.post('/api/actions/generate-controlled', (req, res) => {
   if (params.seed !== undefined && params.seed !== null && params.seed !== '') {
     args.push('--seed', String(params.seed));
   }
+  if (params.api && spec.id === 'sd15') args.push('--api', params.api);
   args.push('--save-prompts', params.save_prompts ? 'true' : 'false');
 
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
@@ -1290,6 +1327,10 @@ app.get('/api/jobs/:jobId/log', (req, res) => {
   const job = jobs[req.params.jobId];
   if (!job) return res.status(404).json({ error: 'Job not found' });
   res.json({ id: job.id, stdout: job.stdout, stderr: job.stderr });
+});
+
+app.get('/api/version', (req, res) => {
+  res.json(getBuildInfo());
 });
 
 app.get('/api/runs', (req, res) => {
@@ -1630,5 +1671,6 @@ app.get('/api/run-file', (req, res) => {
 });
 
 app.listen(PORT, HOST, () => {
-  console.log(`SDCPP Workbench listening on http://${HOST}:${PORT}`);
+  const build = getBuildInfo();
+  console.log(`SDCPP Workbench listening on ${build.bind} (${build.version}, HEAD ${build.gitHead}, pid ${build.pid})`);
 });

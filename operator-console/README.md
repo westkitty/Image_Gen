@@ -12,6 +12,18 @@ A local-only Automatic1111-style workbench for the BigMac SDCPP image-generation
 
 ## Launch
 
+Native macOS wrapper:
+
+```sh
+cd /Users/andrew/Image_Gen
+scripts/install-macos-app.sh
+open -a /Applications/Image_Gen.app
+```
+
+`/Applications/Image_Gen.app` is an AppKit/WKWebView wrapper. It opens the console in its own macOS window, verifies or starts the local operator console, checks the BigMac SDCPP server/tunnel through the existing workflow scripts, and keeps browser opening as a fallback menu item rather than the primary launch path.
+
+Manual local console:
+
 ```sh
 cd /Users/andrew/Image_Gen/operator-console
 node server.js > /tmp/operator-console.log 2>&1 &
@@ -27,6 +39,7 @@ http://127.0.0.1:31337/
 
 - Frontend: vanilla HTML/CSS/JavaScript (no build step).
 - Backend bridge: Express bound exclusively to `127.0.0.1:31337`.
+- Runtime marker: `GET /api/version` returns the console build marker, git head, process ID, bind URL, and workflow root so stale local servers are easy to spot.
 - Workflow backend: approved shell scripts under `../sdcpp-workflow/bin`.
 - Safety posture: no arbitrary command execution; all actions route through allowlisted endpoints; `shell: false` on all child spawns.
 
@@ -39,7 +52,7 @@ Prompts are redacted by default. When **Save prompts in run records** is off, th
 | Feature | Route | Notes |
 |---|---|---|
 | txt2img | `POST /api/actions/generate-single` | |
-| Controlled generation | `POST /api/actions/generate-controlled` | closed target set only: `sd15`, `sdxl-base`, `sdxl-turbo`, `flux-fp8`; no arbitrary model path; full A1111 parity not claimed |
+| Controlled generation | `POST /api/actions/generate-controlled` | closed target set only: `sd15`, `sdxl-base`, `sdxl-turbo`, `flux-fp8`; SD1.5 uses the proven local server tunnel (`127.0.0.1:17870`) through `sdcpp-server-generate.sh`; no arbitrary model path; full A1111 parity not claimed |
 | Batch generation | `POST /api/actions/generate-batch` | max 24 |
 | Server start/stop/status | `POST /api/actions/server-{start,stop,status}` | |
 | Verification | `POST /api/actions/verify` | |

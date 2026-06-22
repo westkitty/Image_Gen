@@ -20,6 +20,7 @@ ARG_HEIGHT=""
 ARG_STEPS=""
 ARG_CFG=""
 ARG_SEED=""
+ARG_API="openai"
 ARG_SAVE_PROMPTS="false"
 
 usage() {
@@ -33,6 +34,8 @@ Usage: $(basename "$0") [options]
   --steps N                   steps
   --cfg N                     cfg scale (Flux uses the proven guidance value)
   --seed N|random|fixed       seed control
+  --api openai|sdapi|both|native
+                              SD1.5 server-tunnel API path (default openai)
   --save-prompts true|false   persist prompts in run records (default false)
   -h, --help
 EOF
@@ -48,6 +51,7 @@ while [ "$#" -gt 0 ]; do
     --steps) ARG_STEPS="${2:?}"; shift 2 ;;
     --cfg|--cfg-scale) ARG_CFG="${2:?}"; shift 2 ;;
     --seed) ARG_SEED="${2:?}"; shift 2 ;;
+    --api) ARG_API="${2:?}"; shift 2 ;;
     --save-prompts) ARG_SAVE_PROMPTS="${2:?}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) fail "args" "Unknown argument: $1 (see --help)" ;;
@@ -57,6 +61,7 @@ done
 ARG_TARGET="$(printf '%s' "$ARG_TARGET" | tr '[:upper:]' '[:lower:]')"
 case "$ARG_SAVE_PROMPTS" in true|false) : ;; *) fail "args" "--save-prompts must be true|false" ;; esac
 case "$ARG_TARGET" in sd15|sdxl-base|sdxl-turbo|flux-fp8) : ;; *) fail "target" "Unknown target '$ARG_TARGET'." ;; esac
+case "$ARG_API" in openai|sdapi|both|native) : ;; *) fail "args" "--api must be openai|sdapi|both|native" ;; esac
 if [ "$ARG_SAVE_PROMPTS" = "true" ]; then
   export SDCPP_REDACT_PROMPTS=0
 else
@@ -401,18 +406,90 @@ controlled_fail() {
 }
 
 log "Starting controlled generation for target $ARG_TARGET in $RUN_DIR"
-verify_route >/dev/null
-verify_repo_clean 7f0e728 >/dev/null
-BUILD_DIR="$(get_build_dir)"
-verify_binaries "$BUILD_DIR"
-SDCLI="$BUILD_DIR/bin/sd-cli"
-ensure_remote_dirs
 SEED_RESOLVED="$(resolve_seed "$ARG_SEED")"
 SEED_VALUE="$(printf '%s' "$SEED_RESOLVED" | cut -f1)"
 SEED_CONTROLLED="$(printf '%s' "$SEED_RESOLVED" | cut -f2)"
 SEED_LABEL="$(printf '%s' "$SEED_RESOLVED" | cut -f3)"
 SEED_FRAG=""
 [ "$SEED_CONTROLLED" = "yes" ] && SEED_FRAG="--seed $SEED_VALUE"
+
+if [ "$ARG_TARGET" = "sd15" ]; then
+  LPORT="$LOCAL_TUNNEL_PORT"
+  RPORT="$REMOTE_SERVER_PORT"
+  if [ -f "$SDCPP_STATE_DIR/current-ports.env" ]; then
+    # shellcheck disable=SC1091
+    . "$SDCPP_STATE_DIR/current-ports.env"
+    LPORT="${LOCAL_TUNNEL_PORT:-$LPORT}"
+    RPORT="${REMOTE_SERVER_PORT:-$RPORT}"
+  fi
+  BASE="http://127.0.0.1:$LPORT"
+  BUILD_DIR="server-tunnel:$BASE"
+  SDCLI="$HERE/sdcpp-server-generate.sh"
+  REMOTE_RUN_DIR=""
+  REMOTE_PNG=""
+  REMOTE_LOG=""
+
+  log "Using proven server tunnel path for SD1.5 controlled generation: $BASE (remote port $RPORT, api=$ARG_API)"
+  if ! lsof -nP -iTCP:"$LPORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    controlled_fail "tunnel-down" "No local tunnel listening on $LPORT. Start it with sdcpp-server-start.sh."
+  fi
+
+  SERVER_OUT="$RUN_DIR/server-generate.stdout.log"
+  SERVER_ARGS=(--api "$ARG_API" --prompt "$ARG_PROMPT" --width "$ARG_WIDTH" --height "$ARG_HEIGHT" --steps "$ARG_STEPS" --cfg "$ARG_CFG" --sampler "${TARGET_SAMPLER:-euler_a}" --warm-state warm)
+  if [ -n "$ARG_NEG" ]; then SERVER_ARGS+=(--negative "$ARG_NEG"); fi
+  if [ -n "$ARG_SEED" ]; then SERVER_ARGS+=(--seed "$ARG_SEED"); fi
+
+  if ! "$HERE/sdcpp-server-generate.sh" "${SERVER_ARGS[@]}" > "$SERVER_OUT" 2>&1; then
+    FIRST_FAILED_GATE="server-generate"
+    cp "$SERVER_OUT" "$RUN_DIR/server-generate-failure.log" 2>/dev/null || true
+    controlled_write_artifacts "FAIL"
+    tail -80 "$SERVER_OUT" >&2 || true
+    fail "server-generate" "SD1.5 server-tunnel generation failed via $BASE. See $SERVER_OUT"
+  fi
+
+  SERVER_RUN_DIR="$(awk -F'Run dir: ' '/Run dir:/ {print $2}' "$SERVER_OUT" | tail -n 1 | tr -d '\r')"
+  if [ -z "$SERVER_RUN_DIR" ] || [ ! -d "$SERVER_RUN_DIR" ]; then
+    controlled_fail "server-run-dir" "Could not identify server-generate run dir from $SERVER_OUT."
+  fi
+
+  SERVER_PNG=""
+  for cand in openai.png sdapi.png native.png; do
+    if [ -s "$SERVER_RUN_DIR/$cand" ]; then
+      SERVER_PNG="$SERVER_RUN_DIR/$cand"
+      break
+    fi
+  done
+  if [ -z "$SERVER_PNG" ]; then
+    controlled_fail "server-png" "No verified server PNG found in $SERVER_RUN_DIR."
+  fi
+
+  cp "$SERVER_PNG" "$LOCAL_PNG" || controlled_fail "server-png-copy" "Could not copy $SERVER_PNG to $LOCAL_PNG."
+  if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+    strip_png_metadata "$LOCAL_PNG" || controlled_fail "png-redact" "Could not strip PNG metadata from $LOCAL_PNG"
+  fi
+  verify_png "$LOCAL_PNG" "Controlled SD1.5 server PNG"
+  RUN_STATUS="PASS"
+  RUNTIME_CONTROLLED_PROVEN="true"
+  controlled_write_artifacts "PASS"
+
+  pass_banner "CONTROLLED GENERATE PASS ($ARG_TARGET via server tunnel, seed=$SEED_LABEL).
+Target:  $TARGET_LABEL
+API:     $ARG_API
+Base:    $BASE
+Run:     $RUN_DIR
+PNG:     $LOCAL_PNG
+Source:  $SERVER_RUN_DIR
+Report:  $REPORT
+Manifest: $MANIFEST"
+  exit 0
+fi
+
+verify_route >/dev/null
+verify_repo_clean 7f0e728 >/dev/null
+BUILD_DIR="$(get_build_dir)"
+verify_binaries "$BUILD_DIR"
+SDCLI="$BUILD_DIR/bin/sd-cli"
+ensure_remote_dirs
 
 REMOTE_STDOUT_CMD=""
 Q_PROMPT="$(printf '%q' "$ARG_PROMPT")"

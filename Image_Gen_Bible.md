@@ -2385,3 +2385,93 @@ Required final package checks after this entry:
 
 ### Freeze Recommendation
 DONE / freeze here. Image_Gen is handoff-ready as a local, proof-bounded release; future work should be treated as a new phase, not part of this release.
+
+## Entry 37 — Render integration repair and native macOS wrapper (2026-06-22)
+
+### Summary
+Repair-and-launcher pass. This was not a feature-expansion pass. It fixed the Operator Console Create render path and added a real macOS Dock app wrapper.
+
+### Starting State
+- Starting HEAD: `05cb6c2` (`docs: final handoff release freeze`)
+- Branch: `main`
+- Baseline status: clean
+- Existing local console process: `node server.js` bound to `127.0.0.1:31337`
+- BigMac server/tunnel status: UP, remote `127.0.0.1:7870`, local tunnel `127.0.0.1:17870`
+
+### Render Bug Found
+The browser Create form submitted the normal full UI payload to `POST /api/actions/generate-controlled` (`preset`, `model`, `vae`, `sampler`, `scheduler`, `mode`, `api`, etc.). The backend controlled route accepted only a narrow minimal API payload and rejected the browser payload before generation with:
+
+```text
+HTTP 400 {"error":"Unexpected field: preset"}
+```
+
+A second integration mismatch was also corrected: SD1.5 controlled generation used the direct BigMac `sd-cli` path instead of the already-proven local server tunnel path.
+
+### Fix Applied
+- `operator-console/server.js`
+  - Allows normal controlled-form UI fields while still rejecting arbitrary model/path override keys.
+  - Keeps `model` constrained to the same closed target value.
+  - Passes `api` only for SD1.5 controlled generation.
+  - Adds `GET /api/version` and startup logging with build marker, git head, process ID, bind URL, and workflow root.
+- `sdcpp-workflow/bin/sdcpp-controlled-generate.sh`
+  - Adds `--api openai|sdapi|both|native`.
+  - Routes SD1.5 controlled generation through `sdcpp-server-generate.sh` and the active local tunnel (`http://127.0.0.1:17870` in this run).
+  - Imports the verified server PNG into the controlled run directory and writes the existing controlled manifest/run-card contract.
+  - Leaves SDXL base, SDXL Turbo, and Flux fp8 on their existing proof-only controlled paths.
+- `operator-console/public/app.js`
+  - Shows failed API status plus body excerpt instead of only generic status text.
+- `native/macos/Image_Gen/ImageGenApp.swift` and `scripts/install-macos-app.sh`
+  - Build `/Applications/Image_Gen.app` as an AppKit + WKWebView wrapper.
+  - Wrapper verifies or starts the local console, checks the existing BigMac server/tunnel scripts with bounded waits, loads `http://127.0.0.1:31337`, and provides Quit, Reload, Open Logs, and Open in Browser menu items.
+
+### Runtime Proof
+- `GET /api/version`: PASS, returned `image-gen-console-2026-06-22-render-wrapper`, HEAD `05cb6c2`, pid `31271`, bind `http://127.0.0.1:31337`.
+- Full browser-style controlled payload now submits successfully.
+- Operator Console controlled render:
+  - Job: `3ab63278-1a0c-42fd-a56f-ef2fc93f507e`
+  - Run: `20260622-191659-controlled-sd15`
+  - Source server run: `20260622-191701-server-gen`
+  - Output: `sdcpp-workflow/runs/20260622-191659-controlled-sd15/controlled-sd15.png`
+  - File proof: PNG image data, 512 x 512, 8-bit/color RGB, non-interlaced, 195K
+  - Route proof in job log: `Base: http://127.0.0.1:17870`
+- Prompt privacy:
+  - `controlled-manifest.json`: `prompt_redacted=true`, prompt and negative prompt `[REDACTED]`
+  - `ui-run-card.md`: prompt `[REDACTED]`
+  - Narrow grep of the new controlled run, its source server run, state, logs, and operator-console files: no canary prompt match.
+- Workflow script regression proof:
+  - `sdcpp-workflow/bin/sdcpp-server-generate.sh --api both --steps 8 --width 512 --height 512 --prompt ...`: PASS
+  - Run: `20260622-192103-server-gen`
+  - Verified `openai.png` and `sdapi.png`
+
+### Native Wrapper Proof
+- Installer: `scripts/install-macos-app.sh`
+- Installed app: `/Applications/Image_Gen.app`
+- Binary: `/Applications/Image_Gen.app/Contents/MacOS/Image_Gen`
+- Launch proof: process `/Applications/Image_Gen.app/Contents/MacOS/Image_Gen` running.
+- Window proof: System Events reported `frontmost=true`, `visible=true`, `count of windows=1`.
+- Wrapper log showed local console already listening and BigMac server/tunnel assessment UP.
+
+### Security Regressions
+| Check | Result |
+|---|---|
+| Traversal metadata request | PASS — HTTP 400 |
+| `generate-controlled` with `modelPath` | PASS — HTTP 400 |
+| `run-index?filter=evil` | PASS — HTTP 400 |
+
+### Validation
+- `git diff --check`: PASS
+- `node --check operator-console/server.js`: PASS
+- `node --check operator-console/public/app.js`: PASS
+- `bash -n` on eligible `.sh` files excluding `.git`, `node_modules`, `runs`, `logs`, and `state`: PASS
+- `swiftc -parse native/macos/Image_Gen/ImageGenApp.swift`: PASS
+- `scripts/install-macos-app.sh`: PASS
+- `sdcpp-workflow/bin/sdcpp-server-status.sh`: UP / safe to generate
+- Operator Console controlled render: PASS
+- Workflow `sdcpp-server-generate.sh --api both`: PASS
+
+### Remaining Limitations
+- Full Automatic1111 parity is still not claimed.
+- Arbitrary model switching is still not claimed.
+- Full Flux safetensors remains not runtime-proven; Flux fp8 remains the runtime-proven Flux path.
+- LoRA, VAE switching, ControlNet, img2img, inpaint, outpaint, Real-ESRGAN, and Face Restore remain unimplemented or gated.
+- Prompt text cannot be recovered from redacted runs.

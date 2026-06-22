@@ -10,6 +10,8 @@ It exists to stop the same release facts from drifting.
 - Workspace root: `/Users/andrew/Image_Gen`
 - Canonical model home: `/Volumes/wc2tb/ImageGen`
 - Runtime bridge: `operator-console/server.js`
+- Native wrapper installer: `scripts/install-macos-app.sh`
+- Native wrapper output: `/Applications/Image_Gen.app`
 - Clean source packager: `scripts/package-source.sh`
 
 ## Hard boundaries
@@ -43,7 +45,9 @@ It exists to stop the same release facts from drifting.
 - `POST /api/actions/sdxl-smoke`, `POST /api/actions/sdxl-turbo-smoke`, and `POST /api/actions/flux-smoke` are proof-only and do not mean full Automatic1111 parity.
 - Flux proof uses `/Volumes/wc2tb/ImageGen/flux/flux1-schnell/flux1-schnell-fp8.safetensors`; the full `/Volumes/wc2tb/ImageGen/flux/flux1-schnell/flux1-schnell.safetensors` file was acquired but is not the runtime-proven file.
 - `POST /api/actions/generate-controlled` now exposes a closed allowlist for SD1.5 standard, SDXL base, SDXL Turbo, and Flux fp8 only; it uses fixed proofed model behavior and does not imply arbitrary checkpoint switching.
-- `POST /api/actions/generate-controlled` rejects arbitrary path/model overrides and only accepts the documented controlled fields for the closed allowlist.
+- SD1.5 controlled generation uses the proven server-tunnel path through `sdcpp-server-generate.sh` and the active local tunnel (`127.0.0.1:17870` when `current-ports.env` says so). The browser Create form may send normal UI fields (`preset`, `model`, `api`, `sampler`, etc.); the backend tolerates those only as controlled-form fields and still rejects arbitrary path/model overrides such as `modelPath` and `checkpoint_path`.
+- `GET /api/version` is the stale-server marker endpoint. Check it before trusting a long-running local console.
+- `/Applications/Image_Gen.app` is the real macOS Dock wrapper built from `native/macos/Image_Gen/ImageGenApp.swift`. It uses AppKit + WKWebView, verifies or starts the local operator console, checks the existing BigMac tunnel scripts, and keeps browser opening as a fallback menu item only.
 - `POST /api/actions/generate-controlled` is positively proven through the Create selector and job polling for the closed allowlist; Flux 512x512 can hit Metal out-of-memory on this hardware, so Flux proof remains bounded to smaller accepted sizes.
 - When `save_prompts` is false, controlled runs strip PNG metadata as well as redacting manifests and logs, so prompt privacy applies to the saved image files too.
 - Proof-only support does not mean full Automatic1111 parity.

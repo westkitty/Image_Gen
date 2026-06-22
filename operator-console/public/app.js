@@ -65,7 +65,11 @@ async function api(path, options = {}) {
   const text = await res.text();
   let json = null;
   try { json = text ? JSON.parse(text) : null; } catch { json = { raw: text }; }
-  if (!res.ok) throw new Error((json && json.error) || res.statusText);
+  if (!res.ok) {
+    const body = json && json.error ? json.error : (json && json.raw ? json.raw : text);
+    const excerpt = String(body || res.statusText || 'Request failed').slice(0, 500);
+    throw new Error(`${res.status} ${res.statusText}: ${excerpt}`);
+  }
   return json;
 }
 
