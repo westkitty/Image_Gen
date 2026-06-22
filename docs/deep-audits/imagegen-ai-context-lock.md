@@ -24,10 +24,12 @@ It exists to stop the same release facts from drifting.
 
 ## Current truth to preserve
 
-- The only supported SDXL exception is the bounded proof-only smoke path.
-- `POST /api/actions/sdxl-smoke` is proof-only and does not mean full A1111 parity.
+- SDXL base, SDXL Turbo, and Flux each have bounded proof-only smoke paths.
+- `POST /api/actions/sdxl-smoke`, `POST /api/actions/sdxl-turbo-smoke`, and `POST /api/actions/flux-smoke` are proof-only and do not mean full Automatic1111 parity.
+- Flux proof uses `/Volumes/wc2tb/ImageGen/flux/flux1-schnell/flux1-schnell-fp8.safetensors`; the full `/Volumes/wc2tb/ImageGen/flux/flux1-schnell/flux1-schnell.safetensors` file was acquired but is not the runtime-proven file.
 - `scripts/package-source.sh` packages `git archive HEAD` and refuses dirty trees by default.
 - `sdcpp-workflow/bin/sdcpp-model-stage-check.sh` must preserve the SDXL smoke proof cache.
+- Model files, runtime runs, smoke caches, logs, screenshots, zips, and generated artifacts remain outside git.
 
 ## Preferred verification order
 

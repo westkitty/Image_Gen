@@ -1451,3 +1451,28 @@ Residual scope:
 - Runtime caches and model files remain outside git, as required.
 - The console still documents the Flux proof file choice explicitly so the full safetensors file is
   not overstated as runtime-proven.
+
+## Entry 21 — Context lock corrected after Turbo and Flux proof (2026-06-22)
+
+Entry 20 already recorded the Turbo / Flux acquisition and bounded smoke proof results, but
+`docs/deep-audits/imagegen-ai-context-lock.md` still lagged behind that state. This correction
+brings the durable lock back in line with the actual repository truth.
+
+Updated context lock now states:
+
+- SDXL base, SDXL Turbo, and Flux are all bounded proof-only paths
+- `POST /api/actions/sdxl-smoke`, `POST /api/actions/sdxl-turbo-smoke`, and `POST /api/actions/flux-smoke` are proof-only
+- Full Automatic1111 parity is not claimed for any of those paths
+- The Flux runtime-proven file is the fp8 candidate, not the full `flux1-schnell.safetensors`
+- Model files, runtime runs, smoke caches, logs, screenshots, zips, and generated artifacts remain outside git
+- Clean packages still come only from `scripts/package-source.sh`
+
+Verification:
+
+- Updated the context lock and Bible correction note only; no model downloads or new smoke proofs were run.
+- The repository remained on commit `fe4c4d5` at the start of this correction.
+
+Residual scope:
+
+- The durable lock now matches the proven runtime state.
+- No feature surface changed.
