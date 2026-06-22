@@ -50,6 +50,8 @@ Prompts are redacted by default. When **Save prompts in run records** is off, th
 | Asset discovery | `POST /api/actions/discover-assets` → `GET /api/assets` | |
 | Model staging check | `POST /api/actions/check-model-stage` → `GET /api/model-stage` | SDXL Turbo / Flux staging on BigMac wc2tb |
 | SDXL base smoke proof | `POST /api/actions/sdxl-smoke` | bounded SDXL base proof only; not full A1111 SDXL parity |
+| SDXL Turbo smoke proof | `POST /api/actions/sdxl-turbo-smoke` | bounded Turbo proof only; uses `sd_xl_turbo_1.0_fp16.safetensors` |
+| Flux smoke proof | `POST /api/actions/flux-smoke` | bounded Flux proof only; current proof uses `flux1-schnell-fp8.safetensors` |
 | img2img probe | `POST /api/actions/probe-image-edit` | writes state/image-edit-capabilities.json |
 | Upscale probe | `POST /api/actions/probe-upscale` | writes state/upscale-capabilities.json |
 | **Pillow upscale** | `POST /api/actions/upscale` | local resize only — not AI, not Real-ESRGAN |
@@ -74,7 +76,7 @@ Manifest at `runs/<run-id>/upscaled/upscale-manifest.json` — no prompt or nega
 | X/Y/Z Plot | Script and endpoint exist (max 16 cells). Requires running BigMac server tunnel. Not end-to-end validated with real images. |
 | Upscale (AI/Extras) | Pillow local resize exists; Real-ESRGAN, A1111 Extras parity not implemented. |
 | PNG Info | tEXt/iTXt chunks from run images via metadata endpoint; arbitrary PNG upload not supported. |
-| SDXL Turbo / Flux | Highest-priority next model paths, but still gated until files are staged on `/Volumes/wc2tb/ImageGen` and BigMac smoke output proves runtime support. SDXL base is separately supported by the bounded smoke proof. |
+| SDXL Turbo / Flux | Highest-priority model paths. SDXL base, SDXL Turbo, and Flux each require staged files plus a real bounded smoke PNG before support flips on. |
 
 ## Gated (not wired)
 
@@ -126,4 +128,4 @@ First SDXL Turbo BigMac Metal target:
 /Volumes/wc2tb/ImageGen/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors
 ```
 
-Flux first targets are `flux1-schnell.safetensors` or compatible GGUF/quantized diffusion files under `flux/flux1-schnell/`, plus `ae.safetensors`, CLIP-L, and T5XXL candidates under `flux/shared/`. File presence only changes the gate reason; support stays false until a bounded BigMac smoke run produces a real PNG. SDXL base is already proven separately via `POST /api/actions/sdxl-smoke`.
+Flux first targets are `flux1-schnell.safetensors` or compatible GGUF/quantized diffusion files under `flux/flux1-schnell/`, plus `ae.safetensors`, CLIP-L, and T5XXL candidates under `flux/shared/`. The current bounded proof uses `flux1-schnell-fp8.safetensors` because that is what the local stable-diffusion.cpp build accepts; the full safetensors checkpoint is acquired but not runtime-proven here. SDXL base and SDXL Turbo each have their own bounded smoke endpoints and only flip supported after their own PNG proofs land.

@@ -1,6 +1,6 @@
 # A1111-Style Workbench Implementation Notes
 
-Last updated: 2026-06-21
+Last updated: 2026-06-22
 
 ## Intent
 
@@ -30,6 +30,8 @@ These are fully wired and validated:
 - `POST /api/actions/hires-fix` — **Two-pass txt2img → Pillow upscale** (NOT A1111 latent Hires Fix)
 - `POST /api/validate/hires-fix` — validation-only Hires Fix dry run, no job and no generation
 - `POST /api/actions/check-model-stage` → `GET /api/model-stage` — BigMac wc2tb SDXL Turbo / Flux staging cache
+- `POST /api/actions/sdxl-turbo-smoke` — bounded SDXL Turbo proof using the staged fp16 checkpoint
+- `POST /api/actions/flux-smoke` — bounded Flux proof using the currently accepted fp8 candidate
 - `GET /api/runs`, `GET /api/runs/:runId`, `GET /api/runs/:runId/metadata`
 - `GET /api/run-index?limit=N` — paginated listing with `hasUpscaled` flag, 8s cache, max 500
 - `GET /api/run-file?path=<safe-relative>` — path-contained, extension-allowlisted
@@ -41,7 +43,7 @@ These are fully wired and validated:
 - **X/Y/Z Plot** (`POST /api/actions/xyz-plot`): script and endpoint exist, max 16 cells, client-side validation. Requires running BigMac server tunnel. Not end-to-end validated with real images.
 - **Upscale (AI/Extras)**: Pillow local resize is available; Real-ESRGAN and A1111 Extras parity are not implemented.
 - **PNG Info**: tEXt/iTXt chunks from run images via `/api/runs/:runId/metadata`; arbitrary PNG upload not supported.
-- **SDXL Turbo / Flux**: still gated until files are manually staged on `/Volumes/wc2tb/ImageGen` and their own bounded smoke proofs exist. SDXL base now has a dedicated proof path and becomes supported after that smoke passes.
+- **SDXL Turbo / Flux**: now have dedicated bounded smoke paths in addition to staged files. SDXL base, SDXL Turbo, and Flux each flip to supported only after their own PNG proof passes.
 
 ## Gated (not wired)
 
@@ -130,13 +132,13 @@ curl -s http://127.0.0.1:31337/api/model-stage | python3 -m json.tool
 curl -s -X POST http://127.0.0.1:31337/api/actions/check-model-stage | python3 -m json.tool
 ```
 
-The staging root is `/Volumes/wc2tb/ImageGen`. SDXL Turbo first target is `sd_xl_turbo_1.0_fp16.safetensors`; Flux Schnell accepts official safetensors files or stable-diffusion.cpp-compatible GGUF/quantized candidates. The capability gates remain false from staged files alone; smoke output must prove support. SDXL base now has a bounded proof action at `POST /api/actions/sdxl-smoke`.
+The staging root is `/Volumes/wc2tb/ImageGen`. SDXL Turbo first target is `sd_xl_turbo_1.0_fp16.safetensors`; Flux Schnell accepts official safetensors files or stable-diffusion.cpp-compatible GGUF/quantized candidates. The capability gates remain false from staged files alone; smoke output must prove support. SDXL base has `POST /api/actions/sdxl-smoke`, SDXL Turbo has `POST /api/actions/sdxl-turbo-smoke`, and Flux has `POST /api/actions/flux-smoke`.
 
 Live state update:
 - SDXL base smoke proof now exists and is the bounded proof-only path; it does not imply full A1111 SDXL parity.
 - The `sdxl` gate stays supported when the proof cache is present, and the UI must keep calling that out as proof-only rather than full parity.
-- SDXL Turbo remains blocked on the missing fp16 file; do not use the 0B q6p/q8p placeholder.
-- Flux remains partial: model and VAE are staged, but CLIP-L and T5XXL are still missing unless BigMac `sd-cli --help` proves an embedded path.
+- SDXL Turbo is now proofed with the staged fp16 checkpoint; the 0B q6p/q8p placeholder still should not be used.
+- Flux is now proofed with the staged component set; the current smoke uses the fp8 candidate that the local binary accepts.
 - The Models screen now has a direct `/api/model-inventory` read path and handles a missing endpoint or missing cache without crashing.
 
 ## Next backend work

@@ -140,6 +140,8 @@ Validate staging:
 cd /Users/andrew/Image_Gen/sdcpp-workflow
 bin/sdcpp-model-stage-check.sh
 bin/sdcpp-sdxl-smoke.sh
+bin/sdcpp-sdxl-turbo-smoke.sh
+bin/sdcpp-flux-smoke.sh
 ```
 
 Operator Console:
@@ -149,12 +151,12 @@ curl -s http://127.0.0.1:31337/api/model-stage | python3 -m json.tool
 curl -s -X POST http://127.0.0.1:31337/api/actions/check-model-stage | python3 -m json.tool
 ```
 
-Staged files do not mean supported. SDXL Turbo and Flux remain gated; SDXL base now has a dedicated bounded smoke proof path.
+Staged files do not mean supported. SDXL base, SDXL Turbo, and Flux each have dedicated bounded smoke proof paths.
 
 ## Live staging note
 
 - SDXL base is staged and nonzero at `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/sd_xl_base_1.0.safetensors`.
-- SDXL Turbo remains blocked until `sd_xl_turbo_1.0_fp16.safetensors` exists; do not use the 0B `sd_xl_turbo_q6p_q8p.ckpt` placeholder.
-- Flux is partial: `flux1-schnell-fp8.safetensors` and `ae.safetensors` are staged, but CLIP-L and T5XXL are still missing unless BigMac `sd-cli --help` proves an embedded path.
-- `bin/sdcpp-model-stage-check.sh` now rejects zero-byte and tiny placeholder files in the stage cache.
-- `bin/sdcpp-sdxl-smoke.sh` runs the bounded SDXL base proof, writes `state/sdxl-smoke-cache.json`, and flips `sdxl` to supported after a real PNG is verified.
+- SDXL Turbo is proofed with `sd_xl_turbo_1.0_fp16.safetensors`; do not use the 0B `sd_xl_turbo_q6p_q8p.ckpt` placeholder.
+- Flux is proofed with the staged component set; the current bounded proof uses `flux1-schnell-fp8.safetensors` because that is what the current BigMac binary accepts.
+- `bin/sdcpp-model-stage-check.sh` now preserves the proof caches for SDXL base, SDXL Turbo, and Flux instead of forgetting them on the next stage scan.
+- `bin/sdcpp-sdxl-smoke.sh`, `bin/sdcpp-sdxl-turbo-smoke.sh`, and `bin/sdcpp-flux-smoke.sh` each run a bounded proof and write a corresponding cache file after a real PNG is verified.

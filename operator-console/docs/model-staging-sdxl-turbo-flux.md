@@ -1,6 +1,6 @@
 # SDXL Turbo and Flux Model Staging
 
-Last updated: 2026-06-21
+Last updated: 2026-06-22
 
 ## Target Root
 
@@ -132,7 +132,7 @@ Only after a successful bounded smoke run should the app mark SDXL Turbo or Flux
 
 - `sd_xl_base_1.0.safetensors` is present and nonzero under `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/`.
 - `bin/sdcpp-sdxl-smoke.sh` has already passed, so SDXL base is proven only at the bounded smoke level.
-- `sdxl-turbo` is still blocked on the missing fp16 file; the 0B `sd_xl_turbo_q6p_q8p.ckpt` is not a valid smoke target.
-- Flux is partial: `flux1-schnell-fp8.safetensors` and `ae.safetensors` are staged, but CLIP-L and T5XXL are missing.
-- `bin/sdcpp-model-stage-check.sh` now rejects zero-byte and tiny placeholders in the stage cache.
-- The next bounded smoke target is SDXL Turbo once the fp16 checkpoint is staged; Flux remains blocked until its missing components or embedded path are proven.
+- `bin/sdcpp-sdxl-turbo-smoke.sh` now passes against `sd_xl_turbo_1.0_fp16.safetensors`, so SDXL Turbo is no longer blocked on proof.
+- `bin/sdcpp-flux-smoke.sh` now passes against the staged Flux component set; the current proof uses `flux1-schnell-fp8.safetensors` because that is what the current stable-diffusion.cpp build accepts on BigMac.
+- `bin/sdcpp-model-stage-check.sh` now preserves the three smoke proof caches instead of forgetting earlier proof on the next scan.
+- The next work is no longer model proof for these three paths; it is keeping the console and docs aligned with the acquired files and the proof-only wording.

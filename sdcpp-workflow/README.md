@@ -13,7 +13,7 @@ verified PNGs back to **this MacBook**. It packages the one-time proof
 - Append-only project ledger: `BigMac_SDCPP_Workflow_Bible.md`.
 
 ## What this is NOT
-- Not full SDXL / Flux / LoRA / ControlNet / ComfyUI parity. SD 1.5 @ 512×512 remains the main generation path; bounded SDXL base smoke proof is available separately.
+- Not full SDXL / Flux / LoRA / ControlNet / ComfyUI parity. SD 1.5 @ 512×512 remains the main generation path; bounded SDXL base, SDXL Turbo, and Flux smoke proofs are available separately.
 - Not a model downloader (weights are staged manually on BigMac).
 - Not a UI. Not a Python pipeline. No Node/pnpm.
 - Not a process manager for anything it didn't start.

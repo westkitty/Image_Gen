@@ -201,4 +201,4 @@ Flux first targets:
 /Volumes/wc2tb/ImageGen/flux/shared/ae.safetensors
 ```
 
-The UI must show staged/missing/smoke-required states separately. It must not mark `sdxlTurbo`, `flux`, or `sdxl` supported from file presence alone.
+The UI must show staged/missing/smoke-required states separately. It must not mark `sdxlTurbo`, `flux`, or `sdxl` supported from file presence alone. When a smoke cache exists, the UI should reflect that the relevant path is proofed, not merely staged.

@@ -1,6 +1,6 @@
 # Advanced Feature Decision Memo
 
-**Date:** 2026-06-21
+**Date:** 2026-06-22
 **Session:** Autonomous Dexter Walk — Unit 8
 
 ## Summary
@@ -24,6 +24,9 @@ No feature is marked blocked without verified evidence.
 | Batch generation | `POST /api/actions/generate-batch` | max 24 |
 | Pillow upscale | `POST /api/actions/upscale` | local only, not AI |
 | **Hires Fix** | `POST /api/actions/hires-fix` | two-pass txt2img → Pillow; NOT latent Hires Fix |
+| SDXL base smoke | `POST /api/actions/sdxl-smoke` | bounded proof only |
+| SDXL Turbo smoke | `POST /api/actions/sdxl-turbo-smoke` | bounded Turbo proof only |
+| Flux smoke | `POST /api/actions/flux-smoke` | bounded Flux proof only |
 
 ### 🔒 Blocked — evidence below
 
@@ -31,20 +34,17 @@ No feature is marked blocked without verified evidence.
 
 ## SDXL Turbo
 
-**Status: BLOCKED**
+**Status: PROVED**
 
 **Evidence:**
-- `state/assets-cache.json` (probed 2026-06-21): 1 checkpoint found — `v1-5-pruned-emaonly.safetensors` (SD 1.5)
-- No SDXL checkpoint (`sd_xl_base_1.0.safetensors` or equivalent) present
-- No SDXL Turbo checkpoint (`sd_xl_turbo_1.0_fp16.safetensors` or equivalent) present
+- `state/model-stage-cache.json` and `state/sdxl-smoke-cache.json`: SDXL base bounded smoke proof passed
+- `state/model-stage-cache.json` and `state/sdxl-turbo-smoke-cache.json`: SDXL Turbo bounded smoke proof passed against `sd_xl_turbo_1.0_fp16.safetensors`
+- `state/model-stage-cache.json` and `state/flux-smoke-cache.json`: Flux bounded smoke proof passed against the current fp8 candidate
 
 **What is needed to unlock:**
-1. Stage `stabilityai/sdxl-turbo` on BigMac external storage, preferring:
-   `/Volumes/wc2tb/ImageGen/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors`
-2. Do not use `/Volumes/wc2tb` for new heavy model growth.
-3. Verify the local BigMac stable-diffusion.cpp binary supports the required SDXL Turbo flags.
-4. Run a bounded smoke with 1-4 steps, starting at 512x512, without blindly applying SD 1.5 CFG/negative-prompt defaults.
-5. Only after real PNG proof should the `sdxlTurbo` gate become supported.
+1. Keep the staged fp16 checkpoint and smoke cache in sync with the console.
+2. Preserve the 0B placeholder only as a reminder of the earlier bad target; do not smoke it.
+3. Keep the bounded proof wording explicit so support is not confused with file presence.
 
 **Why it matters:**
 SDXL Turbo produces usable images at 1–4 steps (vs SD1.5's 20–50), making it the
@@ -55,24 +55,17 @@ once a checkpoint is staged.
 
 ## Flux
 
-**Status: BLOCKED**
+**Status: PROVED**
 
 **Evidence:**
-- No Flux model files staged on BigMac (no `ae.safetensors`, no `clip_l.safetensors`, no T5XXL)
-- `assets-cache.json` shows 0 VAEs, 0 embeddings — all Flux-required components absent
-- Flux requires a different inference path (separate clip/T5 encoders + autoencoder VAE)
-- `sdcpp-cli-generate.sh` is structured for single-model `sd-cli` invocations
+- `state/model-stage-cache.json` shows the Flux component set staged
+- `state/flux-smoke-cache.json` records a real PNG proof
+- The current proof uses `flux1-schnell-fp8.safetensors`, `ae.safetensors`, `clip_l.safetensors`, and `t5xxl_fp16.safetensors`
 
 **What is needed to unlock:**
-1. Stage Flux model files on BigMac:
-   - `/Volumes/wc2tb/ImageGen/flux/flux1-schnell/flux1-schnell.safetensors` or compatible GGUF/quantized Flux model file
-   - `/Volumes/wc2tb/ImageGen/flux/shared/ae.safetensors`
-   - CLIP-L candidate
-   - T5XXL candidate
-2. Accept Hugging Face model conditions first when required.
-3. Verify the actual BigMac `sd-cli --help` output for model, VAE, CLIP-L, and T5XXL flags before inventing a command.
-4. Write a bounded Flux smoke script only after flag support is proven.
-5. Only after real PNG proof should the `flux` gate become supported.
+1. Keep the proof cache aligned with the current accepted fp8 Flux candidate.
+2. Document the file path choice so nobody assumes the full safetensors checkpoint is runtime-proven here.
+3. Keep the smoke route fixed-path and proof-only.
 
 **Why it matters:**
 Flux is state-of-the-art for text-to-image quality as of mid-2026. Schnell variant
@@ -191,7 +184,6 @@ State files updated at:
 The current runtime state has moved past the original “no SDXL checkpoint” assumption:
 
 - `sd_xl_base_1.0.safetensors` is staged on BigMac wc2tb and is nonzero.
-- `sdxlTurbo` is still blocked because the required fp16 file is missing; ignore the 0B `sd_xl_turbo_q6p_q8p.ckpt` placeholder.
-- Flux is now partial, not ready: Flux model and VAE are staged, but CLIP-L and T5XXL are still missing unless the BigMac binary proves an embedded path.
-- `sdxl` now has a bounded smoke proof and is supported after the real PNG run passes.
-- The next runtime proof target is SDXL Turbo once the fp16 checkpoint is staged; Flux remains blocked on missing encoder components.
+- `sdxlTurbo` now has a bounded smoke proof and is supported after the real PNG run passes.
+- Flux now has a bounded smoke proof and is supported after the real PNG run passes.
+- `sdxl` continues to use its bounded smoke proof and should remain labeled proof-only.

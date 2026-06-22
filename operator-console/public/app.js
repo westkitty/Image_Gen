@@ -421,11 +421,13 @@ function renderModels() {
     const turboState = stage.sdxlTurboStagedState || (stage.sdxlTurboStaged ? 'true' : 'missing');
     const fluxState = stage.fluxStagedState || (stage.fluxStaged ? 'true' : 'missing');
     const sdxlProofState = stage.sdxlSmokeProven ? 'bounded smoke proof passed' : (sdxlState === 'true' ? 'smoke proof required' : 'missing');
+    const turboProofState = stage.sdxlTurboSmokeProven ? 'bounded smoke proof passed' : (turboState === 'true' ? 'smoke proof required' : 'missing or placeholder-only');
+    const fluxProofState = stage.fluxSmokeProven ? 'bounded smoke proof passed' : (fluxState === 'true' ? 'smoke proof required' : fluxState === 'partial' ? 'partial; CLIP-L/T5XXL missing unless CLI proves embedded path' : 'missing or incomplete');
     const bits = [
       ['External root', root],
       ['Last checked', stage.checked_at || 'never'],
-      ['SDXL Turbo', turboState === 'true' ? 'staged; smoke proof required' : 'missing or placeholder-only'],
-      ['Flux', fluxState === 'true' ? 'component set staged; smoke proof required' : fluxState === 'partial' ? 'partial; CLIP-L/T5XXL missing unless CLI proves embedded path' : 'missing or incomplete'],
+      ['SDXL Turbo', turboState === 'true' ? `staged; ${turboProofState}` : 'missing or placeholder-only'],
+      ['Flux', fluxState === 'true' ? `component set staged; ${fluxProofState}` : fluxState === 'partial' ? 'partial; CLIP-L/T5XXL missing unless CLI proves embedded path' : 'missing or incomplete'],
       ['SDXL', sdxlState === 'true' ? `staged; ${sdxlProofState}` : 'missing'],
       ['wc2tb write test', stage.write_test || 'unknown'],
       ['Invalid candidates', String(stage.invalidCandidateCount || 0)],
@@ -564,6 +566,50 @@ async function runSdxlSmoke() {
     }, 1500);
   } catch (err) {
     notifyLog('SDXL smoke error: ' + err.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function runSdxlTurboSmoke() {
+  const btn = $('btn-sdxl-turbo-smoke');
+  if (btn) btn.disabled = true;
+  try {
+    const result = await api('/api/actions/sdxl-turbo-smoke', { method: 'POST', body: '{}' });
+    trackJob(result.job_id, 'Running SDXL Turbo smoke…');
+    const poller = setInterval(async () => {
+      try {
+        const job = await api('/api/jobs/' + result.job_id);
+        if (job.status !== 'running' && job.status !== 'queued') {
+          clearInterval(poller);
+          await loadCapabilities();
+          if (btn) btn.disabled = false;
+        }
+      } catch (_) { clearInterval(poller); if (btn) btn.disabled = false; }
+    }, 1500);
+  } catch (err) {
+    notifyLog('SDXL Turbo smoke error: ' + err.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function runFluxSmoke() {
+  const btn = $('btn-flux-smoke');
+  if (btn) btn.disabled = true;
+  try {
+    const result = await api('/api/actions/flux-smoke', { method: 'POST', body: '{}' });
+    trackJob(result.job_id, 'Running Flux smoke…');
+    const poller = setInterval(async () => {
+      try {
+        const job = await api('/api/jobs/' + result.job_id);
+        if (job.status !== 'running' && job.status !== 'queued') {
+          clearInterval(poller);
+          await loadCapabilities();
+          if (btn) btn.disabled = false;
+        }
+      } catch (_) { clearInterval(poller); if (btn) btn.disabled = false; }
+    }, 1500);
+  } catch (err) {
+    notifyLog('Flux smoke error: ' + err.message);
     if (btn) btn.disabled = false;
   }
 }
@@ -743,6 +789,8 @@ function bindEvents() {
       if (action.dataset.action === 'discover-assets') runDiscoverAssets();
       else if (action.dataset.action === 'check-model-stage') runModelStageCheck();
       else if (action.dataset.action === 'sdxl-smoke') runSdxlSmoke();
+      else if (action.dataset.action === 'sdxl-turbo-smoke') runSdxlTurboSmoke();
+      else if (action.dataset.action === 'flux-smoke') runFluxSmoke();
       else if (action.dataset.action === 'inventory-models') runModelInventory();
       else runSimpleAction(action.dataset.action);
     }

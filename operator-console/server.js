@@ -17,6 +17,8 @@ const IMAGE_EDIT_CACHE = path.join(STATE_DIR, 'image-edit-capabilities.json');
 const UPSCALE_CACHE = path.join(STATE_DIR, 'upscale-capabilities.json');
 const MODEL_STAGE_CACHE = path.join(STATE_DIR, 'model-stage-cache.json');
 const SDXL_SMOKE_CACHE = path.join(STATE_DIR, 'sdxl-smoke-cache.json');
+const SDXL_TURBO_SMOKE_CACHE = path.join(STATE_DIR, 'sdxl-turbo-smoke-cache.json');
+const FLUX_SMOKE_CACHE = path.join(STATE_DIR, 'flux-smoke-cache.json');
 const MODEL_STAGE_ROOT = '/Volumes/wc2tb/ImageGen';
 const MODEL_INVENTORY_CACHE = path.join(STATE_DIR, 'model-inventory-cache.json');
 const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md';
@@ -403,8 +405,10 @@ function summarizeModelStage(cache, smokeCache) {
     external_root: MODEL_STAGE_ROOT,
     sdxlTurboStaged: false,
     sdxlTurboStagedState: 'missing',
+    sdxlTurboSmokeProven: false,
     fluxStaged: false,
     fluxStagedState: 'missing',
+    fluxSmokeProven: false,
     sdxlStaged: false,
     sdxlStagedState: 'missing',
     sdxlSmokeProven: false,
@@ -423,6 +427,8 @@ function summarizeModelStage(cache, smokeCache) {
   const invalidCandidates = cache.invalid_candidates || [];
   const help = cache.stable_diffusion_cpp_help_summary || {};
   const smokeProven = !!(cache.runtime_smoke_proven || (smokeCache && smokeCache.runtime_smoke_proven) || (smokeCache && smokeCache.png_valid));
+  const turboSmokeProven = !!(cache.sdxl_turbo_smoke_proven || (smokeCache && smokeCache.sdxl_turbo_smoke_proven));
+  const fluxSmokeProven = !!(cache.flux_smoke_proven || (smokeCache && smokeCache.flux_smoke_proven));
   const turboState = cache.sdxl_turbo_staged_state || (turboCandidates.length > 0 ? 'true' : 'missing');
   const sdxlState = cache.sdxl_staged_state || ((cache.sdxl_candidates || []).length > 0 ? 'true' : 'missing');
   const fluxState = cache.flux_staged_state || (
@@ -445,10 +451,12 @@ function summarizeModelStage(cache, smokeCache) {
     sdxlTurboStaged: turboState === 'true',
     sdxlTurboStagedState: turboState,
     sdxlTurboRecommended: cache.sdxl_turbo_recommended_candidate || null,
+    sdxlTurboSmokeProven: turboSmokeProven,
     sdxlStaged: sdxlState === 'true',
     sdxlStagedState: sdxlState,
     fluxStaged: fluxState === 'true',
     fluxStagedState: fluxState,
+    fluxSmokeProven,
     fluxModelCandidates: fluxModels,
     fluxVaeCandidates: fluxVaes,
     fluxClipLCandidates: fluxClip,
@@ -536,19 +544,19 @@ function buildModelGate(kind, stage) {
   };
   if (kind === 'sdxlTurbo') {
     if (stage.sdxlTurboSmokeProven && stage.sdxlTurboStaged && stage.metalSupportObserved) {
-      return { ...base, staged: true, supported: true, reason: 'SDXL Turbo staged and runtime smoke proof recorded.' };
+      return { ...base, staged: true, supported: true, reason: 'SDXL Turbo staged and bounded smoke proof passed.' };
     }
     if (stage.sdxlTurboStaged) {
-      return { ...base, staged: true, supported: false, reason: 'SDXL Turbo model staged; BigMac Metal smoke proof still required.', unlock_requires: 'Run a bounded SDXL Turbo smoke script after probing BigMac sd-cli flags.' };
+      return { ...base, staged: true, supported: false, reason: 'SDXL Turbo model staged; bounded smoke proof still required.', unlock_requires: 'Run POST /api/actions/sdxl-turbo-smoke after probing BigMac sd-cli flags.' };
     }
     return { ...base, staged: false, supported: false, reason: 'SDXL Turbo model missing on BigMac wc2tb; ignore the 0B q6p/q8p placeholder.', unlock_requires: `Stage ${root}/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors, then run model-stage check.` };
   }
   if (kind === 'flux') {
     if (stage.fluxSmokeProven && stage.fluxStaged && stage.metalSupportObserved) {
-      return { ...base, staged: true, supported: true, reason: 'Flux staged and runtime smoke proof recorded.' };
+      return { ...base, staged: true, supported: true, reason: 'Flux staged and bounded smoke proof passed.' };
     }
     if (stage.fluxStagedState === 'true') {
-      return { ...base, staged: true, supported: false, reason: 'Flux component set staged; BigMac Metal smoke proof still required.', unlock_requires: 'Probe sd-cli flags for Flux model, VAE, CLIP-L, and T5XXL paths, then run bounded smoke.' };
+      return { ...base, staged: true, supported: false, reason: 'Flux component set staged; bounded smoke proof still required.', unlock_requires: 'Run POST /api/actions/flux-smoke after probing BigMac sd-cli flags.' };
     }
     if (stage.fluxStagedState === 'partial') {
       return { ...base, staged: 'partial', supported: false, reason: 'Flux model and VAE staged, but CLIP-L/T5XXL are missing unless the BigMac CLI proves an embedded path.', unlock_requires: `Stage Flux Schnell files under ${root}/flux/flux1-schnell and ${root}/flux/shared, then run model-stage check.` };
@@ -682,7 +690,7 @@ app.get('/api/capabilities', (req, res) => {
   const cacheAgeMinutes = assets ? Math.round((Date.now() / 1000 - assets.discovered_at) / 60) : null;
 
   res.json({
-    app: { name: 'SDCPP Workbench', version: 'a1111-workbench-2026-06-21' },
+    app: { name: 'SDCPP Workbench', version: 'a1111-workbench-2026-06-22' },
     backend: { type: 'stable-diffusion.cpp workflow bridge', workflowRoot: WORKFLOW_ROOT, runsDir: RUNS_DIR, localTunnelPort: localPort },
     assetCache: { present: !!assets, cacheAgeMinutes, discoveredAt: assets ? assets.discovered_at_iso : null },
     modelStage,
@@ -822,7 +830,11 @@ app.get('/api/assets', (req, res) => {
 
 app.get('/api/model-stage', (req, res) => {
   const cache = readJsonCache(MODEL_STAGE_CACHE);
-  const smokeCache = readJsonCache(SDXL_SMOKE_CACHE);
+  const smokeCache = {
+    ...readJsonCache(SDXL_SMOKE_CACHE),
+    ...readJsonCache(SDXL_TURBO_SMOKE_CACHE),
+    ...readJsonCache(FLUX_SMOKE_CACHE)
+  };
   if (!cache) return res.json({ stale: true, missing: true, summary: summarizeModelStage(null, smokeCache) });
   res.json({ stale: false, missing: false, summary: summarizeModelStage(cache, smokeCache), ...cache });
 });
@@ -836,6 +848,18 @@ app.post('/api/actions/check-model-stage', (req, res) => {
 app.post('/api/actions/sdxl-smoke', (req, res) => {
   const jobId = createJob('sdxl-smoke', 'bin/sdcpp-sdxl-smoke.sh');
   runAction(jobId, 'bin/sdcpp-sdxl-smoke.sh', []);
+  res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
+app.post('/api/actions/sdxl-turbo-smoke', (req, res) => {
+  const jobId = createJob('sdxl-turbo-smoke', 'bin/sdcpp-sdxl-turbo-smoke.sh');
+  runAction(jobId, 'bin/sdcpp-sdxl-turbo-smoke.sh', []);
+  res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
+app.post('/api/actions/flux-smoke', (req, res) => {
+  const jobId = createJob('flux-smoke', 'bin/sdcpp-flux-smoke.sh');
+  runAction(jobId, 'bin/sdcpp-flux-smoke.sh', []);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 

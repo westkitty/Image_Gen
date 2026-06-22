@@ -1413,3 +1413,41 @@ Residual scope:
 - No model files were downloaded.
 - No smoke scripts were created or run.
 - No runtime caches or package artifacts were committed.
+
+## Entry 20 — SDXL Turbo and Flux acquisition plus bounded smoke proofs (2026-06-22)
+
+This pass completed the acquisition/proof loop for the next model gates. The user-facing
+contract now matches the actual runtime behavior instead of the earlier staged-only state.
+
+Acquired on `/Volumes/wc2tb/ImageGen`:
+
+- `checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors`
+- `flux/flux1-schnell/flux1-schnell.safetensors`
+- `flux/shared/clip_l.safetensors`
+- `flux/shared/t5xxl_fp16.safetensors`
+
+Proof results:
+
+- `bin/sdcpp-sdxl-turbo-smoke.sh` passed and wrote `state/sdxl-turbo-smoke-cache.json`
+- `bin/sdcpp-flux-smoke.sh` passed and wrote `state/flux-smoke-cache.json`
+- `bin/sdcpp-model-stage-check.sh` was updated to preserve the SDXL base, SDXL Turbo, and Flux proof caches
+- `operator-console/server.js` now exposes `POST /api/actions/sdxl-turbo-smoke` and `POST /api/actions/flux-smoke`
+
+Important runtime note:
+
+- The current Flux proof uses `flux1-schnell-fp8.safetensors` because that is what the local
+  stable-diffusion.cpp build accepts on BigMac. The full `flux1-schnell.safetensors` file was
+  acquired, but it is not the file used for the successful smoke proof.
+
+Verification:
+
+- `bash -n` passed for the new smoke scripts.
+- `bin/sdcpp-sdxl-turbo-smoke.sh` produced a verified 512x512 PNG.
+- `bin/sdcpp-flux-smoke.sh` produced a verified 512x512 PNG.
+- The console UI and API were updated to surface the new proof states.
+
+Residual scope:
+
+- Runtime caches and model files remain outside git, as required.
+- The console still documents the Flux proof file choice explicitly so the full safetensors file is
+  not overstated as runtime-proven.

@@ -12,6 +12,8 @@ MODEL_VOLUME_PATH="/Volumes/wc2tb"
 EXTERNAL_ROOT="/Volumes/wc2tb/ImageGen"
 CACHE="$SDCPP_STATE_DIR/model-stage-cache.json"
 SMOKE_CACHE="$SDCPP_STATE_DIR/sdxl-smoke-cache.json"
+SDXL_TURBO_SMOKE_CACHE="$SDCPP_STATE_DIR/sdxl-turbo-smoke-cache.json"
+FLUX_SMOKE_CACHE="$SDCPP_STATE_DIR/flux-smoke-cache.json"
 TMP_TSV="$(mktemp /tmp/sdcpp_model_stage_XXXXXX.tsv)"
 cleanup_tmp() { rm -f "$TMP_TSV"; }
 trap cleanup_tmp EXIT
@@ -42,6 +44,9 @@ obj = {
     "stable_diffusion_cpp_help_summary": {},
     "metal_support_observed": False,
     "runtime_smoke_proven": False,
+    "sdxl_smoke_proven": False,
+    "sdxl_turbo_smoke_proven": False,
+    "flux_smoke_proven": False,
     "recommended_next_step": reason,
 }
 with open(out, "w") as f:
@@ -96,9 +101,6 @@ if [ -d "$ROOT" ]; then
       sd_xl_turbo_1.0_fp16.safetensors|sd_xl_turbo_1.0.safetensors|*sdxl*turbo*.safetensors|*sdxl*turbo*.gguf)
         printf "CAND\tSDXL_TURBO\t%s\t%s\n" "$f" "$size"
         ;;
-      *sd_xl_base*.safetensors|*sdxl*base*.safetensors|*sdxl*.gguf|*xl*.safetensors|*xl*.ckpt)
-        printf "CAND\tSDXL\t%s\t%s\n" "$f" "$size"
-        ;;
       flux1-schnell.safetensors|flux1-schnell*.gguf|flux1-schnell*Q*.gguf|flux1-schnell*fp8*.safetensors)
         printf "CAND\tFLUX_MODEL\t%s\t%s\n" "$f" "$size"
         ;;
@@ -113,6 +115,9 @@ if [ -d "$ROOT" ]; then
         ;;
       *flux*.gguf|flux1-schnell*.gguf)
         printf "CAND\tFLUX_GGUF\t%s\t%s\n" "$f" "$size"
+        ;;
+      *sd_xl_base*.safetensors|*sdxl*base*.safetensors|sd_xl_refiner*.safetensors|sdxl_refiner*.safetensors|*sdxl-base*.safetensors|*sdxl-refiner*.safetensors)
+        printf "CAND\tSDXL\t%s\t%s\n" "$f" "$size"
         ;;
     esac
   done
@@ -142,11 +147,11 @@ if ! grep -q '__SDCPP_MODEL_STAGE_DONE__' "$TMP_TSV"; then
   fail "model-stage-ssh" "Remote model-stage probe did not complete."
 fi
 
-python3 - "$TMP_TSV" "$CACHE" "$MODEL_VOLUME" "$MODEL_VOLUME_PATH" "$EXTERNAL_ROOT" "$SMOKE_CACHE" <<'PYCACHE'
+python3 - "$TMP_TSV" "$CACHE" "$MODEL_VOLUME" "$MODEL_VOLUME_PATH" "$EXTERNAL_ROOT" "$SMOKE_CACHE" "$SDXL_TURBO_SMOKE_CACHE" "$FLUX_SMOKE_CACHE" <<'PYCACHE'
 import sys, json, datetime, os
 from pathlib import Path
 
-tsv, out, model_volume, model_volume_path, root, smoke_cache_path = sys.argv[1:]
+tsv, out, model_volume, model_volume_path, root, smoke_cache_path, turbo_smoke_cache_path, flux_smoke_cache_path = sys.argv[1:]
 
 obj = {
     "checked_at": datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z"),
@@ -171,6 +176,9 @@ obj = {
     "stable_diffusion_cpp_help_summary": {},
     "metal_support_observed": False,
     "runtime_smoke_proven": False,
+    "sdxl_smoke_proven": False,
+    "sdxl_turbo_smoke_proven": False,
+    "flux_smoke_proven": False,
     "sdxl_turbo_staged_state": "missing",
     "sdxl_staged_state": "missing",
     "flux_staged_state": "missing",
@@ -309,16 +317,29 @@ elif root_exists:
 else:
     obj["recommended_next_step"] = "Create /Volumes/wc2tb/ImageGen and stage SDXL Turbo or Flux files there."
 
-smoke = Path(smoke_cache_path)
-if smoke.exists():
+def merge_smoke(cache_path, key):
+    smoke = Path(cache_path)
+    if not smoke.exists():
+        return False
     try:
         smoke_obj = json.loads(smoke.read_text())
-        if smoke_obj.get("runtime_smoke_proven") or smoke_obj.get("png_valid"):
-            obj["runtime_smoke_proven"] = True
-            if obj["sdxl_staged_state"] == "true":
-                obj["recommended_next_step"] = "SDXL base smoke proof passed."
     except Exception:
-        pass
+        return False
+    proven = bool(smoke_obj.get("runtime_smoke_proven") or smoke_obj.get("png_valid"))
+    if proven:
+        obj[key] = True
+        obj["runtime_smoke_proven"] = True
+    return proven
+
+merge_smoke(smoke_cache_path, "sdxl_smoke_proven")
+merge_smoke(turbo_smoke_cache_path, "sdxl_turbo_smoke_proven")
+merge_smoke(flux_smoke_cache_path, "flux_smoke_proven")
+if obj["sdxl_smoke_proven"] and obj["sdxl_staged_state"] == "true":
+    obj["recommended_next_step"] = "SDXL base smoke proof passed."
+elif obj["sdxl_turbo_smoke_proven"] and obj["sdxl_turbo_staged_state"] == "true":
+    obj["recommended_next_step"] = "SDXL Turbo smoke proof passed."
+elif obj["flux_smoke_proven"] and obj["flux_staged_state"] == "true":
+    obj["recommended_next_step"] = "Flux smoke proof passed."
 
 with open(out, "w") as f:
     json.dump(obj, f, indent=2)

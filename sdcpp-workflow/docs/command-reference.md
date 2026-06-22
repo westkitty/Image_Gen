@@ -217,7 +217,7 @@ Validate SDXL Turbo / Flux staging on BigMac wc2tb without downloading or moving
 ```sh
 bin/sdcpp-model-stage-check.sh
 ```
-Checks `ssh westcat` identity (`bigmac` / `bigmac`), `/Volumes/wc2tb`, write access under `/Volumes/wc2tb/ImageGen`, staged SDXL Turbo/SDXL/Flux candidates, GGUF candidates, and stable-diffusion.cpp help observations. Reads the dedicated SDXL smoke proof cache when present so a later proof survives a fresh stage scan. Writes `state/model-stage-cache.json`. Also available via `POST /api/actions/check-model-stage`; read the cache through `GET /api/model-stage`.
+Checks `ssh westcat` identity (`bigmac` / `bigmac`), `/Volumes/wc2tb`, write access under `/Volumes/wc2tb/ImageGen`, staged SDXL Turbo/SDXL/Flux candidates, GGUF candidates, and stable-diffusion.cpp help observations. Reads the dedicated SDXL, SDXL Turbo, and Flux smoke proof caches when present so a later proof survives a fresh stage scan. Writes `state/model-stage-cache.json`. Also available via `POST /api/actions/check-model-stage`; read the cache through `GET /api/model-stage`.
 
 Target root:
 ```text
@@ -230,6 +230,20 @@ First SDXL Turbo target:
 ```
 
 Flux targets: `flux1-schnell.safetensors` or compatible GGUF/quantized model candidates under `flux/flux1-schnell/`, plus `ae.safetensors`, CLIP-L, and T5XXL candidates under `flux/shared/`. File presence is not support; a bounded BigMac Metal smoke run must produce a real PNG before enabling the gates.
+
+## sdcpp-sdxl-turbo-smoke.sh
+Run the bounded SDXL Turbo proof on BigMac wc2tb after the fp16 checkpoint is staged and nonzero.
+```sh
+bin/sdcpp-sdxl-turbo-smoke.sh
+```
+Checks the live route, confirms the staged Turbo checkpoint is present, probes the discovered `sd-cli` binary for the required flags, runs a low-step 512x512 smoke, and writes `runs/<timestamp>-sdxl-turbo-smoke/{sdxl-turbo-smoke.png,sdxl-turbo-smoke-report.md,sdxl-turbo-smoke-manifest.json}` plus `state/sdxl-turbo-smoke-cache.json`. Also available via `POST /api/actions/sdxl-turbo-smoke`.
+
+## sdcpp-flux-smoke.sh
+Run the bounded Flux proof on BigMac wc2tb after the component set is staged.
+```sh
+bin/sdcpp-flux-smoke.sh
+```
+Checks the live route, confirms the staged Flux model/VAE/text encoders are present, probes the discovered `sd-cli` binary for Flux flags, runs a 512x512 smoke, and writes `runs/<timestamp>-flux-smoke/{flux-smoke.png,flux-smoke-report.md,flux-smoke-manifest.json}` plus `state/flux-smoke-cache.json`. Also available via `POST /api/actions/flux-smoke`.
 
 ## sdcpp-sdxl-smoke.sh
 Run the bounded SDXL base proof on BigMac wc2tb after the base checkpoint is staged and nonzero.
@@ -272,7 +286,7 @@ Also via `POST /api/actions/xyz-plot` (validated: max 16 cells enforced server-s
 Validate staged SDXL Turbo / Flux files on BigMac and write `state/model-stage-cache.json`.
 - Uses local `Path.stat()` on the mounted `/Volumes/wc2tb/ImageGen` tree for accurate size checks.
 - Rejects zero-byte and tiny placeholder files.
-- Preserves SDXL smoke proof state when `state/sdxl-smoke-cache.json` exists.
+- Preserves SDXL smoke proof state when `state/sdxl-smoke-cache.json` exists, and also preserves the SDXL Turbo / Flux proof caches when those files are present.
 - Emits `sdxl_staged_state`, `sdxl_turbo_staged_state`, `flux_staged_state`, and `invalid_candidates`.
 
 ## sdcpp-model-inventory-wc2tb.sh
