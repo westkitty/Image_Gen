@@ -269,9 +269,10 @@ Max 16 cells (x_count × y_count). Requires running BigMac server tunnel.
 Also via `POST /api/actions/xyz-plot` (validated: max 16 cells enforced server-side).
 
 ## sdcpp-model-stage-check.sh
-Validate staged SDXL Turbo / Flux / SDXL files on BigMac and write `state/model-stage-cache.json`.
+Validate staged SDXL Turbo / Flux files on BigMac and write `state/model-stage-cache.json`.
 - Uses local `Path.stat()` on the mounted `/Volumes/wc2tb/ImageGen` tree for accurate size checks.
 - Rejects zero-byte and tiny placeholder files.
+- Preserves SDXL smoke proof state when `state/sdxl-smoke-cache.json` exists.
 - Emits `sdxl_staged_state`, `sdxl_turbo_staged_state`, `flux_staged_state`, and `invalid_candidates`.
 
 ## sdcpp-model-inventory-wc2tb.sh

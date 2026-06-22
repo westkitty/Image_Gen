@@ -13,7 +13,7 @@ verified PNGs back to **this MacBook**. It packages the one-time proof
 - Append-only project ledger: `BigMac_SDCPP_Workflow_Bible.md`.
 
 ## What this is NOT
-- Not SDXL / Flux / LoRA / ControlNet / ComfyUI. SD 1.5 @ 512×512 only.
+- Not full SDXL / Flux / LoRA / ControlNet / ComfyUI parity. SD 1.5 @ 512×512 remains the main generation path; bounded SDXL base smoke proof is available separately.
 - Not a model downloader (weights are staged manually on BigMac).
 - Not a UI. Not a Python pipeline. No Node/pnpm.
 - Not a process manager for anything it didn't start.
@@ -98,7 +98,7 @@ bin/sdcpp-export-latest-markdown.sh --type batch                        # UI han
 - Never `--backend metal` (it fails in this build).
 - Never broad-kill (`pkill`, `killall`); only the workflow's own pieces.
 - Never touch the unrelated process that may hold port **7860**.
-- Never use `/Volumes/wc2tb` for inference. Never download weights. Never auto-install packages.
+- Never use `/Volumes/wc2tb` for routine inference or model growth. The bounded SDXL base proof is the only explicit proof-only exception and is tightly scripted. Never download weights. Never auto-install packages.
 - Remote `$HOME` is discovered/expanded on BigMac, never hard-guessed locally.
 
 ## Known gotchas

@@ -12,11 +12,13 @@ We do not expose a generic `/api/run` endpoint. Instead, explicit routes map to 
 - `POST /api/actions/verify` -> `bin/sdcpp-verify.sh`
 - `POST /api/actions/seed-test` -> `bin/sdcpp-seed-test.sh`
 - `POST /api/actions/clean-old-runs` -> `bin/sdcpp-clean-old-runs.sh`
+- `POST /api/actions/sdxl-smoke` -> `bin/sdcpp-sdxl-smoke.sh`
 
 ## Safe Execution
 - Uses Node's `child_process.spawn`.
 - `shell: false` is explicitly set to prevent injection and shell interpolation.
 - Parameters (like `prompt`, `seed`, `steps`, `cfg_scale`, `width`, `height`, `sampler`) are validated against strict type/length boundaries and passed safely as distinct array elements, not concatenated strings.
+- The SDXL smoke route is proof-only and uses a fixed prompt/model path; it does not accept user-controlled model paths.
 
 ## Forbidden Actions Enforced
 The bridge physically lacks the code paths to execute:

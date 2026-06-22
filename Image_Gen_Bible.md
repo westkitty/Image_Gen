@@ -1336,3 +1336,26 @@ Verification:
 Residual scope:
 
 - Turbo, Flux, img2img, inpaint, outpaint, LoRA injection, VAE switching, Real-ESRGAN, Face Restore, ControlNet, textual inversion, and hypernetworks remain blocked as before.
+
+## Entry 17 — Release-candidate bug sweep and stale-claim cleanup (2026-06-21)
+
+This pass did not add capabilities. It cleaned stale release-facing wording and bridge docs after the SDXL smoke proof landed:
+
+- `operator-console/README.md` — added the explicit `POST /api/actions/sdxl-smoke` proof row and changed the SDXL language to say the bounded proof is separate from full A1111 parity.
+- `sdcpp-workflow/README.md` — removed the blanket “not SDXL” claim and clarified that the bounded SDXL base proof is the only explicit exception to the routine inference rule.
+- `operator-console/docs/model-staging-sdxl-turbo-flux.md` — updated the live-state section so SDXL base is described as proof-only and SDXL Turbo / Flux remain the next bounded targets.
+- `operator-console/docs/a1111-workbench-implementation.md` — removed the stale “best next runtime proof target” wording for SDXL base and kept the proof-only limitation explicit.
+- `operator-console/docs/command-bridge-safety.md` — documented the `POST /api/actions/sdxl-smoke` bridge route and its fixed proof-only prompt/model behavior.
+- `sdcpp-workflow/docs/command-reference.md` — recorded that `bin/sdcpp-model-stage-check.sh` now preserves the SDXL smoke proof cache.
+
+Verification:
+
+- `find`/`grep` audits for stale paths and overclaims were rerun.
+- `bash -n` passed for all shell scripts in the tree.
+- `node --check` passed for `operator-console/server.js` and `operator-console/public/app.js`.
+- `git diff --check` passed.
+
+Residual scope:
+
+- Historical handoff/proof Markdown intentionally still contains legacy or superseded context.
+- No runtime outputs, caches, or release artifacts were committed.

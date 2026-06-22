@@ -126,12 +126,13 @@ Apple Metal support comes from the stable-diffusion.cpp build, not from the mode
 - it accepts the required flags,
 - it can produce a real PNG.
 
-Only after a successful bounded smoke run should the app mark SDXL Turbo, Flux, or SDXL supported.
+Only after a successful bounded smoke run should the app mark SDXL Turbo or Flux supported. SDXL base is supported through the dedicated bounded smoke proof and should stay labeled as proof-only, not full A1111 parity.
 
 ## Live Update — 2026-06-21
 
 - `sd_xl_base_1.0.safetensors` is present and nonzero under `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/`.
+- `bin/sdcpp-sdxl-smoke.sh` has already passed, so SDXL base is proven only at the bounded smoke level.
 - `sdxl-turbo` is still blocked on the missing fp16 file; the 0B `sd_xl_turbo_q6p_q8p.ckpt` is not a valid smoke target.
 - Flux is partial: `flux1-schnell-fp8.safetensors` and `ae.safetensors` are staged, but CLIP-L and T5XXL are missing.
 - `bin/sdcpp-model-stage-check.sh` now rejects zero-byte and tiny placeholders in the stage cache.
-- The next bounded smoke to pursue is SDXL base, after inspecting live `sd-cli --help` output and confirming the required flags.
+- The next bounded smoke target is SDXL Turbo once the fp16 checkpoint is staged; Flux remains blocked until its missing components or embedded path are proven.
