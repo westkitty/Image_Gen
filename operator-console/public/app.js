@@ -672,7 +672,8 @@ async function loadGallery(reset = false) {
     } else if (reset) {
       const msg = document.createElement('div');
       msg.className = 'empty-state';
-      msg.textContent = 'No runs match this filter.';
+      const filterLabels = { all: 'runs', controlled: 'controlled generation runs', 'controlled-sd15': 'SD1.5 runs', 'controlled-sdxl-base': 'SDXL base runs', 'controlled-sdxl-turbo': 'SDXL Turbo runs', 'controlled-flux-fp8': 'Flux fp8 runs', 'hires-fix': 'Hires Fix runs', upscale: 'upscale runs', smoke: 'smoke proof runs', failed: 'failed runs' };
+      msg.textContent = 'No ' + (filterLabels[state.libraryFilter] || state.libraryFilter) + ' found.';
       el.appendChild(msg);
     }
     state.libraryOffset = typeof data.nextOffset === 'number' ? data.nextOffset : state.libraryOffset + items.length;
@@ -887,8 +888,8 @@ async function showRunDetail(runId) {
   }
 
   // Failed gate
-  const failedGateHtml = (status === 'FAIL' && firstFailedGate)
-    ? '<div class="run-detail-failed-gate"><strong>First failed gate:</strong> ' + esc(firstFailedGate) + '</div>'
+  const failedGateHtml = status === 'FAIL'
+    ? '<div class="run-detail-failed-gate">' + (firstFailedGate ? '<strong>First failed gate:</strong> ' + esc(firstFailedGate) : 'Run failed — no gate failure detail recorded.') + '</div>'
     : '';
 
   // Privacy notice
@@ -925,11 +926,17 @@ async function showRunDetail(runId) {
     const p = primaryImage ? (runId + '/' + primaryImage) : runId;
     navigator.clipboard.writeText(p).catch(() => {});
   });
-  $('btn-detail-send-upscale').addEventListener('click', () => {
-    if (primaryImage) sendToUpscale(runId, primaryImage);
-    closeRunDetail();
-    showScreen('enhance');
-  });
+  const upscaleBtn = $('btn-detail-send-upscale');
+  if (upscaleBtn) {
+    upscaleBtn.disabled = !primaryImage;
+    upscaleBtn.title = primaryImage ? '' : 'No image available for this run';
+    upscaleBtn.addEventListener('click', () => {
+      if (!primaryImage) return;
+      sendToUpscale(runId, primaryImage);
+      closeRunDetail();
+      showScreen('enhance');
+    });
+  }
   $('btn-detail-view-manifest').addEventListener('click', () => {
     if (manifestForView) notifyLog(JSON.stringify(manifestForView, null, 2));
     showScreen('system');
