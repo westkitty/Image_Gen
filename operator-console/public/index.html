@@ -81,6 +81,15 @@
                 <div class="quick-row"><button type="button" class="ghost" id="btn-random-seed">Random seed</button><button type="button" class="ghost" id="btn-reuse-seed">Reuse last seed</button><span class="gate">Variation seed / seed resize visible; backend not wired.</span></div>
               </details>
 
+              <details class="block"><summary>Import / paste settings JSON</summary>
+                <p class="fineprint">Paste JSON copied from "Copy settings JSON" in Library. Only the closed target list is accepted; modelPath and arbitrary targets are rejected.</p>
+                <textarea id="settings-import-input" rows="3" placeholder='{"target":"sdxl-turbo","width":512,"height":512,"steps":4,"cfg_scale":0,"seed":"123456789"}'></textarea>
+                <div class="quick-row" style="margin-top:8px">
+                  <button type="button" class="ghost small" id="btn-load-settings">Load into Create</button>
+                  <button type="button" class="ghost small" id="btn-paste-settings">Paste from clipboard</button>
+                </div>
+              </details>
+
               <details class="block"><summary>Hires Fix / faces / tiling</summary>
                 <div class="three-col"><label class="check-card"><input id="hires_fix" type="checkbox" disabled /> Hires Fix</label><label class="check-card"><input id="restore_faces" type="checkbox" disabled /> Restore faces</label><label class="check-card"><input id="tiling" type="checkbox" /> Tiling</label></div>
                 <p class="fineprint">Latent Hires Fix (A1111-style, single-pass denoising) is not yet implemented here — use the Enhance screen for two-pass Hires Fix. Face restoration requires GFPGAN/CodeFormer on the inference host.</p>

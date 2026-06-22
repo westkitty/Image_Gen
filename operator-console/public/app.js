@@ -757,6 +757,36 @@ function closeRunDetail() {
   if (overlay) overlay.hidden = true;
 }
 
+const SETTINGS_ALLOWED_KEYS = new Set(['target', 'width', 'height', 'steps', 'cfg_scale', 'seed', 'prompt', 'negative_prompt']);
+const SETTINGS_BLOCKED_KEYS = new Set(['modelPath', 'model_path', 'checkpoint_path', 'checkpoint', 'lora', 'vae', 'controlnet', 'controlNet', 'version', 'modelVersion']);
+const SETTINGS_ALLOWED_TARGETS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8']);
+
+function loadSettingsJson(jsonStr) {
+  let s;
+  try { s = JSON.parse(jsonStr.trim()); } catch (e) { showCreateNote('Parse error: ' + e.message, 'privacy'); return; }
+  if (!s || typeof s !== 'object' || Array.isArray(s)) { showCreateNote('Settings must be a JSON object.', 'privacy'); return; }
+  for (const k of Object.keys(s)) {
+    if (SETTINGS_BLOCKED_KEYS.has(k)) { showCreateNote('Rejected: "' + k + '" is not an allowed field.', 'privacy'); return; }
+    if (!SETTINGS_ALLOWED_KEYS.has(k)) { showCreateNote('Rejected: unknown field "' + k + '". Only generation params accepted.', 'privacy'); return; }
+  }
+  if (s.target != null && !SETTINGS_ALLOWED_TARGETS.has(s.target)) { showCreateNote('Rejected: target "' + s.target + '" is not on the allowed list (sd15, sdxl-base, sdxl-turbo, flux-fp8).', 'privacy'); return; }
+  if (s.width != null && (typeof s.width !== 'number' || s.width < 64 || s.width > 2048)) { showCreateNote('Rejected: width out of range (64–2048).', 'privacy'); return; }
+  if (s.height != null && (typeof s.height !== 'number' || s.height < 64 || s.height > 2048)) { showCreateNote('Rejected: height out of range (64–2048).', 'privacy'); return; }
+  if (s.steps != null && (typeof s.steps !== 'number' || s.steps < 1 || s.steps > 150)) { showCreateNote('Rejected: steps out of range (1–150).', 'privacy'); return; }
+  if (s.cfg_scale != null && (typeof s.cfg_scale !== 'number' || !isFinite(s.cfg_scale))) { showCreateNote('Rejected: cfg_scale must be a finite number.', 'privacy'); return; }
+  if (s.target) { const m = $('model'); if (m) { m.value = s.target; applyControlledTargetDefaults(s.target); } }
+  if (s.width) $('width').value = s.width;
+  if (s.height) $('height').value = s.height;
+  if (s.steps) $('steps').value = s.steps;
+  if (s.cfg_scale != null) $('cfg_scale').value = s.cfg_scale;
+  if (s.seed != null) $('seed').value = String(s.seed);
+  if ($('preset')) $('preset').value = 'Custom';
+  if (s.prompt) { $('prompt').value = s.prompt; $('prompt').dispatchEvent(new Event('input')); }
+  if (s.negative_prompt) $('negative_prompt').value = s.negative_prompt;
+  const seedNote = s.seed != null ? ' Seed ' + s.seed + ' loaded — click "Random seed" to vary.' : '';
+  showCreateNote('Settings loaded.' + seedNote + ' Review before generating.', '');
+}
+
 function showCreateNote(msg, variant) {
   const note = $('create-note');
   if (!note) return;
@@ -788,6 +818,7 @@ function replayInCreate(replay, runId) {
   $('negative_prompt').value = (replay.prompt_saved && replay.negative_prompt) ? replay.negative_prompt : '';
   let noteMsg = 'Loaded settings from run ' + runId + '.';
   let noteVariant = '';
+  if (replay.seed != null) { noteMsg += ' Seed ' + replay.seed + ' restored — click "Random seed" to vary output.'; }
   if (replay.privacy_note) { noteMsg += ' ' + replay.privacy_note; noteVariant = 'privacy'; }
   if (replay.flux_caveat) { noteMsg += ' ' + replay.flux_caveat; noteVariant = noteVariant || 'flux'; }
   const isMinimal = (replay.width && replay.width < 256) || (replay.height && replay.height < 256) || (replay.steps && replay.steps <= 1);
@@ -1115,6 +1146,8 @@ function bindEvents() {
   $('set-save-prompts').addEventListener('change', e => saveBool('savePrompts', e.target.checked));
   $('btn-random-seed').addEventListener('click', () => { $('seed').value = String(Math.floor(Math.random() * 2147483647)); });
   $('btn-reuse-seed').addEventListener('click', () => { if (state.lastSeed) $('seed').value = state.lastSeed; });
+  $('btn-load-settings').addEventListener('click', () => { const v = ($('settings-import-input') || {}).value || ''; if (v.trim()) loadSettingsJson(v); else showCreateNote('Paste settings JSON first.', 'privacy'); });
+  $('btn-paste-settings').addEventListener('click', async () => { try { const t = await navigator.clipboard.readText(); $('settings-import-input').value = t; loadSettingsJson(t); } catch { showCreateNote('Clipboard read failed — paste manually.', 'privacy'); } });
   $('btn-load-library').addEventListener('click', () => loadGallery(true));
   $('btn-refresh-all').addEventListener('click', async () => { await loadCapabilities(); await loadGallery(true); });
   // Library filter buttons
