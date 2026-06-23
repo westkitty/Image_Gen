@@ -23,6 +23,8 @@ const FLUX_SMOKE_CACHE = path.join(STATE_DIR, 'flux-smoke-cache.json');
 const MODEL_STAGE_ROOT = '/Volumes/wc2tb/ImageGen';
 const MODEL_INVENTORY_CACHE = path.join(STATE_DIR, 'model-inventory-cache.json');
 const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md';
+const GENERATION_JOB_SCHEMA = path.join(__dirname, 'schemas/generation-job.schema.json');
+const MODEL_COMPATIBILITY_REGISTRY = path.join(__dirname, 'schemas/model-compatibility.json');
 
 let schedulerSelectionSupported = true;
 let vaeSwitchingSupported = true;
@@ -46,7 +48,7 @@ const ALLOWED_SAMPLERS = new Set([
   'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm'
 ]);
 const ALLOWED_SCHEDULERS = new Set(['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple']);
-const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis', 'sdxl-juggernaut', 'sdxl-realvisxl', 'sdxl-cyberrealistic', 'sdxl-epicrealism']);
+const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis', 'sdxl-juggernaut', 'sdxl-realvisxl', 'sdxl-cyberrealistic', 'sdxl-epicrealism', 'sdxl-biglust', 'sdxl-lustify', 'sdxl-biglove']);
 const CONTROLLED_TARGETS = [
   {
     id: 'sd15',
@@ -207,10 +209,10 @@ const CONTROLLED_TARGETS = [
     route: '/api/actions/generate-controlled',
     caveat: 'SDXL Checkpoint (~6-7GB fp16). Excellent photorealism with strong male anatomy, versatile for athletic/muscular men and NSFW; widely praised for realistic bodies in gay male workflows. (Civitai search Juggernaut XL). Not full A1111 parity.',
     modelFile: 'juggernaut_xl_ragnarok.safetensors',
-    defaultWidth: 1024,
-    defaultHeight: 1024,
-    defaultSteps: 10,
-    defaultCfgScale: 6,
+    defaultWidth: 832,
+    defaultHeight: 1216,
+    defaultSteps: 35,
+    defaultCfgScale: 4,
     defaultSampler: 'dpm++2m',
     minSteps: 1,
     maxSteps: 150,
@@ -227,8 +229,8 @@ const CONTROLLED_TARGETS = [
     modelFile: 'realvisxl_v5_0.safetensors',
     defaultWidth: 1024,
     defaultHeight: 1024,
-    defaultSteps: 10,
-    defaultCfgScale: 6.5,
+    defaultSteps: 30,
+    defaultCfgScale: 4,
     defaultSampler: 'dpm++2m',
     minSteps: 1,
     maxSteps: 150,
@@ -243,10 +245,10 @@ const CONTROLLED_TARGETS = [
     route: '/api/actions/generate-controlled',
     caveat: 'SDXL Checkpoint. Strong photoreal skin textures, musculature, and realistic male forms; effective for detailed adult male NSFW. (Search Civitai CyberRealistic XL). Not full A1111 parity.',
     modelFile: 'cyberrealistic_xl_v10.safetensors',
-    defaultWidth: 1024,
-    defaultHeight: 1024,
-    defaultSteps: 10,
-    defaultCfgScale: 5,
+    defaultWidth: 832,
+    defaultHeight: 1216,
+    defaultSteps: 30,
+    defaultCfgScale: 4,
     defaultSampler: 'dpm++2m',
     minSteps: 1,
     maxSteps: 150,
@@ -261,6 +263,60 @@ const CONTROLLED_TARGETS = [
     route: '/api/actions/generate-controlled',
     caveat: 'SDXL Checkpoint (https://civitai.com/models/277058/epicrealism-xl or latest). Top photoreal benchmark with excellent anatomy adherence; pairs extremely well with male prompts/LoRAs for homoerotic realism. Not full A1111 parity.',
     modelFile: 'epicrealism_xl_pure_fix.safetensors',
+    defaultWidth: 832,
+    defaultHeight: 1216,
+    defaultSteps: 30,
+    defaultCfgScale: 5,
+    defaultSampler: 'dpm++2m',
+    minSteps: 1,
+    maxSteps: 150,
+    maxWidth: 2048,
+    maxHeight: 2048
+  },
+  {
+    id: 'sdxl-biglust',
+    label: 'Big Lust v1.6 (bigASP + LUSTIFY / BigAspLustify)',
+    status: 'staged',
+    mode: 'migrated controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'SDXL Checkpoint. Photoreal NSFW-focused merge of bigASP and LUSTIFY with solid male anatomy; community notes good results for masculine/homoerotic content. Not full A1111 parity.',
+    modelFile: 'big_lust_v1_6.safetensors',
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    defaultSteps: 30,
+    defaultCfgScale: 5,
+    defaultSampler: 'dpm++2m',
+    minSteps: 1,
+    maxSteps: 150,
+    maxWidth: 2048,
+    maxHeight: 2048
+  },
+  {
+    id: 'sdxl-lustify',
+    label: 'LUSTIFY! (core photoreal NSFW)',
+    status: 'staged',
+    mode: 'migrated controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'SDXL Checkpoint. Photoreal NSFW merge with excellent male anatomy, skin details, and homoerotic capability (LUSTIFY series). Not full A1111 parity.',
+    modelFile: 'lustify_v8_apex.safetensors',
+    defaultWidth: 832,
+    defaultHeight: 1216,
+    defaultSteps: 30,
+    defaultCfgScale: 5,
+    defaultSampler: 'dpm++2m',
+    minSteps: 1,
+    maxSteps: 150,
+    maxWidth: 2048,
+    maxHeight: 2048
+  },
+  {
+    id: 'sdxl-biglove',
+    label: 'Big Love (photoreal male-leaning Lustify hybrid)',
+    status: 'staged',
+    mode: 'migrated controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'SDXL Checkpoint. Photoreal male-leaning with NSFW focus (BigLove XL / Lustify hybrid). Not full A1111 parity.',
+    modelFile: 'big_love_photo.safetensors',
     defaultWidth: 1024,
     defaultHeight: 1024,
     defaultSteps: 10,
@@ -734,6 +790,185 @@ function buildGenerateArgs(params, includeApi = false) {
   if (params.seed) args.push('--seed', String(params.seed));
   if (includeApi && params.api) args.push('--api', params.api);
   return args;
+}
+
+function readSchemaFile(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    return { error: `Could not read schema file: ${err.message}` };
+  }
+}
+
+function commandPreview(script, args, sensitives) {
+  return {
+    script,
+    argv: [script, ...args],
+    command: getRedactedCommandSummary(script, args, sensitives),
+    redacted: sensitives && sensitives.length > 0
+  };
+}
+
+function buildTxt2imgPreview(body) {
+  const discoveredTargets = buildDiscoveredTargets(readJsonCache(ASSETS_CACHE));
+  const allTargetById = discoveredTargets.length
+    ? { ...CONTROLLED_TARGET_BY_ID, ...Object.fromEntries(discoveredTargets.map(t => [t.id, t])) }
+    : CONTROLLED_TARGET_BY_ID;
+  const previewBody = { ...(body || {}) };
+  delete previewBody.job_type;
+  delete previewBody.type;
+  delete previewBody.debug_command_preview;
+  delete previewBody.debug_json_preview;
+  const params = normalizeControlledGenerationBody(previewBody);
+  const err = validateControlledGenerationParams(params, allTargetById);
+  if (err) return { ok: false, status: 400, error: err };
+  const spec = allTargetById[params.target];
+  const args = ['--target', params.target, '--prompt', params.prompt];
+  if (spec.modelPath && !CONTROLLED_TARGET_BY_ID[params.target]) args.push('--model-path', spec.modelPath);
+  if (params.negative_prompt) args.push('--negative-prompt', params.negative_prompt);
+  if (params.width) args.push('--width', String(params.width));
+  if (params.height) args.push('--height', String(params.height));
+  if (params.steps) args.push('--steps', String(params.steps));
+  if (params.cfg_scale !== undefined && params.cfg_scale !== null && params.cfg_scale !== '') args.push('--cfg', String(params.cfg_scale));
+  if (params.seed !== undefined && params.seed !== null && params.seed !== '') args.push('--seed', String(params.seed));
+  if (params.api && spec.id === 'sd15') args.push('--api', params.api);
+  if (params.scheduler) args.push('--scheduler', params.scheduler);
+  if (params.vae && params.vae !== 'auto') {
+    const vaePath = resolveVaePath(params.vae);
+    if (vaePath) args.push('--vae', vaePath);
+  }
+  args.push('--save-prompts', params.save_prompts ? 'true' : 'false');
+  const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
+  return {
+    ok: true,
+    job_type: 'txt2img',
+    normalized: { ...params, target: spec.id },
+    compatibility: compatibilityForTarget(spec.id),
+    preview: commandPreview('bin/sdcpp-controlled-generate.sh', args, sensitives)
+  };
+}
+
+function buildImageEditPreview(kind, body) {
+  const gateEnabled = kind === 'inpaint' ? inpaintSupported : img2imgSupported;
+  if (!gateEnabled) {
+    return { ok: false, status: 409, error: `${kind} is not currently supported.` };
+  }
+  const params = normalizeGenerationBody(body || {});
+  const err = validateGenerationParams(params);
+  if (err) return { ok: false, status: 400, error: err };
+  const strength = body && body.strength !== undefined ? Number(body.strength) : 0.75;
+  if (!Number.isFinite(strength) || strength < 0.01 || strength > 0.99) {
+    return { ok: false, status: 400, error: 'strength must be a number between 0.01 and 0.99' };
+  }
+  const initImage = body && body.run_id && body.init_image_file
+    ? path.resolve(RUNS_DIR, String(body.run_id), String(body.init_image_file))
+    : '<selected-run-image>';
+  const args = ['--init-img', initImage];
+  if (kind === 'inpaint') args.push('--mask', '<mask-upload-created-on-submit>');
+  args.push('--strength', String(strength), '--prompt', params.prompt);
+  if (params.negative_prompt) args.push('--negative', params.negative_prompt);
+  if (params.steps) args.push('--steps', String(params.steps));
+  if (params.width) args.push('--width', String(params.width));
+  if (params.height) args.push('--height', String(params.height));
+  if (params.cfg_scale) args.push('--cfg-scale', String(params.cfg_scale));
+  if (params.sampler) args.push('--sampler', params.sampler);
+  if (params.scheduler) args.push('--scheduler', params.scheduler);
+  if (params.seed) args.push('--seed', String(params.seed));
+  if (params.vae && params.vae !== 'auto') {
+    const vaePath = resolveVaePath(params.vae);
+    if (vaePath) args.push('--vae', vaePath);
+  }
+  const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
+  return {
+    ok: true,
+    job_type: kind,
+    normalized: { ...params, strength, run_id: body.run_id || null, init_image_file: body.init_image_file || null },
+    compatibility: compatibilityForTarget(params.model || 'sd15'),
+    preview: commandPreview(kind === 'inpaint' ? 'bin/sdcpp-inpaint.sh' : 'bin/sdcpp-img2img.sh', args, sensitives)
+  };
+}
+
+function compatibilityForTarget(targetId) {
+  const registry = readSchemaFile(MODEL_COMPATIBILITY_REGISTRY);
+  const target = String(targetId || '').toLowerCase();
+  let family = 'sd15';
+  if (target.includes('flux')) family = 'flux';
+  else if (target.includes('turbo')) family = 'sdxl-turbo';
+  else if (target.includes('sdxl') || target.includes('xl')) family = 'sdxl';
+  return {
+    family,
+    ...(registry.model_families && registry.model_families[family] ? registry.model_families[family] : {}),
+    parity_categories: registry.parity_categories || {}
+  };
+}
+
+function buildGenerationPreview(body) {
+  const jobType = String((body && (body.job_type || body.type)) || 'txt2img');
+  if (jobType === 'txt2img') return buildTxt2imgPreview(body);
+  if (jobType === 'img2img' || jobType === 'inpaint') return buildImageEditPreview(jobType, body || {});
+  return { ok: false, status: 400, error: `Unsupported preview job_type: ${jobType}` };
+}
+
+function validateMaskDataUrl(maskData, tempPrefix = 'validate-mask') {
+  if (!maskData) return { ok: false, status: 400, error: 'mask_data is required (base64 PNG data URL)' };
+  const maskStripped = String(maskData).replace(/^data:image\/png;base64,/, '');
+  if (maskStripped.length < 50) return { ok: false, status: 400, error: 'mask_data appears to be empty or invalid' };
+  let maskBuf;
+  try {
+    maskBuf = Buffer.from(maskStripped, 'base64');
+    if (maskBuf.length < 8 || maskBuf[0] !== 0x89 || maskBuf[1] !== 0x50 || maskBuf[2] !== 0x4e || maskBuf[3] !== 0x47) {
+      return { ok: false, status: 400, error: 'mask_data must be a valid PNG image' };
+    }
+  } catch (e) {
+    return { ok: false, status: 400, error: 'Failed to decode mask_data: ' + e.message };
+  }
+
+  const rawPath = path.join(MASK_UPLOADS_DIR, `${tempPrefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.png`);
+  fs.writeFileSync(rawPath, maskBuf);
+  const MASK_CHECK_PY = [
+    'import sys',
+    'from PIL import Image',
+    'img = Image.open(sys.argv[1]).convert("RGBA")',
+    '_, _, _, a = img.split()',
+    'mask = a.point([0] + [255]*255)',
+    'print("painted" if mask.getbbox() else "blank")'
+  ].join('\n');
+  try {
+    const result = execFileSync('python3', ['-c', MASK_CHECK_PY, rawPath], { timeout: 15000 }).toString().trim();
+    try { fs.unlinkSync(rawPath); } catch (_) {}
+    if (result === 'blank') return { ok: false, status: 400, error: 'Mask has no painted pixels. Paint over the region to inpaint first.' };
+  } catch (e) {
+    try { fs.unlinkSync(rawPath); } catch (_) {}
+    return { ok: false, status: 400, error: 'Could not inspect mask alpha channel: ' + e.message };
+  }
+  return { ok: true, bytes: maskBuf.length };
+}
+
+function validateInpaintBody(body) {
+  body = body || {};
+  const runId = typeof body.run_id === 'string' ? body.run_id.trim() : '';
+  const initImageFile = typeof body.init_image_file === 'string' ? body.init_image_file.trim() : '';
+  if (!runId) return { ok: false, status: 400, error: 'run_id is required' };
+  if (!initImageFile) return { ok: false, status: 400, error: 'init_image_file is required' };
+  if (!/^20\d{6}-\d{6}-[a-zA-Z0-9_-]+$/.test(runId)) return { ok: false, status: 400, error: 'Invalid run_id format' };
+  if (!/^[a-zA-Z0-9_\-.]+$/.test(initImageFile) || initImageFile.includes('..') || initImageFile.includes('/')) {
+    return { ok: false, status: 400, error: 'init_image_file must be a safe filename (no path separators or traversal)' };
+  }
+  if (!initImageFile.toLowerCase().endsWith('.png')) return { ok: false, status: 400, error: 'init_image_file must be a .png file' };
+  const initImgPath = path.resolve(RUNS_DIR, runId, initImageFile);
+  const relCheck = path.relative(RUNS_DIR, initImgPath);
+  if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) return { ok: false, status: 403, error: 'Init image path resolves outside runs directory' };
+  if (!fs.existsSync(initImgPath)) return { ok: false, status: 404, error: `Init image not found: ${runId}/${initImageFile}` };
+  const strength = body.strength !== undefined ? Number(body.strength) : 0.75;
+  if (!Number.isFinite(strength) || strength < 0.01 || strength > 0.99) {
+    return { ok: false, status: 400, error: 'strength must be a number between 0.01 and 0.99' };
+  }
+  const maskCheck = validateMaskDataUrl(body.mask_data, 'validate-inpaint-mask');
+  if (!maskCheck.ok) return maskCheck;
+  const params = normalizeGenerationBody(body);
+  const genErr = validateGenerationParams(params);
+  if (genErr) return { ok: false, status: 400, error: genErr };
+  return { ok: true, params: { ...params, run_id: runId, init_image_file: initImageFile, strength, mask_bytes: maskCheck.bytes } };
 }
 
 function normalizeHiresFixBody(body) {
@@ -1267,6 +1502,10 @@ app.get('/api/capabilities', (req, res) => {
       gallery: { supported: true },
       metadataReuse: { supported: true, route: '/api/runs/:runId/metadata', caveat: 'Prompt fields redacted when privacy is enabled.' },
       pngInfo: { supported: 'partial', route: '/api/runs/:runId/metadata', caveat: 'Run-image tEXt/iTXt chunks readable via metadata endpoint. Arbitrary PNG upload not supported.' },
+      generationSchema: { supported: true, route: '/api/generation-schema' },
+      compatibilityMatrix: { supported: true, route: '/api/model-compatibility' },
+      commandPreview: { supported: true, route: '/api/preview/generation' },
+      jsonPreview: { supported: true, route: '/api/preview/generation' },
       discoverAssets: { supported: true, route: '/api/actions/discover-assets' },
       probeImageEdit: { supported: true, route: '/api/actions/probe-image-edit' },
       probeUpscale: { supported: true, route: '/api/actions/probe-upscale' },
@@ -1312,6 +1551,20 @@ app.post('/api/actions/server-stop', (req, res) => {
   const jobId = createJob('server-stop', 'bin/sdcpp-server-stop.sh');
   runAction(jobId, 'bin/sdcpp-server-stop.sh', []);
   res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
+app.get('/api/generation-schema', (req, res) => {
+  res.json(readSchemaFile(GENERATION_JOB_SCHEMA));
+});
+
+app.get('/api/model-compatibility', (req, res) => {
+  res.json(readSchemaFile(MODEL_COMPATIBILITY_REGISTRY));
+});
+
+app.post('/api/preview/generation', (req, res) => {
+  const preview = buildGenerationPreview(req.body || {});
+  if (!preview.ok) return res.status(preview.status || 400).json({ error: preview.error });
+  res.json(preview);
 });
 
 app.post('/api/actions/generate-single', (req, res) => {
@@ -1572,6 +1825,29 @@ app.post('/api/validate/hires-fix', (req, res) => {
   const normalized = normalizeHiresFixBody(req.body || {});
   if (!normalized.ok) return res.status(normalized.status).json({ error: normalized.error });
   res.json(hiresFixValidationResponse(normalized));
+});
+
+app.post('/api/validate/inpaint', (req, res) => {
+  const validated = validateInpaintBody(req.body || {});
+  if (!validated.ok) return res.status(validated.status).json({ error: validated.error });
+  res.json({
+    ok: true,
+    run_id: validated.params.run_id,
+    init_image_file: validated.params.init_image_file,
+    strength: validated.params.strength,
+    width: validated.params.width,
+    height: validated.params.height,
+    steps: validated.params.steps,
+    cfg_scale: validated.params.cfg_scale,
+    sampler: validated.params.sampler,
+    scheduler: validated.params.scheduler,
+    seed: validated.params.seed || '',
+    vae: validated.params.vae,
+    mask_bytes: validated.params.mask_bytes,
+    prompt_saved: validated.params.save_prompts === true,
+    prompt: validated.params.save_prompts === true ? validated.params.prompt : '[REDACTED]',
+    negative_prompt: validated.params.save_prompts === true ? validated.params.negative_prompt : '[REDACTED]'
+  });
 });
 
 // img2img — gated behind img2imgSupported; init image must be within runs/

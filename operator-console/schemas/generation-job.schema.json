@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.image-gen/operator-console/schemas/generation-job.schema.json",
+  "title": "Image_Gen Generation Job",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["job_type", "prompt"],
+  "properties": {
+    "job_type": { "type": "string", "enum": ["txt2img", "img2img", "inpaint", "hires_fix", "upscale"] },
+    "prompt": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "negative_prompt": { "type": "string", "maxLength": 4000, "default": "" },
+    "preset": { "type": "string", "description": "Operator preset or Custom." },
+    "mode": { "type": "string", "enum": ["cli", "server"], "default": "server" },
+    "api": { "type": "string", "enum": ["openai", "sdapi", "both", "native"], "default": "openai" },
+    "style": { "type": "string", "description": "Local prompt style name when restored from UI storage." },
+    "target": { "type": "string", "description": "Operator console controlled generation target." },
+    "model": { "type": "string", "description": "Alias for target/checkpoint in current UI." },
+    "checkpoint": { "type": "string", "description": "Explicit checkpoint identifier when a registry path owns it." },
+    "vae": { "type": "string", "default": "auto" },
+    "loras": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "weight"],
+        "properties": {
+          "name": { "type": "string" },
+          "weight": { "type": "number", "minimum": -2, "maximum": 2 }
+        }
+      },
+      "default": []
+    },
+    "sampler": { "type": "string", "default": "euler_a" },
+    "scheduler": { "type": "string", "default": "discrete" },
+    "steps": { "type": "integer", "minimum": 1, "maximum": 150 },
+    "cfg_scale": { "type": "number", "minimum": 0, "maximum": 30 },
+    "seed": {
+      "oneOf": [
+        { "type": "integer", "minimum": -1, "maximum": 2147483647 },
+        { "type": "string", "enum": ["", "random", "fixed"] },
+        { "type": "string", "pattern": "^-?[0-9]+$" }
+      ]
+    },
+    "randomize_seed": { "type": "boolean", "default": false },
+    "reuse_seed": { "type": "boolean", "default": false },
+    "width": { "type": "integer", "minimum": 64, "maximum": 2048, "multipleOf": 8 },
+    "height": { "type": "integer", "minimum": 64, "maximum": 2048, "multipleOf": 8 },
+    "batch_count": { "type": "integer", "minimum": 1, "maximum": 24, "default": 1 },
+    "batch_size": { "type": "integer", "minimum": 1, "maximum": 1, "default": 1 },
+    "tiling": { "type": "boolean", "default": false },
+    "restore_faces": { "type": "boolean", "default": false },
+    "clip_skip": { "type": ["integer", "string"], "description": "Schema-visible but engine support is gated/deferred." },
+    "variation_seed": { "type": ["integer", "string"], "description": "Visible but not wired to current backend." },
+    "variation_strength": { "type": ["number", "string"], "description": "Visible but not wired to current backend." },
+    "denoising_strength": { "type": "number", "minimum": 0.01, "maximum": 0.99 },
+    "strength": { "type": "number", "minimum": 0.01, "maximum": 0.99, "description": "Alias used by current img2img/inpaint endpoints." },
+    "resize_mode": { "type": "string", "enum": ["just_resize"], "default": "just_resize" },
+    "hires_fix": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "scale": { "type": "integer", "enum": [2, 3, 4] },
+        "resample": { "type": "string", "enum": ["nearest", "bilinear", "bicubic", "lanczos"] },
+        "mode": { "type": "string", "enum": ["cli"] }
+      }
+    },
+    "upscaler": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["pillow", "realesrgan"] },
+        "scale": { "type": "integer", "enum": [2, 3, 4] },
+        "resample": { "type": "string", "enum": ["nearest", "bilinear", "bicubic", "lanczos"] },
+        "tile_size": { "type": "integer", "minimum": 128, "maximum": 1024 },
+        "repeats": { "type": "integer", "minimum": 1, "maximum": 2 }
+      }
+    },
+    "output_format": { "type": "string", "enum": ["png"], "default": "png" },
+    "save_metadata": { "type": "boolean", "default": true },
+    "save_prompts": { "type": "boolean", "default": false },
+    "restore_metadata": { "type": "boolean", "default": false },
+    "run_id": { "type": "string", "pattern": "^20[0-9]{6}-[0-9]{6}-[a-zA-Z0-9_-]+$" },
+    "init_image_file": { "type": "string" },
+    "mask_data": { "type": "string", "description": "PNG data URL accepted only by inpaint action/validation." },
+    "mask_file": { "type": "string" },
+    "inpaint_source": { "type": "string" },
+    "inpaint_mask": { "type": "string" },
+    "debug_command_preview": { "type": "boolean", "default": false },
+    "debug_json_preview": { "type": "boolean", "default": false }
+  }
+}

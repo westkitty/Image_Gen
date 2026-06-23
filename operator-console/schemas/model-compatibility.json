@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "updated": "2026-06-23",
+  "engine": "stable-diffusion.cpp",
+  "statuses": [
+    "implemented",
+    "partially implemented",
+    "backend-supported but missing UI",
+    "UI present but not wired",
+    "blocked by engine",
+    "external/deferred",
+    "unknown, needs probing"
+  ],
+  "model_families": {
+    "sd15": {
+      "label": "Stable Diffusion 1.5",
+      "default_width": 512,
+      "default_height": 512,
+      "compatibility_warnings": [
+        "Best proven path for normal txt2img/img2img/inpaint in this console.",
+        "ControlNet remains external/deferred unless a real stable-diffusion.cpp path is added."
+      ]
+    },
+    "sdxl": {
+      "label": "Stable Diffusion XL",
+      "default_width": 1024,
+      "default_height": 1024,
+      "compatibility_warnings": [
+        "Some SDXL targets are staged/selectable without individual smoke proof.",
+        "Keep support claims below runtime-proof level until a bounded PNG smoke run exists."
+      ]
+    },
+    "sdxl-turbo": {
+      "label": "SDXL Turbo",
+      "default_width": 512,
+      "default_height": 512,
+      "compatibility_warnings": [
+        "Requires low steps and cfg_scale 0 in the current mapper.",
+        "Uses the fp16 safetensors staging target when BigMac runtime proof exists."
+      ]
+    },
+    "flux": {
+      "label": "Flux",
+      "default_width": 512,
+      "default_height": 512,
+      "compatibility_warnings": [
+        "Only the runtime-proven fp8 path should be treated as available.",
+        "Full Flux component staging requires model, VAE, CLIP-L, and T5XXL assets."
+      ]
+    }
+  },
+  "parity_categories": {
+    "txt2img full control surface": { "status": "partially implemented", "notes": "Prompt, negative prompt, target, VAE, sampler, scheduler, steps, CFG, seed, size, tiling, and metadata toggles are visible; A1111-only extras remain gated." },
+    "img2img full control surface": { "status": "partially implemented", "notes": "Backend accepts core generation controls plus denoising strength and init image; UI parity controls are being folded into the edit panel." },
+    "inpainting": { "status": "partially implemented", "notes": "Canvas mask, alpha-to-mask conversion, blank-mask rejection, and core generation params are supported; A1111 mask blur/masked content/inpaint area are not claimed." },
+    "outpainting": { "status": "external/deferred", "notes": "No canvas extension workflow exists." },
+    "highres fix": { "status": "partially implemented", "notes": "Two-pass txt2img to Pillow upscale only; not A1111 latent highres fix." },
+    "upscale/extras": { "status": "partially implemented", "notes": "Pillow upscale and Real-ESRGAN route exist; face restoration is gated." },
+    "model registry": { "status": "partially implemented", "notes": "Capabilities expose configured and discovered targets." },
+    "VAE registry": { "status": "partially implemented", "notes": "Discovered VAE selection is exposed when supported." },
+    "LoRA registry with weights": { "status": "partially implemented", "notes": "Discovered LoRAs can be inserted as prompt tokens with weights; true A1111 extension parity is not claimed." },
+    "ControlNet SD1.5-gated support": { "status": "external/deferred", "notes": "No fake ControlNet path." },
+    "styles/presets": { "status": "partially implemented", "notes": "Local presets exist; A1111 style database parity is deferred." },
+    "prompt weighting": { "status": "unknown, needs probing", "notes": "Depends on stable-diffusion.cpp prompt parser behavior." },
+    "metadata save/read/restore": { "status": "partially implemented", "notes": "Run manifests and metadata reads exist; arbitrary PNG restore is partial." },
+    "send-to workflows": { "status": "partially implemented", "notes": "Gallery/image viewer can send to img2img, inpaint, and upscale." },
+    "history/gallery": { "status": "implemented", "notes": "Run index, filters, detail, compare, and badges exist." },
+    "queue/progress/cancel": { "status": "partially implemented", "notes": "In-memory job queue and progress polling exist; cancel is not implemented." },
+    "X/Y/Z plot": { "status": "partially implemented", "notes": "Bounded axis support exists; not full A1111 plot parity." },
+    "prompt matrix": { "status": "external/deferred", "notes": "No current script/UI path." },
+    "variations": { "status": "UI present but not wired", "notes": "Variation fields are visible as disabled controls." },
+    "batch processing": { "status": "partially implemented", "notes": "Batch count/seed mode exist; batch size is intentionally 1." },
+    "settings/defaults": { "status": "partially implemented", "notes": "Preset defaults and capability-driven options exist." },
+    "native API": { "status": "partially implemented", "notes": "Operator Console API exists for current workflows." },
+    "A1111-compatible /sdapi/v1 adapter": { "status": "external/deferred", "notes": "No compatible adapter is claimed." },
+    "command preview": { "status": "partially implemented", "notes": "Read-only preview endpoint maps normalized jobs to real scripts." },
+    "JSON preview": { "status": "partially implemented", "notes": "Read-only preview endpoint returns normalized payload." },
+    "BigMac Ollama prompt enhancement": { "status": "external/deferred", "notes": "Not part of this stable-diffusion.cpp pass." }
+  }
+}

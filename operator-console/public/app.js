@@ -164,6 +164,7 @@ function hydrateControls() {
   }).join('') || '<option value="auto">Auto</option>';
   $('sampler').innerHTML = (caps.samplers || []).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
   $('scheduler').innerHTML = (caps.schedulers || []).map(s => `<option value="${esc(s.id)}" ${s.supported ? '' : 'disabled'}>${esc(s.name)}${s.supported ? '' : ` — disabled (${esc(s.reason)})`}</option>`).join('');
+  hydrateEditGenerationControls(caps);
   const loraGate = (caps.featureGates && caps.featureGates.lora) || {};
   const loras = (caps.networks && caps.networks.loras) || [];
   const loraEnabled = loraGate.supported === true && loras.length > 0;
@@ -179,14 +180,14 @@ function hydrateControls() {
   const img2imgGate = (caps.featureGates && caps.featureGates.img2img) || {};
   const img2imgEnabled = img2imgGate.supported === true;
   const img2imgReason = img2imgEnabled ? '' : (img2imgGate.reason || 'img2img not yet supported.');
-  ['img2img-run', 'img2img-image', 'img2img-strength', 'img2img-prompt', 'img2img-negative', 'btn-img2img-submit'].forEach(id => {
+  ['img2img-run', 'img2img-image', 'img2img-strength', 'img2img-prompt', 'img2img-negative', 'img2img-steps', 'img2img-cfg-scale', 'img2img-seed', 'img2img-width', 'img2img-height', 'img2img-vae', 'img2img-sampler', 'img2img-scheduler', 'btn-img2img-preview', 'btn-img2img-submit'].forEach(id => {
     if ($(id)) $(id).disabled = !img2imgEnabled;
   });
   if ($('img2img-gate-reason')) $('img2img-gate-reason').textContent = img2imgEnabled ? '' : img2imgReason;
   const inpaintGate = (caps.featureGates && caps.featureGates.inpaint) || {};
   const inpaintEnabled = inpaintGate.supported === true;
   const inpaintReason = inpaintEnabled ? '' : (inpaintGate.reason || 'Inpaint not yet supported.');
-  ['inpaint-run', 'inpaint-image', 'inpaint-strength', 'inpaint-prompt', 'inpaint-negative', 'btn-inpaint-submit'].forEach(id => {
+  ['inpaint-run', 'inpaint-image', 'inpaint-strength', 'inpaint-prompt', 'inpaint-negative', 'inpaint-steps', 'inpaint-cfg-scale', 'inpaint-seed', 'inpaint-width', 'inpaint-height', 'inpaint-vae', 'inpaint-sampler', 'inpaint-scheduler', 'btn-inpaint-preview', 'btn-inpaint-submit'].forEach(id => {
     if ($(id)) $(id).disabled = !inpaintEnabled;
   });
   if ($('inpaint-gate-reason')) $('inpaint-gate-reason').textContent = inpaintEnabled ? '' : inpaintReason;
@@ -203,6 +204,23 @@ function hydrateControls() {
   const selectedTarget = $('model').value || 'sd15';
   applyControlledTargetDefaults(selectedTarget);
   loadStyles();
+}
+
+function hydrateEditGenerationControls(caps) {
+  const vaeHtml = (caps.vaes || []).map(v => {
+    const ok = v.id === 'auto' || v.status === 'available';
+    return `<option value="${esc(v.id)}" ${ok ? '' : 'disabled'}>${esc(v.name)}${ok ? '' : ` — disabled (${esc(v.reason || 'Not supported')})`}</option>`;
+  }).join('') || '<option value="auto">Auto</option>';
+  const samplerHtml = (caps.samplers || []).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+  const schedulerHtml = (caps.schedulers || []).map(s => `<option value="${esc(s.id)}" ${s.supported ? '' : 'disabled'}>${esc(s.name)}${s.supported ? '' : ` — disabled (${esc(s.reason)})`}</option>`).join('');
+  ['img2img', 'inpaint'].forEach(prefix => {
+    if ($(prefix + '-vae')) $(prefix + '-vae').innerHTML = vaeHtml;
+    if ($(prefix + '-sampler')) $(prefix + '-sampler').innerHTML = samplerHtml;
+    if ($(prefix + '-scheduler')) $(prefix + '-scheduler').innerHTML = schedulerHtml;
+    if ($(prefix + '-vae')) $(prefix + '-vae').value = 'auto';
+    if ($(prefix + '-sampler')) $(prefix + '-sampler').value = 'euler_a';
+    if ($(prefix + '-scheduler')) $(prefix + '-scheduler').value = 'discrete';
+  });
 }
 
 function applyPreset(id) {
@@ -237,6 +255,79 @@ function getCoreParams(source = '') {
     tiling: $('tiling').checked,
     save_prompts: $('set-save-prompts').checked
   };
+}
+
+function getEditGenerationParams(kind) {
+  return {
+    steps: $(kind + '-steps') ? $(kind + '-steps').value : '20',
+    cfg_scale: $(kind + '-cfg-scale') ? $(kind + '-cfg-scale').value : '7',
+    sampler: $(kind + '-sampler') ? $(kind + '-sampler').value : 'euler_a',
+    scheduler: $(kind + '-scheduler') ? $(kind + '-scheduler').value : 'discrete',
+    width: $(kind + '-width') ? $(kind + '-width').value : '512',
+    height: $(kind + '-height') ? $(kind + '-height').value : '512',
+    seed: $(kind + '-seed') ? $(kind + '-seed').value.trim() : '',
+    vae: $(kind + '-vae') ? $(kind + '-vae').value : 'auto'
+  };
+}
+
+async function previewGenerationCommand(kind) {
+  const runId = $(kind + '-run') && $(kind + '-run').value;
+  const initImageFile = $(kind + '-image') && $(kind + '-image').value;
+  const prompt = $(kind + '-prompt') && $(kind + '-prompt').value.trim();
+  const negative_prompt = $(kind + '-negative') && $(kind + '-negative').value.trim();
+  const strength = parseFloat($(kind + '-strength').value) || 0.75;
+  const out = $(kind + '-preview');
+  if (!out) return;
+  if (!prompt) { out.hidden = false; out.textContent = 'Prompt is required for preview.'; return; }
+  const body = {
+    job_type: kind,
+    run_id: runId || undefined,
+    init_image_file: initImageFile || undefined,
+    strength,
+    prompt,
+    negative_prompt,
+    save_prompts: loadBool('savePrompts'),
+    ...getEditGenerationParams(kind)
+  };
+  try {
+    const result = await api('/api/preview/generation', { method: 'POST', body: JSON.stringify(body) });
+    out.hidden = false;
+    out.textContent = JSON.stringify({
+      command: result.preview.command,
+      argv: result.preview.argv,
+      normalized: result.normalized,
+      compatibility: result.compatibility && {
+        family: result.compatibility.family,
+        warnings: result.compatibility.compatibility_warnings || []
+      }
+    }, null, 2);
+  } catch (err) {
+    out.hidden = false;
+    out.textContent = 'Preview error: ' + err.message;
+  }
+}
+
+async function previewCreateCommand() {
+  const out = $('create-debug-preview');
+  if (!out) return;
+  const params = { ...getCoreParams(), job_type: 'txt2img' };
+  if (!params.prompt) { out.hidden = false; out.textContent = 'Prompt is required for preview.'; return; }
+  try {
+    const result = await api('/api/preview/generation', { method: 'POST', body: JSON.stringify(params) });
+    out.hidden = false;
+    out.textContent = JSON.stringify({
+      command: result.preview.command,
+      argv: result.preview.argv,
+      normalized: result.normalized,
+      compatibility: result.compatibility && {
+        family: result.compatibility.family,
+        warnings: result.compatibility.compatibility_warnings || []
+      }
+    }, null, 2);
+  } catch (err) {
+    out.hidden = false;
+    out.textContent = 'Preview error: ' + err.message;
+  }
 }
 
 function setPreviewProgress(label = 'Rendering image') {
@@ -421,10 +512,11 @@ async function submitImg2img(event) {
   const negative_prompt = $('img2img-negative').value.trim();
   if (!prompt) { notifyLog('Prompt is required for img2img.'); return; }
   const save_prompts = loadBool('savePrompts');
+  const generationParams = getEditGenerationParams('img2img');
   try {
     const result = await api('/api/actions/img2img', {
       method: 'POST',
-      body: JSON.stringify({ run_id: runId, init_image_file: initImageFile, strength, prompt, negative_prompt, save_prompts })
+      body: JSON.stringify({ run_id: runId, init_image_file: initImageFile, strength, prompt, negative_prompt, save_prompts, ...generationParams })
     });
     notifyLog('img2img job started: ' + result.job_id);
     trackJob(result.job_id, 'img2img');
@@ -553,10 +645,11 @@ async function submitInpaint(event) {
   const negative_prompt = $('inpaint-negative').value.trim();
   if (!prompt) { notifyLog('Prompt is required for inpaint.'); return; }
   const save_prompts = loadBool('savePrompts');
+  const generationParams = getEditGenerationParams('inpaint');
   try {
     const result = await api('/api/actions/inpaint', {
       method: 'POST',
-      body: JSON.stringify({ run_id: runId, init_image_file: initImageFile, mask_data: maskData, strength, prompt, negative_prompt, save_prompts })
+      body: JSON.stringify({ run_id: runId, init_image_file: initImageFile, mask_data: maskData, strength, prompt, negative_prompt, save_prompts, ...generationParams })
     });
     notifyLog('Inpaint job started: ' + result.job_id);
     const resultDiv = $('inpaint-result');
@@ -1796,14 +1889,17 @@ function bindEvents() {
     if (btn.dataset.target === 'edit') loadEditRuns();
   }));
   $('form-create').addEventListener('submit', submitCreate);
+  $('btn-preview-create').addEventListener('click', previewCreateCommand);
   $('form-batch').addEventListener('submit', submitBatch);
   $('form-upscale').addEventListener('submit', submitUpscale);
   $('upscale-run').addEventListener('change', onUpscaleRunChange);
   if ($('form-img2img')) $('form-img2img').addEventListener('submit', submitImg2img);
   if ($('img2img-run')) $('img2img-run').addEventListener('change', onImg2imgRunChange);
+  if ($('btn-img2img-preview')) $('btn-img2img-preview').addEventListener('click', () => previewGenerationCommand('img2img'));
   if ($('form-inpaint')) $('form-inpaint').addEventListener('submit', submitInpaint);
   if ($('inpaint-run')) $('inpaint-run').addEventListener('change', onInpaintRunChange);
   if ($('inpaint-image')) $('inpaint-image').addEventListener('change', onInpaintImageChange);
+  if ($('btn-inpaint-preview')) $('btn-inpaint-preview').addEventListener('click', () => previewGenerationCommand('inpaint'));
   initInpaintCanvas();
   if ($('form-esrgan')) $('form-esrgan').addEventListener('submit', submitEsrgan);
   if ($('esrgan-run')) $('esrgan-run').addEventListener('change', onEsrganRunChange);

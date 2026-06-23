@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
   <title>SDCPP Workbench</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -94,7 +95,8 @@
             <aside class="panel preview-panel">
               <div class="panel-head"><div><h2>Preview</h2><p id="preview-subtitle">Generated outputs and job status.</p></div></div>
               <div id="preview-stage" class="preview-stage"><div class="empty-state">No image selected. Generate something or open a library item.</div></div>
-              <div class="action-row"><button class="ghost" id="btn-copy-last">Copy params</button><button class="ghost" id="btn-send-img2img">Send to img2img</button><button class="ghost" id="btn-send-upscale">Send to upscale</button></div>
+              <div class="action-row"><button class="ghost" id="btn-preview-create">Preview command</button><button class="ghost" id="btn-copy-last">Copy params</button><button class="ghost" id="btn-send-img2img">Send to img2img</button><button class="ghost" id="btn-send-upscale">Send to upscale</button></div>
+              <pre id="create-debug-preview" hidden></pre>
               <div id="latest-job" class="job-card muted">No active job.</div>
             </aside>
 
@@ -202,6 +204,22 @@
                 <textarea id="img2img-prompt" rows="3" disabled placeholder="Describe the desired output…"></textarea></div>
               <div class="field"><label for="img2img-negative">Negative prompt</label>
                 <textarea id="img2img-negative" rows="2" disabled placeholder="What to avoid…"></textarea></div>
+              <div class="three-col">
+                <div class="field"><label for="img2img-steps">Steps</label><input id="img2img-steps" type="number" min="1" max="150" value="20" disabled /></div>
+                <div class="field"><label for="img2img-cfg-scale">CFG scale</label><input id="img2img-cfg-scale" type="number" min="0" max="30" step="0.5" value="7" disabled /></div>
+                <div class="field"><label for="img2img-seed">Seed</label><input id="img2img-seed" placeholder="-1 for random" disabled /></div>
+              </div>
+              <div class="three-col">
+                <div class="field"><label for="img2img-width">Width</label><input id="img2img-width" type="number" min="64" max="2048" step="8" value="512" disabled /></div>
+                <div class="field"><label for="img2img-height">Height</label><input id="img2img-height" type="number" min="64" max="2048" step="8" value="512" disabled /></div>
+                <div class="field"><label for="img2img-vae">VAE</label><select id="img2img-vae" disabled></select></div>
+              </div>
+              <div class="two-col">
+                <div class="field"><label for="img2img-sampler">Sampler</label><select id="img2img-sampler" disabled></select></div>
+                <div class="field"><label for="img2img-scheduler">Scheduler</label><select id="img2img-scheduler" disabled></select></div>
+              </div>
+              <div class="action-row"><button type="button" class="ghost small" id="btn-img2img-preview" disabled>Preview command</button></div>
+              <pre id="img2img-preview" hidden></pre>
               <button class="primary" type="submit" id="btn-img2img-submit" disabled>Run img2img</button>
             </form>
           </div>
@@ -238,6 +256,22 @@
                 <textarea id="inpaint-prompt" rows="3" disabled placeholder="Describe the desired output for the inpainted region…"></textarea></div>
               <div class="field"><label for="inpaint-negative">Negative prompt</label>
                 <textarea id="inpaint-negative" rows="2" disabled placeholder="What to avoid…"></textarea></div>
+              <div class="three-col">
+                <div class="field"><label for="inpaint-steps">Steps</label><input id="inpaint-steps" type="number" min="1" max="150" value="20" disabled /></div>
+                <div class="field"><label for="inpaint-cfg-scale">CFG scale</label><input id="inpaint-cfg-scale" type="number" min="0" max="30" step="0.5" value="7" disabled /></div>
+                <div class="field"><label for="inpaint-seed">Seed</label><input id="inpaint-seed" placeholder="-1 for random" disabled /></div>
+              </div>
+              <div class="three-col">
+                <div class="field"><label for="inpaint-width">Width</label><input id="inpaint-width" type="number" min="64" max="2048" step="8" value="512" disabled /></div>
+                <div class="field"><label for="inpaint-height">Height</label><input id="inpaint-height" type="number" min="64" max="2048" step="8" value="512" disabled /></div>
+                <div class="field"><label for="inpaint-vae">VAE</label><select id="inpaint-vae" disabled></select></div>
+              </div>
+              <div class="two-col">
+                <div class="field"><label for="inpaint-sampler">Sampler</label><select id="inpaint-sampler" disabled></select></div>
+                <div class="field"><label for="inpaint-scheduler">Scheduler</label><select id="inpaint-scheduler" disabled></select></div>
+              </div>
+              <div class="action-row"><button type="button" class="ghost small" id="btn-inpaint-preview" disabled>Preview command</button></div>
+              <pre id="inpaint-preview" hidden></pre>
               <button class="primary" type="submit" id="btn-inpaint-submit" disabled>Run Inpaint</button>
             </form>
             <div id="inpaint-result" class="job-card muted" style="margin-top:12px;display:none"></div>

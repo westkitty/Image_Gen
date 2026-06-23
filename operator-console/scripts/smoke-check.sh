@@ -67,9 +67,8 @@ if [ "$SKIP_SERVER" = "1" ]; then
   echo "-- Skipping live endpoint tests (--no-server) --"
 else
   echo ""
-  echo "-- Live endpoints (http://127.0.0.1:31337) --"
-
-  BASE="http://127.0.0.1:31337"
+  BASE="${OPERATOR_CONSOLE_BASE:-http://127.0.0.1:${OPERATOR_CONSOLE_PORT:-31337}}"
+  echo "-- Live endpoints ($BASE) --"
 
   post_status() {
     local path="$1"
@@ -176,6 +175,66 @@ else
       fail "Validate Hires Fix $NAME should return 200 with redacted prompt"
     fi
   done
+
+  # Inpaint validation-only endpoint: missing/corrupt/blank masks reject; painted mask accepts without spawning a job.
+  SMOKE_RUN_ID="20260623-000000-inpaintsmoke"
+  SMOKE_RUN_DIR="$OC_DIR/../sdcpp-workflow/runs/$SMOKE_RUN_ID"
+  mkdir -p "$SMOKE_RUN_DIR"
+  python3 - "$SMOKE_RUN_DIR/source.png" "$SMOKE_RUN_DIR/blank-mask.txt" "$SMOKE_RUN_DIR/painted-mask.txt" <<'PY'
+import base64, binascii, struct, sys, zlib
+
+def chunk(kind, data):
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", binascii.crc32(kind + data) & 0xffffffff)
+
+def png_rgba(path, rgba):
+    raw = b"\x00" + bytes(rgba)
+    data = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+    with open(path, "wb") as f:
+        f.write(data)
+    return data
+
+source = png_rgba(sys.argv[1], (255, 255, 255, 255))
+blank = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(b"\x00" + bytes((255, 255, 255, 0)))) + chunk(b"IEND", b"")
+painted = source
+with open(sys.argv[2], "w") as f:
+    f.write("data:image/png;base64," + base64.b64encode(blank).decode())
+with open(sys.argv[3], "w") as f:
+    f.write("data:image/png;base64," + base64.b64encode(painted).decode())
+PY
+  BLANK_MASK="$(cat "$SMOKE_RUN_DIR/blank-mask.txt")"
+  PAINTED_MASK="$(cat "$SMOKE_RUN_DIR/painted-mask.txt")"
+  INPAINT_BASE="{\"run_id\":\"$SMOKE_RUN_ID\",\"init_image_file\":\"source.png\",\"prompt\":\"test\",\"steps\":2,\"cfg_scale\":7,\"width\":512,\"height\":512,\"sampler\":\"euler_a\",\"scheduler\":\"discrete\",\"seed\":\"123\""
+
+  STATUS="$(post_status "/api/validate/inpaint" "$INPAINT_BASE}")"
+  if [ "$STATUS" = "400" ]; then
+    pass "Validate Inpaint rejects missing mask_data (HTTP 400)"
+  else
+    fail "Validate Inpaint missing mask_data should return 400 (got $STATUS)"
+  fi
+
+  STATUS="$(post_status "/api/validate/inpaint" "$INPAINT_BASE,\"mask_data\":\"not-a-png\"}")"
+  if [ "$STATUS" = "400" ]; then
+    pass "Validate Inpaint rejects corrupt mask_data (HTTP 400)"
+  else
+    fail "Validate Inpaint corrupt mask_data should return 400 (got $STATUS)"
+  fi
+
+  STATUS="$(post_status "/api/validate/inpaint" "$INPAINT_BASE,\"mask_data\":\"$BLANK_MASK\"}")"
+  if [ "$STATUS" = "400" ]; then
+    pass "Validate Inpaint rejects blank mask (HTTP 400)"
+  else
+    fail "Validate Inpaint blank mask should return 400 (got $STATUS)"
+  fi
+
+  BODY="$(curl -fsS -X POST "$BASE/api/validate/inpaint" \
+    -H 'Content-Type: application/json' \
+    -d "$INPAINT_BASE,\"mask_data\":\"$PAINTED_MASK\",\"save_prompts\":false}" 2>/dev/null || true)"
+  if printf '%s' "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['ok'] is True; assert d['prompt']=='[REDACTED]'; assert d['steps']=='2' or d['steps']==2" 2>/dev/null; then
+    pass "Validate Inpaint accepts painted mask and redacts prompt"
+  else
+    fail "Validate Inpaint painted mask should return 200 with redacted prompt"
+  fi
+  rm -rf "$SMOKE_RUN_DIR"
 
   # XYZ: >16 cells must be rejected (400)
   STATUS="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/actions/xyz-plot" \
