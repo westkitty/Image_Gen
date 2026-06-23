@@ -42,7 +42,7 @@ const ALLOWED_SAMPLERS = new Set([
   'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm'
 ]);
 const ALLOWED_SCHEDULERS = new Set(['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple']);
-const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis']);
+const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis', 'sdxl-juggernaut', 'sdxl-realvisxl', 'sdxl-cyberrealistic', 'sdxl-epicrealism']);
 const CONTROLLED_TARGETS = [
   {
     id: 'sd15',
@@ -72,6 +72,7 @@ const CONTROLLED_TARGETS = [
     caveat: 'Controlled proofed path; not full A1111 parity.',
     proofDerived: true,
     fullParityClaim: false,
+    modelFile: 'sd_xl_base_1.0.safetensors',
     defaultWidth: 512,
     defaultHeight: 512,
     defaultSteps: 4,
@@ -91,6 +92,7 @@ const CONTROLLED_TARGETS = [
     caveat: 'Controlled proofed path; not full A1111 parity.',
     proofDerived: true,
     fullParityClaim: false,
+    modelFile: 'sd_xl_turbo_1.0_fp16.safetensors',
     defaultWidth: 512,
     defaultHeight: 512,
     defaultSteps: 4,
@@ -110,6 +112,7 @@ const CONTROLLED_TARGETS = [
     caveat: 'Controlled proofed path; not full A1111 parity. Uses the fp8 runtime-proven Flux file, not the full Flux file.',
     proofDerived: true,
     fullParityClaim: false,
+    modelFile: 'flux1-schnell-fp8.safetensors',
     defaultWidth: 512,
     defaultHeight: 512,
     defaultSteps: 4,
@@ -119,8 +122,7 @@ const CONTROLLED_TARGETS = [
     maxHeight: 1024,
     minSteps: 1,
     maxSteps: 8
-  }
-,
+  },
   {
     id: 'sdxl-photonic',
     label: 'Photonic Fusion SDXL',
@@ -128,6 +130,7 @@ const CONTROLLED_TARGETS = [
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
     caveat: 'Migrated wc2tb SDXL checkpoint. Photonic has one direct smoke proof; not full A1111 parity.',
+    modelFile: 'photonic_fusion_sdxl_finale_v1.safetensors',
     defaultWidth: 1024,
     defaultHeight: 1024,
     defaultSteps: 10,
@@ -145,6 +148,7 @@ const CONTROLLED_TARGETS = [
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
     caveat: 'Migrated wc2tb SDXL checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity.',
+    modelFile: 'homochi_xl_v2.safetensors',
     defaultWidth: 1024,
     defaultHeight: 1024,
     defaultSteps: 10,
@@ -162,6 +166,7 @@ const CONTROLLED_TARGETS = [
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
     caveat: 'Migrated wc2tb SDXL checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity.',
+    modelFile: 'pony_diffusion_v6_xl.safetensors',
     defaultWidth: 1024,
     defaultHeight: 1024,
     defaultSteps: 10,
@@ -179,6 +184,7 @@ const CONTROLLED_TARGETS = [
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
     caveat: 'Migrated wc2tb SD1.5 checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity.',
+    modelFile: 'homofidelis_v5.safetensors',
     defaultWidth: 512,
     defaultHeight: 512,
     defaultSteps: 20,
@@ -188,12 +194,133 @@ const CONTROLLED_TARGETS = [
     maxSteps: 150,
     maxWidth: 1024,
     maxHeight: 1024
+  },
+  {
+    id: 'sdxl-juggernaut',
+    label: 'Juggernaut XL (Ragnarok / latest photoreal)',
+    status: 'staged',
+    mode: 'migrated controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'SDXL Checkpoint (~6-7GB fp16). Excellent photorealism with strong male anatomy, versatile for athletic/muscular men and NSFW; widely praised for realistic bodies in gay male workflows. (Civitai search Juggernaut XL). Not full A1111 parity.',
+    modelFile: 'juggernaut_xl_ragnarok.safetensors',
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    defaultSteps: 10,
+    defaultCfgScale: 6,
+    defaultSampler: 'dpm++2m',
+    minSteps: 1,
+    maxSteps: 150,
+    maxWidth: 2048,
+    maxHeight: 2048
+  },
+  {
+    id: 'sdxl-realvisxl',
+    label: 'RealVisXL V5.0 (Lightning or standard photoreal)',
+    status: 'staged',
+    mode: 'migrated controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'SDXL Checkpoint. High photoreal quality, detailed realistic male bodies/skin, good for intimate homoerotic scenes with natural lighting and anatomy. (Search Civitai RealVisXL V5). Not full A1111 parity.',
+    modelFile: 'realvisxl_v5_0.safetensors',
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    defaultSteps: 10,
+    defaultCfgScale: 6.5,
+    defaultSampler: 'dpm++2m',
+    minSteps: 1,
+    maxSteps: 150,
+    maxWidth: 2048,
+    maxHeight: 2048
+  },
+  {
+    id: 'sdxl-cyberrealistic',
+    label: 'CyberRealistic XL (latest male-tuned photoreal)',
+    status: 'staged',
+    mode: 'migrated controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'SDXL Checkpoint. Strong photoreal skin textures, musculature, and realistic male forms; effective for detailed adult male NSFW. (Search Civitai CyberRealistic XL). Not full A1111 parity.',
+    modelFile: 'cyberrealistic_xl_v10.safetensors',
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    defaultSteps: 10,
+    defaultCfgScale: 5,
+    defaultSampler: 'dpm++2m',
+    minSteps: 1,
+    maxSteps: 150,
+    maxWidth: 2048,
+    maxHeight: 2048
+  },
+  {
+    id: 'sdxl-epicrealism',
+    label: 'epiCRealism XL (natural sin / photoreal male variants)',
+    status: 'staged',
+    mode: 'migrated controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'SDXL Checkpoint (https://civitai.com/models/277058/epicrealism-xl or latest). Top photoreal benchmark with excellent anatomy adherence; pairs extremely well with male prompts/LoRAs for homoerotic realism. Not full A1111 parity.',
+    modelFile: 'epicrealism_xl_pure_fix.safetensors',
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    defaultSteps: 10,
+    defaultCfgScale: 6,
+    defaultSampler: 'dpm++2m',
+    minSteps: 1,
+    maxSteps: 150,
+    maxWidth: 2048,
+    maxHeight: 2048
   }
 ];
 const CONTROLLED_TARGET_BY_ID = CONTROLLED_TARGETS.reduce((acc, target) => {
   acc[target.id] = target;
   return acc;
 }, {});
+
+// Set of filenames already covered by hardcoded CONTROLLED_TARGETS, for deduplication.
+const KNOWN_MODEL_FILES = new Set(CONTROLLED_TARGETS.map(t => t.modelFile).filter(Boolean));
+
+// Build synthetic target specs for any .safetensors checkpoint found in the assets cache
+// that isn't already covered by CONTROLLED_TARGETS. Called per-request since the cache updates.
+function buildDiscoveredTargets(assets) {
+  if (!assets || !Array.isArray(assets.checkpoints)) return [];
+  const discovered = [];
+  for (const cp of assets.checkpoints) {
+    const fullPath = cp.full_path || '';
+    const filename = cp.filename || '';
+    if (!filename.endsWith('.safetensors')) continue;
+    if (!fullPath.startsWith(MODEL_STAGE_ROOT + '/')) continue;
+    if (KNOWN_MODEL_FILES.has(filename)) continue;
+
+    const isSDXL = fullPath.includes('/checkpoints/sdxl/');
+    const isSD15 = fullPath.includes('/checkpoints/sd15/');
+    if (!isSDXL && !isSD15) continue;
+
+    const typePrefix = isSDXL ? 'sdxl' : 'sd15';
+    const basename = filename.replace(/\.safetensors$/i, '')
+      .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
+    const id = `${typePrefix}-auto-${basename}`;
+    if (CONTROLLED_TARGET_BY_ID[id]) continue;
+
+    const label = filename.replace(/\.safetensors$/i, '').replace(/[-_]/g, ' ');
+    discovered.push({
+      id,
+      label,
+      status: 'discovered',
+      mode: 'auto-discovered generation',
+      route: '/api/actions/generate-controlled',
+      caveat: `Auto-discovered ${typePrefix.toUpperCase()} checkpoint. No individual proof run; experimental.`,
+      modelPath: fullPath,
+      modelFile: filename,
+      defaultWidth: isSDXL ? 1024 : 512,
+      defaultHeight: isSDXL ? 1024 : 512,
+      defaultSteps: isSDXL ? 10 : 20,
+      defaultCfgScale: isSDXL ? 6.5 : 7,
+      defaultSampler: isSDXL ? 'dpm++2m' : 'euler_a',
+      minSteps: 1,
+      maxSteps: 150,
+      maxWidth: isSDXL ? 2048 : 1024,
+      maxHeight: isSDXL ? 2048 : 1024
+    });
+  }
+  return discovered;
+}
 
 const PRESET_DEFAULTS = {
   smoke: { steps: 1, cfg_scale: 7, sampler: 'euler_a', width: 512, height: 512 },
@@ -331,8 +458,8 @@ function resolveVaePath(vaeId) {
 function validateSavePrompts(value) {
   return value === undefined || value === null || typeof value === 'boolean';
 }
-function validateControlledTarget(target) {
-  return typeof target === 'string' && CONTROLLED_TARGET_IDS.has(target);
+function validateControlledTarget(target, allTargetById = CONTROLLED_TARGET_BY_ID) {
+  return typeof target === 'string' && Boolean(allTargetById[target]);
 }
 
 function redactSensitiveText(text, values) {
@@ -541,9 +668,9 @@ function validateGenerationParams(params) {
   return null;
 }
 
-function validateControlledGenerationParams(params) {
+function validateControlledGenerationParams(params, allTargetById = CONTROLLED_TARGET_BY_ID) {
   if (params && params.invalidKey) return `Unexpected field: ${params.invalidKey}`;
-  if (!validateControlledTarget(params.target)) return 'Invalid target';
+  if (!validateControlledTarget(params.target, allTargetById)) return 'Invalid target';
   if (params.api && !ALLOWED_APIS.has(params.api)) return 'Invalid API';
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
   const loraErr = validatePromptLoras(params.prompt);
@@ -556,7 +683,7 @@ function validateControlledGenerationParams(params) {
   if (!validateVae(params.vae)) return 'Invalid VAE';
   if (!validateSavePrompts(params.save_prompts)) return 'Invalid save_prompts';
 
-  const spec = CONTROLLED_TARGET_BY_ID[params.target];
+  const spec = allTargetById[params.target];
   const steps = params.steps === undefined || params.steps === null || params.steps === ''
     ? spec.defaultSteps
     : Number(params.steps);
@@ -1073,7 +1200,8 @@ app.get('/api/capabilities', (req, res) => {
     : { supported: false, reason: 'No hypernetwork support exists in the current SDCPP scripts.' };
 
   const cacheAgeMinutes = assets ? Math.round((Date.now() / 1000 - assets.discovered_at) / 60) : null;
-  const modelTargets = CONTROLLED_TARGETS.map(target => ({
+  const discoveredTargets = buildDiscoveredTargets(assets);
+  const modelTargets = [...CONTROLLED_TARGETS, ...discoveredTargets].map(target => ({
     id: target.id,
     label: target.label,
     status: target.status,
@@ -1213,12 +1341,21 @@ app.post('/api/actions/generate-batch', (req, res) => {
 });
 
 app.post('/api/actions/generate-controlled', (req, res) => {
+  const discoveredTargets = buildDiscoveredTargets(readJsonCache(ASSETS_CACHE));
+  const allTargetById = discoveredTargets.length
+    ? { ...CONTROLLED_TARGET_BY_ID, ...Object.fromEntries(discoveredTargets.map(t => [t.id, t])) }
+    : CONTROLLED_TARGET_BY_ID;
+
   const params = normalizeControlledGenerationBody(req.body || {});
-  const err = validateControlledGenerationParams(params);
+  const err = validateControlledGenerationParams(params, allTargetById);
   if (err) return res.status(400).json({ error: err });
 
-  const spec = CONTROLLED_TARGET_BY_ID[params.target];
+  const spec = allTargetById[params.target];
   const args = ['--target', params.target, '--prompt', params.prompt];
+  // Discovered targets supply a model path; the script's *) catch-all handles them.
+  if (spec.modelPath && !CONTROLLED_TARGET_BY_ID[params.target]) {
+    args.push('--model-path', spec.modelPath);
+  }
   if (params.negative_prompt) args.push('--negative-prompt', params.negative_prompt);
   if (params.width) args.push('--width', String(params.width));
   if (params.height) args.push('--height', String(params.height));

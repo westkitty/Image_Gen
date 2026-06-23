@@ -18,10 +18,14 @@ const ASPECTS = [
 ];
 
 const FALLBACK_CONTROLLED_TARGETS = [
-  { id: 'sd15', label: 'SD1.5 standard', status: 'supported', mode: 'existing supported txt2img', caveat: 'Normal supported generation path. Full Automatic1111 parity is still not claimed.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 20, defaultCfgScale: 7, defaultSampler: 'euler_a' },
-  { id: 'sdxl-base', label: 'SDXL base', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Controlled proofed path; not full A1111 parity.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 7, defaultSampler: 'euler_a' },
-  { id: 'sdxl-turbo', label: 'SDXL Turbo', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Controlled proofed path; not full A1111 parity.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 0, defaultSampler: 'euler_a' },
-  { id: 'flux-fp8', label: 'Flux fp8', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Controlled proofed path; not full A1111 parity. Uses the fp8 runtime-proven Flux file, not the full Flux file.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 3.5, defaultSampler: 'euler' }
+  { id: 'sd15', label: 'SD1.5 standard', status: 'supported', mode: 'existing supported txt2img', caveat: 'Normal supported generation path. Full Automatic1111 parity is still not claimed.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 20, defaultCfgScale: 7, defaultSampler: 'euler_a', minSteps: 1, maxSteps: 150, maxWidth: 2048, maxHeight: 2048 },
+  { id: 'sdxl-base', label: 'SDXL base', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Controlled proofed path; not full A1111 parity.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 7, defaultSampler: 'euler_a', minSteps: 1, maxSteps: 8, maxWidth: 1024, maxHeight: 1024 },
+  { id: 'sdxl-turbo', label: 'SDXL Turbo', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Controlled proofed path; not full A1111 parity.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 0, defaultSampler: 'euler_a', minSteps: 1, maxSteps: 4, maxWidth: 1024, maxHeight: 1024 },
+  { id: 'flux-fp8', label: 'Flux fp8', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Controlled proofed path; not full A1111 parity. Uses the fp8 runtime-proven Flux file, not the full Flux file.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 3.5, defaultSampler: 'euler', minSteps: 1, maxSteps: 8, maxWidth: 1024, maxHeight: 1024 },
+  { id: 'sdxl-photonic', label: 'Photonic Fusion SDXL', status: 'staged', mode: 'migrated controlled generation', caveat: 'Migrated wc2tb SDXL checkpoint.', defaultWidth: 1024, defaultHeight: 1024, defaultSteps: 10, defaultCfgScale: 6.5, defaultSampler: 'dpm++2m', minSteps: 1, maxSteps: 150, maxWidth: 2048, maxHeight: 2048 },
+  { id: 'sdxl-homochi', label: 'Homochi XL v2', status: 'staged', mode: 'migrated controlled generation', caveat: 'Migrated wc2tb SDXL checkpoint.', defaultWidth: 1024, defaultHeight: 1024, defaultSteps: 10, defaultCfgScale: 6.5, defaultSampler: 'dpm++2m', minSteps: 1, maxSteps: 150, maxWidth: 2048, maxHeight: 2048 },
+  { id: 'sdxl-pony', label: 'Pony Diffusion V6 XL', status: 'staged', mode: 'migrated controlled generation', caveat: 'Migrated wc2tb SDXL checkpoint.', defaultWidth: 1024, defaultHeight: 1024, defaultSteps: 10, defaultCfgScale: 6.5, defaultSampler: 'dpm++2m', minSteps: 1, maxSteps: 150, maxWidth: 2048, maxHeight: 2048 },
+  { id: 'sd15-homofidelis', label: 'HomoFidelis v5', status: 'staged', mode: 'migrated controlled generation', caveat: 'Migrated wc2tb SD1.5 checkpoint.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 20, defaultCfgScale: 7, defaultSampler: 'euler_a', minSteps: 1, maxSteps: 150, maxWidth: 1024, maxHeight: 1024 }
 ];
 
 function setPill(id, label, kind = '') {
@@ -1205,7 +1209,8 @@ function loadSettingsJson(jsonStr) {
   showCreateNote('Settings loaded.' + seedNote + ' Review before generating.', '');
 }
 
-const SWEEP_TARGET_ALLOWLIST = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis']);
+// Sweep is allowed for any target present in the current capabilities map.
+function isSweepableTarget(targetId) { return Boolean(state.controlledTargetMap[targetId]); }
 const SWEEP_MAX_JOBS = 8;
 
 function updatePromptStats(textareaId, countId) {
@@ -1223,7 +1228,7 @@ async function runControlledSweep() {
   if (!statusEl) return;
   const base = getCoreParams();
   base.target = $('model').value;
-  if (!SWEEP_TARGET_ALLOWLIST.has(base.target)) { showCreateNote('Sweep rejected: select a controlled target first (sd15, sdxl-base, sdxl-turbo, flux-fp8, sdxl-photonic, sdxl-homochi, sdxl-pony, sd15-homofidelis).', 'privacy'); return; }
+  if (!isSweepableTarget(base.target)) { showCreateNote('Sweep rejected: select a valid model target first.', 'privacy'); return; }
   if (!base.prompt || !base.prompt.trim()) { showCreateNote('Enter a prompt before running a sweep.', 'privacy'); return; }
   let jobs = [];
   if (axis === 'seed') {

@@ -42,6 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        // Give WKWebView first-responder status so paste targets the active DOM element.
+        if let wv = webView { window.makeFirstResponder(wv) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -57,6 +59,101 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    // MARK: - Paste bridge (DexDictate / automation support)
+
+    // Converts a Swift string to a JSON-encoded JavaScript string literal (safe for interpolation).
+    private func jsStringLiteral(_ value: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: value),
+              let encoded = String(data: data, encoding: .utf8) else {
+            return "\"\""
+        }
+        return encoded
+    }
+
+    @objc func customPaste(_ sender: Any?) {
+        guard let wv = webView else { return }
+
+        // Ensure the WKWebView is first responder so the JS activeElement is current.
+        wv.window?.makeFirstResponder(wv)
+
+        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
+            // Nothing on pasteboard — fall through to native WebKit paste.
+            wv.perform(NSSelectorFromString("paste:"), with: sender)
+            return
+        }
+
+        let jsText = jsStringLiteral(text)
+        let js = """
+        (function() {
+          var el = document.activeElement;
+          if (!el) return { ok: false, reason: 'no-active-element' };
+          var tag = el.tagName ? el.tagName.toLowerCase() : '';
+          var type = (el.type || '').toLowerCase();
+          var isTextInput = (tag === 'textarea') ||
+                            (tag === 'input' && type !== 'password' && type !== 'hidden' && type !== 'file' && type !== 'checkbox' && type !== 'radio');
+          var isCE = el.isContentEditable;
+          if (!isTextInput && !isCE) return { ok: false, reason: 'not-editable' };
+          if (el.disabled || el.readOnly) return { ok: false, reason: 'secure-or-disabled' };
+          var text = \(jsText);
+          if (isTextInput) {
+            var start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+            var end   = typeof el.selectionEnd   === 'number' ? el.selectionEnd   : el.value.length;
+            el.value = el.value.slice(0, start) + text + el.value.slice(end);
+            var caret = start + text.length;
+            el.selectionStart = caret;
+            el.selectionEnd   = caret;
+            try { el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: false, inputType: 'insertFromPaste', data: text })); } catch(e) {}
+            try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch(e) {}
+            return { ok: true, mode: tag };
+          }
+          if (isCE) {
+            try { document.execCommand('insertText', false, text); } catch(e) {
+              var sel = window.getSelection();
+              if (sel && sel.rangeCount) {
+                sel.deleteFromDocument();
+                var range = sel.getRangeAt(0);
+                range.insertNode(document.createTextNode(text));
+                range.collapse(false);
+              }
+            }
+            try { el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: false, inputType: 'insertFromPaste', data: text })); } catch(e) {}
+            return { ok: true, mode: 'contenteditable' };
+          }
+          return { ok: false, reason: 'unexpected' };
+        })()
+        """
+
+        wv.evaluateJavaScript(js) { [weak self] result, error in
+            guard let self = self else { return }
+            if let err = error {
+                self.appendLog("paste-bridge error: \(err.localizedDescription)")
+                // Fall back: let WebKit handle it natively.
+                DispatchQueue.main.async { wv.perform(NSSelectorFromString("paste:"), with: sender) }
+                return
+            }
+            if let dict = result as? [String: Any], let ok = dict["ok"] as? Bool, !ok {
+                let reason = dict["reason"] as? String ?? "unknown"
+                if reason == "no-active-element" || reason == "not-editable" {
+                    // Not in a text field; fall through to WebKit.
+                    DispatchQueue.main.async { wv.perform(NSSelectorFromString("paste:"), with: sender) }
+                }
+                // "secure-or-disabled": silently skip — don't paste into protected fields.
+            }
+        }
+    }
+
+    override func responds(to selector: Selector) -> Bool {
+        if selector == NSSelectorFromString("customPaste:") { return true }
+        return super.responds(to: selector)
+    }
+
+    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(customPaste(_:)) {
+            return NSPasteboard.general.canReadItem(withDataConformingToTypes: [NSPasteboard.PasteboardType.string.rawValue])
+        }
+        return true
     }
 
     @objc private func reloadPage() {
@@ -176,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         editMenu.addItem(.separator())
         editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
         editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
-        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(customPaste(_:)), keyEquivalent: "v"))
         editMenu.addItem(.separator())
         editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
         editItem.submenu = editMenu

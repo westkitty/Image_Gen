@@ -24,11 +24,13 @@ ARG_API="openai"
 ARG_SAVE_PROMPTS="false"
 ARG_SCHEDULER=""
 ARG_VAE=""
+ARG_MODEL_PATH=""
 
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [options]
-  --target sd15|sdxl-base|sdxl-turbo|flux-fp8|sdxl-photonic|sdxl-homochi|sdxl-pony|sd15-homofidelis
+  --target TARGETID           known target id, or any id when --model-path is set
+  --model-path PATH           (optional) absolute .safetensors path on BigMac for auto-discovered models
   --prompt "..."              positive prompt
   --negative-prompt "..."     negative prompt
   --width N                   width in pixels
@@ -48,6 +50,7 @@ EOF
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --target) ARG_TARGET="${2:?}"; shift 2 ;;
+    --model-path) ARG_MODEL_PATH="${2:?}"; shift 2 ;;
     --prompt) ARG_PROMPT="${2:?}"; shift 2 ;;
     --negative-prompt|--negative) ARG_NEG="${2:?}"; shift 2 ;;
     --width) ARG_WIDTH="${2:?}"; shift 2 ;;
@@ -66,7 +69,20 @@ done
 
 ARG_TARGET="$(printf '%s' "$ARG_TARGET" | tr '[:upper:]' '[:lower:]')"
 case "$ARG_SAVE_PROMPTS" in true|false) : ;; *) fail "args" "--save-prompts must be true|false" ;; esac
-case "$ARG_TARGET" in sd15|sdxl-base|sdxl-turbo|flux-fp8|sdxl-photonic|sdxl-homochi|sdxl-pony|sd15-homofidelis) : ;; *) fail "target" "Unknown target '$ARG_TARGET'." ;; esac
+if [ -n "$ARG_MODEL_PATH" ]; then
+  # Auto-discovered model: validate path safety then allow any target id.
+  _mp_rel="${ARG_MODEL_PATH#"$MODEL_STAGE_ROOT/"}"
+  if [ "$_mp_rel" = "$ARG_MODEL_PATH" ]; then
+    fail "model-path" "Model path must be under MODEL_STAGE_ROOT ($MODEL_STAGE_ROOT)."
+  fi
+  case "$ARG_MODEL_PATH" in *.safetensors) : ;; *) fail "model-path" "Only .safetensors models are supported for auto-discovered targets." ;; esac
+  case "$_mp_rel" in *../*|*/..*) fail "model-path" "Model path must not contain directory traversal." ;; esac
+else
+  case "$ARG_TARGET" in
+    sd15|sdxl-base|sdxl-turbo|flux-fp8|sdxl-photonic|sdxl-homochi|sdxl-pony|sd15-homofidelis|sdxl-juggernaut|sdxl-realvisxl|sdxl-cyberrealistic|sdxl-epicrealism) : ;;
+    *) fail "target" "Unknown target '$ARG_TARGET'. Pass --model-path to use an auto-discovered model." ;;
+  esac
+fi
 case "$ARG_API" in openai|sdapi|both|native) : ;; *) fail "args" "--api must be openai|sdapi|both|native" ;; esac
 if [ "$ARG_SAVE_PROMPTS" = "true" ]; then
   export SDCPP_REDACT_PROMPTS=0
@@ -181,6 +197,66 @@ case "$ARG_TARGET" in
     TARGET_SAMPLER="euler_a"
     TARGET_REQUIRE_CFG_SCALE="true"
     ;;
+  sdxl-juggernaut)
+    TARGET_LABEL="Juggernaut XL (Ragnarok / latest photoreal)"
+    TARGET_MODE="migrated controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="SDXL Checkpoint (~6-7GB). Excellent photorealism with strong male anatomy; versatile for athletic/muscular men and NSFW. Widely praised for realistic bodies (incl. gay male workflows). Source: Civitai Juggernaut XL. Not full A1111 parity."
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/juggernaut_xl_ragnarok.safetensors"
+    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_DEFAULT_WIDTH=1024
+    TARGET_DEFAULT_HEIGHT=1024
+    TARGET_DEFAULT_STEPS=10
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_CFG="6"
+    TARGET_SAMPLER="dpm++2m"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
+  sdxl-realvisxl)
+    TARGET_LABEL="RealVisXL V5.0 (photoreal)"
+    TARGET_MODE="migrated controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="SDXL Checkpoint. High photoreal quality, detailed realistic male bodies/skin, good for intimate scenes with natural lighting and anatomy. Not full A1111 parity."
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/realvisxl_v5_0.safetensors"
+    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_DEFAULT_WIDTH=1024
+    TARGET_DEFAULT_HEIGHT=1024
+    TARGET_DEFAULT_STEPS=10
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_CFG="6.5"
+    TARGET_SAMPLER="dpm++2m"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
+  sdxl-cyberrealistic)
+    TARGET_LABEL="CyberRealistic XL (v10+ male-tuned photoreal)"
+    TARGET_MODE="migrated controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="SDXL Checkpoint. Strong photoreal skin textures, musculature, and realistic male forms; effective for detailed adult male NSFW. Not full A1111 parity."
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/cyberrealistic_xl_v10.safetensors"
+    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_DEFAULT_WIDTH=1024
+    TARGET_DEFAULT_HEIGHT=1024
+    TARGET_DEFAULT_STEPS=10
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_CFG="5"
+    TARGET_SAMPLER="dpm++2m"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
+  sdxl-epicrealism)
+    TARGET_LABEL="epiCRealism XL (photoreal male variants)"
+    TARGET_MODE="migrated controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="SDXL Checkpoint (top photoreal benchmark). Excellent anatomy adherence; pairs extremely well with male prompts/LoRAs for homoerotic realism. Not full A1111 parity."
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/epicrealism_xl_pure_fix.safetensors"
+    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_DEFAULT_WIDTH=1024
+    TARGET_DEFAULT_HEIGHT=1024
+    TARGET_DEFAULT_STEPS=10
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_CFG="6"
+    TARGET_SAMPLER="dpm++2m"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
   sdxl-turbo)
     TARGET_LABEL="SDXL Turbo"
     TARGET_MODE="proofed controlled generation"
@@ -213,6 +289,18 @@ case "$ARG_TARGET" in
     TARGET_SAMPLER="--sampling-method euler"
     ;;
 esac
+
+# Auto-discovered model: --model-path overrides/fills TARGET_MODEL_PATH and infers missing defaults.
+if [ -n "$ARG_MODEL_PATH" ]; then
+  TARGET_MODEL_PATH="$ARG_MODEL_PATH"
+  [ -n "$TARGET_STATUS" ]  || TARGET_STATUS="staged"
+  [ -n "$TARGET_LABEL" ]   || TARGET_LABEL="$(basename "$ARG_MODEL_PATH" .safetensors | tr '_-' '  ')"
+  [ -n "$TARGET_MODE" ]    || TARGET_MODE="auto-discovered generation"
+  [ -n "$TARGET_SAMPLER" ] || case "$ARG_TARGET" in
+    sd15-*) TARGET_SAMPLER="euler_a" ;;
+    *)      TARGET_SAMPLER="dpm++2m" ;;
+  esac
+fi
 
 if ! validatePrompt "$ARG_PROMPT"; then
   fail "prompt" "Invalid prompt"
