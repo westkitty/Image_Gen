@@ -48,8 +48,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         consoleProcess?.terminate()
     }
 
+    // MARK: - Menu actions
+
+    @objc private func showAbout() {
+        let alert = NSAlert()
+        alert.messageText = "Image_Gen"
+        alert.informativeText = "Local AI image generation console\nOperator console: \(consoleURL.absoluteString)\nProject: \(projectRoot)"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
     @objc private func reloadPage() {
-        webView.reload()
+        webView?.reload()
     }
 
     @objc private func openLogs() {
@@ -66,6 +77,149 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     @objc private func openInBrowser() {
         NSWorkspace.shared.open(consoleURL)
     }
+
+    @objc private func closeWindow() {
+        window?.close()
+    }
+
+    @objc private func zoomIn() {
+        guard let wv = webView else { return }
+        wv.pageZoom = min(wv.pageZoom * 1.1, 3.0)
+    }
+
+    @objc private func zoomOut() {
+        guard let wv = webView else { return }
+        wv.pageZoom = max(wv.pageZoom / 1.1, 0.25)
+    }
+
+    @objc private func actualSize() {
+        webView?.pageZoom = 1.0
+    }
+
+    @objc private func copyErrorReport() {
+        var parts: [String] = []
+        parts.append("=== Image_Gen Error Report ===")
+        parts.append("Date: \(Date())")
+        parts.append("Console URL: \(consoleURL.absoluteString)")
+        parts.append("Project root: \(projectRoot)")
+
+        if let label = statusLabel {
+            parts.append("\n--- Status ---")
+            parts.append(label.stringValue)
+        }
+
+        let logPaths = [
+            ("Wrapper log", wrapperLog),
+            ("Console log", consoleLog),
+        ]
+        for (name, path) in logPaths {
+            if let content = try? String(contentsOfFile: path, encoding: .utf8) {
+                let lines = content.components(separatedBy: "\n")
+                let tail = lines.suffix(60).joined(separator: "\n")
+                parts.append("\n--- \(name) (last 60 lines) ---")
+                parts.append(tail)
+            } else {
+                parts.append("\n--- \(name) ---")
+                parts.append("(not found at \(path))")
+            }
+        }
+
+        let report = parts.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(report, forType: .string)
+
+        let alert = NSAlert()
+        alert.messageText = "Error report copied"
+        alert.informativeText = "The last 60 lines of each log plus current status have been copied to the clipboard. Paste it into the chat to report the issue."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    // MARK: - Menu bar
+
+    private func buildMenu() {
+        let mainMenu = NSMenu()
+
+        // App menu
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(NSMenuItem(title: "About Image_Gen", action: #selector(showAbout), keyEquivalent: ""))
+        appMenu.addItem(.separator())
+        appMenu.addItem(NSMenuItem(title: "Hide Image_Gen", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
+        let hideOthers = NSMenuItem(title: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(hideOthers)
+        appMenu.addItem(NSMenuItem(title: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: ""))
+        appMenu.addItem(.separator())
+        appMenu.addItem(NSMenuItem(title: "Quit Image_Gen", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appItem.submenu = appMenu
+        mainMenu.addItem(appItem)
+
+        // File menu
+        let fileItem = NSMenuItem()
+        let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(NSMenuItem(title: "Open Logs", action: #selector(openLogs), keyEquivalent: "l"))
+        fileMenu.addItem(NSMenuItem(title: "Open in Browser", action: #selector(openInBrowser), keyEquivalent: "b"))
+        fileMenu.addItem(.separator())
+        fileMenu.addItem(NSMenuItem(title: "Close Window", action: #selector(closeWindow), keyEquivalent: "w"))
+        fileItem.submenu = fileMenu
+        mainMenu.addItem(fileItem)
+
+        // Edit menu — standard selectors let WebKit/responder chain handle them
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(redo)
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
+
+        // View menu
+        let viewItem = NSMenuItem()
+        let viewMenu = NSMenu(title: "View")
+        viewMenu.addItem(NSMenuItem(title: "Reload", action: #selector(reloadPage), keyEquivalent: "r"))
+        viewMenu.addItem(.separator())
+        viewMenu.addItem(NSMenuItem(title: "Zoom In", action: #selector(zoomIn), keyEquivalent: "+"))
+        viewMenu.addItem(NSMenuItem(title: "Zoom Out", action: #selector(zoomOut), keyEquivalent: "-"))
+        viewMenu.addItem(NSMenuItem(title: "Actual Size", action: #selector(actualSize), keyEquivalent: "0"))
+        viewItem.submenu = viewMenu
+        mainMenu.addItem(viewItem)
+
+        // Window menu
+        let windowItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(NSMenuItem(title: "Minimize", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m"))
+        let zoom = NSMenuItem(title: "Zoom", action: #selector(NSWindow.zoom(_:)), keyEquivalent: "")
+        windowMenu.addItem(zoom)
+        windowMenu.addItem(.separator())
+        windowMenu.addItem(NSMenuItem(title: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: ""))
+        windowItem.submenu = windowMenu
+        NSApp.windowsMenu = windowMenu
+        mainMenu.addItem(windowItem)
+
+        // Help menu
+        let helpItem = NSMenuItem()
+        let helpMenu = NSMenu(title: "Help")
+        helpMenu.addItem(NSMenuItem(title: "Copy Error Report", action: #selector(copyErrorReport), keyEquivalent: "e"))
+        helpMenu.addItem(.separator())
+        helpMenu.addItem(NSMenuItem(title: "Open Logs", action: #selector(openLogs), keyEquivalent: ""))
+        helpMenu.addItem(NSMenuItem(title: "Open in Browser", action: #selector(openInBrowser), keyEquivalent: ""))
+        helpItem.submenu = helpMenu
+        NSApp.helpMenu = helpMenu
+        mainMenu.addItem(helpItem)
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    // MARK: - Window
 
     private func buildWindow() {
         let config = WKWebViewConfiguration()
@@ -110,30 +264,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func buildMenu() {
-        let mainMenu = NSMenu()
-        let appMenuItem = NSMenuItem()
-        let viewMenuItem = NSMenuItem()
-        let fileMenuItem = NSMenuItem()
-        mainMenu.addItem(appMenuItem)
-        mainMenu.addItem(fileMenuItem)
-        mainMenu.addItem(viewMenuItem)
-
-        let appMenu = NSMenu()
-        appMenu.addItem(NSMenuItem(title: "Quit Image_Gen", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-        appMenuItem.submenu = appMenu
-
-        let fileMenu = NSMenu(title: "File")
-        fileMenu.addItem(NSMenuItem(title: "Open Logs", action: #selector(openLogs), keyEquivalent: "l"))
-        fileMenu.addItem(NSMenuItem(title: "Open in Browser", action: #selector(openInBrowser), keyEquivalent: "b"))
-        fileMenuItem.submenu = fileMenu
-
-        let viewMenu = NSMenu(title: "View")
-        viewMenu.addItem(NSMenuItem(title: "Reload", action: #selector(reloadPage), keyEquivalent: "r"))
-        viewMenuItem.submenu = viewMenu
-
-        NSApp.mainMenu = mainMenu
-    }
+    // MARK: - Service startup
 
     private func ensureServicesThenLoad() {
         setStatus("Checking local console and BigMac tunnel...")
@@ -167,7 +298,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             consoleProcess = process
         } catch {
             appendLog("failed to start operator-console: \(error.localizedDescription)")
-            DispatchQueue.main.async { self.setStatus("Could not start local console. Open Logs for details.") }
+            DispatchQueue.main.async { self.setStatus("Could not start local console. Use Help → Copy Error Report to share details.") }
             return
         }
 
@@ -179,7 +310,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             Thread.sleep(forTimeInterval: 1)
         }
         appendLog("operator-console did not answer within timeout")
-        DispatchQueue.main.async { self.setStatus("Local console did not answer within timeout. Open Logs for details.") }
+        DispatchQueue.main.async { self.setStatus("Local console did not answer within timeout. Use Help → Copy Error Report to share details.") }
     }
 
     private func ensureSdcppTunnel() {
@@ -206,10 +337,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             if finalStatus.output.contains("Server + tunnel appear UP") {
                 self.setStatus("BigMac server and tunnel are up.")
             } else {
-                self.setStatus("BigMac server/tunnel is not ready. Open Logs for details.")
+                self.setStatus("BigMac server/tunnel is not ready. Use Help → Copy Error Report to share details.")
             }
         }
     }
+
+    // MARK: - Helpers
 
     private func commandOK(_ command: String, timeout: TimeInterval) -> Bool {
         runShell(command, timeout: timeout).code == 0

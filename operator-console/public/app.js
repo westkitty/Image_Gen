@@ -1158,7 +1158,7 @@ async function compareLatestSweep() {
 
 const SETTINGS_ALLOWED_KEYS = new Set(['target', 'width', 'height', 'steps', 'cfg_scale', 'seed', 'prompt', 'negative_prompt']);
 const SETTINGS_BLOCKED_KEYS = new Set(['modelPath', 'model_path', 'checkpoint_path', 'checkpoint', 'lora', 'vae', 'controlnet', 'controlNet', 'version', 'modelVersion']);
-const SETTINGS_ALLOWED_TARGETS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8']);
+const SETTINGS_ALLOWED_TARGETS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis']);
 
 function loadSettingsJson(jsonStr) {
   let s;
@@ -1168,7 +1168,7 @@ function loadSettingsJson(jsonStr) {
     if (SETTINGS_BLOCKED_KEYS.has(k)) { showCreateNote('Rejected: "' + k + '" is not an allowed field.', 'privacy'); return; }
     if (!SETTINGS_ALLOWED_KEYS.has(k)) { showCreateNote('Rejected: unknown field "' + k + '". Only generation params accepted.', 'privacy'); return; }
   }
-  if (s.target != null && !SETTINGS_ALLOWED_TARGETS.has(s.target)) { showCreateNote('Rejected: target "' + s.target + '" is not on the allowed list (sd15, sdxl-base, sdxl-turbo, flux-fp8).', 'privacy'); return; }
+  if (s.target != null && !SETTINGS_ALLOWED_TARGETS.has(s.target)) { showCreateNote('Rejected: target "' + s.target + '" is not on the allowed list (sd15, sdxl-base, sdxl-turbo, flux-fp8, sdxl-photonic, sdxl-homochi, sdxl-pony, sd15-homofidelis).', 'privacy'); return; }
   if (s.width != null && (typeof s.width !== 'number' || s.width < 64 || s.width > 2048)) { showCreateNote('Rejected: width out of range (64–2048).', 'privacy'); return; }
   if (s.height != null && (typeof s.height !== 'number' || s.height < 64 || s.height > 2048)) { showCreateNote('Rejected: height out of range (64–2048).', 'privacy'); return; }
   if (s.steps != null && (typeof s.steps !== 'number' || s.steps < 1 || s.steps > 150)) { showCreateNote('Rejected: steps out of range (1–150).', 'privacy'); return; }
@@ -1186,7 +1186,7 @@ function loadSettingsJson(jsonStr) {
   showCreateNote('Settings loaded.' + seedNote + ' Review before generating.', '');
 }
 
-const SWEEP_TARGET_ALLOWLIST = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8']);
+const SWEEP_TARGET_ALLOWLIST = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis']);
 const SWEEP_MAX_JOBS = 8;
 
 function updatePromptStats(textareaId, countId) {
@@ -1204,7 +1204,7 @@ async function runControlledSweep() {
   if (!statusEl) return;
   const base = getCoreParams();
   base.target = $('model').value;
-  if (!SWEEP_TARGET_ALLOWLIST.has(base.target)) { showCreateNote('Sweep rejected: select a controlled target first (sd15, sdxl-base, sdxl-turbo, flux-fp8).', 'privacy'); return; }
+  if (!SWEEP_TARGET_ALLOWLIST.has(base.target)) { showCreateNote('Sweep rejected: select a controlled target first (sd15, sdxl-base, sdxl-turbo, flux-fp8, sdxl-photonic, sdxl-homochi, sdxl-pony, sd15-homofidelis).', 'privacy'); return; }
   if (!base.prompt || !base.prompt.trim()) { showCreateNote('Enter a prompt before running a sweep.', 'privacy'); return; }
   let jobs = [];
   if (axis === 'seed') {

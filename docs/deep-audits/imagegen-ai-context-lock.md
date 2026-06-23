@@ -9,6 +9,13 @@ It exists to stop the same release facts from drifting.
 
 - Workspace root: `/Users/andrew/Image_Gen`
 - Canonical model home: `/Volumes/wc2tb/ImageGen`
+- SDCPP specific layout (for the four requested models):
+  - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/photonic_fusion_sdxl_finale_v1.safetensors`
+  - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/homochi_xl_v2.safetensors`
+  - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/pony_diffusion_v6_xl.safetensors`
+  - SD15: `/Volumes/wc2tb/ImageGen/checkpoints/sd15/homofidelis_v5.safetensors`
+  - VAE: `/Volumes/wc2tb/ImageGen/vaes/sdxl_vae.safetensors`
+  (use `vaes/` plural per project convention; report both vae/ and vaes/ if both exist)
 - Runtime bridge: `operator-console/server.js`
 - Native wrapper installer: `scripts/install-macos-app.sh`
 - Native wrapper output: `/Applications/Image_Gen.app`

@@ -40,9 +40,11 @@
 
       <main class="workspace">
         <section id="create" class="screen active">
-          <div class="workbench-grid">
-            <form id="form-create" class="panel control-panel">
-              <div class="panel-head"><div><h2>Create</h2><p>txt2img controls surfaced like an actual generation cockpit.</p></div><button type="submit" class="primary big">Generate</button></div>
+          <form id="form-create" class="workbench-grid">
+
+            <!-- LEFT: main settings — prompt, model, style -->
+            <div class="panel control-panel">
+              <div class="panel-head"><div><h2>Create</h2><p>Prompt and model selection.</p></div><button type="submit" class="primary big">Generate</button></div>
               <div id="create-note" class="create-note" hidden></div>
 
               <div class="field"><label for="prompt">Prompt</label><textarea id="prompt" required rows="5" placeholder="Describe the image. Use A1111 prompt syntax if your backend/model supports it."></textarea><div class="meta-row"><span id="prompt-count">0 chars</span><button type="button" class="ghost small" id="btn-save-style">Save style</button></div></div>
@@ -57,29 +59,6 @@
                 <div class="two-col"><div class="field"><label for="model">Generation target</label><select id="model"></select><div id="target-caveat" class="fineprint">Controlled proofed path; not full A1111 parity.</div></div><div class="field"><label for="vae">VAE</label><select id="vae"></select></div></div>
                 <div class="two-col"><div class="field"><label for="lora-select">LoRA</label><select id="lora-select" disabled><option value="">— none —</option></select></div><div class="field"><label for="lora-weight">Weight</label><input id="lora-weight" type="number" min="0" max="2" step="0.05" value="0.75" disabled /></div></div>
                 <div class="gate-row"><button type="button" class="ghost" id="btn-insert-lora" disabled>Insert LoRA token</button><span id="lora-status" class="muted fineprint"></span></div>
-              </details>
-
-              <details open class="block"><summary>Generation parameters</summary>
-                <div class="three-col">
-                  <div class="field"><label for="steps">Steps</label><input id="steps" type="number" min="1" max="150" value="20" /></div>
-                  <div class="field"><label for="cfg_scale">CFG scale</label><input id="cfg_scale" type="number" min="1" max="30" step="0.5" value="7" /></div>
-                  <div class="field"><label for="sampler">Sampler</label><select id="sampler"></select></div>
-                </div>
-                <div class="three-col">
-                  <div class="field"><label for="scheduler">Scheduler</label><select id="scheduler"></select></div>
-                  <div class="field"><label for="width">Width</label><input id="width" type="number" min="64" max="2048" step="8" value="512" /></div>
-                  <div class="field"><label for="height">Height</label><input id="height" type="number" min="64" max="2048" step="8" value="512" /></div>
-                </div>
-                <div class="quick-row" id="aspect-presets"></div>
-              </details>
-
-              <details open class="block"><summary>Seed & variation controls</summary>
-                <div class="three-col">
-                  <div class="field"><label for="seed">Seed</label><input id="seed" placeholder="-1 for random" /></div>
-                  <div class="field"><label for="variation_seed">Variation seed</label><input id="variation_seed" disabled placeholder="backend missing" /></div>
-                  <div class="field"><label for="variation_strength">Variation strength</label><input id="variation_strength" type="number" disabled value="0.3" step="0.05" /></div>
-                </div>
-                <div class="quick-row"><button type="button" class="ghost" id="btn-random-seed">Random seed</button><button type="button" class="ghost" id="btn-random-seed-ongoing">Use -1 random</button><button type="button" class="ghost" id="btn-reuse-seed">Reuse last seed</button><span class="gate">Variation seed / seed resize visible; backend not wired.</span></div>
               </details>
 
               <details class="block"><summary>Import / paste settings JSON</summary>
@@ -109,24 +88,59 @@
                 <button type="button" class="ghost" id="btn-run-sweep">Run sweep</button>
                 <div id="sweep-status" class="stacked" style="margin-top:10px" hidden></div>
               </details>
+            </div>
 
-              <details class="block"><summary>Hires Fix / faces / tiling</summary>
-                <div class="three-col"><label class="check-card"><input id="hires_fix" type="checkbox" disabled /> Hires Fix</label><label class="check-card"><input id="restore_faces" type="checkbox" disabled /> Restore faces</label><label class="check-card"><input id="tiling" type="checkbox" /> Tiling</label></div>
-                <p class="fineprint">Latent Hires Fix (A1111-style, single-pass denoising) is not yet implemented here — use the Enhance screen for two-pass Hires Fix. Face restoration requires GFPGAN/CodeFormer on the inference host.</p>
-              </details>
-
-              <details class="block"><summary>Backend routing</summary>
-                <div class="three-col"><div class="field"><label for="mode">Mode</label><select id="mode"><option value="server">Server</option><option value="cli">CLI</option></select></div><div class="field"><label for="api">Server API</label><select id="api"><option value="openai">OpenAI</option><option value="sdapi">SDAPI</option><option value="both">Both</option><option value="native">Native</option></select></div><div class="field"><label for="clip_skip">CLIP skip</label><input id="clip_skip" type="number" min="1" max="12" placeholder="not wired" /></div></div>
-              </details>
-            </form>
-
+            <!-- CENTER: generated image -->
             <aside class="panel preview-panel">
               <div class="panel-head"><div><h2>Preview</h2><p id="preview-subtitle">Generated outputs and job status.</p></div></div>
               <div id="preview-stage" class="preview-stage"><div class="empty-state">No image selected. Generate something or open a library item.</div></div>
               <div class="action-row"><button class="ghost" id="btn-copy-last">Copy params</button><button class="ghost" id="btn-send-img2img">Send to img2img</button><button class="ghost" id="btn-send-upscale">Send to upscale</button></div>
               <div id="latest-job" class="job-card muted">No active job.</div>
             </aside>
-          </div>
+
+            <!-- RIGHT: image settings — params, seed, advanced -->
+            <div class="panel image-settings-panel">
+              <div class="panel-head"><div><h2>Image settings</h2><p>Size, steps, and generation controls.</p></div></div>
+
+              <details open class="block"><summary>Generation parameters</summary>
+                <div class="two-col">
+                  <div class="field"><label for="steps">Steps</label><input id="steps" type="number" min="1" max="150" value="20" /></div>
+                  <div class="field"><label for="cfg_scale">CFG scale</label><input id="cfg_scale" type="number" min="1" max="30" step="0.5" value="7" /></div>
+                </div>
+                <div class="field"><label for="sampler">Sampler</label><select id="sampler"></select></div>
+                <div class="two-col">
+                  <div class="field"><label for="scheduler">Scheduler</label><select id="scheduler"></select></div>
+                  <div class="field"></div>
+                </div>
+                <div class="two-col">
+                  <div class="field"><label for="width">Width</label><input id="width" type="number" min="64" max="2048" step="8" value="512" /></div>
+                  <div class="field"><label for="height">Height</label><input id="height" type="number" min="64" max="2048" step="8" value="512" /></div>
+                </div>
+                <div class="quick-row" id="aspect-presets"></div>
+              </details>
+
+              <details open class="block"><summary>Seed & variation</summary>
+                <div class="field"><label for="seed">Seed</label><input id="seed" placeholder="-1 for random" /></div>
+                <div class="two-col">
+                  <div class="field"><label for="variation_seed">Variation seed</label><input id="variation_seed" disabled placeholder="backend missing" /></div>
+                  <div class="field"><label for="variation_strength">Strength</label><input id="variation_strength" type="number" disabled value="0.3" step="0.05" /></div>
+                </div>
+                <div class="quick-row"><button type="button" class="ghost small" id="btn-random-seed">Random</button><button type="button" class="ghost small" id="btn-random-seed-ongoing">Use -1</button><button type="button" class="ghost small" id="btn-reuse-seed">Reuse last</button></div>
+                <p class="fineprint gate" style="margin-top:8px">Variation seed / seed resize visible; backend not wired.</p>
+              </details>
+
+              <details class="block"><summary>Hires Fix / faces / tiling</summary>
+                <div class="three-col"><label class="check-card"><input id="hires_fix" type="checkbox" disabled /> Hires Fix</label><label class="check-card"><input id="restore_faces" type="checkbox" disabled /> Restore faces</label><label class="check-card"><input id="tiling" type="checkbox" /> Tiling</label></div>
+                <p class="fineprint">Use the Enhance screen for two-pass Hires Fix. Face restoration requires GFPGAN/CodeFormer on the inference host.</p>
+              </details>
+
+              <details class="block"><summary>Backend routing</summary>
+                <div class="two-col"><div class="field"><label for="mode">Mode</label><select id="mode"><option value="server">Server</option><option value="cli">CLI</option></select></div><div class="field"><label for="api">Server API</label><select id="api"><option value="openai">OpenAI</option><option value="sdapi">SDAPI</option><option value="both">Both</option><option value="native">Native</option></select></div></div>
+                <div class="field"><label for="clip_skip">CLIP skip</label><input id="clip_skip" type="number" min="1" max="12" placeholder="not wired" /></div>
+              </details>
+            </div>
+
+          </form>
         </section>
 
         <section id="batch" class="screen"><div class="split-grid">

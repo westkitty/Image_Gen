@@ -62,6 +62,23 @@ The target architecture is:
 | Large model storage | BigMac external APFS volume | `/Volumes/wc2tb`, especially model roots and generated output roots |
 | Proof artifacts | MacBook-visible | final PNG, logs, command transcript, route proof, storage proof |
 
+## Path Doctrine (Canonical Roots)
+
+- MacBook project root: `/Users/andrew/Image_Gen`
+- BigMac canonical model root (durable storage for Image_Gen models): `/Volumes/wc2tb/ImageGen`
+- BigMac staging/build root: `/Users/bigmac/sdcpp-staging`
+
+**Required layout for SDCPP models:**
+- SDXL checkpoints: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/`
+- SD 1.5 checkpoints: `/Volumes/wc2tb/ImageGen/checkpoints/sd15/`
+- SDXL VAEs: `/Volumes/wc2tb/ImageGen/vaes/`
+- LoRAs: `/Volumes/wc2tb/ImageGen/loras/`
+- Flux etc. under appropriate subdirs.
+
+Never assume or hardcode `/Users/bigmac/sdcpp_models` or `~/sdcpp_models` as the Image_Gen model home. 
+
+Use `MODEL_STAGE_ROOT=/Volumes/wc2tb/ImageGen` (or equivalent) in scripts.
+
 ## Required BigMac Hardware Gate
 
 The planned target is an Apple Silicon BigMac/Mac mini class host with 32 GB unified memory. Verify the live host before assigning memory budgets:
@@ -712,22 +729,22 @@ Use `--steps 1` only for smoke proof. Use normal step counts after the path is p
 Server must run on BigMac with model/context arguments. SD 1.5 server example:
 
 ```sh
-ssh westcat 'test -f /Users/andrew/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors && ls -lh /Users/andrew/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors'
-ssh westcat 'cd /Users/andrew/stable-diffusion.cpp && ./build/bin/sd-server -m /Users/andrew/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors --listen-ip 127.0.0.1 --listen-port 7860 --backend metal --diffusion-fa -v'
+ssh westcat 'test -f /Users/bigmac/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors && ls -lh /Users/bigmac/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors'
+ssh westcat 'cd /Users/bigmac/stable-diffusion.cpp && ./build/bin/sd-server -m /Users/bigmac/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors --listen-ip 127.0.0.1 --listen-port 7860 --backend metal --diffusion-fa -v'
 ```
 
 SDXL server example:
 
 ```sh
-ssh westcat 'test -f /Users/andrew/sdcpp-staging/models/sd_xl_base_1.0.safetensors && test -f /Users/andrew/sdcpp-staging/models/sdxl_vae-fp16-fix.safetensors && ls -lh /Users/andrew/sdcpp-staging/models/sd_xl_base_1.0.safetensors /Users/andrew/sdcpp-staging/models/sdxl_vae-fp16-fix.safetensors'
-ssh westcat 'cd /Users/andrew/stable-diffusion.cpp && ./build/bin/sd-server -m /Users/andrew/sdcpp-staging/models/sd_xl_base_1.0.safetensors --vae /Users/andrew/sdcpp-staging/models/sdxl_vae-fp16-fix.safetensors --listen-ip 127.0.0.1 --listen-port 7860 --backend metal --diffusion-fa -v'
+ssh westcat 'test -f /Volumes/wc2tb/ImageGen/checkpoints/sdxl/sd_xl_base_1.0.safetensors && test -f /Volumes/wc2tb/ImageGen/vaes/vae-ft-mse-840000-ema-pruned.safetensors && ls -lh /Volumes/wc2tb/ImageGen/checkpoints/sdxl/sd_xl_base_1.0.safetensors /Volumes/wc2tb/ImageGen/vaes/vae-ft-mse-840000-ema-pruned.safetensors'
+ssh westcat 'cd /Users/bigmac/stable-diffusion.cpp && ./build/bin/sd-server -m /Volumes/wc2tb/ImageGen/checkpoints/sdxl/sd_xl_base_1.0.safetensors --vae /Volumes/wc2tb/ImageGen/vaes/vae-ft-mse-840000-ema-pruned.safetensors --listen-ip 127.0.0.1 --listen-port 7860 --backend metal --diffusion-fa -v'
 ```
 
 FLUX.1-dev server example:
 
 ```sh
-ssh westcat 'test -f /Users/andrew/sdcpp-staging/models/flux1-dev-q8_0.gguf && test -f /Users/andrew/sdcpp-staging/models/ae.safetensors && test -f /Users/andrew/sdcpp-staging/models/clip_l.safetensors && test -f /Users/andrew/sdcpp-staging/models/t5xxl_fp16.safetensors && ls -lh /Users/andrew/sdcpp-staging/models/flux1-dev-q8_0.gguf /Users/andrew/sdcpp-staging/models/ae.safetensors /Users/andrew/sdcpp-staging/models/clip_l.safetensors /Users/andrew/sdcpp-staging/models/t5xxl_fp16.safetensors'
-ssh westcat 'cd /Users/andrew/stable-diffusion.cpp && ./build/bin/sd-server --diffusion-model /Users/andrew/sdcpp-staging/models/flux1-dev-q8_0.gguf --vae /Users/andrew/sdcpp-staging/models/ae.safetensors --clip_l /Users/andrew/sdcpp-staging/models/clip_l.safetensors --t5xxl /Users/andrew/sdcpp-staging/models/t5xxl_fp16.safetensors --cfg-scale 1.0 --sampling-method euler --listen-ip 127.0.0.1 --listen-port 7860 --backend diffusion=metal,te=cpu,vae=metal --diffusion-fa -v'
+ssh westcat 'test -f /Volumes/wc2tb/ImageGen/flux/flux1-schnell/flux1-schnell-fp8.safetensors && test -f /Volumes/wc2tb/ImageGen/flux/shared/ae.safetensors && test -f /Volumes/wc2tb/ImageGen/flux/shared/clip_l.safetensors && test -f /Volumes/wc2tb/ImageGen/flux/shared/t5xxl_fp16.safetensors && ls -lh /Volumes/wc2tb/ImageGen/flux/flux1-schnell/flux1-schnell-fp8.safetensors /Volumes/wc2tb/ImageGen/flux/shared/ae.safetensors /Volumes/wc2tb/ImageGen/flux/shared/clip_l.safetensors /Volumes/wc2tb/ImageGen/flux/shared/t5xxl_fp16.safetensors'
+ssh westcat 'cd /Users/bigmac/stable-diffusion.cpp && ./build/bin/sd-server --diffusion-model /Volumes/wc2tb/ImageGen/flux/flux1-schnell/flux1-schnell-fp8.safetensors --vae /Volumes/wc2tb/ImageGen/flux/shared/ae.safetensors --clip_l /Volumes/wc2tb/ImageGen/flux/shared/clip_l.safetensors --t5xxl /Volumes/wc2tb/ImageGen/flux/shared/t5xxl_fp16.safetensors --cfg-scale 1.0 --sampling-method euler --listen-ip 127.0.0.1 --listen-port 7860 --backend diffusion=metal,te=cpu,vae=metal --diffusion-fa -v'
 ```
 
 MacBook tunnel:

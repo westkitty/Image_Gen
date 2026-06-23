@@ -29,6 +29,9 @@ list_asset_dir() {
   fi
 }
 list_asset_dir "checkpoint"   "$STAGING/models"
+list_asset_dir "checkpoint"   "$STAGE_ROOT/checkpoints"
+list_asset_dir "checkpoint"   "$STAGE_ROOT/checkpoints/sdxl"
+list_asset_dir "checkpoint"   "$STAGE_ROOT/checkpoints/sd15"
 list_asset_dir "vae"          "$STAGE_ROOT/vaes"
 list_asset_dir "lora"         "$STAGE_ROOT/loras"
 list_asset_dir "embedding"    "$STAGING/embeddings"

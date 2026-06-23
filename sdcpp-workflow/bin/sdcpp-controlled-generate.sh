@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # sdcpp-controlled-generate.sh — closed allowlist generation for proofed targets.
-# Supports sd15, sdxl-base, sdxl-turbo, and flux-fp8 only.
+# Supports closed allowlist targets only: sd15, sdxl-base, sdxl-turbo, flux-fp8, and migrated named targets.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -28,7 +28,7 @@ ARG_VAE=""
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [options]
-  --target sd15|sdxl-base|sdxl-turbo|flux-fp8
+  --target sd15|sdxl-base|sdxl-turbo|flux-fp8|sdxl-photonic|sdxl-homochi|sdxl-pony|sd15-homofidelis
   --prompt "..."              positive prompt
   --negative-prompt "..."     negative prompt
   --width N                   width in pixels
@@ -66,7 +66,7 @@ done
 
 ARG_TARGET="$(printf '%s' "$ARG_TARGET" | tr '[:upper:]' '[:lower:]')"
 case "$ARG_SAVE_PROMPTS" in true|false) : ;; *) fail "args" "--save-prompts must be true|false" ;; esac
-case "$ARG_TARGET" in sd15|sdxl-base|sdxl-turbo|flux-fp8) : ;; *) fail "target" "Unknown target '$ARG_TARGET'." ;; esac
+case "$ARG_TARGET" in sd15|sdxl-base|sdxl-turbo|flux-fp8|sdxl-photonic|sdxl-homochi|sdxl-pony|sd15-homofidelis) : ;; *) fail "target" "Unknown target '$ARG_TARGET'." ;; esac
 case "$ARG_API" in openai|sdapi|both|native) : ;; *) fail "args" "--api must be openai|sdapi|both|native" ;; esac
 if [ "$ARG_SAVE_PROMPTS" = "true" ]; then
   export SDCPP_REDACT_PROMPTS=0
@@ -120,6 +120,65 @@ case "$ARG_TARGET" in
     TARGET_CAVEAT="Controlled proofed path; not full A1111 parity."
     TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/sd_xl_base_1.0.safetensors"
     TARGET_DEFAULT_CFG="7"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
+  sdxl-photonic)
+    TARGET_LABEL="Photonic Fusion SDXL"
+    TARGET_MODE="migrated controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="Migrated wc2tb SDXL checkpoint. Photonic has one direct smoke proof; not full A1111 parity."
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/photonic_fusion_sdxl_finale_v1.safetensors"
+    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_DEFAULT_WIDTH=1024
+    TARGET_DEFAULT_HEIGHT=1024
+    TARGET_DEFAULT_STEPS=10
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_CFG="6.5"
+    TARGET_SAMPLER="dpm++2m"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
+  sdxl-homochi)
+    TARGET_LABEL="Homochi XL v2"
+    TARGET_MODE="migrated controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="Migrated wc2tb SDXL checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity."
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/homochi_xl_v2.safetensors"
+    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_DEFAULT_WIDTH=1024
+    TARGET_DEFAULT_HEIGHT=1024
+    TARGET_DEFAULT_STEPS=10
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_CFG="6.5"
+    TARGET_SAMPLER="dpm++2m"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
+  sdxl-pony)
+    TARGET_LABEL="Pony Diffusion V6 XL"
+    TARGET_MODE="migrated controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="Migrated wc2tb SDXL checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity."
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/pony_diffusion_v6_xl.safetensors"
+    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_DEFAULT_WIDTH=1024
+    TARGET_DEFAULT_HEIGHT=1024
+    TARGET_DEFAULT_STEPS=10
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_CFG="6.5"
+    TARGET_SAMPLER="dpm++2m"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
+  sd15-homofidelis)
+    TARGET_LABEL="HomoFidelis v5"
+    TARGET_MODE="migrated controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="Migrated wc2tb SD1.5 checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity."
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sd15/homofidelis_v5.safetensors"
+    TARGET_MAX_WIDTH=2048
+    TARGET_MAX_HEIGHT=2048
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_STEPS=20
+    TARGET_DEFAULT_CFG="7"
+    TARGET_SAMPLER="euler_a"
     TARGET_REQUIRE_CFG_SCALE="true"
     ;;
   sdxl-turbo)

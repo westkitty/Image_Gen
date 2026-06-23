@@ -42,7 +42,7 @@ const ALLOWED_SAMPLERS = new Set([
   'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm'
 ]);
 const ALLOWED_SCHEDULERS = new Set(['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple']);
-const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8']);
+const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis']);
 const CONTROLLED_TARGETS = [
   {
     id: 'sd15',
@@ -119,6 +119,75 @@ const CONTROLLED_TARGETS = [
     maxHeight: 1024,
     minSteps: 1,
     maxSteps: 8
+  }
+,
+  {
+    id: 'sdxl-photonic',
+    label: 'Photonic Fusion SDXL',
+    status: 'staged',
+    mode: 'migrated controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'Migrated wc2tb SDXL checkpoint. Photonic has one direct smoke proof; not full A1111 parity.',
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    defaultSteps: 10,
+    defaultCfgScale: 6.5,
+    defaultSampler: 'dpm++2m',
+    minSteps: 1,
+    maxSteps: 150,
+    maxWidth: 2048,
+    maxHeight: 2048
+  },
+  {
+    id: 'sdxl-homochi',
+    label: 'Homochi XL v2',
+    status: 'staged',
+    mode: 'migrated controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'Migrated wc2tb SDXL checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity.',
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    defaultSteps: 10,
+    defaultCfgScale: 6.5,
+    defaultSampler: 'dpm++2m',
+    minSteps: 1,
+    maxSteps: 150,
+    maxWidth: 2048,
+    maxHeight: 2048
+  },
+  {
+    id: 'sdxl-pony',
+    label: 'Pony Diffusion V6 XL',
+    status: 'staged',
+    mode: 'migrated controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'Migrated wc2tb SDXL checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity.',
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    defaultSteps: 10,
+    defaultCfgScale: 6.5,
+    defaultSampler: 'dpm++2m',
+    minSteps: 1,
+    maxSteps: 150,
+    maxWidth: 2048,
+    maxHeight: 2048
+  },
+  {
+    id: 'sd15-homofidelis',
+    label: 'HomoFidelis v5',
+    status: 'staged',
+    mode: 'migrated controlled generation',
+    route: '/api/actions/generate-controlled',
+    caveat: 'Migrated wc2tb SD1.5 checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity.',
+    defaultWidth: 512,
+    defaultHeight: 512,
+    defaultSteps: 20,
+    defaultCfgScale: 7,
+    defaultSampler: 'euler_a',
+    minSteps: 1,
+    maxSteps: 150,
+    maxWidth: 1024,
+    maxHeight: 1024
   }
 ];
 const CONTROLLED_TARGET_BY_ID = CONTROLLED_TARGETS.reduce((acc, target) => {
@@ -1625,7 +1694,7 @@ app.get('/api/runs/:runId/files', (req, res) => {
 });
 
 // ---- Replay object for "Reuse in Create" -----------------------------------------
-const REPLAY_TARGET_ALLOWLIST = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8']);
+const REPLAY_TARGET_ALLOWLIST = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis']);
 
 function buildReplayObject(runType, manifests) {
   if (!runType || !runType.startsWith('controlled-')) return { available: false };
