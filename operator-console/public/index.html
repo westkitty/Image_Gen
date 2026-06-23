@@ -74,11 +74,11 @@
 
               <details open class="block"><summary>Seed & variation controls</summary>
                 <div class="three-col">
-                  <div class="field"><label for="seed">Seed</label><input id="seed" placeholder="random" /></div>
+                  <div class="field"><label for="seed">Seed</label><input id="seed" placeholder="-1 for random" /></div>
                   <div class="field"><label for="variation_seed">Variation seed</label><input id="variation_seed" disabled placeholder="backend missing" /></div>
                   <div class="field"><label for="variation_strength">Variation strength</label><input id="variation_strength" type="number" disabled value="0.3" step="0.05" /></div>
                 </div>
-                <div class="quick-row"><button type="button" class="ghost" id="btn-random-seed">Random seed</button><button type="button" class="ghost" id="btn-reuse-seed">Reuse last seed</button><span class="gate">Variation seed / seed resize visible; backend not wired.</span></div>
+                <div class="quick-row"><button type="button" class="ghost" id="btn-random-seed">Random seed</button><button type="button" class="ghost" id="btn-random-seed-ongoing">Use -1 random</button><button type="button" class="ghost" id="btn-reuse-seed">Reuse last seed</button><span class="gate">Variation seed / seed resize visible; backend not wired.</span></div>
               </details>
 
               <details class="block"><summary>Import / paste settings JSON</summary>
@@ -317,11 +317,13 @@
 
           <!-- Full-size image viewer / lightbox -->
           <div id="image-viewer-overlay" class="image-viewer-overlay" hidden tabindex="-1" role="dialog" aria-modal="true" aria-label="Full-size image viewer">
-            <div class="image-viewer-panel">
+            <div class="image-viewer-panel" id="image-viewer-panel">
               <div class="image-viewer-header">
                 <div id="image-viewer-info" class="image-viewer-info fineprint"></div>
                 <div class="run-detail-actions">
                   <button class="ghost small" id="btn-viewer-copy-path">Copy path</button>
+                  <a class="ghost small" id="btn-viewer-download" href="#" download>Download</a>
+                  <button class="ghost small" id="btn-viewer-fullscreen">Full screen</button>
                   <button class="ghost small" id="btn-viewer-upscale">Send to Upscale</button>
                   <button class="ghost small" id="btn-viewer-close" aria-label="Close image viewer">&#10005; Close</button>
                 </div>
