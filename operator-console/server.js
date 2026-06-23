@@ -27,7 +27,7 @@ const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md'
 let schedulerSelectionSupported = true;
 let vaeSwitchingSupported = true;
 let loraSupported = true;
-let img2imgSupported = false;
+let img2imgSupported = true; // proven: sdcpp-img2img.sh proof run 20260623-001649-img2img, sha256 match
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -937,16 +937,16 @@ app.get('/api/capabilities', (req, res) => {
     ];
   }
 
-  // img2img / inpaint gates — probe cache informs the reason text, but supported stays false
-  // until actual workflow scripts (sdcpp-img2img.sh, /api/actions/img2img) exist.
+  // img2img / inpaint gates — probe cache informs the reason text.
+  // img2imgSupported stays false until a real proof run completes (see pending task).
   const img2imgProbeReason = editCap && editCap.capabilities
     ? (editCap.capabilities.img2img.supported
-        ? 'Remote CLI flags detected; workflow script (sdcpp-img2img.sh) not yet implemented.'
+        ? 'CLI flags confirmed; awaiting proof run before enabling (set img2imgSupported=true in server.js).'
         : editCap.capabilities.img2img.reason)
     : 'Run POST /api/actions/probe-image-edit to check remote support.';
   const img2imgGate = img2imgSupported
     ? { supported: true, route: '/api/actions/img2img' }
-    : { supported: false, reason: img2imgProbeReason, unlock_requires: 'Rebuild sd-cli on BigMac with --init-img flag support, then write sdcpp-img2img.sh.' };
+    : { supported: false, reason: img2imgProbeReason, unlock_requires: 'Run one img2img proof job via sdcpp-img2img.sh, verify output PNG, then set img2imgSupported=true.' };
 
   const inpaintProbeReason = editCap && editCap.capabilities
     ? (editCap.capabilities.inpaint.supported
@@ -1350,6 +1350,78 @@ app.post('/api/validate/hires-fix', (req, res) => {
   const normalized = normalizeHiresFixBody(req.body || {});
   if (!normalized.ok) return res.status(normalized.status).json({ error: normalized.error });
   res.json(hiresFixValidationResponse(normalized));
+});
+
+// img2img — gated behind img2imgSupported; init image must be within runs/
+app.post('/api/actions/img2img', (req, res) => {
+  if (!img2imgSupported) {
+    return res.status(409).json({
+      error: 'img2img is not currently supported.',
+      gate: 'img2img',
+      supported: false,
+      unlock_requires: 'Run POST /api/actions/probe-image-edit and confirm FLAG_INIT_IMG=yes; set img2imgSupported=true in server.js after a real proof run.'
+    });
+  }
+
+  const body = req.body || {};
+
+  const runId = typeof body.run_id === 'string' ? body.run_id.trim() : '';
+  const initImageFile = typeof body.init_image_file === 'string' ? body.init_image_file.trim() : '';
+
+  if (!runId) return res.status(400).json({ error: 'run_id is required' });
+  if (!initImageFile) return res.status(400).json({ error: 'init_image_file is required' });
+
+  if (!/^20\d{6}-\d{6}-[a-zA-Z0-9_-]+$/.test(runId)) {
+    return res.status(400).json({ error: 'Invalid run_id format' });
+  }
+  if (!/^[a-zA-Z0-9_\-.]+$/.test(initImageFile) || initImageFile.includes('..') || initImageFile.includes('/')) {
+    return res.status(400).json({ error: 'init_image_file must be a safe filename (no path separators or traversal)' });
+  }
+  if (!initImageFile.toLowerCase().endsWith('.png')) {
+    return res.status(400).json({ error: 'init_image_file must be a .png file' });
+  }
+
+  const initImgPath = path.resolve(RUNS_DIR, runId, initImageFile);
+  const relCheck = path.relative(RUNS_DIR, initImgPath);
+  if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
+    return res.status(403).json({ error: 'Init image path resolves outside runs directory' });
+  }
+  if (!fs.existsSync(initImgPath)) {
+    return res.status(404).json({ error: `Init image not found: ${runId}/${initImageFile}` });
+  }
+
+  const strength = body.strength !== undefined ? Number(body.strength) : 0.75;
+  if (!Number.isFinite(strength) || strength < 0.01 || strength > 0.99) {
+    return res.status(400).json({ error: 'strength must be a number between 0.01 and 0.99' });
+  }
+
+  const params = normalizeGenerationBody(body);
+  const genErr = validateGenerationParams(params);
+  if (genErr) return res.status(400).json({ error: genErr });
+
+  const args = ['--init-img', initImgPath, '--strength', String(strength), '--prompt', params.prompt];
+  if (params.negative_prompt) args.push('--negative', params.negative_prompt);
+  if (params.steps) args.push('--steps', String(params.steps));
+  if (params.width) args.push('--width', String(params.width));
+  if (params.height) args.push('--height', String(params.height));
+  if (params.cfg_scale) args.push('--cfg-scale', String(params.cfg_scale));
+  if (params.sampler) args.push('--sampler', params.sampler);
+  if (params.scheduler) args.push('--scheduler', params.scheduler);
+  if (params.seed) args.push('--seed', String(params.seed));
+  if (params.vae && params.vae !== 'auto') {
+    const vaePath = resolveVaePath(params.vae);
+    if (vaePath) args.push('--vae', vaePath);
+  }
+
+  const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
+  const summary = getRedactedCommandSummary('bin/sdcpp-img2img.sh', args, sensitives);
+  const jobId = createJob('img2img', summary, sanitizeRequestParams(
+    { ...params, run_id: runId, init_image_file: initImageFile, strength }, params.save_prompts
+  ));
+  jobSensitives[jobId] = sensitives;
+  runAction(jobId, 'bin/sdcpp-img2img.sh', args, params.save_prompts);
+
+  res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
 const ALLOWED_XYZ_AXIS_TYPES = new Set(['steps', 'cfg', 'sampler', 'seed', 'width', 'height']);

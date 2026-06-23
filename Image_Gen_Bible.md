@@ -2654,3 +2654,66 @@ Internal server-side `full_path` preserved in `ASSETS_CACHE` and in `resolveVaeP
 **img2img:** untouched.
 
 **Files changed:** `operator-console/server.js` only (change was in dirty state from Entry 11 stabilization pass; required server restart to take effect).
+
+## Entry 14 — img2img Implementation and Proof Run (2026-06-23)
+
+**Session goal:** Implement img2img end-to-end and run one real proof job before setting the gate to true.
+
+**Preconditions confirmed from Entry 13 investigation:**
+- Probe bug in `sdcpp-image-edit-capabilities.sh` was fixed: bash key transform `tr '-' '_' | tr -d '_'` → `sed 's/^--//' | tr '-' '_'` (preserving underscores). Python keys updated `FLAG__INIT_IMG` → `FLAG_INIT_IMG`.
+- Re-run probe: `FLAG_INIT_IMG=yes`, `FLAG_STRENGTH=yes`, `img2img.supported: true`
+- BigMac binary confirmed at `build-metal-proof-20260620-143223/bin/sd-cli`
+
+**Files added/modified:**
+- `sdcpp-workflow/bin/sdcpp-img2img.sh` (NEW): img2img workflow script
+- `operator-console/server.js`: `img2imgSupported = true`, `POST /api/actions/img2img` endpoint, updated gate reason texts
+- `operator-console/public/index.html`: img2img panel in `#edit` screen (`#form-img2img`, `#img2img-run`, `#img2img-image`, `#img2img-strength`, `#img2img-prompt`, `#img2img-negative`, `#btn-img2img-submit`)
+- `operator-console/public/app.js`: img2img gate hydration in `hydrateControls()`, `loadEditRuns()`, `onImg2imgRunChange()`, `submitImg2img()`, event bindings in `bindEvents()`
+
+**sdcpp-img2img.sh key behaviors:**
+- Requires `--init-img PATH` (must be within `$SDCPP_RUNS_DIR`; uses `case "$INIT_IMG_ABS" in "$SDCPP_RUNS_DIR/"*)` containment check)
+- `--strength N` validated 0.01–0.99 via python3
+- Uploads init image to BigMac via `scp` → `$REMOTE_OUTPUT_DIR/${NAME}-init.png`
+- Runs `sd-cli -i "$REMOTE_INIT_IMG" --strength $ARG_STRENGTH` with same flag set as cli-generate
+- Privacy: when `SDCPP_REDACT_PROMPTS=1` (server default when `save_prompts=false`), python redaction pipe runs on remote stdout AND `strip_png_metadata "$LOCAL_PNG"` strips all text chunks from the output PNG
+- Produces: `run-metadata.json`, `img2img-run-report.md`, `metrics.tsv`, `ui-run-card.md`, `remote-stdout.log`
+
+**server.js POST /api/actions/img2img:**
+- Gate: returns HTTP 409 if `img2imgSupported === false`
+- Accepts `{run_id, init_image_file, strength, prompt, negative_prompt, steps, width, height, cfg_scale, sampler, scheduler, seed, vae, save_prompts}`
+- `run_id` validated: `/^20\d{6}-\d{6}-[a-zA-Z0-9_-]+$/`
+- `init_image_file` validated: no `..`, no `/`, must end in `.png`
+- Containment: `path.resolve(RUNS_DIR, runId, initImageFile)` must stay within `RUNS_DIR`
+- File existence checked with `fs.existsSync` before spawning
+- `strength`: 0.01–0.99 range check in JS
+- Uses `normalizeGenerationBody` + `validateGenerationParams` for prompt/sampler/seed validation
+- `runAction('bin/sdcpp-img2img.sh', args, params.save_prompts)` — `save_prompts=false` → `SDCPP_REDACT_PROMPTS=1`
+
+**Proof run:**
+- Init image: `sdcpp-workflow/runs/20260622-224010-controlled-sd15/controlled-sd15.png` (384x384, from prior controlled run)
+- Command: `--strength 0.65 --steps 20 --width 384 --height 384 --seed 424242`
+- Prompt: `a golden retriever sitting in a sunny meadow, photorealistic`
+- Output: `sdcpp-workflow/runs/20260623-001649-img2img/img2img-proof.png` (381K, PNG image data 384×384 8-bit/color RGB)
+- sha256: `1afe49422d57439c037f0ee3e4256cd285bffec67f856d38191749c3d2bacc97` (local = remote)
+- Elapsed: 15.87s wall / 14.59s remote
+- Result: **PASS**
+
+**Privacy check:**
+- PNG had `parameters` text chunk with full prompt + SDCPP metadata (sd-cli embeds by default)
+- `strip_png_metadata` function in `sdcpp-lib.sh` confirmed working: 1 chunk → 0 chunks after strip
+- Strip runs when `SDCPP_REDACT_PROMPTS=1` (i.e. server default of `save_prompts=false`)
+
+**Security validation (API):**
+- `init_image_file: "../server.js"` → HTTP 400 "must be a safe filename"
+- `strength: 1.5` → HTTP 400 "must be a number between 0.01 and 0.99"
+- `init_image_file: "metrics.tsv"` → HTTP 400 "must be a .png file"
+
+**Validation:**
+- `node --check server.js` — OK
+- `node --check app.js` — OK
+- `bash -n sdcpp-img2img.sh` — OK
+- `git diff --check` — OK
+- Smoke check: 32/32 PASS
+- `/api/capabilities` featureGates.img2img: `{supported: true, route: "/api/actions/img2img"}`
+
+**img2imgSupported gate:** Set to `true` at `server.js` line 30.

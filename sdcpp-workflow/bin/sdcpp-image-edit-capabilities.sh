@@ -49,10 +49,11 @@ HELP="$("$SD_BIN" --help 2>&1 || true)"
 printf 'SD_VERSION=%s\n' "$(printf '%s' "$HELP" | head -3 | tr '\n' '|')"
 
 for flag in --init-img --strength --control-image --style-ratio; do
+  key="$(printf '%s' "$flag" | sed 's/^--//' | tr '-' '_' | tr '[:lower:]' '[:upper:]')"
   if printf '%s' "$HELP" | grep -q -- "$flag"; then
-    printf 'FLAG_%s=yes\n' "$(printf '%s' "$flag" | tr '-' '_' | tr -d '_' | tr '[:lower:]' '[:upper:]')"
+    printf 'FLAG_%s=yes\n' "$key"
   else
-    printf 'FLAG_%s=no\n' "$(printf '%s' "$flag" | tr '-' '_' | tr -d '_' | tr '[:lower:]' '[:upper:]')"
+    printf 'FLAG_%s=no\n' "$key"
   fi
 done
 
@@ -94,9 +95,9 @@ with open(probe_file) as f:
 sd_bin = kv.get('SD_BIN', '')
 found_binary = bool(sd_bin)
 
-has_init_img    = kv.get('FLAG__INIT_IMG', 'no') == 'yes'
-has_strength    = kv.get('FLAG__STRENGTH', 'no') == 'yes'
-has_control_img = kv.get('FLAG__CONTROL_IMAGE', 'no') == 'yes'
+has_init_img    = kv.get('FLAG_INIT_IMG', 'no') == 'yes'
+has_strength    = kv.get('FLAG_STRENGTH', 'no') == 'yes'
+has_control_img = kv.get('FLAG_CONTROL_IMAGE', 'no') == 'yes'
 server_img2img  = kv.get('SERVER_IMG2IMG_SOURCE', 'unknown')
 
 img2img_supported  = found_binary and has_init_img and has_strength
@@ -155,9 +156,9 @@ with open(probe_file) as f:
 
 sd_bin = kv.get('SD_BIN', '')
 found_binary = bool(sd_bin)
-has_init_img    = kv.get('FLAG__INIT_IMG', 'no') == 'yes'
-has_strength    = kv.get('FLAG__STRENGTH', 'no') == 'yes'
-has_control_img = kv.get('FLAG__CONTROL_IMAGE', 'no') == 'yes'
+has_init_img    = kv.get('FLAG_INIT_IMG', 'no') == 'yes'
+has_strength    = kv.get('FLAG_STRENGTH', 'no') == 'yes'
+has_control_img = kv.get('FLAG_CONTROL_IMAGE', 'no') == 'yes'
 server_img2img  = kv.get('SERVER_IMG2IMG_SOURCE', 'unknown')
 img2img_supported = found_binary and has_init_img and has_strength
 

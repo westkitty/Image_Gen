@@ -172,6 +172,13 @@ function hydrateControls() {
   if ($('lora-weight')) $('lora-weight').disabled = !loraEnabled;
   if ($('btn-insert-lora')) $('btn-insert-lora').disabled = !loraEnabled;
   if ($('lora-status')) $('lora-status').textContent = !loraGate.supported ? (loraGate.reason || 'LoRA not supported.') : loras.length === 0 ? 'No LoRAs discovered — run Discover Assets.' : `${loras.length} LoRA${loras.length !== 1 ? 's' : ''} available.`;
+  const img2imgGate = (caps.featureGates && caps.featureGates.img2img) || {};
+  const img2imgEnabled = img2imgGate.supported === true;
+  const img2imgReason = img2imgEnabled ? '' : (img2imgGate.reason || 'img2img not yet supported.');
+  ['img2img-run', 'img2img-image', 'img2img-strength', 'img2img-prompt', 'img2img-negative', 'btn-img2img-submit'].forEach(id => {
+    if ($(id)) $(id).disabled = !img2imgEnabled;
+  });
+  if ($('img2img-gate-reason')) $('img2img-gate-reason').textContent = img2imgEnabled ? '' : img2imgReason;
   $('aspect-presets').innerHTML = ASPECTS.map(([label, w, h]) => `<button type="button" class="ghost small" data-size="${w}x${h}">${label} ${w}×${h}</button>`).join('');
   $('set-save-prompts').checked = loadBool('savePrompts');
   applyPreset('quality');
@@ -350,6 +357,52 @@ function featureCard([id, title, desc], gate = {}) {
   const unlockHtml = (!supported && !partial && gate.unlock_requires)
     ? `<div class="unlock-needs"><strong>To unlock:</strong> ${esc(gate.unlock_requires)}</div>` : '';
   return `<article class="feature-card"><h3>${esc(title)}</h3><p>${esc(desc)}</p><span class="badge ${badgeCls}">${badgeLabel}</span><p class="fineprint">${esc(gate.reason || gate.caveat || 'Ready.')}</p>${unlockHtml}</article>`;
+}
+
+// ---- img2img -----------------------------------------------------------------
+async function loadEditRuns() {
+  const sel = $('img2img-run');
+  if (!sel) return;
+  try {
+    const data = await api('/api/runs');
+    const imageRuns = (data.runs || []).filter(r => r.images && r.images.length > 0);
+    if (!imageRuns.length) { sel.innerHTML = '<option value="">No image runs found</option>'; return; }
+    sel.innerHTML = '<option value="">Choose a run…</option>' +
+      imageRuns.map(r => '<option value="' + esc(r.id) + '">' + esc(r.id) + ' (' + r.images.length + ' image' + (r.images.length > 1 ? 's' : '') + ')</option>').join('');
+  } catch (_) { sel.innerHTML = '<option value="">Error loading runs</option>'; }
+}
+
+async function onImg2imgRunChange() {
+  const runId = $('img2img-run') && $('img2img-run').value;
+  const imgSel = $('img2img-image');
+  if (!runId || !imgSel) { if (imgSel) imgSel.innerHTML = '<option value="">Select a run first</option>'; return; }
+  try {
+    const detail = await api('/api/runs/' + encodeURIComponent(runId));
+    const images = (detail.images || []).filter(f => f.endsWith('.png'));
+    imgSel.innerHTML = images.length
+      ? images.map(f => '<option value="' + esc(f) + '">' + esc(f) + '</option>').join('')
+      : '<option value="">No PNG images in this run</option>';
+  } catch (_) { imgSel.innerHTML = '<option value="">Error loading images</option>'; }
+}
+
+async function submitImg2img(event) {
+  event.preventDefault();
+  const runId = $('img2img-run') && $('img2img-run').value;
+  const initImageFile = $('img2img-image') && $('img2img-image').value;
+  if (!runId || !initImageFile) { notifyLog('Select a run and image first.'); return; }
+  const strength = parseFloat($('img2img-strength').value) || 0.75;
+  const prompt = $('img2img-prompt').value.trim();
+  const negative_prompt = $('img2img-negative').value.trim();
+  if (!prompt) { notifyLog('Prompt is required for img2img.'); return; }
+  const save_prompts = loadBool('savePrompts');
+  try {
+    const result = await api('/api/actions/img2img', {
+      method: 'POST',
+      body: JSON.stringify({ run_id: runId, init_image_file: initImageFile, strength, prompt, negative_prompt, save_prompts })
+    });
+    notifyLog('img2img job started: ' + result.job_id);
+    trackJob(result.job_id, 'img2img');
+  } catch (err) { notifyLog('img2img error: ' + err.message); }
 }
 
 // ---- Pillow Upscale ----------------------------------------------------------
@@ -1494,11 +1547,14 @@ function bindEvents() {
   $$('.nav-btn').forEach(btn => btn.addEventListener('click', () => {
     showScreen(btn.dataset.target);
     if (btn.dataset.target === 'enhance') loadEnhanceRuns();
+    if (btn.dataset.target === 'edit') loadEditRuns();
   }));
   $('form-create').addEventListener('submit', submitCreate);
   $('form-batch').addEventListener('submit', submitBatch);
   $('form-upscale').addEventListener('submit', submitUpscale);
   $('upscale-run').addEventListener('change', onUpscaleRunChange);
+  if ($('form-img2img')) $('form-img2img').addEventListener('submit', submitImg2img);
+  if ($('img2img-run')) $('img2img-run').addEventListener('change', onImg2imgRunChange);
   $('form-hires-fix').addEventListener('submit', submitHiresFix);
   $('form-xyz').addEventListener('submit', submitXyz);
   $('model').addEventListener('change', e => applyControlledTargetDefaults(e.target.value));
