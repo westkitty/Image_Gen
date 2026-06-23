@@ -2475,3 +2475,182 @@ A second integration mismatch was also corrected: SD1.5 controlled generation us
 - Full Flux safetensors remains not runtime-proven; Flux fp8 remains the runtime-proven Flux path.
 - LoRA, VAE switching, ControlNet, img2img, inpaint, outpaint, Real-ESRGAN, and Face Restore remain unimplemented or gated.
 - Prompt text cannot be recovered from redacted runs.
+
+---
+
+## Entry 11 — Stabilization & Truth-Repair Pass (2026-06-22)
+
+### Session objective
+Preserve uncommitted work, run baseline validation, repair capability probe scripts, diagnose and fix the LoRA CPU fallback command path, run a real proof attempt, verify privacy, promote the LoRA gate, and update documentation truthfully.
+
+### Pre-existing false claim corrected
+A previous handoff reported LoRA CPU fallback as potentially working. This was **false**. The two real LoRA test runs (`20260622-214434-controlled-sd15` and `20260622-214546-controlled-sd15`) both failed with:
+
+```
+[ERROR] ggml_extend.hpp:70 - ggml_metal_op_encode_impl: error: unsupported op 'ADD'
+```
+
+Root cause: `BACKEND_FLAG="--backend cpu"` code was added to `sdcpp-controlled-generate.sh` at 21:48:47 but the two failed runs occurred at 21:44 and 21:45, *before* the code existed. `loraSupported` remained `false` at the time of handoff, which was the only truthful part.
+
+### Dirty state preserved
+- 8 modified unstaged files captured to `/tmp/imagegen-stabilization/pre-stabilization-diff-20260622-221702.patch` before any edits.
+
+### Baseline validation (Phase 2)
+| Check | Result |
+|---|---|
+| `node --check server.js` | PASS |
+| `node --check app.js` | PASS |
+| `bash -n` on all modified scripts | PASS |
+| `git diff --check` | FAIL → 4 trailing-whitespace lines in `validatePromptLoras` → **fixed** |
+| `smoke-check.sh` (32 tests) | PASS |
+
+### Probe script repairs (Phase 3)
+- `sdcpp-image-edit-capabilities.sh` and `sdcpp-upscale-capabilities.sh` previously searched for `sd` binary only.
+- Both patched to search `sd-cli` before `sd` across all candidate paths:
+  `$bd/bin/sd-cli`, `$bd/bin/sd`, `$bd/sd-cli`, `$bd/sd`, `$STAGING/bin/sd-cli`, `$STAGING/bin/sd`, `$HOME/stable-diffusion.cpp/build/bin/sd-cli`, `$HOME/stable-diffusion.cpp/build/bin/sd`, `$HOME/stable-diffusion.cpp/build/sd-cli`, `$HOME/stable-diffusion.cpp/build/sd`.
+- Probe ran via API (`POST /api/actions/probe-image-edit`, `POST /api/actions/probe-upscale`).
+- **sd-cli found**: `/Users/bigmac/sdcpp-staging/builds/build-metal-proof-20260620-143223/bin/sd-cli`
+- Image-edit probe result: `sd_binary_found: true`, `img2img: false` (no `--init-img` flag).
+- Upscale probe result: `remote_probe_ok: true`, Pillow local = true, Real-ESRGAN = false.
+
+### LoRA forensic diagnosis (Phase 4)
+- `sdcpp-controlled-generate.sh`: LoRA tags in prompt now bypass server tunnel (correct). `BACKEND_FLAG="--backend cpu"` is set when `--lora-model-dir` + LoRA tag + `--backend` all confirmed. `${BACKEND_FLAG:-}` is in `REMOTE_STDOUT_CMD`. Both redacted and non-redacted execution paths use the same command — no command/log divergence.
+- `sdcpp-cli-generate.sh`: hardcoded `--lora-model-dir /Volumes/wc2tb/ImageGen/loras --lora-apply-mode immediately` on every CLI run regardless of prompt content. No `--backend cpu`. **Bug.**
+- Existing failed runs confirmed `backend: ""` (empty) in SDCliParams because the flag code didn't yet exist when those runs ran.
+
+### Phase 5 — CLI generate fix
+- `sdcpp-cli-generate.sh`: replaced unconditional LoRA flags with `LORA_FRAG`/`BACKEND_FRAG` variables set only when `<lora:...>` tags are detected in the prompt. Both redacted and non-redacted paths updated consistently.
+- `bash -n` PASS. `git diff --check` PASS.
+
+### LoRA proof attempt (Phase 6)
+Run: `20260622-222622-controlled-sd15`
+- Request: `POST /api/actions/generate-controlled`, target=sd15, prompt=`"a plain grey square <lora:lcm_sd15:1>"`, steps=4, sampler=lcm, cfg=1, seed=42, save_prompts=false.
+- **Result: PASS** (41s wall, 384×384 PNG, 219869 bytes).
+- `backend: "cpu"` confirmed in SDCliParams.
+- `Initializing backend: CPU` confirmed in ggml log.
+- `lora_apply_mode: immediately` confirmed.
+- LoRA file: `/Volumes/wc2tb/ImageGen/loras/lcm_sd15.safetensors` loaded and applied.
+- No Metal error.
+
+### Privacy check (Phase 7)
+Initial proof run showed raw base-prompt text in `remote-command.log` (lines 98, 165, 166) because sd-cli strips `<lora:...>` tags before logging, so the redaction string (full prompt) didn't match the logged string (prompt-minus-lora-tag).
+
+**Fix applied to `sdcpp-controlled-generate.sh`**: redaction now also searches for the LoRA-stripped prompt via `re.sub(r'<lora:[^>]*>', '', p)`, and BPE tokenizer lines are neutralized with `tok_re` (matching `sdcpp-cli-generate.sh`'s existing approach).
+
+Verification run: `20260622-224010-controlled-sd15`
+- `remote-command.log` line 98: `prompt: "[REDACTED] "` ✓
+- `remote-command.log` line 165: `parse '[REDACTED] '` ✓
+- `remote-command.log` line 166: `to tokens [REDACTED]` ✓
+- Manifest `prompt: "[REDACTED]"` ✓
+- PNG: 0 tEXt/iTXt/zTXt chunks ✓
+- `<lora:lcm_sd15:1>` tag: not present in any file ✓
+
+### Capability gate changes
+| Gate | Before | After |
+|---|---|---|
+| `lora` | `false` | **`true`** (CPU fallback via sd-cli, lcm_sd15 proven) |
+| `xyzPlot` | `partial` (dirty state already promoted) | `true` |
+| `schedulerSelection` | gated | `true` (dirty state already set) |
+| `vae` | gated | `true` (dirty state already set) |
+| `img2img` | `false` | `false` (not started this pass) |
+| probes | sd-cli not found | **sd-cli found** at `build-metal-proof-20260620-143223/bin/sd-cli` |
+
+### LoRA constraints (as proven)
+- Only `sd15` target tested. SDXL/Flux LoRA not proven.
+- CPU backend required (Metal ADD op unsupported for LoRA tensors on this build).
+- Only `lcm_sd15.safetensors` weight proven. Other LoRAs untested.
+- LoRA dir: `/Volumes/wc2tb/ImageGen/loras` (on BigMac, not staged volume).
+- Server tunnel path bypassed for all LoRA prompts; CLI path always used.
+- Full A1111 LoRA parity not claimed.
+
+### img2img
+Deliberately not implemented in this pass. Requires sd-cli rebuild on BigMac with `--init-img` flag support, then `sdcpp-img2img.sh`.
+
+### Files modified (uncommitted)
+- `operator-console/server.js` — gate flags, scheduler/VAE/LoRA validation, loraSupported=true, trailing-whitespace fix
+- `operator-console/public/app.js` — scheduler/VAE disabled options
+- `sdcpp-workflow/bin/sdcpp-controlled-generate.sh` — LoRA/scheduler/VAE routing, BACKEND_FLAG, privacy redaction fix
+- `sdcpp-workflow/bin/sdcpp-cli-generate.sh` — conditional LORA_FRAG/BACKEND_FRAG
+- `sdcpp-workflow/bin/sdcpp-batch-generate.sh` — scheduler forwarding
+- `sdcpp-workflow/bin/sdcpp-discover-assets.sh` — full_path field, lora/vae dir fix
+- `sdcpp-workflow/bin/sdcpp-lib.sh` — lora-model-dir in sd-server startup
+- `sdcpp-workflow/bin/sdcpp-server-generate.sh` — scheduler/VAE forwarding
+- `sdcpp-workflow/bin/sdcpp-image-edit-capabilities.sh` — sd-cli search (NEW)
+- `sdcpp-workflow/bin/sdcpp-upscale-capabilities.sh` — sd-cli search (NEW)
+
+---
+
+## Entry 12 — LoRA Frontend UI Pass (2026-06-22)
+
+**Session goal:** Wire the LoRA frontend selector now that backend LoRA support is proven (Entry 11). Narrow pass: no img2img, no new backend features, no refactoring.
+
+**What changed:**
+
+### operator-console/public/index.html
+- Replaced static placeholder in "Model & extra networks" block (line 58) with live panel:
+  - `<select id="lora-select">` in a `two-col` row alongside `<input id="lora-weight" type="number" min=0 max=2 step=0.05 value=0.75>`
+  - `<button id="btn-insert-lora">` + `<span id="lora-status">` in a gate-row
+  - All elements start `disabled`; JS enables them after capabilities load
+
+### operator-console/public/app.js
+- `hydrateControls()` — added LoRA hydration block after scheduler populate:
+  - Reads `caps.featureGates.lora.supported` and `caps.networks.loras[]`
+  - Derives option values as basename-without-extension from `l.filename` (e.g. `lcm_sd15.safetensors` → `lcm_sd15`), matching `validatePromptLoras()` allowlist format
+  - Enables/disables select, weight input, and button via `loraEnabled = supported && loras.length > 0`
+  - Sets status text: reason string if unsupported, "No LoRAs discovered" if empty, "N LoRAs available." if ready
+- `bindEvents()` click delegator — added `#btn-insert-lora` handler:
+  - Reads selected `lora-select.value` (basename) + `lora-weight.value` (number)
+  - Calls `insertAtPrompt('basename:weight')` which appends `<lora:basename:weight>` to the prompt textarea
+  - Guards with `!disabled` check; falls through to existing `data-insert-lora` handler (unchanged)
+
+**Token format produced:** `<lora:lcm_sd15:0.75>` — canonical format accepted by `validatePromptLoras()` and forwarded by `sdcpp-controlled-generate.sh` to sd-cli via `--lora-model-dir`.
+
+**Validation:**
+- `node --check app.js` — syntax OK
+- `git diff --check` — no trailing whitespace
+- Smoke check: 32/32 PASS
+- `/api/capabilities` confirms: `loraGate.supported=true`, 10 LoRAs in `caps.networks.loras`
+
+**Recovery patch:** `/tmp/imagegen-lora-ui/pre-lora-ui-diff-20260622-225039.patch` (captured before this pass began)
+
+**Modified files (cumulative dirty state now 13 files):**
+- `operator-console/public/index.html` — LoRA panel HTML (NEW)
+- `operator-console/public/app.js` — LoRA hydration + click handler (NEW)
+- Plus all 11 files from Entries 11 (stabilization pass)
+
+**Known limitations not addressed:**
+- `full_path` field still sent to client in `caps.networks.loras[]` — no filesystem path is *displayed* in UI (only basename used), but it is transmitted. Strip in a future server pass.
+- SDXL/Flux LoRAs shown in selector but only SD1.5 CPU-fallback path is proven. Selecting an SDXL LoRA with an SDXL target will likely fail at runtime.
+- No weight validation feedback in UI (server validates and rejects on submit).
+
+---
+
+## Entry 13 — Capabilities Path Sanitization (2026-06-22)
+
+**Session goal:** Strip `full_path` from the browser-facing `/api/capabilities` response. Narrow security/privacy cleanup pass; no functional changes.
+
+**Leak confirmed:**
+- `/api/capabilities` → `caps.networks.loras[].full_path` contained absolute BigMac paths (e.g. `/Volumes/wc2tb/ImageGen/loras/lcm_sd15.safetensors`)
+- `caps.networks.embeddings[]` and `caps.networks.hypernetworks[]` also mapped (both currently empty, but sanitized defensively)
+- `caps.vaes[]`, `caps.modelStage`, `caps.modelInventory` path fields are pre-existing and intentional (used by staging UI) — not touched
+
+**Fix (already in dirty state from prior session):**
+`operator-console/server.js` lines 1030–1032 — replaced raw array pass-through with path-stripping map:
+```js
+loras: assets ? assets.loras.map(({ full_path: _, ...rest }) => rest) : [],
+embeddings: assets ? assets.embeddings.map(({ full_path: _, ...rest }) => rest) : [],
+hypernetworks: assets ? assets.hypernetworks.map(({ full_path: _, ...rest }) => rest) : []
+```
+Internal server-side `full_path` preserved in `ASSETS_CACHE` and in `resolveVaePath()` / `validatePromptLoras()` — those read from the cache directly, not from the capabilities output.
+
+**Validation:**
+- `node --check server.js` — OK
+- `node --check app.js` — OK
+- `git diff --check` — OK (no trailing whitespace)
+- Smoke check: 32/32 PASS
+- `caps.networks.loras[N].keys()` = `['id', 'filename', 'name', 'size_bytes', 'kind', 'status']` — no `full_path`
+- `lora.supported` = true, 10 LoRAs, basenames derivable for `<lora:name:weight>` token insertion
+
+**img2img:** untouched.
+
+**Files changed:** `operator-console/server.js` only (change was in dirty state from Entry 11 stabilization pass; required server restart to take effect).

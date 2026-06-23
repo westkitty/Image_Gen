@@ -24,6 +24,11 @@ const MODEL_STAGE_ROOT = '/Volumes/wc2tb/ImageGen';
 const MODEL_INVENTORY_CACHE = path.join(STATE_DIR, 'model-inventory-cache.json');
 const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md';
 
+let schedulerSelectionSupported = true;
+let vaeSwitchingSupported = true;
+let loraSupported = true;
+let img2imgSupported = false;
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -35,7 +40,7 @@ const ALLOWED_SAMPLERS = new Set([
   'euler_a', 'euler', 'heun', 'dpm2', 'dpm2_a', 'lms',
   'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm'
 ]);
-const ALLOWED_SCHEDULERS = new Set(['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple', 'normal']);
+const ALLOWED_SCHEDULERS = new Set(['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple']);
 const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8']);
 const CONTROLLED_TARGETS = [
   {
@@ -179,6 +184,37 @@ function getBuildInfo() {
 function validatePrompt(prompt) {
   return typeof prompt === 'string' && prompt.trim().length > 0 && prompt.length <= 4000;
 }
+function validatePromptLoras(prompt) {
+  if (typeof prompt !== 'string') return { ok: true };
+  const regex = /<lora:([^:>]+):([^>]+)>/g;
+  let match;
+  const assets = readJsonCache(ASSETS_CACHE);
+  const discoveredLoras = (assets && assets.loras) ? assets.loras : [];
+
+  const allowedNames = new Set();
+  for (const lora of discoveredLoras) {
+    if (lora.filename) {
+      allowedNames.add(lora.filename);
+      const base = lora.filename.replace(/\.(safetensors|ckpt|pt|bin)$/i, '');
+      allowedNames.add(base);
+    }
+  }
+
+  while ((match = regex.exec(prompt)) !== null) {
+    const loraName = match[1];
+    const loraWeight = match[2];
+
+    const weightNum = Number(loraWeight);
+    if (isNaN(weightNum)) {
+      return { ok: false, error: `Invalid LoRA weight: "${loraWeight}"` };
+    }
+
+    if (!allowedNames.has(loraName)) {
+      return { ok: false, error: `LoRA "${loraName}" is not in the discovered assets allowlist.` };
+    }
+  }
+  return { ok: true };
+}
 function validateNegativePrompt(text) {
   return text === undefined || text === null || text === '' || (typeof text === 'string' && text.length <= 2000);
 }
@@ -208,6 +244,19 @@ function validateSampler(sampler) {
 function validateScheduler(scheduler) {
   if (!scheduler) return true;
   return typeof scheduler === 'string' && ALLOWED_SCHEDULERS.has(scheduler);
+}
+function validateVae(vae) {
+  if (!vae || vae === 'auto') return true;
+  const assets = readJsonCache(ASSETS_CACHE);
+  if (!assets || !assets.vaes) return false;
+  return assets.vaes.some(v => v.id === vae);
+}
+function resolveVaePath(vaeId) {
+  if (!vaeId || vaeId === 'auto') return '';
+  const assets = readJsonCache(ASSETS_CACHE);
+  if (!assets || !assets.vaes) return '';
+  const found = assets.vaes.find(v => v.id === vaeId);
+  return found ? found.full_path : '';
 }
 function validateSavePrompts(value) {
   return value === undefined || value === null || typeof value === 'boolean';
@@ -395,6 +444,8 @@ function normalizeControlledGenerationBody(body) {
     cfg_scale: cfgValue,
     seed: body.seed !== undefined && body.seed !== null && body.seed !== '' ? body.seed : '',
     api: body.api !== undefined && body.api !== null && body.api !== '' ? String(body.api) : 'openai',
+    scheduler: body.scheduler !== undefined && body.scheduler !== null ? String(body.scheduler).trim() : 'discrete',
+    vae: body.vae !== undefined && body.vae !== null ? String(body.vae).trim() : 'auto',
     save_prompts: !!body.save_prompts
   };
   return params;
@@ -402,6 +453,8 @@ function normalizeControlledGenerationBody(body) {
 
 function validateGenerationParams(params) {
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
+  const loraErr = validatePromptLoras(params.prompt);
+  if (!loraErr.ok) return loraErr.error;
   if (!validateNegativePrompt(params.negative_prompt)) return 'Invalid negative prompt';
   if (params.preset && !ALLOWED_PRESETS.has(params.preset)) return 'Invalid preset';
   if (params.mode && !ALLOWED_MODES.has(params.mode)) return 'Invalid mode';
@@ -412,6 +465,7 @@ function validateGenerationParams(params) {
   if (!validateSize(params.height)) return 'Invalid height: use multiples of 8 between 64 and 2048';
   if (!validateSampler(params.sampler)) return 'Invalid or unsupported sampler';
   if (!validateScheduler(params.scheduler)) return 'Invalid scheduler';
+  if (!validateVae(params.vae)) return 'Invalid VAE';
   if (!validateSeed(params.seed)) return 'Invalid seed';
   if (!validateIntRange(params.clip_skip, 1, 12)) return 'Invalid CLIP skip';
   return null;
@@ -422,10 +476,14 @@ function validateControlledGenerationParams(params) {
   if (!validateControlledTarget(params.target)) return 'Invalid target';
   if (params.api && !ALLOWED_APIS.has(params.api)) return 'Invalid API';
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
+  const loraErr = validatePromptLoras(params.prompt);
+  if (!loraErr.ok) return loraErr.error;
   if (!validateNegativePrompt(params.negative_prompt)) return 'Invalid negative prompt';
   if (!validateSize(params.width)) return 'Invalid width: use multiples of 8 between 64 and target max';
   if (!validateSize(params.height)) return 'Invalid height: use multiples of 8 between 64 and target max';
   if (!validateSeed(params.seed)) return 'Invalid seed';
+  if (!validateScheduler(params.scheduler)) return 'Invalid scheduler';
+  if (!validateVae(params.vae)) return 'Invalid VAE';
   if (!validateSavePrompts(params.save_prompts)) return 'Invalid save_prompts';
 
   const spec = CONTROLLED_TARGET_BY_ID[params.target];
@@ -467,6 +525,11 @@ function buildGenerateArgs(params, includeApi = false) {
   if (params.height) args.push('--height', String(params.height));
   if (params.cfg_scale) args.push('--cfg', String(params.cfg_scale));
   if (params.sampler) args.push('--sampler', params.sampler);
+  if (params.scheduler) args.push('--scheduler', params.scheduler);
+  if (params.vae && params.vae !== 'auto') {
+    const vaePath = resolveVaePath(params.vae);
+    if (vaePath) args.push('--vae', vaePath);
+  }
   if (params.seed) args.push('--seed', String(params.seed));
   if (includeApi && params.api) args.push('--api', params.api);
   return args;
@@ -476,6 +539,8 @@ function normalizeHiresFixBody(body) {
   body = body || {};
 
   if (!validatePrompt(body.prompt)) return { ok: false, status: 400, error: 'Invalid prompt' };
+  const loraErr = validatePromptLoras(body.prompt);
+  if (!loraErr.ok) return { ok: false, status: 400, error: loraErr.error };
   const prompt = String(body.prompt).trim();
   if (!validateNegativePrompt(body.negative_prompt)) return { ok: false, status: 400, error: 'Invalid negative prompt' };
   const negativePrompt = body.negative_prompt ? String(body.negative_prompt) : '';
@@ -854,11 +919,22 @@ app.get('/api/capabilities', (req, res) => {
     models = assets.checkpoints.length > 0
       ? assets.checkpoints.map(c => ({ id: c.id, name: c.name || c.filename, filename: c.filename, status: c.status, kind: 'checkpoint', active: c.active || false, size_bytes: c.size_bytes }))
       : [{ id: 'sd15', name: 'SD 1.5 — configured remote model', filename: remoteModel, status: 'available', kind: 'checkpoint', active: true }];
-    vaes = [{ id: 'auto', name: 'Automatic / baked VAE', status: 'limited', reason: 'Current SDCPP scripts do not expose a VAE switch.' },
-            ...assets.vaes.map(v => ({ id: v.id, name: v.name || v.filename, filename: v.filename, status: 'available', kind: 'vae' }))];
+    vaes = [
+      { id: 'auto', name: 'Auto (Default)', status: vaeSwitchingSupported ? 'active' : 'limited', reason: vaeSwitchingSupported ? '' : 'Current SDCPP scripts do not expose a VAE switch.' },
+      ...assets.vaes.map(v => ({
+        id: v.id,
+        name: v.name || v.filename,
+        filename: v.filename,
+        status: vaeSwitchingSupported ? 'available' : 'limited',
+        reason: vaeSwitchingSupported ? '' : 'VAE switching is not yet proofed/supported.',
+        kind: 'vae'
+      }))
+    ];
   } else {
     models = [{ id: 'sd15', name: 'SD 1.5 — configured remote model', filename: remoteModel, status: 'available', kind: 'checkpoint', active: true }];
-    vaes = [{ id: 'auto', name: 'Automatic / baked VAE', status: 'limited', reason: 'Current SDCPP scripts do not expose a VAE switch.' }];
+    vaes = [
+      { id: 'auto', name: 'Auto (Default)', status: vaeSwitchingSupported ? 'active' : 'limited', reason: vaeSwitchingSupported ? '' : 'Current SDCPP scripts do not expose a VAE switch.' }
+    ];
   }
 
   // img2img / inpaint gates — probe cache informs the reason text, but supported stays false
@@ -868,7 +944,9 @@ app.get('/api/capabilities', (req, res) => {
         ? 'Remote CLI flags detected; workflow script (sdcpp-img2img.sh) not yet implemented.'
         : editCap.capabilities.img2img.reason)
     : 'Run POST /api/actions/probe-image-edit to check remote support.';
-  const img2imgGate = { supported: false, reason: img2imgProbeReason, unlock_requires: 'Rebuild sd-cli on BigMac with --init-img flag support, then write sdcpp-img2img.sh.' };
+  const img2imgGate = img2imgSupported
+    ? { supported: true, route: '/api/actions/img2img' }
+    : { supported: false, reason: img2imgProbeReason, unlock_requires: 'Rebuild sd-cli on BigMac with --init-img flag support, then write sdcpp-img2img.sh.' };
 
   const inpaintProbeReason = editCap && editCap.capabilities
     ? (editCap.capabilities.inpaint.supported
@@ -906,9 +984,11 @@ app.get('/api/capabilities', (req, res) => {
   };
 
   // LoRA / embeddings / hypernetworks: discoverable via asset cache
-  const loraGate = assets && assets.loras && assets.loras.length > 0
-    ? { supported: false, reason: `${assets.loras.length} LoRA(s) found on remote — injection bridge not yet implemented.`, unlock_requires: 'Write sdcpp-cli-generate.sh --lora flag support and wire to UI.' }
-    : { supported: false, reason: assets ? 'No LoRA files found on remote (run discover-assets to refresh).' : 'No LoRA discovery/injection bridge exists yet.', unlock_requires: 'Stage LoRA .safetensors on BigMac, then run discover-assets.' };
+  const loraGate = loraSupported
+    ? { supported: true, route: '/api/actions/generate-single' }
+    : (assets && assets.loras && assets.loras.length > 0
+        ? { supported: false, reason: `${assets.loras.length} LoRA(s) found on remote — injection bridge not yet implemented.`, unlock_requires: 'Write sdcpp-cli-generate.sh --lora flag support and wire to UI.' }
+        : { supported: false, reason: assets ? 'No LoRA files found on remote (run discover-assets to refresh).' : 'No LoRA discovery/injection bridge exists yet.', unlock_requires: 'Stage LoRA .safetensors on BigMac, then run discover-assets.' });
   const embeddingGate = assets && assets.embeddings && assets.embeddings.length > 0
     ? { supported: false, reason: `${assets.embeddings.length} embedding(s) found — injection bridge not yet implemented.` }
     : { supported: false, reason: 'No embeddings discovery path exists yet.' };
@@ -947,17 +1027,30 @@ app.get('/api/capabilities', (req, res) => {
     models,
     vaes,
     networks: {
-      loras: assets ? assets.loras : [],
-      embeddings: assets ? assets.embeddings : [],
-      hypernetworks: assets ? assets.hypernetworks : []
+      loras: assets ? assets.loras.map(({ full_path: _, ...rest }) => rest) : [],
+      embeddings: assets ? assets.embeddings.map(({ full_path: _, ...rest }) => rest) : [],
+      hypernetworks: assets ? assets.hypernetworks.map(({ full_path: _, ...rest }) => rest) : []
     },
     samplers: Array.from(ALLOWED_SAMPLERS).map(id => ({ id, name: id.replace(/_/g, ' '), supported: true })),
-    schedulers: Array.from(ALLOWED_SCHEDULERS).map(id => ({ id, name: id.replace(/_/g, ' '), supported: id === 'discrete', reason: id === 'discrete' ? '' : 'UI visible; backend scripts do not currently pass scheduler.' })),
+    schedulers: Array.from(ALLOWED_SCHEDULERS).map(id => {
+      const isDiscrete = id === 'discrete';
+      const ok = isDiscrete || schedulerSelectionSupported;
+      return {
+        id,
+        name: id.replace(/_/g, ' '),
+        supported: ok,
+        reason: ok ? '' : 'Verify with a non-default scheduler first.'
+      };
+    }).concat([
+      { id: 'normal', name: 'normal', supported: false, reason: 'Not supported by the remote sd-cli binary.' }
+    ]),
     presets: PRESET_DEFAULTS,
     featureGates: {
       txt2img: { supported: true, route: '/api/actions/generate-single' },
       batch: { supported: true, route: '/api/actions/generate-batch' },
-      xyzPlot: { supported: 'partial', route: '/api/actions/xyz-plot', caveat: 'Script and endpoint exist (max 16 cells). Requires running server tunnel. Not yet end-to-end validated with real images.' },
+      xyzPlot: { supported: true, route: '/api/actions/xyz-plot' },
+      schedulerSelection: { supported: schedulerSelectionSupported, reason: schedulerSelectionSupported ? '' : 'Verify with a non-default scheduler first.' },
+      vae: { supported: vaeSwitchingSupported, reason: vaeSwitchingSupported ? '' : 'Verify with a custom VAE first.' },
       server: { supported: true },
       gallery: { supported: true },
       metadataReuse: { supported: true, route: '/api/runs/:runId/metadata', caveat: 'Prompt fields redacted when privacy is enabled.' },
@@ -1060,6 +1153,11 @@ app.post('/api/actions/generate-controlled', (req, res) => {
     args.push('--seed', String(params.seed));
   }
   if (params.api && spec.id === 'sd15') args.push('--api', params.api);
+  if (params.scheduler) args.push('--scheduler', params.scheduler);
+  if (params.vae && params.vae !== 'auto') {
+    const vaePath = resolveVaePath(params.vae);
+    if (vaePath) args.push('--vae', vaePath);
+  }
   args.push('--save-prompts', params.save_prompts ? 'true' : 'false');
 
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);

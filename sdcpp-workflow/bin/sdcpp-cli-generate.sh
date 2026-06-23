@@ -16,8 +16,10 @@ ARG_NEG="$NEGATIVE_PROMPT"
 ARG_SEED=""           # empty -> let sd-cli use its default (42)
 ARG_OUT_NAME=""       # empty -> auto timestamp name
 ARG_PRESET=""
+ARG_SCHEDULER="discrete"
+ARG_VAE=""
 # explicit overrides start empty; only set when the user passes the flag
-EX_STEPS=""; EX_W=""; EX_H=""; EX_CFG=""; EX_SAMPLER=""
+EX_STEPS=""; EX_W=""; EX_H=""; EX_CFG=""; EX_SAMPLER=""; EX_SCHEDULER=""
 
 usage() {
   cat <<EOF
@@ -30,6 +32,8 @@ Usage: $(basename "$0") [options]
   --height N         height (overrides preset/config)
   --cfg N            cfg scale (overrides preset/config)
   --sampler NAME     sampler (overrides preset/config)
+  --scheduler NAME   scheduler (overrides preset/config)
+  --vae PATH         path to standalone VAE model
   --seed N|random|fixed   N=integer, random=recorded random int, fixed=42 (default: not forced -> 42)
   --out-name NAME    base name for the PNG (no extension)
   -h, --help         show this help
@@ -46,6 +50,8 @@ while [ "$#" -gt 0 ]; do
     --height) EX_H="${2:?}"; shift 2 ;;
     --cfg|--cfg-scale) EX_CFG="${2:?}"; shift 2 ;;
     --sampler) EX_SAMPLER="${2:?}"; shift 2 ;;
+    --scheduler) EX_SCHEDULER="${2:?}"; shift 2 ;;
+    --vae) ARG_VAE="${2:?}"; shift 2 ;;
     --seed) ARG_SEED="${2:?}"; shift 2 ;;
     --out-name) ARG_OUT_NAME="${2:?}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -68,6 +74,7 @@ fi
 [ -n "$EX_H" ] && ARG_H="$EX_H"
 [ -n "$EX_CFG" ] && ARG_CFG="$EX_CFG"
 [ -n "$EX_SAMPLER" ] && ARG_SAMPLER="$EX_SAMPLER"
+[ -n "$EX_SCHEDULER" ] && ARG_SCHEDULER="$EX_SCHEDULER"
 
 RUN_DIR="$(make_run_dir cli)"
 SDCPP_LOGFILE="$RUN_DIR/cli.log"; export SDCPP_LOGFILE
@@ -115,6 +122,8 @@ cat > "$RUN_DIR/run-metadata.json" <<EOF
   "steps": $ARG_STEPS,
   "cfg_scale": $ARG_CFG,
   "sampler": "$ARG_SAMPLER",
+  "scheduler": "$ARG_SCHEDULER",
+  "vae": "$ARG_VAE",
   "seed": "$SEED_VALUE",
   "seed_label": "$SEED_LABEL",
   "seed_controlled": "$SEED_CONTROLLED",
@@ -131,7 +140,7 @@ EOF
   echo "- Preset: $PRESET_LABEL"
   echo "- Prompt: $REPORT_PROMPT"
   echo "- Negative: $REPORT_NEGATIVE_PROMPT"
-  echo "- Size: ${ARG_W}x${ARG_H}, steps=$ARG_STEPS, cfg=$ARG_CFG, sampler=$ARG_SAMPLER, seed=$SEED_LABEL"
+  echo "- Size: ${ARG_W}x${ARG_H}, steps=$ARG_STEPS, cfg=$ARG_CFG, sampler=$ARG_SAMPLER, scheduler=$ARG_SCHEDULER, vae=$ARG_VAE, seed=$SEED_LABEL"
   echo "- Build dir: $BUILD_DIR"
   echo "- Remote PNG: $REMOTE_PNG"
   echo "- Local PNG: $LOCAL_PNG"
@@ -139,18 +148,35 @@ EOF
 } > "$REPORT"
 
 # ----- generate (remote) -----------------------------------------------------
-log "=== Generating on BigMac (Metal auto-select, no --backend) ==="
+log "=== Generating on BigMac (Metal default; --backend cpu forced when LoRA tags present) ==="
 # Single double-quoted remote command: local $-vars expand here, but the literal
 # $HOME inside REMOTE_* values expands on BigMac. Prompts are escaped via printf %q.
 Q_PROMPT="$(printf '%q' "$ARG_PROMPT")"
 Q_NEG="$(printf '%q' "$ARG_NEG")"
+
+# Resolve scheduler (discrete|karras|exponential|ays|sgm_uniform|simple)
+SCHEDULER_FRAG=""
+[ -n "$ARG_SCHEDULER" ] && SCHEDULER_FRAG="--scheduler $ARG_SCHEDULER"
+
+# Resolve VAE flag
+VAE_FRAG=""
+[ -n "$ARG_VAE" ] && VAE_FRAG="--vae $ARG_VAE"
+
+# Resolve LoRA dir and CPU backend: only when prompt contains <lora:...> tags.
+# CPU backend is required because Metal does not support the LoRA tensor ADD op.
+LORA_FRAG=""
+BACKEND_FRAG=""
+if printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
+  LORA_FRAG="--lora-model-dir /Volumes/wc2tb/ImageGen/loras --lora-apply-mode immediately"
+  BACKEND_FRAG="--backend cpu"
+fi
 
 # NOTE: this host's ssh masks remote command exit codes, so we do NOT trust the
 # exit status of the generation; we judge success by the remote PNG it produces
 # (and ultimately by the verified copy on the MacBook).
 START_EPOCH="$(now_epoch)"
 if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
-  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" 2>&1 | python3 -c "
+  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG ${SCHEDULER_FRAG:-} ${VAE_FRAG:-} ${LORA_FRAG:-} ${BACKEND_FRAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" 2>&1 | python3 -c "
 import sys, re
 p = sys.argv[1] if len(sys.argv) > 1 else ''
 n = sys.argv[2] if len(sys.argv) > 2 else ''
@@ -168,7 +194,7 @@ for line in sys.stdin:
     sys.stdout.write(line)
 " "$ARG_PROMPT" "$ARG_NEG" > "$RUN_DIR/remote-stdout.log" || true
 else
-  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" > "$RUN_DIR/remote-stdout.log" 2>&1 || true
+  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG ${SCHEDULER_FRAG:-} ${VAE_FRAG:-} ${LORA_FRAG:-} ${BACKEND_FRAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" > "$RUN_DIR/remote-stdout.log" 2>&1 || true
 fi
 END_EPOCH="$(now_epoch)"
 ELAPSED="$(elapsed_seconds "$START_EPOCH" "$END_EPOCH")"
@@ -245,7 +271,7 @@ PNG_BYTES="$(png_bytes "$LOCAL_PNG")"
 PRIMARY_REL="$(basename "$LOCAL_PNG")"
 write_ui_run_card "$RUN_DIR" "cli" "PASS" "$PRIMARY_REL" "run-metadata.json" \
   "$REPORT_PROMPT" \
-  "preset=$PRESET_LABEL size=${ARG_W}x${ARG_H} steps=$ARG_STEPS cfg=$ARG_CFG sampler=$ARG_SAMPLER seed=$SEED_LABEL elapsed=${ELAPSED}s" \
+  "preset=$PRESET_LABEL size=${ARG_W}x${ARG_H} steps=$ARG_STEPS cfg=$ARG_CFG sampler=$ARG_SAMPLER scheduler=$ARG_SCHEDULER seed=$SEED_LABEL elapsed=${ELAPSED}s" \
   "$CREATED_AT" >/dev/null
 
 pass_banner "CLI GENERATE PASS ($PRESET_LABEL, seed=$SEED_LABEL, ${ELAPSED}s wall / ${REMOTE_ELAPSED}s remote).

@@ -543,7 +543,7 @@ start_remote_server() {
   ssh_remote "printf '%s\n' '$rport' > \"$REMOTE_STAGING/server_port.txt\"" \
     || fail "server-state" "Could not write remote server_port.txt."
   # Launch (single-quoted remote pieces; $HOME/$REMOTE_* expand on BigMac).
-  ssh_remote "tmux new-session -d -s '$session' \"cd \\\"$REMOTE_REPO\\\" && \\\"$bd/bin/sd-server\\\" -m \\\"$REMOTE_MODEL\\\" --listen-ip 127.0.0.1 --listen-port $rport --diffusion-fa -v 2>&1 | tee \\\"$rlog\\\"\"" \
+  ssh_remote "tmux new-session -d -s '$session' \"cd \\\"$REMOTE_REPO\\\" && \\\"$bd/bin/sd-server\\\" -m \\\"$REMOTE_MODEL\\\" --listen-ip 127.0.0.1 --listen-port $rport --lora-model-dir /Volumes/wc2tb/ImageGen/loras --diffusion-fa -v 2>&1 | tee \\\"$rlog\\\"\"" \
     || fail "server-start" "Failed to launch sd-server tmux session '$session'."
   log "Launched sd-server tmux session '$session' on remote port $rport (log: $rlog)."
 }

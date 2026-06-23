@@ -22,12 +22,16 @@ BUILD_DIR_FILE="$STAGING/build_dir.txt"
 SD_BIN=""
 if [ -f "$BUILD_DIR_FILE" ]; then
   bd="$(cat "$BUILD_DIR_FILE" 2>/dev/null)"
-  for cand in "$bd/bin/sd" "$bd/sd"; do
+  for cand in "$bd/bin/sd-cli" "$bd/bin/sd" "$bd/sd-cli" "$bd/sd"; do
     if [ -x "$cand" ]; then SD_BIN="$cand"; break; fi
   done
 fi
 if [ -z "$SD_BIN" ]; then
-  for cand in "$STAGING/bin/sd" "$HOME/stable-diffusion.cpp/build/bin/sd" "$HOME/stable-diffusion.cpp/build/sd"; do
+  for cand in "$STAGING/bin/sd-cli" "$STAGING/bin/sd" \
+              "$HOME/stable-diffusion.cpp/build/bin/sd-cli" \
+              "$HOME/stable-diffusion.cpp/build/bin/sd" \
+              "$HOME/stable-diffusion.cpp/build/sd-cli" \
+              "$HOME/stable-diffusion.cpp/build/sd"; do
     if [ -x "$cand" ]; then SD_BIN="$cand"; break; fi
   done
 fi

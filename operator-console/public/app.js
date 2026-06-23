@@ -154,9 +154,24 @@ function hydrateControls() {
   state.controlledTargetMap = Object.fromEntries(state.controlledTargets.map(t => [t.id, t]));
   const modelOptions = state.controlledTargets.map(t => `<option value="${esc(t.id)}">${esc(t.label)}${t.status ? ` — ${esc(t.status)}` : ''}</option>`).join('');
   $('model').innerHTML = modelOptions || '<option value="sd15">SD1.5 standard</option>';
-  $('vae').innerHTML = (caps.vaes || []).map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('') || '<option value="auto">Auto</option>';
+  $('vae').innerHTML = (caps.vaes || []).map(v => {
+    const ok = v.id === 'auto' || v.status === 'available';
+    return `<option value="${esc(v.id)}" ${ok ? '' : 'disabled'}>${esc(v.name)}${ok ? '' : ` — disabled (${esc(v.reason || 'Not supported')})`}</option>`;
+  }).join('') || '<option value="auto">Auto</option>';
   $('sampler').innerHTML = (caps.samplers || []).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
-  $('scheduler').innerHTML = (caps.schedulers || []).map(s => `<option value="${esc(s.id)}" ${s.supported ? '' : 'data-limited="1"'}>${esc(s.name)}${s.supported ? '' : ' — visible only'}</option>`).join('');
+  $('scheduler').innerHTML = (caps.schedulers || []).map(s => `<option value="${esc(s.id)}" ${s.supported ? '' : 'disabled'}>${esc(s.name)}${s.supported ? '' : ` — disabled (${esc(s.reason)})`}</option>`).join('');
+  const loraGate = (caps.featureGates && caps.featureGates.lora) || {};
+  const loras = (caps.networks && caps.networks.loras) || [];
+  const loraEnabled = loraGate.supported === true && loras.length > 0;
+  if ($('lora-select')) {
+    const loraOpts = '<option value="">— none —</option>' +
+      loras.map(l => { const base = l.filename ? l.filename.replace(/\.(safetensors|ckpt|pt|bin)$/i, '') : l.id; return `<option value="${esc(base)}">${esc(base)}</option>`; }).join('');
+    $('lora-select').innerHTML = loraOpts;
+    $('lora-select').disabled = !loraEnabled;
+  }
+  if ($('lora-weight')) $('lora-weight').disabled = !loraEnabled;
+  if ($('btn-insert-lora')) $('btn-insert-lora').disabled = !loraEnabled;
+  if ($('lora-status')) $('lora-status').textContent = !loraGate.supported ? (loraGate.reason || 'LoRA not supported.') : loras.length === 0 ? 'No LoRAs discovered — run Discover Assets.' : `${loras.length} LoRA${loras.length !== 1 ? 's' : ''} available.`;
   $('aspect-presets').innerHTML = ASPECTS.map(([label, w, h]) => `<button type="button" class="ghost small" data-size="${w}x${h}">${label} ${w}×${h}</button>`).join('');
   $('set-save-prompts').checked = loadBool('savePrompts');
   applyPreset('quality');
@@ -1566,6 +1581,15 @@ function bindEvents() {
       else if (action.dataset.action === 'flux-smoke') runFluxSmoke();
       else if (action.dataset.action === 'inventory-models') runModelInventory();
       else runSimpleAction(action.dataset.action);
+    }
+    const loraInsertBtn = event.target.closest('#btn-insert-lora');
+    if (loraInsertBtn && !loraInsertBtn.disabled) {
+      const sel = $('lora-select');
+      const wt = $('lora-weight');
+      if (sel && sel.value) {
+        const weight = (wt && wt.value && !isNaN(Number(wt.value))) ? Number(wt.value) : 0.75;
+        insertAtPrompt(`${sel.value}:${weight}`);
+      }
     }
     const lora = event.target.closest('[data-insert-lora]');
     if (lora) insertAtPrompt(lora.dataset.insertLora);

@@ -24,6 +24,7 @@ KEEP=0
 OPEN=0
 FORCE_LARGE=0
 MAX_COUNT=12
+ARG_SCHEDULER=""
 
 usage() {
   cat <<EOF
@@ -37,6 +38,7 @@ Usage: $(basename "$0") [options]
   --seed-start N             starting seed (default 42)
   --seed-mode same|increment|random   (default increment)
   --api openai|sdapi|native  (server mode; default openai)
+  --scheduler NAME           forward scheduler to child generators (discrete, karras, etc.)
   --keep-server-running      (server mode) leave server up after
   --open                     open the first image when done
   --force-large-batch        allow count > $MAX_COUNT
@@ -55,6 +57,7 @@ while [ "$#" -gt 0 ]; do
     --seed-start) SEED_START="${2:?}"; shift 2 ;;
     --seed-mode) SEED_MODE="${2:?}"; shift 2 ;;
     --api) API="${2:?}"; shift 2 ;;
+    --scheduler) ARG_SCHEDULER="${2:?}"; shift 2 ;;
     --keep-server-running) KEEP=1; shift ;;
     --open) OPEN=1; shift ;;
     --force-large-batch) FORCE_LARGE=1; shift ;;
@@ -144,9 +147,15 @@ while [ "$i" -le "$COUNT" ]; do
   mkdir -p "$cell"
   log "--- image $idx seed=$seed ---"
 
+  local sched_args=()
+  if [ -n "$ARG_SCHEDULER" ]; then
+    sched_args=(--scheduler "$ARG_SCHEDULER")
+  fi
+
   if [ "$MODE" = "cli" ]; then
     SDCPP_RUN_DIR_OVERRIDE="$cell" "$HERE/sdcpp-cli-generate.sh" \
       --preset "$PRESET" --seed "$seed" --prompt "$ARG_PROMPT" --negative "$ARG_NEG" \
+      "${sched_args[@]}" \
       >"$cell/stdout.log" 2>&1 || true
     src_png="$(ls "$cell"/*.png 2>/dev/null | head -1 || true)"
     api_field="null"
@@ -154,6 +163,7 @@ while [ "$i" -le "$COUNT" ]; do
     SDCPP_RUN_DIR_OVERRIDE="$cell" "$HERE/sdcpp-server-generate.sh" \
       --preset "$PRESET" --api "$API" --seed "$seed" --warm-state warm \
       --prompt "$ARG_PROMPT" --negative "$ARG_NEG" \
+      "${sched_args[@]}" \
       >"$cell/stdout.log" 2>&1 || true
     src_png="$cell/$(api_png "$API")"
     api_field="\"$API\""

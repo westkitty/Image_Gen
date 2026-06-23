@@ -15,7 +15,7 @@ ARG_API="openai"   # openai|sdapi|both|native
 ARG_PRESET=""
 ARG_WARM="unknown"  # warm-state label for metrics (benchmark/warm scripts set this)
 ARG_SEED=""
-EX_STEPS=""; EX_W=""; EX_H=""; EX_CFG=""; EX_SAMPLER=""
+EX_STEPS=""; EX_W=""; EX_H=""; EX_CFG=""; EX_SAMPLER=""; EX_SCHEDULER=""; EX_VAE=""
 
 usage() {
   cat <<EOF
@@ -28,6 +28,8 @@ Usage: $(basename "$0") [options]
   --height N         height (overrides preset/config)
   --cfg N            cfg scale (overrides preset/config)
   --sampler NAME     sampler (overrides preset/config)
+  --scheduler NAME   scheduler (overrides preset/config)
+  --vae PATH         path to VAE model (parsed but ignored in server mode)
   --api MODE         openai | sdapi | both | native   (default openai)
   --seed N|random|fixed   control seed (default: not forced; SDAPI default is random)
   --warm-state LABEL metrics label: cold|warm|unknown (default unknown)
@@ -45,6 +47,8 @@ while [ "$#" -gt 0 ]; do
     --height) EX_H="${2:?}"; shift 2 ;;
     --cfg|--cfg-scale) EX_CFG="${2:?}"; shift 2 ;;
     --sampler) EX_SAMPLER="${2:?}"; shift 2 ;;
+    --scheduler) EX_SCHEDULER="${2:?}"; shift 2 ;;
+    --vae) EX_VAE="${2:?}"; shift 2 ;;
     --api) ARG_API="${2:?}"; shift 2 ;;
     --seed) ARG_SEED="${2:?}"; shift 2 ;;
     --warm-state) ARG_WARM="${2:?}"; shift 2 ;;
@@ -56,7 +60,7 @@ done
 case "$ARG_API" in openai|sdapi|both|native) : ;; *) fail "args" "--api must be openai|sdapi|both|native" ;; esac
 
 # Resolve dimensions/steps: config defaults -> preset -> explicit flags.
-ARG_STEPS="$STEPS"; ARG_W="$WIDTH"; ARG_H="$HEIGHT"; ARG_CFG="$CFG_SCALE"; ARG_SAMPLER="$SAMPLER"
+ARG_STEPS="$STEPS"; ARG_W="$WIDTH"; ARG_H="$HEIGHT"; ARG_CFG="$CFG_SCALE"; ARG_SAMPLER="$SAMPLER"; ARG_SCHEDULER="discrete"
 PRESET_LABEL="config"
 if [ -n "$ARG_PRESET" ]; then
   apply_preset "$ARG_PRESET"
@@ -68,6 +72,7 @@ fi
 [ -n "$EX_H" ] && ARG_H="$EX_H"
 [ -n "$EX_CFG" ] && ARG_CFG="$EX_CFG"
 [ -n "$EX_SAMPLER" ] && ARG_SAMPLER="$EX_SAMPLER"
+[ -n "$EX_SCHEDULER" ] && ARG_SCHEDULER="$EX_SCHEDULER"
 
 # Resolve seed (controlled only when --seed given).
 SEED_RESOLVED="$(resolve_seed "$ARG_SEED")"
@@ -90,6 +95,10 @@ if [ -f "$SDCPP_STATE_DIR/current-ports.env" ]; then
   RPORT="${REMOTE_SERVER_PORT:-$RPORT}"
 fi
 BASE="http://127.0.0.1:$LPORT"
+
+if [ -n "$EX_VAE" ]; then
+  log "Note: --vae is parsed but not supported by remote sd-server APIs; using server-global VAE."
+fi
 
 log "=== Checking tunnel on local port $LPORT ==="
 if ! lsof -nP -iTCP:"$LPORT" -sTCP:LISTEN >/dev/null 2>&1; then
@@ -117,7 +126,7 @@ fi
   echo "- Warm state: $ARG_WARM"
   echo "- Endpoint base: $BASE"
   echo "- Prompt: $REPORT_PROMPT"
-  echo "- Size: $SIZE steps=$ARG_STEPS cfg=$ARG_CFG sampler=$ARG_SAMPLER seed=$SEED_LABEL"
+  echo "- Size: $SIZE steps=$ARG_STEPS cfg=$ARG_CFG sampler=$ARG_SAMPLER scheduler=$ARG_SCHEDULER seed=$SEED_LABEL"
   echo
 } > "$REPORT"
 
@@ -160,11 +169,11 @@ gen_openai() {
   # <sd_cpp_extra_args>{gen_params json}</sd_cpp_extra_args> escape hatch, so we
   # embed the resolved preset values to make presets actually take effect.
   if [ "$SEED_CONTROLLED" = "yes" ]; then
-    extra="$(jq -nc --argjson st "$ARG_STEPS" --argjson cfg "$ARG_CFG" --arg sm "$ARG_SAMPLER" --argjson sd "$SEED_VALUE" \
-      '{seed:$sd, sample_params:{sample_steps:$st, sample_method:$sm, guidance:{txt_cfg:$cfg}}}')"
+    extra="$(jq -nc --argjson st "$ARG_STEPS" --argjson cfg "$ARG_CFG" --arg sm "$ARG_SAMPLER" --arg sc "$ARG_SCHEDULER" --argjson sd "$SEED_VALUE" \
+      '{seed:$sd, sample_params:{sample_steps:$st, sample_method:$sm, scheduler:$sc, guidance:{txt_cfg:$cfg}}}')"
   else
-    extra="$(jq -nc --argjson st "$ARG_STEPS" --argjson cfg "$ARG_CFG" --arg sm "$ARG_SAMPLER" \
-      '{sample_params:{sample_steps:$st, sample_method:$sm, guidance:{txt_cfg:$cfg}}}')"
+    extra="$(jq -nc --argjson st "$ARG_STEPS" --argjson cfg "$ARG_CFG" --arg sm "$ARG_SAMPLER" --arg sc "$ARG_SCHEDULER" \
+      '{sample_params:{sample_steps:$st, sample_method:$sm, scheduler:$sc, guidance:{txt_cfg:$cfg}}}')"
   fi
   full_prompt="$ARG_PROMPT <sd_cpp_extra_args>$extra</sd_cpp_extra_args>"
   payload="$(jq -n --arg p "$full_prompt" --arg s "$SIZE" \
@@ -210,8 +219,8 @@ gen_sdapi() {
   local payload t0 t1 elapsed d0 d1 dsec seedarg
   seedarg="-1"; [ "$SEED_CONTROLLED" = "yes" ] && seedarg="$SEED_VALUE"
   payload="$(jq -n --arg p "$ARG_PROMPT" --arg n "$ARG_NEG" \
-    --argjson w "$ARG_W" --argjson h "$ARG_H" --argjson st "$ARG_STEPS" --argjson cfg "$ARG_CFG" --arg sm "$ARG_SAMPLER" --argjson sd "$seedarg" \
-    '{prompt:$p, negative_prompt:$n, width:$w, height:$h, steps:$st, cfg_scale:$cfg, sampler_name:$sm, scheduler:"discrete", batch_size:1, seed:$sd}')"
+    --argjson w "$ARG_W" --argjson h "$ARG_H" --argjson st "$ARG_STEPS" --argjson cfg "$ARG_CFG" --arg sm "$ARG_SAMPLER" --arg sc "$ARG_SCHEDULER" --argjson sd "$seedarg" \
+    '{prompt:$p, negative_prompt:$n, width:$w, height:$h, steps:$st, cfg_scale:$cfg, sampler_name:$sm, scheduler:$sc, batch_size:1, seed:$sd}')"
   t0="$(now_epoch)"
   if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
     curl -s "$BASE/sdapi/v1/txt2img" -H 'Content-Type: application/json' -d "$payload" | python3 -c "
@@ -256,9 +265,9 @@ gen_native() {
   local payload
   local nseed; nseed="42"; [ "$SEED_CONTROLLED" = "yes" ] && nseed="$SEED_VALUE"
   payload="$(jq -n --arg p "$ARG_PROMPT" --arg n "$ARG_NEG" \
-    --argjson w "$ARG_W" --argjson h "$ARG_H" --argjson st "$ARG_STEPS" --argjson cfg "$ARG_CFG" --arg sm "$ARG_SAMPLER" --argjson sd "$nseed" \
+    --argjson w "$ARG_W" --argjson h "$ARG_H" --argjson st "$ARG_STEPS" --argjson cfg "$ARG_CFG" --arg sm "$ARG_SAMPLER" --arg sc "$ARG_SCHEDULER" --argjson sd "$nseed" \
     '{prompt:$p, negative_prompt:$n, width:$w, height:$h, seed:$sd, batch_count:1,
-      sample_params:{scheduler:"discrete", sample_method:$sm, sample_steps:$st, guidance:{txt_cfg:$cfg}},
+      sample_params:{scheduler:$sc, sample_method:$sm, sample_steps:$st, guidance:{txt_cfg:$cfg}},
       output_format:"png"}')"
   if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
     curl -s -i "$BASE/sdcpp/v1/img_gen" -H 'Content-Type: application/json' -d "$payload" | python3 -c "
@@ -346,7 +355,7 @@ if [ "$VERIFIED" -ge 1 ]; then
   done
   write_ui_run_card "$RUN_DIR" "server-$ARG_API" "PASS" "$PRIMARY_REL" "metrics.tsv" \
     "$REPORT_PROMPT" \
-    "preset=$PRESET_LABEL api=$ARG_API size=${SIZE} steps=$ARG_STEPS cfg=$ARG_CFG sampler=$ARG_SAMPLER seed=$SEED_LABEL warm=$ARG_WARM" \
+    "preset=$PRESET_LABEL api=$ARG_API size=${SIZE} steps=$ARG_STEPS cfg=$ARG_CFG sampler=$ARG_SAMPLER scheduler=$ARG_SCHEDULER seed=$SEED_LABEL warm=$ARG_WARM" \
     "$CREATED_AT" >/dev/null
   pass_banner "SERVER GENERATE PASS ($VERIFIED verified PNG(s), seed=$SEED_LABEL).
 Run dir: $RUN_DIR

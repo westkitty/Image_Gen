@@ -14,21 +14,23 @@ trap cleanup_tmp EXIT
 
 log "Starting remote asset discovery via $SSH_TARGET"
 
-# Single-quoted heredoc: $HOME expands on BigMac, not here.
-ssh -o ConnectTimeout=20 "$SSH_TARGET" <<'REMOTE' > "$DISCOVER_TMP" 2>/dev/null || true
+: "${MODEL_STAGE_ROOT:=/Volumes/wc2tb/ImageGen}"
+
+# Single-quoted heredoc: STAGE_ROOT is passed via env prefix.
+ssh -o ConnectTimeout=20 "$SSH_TARGET" "STAGE_ROOT='$MODEL_STAGE_ROOT' bash -s" <<'REMOTE' > "$DISCOVER_TMP" 2>/dev/null || true
 STAGING="$HOME/sdcpp-staging"
 list_asset_dir() {
   local type="$1" dir="$2"
   if [ -d "$dir" ]; then
     find "$dir" -maxdepth 1 \( -name "*.safetensors" -o -name "*.ckpt" -o -name "*.pt" -o -name "*.bin" \) 2>/dev/null | while IFS= read -r f; do
       size=$(wc -c < "$f" 2>/dev/null || printf '0')
-      printf '%s\t%s\t%s\n' "$type" "$(basename "$f")" "$size"
+      printf '%s\t%s\t%s\t%s\n' "$type" "$(basename "$f")" "$size" "$f"
     done
   fi
 }
 list_asset_dir "checkpoint"   "$STAGING/models"
-list_asset_dir "vae"          "$STAGING/vaes"
-list_asset_dir "lora"         "$STAGING/loras"
+list_asset_dir "vae"          "$STAGE_ROOT/vaes"
+list_asset_dir "lora"         "$STAGE_ROOT/loras"
 list_asset_dir "embedding"    "$STAGING/embeddings"
 list_asset_dir "hypernetwork" "$STAGING/hypernetworks"
 printf '__DISCOVERY_DONE__\n'
@@ -79,9 +81,9 @@ with open(tsv_file) as f:
         if line == '__DISCOVERY_DONE__' or not line:
             continue
         parts = line.split('\t')
-        if len(parts) < 3:
+        if len(parts) < 4:
             continue
-        kind, name, size_str = parts[0], parts[1], parts[2]
+        kind, name, size_str, full_path = parts[0], parts[1], parts[2], parts[3]
         try:
             size = int(size_str.strip())
         except ValueError:
@@ -93,6 +95,7 @@ with open(tsv_file) as f:
             'size_bytes': size,
             'kind':       kind,
             'status':     'available',
+            'full_path':  full_path,
         }
         if kind == 'checkpoint':
             entry['active'] = (name == active_model_name)
@@ -117,6 +120,7 @@ if not checkpoints:
         'kind':       'checkpoint',
         'status':     'available',
         'active':     True,
+        'full_path':  active_model_path or f"/Users/bigmac/sdcpp-staging/models/{fallback}",
     })
 elif not any(c.get('active') for c in checkpoints):
     checkpoints[0]['active'] = True

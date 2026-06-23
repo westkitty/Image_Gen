@@ -22,6 +22,8 @@ ARG_CFG=""
 ARG_SEED=""
 ARG_API="openai"
 ARG_SAVE_PROMPTS="false"
+ARG_SCHEDULER=""
+ARG_VAE=""
 
 usage() {
   cat <<EOF
@@ -34,6 +36,8 @@ Usage: $(basename "$0") [options]
   --steps N                   steps
   --cfg N                     cfg scale (Flux uses the proven guidance value)
   --seed N|random|fixed       seed control
+  --scheduler NAME            scheduler to use (discrete, karras, etc.)
+  --vae PATH                  path to standalone VAE model
   --api openai|sdapi|both|native
                               SD1.5 server-tunnel API path (default openai)
   --save-prompts true|false   persist prompts in run records (default false)
@@ -52,6 +56,8 @@ while [ "$#" -gt 0 ]; do
     --cfg|--cfg-scale) ARG_CFG="${2:?}"; shift 2 ;;
     --seed) ARG_SEED="${2:?}"; shift 2 ;;
     --api) ARG_API="${2:?}"; shift 2 ;;
+    --scheduler) ARG_SCHEDULER="${2:?}"; shift 2 ;;
+    --vae) ARG_VAE="${2:?}"; shift 2 ;;
     --save-prompts) ARG_SAVE_PROMPTS="${2:?}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) fail "args" "Unknown argument: $1 (see --help)" ;;
@@ -413,7 +419,12 @@ SEED_LABEL="$(printf '%s' "$SEED_RESOLVED" | cut -f3)"
 SEED_FRAG=""
 [ "$SEED_CONTROLLED" = "yes" ] && SEED_FRAG="--seed $SEED_VALUE"
 
-if [ "$ARG_TARGET" = "sd15" ]; then
+SCHED_FRAG=""
+[ -n "$ARG_SCHEDULER" ] && SCHED_FRAG="--scheduler $ARG_SCHEDULER"
+
+# Use fast server tunnel for sd15 ONLY when no LoRA tags are requested.
+# If LoRAs are present, fall back to CLI mode to correctly load them from the directory.
+if [ "$ARG_TARGET" = "sd15" ] && ! printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
   LPORT="$LOCAL_TUNNEL_PORT"
   RPORT="$REMOTE_SERVER_PORT"
   if [ -f "$SDCPP_STATE_DIR/current-ports.env" ]; then
@@ -438,6 +449,8 @@ if [ "$ARG_TARGET" = "sd15" ]; then
   SERVER_ARGS=(--api "$ARG_API" --prompt "$ARG_PROMPT" --width "$ARG_WIDTH" --height "$ARG_HEIGHT" --steps "$ARG_STEPS" --cfg "$ARG_CFG" --sampler "${TARGET_SAMPLER:-euler_a}" --warm-state warm)
   if [ -n "$ARG_NEG" ]; then SERVER_ARGS+=(--negative "$ARG_NEG"); fi
   if [ -n "$ARG_SEED" ]; then SERVER_ARGS+=(--seed "$ARG_SEED"); fi
+  if [ -n "$ARG_SCHEDULER" ]; then SERVER_ARGS+=(--scheduler "$ARG_SCHEDULER"); fi
+  if [ -n "$ARG_VAE" ]; then SERVER_ARGS+=(--vae "$ARG_VAE"); fi
 
   if ! "$HERE/sdcpp-server-generate.sh" "${SERVER_ARGS[@]}" > "$SERVER_OUT" 2>&1; then
     FIRST_FAILED_GATE="server-generate"
@@ -490,12 +503,35 @@ BUILD_DIR="$(get_build_dir)"
 verify_binaries "$BUILD_DIR"
 SDCLI="$BUILD_DIR/bin/sd-cli"
 ensure_remote_dirs
-
 REMOTE_STDOUT_CMD=""
 Q_PROMPT="$(printf '%q' "$ARG_PROMPT")"
 Q_NEG="$(printf '%q' "$ARG_NEG")"
 TARGET_HELP_OUTPUT="$(ssh_remote "if [ -x \"$SDCLI\" ]; then \"$SDCLI\" --help 2>&1; fi" 2>&1 || true)"
 printf '%s\n' "$TARGET_HELP_OUTPUT" > "$RUN_DIR/sd-cli-help.log"
+
+SCHEDULER_FLAG=""
+if [ -n "$ARG_SCHEDULER" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--scheduler'; then
+  SCHEDULER_FLAG="--scheduler $ARG_SCHEDULER"
+fi
+
+VAE_FLAG=""
+if [ -n "$ARG_VAE" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--vae'; then
+  VAE_FLAG="--vae $ARG_VAE"
+fi
+
+LORA_DIR_FLAG=""
+BACKEND_FLAG=""
+if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--lora-model-dir'; then
+  LORA_DIR_FLAG="--lora-model-dir /Volumes/wc2tb/ImageGen/loras"
+  if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--lora-apply-mode'; then
+    LORA_DIR_FLAG="$LORA_DIR_FLAG --lora-apply-mode immediately"
+  fi
+  if printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
+    if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--backend'; then
+      BACKEND_FLAG="--backend cpu"
+    fi
+  fi
+fi
 
 case "$ARG_TARGET" in
   sd15)
@@ -503,7 +539,7 @@ case "$ARG_TARGET" in
     if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--cfg-scale'; then
       CFG_FLAG="--cfg-scale $ARG_CFG"
     fi
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} --sampling-method ${TARGET_SAMPLER:-euler_a} $SEED_FRAG --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} --sampling-method ${TARGET_SAMPLER:-euler_a} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   sdxl-base)
     TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/sd_xl_base_1.0.safetensors"
@@ -519,7 +555,7 @@ case "$ARG_TARGET" in
     if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--cfg-scale'; then
       CFG_FLAG="--cfg-scale $ARG_CFG"
     fi
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} $SEED_FRAG --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   sdxl-turbo)
     TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors"
@@ -532,7 +568,7 @@ case "$ARG_TARGET" in
     for flag in '--model' '--prompt' '--output' '--width' '--height' '--steps' '--cfg-scale' '--guidance' '--prediction'; do
       printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- "$flag" || controlled_fail "sd-cli-help" "sd-cli help does not show required flag $flag."
     done
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --cfg-scale 0 --guidance 0 --prediction eps $SEED_FRAG --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --cfg-scale 0 --guidance 0 --prediction eps $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   flux-fp8)
     TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/flux/flux1-schnell/flux1-schnell-fp8.safetensors"
@@ -571,7 +607,7 @@ case "$ARG_TARGET" in
     for flag in '--model' '--clip_l' '--t5xxl' '--vae' '--output' '--width' '--height' '--steps' '--guidance' '--prediction' '--vae-format'; do
       printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- "$flag" || controlled_fail "sd-cli-help" "sd-cli help does not show required flag $flag."
     done
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" --clip_l \"$TARGET_CLIP_L_PATH\" --t5xxl \"$TARGET_T5XXL_PATH\" --vae \"$TARGET_VAE_PATH\" --vae-format flux -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --guidance 3.5 --prediction flux_flow --sampling-method euler $SEED_FRAG --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" --clip_l \"$TARGET_CLIP_L_PATH\" --t5xxl \"$TARGET_T5XXL_PATH\" --vae \"${ARG_VAE:-$TARGET_VAE_PATH}\" --vae-format flux -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --guidance 3.5 --prediction flux_flow --sampling-method euler $SEED_FRAG ${SCHEDULER_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
 esac
 
@@ -582,12 +618,18 @@ fi
 log "Running controlled generation on BigMac"
 if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
   ssh_remote "mkdir -p \"$REMOTE_RUN_DIR\" && $REMOTE_STDOUT_CMD" 2>&1 | python3 -c "
-import sys
+import sys, re
 p = sys.argv[1] if len(sys.argv) > 1 else ''
 n = sys.argv[2] if len(sys.argv) > 2 else ''
+# sd-cli strips <lora:...> tags before logging; also search for the stripped form.
+p_stripped = re.sub(r'<lora:[^>]*>', '', p).rstrip()
+tok_re = re.compile(r'(to tokens\s*)\[.*\]')
 for line in sys.stdin:
     if p and p in line: line = line.replace(p, '[REDACTED]')
+    if p_stripped and p_stripped != p and p_stripped in line: line = line.replace(p_stripped, '[REDACTED]')
     if n and n in line: line = line.replace(n, '[REDACTED]')
+    if 'to tokens' in line or 'bpe_tokenizer' in line:
+        line = tok_re.sub(r'\1[REDACTED]', line)
     sys.stdout.write(line)
 " "$ARG_PROMPT" "$ARG_NEG" > "$REMOTE_STDOUT_LOG" || true
 else
