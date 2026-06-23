@@ -250,11 +250,14 @@ function setPreviewImage(url, title = 'Selected image', imgPath = '', runId = ''
   const inferredFile = filename || (inferredPath ? inferredPath.split('/').pop() : title);
   const inferredRun = runId || (inferredPath.includes('/') ? inferredPath.split('/')[0] : '');
   state.activeImage = url;
-  $('preview-stage').innerHTML = `<img src="${esc(url)}" alt="${esc(title)}" title="Click to view full size" />`;
+  $('preview-stage').innerHTML = `<img src="${esc(url)}" alt="${esc(title)}" title="Click to enlarge · Right-click for options" />`;
   $('preview-subtitle').textContent = title;
   const img = $('preview-stage').querySelector('img');
-  if (img && inferredPath) {
+  if (img) {
     img.style.cursor = 'zoom-in';
+    img.dataset.ctxPath = inferredPath;
+    img.dataset.ctxRun = inferredRun;
+    img.dataset.ctxFile = inferredFile;
     img.addEventListener('click', () => openImageViewer(inferredPath, inferredRun, inferredFile));
   }
 }
@@ -493,6 +496,19 @@ function sendToUpscale(runId, image) {
     onUpscaleRunChange().then(() => {
       if (image) $('upscale-image').value = image;
     });
+  });
+}
+
+function sendToImg2img(runId, image) {
+  showScreen('edit');
+  loadEditRuns().then(() => {
+    const sel = $('img2img-run');
+    if (sel) {
+      sel.value = runId;
+      onImg2imgRunChange().then(() => {
+        if (image) { const imgSel = $('img2img-image'); if (imgSel) imgSel.value = image; }
+      });
+    }
   });
 }
 
@@ -893,13 +909,15 @@ function openImageViewer(imgPath, runId, filename) {
   if (info) info.textContent = (runId ? runId + '  ·  ' : '') + (filename || imgPath);
   overlay.hidden = false;
   overlay.focus();
+  const filePart = imgPath.includes('/') ? imgPath.split('/').slice(1).join('/') : imgPath;
   [['btn-viewer-copy-path', () => navigator.clipboard.writeText(imgPath).catch(() => {})],
    ['btn-viewer-fullscreen', () => {
      const panel = $('image-viewer-panel') || img;
      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
      else if (panel.requestFullscreen) panel.requestFullscreen().catch(() => {});
    }],
-   ['btn-viewer-upscale', () => { closeImageViewer(); const parts = imgPath.split('/'); sendToUpscale(runId, parts.slice(1).join('/')); }],
+   ['btn-viewer-upscale', () => { closeImageViewer(); sendToUpscale(runId, filePart); }],
+   ['btn-viewer-img2img', () => { closeImageViewer(); sendToImg2img(runId, filePart); }],
    ['btn-viewer-close', closeImageViewer]
   ].forEach(([id, handler]) => {
     const b = $(id);
@@ -933,8 +951,9 @@ function runIndexCard(r) {
   const canCompare = r.filterCategory === 'controlled' || String(r.type || '').startsWith('controlled-');
   const compareChecked = state.libraryCompareIds.includes(r.id) ? ' checked' : '';
   const compareDisabled = canCompare ? '' : ' disabled title="Comparison is controlled runs only"';
+  const ctxAttrs = img ? ' data-ctx-path="' + esc(r.id + '/' + img) + '" data-ctx-run="' + esc(r.id) + '" data-ctx-file="' + esc(img) + '"' : '';
   return '<article class="image-card" data-run="' + esc(r.id) + '">' +
-    (imgUrl ? '<img src="' + esc(imgUrl) + '" alt="Run ' + esc(r.id) + '" loading="lazy" />' : '<div style="height:120px;background:#071018;border-radius:14px;margin-bottom:8px"></div>') +
+    (imgUrl ? '<img src="' + esc(imgUrl) + '" alt="Run ' + esc(r.id) + '" loading="lazy"' + ctxAttrs + ' />' : '<div style="height:120px;background:#071018;border-radius:14px;margin-bottom:8px"></div>') +
     '<div class="run-type-badge ' + esc(badgeClass) + '">' + esc(labelText) + '</div>' + statusBadge + upscaledBadge +
     '<h3 style="margin:4px 0 2px">' + esc(r.title || r.type) + '</h3>' +
     '<p>' + esc(r.createdAt ? r.createdAt.replace(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/, '$1-$2-$3 $4:$5') : '') + ' · ' + esc(String(r.imageCount || 0)) + ' img</p>' +
@@ -1723,6 +1742,41 @@ function bindEvents() {
     if (sendUpscale) sendToUpscale(sendUpscale.dataset.sendUpscale, sendUpscale.dataset.upscaleImage);
     const viewUpscaled = event.target.closest('[data-view-upscaled]');
     if (viewUpscaled) viewUpscaledOutputs(viewUpscaled.dataset.viewUpscaled);
+  });
+
+  // Right-click context menu for any image with data-ctx-path set
+  const ctxMenu = $('img-context-menu');
+  let ctxTarget = null;
+  document.addEventListener('contextmenu', e => {
+    const img = e.target.closest('img[data-ctx-path]');
+    if (!img || !ctxMenu) return;
+    e.preventDefault();
+    ctxTarget = img;
+    ctxMenu.hidden = false;
+    const x = Math.min(e.clientX, window.innerWidth - ctxMenu.offsetWidth - 8);
+    const y = Math.min(e.clientY, window.innerHeight - ctxMenu.offsetHeight - 8);
+    ctxMenu.style.left = x + 'px';
+    ctxMenu.style.top = y + 'px';
+  });
+  document.addEventListener('click', () => { if (ctxMenu) ctxMenu.hidden = true; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ctxMenu) ctxMenu.hidden = true; });
+  if (ctxMenu) ctxMenu.addEventListener('click', e => {
+    const btn = e.target.closest('.ctx-item');
+    if (!btn || !ctxTarget) return;
+    const imgPath = ctxTarget.dataset.ctxPath || '';
+    const runId = ctxTarget.dataset.ctxRun || '';
+    const filename = ctxTarget.dataset.ctxFile || imgPath.split('/').pop();
+    const filePart = imgPath.includes('/') ? imgPath.split('/').slice(1).join('/') : imgPath;
+    const imageUrl = imgPath ? '/api/run-file?path=' + encodeURIComponent(imgPath) : ctxTarget.src;
+    switch (btn.dataset.action) {
+      case 'view': openImageViewer(imgPath, runId, filename); break;
+      case 'open-tab': window.open(imageUrl, '_blank'); break;
+      case 'download': { const a = document.createElement('a'); a.href = imageUrl; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); break; }
+      case 'copy-path': navigator.clipboard.writeText(imgPath).catch(() => {}); break;
+      case 'img2img': sendToImg2img(runId, filePart); break;
+      case 'upscale': sendToUpscale(runId, filePart); break;
+    }
+    ctxMenu.hidden = true;
   });
 }
 

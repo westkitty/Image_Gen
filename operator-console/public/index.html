@@ -380,24 +380,6 @@
             </div>
           </div>
 
-          <!-- Full-size image viewer / lightbox -->
-          <div id="image-viewer-overlay" class="image-viewer-overlay" hidden tabindex="-1" role="dialog" aria-modal="true" aria-label="Full-size image viewer">
-            <div class="image-viewer-panel" id="image-viewer-panel">
-              <div class="image-viewer-header">
-                <div id="image-viewer-info" class="image-viewer-info fineprint"></div>
-                <div class="run-detail-actions">
-                  <button class="ghost small" id="btn-viewer-copy-path">Copy path</button>
-                  <a class="ghost small" id="btn-viewer-download" href="#" download>Download</a>
-                  <button class="ghost small" id="btn-viewer-fullscreen">Full screen</button>
-                  <button class="ghost small" id="btn-viewer-upscale">Send to Upscale</button>
-                  <button class="ghost small" id="btn-viewer-close" aria-label="Close image viewer">&#10005; Close</button>
-                </div>
-              </div>
-              <div class="image-viewer-stage">
-                <img id="image-viewer-img" src="" alt="Full-size image" />
-              </div>
-            </div>
-          </div>
         </section>
         <section id="models" class="screen">
           <div class="split-grid">
@@ -449,6 +431,39 @@
       </main>
     </div>
   </div>
+
+  <!-- Image viewer / lightbox — lives outside all screens so it works from any tab -->
+  <div id="image-viewer-overlay" class="image-viewer-overlay" hidden tabindex="-1" role="dialog" aria-modal="true" aria-label="Full-size image viewer">
+    <div class="image-viewer-panel" id="image-viewer-panel">
+      <div class="image-viewer-header">
+        <div id="image-viewer-info" class="image-viewer-info fineprint"></div>
+        <div class="run-detail-actions">
+          <button class="ghost small" id="btn-viewer-copy-path">Copy path</button>
+          <a class="ghost small" id="btn-viewer-download" href="#" download>Download</a>
+          <button class="ghost small" id="btn-viewer-fullscreen">Full screen</button>
+          <button class="ghost small" id="btn-viewer-upscale">Send to Upscale</button>
+          <button class="ghost small" id="btn-viewer-img2img">Send to img2img</button>
+          <button class="ghost small" id="btn-viewer-close" aria-label="Close image viewer">&#10005; Close</button>
+        </div>
+      </div>
+      <div class="image-viewer-stage">
+        <img id="image-viewer-img" src="" alt="Full-size image" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Right-click context menu for images -->
+  <div id="img-context-menu" class="img-context-menu" hidden role="menu">
+    <button class="ctx-item" data-action="view">View full size</button>
+    <button class="ctx-item" data-action="open-tab">Open in new tab</button>
+    <button class="ctx-item" data-action="download">Download</button>
+    <hr class="ctx-sep" />
+    <button class="ctx-item" data-action="copy-path">Copy image path</button>
+    <hr class="ctx-sep" />
+    <button class="ctx-item" data-action="img2img">Send to img2img</button>
+    <button class="ctx-item" data-action="upscale">Send to Upscale</button>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
