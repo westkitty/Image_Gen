@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var workflowRoot: String { "\(projectRoot)/sdcpp-workflow" }
     private var wrapperLog: String { "\(operatorRoot)/Image_Gen-macos-wrapper.log" }
     private var consoleLog: String { "\(operatorRoot)/server.log" }
+    private var expectedConsoleCwd: String { operatorRoot }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -377,8 +378,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     private func ensureOperatorConsole() {
-        if commandOK("curl -fsS --max-time 2 \(consoleURL.absoluteString)/api/version >/dev/null", timeout: 4) {
-            appendLog("operator-console already listening on 127.0.0.1:31337")
+        let version = currentConsoleVersion()
+        if version.matchesExpectedRoot {
+            appendLog("operator-console already listening on 127.0.0.1:31337 from \(version.cwd ?? "unknown") gitHead=\(version.gitHead ?? "unknown")")
+            return
+        }
+        if version.reachable {
+            appendLog("operator-console listener is not this checkout. cwd=\(version.cwd ?? "unknown") pid=\(version.pid.map(String.init) ?? "unknown"). Not reusing stale listener.")
+            DispatchQueue.main.async { self.setStatus("Port 31337 is occupied by a different Image_Gen console. Stop it, then relaunch Image_Gen.") }
             return
         }
 
@@ -408,6 +415,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         appendLog("operator-console did not answer within timeout")
         DispatchQueue.main.async { self.setStatus("Local console did not answer within timeout. Use Help → Copy Error Report to share details.") }
+    }
+
+    private func currentConsoleVersion() -> (reachable: Bool, matchesExpectedRoot: Bool, cwd: String?, gitHead: String?, pid: Int?) {
+        let result = runShell("curl -fsS --max-time 2 \(consoleURL.absoluteString)/api/version", timeout: 4)
+        guard result.code == 0, let data = result.output.data(using: .utf8) else {
+            return (false, false, nil, nil, nil)
+        }
+        guard
+            let object = try? JSONSerialization.jsonObject(with: data),
+            let dict = object as? [String: Any]
+        else {
+            return (true, false, nil, nil, nil)
+        }
+        let cwd = dict["cwd"] as? String
+        let gitHead = dict["gitHead"] as? String
+        let pid = dict["pid"] as? Int
+        return (true, cwd == expectedConsoleCwd, cwd, gitHead, pid)
     }
 
     private func ensureSdcppTunnel() {
