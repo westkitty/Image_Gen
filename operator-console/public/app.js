@@ -183,6 +183,13 @@ function hydrateControls() {
     if ($(id)) $(id).disabled = !img2imgEnabled;
   });
   if ($('img2img-gate-reason')) $('img2img-gate-reason').textContent = img2imgEnabled ? '' : img2imgReason;
+  const inpaintGate = (caps.featureGates && caps.featureGates.inpaint) || {};
+  const inpaintEnabled = inpaintGate.supported === true;
+  const inpaintReason = inpaintEnabled ? '' : (inpaintGate.reason || 'Inpaint not yet supported.');
+  ['inpaint-run', 'inpaint-image', 'inpaint-strength', 'inpaint-prompt', 'inpaint-negative', 'btn-inpaint-submit'].forEach(id => {
+    if ($(id)) $(id).disabled = !inpaintEnabled;
+  });
+  if ($('inpaint-gate-reason')) $('inpaint-gate-reason').textContent = inpaintEnabled ? '' : inpaintReason;
   const esrganGate = (caps.featureGates && caps.featureGates.realEsrgan) || {};
   const esrganEnabled = esrganGate.supported === true;
   const esrganReason = esrganEnabled ? (esrganGate.caveat || '') : (esrganGate.reason || 'Real-ESRGAN not yet enabled.');
@@ -375,14 +382,20 @@ function featureCard([id, title, desc], gate = {}) {
 // ---- img2img -----------------------------------------------------------------
 async function loadEditRuns() {
   const sel = $('img2img-run');
-  if (!sel) return;
+  const ipSel = $('inpaint-run');
+  if (!sel && !ipSel) return;
   try {
     const data = await api('/api/runs');
     const imageRuns = (data.runs || []).filter(r => r.images && r.images.length > 0);
-    if (!imageRuns.length) { sel.innerHTML = '<option value="">No image runs found</option>'; return; }
-    sel.innerHTML = '<option value="">Choose a run…</option>' +
-      imageRuns.map(r => '<option value="' + esc(r.id) + '">' + esc(r.id) + ' (' + r.images.length + ' image' + (r.images.length > 1 ? 's' : '') + ')</option>').join('');
-  } catch (_) { sel.innerHTML = '<option value="">Error loading runs</option>'; }
+    const opts = imageRuns.length
+      ? '<option value="">Choose a run…</option>' + imageRuns.map(r => '<option value="' + esc(r.id) + '">' + esc(r.id) + ' (' + r.images.length + ' image' + (r.images.length > 1 ? 's' : '') + ')</option>').join('')
+      : '<option value="">No image runs found</option>';
+    if (sel) sel.innerHTML = opts;
+    if (ipSel) ipSel.innerHTML = opts;
+  } catch (_) {
+    if (sel) sel.innerHTML = '<option value="">Error loading runs</option>';
+    if (ipSel) ipSel.innerHTML = '<option value="">Error loading runs</option>';
+  }
 }
 
 async function onImg2imgRunChange() {
@@ -416,6 +429,156 @@ async function submitImg2img(event) {
     notifyLog('img2img job started: ' + result.job_id);
     trackJob(result.job_id, 'img2img');
   } catch (err) { notifyLog('img2img error: ' + err.message); }
+}
+
+// ---- Inpaint -----------------------------------------------------------------
+const inpaintState = { ctx: null, painting: false, mode: 'paint', brushSize: 20 };
+
+function initInpaintCanvas() {
+  const canvas = $('inpaint-mask-canvas');
+  if (!canvas) return;
+  inpaintState.ctx = canvas.getContext('2d');
+  canvas.addEventListener('mousedown', e => { inpaintState.painting = true; inpaintDraw(e); });
+  canvas.addEventListener('mousemove', e => { if (inpaintState.painting) inpaintDraw(e); });
+  canvas.addEventListener('mouseup', () => { inpaintState.painting = false; });
+  canvas.addEventListener('mouseleave', () => { inpaintState.painting = false; });
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); inpaintState.painting = true; inpaintDraw(e.touches[0]); }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); if (inpaintState.painting) inpaintDraw(e.touches[0]); }, { passive: false });
+  canvas.addEventListener('touchend', () => { inpaintState.painting = false; });
+  $('inpaint-brush-size').addEventListener('input', e => {
+    inpaintState.brushSize = Number(e.target.value);
+    if ($('inpaint-brush-val')) $('inpaint-brush-val').textContent = e.target.value;
+  });
+  $('inpaint-mode-paint').addEventListener('change', () => { inpaintState.mode = 'paint'; });
+  $('inpaint-mode-erase').addEventListener('change', () => { inpaintState.mode = 'erase'; });
+  $('btn-inpaint-clear').addEventListener('click', clearInpaintMask);
+  $('btn-inpaint-invert').addEventListener('click', invertInpaintMask);
+}
+
+function inpaintDraw(event) {
+  const canvas = $('inpaint-mask-canvas');
+  const ctx = inpaintState.ctx;
+  if (!canvas || !ctx || canvas.hidden) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = (event.clientX - rect.left) * scaleX;
+  const y = (event.clientY - rect.top) * scaleY;
+  const r = (inpaintState.brushSize / 2) * Math.max(scaleX, scaleY);
+  ctx.globalCompositeOperation = inpaintState.mode === 'erase' ? 'destination-out' : 'source-over';
+  ctx.fillStyle = 'rgba(255,255,255,1)';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function clearInpaintMask() {
+  const canvas = $('inpaint-mask-canvas');
+  if (!canvas || !inpaintState.ctx) return;
+  inpaintState.ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function invertInpaintMask() {
+  const canvas = $('inpaint-mask-canvas');
+  const ctx = inpaintState.ctx;
+  if (!canvas || !ctx) return;
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = imgData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const isOpaque = d[i + 3] > 0;
+    d[i] = 255; d[i + 1] = 255; d[i + 2] = 255;
+    d[i + 3] = isOpaque ? 0 : 255;
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+function loadInpaintSourceImage(url) {
+  const img = new window.Image();
+  img.onload = () => {
+    const canvas = $('inpaint-mask-canvas');
+    if (!canvas) return;
+    canvas.width = img.naturalWidth || 512;
+    canvas.height = img.naturalHeight || 512;
+    if (!inpaintState.ctx) inpaintState.ctx = canvas.getContext('2d');
+    inpaintState.ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const preview = $('inpaint-source-preview');
+    if (preview) { preview.src = url; preview.style.display = 'block'; }
+    const ph = $('inpaint-canvas-placeholder');
+    if (ph) ph.hidden = true;
+    canvas.hidden = false;
+  };
+  img.src = url;
+}
+
+async function onInpaintRunChange() {
+  const runId = $('inpaint-run') && $('inpaint-run').value;
+  const imgSel = $('inpaint-image');
+  if (!runId || !imgSel) {
+    if (imgSel) imgSel.innerHTML = '<option value="">Select a run first</option>';
+    return;
+  }
+  try {
+    const detail = await api('/api/runs/' + encodeURIComponent(runId));
+    const images = (detail.images || []).filter(f => f.endsWith('.png'));
+    imgSel.innerHTML = images.length
+      ? images.map(f => '<option value="' + esc(f) + '">' + esc(f) + '</option>').join('')
+      : '<option value="">No PNG images in this run</option>';
+    if (images.length) onInpaintImageChange();
+  } catch (_) { imgSel.innerHTML = '<option value="">Error loading images</option>'; }
+}
+
+function onInpaintImageChange() {
+  const runId = $('inpaint-run') && $('inpaint-run').value;
+  const file = $('inpaint-image') && $('inpaint-image').value;
+  if (runId && file) {
+    const url = '/api/run-file?path=' + encodeURIComponent(runId + '/' + file);
+    loadInpaintSourceImage(url);
+  }
+}
+
+async function submitInpaint(event) {
+  event.preventDefault();
+  const runId = $('inpaint-run') && $('inpaint-run').value;
+  const initImageFile = $('inpaint-image') && $('inpaint-image').value;
+  if (!runId || !initImageFile) { notifyLog('Select a run and image first.'); return; }
+  const canvas = $('inpaint-mask-canvas');
+  if (!canvas || !canvas.width || canvas.hidden) { notifyLog('Load a source image first.'); return; }
+  const ctx = inpaintState.ctx || canvas.getContext('2d');
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const hasContent = Array.from(imgData.data).some((v, i) => (i + 1) % 4 === 0 && v > 0);
+  if (!hasContent) { notifyLog('Paint a mask on the image before running inpaint.'); return; }
+  const maskData = canvas.toDataURL('image/png');
+  const strength = parseFloat($('inpaint-strength').value) || 0.75;
+  const prompt = $('inpaint-prompt').value.trim();
+  const negative_prompt = $('inpaint-negative').value.trim();
+  if (!prompt) { notifyLog('Prompt is required for inpaint.'); return; }
+  const save_prompts = loadBool('savePrompts');
+  try {
+    const result = await api('/api/actions/inpaint', {
+      method: 'POST',
+      body: JSON.stringify({ run_id: runId, init_image_file: initImageFile, mask_data: maskData, strength, prompt, negative_prompt, save_prompts })
+    });
+    notifyLog('Inpaint job started: ' + result.job_id);
+    const resultDiv = $('inpaint-result');
+    if (resultDiv) { resultDiv.style.display = 'block'; resultDiv.textContent = 'Inpaint job running…'; }
+    trackJob(result.job_id, 'Inpaint');
+  } catch (err) { notifyLog('Inpaint error: ' + err.message); }
+}
+
+function sendToInpaint(runId, image) {
+  showScreen('edit');
+  loadEditRuns().then(() => {
+    const runSel = $('inpaint-run');
+    if (runSel) {
+      runSel.value = runId;
+      onInpaintRunChange().then(() => {
+        if (image) {
+          const imgSel = $('inpaint-image');
+          if (imgSel) { imgSel.value = image; onInpaintImageChange(); }
+        }
+      });
+    }
+  });
 }
 
 // ---- Pillow Upscale ----------------------------------------------------------
@@ -868,7 +1031,7 @@ async function loadGallery(reset = false) {
     } else if (reset) {
       const msg = document.createElement('div');
       msg.className = 'empty-state';
-      const filterLabels = { all: 'runs', controlled: 'controlled generation runs', 'controlled-sd15': 'SD1.5 runs', 'controlled-sdxl-base': 'SDXL base runs', 'controlled-sdxl-turbo': 'SDXL Turbo runs', 'controlled-flux-fp8': 'Flux fp8 runs', 'hires-fix': 'Hires Fix runs', upscale: 'upscale runs', smoke: 'smoke proof runs', failed: 'failed runs' };
+      const filterLabels = { all: 'runs', controlled: 'controlled generation runs', 'controlled-sd15': 'SD1.5 runs', 'controlled-sdxl-base': 'SDXL base runs', 'controlled-sdxl-turbo': 'SDXL Turbo runs', 'controlled-flux-fp8': 'Flux fp8 runs', 'hires-fix': 'Hires Fix runs', upscale: 'upscale runs', smoke: 'smoke proof runs', img2img: 'img2img runs', inpaint: 'inpaint runs', failed: 'failed runs' };
       msg.textContent = 'No ' + (filterLabels[state.libraryFilter] || state.libraryFilter) + ' found.';
       el.appendChild(msg);
     }
@@ -922,6 +1085,7 @@ function openImageViewer(imgPath, runId, filename) {
    }],
    ['btn-viewer-upscale', () => { closeImageViewer(); sendToUpscale(runId, filePart); }],
    ['btn-viewer-img2img', () => { closeImageViewer(); sendToImg2img(runId, filePart); }],
+   ['btn-viewer-inpaint', () => { closeImageViewer(); sendToInpaint(runId, filePart); }],
    ['btn-viewer-close', closeImageViewer]
   ].forEach(([id, handler]) => {
     const b = $(id);
@@ -942,6 +1106,8 @@ function runTypeBadgeClass(filterCategory, status) {
   if (filterCategory === 'smoke') return 'badge-smoke';
   if (filterCategory === 'hires-fix') return 'badge-hires';
   if (filterCategory === 'upscale') return 'badge-upscale';
+  if (filterCategory === 'img2img') return 'badge-img2img';
+  if (filterCategory === 'inpaint') return 'badge-inpaint';
   return 'badge-other';
 }
 
@@ -1402,7 +1568,7 @@ async function showRunDetail(runId) {
     : '';
 
   // Type badge
-  const filterCat = isControlled ? 'controlled' : isSmoke ? 'smoke' : runType === 'hires-fix' ? 'hires-fix' : 'other';
+  const filterCat = isControlled ? 'controlled' : isSmoke ? 'smoke' : runType === 'hires-fix' ? 'hires-fix' : runType === 'img2img' ? 'img2img' : runType === 'inpaint' ? 'inpaint' : 'other';
   const badgeClass = runTypeBadgeClass(filterCat, status);
   const typeLabel = isControlled ? (targetLabel || runType) : isSmoke ? 'Smoke proof' : runType || 'Run';
   const typeBadgeHtml = '<span class="run-type-badge ' + esc(badgeClass) + '">' + esc(typeLabel) + '</span>';
@@ -1635,6 +1801,10 @@ function bindEvents() {
   $('upscale-run').addEventListener('change', onUpscaleRunChange);
   if ($('form-img2img')) $('form-img2img').addEventListener('submit', submitImg2img);
   if ($('img2img-run')) $('img2img-run').addEventListener('change', onImg2imgRunChange);
+  if ($('form-inpaint')) $('form-inpaint').addEventListener('submit', submitInpaint);
+  if ($('inpaint-run')) $('inpaint-run').addEventListener('change', onInpaintRunChange);
+  if ($('inpaint-image')) $('inpaint-image').addEventListener('change', onInpaintImageChange);
+  initInpaintCanvas();
   if ($('form-esrgan')) $('form-esrgan').addEventListener('submit', submitEsrgan);
   if ($('esrgan-run')) $('esrgan-run').addEventListener('change', onEsrganRunChange);
   $('form-hires-fix').addEventListener('submit', submitHiresFix);
@@ -1779,6 +1949,7 @@ function bindEvents() {
       case 'download': { const a = document.createElement('a'); a.href = imageUrl; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); break; }
       case 'copy-path': navigator.clipboard.writeText(imgPath).catch(() => {}); break;
       case 'img2img': sendToImg2img(runId, filePart); break;
+      case 'inpaint': sendToInpaint(runId, filePart); break;
       case 'upscale': sendToUpscale(runId, filePart); break;
     }
     ctxMenu.hidden = true;

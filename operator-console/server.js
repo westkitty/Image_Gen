@@ -29,8 +29,12 @@ let vaeSwitchingSupported = true;
 let loraSupported = true;
 let img2imgSupported = true; // proven: sdcpp-img2img.sh proof run 20260623-001649-img2img, sha256 match
 let realEsrganSupported = true; // proven: endpoint proof run 20260623-005030-esrgan-upscale, 512→2048, 60.82s, sha256 f28e339f…, 0 text chunks
+let inpaintSupported = true; // enabled: sdcpp-inpaint.sh implemented 2026-06-23
 
-app.use(express.json({ limit: '2mb' }));
+const MASK_UPLOADS_DIR = path.join(WORKFLOW_ROOT, 'mask-uploads');
+if (!fs.existsSync(MASK_UPLOADS_DIR)) fs.mkdirSync(MASK_UPLOADS_DIR, { recursive: true });
+
+app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const ALLOWED_PRESETS = new Set(['smoke', 'thumbnail', 'fast', 'balanced', 'quality', 'quality_plus', 'Custom']);
@@ -876,6 +880,8 @@ function runTypeFilterCategory(runType) {
   if (runType.endsWith('-smoke') || runType.includes('-smoke')) return 'smoke';
   if (runType === 'hires-fix') return 'hires-fix';
   if (runType === 'upscale' || runType === 'pillow-upscale') return 'upscale';
+  if (runType === 'img2img') return 'img2img';
+  if (runType === 'inpaint') return 'inpaint';
   return 'other';
 }
 
@@ -1150,7 +1156,9 @@ app.get('/api/capabilities', (req, res) => {
         ? 'Remote CLI flags detected; inpaint workflow script not yet implemented.'
         : editCap.capabilities.inpaint.reason)
     : 'Run POST /api/actions/probe-image-edit to check remote support.';
-  const inpaintGate = { supported: false, reason: inpaintProbeReason, unlock_requires: 'Requires img2img support first, plus mask-editor UI.' };
+  const inpaintGate = inpaintSupported
+    ? { supported: true, route: '/api/actions/inpaint' }
+    : { supported: false, reason: inpaintProbeReason, unlock_requires: 'Requires img2img support first, plus mask-editor UI.' };
 
   // pillowUpscale — local Pillow resize upscale; script and endpoint exist, validated.
   const pillowUpscaleGate = {
@@ -1638,6 +1646,119 @@ app.post('/api/actions/img2img', (req, res) => {
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
+// Inpaint — gated behind inpaintSupported; init image and mask must be within workflow dir.
+// mask_data must be a base64-encoded PNG data URL; converted to L-mode grayscale and saved to mask-uploads/.
+app.post('/api/actions/inpaint', (req, res) => {
+  if (!inpaintSupported) {
+    return res.status(409).json({
+      error: 'Inpaint is not currently supported.',
+      gate: 'inpaint',
+      supported: false,
+      unlock_requires: 'Implement sdcpp-inpaint.sh and set inpaintSupported=true in server.js.'
+    });
+  }
+
+  const body = req.body || {};
+
+  const runId = typeof body.run_id === 'string' ? body.run_id.trim() : '';
+  const initImageFile = typeof body.init_image_file === 'string' ? body.init_image_file.trim() : '';
+  const maskData = typeof body.mask_data === 'string' ? body.mask_data : '';
+
+  if (!runId) return res.status(400).json({ error: 'run_id is required' });
+  if (!initImageFile) return res.status(400).json({ error: 'init_image_file is required' });
+  if (!maskData) return res.status(400).json({ error: 'mask_data is required (base64 PNG data URL)' });
+
+  if (!/^20\d{6}-\d{6}-[a-zA-Z0-9_-]+$/.test(runId)) {
+    return res.status(400).json({ error: 'Invalid run_id format' });
+  }
+  if (!/^[a-zA-Z0-9_\-.]+$/.test(initImageFile) || initImageFile.includes('..') || initImageFile.includes('/')) {
+    return res.status(400).json({ error: 'init_image_file must be a safe filename (no path separators or traversal)' });
+  }
+  if (!initImageFile.toLowerCase().endsWith('.png')) {
+    return res.status(400).json({ error: 'init_image_file must be a .png file' });
+  }
+
+  const initImgPath = path.resolve(RUNS_DIR, runId, initImageFile);
+  const relCheck = path.relative(RUNS_DIR, initImgPath);
+  if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
+    return res.status(403).json({ error: 'Init image path resolves outside runs directory' });
+  }
+  if (!fs.existsSync(initImgPath)) {
+    return res.status(404).json({ error: `Init image not found: ${runId}/${initImageFile}` });
+  }
+
+  const strength = body.strength !== undefined ? Number(body.strength) : 0.75;
+  if (!Number.isFinite(strength) || strength < 0.01 || strength > 0.99) {
+    return res.status(400).json({ error: 'strength must be a number between 0.01 and 0.99' });
+  }
+
+  // Decode and save mask
+  const maskStripped = maskData.replace(/^data:image\/png;base64,/, '');
+  if (maskStripped.length < 50) {
+    return res.status(400).json({ error: 'mask_data appears to be empty or invalid' });
+  }
+  let maskBuf;
+  try {
+    maskBuf = Buffer.from(maskStripped, 'base64');
+    // Verify PNG magic bytes
+    if (maskBuf.length < 8 || maskBuf[0] !== 0x89 || maskBuf[1] !== 0x50 || maskBuf[2] !== 0x4e || maskBuf[3] !== 0x47) {
+      return res.status(400).json({ error: 'mask_data must be a valid PNG image' });
+    }
+  } catch (e) {
+    return res.status(400).json({ error: 'Failed to decode mask_data: ' + e.message });
+  }
+
+  const maskTs = Date.now();
+  const maskRawPath = path.join(MASK_UPLOADS_DIR, `mask-${maskTs}-raw.png`);
+  const maskPath = path.join(MASK_UPLOADS_DIR, `mask-${maskTs}.png`);
+  fs.writeFileSync(maskRawPath, maskBuf);
+
+  // Convert RGBA canvas PNG → grayscale L (white=inpaint, black=keep) using PIL
+  try {
+    execFileSync('python3', ['-c',
+      'import sys; from PIL import Image; img=Image.open(sys.argv[1]).convert("L"); img.save(sys.argv[2])',
+      maskRawPath, maskPath
+    ]);
+    fs.unlinkSync(maskRawPath);
+  } catch (_) {
+    // PIL unavailable or failed — use raw PNG as-is
+    fs.renameSync(maskRawPath, maskPath);
+  }
+
+  const params = normalizeGenerationBody(body);
+  const genErr = validateGenerationParams(params);
+  if (genErr) { try { fs.unlinkSync(maskPath); } catch (_) {} return res.status(400).json({ error: genErr }); }
+
+  const args = [
+    '--init-img', initImgPath,
+    '--mask', maskPath,
+    '--strength', String(strength),
+    '--prompt', params.prompt
+  ];
+  if (params.negative_prompt) args.push('--negative', params.negative_prompt);
+  if (params.steps) args.push('--steps', String(params.steps));
+  if (params.width) args.push('--width', String(params.width));
+  if (params.height) args.push('--height', String(params.height));
+  if (params.cfg_scale) args.push('--cfg-scale', String(params.cfg_scale));
+  if (params.sampler) args.push('--sampler', params.sampler);
+  if (params.scheduler) args.push('--scheduler', params.scheduler);
+  if (params.seed) args.push('--seed', String(params.seed));
+  if (params.vae && params.vae !== 'auto') {
+    const vaePath = resolveVaePath(params.vae);
+    if (vaePath) args.push('--vae', vaePath);
+  }
+
+  const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
+  const summary = getRedactedCommandSummary('bin/sdcpp-inpaint.sh', args, sensitives);
+  const jobId = createJob('inpaint', summary, sanitizeRequestParams(
+    { ...params, run_id: runId, init_image_file: initImageFile, strength }, params.save_prompts
+  ));
+  jobSensitives[jobId] = sensitives;
+  runAction(jobId, 'bin/sdcpp-inpaint.sh', args, params.save_prompts);
+
+  res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
 // Real-ESRGAN upscale — gated behind realEsrganSupported; init image must be within runs/
 // Model path is never accepted from client; resolved server-side via REMOTE_ESRGAN_MODEL in sdcpp.env.
 app.post('/api/actions/upscale-esrgan', (req, res) => {
@@ -2085,6 +2206,8 @@ app.get('/api/run-index', (req, res) => {
       if (filter === 'smoke') return r.filterCategory === 'smoke';
       if (filter === 'hires-fix') return r.filterCategory === 'hires-fix';
       if (filter === 'upscale') return r.filterCategory === 'upscale';
+      if (filter === 'img2img') return r.filterCategory === 'img2img';
+      if (filter === 'inpaint') return r.filterCategory === 'inpaint';
       // specific controlled target types
       return r.type === filter;
     });

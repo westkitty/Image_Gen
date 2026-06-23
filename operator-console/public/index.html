@@ -205,6 +205,43 @@
               <button class="primary" type="submit" id="btn-img2img-submit" disabled>Run img2img</button>
             </form>
           </div>
+          <!-- Inpaint panel -->
+          <div class="panel" id="panel-inpaint" style="margin-top:18px">
+            <div class="panel-head">
+              <div><h2>Inpaint</h2><p id="inpaint-gate-reason" class="muted fineprint">Checking capabilities…</p></div>
+            </div>
+            <form id="form-inpaint" class="stacked">
+              <div class="two-col">
+                <div class="field"><label for="inpaint-run">Source run</label>
+                  <select id="inpaint-run" disabled><option value="">Loading runs…</option></select></div>
+                <div class="field"><label for="inpaint-image">Source image</label>
+                  <select id="inpaint-image" disabled><option value="">Select a run first</option></select></div>
+              </div>
+              <div class="field">
+                <label>Mask <span class="muted fineprint">(paint white = inpaint here, erase = keep)</span></label>
+                <div class="inpaint-mask-tools">
+                  <label class="inpaint-tool-btn"><input type="radio" name="inpaint-mode" id="inpaint-mode-paint" value="paint" checked /> Paint</label>
+                  <label class="inpaint-tool-btn"><input type="radio" name="inpaint-mode" id="inpaint-mode-erase" value="erase" /> Erase</label>
+                  <span class="inpaint-brush-label">Brush <input type="range" id="inpaint-brush-size" min="4" max="80" value="20" /> <span id="inpaint-brush-val">20</span>px</span>
+                  <button type="button" class="ghost small" id="btn-inpaint-clear">Clear</button>
+                  <button type="button" class="ghost small" id="btn-inpaint-invert">Invert</button>
+                </div>
+                <div class="inpaint-canvas-wrapper" id="inpaint-canvas-wrapper">
+                  <img id="inpaint-source-preview" src="" alt="" />
+                  <canvas id="inpaint-mask-canvas" hidden></canvas>
+                  <div class="inpaint-placeholder" id="inpaint-canvas-placeholder">Select a run and image above to load it here, then paint the region to inpaint</div>
+                </div>
+              </div>
+              <div class="field"><label for="inpaint-strength">Denoising strength</label>
+                <input id="inpaint-strength" type="number" min="0.01" max="0.99" step="0.05" value="0.75" disabled /></div>
+              <div class="field"><label for="inpaint-prompt">Prompt</label>
+                <textarea id="inpaint-prompt" rows="3" disabled placeholder="Describe the desired output for the inpainted region…"></textarea></div>
+              <div class="field"><label for="inpaint-negative">Negative prompt</label>
+                <textarea id="inpaint-negative" rows="2" disabled placeholder="What to avoid…"></textarea></div>
+              <button class="primary" type="submit" id="btn-inpaint-submit" disabled>Run Inpaint</button>
+            </form>
+            <div id="inpaint-result" class="job-card muted" style="margin-top:12px;display:none"></div>
+          </div>
         </section>
         <section id="enhance" class="screen">
           <div class="split-grid">
@@ -322,6 +359,8 @@
               <button class="filter-btn" data-filter="controlled-flux-fp8">Flux fp8</button>
               <button class="filter-btn" data-filter="hires-fix">Hires Fix</button>
               <button class="filter-btn" data-filter="upscale">Upscale</button>
+              <button class="filter-btn" data-filter="img2img">img2img</button>
+              <button class="filter-btn" data-filter="inpaint">Inpaint</button>
               <button class="filter-btn" data-filter="smoke">Smoke proofs</button>
               <button class="filter-btn" data-filter="failed">Failed</button>
             </div>
@@ -443,6 +482,7 @@
           <button class="ghost small" id="btn-viewer-fullscreen">Full screen</button>
           <button class="ghost small" id="btn-viewer-upscale">Send to Upscale</button>
           <button class="ghost small" id="btn-viewer-img2img">Send to img2img</button>
+          <button class="ghost small" id="btn-viewer-inpaint">Send to Inpaint</button>
           <button class="ghost small" id="btn-viewer-close" aria-label="Close image viewer">&#10005; Close</button>
         </div>
       </div>
@@ -461,6 +501,7 @@
     <button class="ctx-item" data-action="copy-path">Copy image path</button>
     <hr class="ctx-sep" />
     <button class="ctx-item" data-action="img2img">Send to img2img</button>
+    <button class="ctx-item" data-action="inpaint">Send to Inpaint</button>
     <button class="ctx-item" data-action="upscale">Send to Upscale</button>
   </div>
 
