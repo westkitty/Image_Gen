@@ -1713,16 +1713,34 @@ app.post('/api/actions/inpaint', (req, res) => {
   const maskPath = path.join(MASK_UPLOADS_DIR, `mask-${maskTs}.png`);
   fs.writeFileSync(maskRawPath, maskBuf);
 
-  // Convert RGBA canvas PNG → grayscale L (white=inpaint, black=keep) using PIL
+  // Convert canvas RGBA PNG → grayscale L (white=painted=inpaint, black=transparent=keep).
+  // Uses alpha channel — NOT RGB luminance — so erased-white pixels (255,255,255,0) become black.
+  // Also detects blank masks (no painted pixels) and rejects early.
+  const MASK_PY = [
+    'import sys',
+    'from PIL import Image',
+    'img = Image.open(sys.argv[1]).convert("RGBA")',
+    '_, _, _, a = img.split()',
+    'mask = a.point([0] + [255]*255)',  // 0→black(keep), 1..255→white(inpaint)
+    'if mask.getbbox():',
+    '    mask.save(sys.argv[2])',
+    '    print("ok")',
+    'else:',
+    '    print("blank")',
+  ].join('\n');
+
+  let maskConvResult = 'ok';
   try {
-    execFileSync('python3', ['-c',
-      'import sys; from PIL import Image; img=Image.open(sys.argv[1]).convert("L"); img.save(sys.argv[2])',
-      maskRawPath, maskPath
-    ]);
-    fs.unlinkSync(maskRawPath);
+    maskConvResult = execFileSync('python3', ['-c', MASK_PY, maskRawPath, maskPath],
+      { timeout: 15000 }).toString().trim();
+    try { fs.unlinkSync(maskRawPath); } catch (_) {}
   } catch (_) {
-    // PIL unavailable or failed — use raw PNG as-is
-    fs.renameSync(maskRawPath, maskPath);
+    // PIL unavailable or image unreadable — fall back to raw RGBA PNG (sd-cli handles RGBA)
+    try { fs.renameSync(maskRawPath, maskPath); } catch (_) {}
+  }
+
+  if (maskConvResult === 'blank') {
+    return res.status(400).json({ error: 'Mask has no painted pixels. Paint over the region to inpaint first.' });
   }
 
   const params = normalizeGenerationBody(body);
