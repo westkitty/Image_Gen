@@ -79,7 +79,7 @@ if [ -n "$ARG_MODEL_PATH" ]; then
   case "$_mp_rel" in *../*|*/..*) fail "model-path" "Model path must not contain directory traversal." ;; esac
 else
   case "$ARG_TARGET" in
-    sd15|sdxl-base|sdxl-turbo|flux-fp8|sdxl-photonic|sdxl-homochi|sdxl-pony|sd15-homofidelis|sdxl-juggernaut|sdxl-realvisxl|sdxl-cyberrealistic|sdxl-epicrealism) : ;;
+    sd15|sdxl-base|sdxl-turbo|flux-fp8|sdxl-photonic|sdxl-homochi|sdxl-pony|sd15-homofidelis|sdxl-juggernaut|sdxl-realvisxl|sdxl-cyberrealistic|sdxl-epicrealism|sdxl-biglust|sdxl-lustify|sdxl-biglove) : ;;
     *) fail "target" "Unknown target '$ARG_TARGET'. Pass --model-path to use an auto-discovered model." ;;
   esac
 fi
@@ -204,11 +204,11 @@ case "$ARG_TARGET" in
     TARGET_CAVEAT="SDXL Checkpoint (~6-7GB). Excellent photorealism with strong male anatomy; versatile for athletic/muscular men and NSFW. Widely praised for realistic bodies (incl. gay male workflows). Source: Civitai Juggernaut XL. Not full A1111 parity."
     TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/juggernaut_xl_ragnarok.safetensors"
     TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
-    TARGET_DEFAULT_WIDTH=1024
-    TARGET_DEFAULT_HEIGHT=1024
-    TARGET_DEFAULT_STEPS=10
+    TARGET_DEFAULT_WIDTH=832
+    TARGET_DEFAULT_HEIGHT=1216
+    TARGET_DEFAULT_STEPS=35
     TARGET_MAX_STEPS=150
-    TARGET_DEFAULT_CFG="6"
+    TARGET_DEFAULT_CFG="4"
     TARGET_SAMPLER="dpm++2m"
     TARGET_REQUIRE_CFG_SCALE="true"
     ;;
@@ -221,9 +221,9 @@ case "$ARG_TARGET" in
     TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
     TARGET_DEFAULT_WIDTH=1024
     TARGET_DEFAULT_HEIGHT=1024
-    TARGET_DEFAULT_STEPS=10
+    TARGET_DEFAULT_STEPS=30
     TARGET_MAX_STEPS=150
-    TARGET_DEFAULT_CFG="6.5"
+    TARGET_DEFAULT_CFG="4"
     TARGET_SAMPLER="dpm++2m"
     TARGET_REQUIRE_CFG_SCALE="true"
     ;;
@@ -234,11 +234,11 @@ case "$ARG_TARGET" in
     TARGET_CAVEAT="SDXL Checkpoint. Strong photoreal skin textures, musculature, and realistic male forms; effective for detailed adult male NSFW. Not full A1111 parity."
     TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/cyberrealistic_xl_v10.safetensors"
     TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
-    TARGET_DEFAULT_WIDTH=1024
-    TARGET_DEFAULT_HEIGHT=1024
-    TARGET_DEFAULT_STEPS=10
+    TARGET_DEFAULT_WIDTH=832
+    TARGET_DEFAULT_HEIGHT=1216
+    TARGET_DEFAULT_STEPS=30
     TARGET_MAX_STEPS=150
-    TARGET_DEFAULT_CFG="5"
+    TARGET_DEFAULT_CFG="4"
     TARGET_SAMPLER="dpm++2m"
     TARGET_REQUIRE_CFG_SCALE="true"
     ;;
@@ -254,6 +254,51 @@ case "$ARG_TARGET" in
     TARGET_DEFAULT_STEPS=10
     TARGET_MAX_STEPS=150
     TARGET_DEFAULT_CFG="6"
+    TARGET_SAMPLER="dpm++2m"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
+  sdxl-biglust)
+    TARGET_LABEL="Big Lust v1.6 (bigASP + LUSTIFY merge / BigAspLustify)"
+    TARGET_MODE="migrated controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="SDXL Checkpoint. Merge of bigASP and LUSTIFY; photoreal NSFW-focused with solid male anatomy performance. Community favorite for masculine/homoerotic content. Not full A1111 parity."
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/big_lust_v1_6.safetensors"
+    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_DEFAULT_WIDTH=832
+    TARGET_DEFAULT_HEIGHT=1216
+    TARGET_DEFAULT_STEPS=30
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_CFG="5"
+    TARGET_SAMPLER="dpm++2m"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
+  sdxl-lustify)
+    TARGET_LABEL="LUSTIFY! (core / recent photoreal NSFW)"
+    TARGET_MODE="migrated controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="SDXL NSFW checkpoint. Photoreal NSFW merge with excellent male anatomy, skin details, and homoerotic capability. (LUSTIFY series; V8 Apex used here as representative). Not full A1111 parity."
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/lustify_v8_apex.safetensors"
+    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_DEFAULT_WIDTH=1024
+    TARGET_DEFAULT_HEIGHT=1024
+    TARGET_DEFAULT_STEPS=30
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_CFG="5"
+    TARGET_SAMPLER="dpm++2m"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
+  sdxl-biglove)
+    TARGET_LABEL="Big Love (photoreal male-leaning / Lustify hybrid)"
+    TARGET_MODE="migrated controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="SDXL Checkpoint. Photoreal male-leaning merge with strong NSFW and anatomy performance (BigLove / Lustify hybrid family). Not full A1111 parity."
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/big_love_photo.safetensors"
+    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_DEFAULT_WIDTH=832
+    TARGET_DEFAULT_HEIGHT=1216
+    TARGET_DEFAULT_STEPS=30
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_CFG="5"
     TARGET_SAMPLER="dpm++2m"
     TARGET_REQUIRE_CFG_SCALE="true"
     ;;

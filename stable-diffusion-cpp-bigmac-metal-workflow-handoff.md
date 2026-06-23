@@ -75,9 +75,20 @@ The target architecture is:
 - LoRAs: `/Volumes/wc2tb/ImageGen/loras/`
 - Flux etc. under appropriate subdirs.
 
+**CRITICAL:** Always put new SDXL photoreal (Juggernaut, RealVisXL, CyberRealistic, epiCRealism, LUSTIFY/BigAspLustify/BigLove variants etc.) under `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/`. This is the durable canonical root. Never /Users/bigmac/sdcpp_models or staging for runtime models.
+
 Never assume or hardcode `/Users/bigmac/sdcpp_models` or `~/sdcpp_models` as the Image_Gen model home. 
 
 Use `MODEL_STAGE_ROOT=/Volumes/wc2tb/ImageGen` (or equivalent) in scripts.
+
+Added photoreal SDXL male/NSFW-focused (per user list; **placed ONLY in correct spot /Volumes/wc2tb/ImageGen/checkpoints/sdxl/** ):
+- juggernaut_xl_ragnarok.safetensors (Juggernaut XL v9/v10 / latest photoreal variant)
+- realvisxl_v5_0.safetensors (RealVisXL V5.0 Lightning or standard)
+- cyberrealistic_xl_v10.safetensors (CyberRealistic XL or latest male-tuned)
+- epicrealism_xl_pure_fix.safetensors (epiCRealism XL natural sin / photoreal male variants)
+- For the LUSTIFY family (LUSTIFY! core/latest, BigAspLustify, Lustify XL vX, LUSTIFY Photoreal Male Merge, BigLove Lustify Hybrid, BigLove XL / BigAspLustify variants): use Civitai search, direct api/download with token to the *same* sdxl/ dir. They will be auto-discovered or can be wired like the above.
+
+**Reminder (critical):** correct durable spot is always /Volumes/wc2tb/ImageGen/checkpoints/sdxl/ for these SDXL. SSH verify first. copy/rsync first. no delete/symlink without explicit OK. default backend only (no --backend metal). Validate with ls/file/python header.
 
 ## Required BigMac Hardware Gate
 

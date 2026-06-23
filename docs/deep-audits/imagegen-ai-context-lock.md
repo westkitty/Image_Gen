@@ -9,12 +9,20 @@ It exists to stop the same release facts from drifting.
 
 - Workspace root: `/Users/andrew/Image_Gen`
 - Canonical model home: `/Volumes/wc2tb/ImageGen`
-- SDCPP specific layout (for the four requested models):
+- SDCPP specific layout (canonical durable root /Volumes/wc2tb/ImageGen ; **always use this spot**):
   - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/photonic_fusion_sdxl_finale_v1.safetensors`
   - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/homochi_xl_v2.safetensors`
   - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/pony_diffusion_v6_xl.safetensors`
+  - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/juggernaut_xl_ragnarok.safetensors` (Juggernaut XL latest photoreal / Ragnarok; strong male anatomy + NSFW)
+  - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/realvisxl_v5_0.safetensors` (RealVisXL V5.0)
+  - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/cyberrealistic_xl_v10.safetensors` (CyberRealistic XL)
+  - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/epicrealism_xl_pure_fix.safetensors` (epiCRealism XL)
+  - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/big_lust_v1_6.safetensors` (Big Lust v1.6 = bigASP + LUSTIFY / BigAspLustify)
+  - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/lustify_v8_apex.safetensors` (LUSTIFY! core/recent)
+  - SDXL: `/Volumes/wc2tb/ImageGen/checkpoints/sdxl/big_love_photo.safetensors` (Big Love photoreal male-leaning)
   - SD15: `/Volumes/wc2tb/ImageGen/checkpoints/sd15/homofidelis_v5.safetensors`
   - VAE: `/Volumes/wc2tb/ImageGen/vaes/sdxl_vae.safetensors`
+  (Additional LUSTIFY / BigLove / BigAspLustify variants go in sdxl/ the same way. use `vaes/` plural)
   (use `vaes/` plural per project convention; report both vae/ and vaes/ if both exist)
 - Runtime bridge: `operator-console/server.js`
 - Native wrapper installer: `scripts/install-macos-app.sh`

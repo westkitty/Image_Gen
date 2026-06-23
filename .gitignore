@@ -6,9 +6,11 @@ __MACOSX/
 sdcpp-workflow/runs/
 sdcpp-workflow/logs/
 sdcpp-workflow/state/
+sdcpp-workflow/mask-uploads/
 
 # Machine-local config
 sdcpp-workflow/config/sdcpp.env
+.claude/
 
 # Sockets / temp files
 *.sock
