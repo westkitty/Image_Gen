@@ -668,12 +668,23 @@ case "$ARG_TARGET" in
     done
     REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" --clip_l \"$TARGET_CLIP_L_PATH\" --t5xxl \"$TARGET_T5XXL_PATH\" --vae \"${ARG_VAE:-$TARGET_VAE_PATH}\" --vae-format flux -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --guidance 3.5 --prediction flux_flow --sampling-method euler $SEED_FRAG ${SCHEDULER_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
-  sdxl-photonic|sdxl-homochi|sdxl-pony)
+  *)
+    # Generic handler for all staged models (TARGET_STATUS=staged).
+    # Adding a new staged model only requires an entry in the first case block above
+    # and a matching entry in CONTROLLED_TARGETS in server.js — no changes here.
+    if [ "$TARGET_STATUS" != "staged" ] || [ -z "$TARGET_MODEL_PATH" ]; then
+      controlled_fail "command" "Unknown or unsupported generation target: $ARG_TARGET"
+    fi
     remote_test "test -s \"$TARGET_MODEL_PATH\"" || controlled_fail "model-present" "$TARGET_LABEL checkpoint is missing or empty: $TARGET_MODEL_PATH"
     REMOTE_MODEL_BYTES="$(ssh_remote "stat -f %z \"$TARGET_MODEL_PATH\" 2>/dev/null || wc -c < \"$TARGET_MODEL_PATH\" 2>/dev/null || printf '0'" 2>&1 | tail -n 1 | tr -d '[:space:]')"
     case "$REMOTE_MODEL_BYTES" in ''|*[!0-9]*) controlled_fail "model-size" "Could not read a numeric size for $TARGET_MODEL_PATH." ;; esac
-    if [ "$REMOTE_MODEL_BYTES" -lt $((1024 * 1024 * 1024)) ]; then
-      controlled_fail "model-size" "$TARGET_LABEL checkpoint is too small (${REMOTE_MODEL_BYTES} bytes; need at least 1073741824)."
+    # SDXL models need at least 1 GB; SD1.5 models need at least 512 MB.
+    case "$ARG_TARGET" in
+      sd15-*) _STAGED_MIN_BYTES=$((512 * 1024 * 1024)) ;;
+      *)      _STAGED_MIN_BYTES=$((1024 * 1024 * 1024)) ;;
+    esac
+    if [ "$REMOTE_MODEL_BYTES" -lt "$_STAGED_MIN_BYTES" ]; then
+      controlled_fail "model-size" "$TARGET_LABEL checkpoint is too small (${REMOTE_MODEL_BYTES} bytes; need at least ${_STAGED_MIN_BYTES})."
     fi
     if [ -n "$TARGET_VAE_PATH" ]; then
       remote_test "test -s \"$TARGET_VAE_PATH\"" || controlled_fail "vae-present" "$TARGET_LABEL VAE is missing or empty: $TARGET_VAE_PATH"
@@ -686,33 +697,14 @@ case "$ARG_TARGET" in
       CFG_FLAG="--cfg-scale $ARG_CFG"
     fi
     SAMPLER_FRAG=""
-    if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--sampling-method'; then
-      SAMPLER_FRAG="--sampling-method ${TARGET_SAMPLER:-dpm++2m}"
+    if [ -n "$TARGET_SAMPLER" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--sampling-method'; then
+      SAMPLER_FRAG="--sampling-method $TARGET_SAMPLER"
     fi
     BUILT_VAE_FLAG=""
     if [ -n "$TARGET_VAE_PATH" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--vae'; then
       BUILT_VAE_FLAG="--vae \"$TARGET_VAE_PATH\""
     fi
     REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} ${SAMPLER_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${BUILT_VAE_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
-    ;;
-  sd15-homofidelis)
-    remote_test "test -s \"$TARGET_MODEL_PATH\"" || controlled_fail "model-present" "$TARGET_LABEL checkpoint is missing or empty: $TARGET_MODEL_PATH"
-    REMOTE_MODEL_BYTES="$(ssh_remote "stat -f %z \"$TARGET_MODEL_PATH\" 2>/dev/null || wc -c < \"$TARGET_MODEL_PATH\" 2>/dev/null || printf '0'" 2>&1 | tail -n 1 | tr -d '[:space:]')"
-    case "$REMOTE_MODEL_BYTES" in ''|*[!0-9]*) controlled_fail "model-size" "Could not read a numeric size for $TARGET_MODEL_PATH." ;; esac
-    if [ "$REMOTE_MODEL_BYTES" -lt $((512 * 1024 * 1024)) ]; then
-      controlled_fail "model-size" "$TARGET_LABEL checkpoint is too small (${REMOTE_MODEL_BYTES} bytes; need at least 536870912)."
-    fi
-    for flag in '--model' '--prompt' '--output' '--width' '--height' '--steps'; do
-      printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- "$flag" || controlled_fail "sd-cli-help" "sd-cli help does not show required flag $flag."
-    done
-    if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--cfg-scale'; then
-      CFG_FLAG="--cfg-scale $ARG_CFG"
-    fi
-    SAMPLER_FRAG=""
-    if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--sampling-method'; then
-      SAMPLER_FRAG="--sampling-method ${TARGET_SAMPLER:-euler_a}"
-    fi
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} ${SAMPLER_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
 esac
 
