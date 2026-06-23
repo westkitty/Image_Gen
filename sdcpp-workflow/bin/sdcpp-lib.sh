@@ -256,7 +256,7 @@ validateSeed() {
   # validateSeed <seed>
   [ "$#" -ge 1 ] || return 1
   local seed="$1"
-  [ -z "$seed" ] || printf '%s' "$seed" | grep -Eq '^(random|fixed|[0-9]+)$'
+  [ -z "$seed" ] || printf '%s' "$seed" | grep -Eq '^(random|fixed|-1|[0-9]+)$'
 }
 
 strip_png_metadata() {

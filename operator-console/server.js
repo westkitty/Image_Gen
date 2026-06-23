@@ -199,7 +199,7 @@ function validateSize(value) {
 }
 function validateSeed(seed) {
   if (seed === undefined || seed === null || seed === '') return true;
-  return /^(random|fixed|\d+)$/.test(String(seed));
+  return /^(random|fixed|-1|\d+)$/.test(String(seed));
 }
 function validateSampler(sampler) {
   if (!sampler) return true;

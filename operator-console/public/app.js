@@ -199,10 +199,35 @@ function getCoreParams(source = '') {
   };
 }
 
-function setPreviewImage(url, title = 'Selected image') {
+function setPreviewProgress(label = 'Rendering image') {
+  $('preview-stage').innerHTML = `
+    <div class="render-progress" role="status" aria-live="polite">
+      <div class="render-progress-label">${esc(label)}</div>
+      <div class="render-progress-bar" aria-hidden="true"><span></span></div>
+    </div>`;
+  $('preview-subtitle').textContent = 'Generation in progress.';
+}
+function parseRunFileUrl(url) {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (!parsed.pathname.endsWith('/api/run-file')) return null;
+    return parsed.searchParams.get('path');
+  } catch (_) {
+    return null;
+  }
+}
+function setPreviewImage(url, title = 'Selected image', imgPath = '', runId = '', filename = '') {
+  const inferredPath = imgPath || parseRunFileUrl(url) || '';
+  const inferredFile = filename || (inferredPath ? inferredPath.split('/').pop() : title);
+  const inferredRun = runId || (inferredPath.includes('/') ? inferredPath.split('/')[0] : '');
   state.activeImage = url;
-  $('preview-stage').innerHTML = `<img src="${esc(url)}" alt="${esc(title)}" />`;
+  $('preview-stage').innerHTML = `<img src="${esc(url)}" alt="${esc(title)}" title="Click to view full size" />`;
   $('preview-subtitle').textContent = title;
+  const img = $('preview-stage').querySelector('img');
+  if (img && inferredPath) {
+    img.style.cursor = 'zoom-in';
+    img.addEventListener('click', () => openImageViewer(inferredPath, inferredRun, inferredFile));
+  }
 }
 function setPreviewMessage(message) { $('preview-stage').innerHTML = `<div class="empty-state">${esc(message)}</div>`; }
 
@@ -217,6 +242,7 @@ async function submitCreate(event) {
     trackJob(result.job_id, `Generating ${target.label || params.target}…`);
   } catch (err) {
     setPill('pill-job', 'Failed', 'bad');
+    setPreviewMessage('Render did not start: ' + err.message);
     notifyLog(err.message);
   }
 }
@@ -235,10 +261,14 @@ async function submitBatch(event) {
 async function trackJob(jobId, label) {
   state.lastJob = jobId;
   setPill('pill-job', 'Running', 'run');
-  $('latest-job').textContent = label;
+  setPreviewProgress(label);
+  $('latest-job').innerHTML = renderJobProgress(label, 'queued');
   clearInterval(state.poller);
   state.poller = setInterval(() => pollJob(jobId), 1200);
   await pollJob(jobId);
+}
+function renderJobProgress(label, status) {
+  return `<strong>${esc(label || 'Rendering image')}</strong><br>Status: ${esc(status || 'running')}<div class="job-progress" role="progressbar" aria-label="Rendering image"><span></span></div>`;
 }
 async function pollJob(jobId) {
   try {
@@ -247,7 +277,8 @@ async function pollJob(jobId) {
     notifyLog([log.stdout, log.stderr].filter(Boolean).join('\n\n'));
     const targetLine = job.controlledTarget ? `<br>Target: ${esc(job.controlledTarget)}` : '';
     const outputLine = job.controlledOutputImage ? `<br>Output: ${esc(job.controlledOutputImage)}` : '';
-    $('latest-job').innerHTML = `<strong>${esc(job.commandAction)}</strong><br>Status: ${esc(job.status)}${targetLine}${outputLine}${job.runId ? `<br>Run: ${esc(job.runId)}` : ''}`;
+    const progress = (job.status === 'running' || job.status === 'queued') ? '<div class="job-progress" role="progressbar" aria-label="Rendering image"><span></span></div>' : '';
+    $('latest-job').innerHTML = `<strong>${esc(job.commandAction)}</strong><br>Status: ${esc(job.status)}${targetLine}${outputLine}${job.runId ? `<br>Run: ${esc(job.runId)}` : ''}${progress}`;
     if (job.status !== 'running' && job.status !== 'queued') {
       clearInterval(state.poller);
       setPill('pill-job', job.status, job.status === 'PASS' ? 'ok' : job.status === 'PARTIAL' ? 'run' : 'bad');
@@ -255,6 +286,7 @@ async function pollJob(jobId) {
       if (job.runId) await loadRunIntoPreview(job.runId);
       await loadGallery(true);
       if (job.status === 'FAIL' || job.status === 'ERROR') {
+        setPreviewMessage('Render failed. Check the job log for the first failed gate.');
         const gateNote = job.firstFailedGate ? `<br><small>First failed gate: ${esc(job.firstFailedGate)}</small>` : '';
         const retryHtml = state.lastParams ? ' <button type="button" class="ghost small" id="btn-retry-job">Retry</button>' : '';
         $('latest-job').innerHTML += gateNote + retryHtml;
@@ -276,7 +308,7 @@ async function loadRunIntoPreview(runId) {
   try {
     const detail = await api(`/api/runs/${runId}`);
     const image = detail.images && detail.images[0];
-    if (image) setPreviewImage(`/api/run-file?path=${encodeURIComponent(`${runId}/${image}`)}`, `Run ${runId}`);
+    if (image) setPreviewImage(`/api/run-file?path=${encodeURIComponent(`${runId}/${image}`)}`, `Run ${runId}`, `${runId}/${image}`, runId, image);
   } catch (_) {}
 }
 
@@ -367,7 +399,8 @@ function trackUpscaleJob(jobId) {
       if (job.status === 'PASS' && job.upscaledImage) {
         $('upscale-result').textContent = 'PASS — ' + job.upscaledImage;
         const imgUrl = '/api/run-file?path=' + encodeURIComponent(job.upscaledImage);
-        setPreviewImage(imgUrl, 'Upscaled: ' + job.upscaledImage);
+        const parts = job.upscaledImage.split('/');
+        setPreviewImage(imgUrl, 'Upscaled: ' + job.upscaledImage, job.upscaledImage, parts[0], parts.slice(1).join('/'));
         await loadGallery(true);
       } else {
         $('upscale-result').textContent = job.status + (job.firstFailedGate ? ' — gate: ' + job.firstFailedGate : '');
@@ -723,13 +756,25 @@ function openImageViewer(imgPath, runId, filename) {
   const overlay = $('image-viewer-overlay');
   const img = $('image-viewer-img');
   const info = $('image-viewer-info');
+  const download = $('btn-viewer-download');
   if (!overlay || !img) return;
-  img.src = '/api/run-file?path=' + encodeURIComponent(imgPath);
+  const imageUrl = '/api/run-file?path=' + encodeURIComponent(imgPath);
+  img.src = imageUrl;
   img.alt = filename || imgPath;
+  img.title = 'Right-click to save image';
+  if (download) {
+    download.href = imageUrl;
+    download.download = filename || imgPath.split('/').pop() || 'image-gen-output.png';
+  }
   if (info) info.textContent = (runId ? runId + '  ·  ' : '') + (filename || imgPath);
   overlay.hidden = false;
   overlay.focus();
   [['btn-viewer-copy-path', () => navigator.clipboard.writeText(imgPath).catch(() => {})],
+   ['btn-viewer-fullscreen', () => {
+     const panel = $('image-viewer-panel') || img;
+     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+     else if (panel.requestFullscreen) panel.requestFullscreen().catch(() => {});
+   }],
    ['btn-viewer-upscale', () => { closeImageViewer(); const parts = imgPath.split('/'); sendToUpscale(runId, parts.slice(1).join('/')); }],
    ['btn-viewer-close', closeImageViewer]
   ].forEach(([id, handler]) => {
@@ -1331,7 +1376,7 @@ async function viewUpscaledOutputs(runId) {
     const upscaledImages = (detail.images || []).filter(f => f.startsWith('upscaled/') && /\.(png|PNG)$/.test(f));
     if (!upscaledImages.length) { notifyLog('No upscaled images found in ' + runId); return; }
     const first = upscaledImages[0];
-    setPreviewImage('/api/run-file?path=' + encodeURIComponent(runId + '/' + first), 'Upscaled: ' + first);
+    setPreviewImage('/api/run-file?path=' + encodeURIComponent(runId + '/' + first), 'Upscaled: ' + first, runId + '/' + first, runId, first);
     showScreen('create');
     notifyLog('Upscaled outputs in run ' + runId + ':\n' + upscaledImages.join('\n'));
   } catch (err) { notifyLog('Error loading upscaled outputs: ' + err.message); }
@@ -1339,7 +1384,7 @@ async function viewUpscaledOutputs(runId) {
 async function openRun(id) {
   const detail = await api(`/api/runs/${id}`);
   const image = detail.images && detail.images[0];
-  if (image) setPreviewImage(`/api/run-file?path=${encodeURIComponent(`${id}/${image}`)}`, `Run ${id}`);
+  if (image) setPreviewImage(`/api/run-file?path=${encodeURIComponent(`${id}/${image}`)}`, `Run ${id}`, `${id}/${image}`, id, image);
   showScreen('create');
 }
 async function reuseRun(id) {
@@ -1460,6 +1505,7 @@ function bindEvents() {
   $('btn-save-style').addEventListener('click', saveCurrentStyle);
   $('set-save-prompts').addEventListener('change', e => saveBool('savePrompts', e.target.checked));
   $('btn-random-seed').addEventListener('click', () => { $('seed').value = String(Math.floor(Math.random() * 2147483647)); });
+  $('btn-random-seed-ongoing').addEventListener('click', () => { $('seed').value = '-1'; });
   $('btn-reuse-seed').addEventListener('click', () => { if (state.lastSeed) $('seed').value = state.lastSeed; });
   $('btn-load-settings').addEventListener('click', () => { const v = ($('settings-import-input') || {}).value || ''; if (v.trim()) loadSettingsJson(v); else showCreateNote('Paste settings JSON first.', 'privacy'); });
   $('btn-paste-settings').addEventListener('click', async () => { try { const t = await navigator.clipboard.readText(); $('settings-import-input').value = t; loadSettingsJson(t); } catch { showCreateNote('Clipboard read failed — paste manually.', 'privacy'); } });
