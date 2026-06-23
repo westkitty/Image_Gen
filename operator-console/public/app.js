@@ -179,6 +179,13 @@ function hydrateControls() {
     if ($(id)) $(id).disabled = !img2imgEnabled;
   });
   if ($('img2img-gate-reason')) $('img2img-gate-reason').textContent = img2imgEnabled ? '' : img2imgReason;
+  const esrganGate = (caps.featureGates && caps.featureGates.realEsrgan) || {};
+  const esrganEnabled = esrganGate.supported === true;
+  const esrganReason = esrganEnabled ? (esrganGate.caveat || '') : (esrganGate.reason || 'Real-ESRGAN not yet enabled.');
+  ['esrgan-run', 'esrgan-image', 'esrgan-tile-size', 'esrgan-repeats', 'btn-esrgan-submit'].forEach(id => {
+    if ($(id)) $(id).disabled = !esrganEnabled;
+  });
+  if ($('esrgan-gate-reason')) $('esrgan-gate-reason').textContent = esrganReason;
   $('aspect-presets').innerHTML = ASPECTS.map(([label, w, h]) => `<button type="button" class="ghost small" data-size="${w}x${h}">${label} ${w}×${h}</button>`).join('');
   $('set-save-prompts').checked = loadBool('savePrompts');
   applyPreset('quality');
@@ -342,7 +349,6 @@ function renderFeatureGates() {
     ['outpaint', 'Outpaint', 'Extend canvas edges and inpaint the new regions.']
   ];
   const enhanceFeatures = [
-    ['upscale', 'AI / Extras Upscale', 'Real-ESRGAN, tiled finalization, A1111 Extras parity.'],
     ['faceRestore', 'Face Restore', 'GFPGAN/CodeFormer-style restoration.'],
     ['pngInfo', 'PNG Info', 'Recover generation parameters from image metadata.']
   ];
@@ -488,6 +494,56 @@ function sendToUpscale(runId, image) {
       if (image) $('upscale-image').value = image;
     });
   });
+}
+
+// ---- Real-ESRGAN Upscale --------------------------------------------------------
+async function loadEsrganRuns() {
+  const sel = $('esrgan-run');
+  if (!sel) return;
+  try {
+    const data = await api('/api/runs');
+    const imageRuns = (data.runs || []).filter(r => r.images && r.images.length > 0);
+    if (!imageRuns.length) { sel.innerHTML = '<option value="">No image runs found</option>'; return; }
+    sel.innerHTML = '<option value="">Choose a run…</option>' +
+      imageRuns.map(r => '<option value="' + esc(r.id) + '">' + esc(r.id) + ' (' + r.images.length + ' image' + (r.images.length > 1 ? 's' : '') + ')</option>').join('');
+  } catch (_) {
+    sel.innerHTML = '<option value="">Error loading runs</option>';
+  }
+}
+
+async function onEsrganRunChange() {
+  const runId = $('esrgan-run') && $('esrgan-run').value;
+  const imgSel = $('esrgan-image');
+  if (!runId || !imgSel) { if (imgSel) imgSel.innerHTML = '<option value="">Select a run first</option>'; return; }
+  try {
+    const detail = await api('/api/runs/' + encodeURIComponent(runId));
+    const images = (detail.images || []).filter(f => f.toLowerCase().endsWith('.png'));
+    imgSel.innerHTML = images.length
+      ? images.map(f => '<option value="' + esc(f) + '">' + esc(f) + '</option>').join('')
+      : '<option value="">No PNG images in this run</option>';
+  } catch (_) {
+    imgSel.innerHTML = '<option value="">Error loading images</option>';
+  }
+}
+
+async function submitEsrgan(event) {
+  event.preventDefault();
+  const runId = $('esrgan-run') && $('esrgan-run').value;
+  const initImageFile = $('esrgan-image') && $('esrgan-image').value;
+  if (!runId || !initImageFile) { notifyLog('Select a run and image first.'); return; }
+  const tileSize = parseInt($('esrgan-tile-size').value, 10);
+  const repeats = parseInt($('esrgan-repeats').value, 10);
+  $('esrgan-result').textContent = 'Submitting…';
+  try {
+    const result = await api('/api/actions/upscale-esrgan', {
+      method: 'POST',
+      body: JSON.stringify({ run_id: runId, init_image_file: initImageFile, tile_size: tileSize, repeats })
+    });
+    $('esrgan-result').textContent = 'Job queued: ' + result.job_id;
+    trackJob(result.job_id, 'Real-ESRGAN upscale');
+  } catch (err) {
+    $('esrgan-result').textContent = 'Error: ' + err.message;
+  }
 }
 
 // ---- Hires Fix ---------------------------------------------------------------
@@ -1546,7 +1602,7 @@ function insertAtPrompt(text) { $('prompt').value = `${$('prompt').value.trim()}
 function bindEvents() {
   $$('.nav-btn').forEach(btn => btn.addEventListener('click', () => {
     showScreen(btn.dataset.target);
-    if (btn.dataset.target === 'enhance') loadEnhanceRuns();
+    if (btn.dataset.target === 'enhance') { loadEnhanceRuns(); loadEsrganRuns(); }
     if (btn.dataset.target === 'edit') loadEditRuns();
   }));
   $('form-create').addEventListener('submit', submitCreate);
@@ -1555,6 +1611,8 @@ function bindEvents() {
   $('upscale-run').addEventListener('change', onUpscaleRunChange);
   if ($('form-img2img')) $('form-img2img').addEventListener('submit', submitImg2img);
   if ($('img2img-run')) $('img2img-run').addEventListener('change', onImg2imgRunChange);
+  if ($('form-esrgan')) $('form-esrgan').addEventListener('submit', submitEsrgan);
+  if ($('esrgan-run')) $('esrgan-run').addEventListener('change', onEsrganRunChange);
   $('form-hires-fix').addEventListener('submit', submitHiresFix);
   $('form-xyz').addEventListener('submit', submitXyz);
   $('model').addEventListener('change', e => applyControlledTargetDefaults(e.target.value));

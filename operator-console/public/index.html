@@ -263,6 +263,35 @@
               <div class="cards-grid" id="enhance-gates"></div>
             </div>
           </div>
+          <!-- Real-ESRGAN Upscale — sd-cli --mode upscale on BigMac (4× per repeat) -->
+          <div class="panel" id="panel-esrgan" style="margin-top:18px">
+            <div class="panel-head">
+              <div><h2>Real-ESRGAN Upscale</h2><p id="esrgan-gate-reason" class="muted fineprint">Checking capabilities…</p></div>
+            </div>
+            <form id="form-esrgan" class="stacked">
+              <div class="field"><label for="esrgan-run">Source run</label>
+                <select id="esrgan-run" disabled><option value="">Loading runs…</option></select></div>
+              <div class="field"><label for="esrgan-image">Source image</label>
+                <select id="esrgan-image" disabled><option value="">Select a run first</option></select></div>
+              <div class="two-col">
+                <div class="field"><label for="esrgan-tile-size">Tile size</label>
+                  <select id="esrgan-tile-size" disabled>
+                    <option value="128">128 (default)</option>
+                    <option value="64">64</option>
+                    <option value="256">256</option>
+                    <option value="512">512</option>
+                  </select></div>
+                <div class="field"><label for="esrgan-repeats">Repeats (4× each)</label>
+                  <select id="esrgan-repeats" disabled>
+                    <option value="1">1× pass → 4× total</option>
+                    <option value="2">2× passes → 16× total</option>
+                  </select></div>
+              </div>
+              <p class="fineprint muted">Scale is 4× per repeat using RealESRGAN_x4plus on BigMac M4 Metal (~60s for 512→2048). Model path is server-only.</p>
+              <button class="primary" type="submit" id="btn-esrgan-submit" disabled>Run Real-ESRGAN Upscale</button>
+            </form>
+            <div id="esrgan-result" class="job-card muted" style="margin-top:12px">No Real-ESRGAN job yet.</div>
+          </div>
         </section>
         <section id="library" class="screen">
           <div class="panel">

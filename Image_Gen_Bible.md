@@ -2717,3 +2717,51 @@ Internal server-side `full_path` preserved in `ASSETS_CACHE` and in `resolveVaeP
 - `/api/capabilities` featureGates.img2img: `{supported: true, route: "/api/actions/img2img"}`
 
 **img2imgSupported gate:** Set to `true` at `server.js` line 30.
+
+---
+
+## Entry 15 — Real-ESRGAN Upscale via sd-cli --mode upscale (2026-06-23)
+
+**Feature:** AI 4× upscale of existing run images using `sd-cli --mode upscale` on BigMac M4 Metal GPU.
+
+**Not:** A1111 Extras parity. This is standalone ESRGAN upscale only (no face restore, no tiling via A1111 pipeline).
+
+**New files:**
+- `sdcpp-workflow/bin/sdcpp-esrgan-upscale.sh` — full workflow: containment check, scp input, sd-cli ESRGAN, remote PNG verify, scp back, local verify, strip metadata, sha256, run card
+- `sdcpp-workflow/config/sdcpp.env` — added `REMOTE_ESRGAN_MODEL='/Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth'`
+
+**Modified files:**
+- `operator-console/server.js` — added `realEsrganSupported=true`, `realEsrganGate`, `POST /api/actions/upscale-esrgan`, updated `upscaleGate` reason
+- `operator-console/public/index.html` — added `#panel-esrgan` to `#enhance` screen (below split-grid)
+- `operator-console/public/app.js` — ESRGAN gate hydration in `hydrateControls()`, `loadEsrganRuns()`, `onEsrganRunChange()`, `submitEsrgan()`, event wiring in `bindEvents()`
+
+**Direct CLI proof (Phase 3):**
+- Input: `runs/20260622-214156-controlled-sd15/controlled-sd15.png` (512×512)
+- Command: `sd-cli --mode upscale -i INPUT --upscale-model /Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth --upscale-tile-size 128 -o OUTPUT -v`
+- Output: 2048×2048, 5.0MB remote PNG, 60.64s M4 Metal (25 tiles × 2.35s, tile_size=128)
+- sha256 remote (pre-strip): `90f0535cf5db2260c926c4ca55b492d872f351d71a8611d53ee38f39fff23abc`
+- Model loads as PyTorch zip (`.pth` format, no GGUF conversion needed)
+- No `-m` diffusion model flag needed for `--mode upscale`
+
+**Endpoint proof (Phase 5):**
+- Run: `POST /api/actions/upscale-esrgan` → job `cefc835e-b03e-4ec4-b28e-8f182288cbe1`
+- Input: `run_id=20260622-214156-controlled-sd15, init_image_file=controlled-sd15.png`
+- Output run: `20260623-005030-esrgan-upscale/esrgan_20260623-005030-4x.png` (2048×2048, 3.2MB local)
+- Wall time: 60.82s, remote time: 58.90s
+- sha256 local (post-strip): `f28e339fda4f756ea44935de6801e89f3d7af8ca67cc04ce1ededf3b57d36be9`
+- sha256 remote (pre-strip): `90f0535cf5db2260c926c4ca55b492d872f351d71a8611d53ee38f39fff23abc` (same as Phase 3 direct CLI; same input)
+- PNG text chunks after strip: 0
+
+**Privacy:**
+- ESRGAN output always has `parameters` text chunk (sdcpp commit/version, empty prompts)
+- `sdcpp-esrgan-upscale.sh` always strips via `strip_png_metadata()` regardless of `save_prompts`
+- No prompt involved in upscale (no redaction needed)
+
+**Path safety:**
+- `--init-img PATH` validated server-side: `path.resolve(RUNS_DIR, runId, initImageFile)` + `path.relative` check before spawning script
+- Script has second containment check via `case "$INIT_IMG_ABS" in "$SDCPP_RUNS_DIR/"*) ;; *) fail`
+- Model path is server-only (from `REMOTE_ESRGAN_MODEL` env var, never sent to browser or accepted from client)
+
+**Gate:**
+- `realEsrganSupported = true` at `server.js` line 31 (proven after endpoint proof)
+- Gate returns: `{supported: true, route: "/api/actions/upscale-esrgan", caveat: "4× scale per repeat (RealESRGAN_x4plus). Not A1111 Extras parity."}`

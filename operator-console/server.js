@@ -28,6 +28,7 @@ let schedulerSelectionSupported = true;
 let vaeSwitchingSupported = true;
 let loraSupported = true;
 let img2imgSupported = true; // proven: sdcpp-img2img.sh proof run 20260623-001649-img2img, sha256 match
+let realEsrganSupported = true; // proven: endpoint proof run 20260623-005030-esrgan-upscale, 512→2048, 60.82s, sha256 f28e339f…, 0 text chunks
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -962,11 +963,17 @@ app.get('/api/capabilities', (req, res) => {
     reason: 'Local Pillow resize upscale for existing run images. Not Real-ESRGAN; not AI upscale.'
   };
 
-  // upscale — partial: Pillow local resize is available; Real-ESRGAN/A1111 Extras parity is not.
+  // realEsrgan — sd-cli --mode upscale on BigMac; direct CLI proof passed (512→2048, M4 Metal, 60s).
+  // Gate remains false until endpoint proof run completes.
+  const realEsrganGate = realEsrganSupported
+    ? { supported: true, route: '/api/actions/upscale-esrgan', caveat: '4× scale per repeat (RealESRGAN_x4plus). Not A1111 Extras parity.' }
+    : { supported: false, reason: 'Direct CLI proof passed (512→2048, 60s, M4 Metal). Gate opens after endpoint proof.', unlock_requires: 'Run one upscale-esrgan job, verify output PNG, then set realEsrganSupported=true in server.js.' };
+
+  // upscale — Pillow resize available; Real-ESRGAN implemented separately via realEsrgan gate.
   const upscaleGate = {
     supported: 'partial',
     route: '/api/actions/upscale',
-    reason: 'Local Pillow resize upscale available (2x/3x/4x, lanczos/bicubic/bilinear/nearest). Real-ESRGAN and A1111 Extras parity are not implemented.'
+    reason: 'Local Pillow resize upscale available (2x/3x/4x, lanczos/bicubic/bilinear/nearest). Real-ESRGAN available separately — see realEsrgan gate.'
   };
 
   const hiresGate = {
@@ -1059,6 +1066,7 @@ app.get('/api/capabilities', (req, res) => {
       probeImageEdit: { supported: true, route: '/api/actions/probe-image-edit' },
       probeUpscale: { supported: true, route: '/api/actions/probe-upscale' },
       pillowUpscale: pillowUpscaleGate,
+      realEsrgan: realEsrganGate,
       sdxlTurbo: buildModelGate('sdxlTurbo', modelStage),
       flux: buildModelGate('flux', modelStage),
       sdxl: buildModelGate('sdxl', modelStage),
@@ -1420,6 +1428,62 @@ app.post('/api/actions/img2img', (req, res) => {
   ));
   jobSensitives[jobId] = sensitives;
   runAction(jobId, 'bin/sdcpp-img2img.sh', args, params.save_prompts);
+
+  res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
+// Real-ESRGAN upscale — gated behind realEsrganSupported; init image must be within runs/
+// Model path is never accepted from client; resolved server-side via REMOTE_ESRGAN_MODEL in sdcpp.env.
+app.post('/api/actions/upscale-esrgan', (req, res) => {
+  if (!realEsrganSupported) {
+    return res.status(409).json({
+      error: 'Real-ESRGAN upscale is not currently enabled.',
+      gate: 'realEsrgan',
+      supported: false,
+      unlock_requires: 'Verify RealESRGAN_x4plus.pth on BigMac via probe-upscale; run one endpoint proof job; set realEsrganSupported=true in server.js.'
+    });
+  }
+
+  const body = req.body || {};
+  const runId = typeof body.run_id === 'string' ? body.run_id.trim() : '';
+  const initImageFile = typeof body.init_image_file === 'string' ? body.init_image_file.trim() : '';
+
+  if (!runId) return res.status(400).json({ error: 'run_id is required' });
+  if (!initImageFile) return res.status(400).json({ error: 'init_image_file is required' });
+
+  if (!/^20\d{6}-\d{6}-[a-zA-Z0-9_-]+$/.test(runId)) {
+    return res.status(400).json({ error: 'Invalid run_id format' });
+  }
+  if (!/^[a-zA-Z0-9_\-.]+$/.test(initImageFile) || initImageFile.includes('..') || initImageFile.includes('/')) {
+    return res.status(400).json({ error: 'init_image_file must be a safe filename (no path separators or traversal)' });
+  }
+  if (!initImageFile.toLowerCase().endsWith('.png')) {
+    return res.status(400).json({ error: 'init_image_file must be a .png file' });
+  }
+
+  const initImgPath = path.resolve(RUNS_DIR, runId, initImageFile);
+  const relCheck = path.relative(RUNS_DIR, initImgPath);
+  if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
+    return res.status(403).json({ error: 'Init image path resolves outside runs directory' });
+  }
+  if (!fs.existsSync(initImgPath)) {
+    return res.status(404).json({ error: `Init image not found: ${runId}/${initImageFile}` });
+  }
+
+  const tileSize = body.tile_size !== undefined ? parseInt(body.tile_size, 10) : 128;
+  if (!Number.isInteger(tileSize) || tileSize < 32 || tileSize > 512) {
+    return res.status(400).json({ error: 'tile_size must be an integer between 32 and 512' });
+  }
+
+  const repeats = body.repeats !== undefined ? parseInt(body.repeats, 10) : 1;
+  if (!Number.isInteger(repeats) || repeats < 1 || repeats > 4) {
+    return res.status(400).json({ error: 'repeats must be an integer between 1 and 4' });
+  }
+
+  const args = ['--init-img', initImgPath, '--tile-size', String(tileSize), '--repeats', String(repeats)];
+  const summary = `bin/sdcpp-esrgan-upscale.sh --init-img ${runId}/${initImageFile} --tile-size ${tileSize} --repeats ${repeats}`;
+  const jobId = createJob('upscale-esrgan', summary, { run_id: runId, init_image_file: initImageFile, tile_size: tileSize, repeats });
+  runAction(jobId, 'bin/sdcpp-esrgan-upscale.sh', args);
 
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
