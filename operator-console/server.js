@@ -26,7 +26,7 @@ const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md'
 const GENERATION_JOB_SCHEMA = path.join(__dirname, 'schemas/generation-job.schema.json');
 const MODEL_COMPATIBILITY_REGISTRY = path.join(__dirname, 'schemas/model-compatibility.json');
 const WILDCARDS_DIR = path.join(__dirname, 'wildcards');
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || 'http://127.0.0.1:11435';
 
 let schedulerSelectionSupported = true;
 let vaeSwitchingSupported = true;
