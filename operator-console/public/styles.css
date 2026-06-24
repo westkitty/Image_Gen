@@ -163,3 +163,8 @@ input[aria-disabled="true"],select[aria-disabled="true"]{opacity:.5;cursor:not-a
 .batch-tab.active,.filter-btn.active{background:rgba(92,200,255,.14);border-color:rgba(92,200,255,.5);color:var(--focus)}
 .create-note{border-color:rgba(92,200,255,.35);background:rgba(92,200,255,.07)}
 @media(max-width:700px){.ledger-row{grid-template-columns:1fr}.ledger-status{text-align:left}}
+.preset-assist{display:grid;gap:8px;margin-top:10px}.preset-auto{justify-content:flex-start}.preset-auto input{width:auto;margin:0}.preset-status{border:1px solid var(--line);border-radius:8px;background:#0f1318;padding:10px;line-height:1.45}.preset-status:not(:empty){color:var(--soft)}
+/* Custom tooltip used by the UI hint system */
+.ui-tooltip{position:fixed;z-index:10000;max-width:280px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);box-shadow:var(--shadow);font-size:12px;line-height:1.35;pointer-events:none}
+.ui-tooltip[hidden]{display:none}
+::placeholder{color:rgba(200,208,215,.48)}

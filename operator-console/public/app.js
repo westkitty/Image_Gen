@@ -1,6 +1,6 @@
 'use strict';
 
-const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null, controlledTargets: [], controlledTargetMap: {}, libraryFilter: 'all', libraryIndex: [], libraryOffset: 0, libraryHasMore: false, libraryLoading: false, libraryCompareIds: [], lastComparisonRows: [], hiddenSections: new Set() };
+const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null, controlledTargets: [], controlledTargetMap: {}, libraryFilter: 'all', libraryIndex: [], libraryOffset: 0, libraryHasMore: false, libraryLoading: false, libraryCompareIds: [], lastComparisonRows: [], hiddenSections: new Set(), manualRecommendedFields: new Set(), applyingRecommendedPreset: false };
 const $ = id => document.getElementById(id);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
@@ -16,6 +16,233 @@ const DEFAULT_PRESETS = {
 const ASPECTS = [
   ['1:1', 512, 512], ['Portrait', 512, 768], ['Landscape', 768, 512], ['Wide', 1024, 576], ['Tall', 576, 1024], ['HD', 1024, 1024]
 ];
+const UI_TOOLTIP_ID = 'ui-tooltip';
+const UI_HINTS = Object.freeze({
+  '.nav-btn[data-target="create"]': 'Open the main txt2img creation workspace.',
+  '.nav-btn[data-target="batch"]': 'Open batch generation and X/Y/Z plot tools.',
+  '.nav-btn[data-target="edit"]': 'Open image-to-image and inpaint tools.',
+  '.nav-btn[data-target="enhance"]': 'Open upscale and Hires Fix tools.',
+  '.nav-btn[data-target="library"]': 'Browse previous runs, reuse settings, and inspect outputs.',
+  '.nav-btn[data-target="models"]': 'Check model staging, discovered assets, and smoke proof tools.',
+  '.nav-btn[data-target="system"]': 'Open backend diagnostics and section visibility controls.',
+  '#set-save-prompts': 'Store prompt text in run records when enabled. Leave off to redact prompts from saved metadata.',
+  '#btn-sidebar-toggle': 'Show or hide the navigation sidebar.',
+  '#btn-refresh-all': 'Refresh backend capabilities, server status, models, and current job state.',
+  '#pill-backend': 'Backend capability status.',
+  '#pill-server': 'Local server status.',
+  '#pill-job': 'Current generation job status.',
+  '#pill-latest': 'Most recent completed output.',
+  '#prompt': 'Main generation prompt. Describe subject, style, composition, lighting, and important details.',
+  '#btn-reload-prompt': 'Reload the locally saved prompt draft.',
+  '#ollama-model-compact': 'Choose the local Ollama model used by Enhance prompt.',
+  '#btn-enhance-prompt': 'Ask the selected local Ollama model to improve the current prompt.',
+  '#btn-wildcard-picker': 'Insert a wildcard token such as __styles__ into the prompt.',
+  '#btn-save-style': 'Save the current prompt as a reusable style.',
+  '#negative_prompt': 'Optional negative prompt. Compatible models use this to avoid unwanted traits; some turbo or distilled models may ignore it.',
+  '#style-select': 'Apply a locally saved prompt style.',
+  '#preset': 'Apply a built-in quality/speed preset for common generation settings.',
+  '#model': 'Choose the base generation target/model route.',
+  '#vae': 'Choose the VAE for color/quality decoding. Auto is safest unless a model requires a specific VAE.',
+  '#lora-select': 'Choose an optional LoRA adapter for style, subject, speed, or behavior.',
+  '#lora-weight': 'Controls how strongly the selected LoRA affects the image.',
+  '#btn-insert-lora': 'Insert the selected LoRA token into the prompt.',
+  '#set-auto-recommended': 'Automatically apply recommended settings when a known model or LoRA is selected.',
+  '#btn-reset-recommended': 'Restore recommended settings for the selected model or LoRA.',
+  '#settings-import-input': 'Paste settings JSON copied from a Library run.',
+  '#btn-load-settings': 'Load the pasted settings JSON into the Create form.',
+  '#btn-paste-settings': 'Paste settings JSON from the clipboard.',
+  '#sweep-axis': 'Choose whether the controlled sweep varies seed or CFG scale.',
+  '#sweep-count': 'Number of jobs to create for a seed sweep. Maximum 8.',
+  '#sweep-seed-start': 'First seed for a seed sweep. Later jobs increment from this value.',
+  '#sweep-cfg-values': 'Comma-separated CFG values. One job is created per value.',
+  '#btn-run-sweep': 'Queue a controlled sweep from the current Create settings.',
+  '#btn-preview-create': 'Preview the txt2img command and normalized parameters without generating.',
+  '#btn-copy-last': 'Copy the latest generation parameters.',
+  '#btn-send-img2img': 'Send the latest output to the img2img panel.',
+  '#btn-send-upscale': 'Send the latest output to the Enhance upscale panel.',
+  '#steps': 'Number of denoising steps. Higher can add detail but takes longer; fast LoRAs often require fewer steps.',
+  '#cfg_scale': 'Prompt guidance strength. Higher follows the prompt harder; Lightning, Hyper, LCM, and Turbo workflows may require low or zero CFG.',
+  '#sampler': 'Sampling algorithm used during generation. Some presets require a specific sampler.',
+  '#scheduler': 'Timestep schedule used by the sampler. Some fast LoRAs require matching scheduler behavior.',
+  '#quantity': 'How many images to generate for this request.',
+  '#width': 'Output image width in pixels.',
+  '#height': 'Output image height in pixels.',
+  '#seed': 'Controls repeatability. Reuse the same seed and settings for similar results.',
+  '#variation_seed': 'Future compatibility control. The current backend does not support variation seed yet.',
+  '#variation_strength': 'Future compatibility control. The current backend does not support variation strength yet.',
+  '#btn-random-seed': 'Insert a random fixed seed.',
+  '#btn-random-seed-ongoing': 'Use -1 so each generation receives a random seed.',
+  '#btn-reuse-seed': 'Reuse the seed from the latest generation.',
+  '#ollama-model': 'Choose the local Ollama model for chat and prompt assistance.',
+  '#ollama-status': 'Current Ollama model discovery status.',
+  '#ollama-model-manual': 'Manually enter an Ollama model name when discovery does not show it.',
+  '#ollama-base-url': 'Detected local Ollama endpoint.',
+  '#ollama-chat-input': 'Send a message to the selected local Ollama model.',
+  '#btn-ollama-refresh': 'Refresh the local Ollama model list.',
+  '#btn-ollama-send': 'Send this message to the selected Ollama model.',
+  '#hires_fix': 'Disabled here. Use the Enhance screen for the available two-pass Hires Fix flow.',
+  '#restore_faces': 'Disabled unless GFPGAN or CodeFormer is available on the inference host.',
+  '#tiling': 'Generate tileable output when supported by the selected backend.',
+  '#mode': 'Choose server or CLI execution route.',
+  '#api': 'Choose which server API compatibility route to use.',
+  '#clip_skip': 'CLIP layer skip placeholder. Visible for compatibility; not currently supported.',
+  '#tabtrigger-batch': 'Show normal batch generation controls.',
+  '#tabtrigger-xyz': 'Show partial X/Y/Z plot controls for controlled parameter sweeps.',
+  '#batch_prompt': 'Prompt shared by all jobs in this batch.',
+  '#batch_negative': 'Optional negative prompt shared by all jobs in this batch.',
+  '#batch_count': 'How many images to generate in this batch.',
+  '#seedMode': 'Choose whether batch seeds increment, stay the same, or randomize.',
+  '#seedStart': 'Starting seed for increment or same-seed batch modes.',
+  '#btn-xyz-submit': 'Queue the X/Y/Z plot jobs. Maximum 16 cells.',
+  '#xyz_prompt': 'Prompt shared by every cell in the X/Y/Z plot.',
+  '#xyz_negative': 'Optional negative prompt shared by every plot cell.',
+  '#xyz_x_type': 'Choose the parameter varied across columns.',
+  '#xyz_x_values': 'Comma-separated values for the X axis.',
+  '#xyz_y_type': 'Choose the optional parameter varied across rows.',
+  '#xyz_y_values': 'Comma-separated values for the Y axis.',
+  '#img2img-run': 'Choose the previous run used as the img2img source.',
+  '#img2img-image': 'Choose the source image from the selected run.',
+  '#img2img-strength': 'Denoising strength. Lower preserves more of the source; higher changes more.',
+  '#img2img-prompt': 'Prompt describing the desired transformed image.',
+  '#img2img-negative': 'Optional negative prompt for img2img.',
+  '#img2img-steps': 'Denoising steps for img2img.',
+  '#img2img-cfg-scale': 'Prompt guidance strength for img2img.',
+  '#img2img-seed': 'Seed for img2img. Use -1 for random.',
+  '#img2img-width': 'Output width for img2img.',
+  '#img2img-height': 'Output height for img2img.',
+  '#img2img-vae': 'VAE used for img2img decoding.',
+  '#img2img-sampler': 'Sampler used for img2img.',
+  '#img2img-scheduler': 'Scheduler used for img2img.',
+  '#btn-img2img-preview': 'Preview the img2img command without generating.',
+  '#btn-img2img-submit': 'Run img2img using the selected source image and settings.',
+  '#inpaint-run': 'Choose the previous run used as the inpaint source.',
+  '#inpaint-image': 'Choose the source image to mask and repair.',
+  '#inpaint-mode-paint': 'Paint mask areas that should be regenerated.',
+  '#inpaint-mode-erase': 'Erase painted mask areas.',
+  '#inpaint-brush-size': 'Adjust mask brush size in pixels.',
+  '#btn-inpaint-clear': 'Clear the current inpaint mask.',
+  '#btn-inpaint-invert': 'Invert the current inpaint mask.',
+  '#inpaint-strength': 'Denoising strength for the masked area. Higher changes more.',
+  '#inpaint-prompt': 'Prompt describing what should appear in the masked area.',
+  '#inpaint-negative': 'Optional negative prompt for inpainting.',
+  '#inpaint-steps': 'Denoising steps for inpainting.',
+  '#inpaint-cfg-scale': 'Prompt guidance strength for inpainting.',
+  '#inpaint-seed': 'Seed for inpainting. Use -1 for random.',
+  '#inpaint-width': 'Output width for inpainting.',
+  '#inpaint-height': 'Output height for inpainting.',
+  '#inpaint-vae': 'VAE used for inpainting.',
+  '#inpaint-sampler': 'Sampler used for inpainting.',
+  '#inpaint-scheduler': 'Scheduler used for inpainting.',
+  '#btn-inpaint-preview': 'Preview the inpaint command without generating.',
+  '#btn-inpaint-submit': 'Run inpainting using the selected image, mask, and settings.',
+  '#upscale-run': 'Choose the previous run containing the image to upscale.',
+  '#upscale-image': 'Choose the image to upscale.',
+  '#upscale-scale': 'Resize multiplier for Pillow upscale.',
+  '#upscale-resample': 'Resampling filter used for local Pillow resize.',
+  '#upscale-overwrite': 'Allow replacing an existing upscale output if the path already exists.',
+  '#btn-upscale-submit': 'Run local Pillow upscale. This is resize, not AI upscaling.',
+  '#hf-prompt': 'Prompt for the first-pass image before local upscale.',
+  '#hf-preset': 'Choose the Hires Fix speed/quality preset.',
+  '#hf-seed': 'Optional fixed seed for Hires Fix. Leave blank for random.',
+  '#hf-scale': 'Final Pillow upscale factor after the first-pass image.',
+  '#hf-resample': 'Resampling filter used for the Hires Fix upscale pass.',
+  '#btn-hf-submit': 'Run the available two-pass Hires Fix flow.',
+  '#esrgan-run': 'Choose the previous run containing the image to AI-upscale.',
+  '#esrgan-image': 'Choose the image for Real-ESRGAN.',
+  '#esrgan-tile-size': 'Tile size for Real-ESRGAN processing. Smaller tiles use less memory.',
+  '#esrgan-repeats': 'Number of 4× Real-ESRGAN passes.',
+  '#btn-esrgan-submit': 'Run Real-ESRGAN upscale on BigMac if available.',
+  '#btn-load-library': 'Reload the run library.',
+  '.filter-btn[data-filter="all"]': 'Show all runs.',
+  '.filter-btn[data-filter="controlled"]': 'Show controlled generation runs.',
+  '.filter-btn[data-filter="controlled-sd15"]': 'Show SD1.5 controlled runs.',
+  '.filter-btn[data-filter="controlled-sdxl-base"]': 'Show SDXL base controlled runs.',
+  '.filter-btn[data-filter="controlled-sdxl-turbo"]': 'Show SDXL Turbo controlled runs.',
+  '.filter-btn[data-filter="controlled-flux-fp8"]': 'Show Flux fp8 controlled runs.',
+  '.filter-btn[data-filter="hires-fix"]': 'Show Hires Fix runs.',
+  '.filter-btn[data-filter="upscale"]': 'Show upscale runs.',
+  '.filter-btn[data-filter="img2img"]': 'Show img2img runs.',
+  '.filter-btn[data-filter="inpaint"]': 'Show inpaint runs.',
+  '.filter-btn[data-filter="smoke"]': 'Show smoke proof runs.',
+  '.filter-btn[data-filter="failed"]': 'Show failed runs.',
+  '#btn-compare-selected': 'Compare 2–4 selected controlled runs using saved metadata and existing images.',
+  '#btn-compare-latest-sweep': 'Compare the latest controlled sweep if available.',
+  '#btn-clear-compare': 'Clear the current comparison selection.',
+  '#btn-load-more': 'Load the next page of library runs.',
+  '#btn-detail-back': 'Close run details and return to the Library.',
+  '#btn-detail-reuse': 'Load this run’s saved settings into Create.',
+  '#btn-detail-copy-id': 'Copy this run ID.',
+  '#btn-detail-copy-path': 'Copy the selected output image path.',
+  '#btn-detail-send-upscale': 'Send this run’s primary image to the Enhance upscale panel.',
+  '#btn-detail-copy-settings': 'Copy this run’s settings JSON.',
+  '#btn-detail-view-manifest': 'Show or hide the saved manifest JSON.',
+  '#btn-compare-back': 'Close comparison and return to the Library.',
+  '#btn-copy-comparison-summary': 'Copy a text summary of the current comparison.',
+  '#btn-check-model-stage': 'Check whether staged BigMac model files are present.',
+  '#btn-sdxl-smoke': 'Run the SDXL base smoke proof. This generates only if you intentionally press it.',
+  '#btn-sdxl-turbo-smoke': 'Run the SDXL Turbo smoke proof. This generates only if you intentionally press it.',
+  '#btn-flux-smoke': 'Run the Flux smoke proof. This generates only if you intentionally press it.',
+  '#btn-inventory-models': 'Inventory model files on wc2tb.',
+  '#btn-discover-assets': 'Refresh discovered models, LoRAs, VAEs, and related assets.',
+  '[data-action="verify"]': 'Verify backend wiring and report capability status.',
+  '[data-action="server-status"]': 'Check whether the backend server is running.',
+  '[data-action="server-start"]': 'Start the backend server.',
+  '[data-action="server-stop"]': 'Stop the backend server.',
+  '[data-action="seed-test"]': 'Run a seed reproducibility diagnostic.',
+  '[data-action="probe-image-edit"]': 'Probe img2img availability.',
+  '[data-action="probe-upscale"]': 'Probe upscale availability.',
+  '[data-action="discover-assets"]': 'Refresh discovered model and asset inventory.',
+  '#btn-reset-sections': 'Show all optional UI sections again.',
+  '#btn-viewer-copy-path': 'Copy the displayed image path.',
+  '#btn-viewer-fullscreen': 'Open the displayed image full screen.',
+  '#btn-viewer-upscale': 'Send this image to the Enhance upscale panel.',
+  '#btn-viewer-img2img': 'Send this image to img2img.',
+  '#btn-viewer-inpaint': 'Send this image to Inpaint.',
+  '#btn-viewer-close': 'Close the image viewer.',
+  '#image-context-menu [data-action="view"]': 'View this image full size.',
+  '#image-context-menu [data-action="open-tab"]': 'Open this image in a new browser tab.',
+  '#image-context-menu [data-action="download"]': 'Download this image.',
+  '#image-context-menu [data-action="copy-path"]': 'Copy this image path.',
+  '#image-context-menu [data-action="img2img"]': 'Send this image to img2img.',
+  '#image-context-menu [data-action="inpaint"]': 'Send this image to Inpaint.',
+  '#image-context-menu [data-action="upscale"]': 'Send this image to Enhance upscale.',
+  '[data-detail-run]': 'Open run metadata, images, and reuse actions.',
+  '[data-send-upscale]': 'Send this run’s primary image to the Enhance upscale panel.',
+  '[data-compare-run]': 'Select this controlled run for comparison.',
+  '[data-compare-image]': 'Open this comparison image in the viewer.',
+  '[data-insert-lora]': 'Insert this LoRA token into the prompt.',
+  '[data-section-toggle]': 'Show or hide this section.',
+  '[data-batch-tab]': 'Switch between batch generation and X/Y/Z plot modes.'
+});
+const UI_PLACEHOLDERS = Object.freeze({
+  '#prompt': 'Describe the image you want: subject, style, composition, lighting, mood…',
+  '#negative_prompt': 'Describe what to avoid: blurry, low quality, unwanted objects…',
+  '#seed': '-1 or blank for random',
+  '#sweep-seed-start': 'Leave blank for random seeds, or enter a starting seed',
+  '#sweep-cfg-values': 'Example: 1, 3, 5, 7',
+  '#batch_prompt': 'Describe the image for every batch job…',
+  '#batch_negative': 'Describe what to avoid across the batch…',
+  '#seedStart': 'Optional starting seed',
+  '#xyz_prompt': 'Describe the image for this plot…',
+  '#xyz_negative': 'Describe what to avoid in every plot cell…',
+  '#xyz_x_values': 'Comma-separated values for the X axis',
+  '#xyz_y_values': 'Comma-separated values for the Y axis',
+  '#img2img-prompt': 'Describe the desired transformed image…',
+  '#img2img-negative': 'Describe what to avoid in the transform…',
+  '#img2img-seed': '-1 or blank for random',
+  '#inpaint-prompt': 'Describe what should appear in the masked area…',
+  '#inpaint-negative': 'Describe what to avoid in the masked area…',
+  '#inpaint-seed': '-1 or blank for random',
+  '#hf-prompt': 'Describe the first-pass image before local upscale…',
+  '#hf-seed': 'Optional seed for the first pass',
+  '#ollama-chat-input': 'Ask the local Ollama model for help with prompts or settings…',
+  '#ollama-model-manual': 'e.g. llama3.1:8b or qwen2.5:latest',
+  '#settings-import-input': '{\n  "target": "sdxl-turbo",\n  "width": 512,\n  "height": 512,\n  "steps": 4,\n  "cfg_scale": 0,\n  "seed": "123456789"\n}'
+});
+let uiTooltipEl = null;
+let uiTooltipTarget = null;
+let uiTooltipFrame = 0;
+let uiHintsReady = false;
 const PROMPT_DRAFT_KEY = 'createPromptDraft';
 const HIDDEN_SECTIONS_KEY = 'hiddenCreateSections';
 const OLLAMA_MODEL_KEY = 'ollamaSelectedModel';
@@ -50,6 +277,121 @@ function setPill(id, label, kind = '') {
   if (strong) strong.textContent = label;
   const category = pill.dataset.label || '';
   pill.setAttribute('aria-label', category ? `${category}: ${label}` : label);
+}
+function collectHintNodes(root, selector) {
+  if (!root || !selector) return [];
+  if (root === document) return Array.from(document.querySelectorAll(selector));
+  const nodes = [];
+  if (root.nodeType === 1 && root.matches && root.matches(selector)) nodes.push(root);
+  if (root.querySelectorAll) nodes.push(...root.querySelectorAll(selector));
+  return nodes;
+}
+function ensureAccessibleLabel(el, text) {
+  if (!el || el.hasAttribute('aria-label')) return;
+  const tag = el.tagName;
+  const textContent = typeof el.textContent === 'string' ? el.textContent.trim() : '';
+  const formControl = tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA';
+  const hasLabel = formControl && el.labels && el.labels.length > 0;
+  if ((tag === 'BUTTON' && !textContent) || (formControl && !hasLabel && !textContent)) {
+    el.setAttribute('aria-label', text);
+  }
+}
+function setTooltip(el, text) {
+  if (!el || !text) return;
+  el.dataset.tooltip = text;
+  ensureAccessibleLabel(el, text);
+}
+function initUiHints() {
+  if (uiHintsReady) return;
+  uiHintsReady = true;
+  if (!document || !document.body) return;
+  uiTooltipEl = document.getElementById(UI_TOOLTIP_ID);
+  if (!uiTooltipEl) {
+    uiTooltipEl = document.createElement('div');
+    uiTooltipEl.id = UI_TOOLTIP_ID;
+    uiTooltipEl.className = 'ui-tooltip';
+    uiTooltipEl.setAttribute('role', 'tooltip');
+    uiTooltipEl.hidden = true;
+    document.body.appendChild(uiTooltipEl);
+  }
+
+  const hide = () => hideUiTooltip();
+  document.addEventListener('pointerenter', e => {
+    const target = e.target && e.target.closest ? e.target.closest('[data-tooltip]') : null;
+    if (target) showUiTooltip(target);
+  }, true);
+  document.addEventListener('pointerleave', e => {
+    const target = e.target && e.target.closest ? e.target.closest('[data-tooltip]') : null;
+    if (target && target === uiTooltipTarget) hide();
+  }, true);
+  document.addEventListener('focusin', e => {
+    const target = e.target && e.target.closest ? e.target.closest('[data-tooltip]') : null;
+    if (target) showUiTooltip(target);
+  });
+  document.addEventListener('focusout', e => {
+    const target = e.target && e.target.closest ? e.target.closest('[data-tooltip]') : null;
+    if (target && target === uiTooltipTarget) hide();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') hide();
+  }, true);
+  window.addEventListener('scroll', scheduleUiTooltipPosition, true);
+  window.addEventListener('resize', scheduleUiTooltipPosition);
+  applyUiHints(document);
+}
+function applyUiHints(root = document) {
+  Object.entries(UI_HINTS).forEach(([selector, text]) => {
+    collectHintNodes(root, selector).forEach(el => {
+      if (!el.dataset.tooltip) setTooltip(el, text);
+      else ensureAccessibleLabel(el, el.dataset.tooltip || text);
+    });
+  });
+  Object.entries(UI_PLACEHOLDERS).forEach(([selector, placeholder]) => {
+    collectHintNodes(root, selector).forEach(el => {
+      if ('placeholder' in el) el.placeholder = placeholder;
+    });
+  });
+}
+function positionUiTooltip(target) {
+  if (!uiTooltipEl || uiTooltipEl.hidden || !target) return;
+  const rect = target.getBoundingClientRect();
+  const tip = uiTooltipEl.getBoundingClientRect();
+  const margin = 10;
+  const pad = 8;
+  let left = rect.left + (rect.width / 2) - (tip.width / 2);
+  left = Math.max(pad, Math.min(left, window.innerWidth - tip.width - pad));
+  let top = rect.bottom + margin;
+  if (top + tip.height > window.innerHeight - pad) top = rect.top - tip.height - margin;
+  top = Math.max(pad, Math.min(top, window.innerHeight - tip.height - pad));
+  uiTooltipEl.style.left = `${left}px`;
+  uiTooltipEl.style.top = `${top}px`;
+}
+function scheduleUiTooltipPosition() {
+  if (!uiTooltipEl || uiTooltipEl.hidden || !uiTooltipTarget) return;
+  if (uiTooltipFrame) return;
+  uiTooltipFrame = window.requestAnimationFrame(() => {
+    uiTooltipFrame = 0;
+    positionUiTooltip(uiTooltipTarget);
+  });
+}
+function hideUiTooltip() {
+  if (!uiTooltipEl) return;
+  uiTooltipEl.hidden = true;
+  uiTooltipEl.removeAttribute('data-state');
+  if (uiTooltipTarget) {
+    uiTooltipTarget.removeAttribute('aria-describedby');
+    uiTooltipTarget = null;
+  }
+}
+function showUiTooltip(target) {
+  if (!target || !target.dataset || !target.dataset.tooltip) return hideUiTooltip();
+  if (uiTooltipTarget && uiTooltipTarget !== target) uiTooltipTarget.removeAttribute('aria-describedby');
+  uiTooltipTarget = target;
+  uiTooltipEl.textContent = target.dataset.tooltip;
+  uiTooltipEl.hidden = false;
+  uiTooltipEl.setAttribute('data-state', 'visible');
+  target.setAttribute('aria-describedby', UI_TOOLTIP_ID);
+  positionUiTooltip(target);
 }
 function notifyLog(text) { $('job-log').textContent = text || 'No log.'; }
 function saveBool(key, value) { localStorage.setItem(key, value ? 'true' : 'false'); }
@@ -114,6 +456,115 @@ function applyControlledTargetDefaults(targetId) {
   if (spec.defaultWidth !== undefined) $('width').value = spec.defaultWidth;
   if (spec.defaultHeight !== undefined) $('height').value = spec.defaultHeight;
   renderControlledTargetCaveat(targetId);
+}
+
+function presetResolver() {
+  return window.ImageGenModelPresets || null;
+}
+
+function selectedSupportedValues(selectId) {
+  const el = $(selectId);
+  if (!el) return [];
+  return Array.from(el.options).filter(option => !option.disabled).map(option => option.value);
+}
+
+function getCurrentGenerationFields() {
+  return {
+    steps: $('steps') ? $('steps').value : '',
+    cfg_scale: $('cfg_scale') ? $('cfg_scale').value : '',
+    sampler: $('sampler') ? $('sampler').value : '',
+    scheduler: $('scheduler') ? $('scheduler').value : '',
+    width: $('width') ? $('width').value : '',
+    height: $('height') ? $('height').value : ''
+  };
+}
+
+function setRecommendedField(field, value) {
+  const idMap = { loraWeight: 'lora-weight' };
+  const el = $(idMap[field] || field);
+  if (!el || value === undefined || value === null) return;
+  el.value = String(value);
+}
+
+function formatPresetStatus(result, applied) {
+  if (!result || !result.preset) return 'No recommended preset selected.';
+  const preset = result.preset;
+  const changed = applied.length
+    ? `Applied: ${applied.map(change => change.label).join(', ')}.`
+    : 'No fields changed.';
+  const skipped = result.skipped.length
+    ? ` Manual overrides preserved: ${result.skipped.map(item => item.label).join(', ')}.`
+    : '';
+  const warningText = result.warnings.length
+    ? ` Warnings: ${result.warnings.join(' ')}`
+    : '';
+  const notes = result.notes.length ? ` ${result.notes.join(' ')}` : '';
+  return `Recommended preset applied: ${preset.label}. ${changed}${skipped}${warningText}${notes}`;
+}
+
+function updateLoraInsertAvailability(result) {
+  const loraGate = (state.capabilities && state.capabilities.featureGates && state.capabilities.featureGates.lora) || {};
+  const loras = (state.capabilities && state.capabilities.networks && state.capabilities.networks.loras) || [];
+  const loraEnabled = loraGate.supported === true && loras.length > 0;
+  const selected = $('lora-select') && $('lora-select').value;
+  const isStableDiffusionLora = !result || !result.preset || result.preset.kind === 'lora';
+  if ($('btn-insert-lora')) $('btn-insert-lora').disabled = !loraEnabled || !selected || !isStableDiffusionLora;
+  if ($('lora-weight')) $('lora-weight').disabled = !loraEnabled || !isStableDiffusionLora;
+}
+
+function applyRecommendedPreset(options = {}) {
+  const resolver = presetResolver();
+  const statusEl = $('recommended-preset-status');
+  if (!resolver || !$('lora-select')) return null;
+  const selected = $('lora-select').value;
+  const result = resolver.buildPresetRecommendation({
+    modelName: selected,
+    targetId: $('model') ? $('model').value : '',
+    targetSpec: getControlledTargetSpec($('model') ? $('model').value : ''),
+    current: getCurrentGenerationFields(),
+    manualFields: state.manualRecommendedFields,
+    force: options.force === true,
+    supportedSamplers: selectedSupportedValues('sampler'),
+    supportedSchedulers: selectedSupportedValues('scheduler')
+  });
+  updateLoraInsertAvailability(result);
+  if (!selected || !result.preset) {
+    if (statusEl) statusEl.textContent = selected ? 'No recommended preset for this LoRA.' : 'No recommended preset selected.';
+    return result;
+  }
+
+  const auto = $('set-auto-recommended') ? $('set-auto-recommended').checked : true;
+  const canApply = auto || options.force === true;
+  const applied = [];
+  if (canApply && result.preset.kind === 'lora') {
+    state.applyingRecommendedPreset = true;
+    try {
+      result.changes.forEach(change => {
+        setRecommendedField(change.field, change.value);
+        applied.push(change);
+      });
+      if (applied.some(change => ['steps', 'cfg_scale', 'sampler', 'scheduler', 'width', 'height'].includes(change.field)) && $('preset')) {
+        $('preset').value = 'Custom';
+      }
+    } finally {
+      state.applyingRecommendedPreset = false;
+    }
+  }
+  if (statusEl) {
+    if (result.preset.kind !== 'lora') {
+      const notes = result.notes.length ? ` ${result.notes.join(' ')}` : '';
+      statusEl.textContent = `Preset advisory: ${result.preset.label}. ${result.warnings.join(' ')}${notes}`;
+    } else {
+      statusEl.textContent = canApply ? formatPresetStatus(result, applied) : `Preset: ${result.preset.label}. Auto recommended settings is off. ${result.warnings.join(' ')}`;
+    }
+  }
+  return result;
+}
+
+function markRecommendedManualField(field) {
+  if (state.applyingRecommendedPreset) return;
+  state.manualRecommendedFields.add(field);
+  applyRecommendedPreset();
 }
 
 async function api(path, options = {}) {
@@ -299,12 +750,14 @@ function hydrateControls() {
     if ($(id)) $(id).disabled = !esrganEnabled;
   });
   if ($('esrgan-gate-reason')) $('esrgan-gate-reason').textContent = esrganReason;
-  $('aspect-presets').innerHTML = ASPECTS.map(([label, w, h]) => `<button type="button" class="ghost small" data-size="${w}x${h}">${label} ${w}×${h}</button>`).join('');
+  $('aspect-presets').innerHTML = ASPECTS.map(([label, w, h]) => `<button type="button" class="ghost small" data-size="${w}x${h}" data-tooltip="Set output size to ${w} by ${h} pixels." aria-label="Set aspect preset ${label}, ${w} by ${h} pixels">${label} ${w}×${h}</button>`).join('');
   $('set-save-prompts').checked = loadBool('savePrompts');
   applyPreset('quality');
   const selectedTarget = $('model').value || 'sd15';
   applyControlledTargetDefaults(selectedTarget);
+  applyRecommendedPreset();
   loadStyles();
+  applyUiHints(document);
 }
 
 function hydrateEditGenerationControls(caps) {
@@ -1253,6 +1706,7 @@ async function loadGallery(reset = false) {
     const items = data.items || [];
     if (items.length) {
       el.insertAdjacentHTML('beforeend', items.map(r => runIndexCard(r)).join(''));
+      applyUiHints(el);
     } else if (reset) {
       const msg = document.createElement('div');
       msg.className = 'empty-state';
@@ -1264,11 +1718,14 @@ async function loadGallery(reset = false) {
         goBtn.className = 'ghost small';
         goBtn.style.marginTop = '10px';
         goBtn.textContent = 'Go to Create →';
+        goBtn.dataset.tooltip = 'Open the Create screen to start a new generation.';
+        goBtn.setAttribute('aria-label', 'Open the Create screen to start a new generation.');
         goBtn.addEventListener('click', () => showScreen('create'));
         msg.appendChild(document.createElement('br'));
         msg.appendChild(goBtn);
       }
       el.appendChild(msg);
+      applyUiHints(el);
     }
     state.libraryOffset = typeof data.nextOffset === 'number' ? data.nextOffset : state.libraryOffset + items.length;
     state.libraryHasMore = data.hasMore === true;
@@ -1311,8 +1768,8 @@ function openImageViewer(imgPath, runId, filename) {
   if (info) info.textContent = (runId ? runId + '  ·  ' : '') + (filename || imgPath);
   overlay.hidden = false;
   overlay.focus();
-  const filePart = imgPath.includes('/') ? imgPath.split('/').slice(1).join('/') : imgPath;
-  [['btn-viewer-copy-path', () => navigator.clipboard.writeText(imgPath).catch(() => {})],
+    const filePart = imgPath.includes('/') ? imgPath.split('/').slice(1).join('/') : imgPath;
+    [['btn-viewer-copy-path', () => navigator.clipboard.writeText(imgPath).catch(() => {})],
    ['btn-viewer-fullscreen', () => {
      const panel = $('image-viewer-panel') || img;
      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -1329,6 +1786,7 @@ function openImageViewer(imgPath, runId, filename) {
     b.parentNode.replaceChild(n, b);
     $(id).addEventListener('click', handler);
   });
+  applyUiHints(overlay);
 }
 
 function closeImageViewer() {
@@ -1358,14 +1816,14 @@ function runIndexCard(r) {
   const compareDisabled = canCompare ? '' : ' disabled title="Comparison is controlled runs only"';
   const ctxAttrs = img ? ' data-ctx-path="' + esc(r.id + '/' + img) + '" data-ctx-run="' + esc(r.id) + '" data-ctx-file="' + esc(img) + '"' : '';
   return '<article class="image-card" data-run="' + esc(r.id) + '">' +
-    (imgUrl ? '<img src="' + esc(imgUrl) + '" alt="Run ' + esc(r.id) + '" loading="lazy"' + ctxAttrs + ' />' : '<div style="height:120px;background:#071018;border-radius:14px;margin-bottom:8px"></div>') +
+    (imgUrl ? '<img src="' + esc(imgUrl) + '" alt="Run ' + esc(r.id) + '" loading="lazy" data-tooltip="Open image viewer. Right-click for image actions."' + ctxAttrs + ' />' : '<div style="height:120px;background:#071018;border-radius:14px;margin-bottom:8px"></div>') +
     '<div class="run-type-badge ' + esc(badgeClass) + '">' + esc(labelText) + '</div>' + statusBadge + upscaledBadge +
     '<h3 style="margin:4px 0 2px">' + esc(r.title || r.type) + '</h3>' +
     '<p>' + esc(r.createdAt ? r.createdAt.replace(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/, '$1-$2-$3 $4:$5') : '') + ' · ' + esc(String(r.imageCount || 0)) + ' img</p>' +
-    '<label class="compare-check"><input type="checkbox" data-compare-run="' + esc(r.id) + '" data-compare-enabled="' + (canCompare ? '1' : '0') + '"' + compareChecked + compareDisabled + ' /> Compare</label>' +
+    '<label class="compare-check" data-tooltip="Select this controlled run for comparison."><input type="checkbox" data-compare-run="' + esc(r.id) + '" data-compare-enabled="' + (canCompare ? '1' : '0') + '"' + compareChecked + compareDisabled + ' /> Compare</label>' +
     '<div class="quick-row" style="margin-top:6px">' +
-    '<button class="ghost small" data-detail-run="' + esc(r.id) + '">Detail</button>' +
-    '<button class="ghost small" data-send-upscale="' + esc(r.id) + '"' + (img ? ' data-upscale-image="' + esc(img) + '"' : '') + '>Upscale</button>' +
+    '<button class="ghost small" data-detail-run="' + esc(r.id) + '" data-tooltip="Open run metadata, images, and reuse actions.">Detail</button>' +
+    '<button class="ghost small" data-send-upscale="' + esc(r.id) + '"' + (img ? ' data-upscale-image="' + esc(img) + '"' : '') + ' data-tooltip="Send this run’s primary image to the Enhance upscale panel.">Upscale</button>' +
     '</div></article>';
 }
 
@@ -1474,7 +1932,7 @@ function renderComparisonCard(row) {
     return '<article class="comparison-card comparison-card-error"><h3>' + esc(row.runId) + '</h3><div class="run-detail-failed-gate">' + esc(row.error) + '</div></article>';
   }
   const imageHtml = row.primaryImage
-    ? '<button type="button" class="comparison-thumb" data-compare-image="' + esc(row.runId + '/' + row.primaryImage) + '" data-compare-image-run="' + esc(row.runId) + '" data-compare-image-name="' + esc(row.primaryImage) + '"><img src="' + esc('/api/run-file?path=' + encodeURIComponent(row.runId + '/' + row.primaryImage)) + '" alt="Run ' + esc(row.runId) + '" loading="lazy" /></button>'
+    ? '<button type="button" class="comparison-thumb" data-compare-image="' + esc(row.runId + '/' + row.primaryImage) + '" data-compare-image-run="' + esc(row.runId) + '" data-compare-image-name="' + esc(row.primaryImage) + '" data-tooltip="Open this comparison image in the viewer."><img src="' + esc('/api/run-file?path=' + encodeURIComponent(row.runId + '/' + row.primaryImage)) + '" alt="Run ' + esc(row.runId) + '" loading="lazy" /></button>'
     : '<div class="comparison-thumb comparison-thumb-missing">Image missing</div>';
   const promptHtml = row.promptPrivate
     ? '<div class="comparison-prompt redacted">Prompt redacted</div>'
@@ -1543,6 +2001,7 @@ async function showRunComparison(runIds = state.libraryCompareIds) {
   }));
   state.lastComparisonRows = details;
   content.innerHTML = details.map(renderComparisonCard).join('');
+  applyUiHints(content);
 }
 
 function numericSeed(row) {
@@ -1741,9 +2200,10 @@ function renderSectionToggles() {
   if (!container) return;
   container.innerHTML = SECTION_TOGGLES.map(([key, label]) => {
     const checked = state.hiddenSections.has(key) ? '' : 'checked';
-    return `<label class="check-card section-toggle"><input type="checkbox" data-section-toggle="${esc(key)}" ${checked} /> ${esc(label)}</label>`;
+    return `<label class="check-card section-toggle" data-tooltip="Show or hide the ${esc(label)} section."><input type="checkbox" data-section-toggle="${esc(key)}" ${checked} /> ${esc(label)}</label>`;
   }).join('');
   updateHiddenSectionCount();
+  applyUiHints(container);
 }
 
 function replayInCreate(replay, runId) {
@@ -1905,6 +2365,7 @@ async function showRunDetail(runId, triggerEl = null) {
 
   // Assemble
   content.innerHTML = typeBadgeHtml + failedGateHtml + caveatHtml + privacyHtml + primaryImgHtml + thumbsHtml + metaHtml + manifestHtml;
+  applyUiHints(content);
 
   // Wire up copy/action buttons (after DOM is set)
   $('btn-detail-copy-id').addEventListener('click', () => navigator.clipboard.writeText(runId).catch(() => {}));
@@ -2145,6 +2606,7 @@ async function loadWildcardPicker() {
         btn.className = 'wildcard-item';
         btn.setAttribute('role', 'option');
         btn.setAttribute('aria-label', `Insert __${wc.name}__ (${wc.count} entries)`);
+        btn.dataset.tooltip = 'Insert this wildcard token into the prompt.';
         const strong = document.createElement('strong');
         strong.textContent = `__${wc.name}__`;
         const span = document.createElement('span');
@@ -2156,6 +2618,7 @@ async function loadWildcardPicker() {
       });
     }
     wildcardPickerLoaded = true;
+    applyUiHints(picker);
   } catch (err) {
     notifyLog('Could not load wildcards: ' + err.message);
   }
@@ -2257,12 +2720,55 @@ function bindEvents() {
   if ($('esrgan-run')) $('esrgan-run').addEventListener('change', onEsrganRunChange);
   $('form-hires-fix').addEventListener('submit', submitHiresFix);
   $('form-xyz').addEventListener('submit', submitXyz);
-  $('model').addEventListener('change', e => applyControlledTargetDefaults(e.target.value));
+  $('model').addEventListener('change', e => {
+    applyControlledTargetDefaults(e.target.value);
+    applyRecommendedPreset();
+  });
   $('xyz_x_values').addEventListener('input', updateXyzCellCount);
   $('xyz_y_values').addEventListener('input', updateXyzCellCount);
   $('xyz_y_type').addEventListener('change', updateXyzCellCount);
-  $('preset').addEventListener('change', e => { if (e.target.value !== 'Custom') applyPreset(e.target.value); });
-  ['steps','cfg_scale','sampler','width','height'].forEach(id => $(id).addEventListener('input', () => { $('preset').value = 'Custom'; }));
+  $('preset').addEventListener('change', e => {
+    if (e.target.value !== 'Custom') {
+      state.manualRecommendedFields.clear();
+      applyPreset(e.target.value);
+      applyRecommendedPreset();
+    }
+  });
+  const manualFieldMap = { steps: 'steps', cfg_scale: 'cfg_scale', sampler: 'sampler', scheduler: 'scheduler', width: 'width', height: 'height' };
+  Object.keys(manualFieldMap).forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    ['input', 'change'].forEach(eventName => el.addEventListener(eventName, () => {
+      if ($('preset')) $('preset').value = 'Custom';
+      markRecommendedManualField(manualFieldMap[id]);
+    }));
+  });
+  if ($('lora-weight')) {
+    ['input', 'change'].forEach(eventName => $('lora-weight').addEventListener(eventName, () => markRecommendedManualField('loraWeight')));
+  }
+  if ($('lora-select')) {
+    $('lora-select').addEventListener('change', () => {
+      state.manualRecommendedFields.clear();
+      applyRecommendedPreset();
+    });
+  }
+  if ($('set-auto-recommended')) {
+    $('set-auto-recommended').addEventListener('change', e => {
+      if (e.target.checked) {
+        state.manualRecommendedFields.clear();
+        applyRecommendedPreset({ force: true });
+      } else {
+        applyRecommendedPreset();
+      }
+    });
+  }
+  if ($('btn-reset-recommended')) {
+    $('btn-reset-recommended').addEventListener('click', () => {
+      state.manualRecommendedFields.clear();
+      if ($('set-auto-recommended')) $('set-auto-recommended').checked = true;
+      applyRecommendedPreset({ force: true });
+    });
+  }
   $('prompt').addEventListener('input', () => updatePromptStats('prompt', 'prompt-count'));
   $('negative_prompt').addEventListener('input', () => updatePromptStats('negative_prompt', 'neg-prompt-count'));
   $('prompt').addEventListener('input', savePromptDraft);
@@ -2348,7 +2854,14 @@ function bindEvents() {
   $('btn-send-upscale').addEventListener('click', () => explainUnsupported('upscale'));
   document.body.addEventListener('click', event => {
     const sizeBtn = event.target.closest('[data-size]');
-    if (sizeBtn) { const [w,h] = sizeBtn.dataset.size.split('x'); $('width').value = w; $('height').value = h; $('preset').value = 'Custom'; }
+    if (sizeBtn) {
+      const [w,h] = sizeBtn.dataset.size.split('x');
+      $('width').value = w;
+      $('height').value = h;
+      $('preset').value = 'Custom';
+      markRecommendedManualField('width');
+      markRecommendedManualField('height');
+    }
     const unsupported = event.target.closest('[data-unsupported]');
     if (unsupported) explainUnsupported(unsupported.dataset.unsupported);
     const action = event.target.closest('[data-action]');
@@ -2366,6 +2879,12 @@ function bindEvents() {
       const sel = $('lora-select');
       const wt = $('lora-weight');
       if (sel && sel.value) {
+        const resolver = presetResolver();
+        const preset = resolver ? resolver.resolveModelPreset(sel.value) : null;
+        if (preset && preset.kind !== 'lora') {
+          applyRecommendedPreset();
+          return;
+        }
         const weight = (wt && wt.value && !isNaN(Number(wt.value))) ? Number(wt.value) : 0.75;
         insertAtPrompt(`${sel.value}:${weight}`);
       }
@@ -2479,6 +2998,7 @@ function bindEvents() {
 }
 
 async function init() {
+  initUiHints();
   bindEvents();
   loadSectionVisibility();
   loadPromptDraft(false);

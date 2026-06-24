@@ -48,7 +48,7 @@
         <div class="status-pill" id="pill-server" role="status" data-label="Server"><span aria-hidden="true"></span>Server <strong>Unknown</strong></div>
         <div class="status-pill" id="pill-job" role="status" data-label="Job"><span aria-hidden="true"></span>Job <strong>Idle</strong></div>
         <div class="status-pill" id="pill-latest" role="status" data-label="Latest"><span aria-hidden="true"></span>Latest <strong>None</strong></div>
-        <button class="ghost" id="btn-refresh-all">Refresh</button>
+        <button class="ghost" id="btn-refresh-all" aria-label="Refresh backend capabilities, server status, models, and current job state.">Refresh</button>
       </header>
 
       <main class="workspace">
@@ -62,7 +62,7 @@
 
               <div class="field">
                 <label for="prompt">Prompt</label>
-                <textarea id="prompt" required rows="5" placeholder="Describe the image. Use A1111 prompt syntax if your backend/model supports it." aria-describedby="create-note prompt-count"></textarea>
+                <textarea id="prompt" required rows="5" placeholder="Describe the image you want: subject, style, composition, lighting, mood…" aria-describedby="create-note prompt-count"></textarea>
                 <div class="meta-row prompt-tools">
                   <span id="prompt-count">0 chars</span>
                   <span class="prompt-tool-buttons">
@@ -80,7 +80,7 @@
               </div>
               <div class="field">
                 <label for="negative_prompt">Negative prompt</label>
-                <textarea id="negative_prompt" rows="3" placeholder="low quality, blurry, bad anatomy…"></textarea>
+                <textarea id="negative_prompt" rows="3" placeholder="Describe what to avoid: blurry, low quality, unwanted objects…"></textarea>
                 <div class="meta-row"><span id="neg-prompt-count" class="muted">0 chars</span></div>
               </div>
 
@@ -104,11 +104,16 @@
                 <div class="two-col">
                   <div class="field">
                     <label for="lora-select">LoRA <span class="fineprint muted">(style add-on)</span></label>
-                    <select id="lora-select" disabled aria-describedby="lora-status"><option value="">— none —</option></select>
+                    <select id="lora-select" disabled aria-describedby="lora-status recommended-preset-status"><option value="">— none —</option></select>
                   </div>
                   <div class="field"><label for="lora-weight">Weight</label><input id="lora-weight" type="number" min="0" max="2" step="0.05" value="0.75" disabled /></div>
                 </div>
                 <div class="gate-row"><button type="button" class="ghost" id="btn-insert-lora" disabled>Insert LoRA token</button><span id="lora-status" class="muted fineprint"></span></div>
+                <div class="preset-assist">
+                  <label class="check-card preset-auto"><input id="set-auto-recommended" type="checkbox" checked /> Auto recommended settings</label>
+                  <button type="button" class="ghost small" id="btn-reset-recommended">Reset to recommended settings</button>
+                  <div id="recommended-preset-status" class="preset-status fineprint muted" role="status" aria-live="polite">No recommended preset selected.</div>
+                </div>
               </details>
 
               <details class="block" data-section-key="settings-json"><summary>Import / paste settings JSON</summary>
@@ -129,10 +134,10 @@
                   <div class="field" id="sweep-count-wrap"><label for="sweep-count">Jobs (2–8)</label><input id="sweep-count" type="number" min="2" max="8" value="4" /></div>
                 </div>
                 <div id="sweep-seed-opts">
-                  <div class="field"><label for="sweep-seed-start">Start seed (blank = random per job)</label><input id="sweep-seed-start" placeholder="e.g. 1000 or leave blank" /></div>
+                  <div class="field"><label for="sweep-seed-start">Start seed (blank = random per job)</label><input id="sweep-seed-start" placeholder="Leave blank for random seeds, or enter a starting seed" /></div>
                 </div>
                 <div id="sweep-cfg-opts" hidden>
-                  <div class="field"><label for="sweep-cfg-values">CFG values (comma-separated, 2–8 values, 0–30 each)</label><input id="sweep-cfg-values" placeholder="1, 3, 5, 7" /></div>
+                  <div class="field"><label for="sweep-cfg-values">CFG values (comma-separated, 2–8 values, 0–30 each)</label><input id="sweep-cfg-values" placeholder="Example: 1, 3, 5, 7" /></div>
                   <p class="fineprint">Job count field is unused for CFG sweep — one job per value.</p>
                 </div>
                 <button type="button" class="ghost" id="btn-run-sweep" aria-describedby="create-note">Run sweep</button>
@@ -195,7 +200,7 @@
                 </div>
                 <div class="field"><label for="ollama-model-manual">Manual model override</label><input id="ollama-model-manual" placeholder="e.g. llama3.1:8b or qwen2.5:latest" /></div>
                 <div class="field"><label for="ollama-base-url">Ollama endpoint</label><input id="ollama-base-url" value="Not checked" disabled /></div>
-                <div class="field"><label for="ollama-chat-input">Message</label><textarea id="ollama-chat-input" rows="3" placeholder="Ask the local Ollama model…"></textarea></div>
+                <div class="field"><label for="ollama-chat-input">Message</label><textarea id="ollama-chat-input" rows="3" placeholder="Ask the local Ollama model for help with prompts or settings…"></textarea></div>
                 <div class="quick-row"><button type="button" class="ghost small" id="btn-ollama-refresh">Refresh models</button><button type="button" class="primary small" id="btn-ollama-send">Send</button></div>
                 <div id="ollama-chat-output" class="job-card muted" role="status" aria-live="polite">Send a message to start chatting with the selected Ollama model.</div>
               </details>
@@ -239,12 +244,12 @@
               <h2 style="margin:0 0 4px">Batch generation</h2>
               <p class="fineprint" style="margin:0 0 14px">Run multiple images with one prompt. Supported: count, seed mode, and core txt2img params.</p>
               <form id="form-batch" class="stacked">
-                <div class="field"><label for="batch_prompt">Prompt</label><textarea id="batch_prompt" required rows="4"></textarea></div>
-                <div class="field"><label for="batch_negative">Negative prompt</label><textarea id="batch_negative" rows="2"></textarea></div>
+                <div class="field"><label for="batch_prompt">Prompt</label><textarea id="batch_prompt" required rows="4" placeholder="Describe the image for every batch job…"></textarea></div>
+                <div class="field"><label for="batch_negative">Negative prompt</label><textarea id="batch_negative" rows="2" placeholder="Describe what to avoid across the batch…"></textarea></div>
                 <div class="three-col">
                   <div class="field"><label for="batch_count">Count</label><input id="batch_count" type="number" min="1" max="24" value="4" /></div>
                   <div class="field"><label for="seedMode">Seed mode</label><select id="seedMode"><option value="increment">Increment</option><option value="same">Same</option><option value="random">Random</option></select></div>
-                  <div class="field"><label for="seedStart">Seed start</label><input id="seedStart" placeholder="optional" /></div>
+                  <div class="field"><label for="seedStart">Seed start</label><input id="seedStart" placeholder="Optional starting seed" /></div>
                 </div>
                 <button class="primary big" type="submit">Run batch</button>
               </form>
@@ -256,8 +261,8 @@
                 <p class="fineprint">Available when remote M4 Mac server is connected. Max 16 cells.</p>
               </div>
               <form id="form-xyz" class="stacked">
-                <div class="field"><label for="xyz_prompt">Prompt</label><textarea id="xyz_prompt" required rows="3" placeholder="Describe the image…"></textarea></div>
-                <div class="field"><label for="xyz_negative">Negative prompt</label><textarea id="xyz_negative" rows="2"></textarea></div>
+                <div class="field"><label for="xyz_prompt">Prompt</label><textarea id="xyz_prompt" required rows="3" placeholder="Describe the image for this plot…"></textarea></div>
+                <div class="field"><label for="xyz_negative">Negative prompt</label><textarea id="xyz_negative" rows="2" placeholder="Describe what to avoid in every plot cell…"></textarea></div>
                 <div class="two-col">
                   <div class="field"><label for="xyz_x_type">X axis</label>
                     <select id="xyz_x_type">
@@ -269,7 +274,7 @@
                       <option value="height">Height</option>
                     </select></div>
                   <div class="field"><label for="xyz_x_values">X values (comma-separated)</label>
-                    <input id="xyz_x_values" placeholder="e.g. 10,20,30" aria-describedby="xyz-validation-msg" /></div>
+                    <input id="xyz_x_values" placeholder="Comma-separated values for the X axis" aria-describedby="xyz-validation-msg" /></div>
                 </div>
                 <div class="two-col">
                   <div class="field"><label for="xyz_y_type">Y axis (optional)</label>
@@ -283,7 +288,7 @@
                       <option value="height">Height</option>
                     </select></div>
                   <div class="field"><label for="xyz_y_values">Y values (comma-separated)</label>
-                    <input id="xyz_y_values" placeholder="optional" /></div>
+                    <input id="xyz_y_values" placeholder="Comma-separated values for the Y axis" /></div>
                 </div>
                 <div id="xyz-cell-count" class="fineprint muted">Cells: 0 / 16</div>
                 <div id="xyz-validation-msg" class="gate" role="alert" aria-live="assertive" style="min-height:1.2em"></div>
@@ -307,14 +312,14 @@
                 <select id="img2img-image" disabled><option value="">Select a run first</option></select></div>
               <div class="field"><label for="img2img-strength">Denoising strength</label>
                 <input id="img2img-strength" type="number" min="0.01" max="0.99" step="0.05" value="0.75" disabled /></div>
-              <div class="field"><label for="img2img-prompt">Prompt</label>
-                <textarea id="img2img-prompt" rows="3" disabled placeholder="Describe the desired output…"></textarea></div>
+                <div class="field"><label for="img2img-prompt">Prompt</label>
+                <textarea id="img2img-prompt" rows="3" disabled placeholder="Describe the desired transformed image…"></textarea></div>
               <div class="field"><label for="img2img-negative">Negative prompt</label>
-                <textarea id="img2img-negative" rows="2" disabled placeholder="What to avoid…"></textarea></div>
+                <textarea id="img2img-negative" rows="2" disabled placeholder="Describe what to avoid in the transform…"></textarea></div>
               <div class="three-col">
                 <div class="field"><label for="img2img-steps">Steps</label><input id="img2img-steps" type="number" min="1" max="150" value="20" disabled /></div>
                 <div class="field"><label for="img2img-cfg-scale">CFG scale</label><input id="img2img-cfg-scale" type="number" min="0" max="30" step="0.5" value="7" disabled /></div>
-                <div class="field"><label for="img2img-seed">Seed</label><input id="img2img-seed" placeholder="-1 for random" disabled /></div>
+                <div class="field"><label for="img2img-seed">Seed</label><input id="img2img-seed" placeholder="-1 or blank for random" disabled /></div>
               </div>
               <div class="three-col">
                 <div class="field"><label for="img2img-width">Width</label><input id="img2img-width" type="number" min="64" max="2048" step="8" value="512" disabled /></div>
@@ -359,14 +364,14 @@
               </div>
               <div class="field"><label for="inpaint-strength">Denoising strength</label>
                 <input id="inpaint-strength" type="number" min="0.01" max="0.99" step="0.05" value="0.75" disabled /></div>
-              <div class="field"><label for="inpaint-prompt">Prompt</label>
-                <textarea id="inpaint-prompt" rows="3" disabled placeholder="Describe the desired output for the inpainted region…"></textarea></div>
+                <div class="field"><label for="inpaint-prompt">Prompt</label>
+                <textarea id="inpaint-prompt" rows="3" disabled placeholder="Describe what should appear in the masked area…"></textarea></div>
               <div class="field"><label for="inpaint-negative">Negative prompt</label>
-                <textarea id="inpaint-negative" rows="2" disabled placeholder="What to avoid…"></textarea></div>
+                <textarea id="inpaint-negative" rows="2" disabled placeholder="Describe what to avoid in the masked area…"></textarea></div>
               <div class="three-col">
                 <div class="field"><label for="inpaint-steps">Steps</label><input id="inpaint-steps" type="number" min="1" max="150" value="20" disabled /></div>
                 <div class="field"><label for="inpaint-cfg-scale">CFG scale</label><input id="inpaint-cfg-scale" type="number" min="0" max="30" step="0.5" value="7" disabled /></div>
-                <div class="field"><label for="inpaint-seed">Seed</label><input id="inpaint-seed" placeholder="-1 for random" disabled /></div>
+                <div class="field"><label for="inpaint-seed">Seed</label><input id="inpaint-seed" placeholder="-1 or blank for random" disabled /></div>
               </div>
               <div class="three-col">
                 <div class="field"><label for="inpaint-width">Width</label><input id="inpaint-width" type="number" min="64" max="2048" step="8" value="512" disabled /></div>
@@ -422,7 +427,7 @@
                 <div class="panel-head"><div><h2>Hires Fix</h2><p>Available — two-pass: txt2img draft → local Pillow upscale. <strong>NOT</strong> full A1111 latent Hires Fix (no denoising second pass).</p></div></div>
                 <form id="form-hires-fix" class="stacked">
                   <div class="field"><label for="hf-prompt">Prompt <span class="danger">*</span></label>
-                    <textarea id="hf-prompt" rows="3" placeholder="Describe your image…"></textarea></div>
+                    <textarea id="hf-prompt" rows="3" placeholder="Describe the first-pass image before local upscale…"></textarea></div>
                   <div class="two-col">
                     <div class="field"><label for="hf-preset">Preset</label>
                       <select id="hf-preset">
@@ -430,7 +435,7 @@
                         <option value="smoke">Smoke (quick test)</option>
                       </select></div>
                     <div class="field"><label for="hf-seed">Seed (blank = random)</label>
-                      <input id="hf-seed" type="number" placeholder="e.g. 424242" /></div>
+                      <input id="hf-seed" type="number" placeholder="Optional seed for the first pass" /></div>
                   </div>
                   <div class="two-col">
                     <div class="field"><label for="hf-scale">Upscale factor</label>
@@ -491,7 +496,7 @@
           <div class="panel">
             <div class="panel-head">
               <div><h2>Library</h2><p>Every output is a workflow starting point.</p></div>
-              <button class="ghost" id="btn-load-library" aria-label="Reload library">Reload</button>
+              <button class="ghost" id="btn-load-library" aria-label="Reload the run library.">Reload</button>
             </div>
             <div id="library-filters" class="library-filters">
               <button class="filter-btn active" data-filter="all">All</button>
@@ -513,15 +518,15 @@
                 <span id="compare-selection-count" class="fineprint">Select 2–4 controlled runs.</span>
               </div>
               <div class="quick-row">
-                <button class="ghost small" id="btn-compare-selected" disabled>Compare selected</button>
-                <button class="ghost small" id="btn-compare-latest-sweep">Compare latest sweep</button>
-                <button class="ghost small" id="btn-clear-compare" disabled>Clear</button>
+                <button class="ghost small" id="btn-compare-selected" aria-label="Compare 2–4 selected controlled runs using saved metadata and existing images." disabled>Compare selected</button>
+                <button class="ghost small" id="btn-compare-latest-sweep" aria-label="Compare the latest controlled sweep if available.">Compare latest sweep</button>
+                <button class="ghost small" id="btn-clear-compare" aria-label="Clear the current comparison selection." disabled>Clear</button>
               </div>
             </div>
             <p class="fineprint">Controlled-run comparison only; not full A1111 parity.</p>
             <div id="gallery-grid" class="gallery-grid"></div>
             <div id="library-load-more-row" class="library-load-more-row" style="display:none">
-              <button class="ghost" id="btn-load-more">Load More</button>
+              <button class="ghost" id="btn-load-more" aria-label="Load the next page of library runs.">Load More</button>
               <span id="library-count-info" class="fineprint" style="margin-left:10px"></span>
             </div>
           </div>
@@ -530,14 +535,14 @@
           <div id="run-detail-overlay" class="run-detail-overlay" hidden role="dialog" aria-modal="true" aria-label="Run detail">
             <div class="run-detail-panel">
               <div class="run-detail-header">
-                <button class="ghost small" id="btn-detail-back">&#8592; Library</button>
+                <button class="ghost small" id="btn-detail-back" aria-label="Close run details and return to the Library.">&#8592; Library</button>
                 <div class="run-detail-actions">
-                  <button class="ghost small" id="btn-detail-reuse" hidden>Reuse in Create</button>
-                  <button class="ghost small" id="btn-detail-copy-id">Copy run ID</button>
-                  <button class="ghost small" id="btn-detail-copy-path">Copy image path</button>
-                  <button class="ghost small" id="btn-detail-send-upscale">Send to Upscale</button>
-                  <button class="ghost small" id="btn-detail-copy-settings">Copy settings JSON</button>
-                  <button class="ghost small" id="btn-detail-view-manifest">View manifest JSON</button>
+                  <button class="ghost small" id="btn-detail-reuse" hidden aria-label="Load this run’s saved settings into Create.">Reuse in Create</button>
+                  <button class="ghost small" id="btn-detail-copy-id" aria-label="Copy this run ID.">Copy run ID</button>
+                  <button class="ghost small" id="btn-detail-copy-path" aria-label="Copy the selected output image path.">Copy image path</button>
+                  <button class="ghost small" id="btn-detail-send-upscale" aria-label="Send this run’s primary image to the Enhance upscale panel.">Send to Upscale</button>
+                  <button class="ghost small" id="btn-detail-copy-settings" aria-label="Copy this run’s settings JSON.">Copy settings JSON</button>
+                  <button class="ghost small" id="btn-detail-view-manifest" aria-label="Show or hide the saved manifest JSON.">View manifest JSON</button>
                 </div>
               </div>
               <div id="run-detail-content" class="run-detail-content">
@@ -661,6 +666,7 @@
     <button class="ctx-item" data-action="upscale">Send to Upscale</button>
   </div>
 
+  <script src="model-presets.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
