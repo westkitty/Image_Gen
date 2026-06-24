@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var wrapperLog: String { "\(operatorRoot)/Image_Gen-macos-wrapper.log" }
     private var consoleLog: String { "\(operatorRoot)/server.log" }
     private var expectedConsoleCwd: String { operatorRoot }
+    private let wrapperLaunchPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -389,20 +390,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             return
         }
 
-        appendLog("starting operator-console node server")
+        let launchEnv = operatorConsoleEnvironment()
+        let nodeExecutable = resolveNodeExecutable(pathValue: launchEnv["PATH"] ?? wrapperLaunchPath)
+        appendLog("starting operator-console node server with node=\(nodeExecutable) cwd=\(operatorRoot) PATH=\(launchEnv["PATH"] ?? "unset")")
         let process = Process()
         process.currentDirectoryURL = URL(fileURLWithPath: operatorRoot)
-        var env = ProcessInfo.processInfo.environment
-        let extraPaths = "/opt/homebrew/bin:/usr/local/bin"
-        if let currentPath = env["PATH"] {
-            env["PATH"] = "\(extraPaths):\(currentPath)"
-        } else {
-            env["PATH"] = extraPaths
-        }
-        process.environment = env
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["node", "server.js"]
-        let logHandle = FileHandle(forWritingAtPath: consoleLog) ?? createLogHandle(consoleLog)
+        process.environment = launchEnv
+        process.executableURL = URL(fileURLWithPath: nodeExecutable)
+        process.arguments = nodeExecutable == "/usr/bin/env" ? ["node", "server.js"] : ["server.js"]
+        let logHandle = createLogHandle(consoleLog)
+        logHandle.seekToEndOfFile()
         process.standardOutput = logHandle
         process.standardError = logHandle
         do {
@@ -415,14 +412,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
 
         for _ in 0..<30 {
-            if commandOK("curl -fsS --max-time 2 \(consoleURL.absoluteString)/api/version >/dev/null", timeout: 4) {
-                appendLog("operator-console started")
+            let startedVersion = currentConsoleVersion()
+            if startedVersion.matchesExpectedRoot {
+                appendLog("operator-console started from \(startedVersion.cwd ?? "unknown") gitHead=\(startedVersion.gitHead ?? "unknown") pid=\(startedVersion.pid.map(String.init) ?? "unknown")")
                 return
+            }
+            if startedVersion.reachable {
+                appendLog("operator-console responded from unexpected checkout while starting. cwd=\(startedVersion.cwd ?? "unknown") pid=\(startedVersion.pid.map(String.init) ?? "unknown")")
+                break
+            }
+            if !process.isRunning {
+                appendLog("operator-console process exited before readiness. status=\(process.terminationStatus)")
+                break
             }
             Thread.sleep(forTimeInterval: 1)
         }
         appendLog("operator-console did not answer within timeout")
         DispatchQueue.main.async { self.setStatus("Local console did not answer within timeout. Use Help → Copy Error Report to share details.") }
+    }
+
+    private func operatorConsoleEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        let inheritedPath = env["PATH"] ?? ""
+        let merged = (wrapperLaunchPath + ":" + inheritedPath)
+            .split(separator: ":")
+            .map(String.init)
+            .reduce(into: [String]()) { paths, path in
+                if !path.isEmpty && !paths.contains(path) {
+                    paths.append(path)
+                }
+            }
+            .joined(separator: ":")
+        env["PATH"] = merged
+        return env
+    }
+
+    private func resolveNodeExecutable(pathValue: String) -> String {
+        let manager = FileManager.default
+        for dir in pathValue.split(separator: ":").map(String.init) {
+            let candidate = "\(dir)/node"
+            if manager.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        return "/usr/bin/env"
     }
 
     private func currentConsoleVersion() -> (reachable: Bool, matchesExpectedRoot: Bool, cwd: String?, gitHead: String?, pid: Int?) {
