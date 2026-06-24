@@ -15,20 +15,20 @@
         <div><h1>SDCPP Workbench</h1><p>Automatic1111 (A1111)-style local console</p></div>
       </div>
       <nav class="nav-stack">
-        <div class="nav-group">
-          <div class="nav-group-label">Workflows</div>
+        <div class="nav-group" role="group" aria-label="Workflows">
+          <div class="nav-group-label" aria-hidden="true">Workflows</div>
           <button class="nav-btn active" data-target="create" aria-label="Open Create screen">Create</button>
-          <button class="nav-btn" data-target="batch" aria-label="Open Batch / Sweep screen">Batch / Sweep</button>
+          <button class="nav-btn" data-target="batch" aria-label="Open Batch screen">Batch</button>
           <button class="nav-btn" data-target="edit" aria-label="Open Edit screen">Edit</button>
           <button class="nav-btn" data-target="enhance" aria-label="Open Enhance screen">Enhance</button>
         </div>
-        <div class="nav-group">
-          <div class="nav-group-label">Assets</div>
+        <div class="nav-group" role="group" aria-label="Assets">
+          <div class="nav-group-label" aria-hidden="true">Assets</div>
           <button class="nav-btn" data-target="library" aria-label="Open Library screen">Library</button>
           <button class="nav-btn" data-target="models" aria-label="Open Models screen">Models</button>
         </div>
-        <div class="nav-group">
-          <div class="nav-group-label">System</div>
+        <div class="nav-group" role="group" aria-label="System">
+          <div class="nav-group-label" aria-hidden="true">System</div>
           <button class="nav-btn" data-target="system" aria-label="Open System screen">System</button>
         </div>
       </nav>
@@ -44,10 +44,10 @@
     <div class="main-column">
       <header class="topbar">
         <button type="button" class="ghost small sidebar-toggle" id="btn-sidebar-toggle" aria-label="Toggle navigation sidebar" aria-expanded="false" aria-controls="app-sidebar">&#9776;</button>
-        <div class="status-pill" id="pill-backend"><span></span>Backend <strong>Loading</strong></div>
-        <div class="status-pill" id="pill-server"><span></span>Server <strong>Unknown</strong></div>
-        <div class="status-pill" id="pill-job"><span></span>Job <strong>Idle</strong></div>
-        <div class="status-pill" id="pill-latest"><span></span>Latest <strong>None</strong></div>
+        <div class="status-pill" id="pill-backend" role="status" data-label="Backend"><span aria-hidden="true"></span>Backend <strong>Loading</strong></div>
+        <div class="status-pill" id="pill-server" role="status" data-label="Server"><span aria-hidden="true"></span>Server <strong>Unknown</strong></div>
+        <div class="status-pill" id="pill-job" role="status" data-label="Job"><span aria-hidden="true"></span>Job <strong>Idle</strong></div>
+        <div class="status-pill" id="pill-latest" role="status" data-label="Latest"><span aria-hidden="true"></span>Latest <strong>None</strong></div>
         <button class="ghost" id="btn-refresh-all">Refresh</button>
       </header>
 
@@ -58,7 +58,7 @@
             <!-- LEFT: main settings — prompt, model, style -->
             <div class="panel control-panel">
               <div class="panel-head"><div><h2>Create</h2><p>Prompt and model selection.</p></div><button type="submit" class="primary big">Generate</button></div>
-              <div id="create-note" class="create-note" role="status" aria-live="polite" hidden></div>
+              <div id="create-note" class="create-note" role="status" aria-live="polite"></div>
 
               <div class="field">
                 <label for="prompt">Prompt</label>
@@ -67,7 +67,9 @@
                   <span id="prompt-count">0 chars</span>
                   <span class="prompt-tool-buttons">
                     <button type="button" class="ghost small" id="btn-reload-prompt">Reload prompt</button>
-                    <button type="button" class="ghost small" id="btn-enhance-prompt" aria-label="Enhance prompt with Ollama">Enhance</button>
+                    <label class="sr-only" for="ollama-model-compact">Ollama model for Enhance</label>
+                  <select id="ollama-model-compact" class="ollama-compact-select" title="Ollama model used by Enhance"><option value="">Auto</option></select>
+                  <button type="button" class="ghost small" id="btn-enhance-prompt" aria-label="Enhance prompt with Ollama">Enhance</button>
                     <button type="button" class="ghost small" id="btn-save-style">Save style</button>
                   </span>
                 </div>
@@ -88,17 +90,17 @@
                   <div class="field">
                     <label for="model">Generation target</label>
                     <select id="model"></select>
-                    <div id="target-caveat" class="fineprint">Controlled proofed path; not full A1111 parity.</div>
+                    <div id="target-caveat" class="fineprint">Supports a curated set of generation parameters — not all Automatic1111 options are available.</div>
                   </div>
                   <div class="field">
-                    <label for="vae">VAE <span class="fineprint muted">(variational autoencoder)</span></label>
+                    <label for="vae">VAE <span class="fineprint muted">(color/quality filter — leave as Auto if unsure)</span></label>
                     <select id="vae"></select>
                   </div>
                 </div>
                 <div class="two-col">
                   <div class="field">
-                    <label for="lora-select">LoRA <span class="fineprint muted">(low-rank adapter)</span></label>
-                    <select id="lora-select" disabled><option value="">— none —</option></select>
+                    <label for="lora-select">LoRA <span class="fineprint muted">(style add-on)</span></label>
+                    <select id="lora-select" disabled aria-describedby="lora-status"><option value="">— none —</option></select>
                   </div>
                   <div class="field"><label for="lora-weight">Weight</label><input id="lora-weight" type="number" min="0" max="2" step="0.05" value="0.75" disabled /></div>
                 </div>
@@ -106,9 +108,9 @@
               </details>
 
               <details class="block" data-section-key="settings-json"><summary>Import / paste settings JSON</summary>
-                <p class="fineprint">Paste JSON copied from "Copy settings JSON" in Library. Only the closed target list is accepted; modelPath and arbitrary targets are rejected.</p>
+                <p class="fineprint">Paste settings JSON from a run's "Copy settings JSON" button (found in Library). Only built-in model targets are accepted — custom model paths are rejected.</p>
                 <textarea id="settings-import-input" rows="4" aria-label="Settings JSON to import" aria-describedby="create-note" placeholder='{&#10;  "target": "sdxl-turbo",&#10;  "width": 512,&#10;  "height": 512,&#10;  "steps": 4,&#10;  "cfg_scale": 0,&#10;  "seed": "123456789"&#10;}'></textarea>
-                <div class="quick-row" style="margin-top:8px">
+                <div class="quick-row mt-8">
                   <button type="button" class="ghost small" id="btn-load-settings">Load into Create</button>
                   <button type="button" class="ghost small" id="btn-paste-settings">Paste from clipboard</button>
                 </div>
@@ -130,14 +132,14 @@
                   <p class="fineprint">Job count field is unused for CFG sweep — one job per value.</p>
                 </div>
                 <button type="button" class="ghost" id="btn-run-sweep" aria-describedby="create-note">Run sweep</button>
-                <div id="sweep-status" class="stacked" role="status" aria-live="polite" style="margin-top:10px" hidden></div>
+                <div id="sweep-status" class="stacked mt-10" role="status" aria-live="polite" hidden></div>
               </details>
             </div>
 
             <!-- CENTER: generated image -->
             <aside class="panel preview-panel">
               <div class="panel-head"><div><h2>Preview</h2><p id="preview-subtitle">Generated outputs and job status.</p></div></div>
-              <div id="preview-stage" class="preview-stage"><div class="empty-state">Generate an image to see it here.</div></div>
+              <div id="preview-stage" class="preview-stage"><div class="empty-state">Click Generate to create your first image.</div></div>
               <div class="action-row">
                 <button type="button" class="ghost" id="btn-preview-create" aria-label="Preview txt2img command">Preview command</button>
                 <button type="button" class="ghost" id="btn-copy-last">Copy params</button>
@@ -175,11 +177,11 @@
               <details open class="block" data-section-key="seed-variation"><summary>Seed &amp; variation</summary>
                 <div class="field"><label for="seed">Seed</label><input id="seed" placeholder="-1 for random" /></div>
                 <div class="two-col">
-                  <div class="field"><label for="variation_seed">Variation seed</label><input id="variation_seed" disabled placeholder="backend missing" /></div>
-                  <div class="field"><label for="variation_strength">Strength</label><input id="variation_strength" type="number" disabled value="0.3" step="0.05" /></div>
+                  <div class="field"><label for="variation_seed">Variation seed</label><input id="variation_seed" aria-disabled="true" readonly aria-describedby="variation-gate-note" /></div>
+                  <div class="field"><label for="variation_strength">Strength</label><input id="variation_strength" type="number" aria-disabled="true" readonly value="0.3" step="0.05" aria-describedby="variation-gate-note" /></div>
                 </div>
                 <div class="quick-row"><button type="button" class="ghost small" id="btn-random-seed">Random</button><button type="button" class="ghost small" id="btn-random-seed-ongoing">Use -1</button><button type="button" class="ghost small" id="btn-reuse-seed">Reuse last</button></div>
-                <p class="fineprint gate" style="margin-top:8px">Variation seed / seed resize visible; backend not wired.</p>
+                <p class="fineprint gate mt-8" id="variation-gate-note">Variation seed and strength visible for future compatibility — not yet supported by the backend.</p>
               </details>
 
               <details class="block ollama-chat" data-section-key="ollama-chat"><summary>Ollama chat</summary>
@@ -213,8 +215,8 @@
                   </div>
                 </div>
                 <div class="field">
-                  <label for="clip_skip">CLIP skip <span class="fineprint muted" title="CLIP: Contrastive Language-Image Pre-Training">(layer skip)</span></label>
-                  <input id="clip_skip" type="number" min="1" max="12" placeholder="not wired" />
+                  <label for="clip_skip">CLIP skip <span class="fineprint muted" title="CLIP: Contrastive Language-Image Pre-Training">(layer skip — not yet supported)</span></label>
+                  <input id="clip_skip" type="number" min="1" max="12" />
                 </div>
               </details>
             </div>
@@ -240,14 +242,14 @@
                   <div class="field"><label for="seedMode">Seed mode</label><select id="seedMode"><option value="increment">Increment</option><option value="same">Same</option><option value="random">Random</option></select></div>
                   <div class="field"><label for="seedStart">Seed start</label><input id="seedStart" placeholder="optional" /></div>
                 </div>
-                <button class="primary" type="submit">Run batch</button>
+                <button class="primary big" type="submit">Run batch</button>
               </form>
             </div>
 
             <div id="tab-xyz" role="tabpanel" aria-labelledby="tabtrigger-xyz" hidden>
               <div style="margin-bottom:14px">
                 <h2 style="margin:0 0 4px">X/Y/Z Plot</h2>
-                <p class="fineprint" style="margin:0">Requires BigMac server tunnel. Max 16 cells. Compare outputs across axis values.</p>
+                <p class="fineprint">Available when remote M4 Mac server is connected. Max 16 cells.</p>
               </div>
               <form id="form-xyz" class="stacked">
                 <div class="field"><label for="xyz_prompt">Prompt</label><textarea id="xyz_prompt" required rows="3" placeholder="Describe the image…"></textarea></div>
@@ -408,7 +410,7 @@
                 <button class="primary" type="submit" id="btn-upscale-submit">Upscale image</button>
               </form>
               <div id="upscale-result" class="job-card muted" style="margin-top:12px">Select a run and image above, then click Upscale image.</div>
-              <div id="upscale-preview" style="margin-top:10px"></div>
+              <div id="upscale-preview" class="mt-10"></div>
             </div>
             <!-- Hires Fix — two-pass txt2img → Pillow upscale -->
             <div>
@@ -446,7 +448,7 @@
                 <div id="hf-result" class="job-card muted" style="margin-top:12px">Enter a prompt above, then click Run Hires Fix.</div>
                 <div id="hf-preview" style="margin-top:10px"></div>
               </div>
-              <h2 style="margin:18px 0 14px">Other Enhance features</h2>
+              <h2 class="mt-18-14">Other Enhance features</h2>
               <div class="cards-grid" id="enhance-gates"></div>
             </div>
           </div>
@@ -501,7 +503,7 @@
               <button class="filter-btn" data-filter="smoke">Smoke proofs</button>
               <button class="filter-btn" data-filter="failed">Failed</button>
             </div>
-            <div class="library-compare-bar" id="library-compare-bar">
+            <div class="library-compare-bar" id="library-compare-bar" hidden>
               <div>
                 <strong>Compare controlled runs</strong>
                 <span id="compare-selection-count" class="fineprint">Select 2–4 controlled runs.</span>
@@ -521,7 +523,7 @@
           </div>
 
           <!-- Run detail overlay -->
-          <div id="run-detail-overlay" class="run-detail-overlay" hidden>
+          <div id="run-detail-overlay" class="run-detail-overlay" hidden role="dialog" aria-modal="true" aria-label="Run detail">
             <div class="run-detail-panel">
               <div class="run-detail-header">
                 <button class="ghost small" id="btn-detail-back">&#8592; Library</button>
@@ -541,7 +543,7 @@
           </div>
 
           <!-- Controlled run comparison overlay -->
-          <div id="run-compare-overlay" class="run-detail-overlay" hidden>
+          <div id="run-compare-overlay" class="run-detail-overlay" hidden role="dialog" aria-modal="true" aria-label="Compare controlled runs">
             <div class="run-compare-panel">
               <div class="run-detail-header">
                 <button class="ghost small" id="btn-compare-back">&#8592; Library</button>

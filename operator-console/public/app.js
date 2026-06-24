@@ -32,10 +32,10 @@ const SECTION_TOGGLES = [
 ];
 
 const FALLBACK_CONTROLLED_TARGETS = [
-  { id: 'sd15', label: 'SD1.5 standard', status: 'supported', mode: 'existing supported txt2img', caveat: 'Normal supported generation path. Full Automatic1111 parity is still not claimed.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 20, defaultCfgScale: 7, defaultSampler: 'euler_a', minSteps: 1, maxSteps: 150, maxWidth: 2048, maxHeight: 2048 },
-  { id: 'sdxl-base', label: 'SDXL base', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Controlled proofed path; not full A1111 parity.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 7, defaultSampler: 'euler_a', minSteps: 1, maxSteps: 8, maxWidth: 1024, maxHeight: 1024 },
-  { id: 'sdxl-turbo', label: 'SDXL Turbo', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Controlled proofed path; not full A1111 parity.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 0, defaultSampler: 'euler_a', minSteps: 1, maxSteps: 4, maxWidth: 1024, maxHeight: 1024 },
-  { id: 'flux-fp8', label: 'Flux fp8', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Controlled proofed path; not full A1111 parity. Uses the fp8 runtime-proven Flux file, not the full Flux file.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 3.5, defaultSampler: 'euler', minSteps: 1, maxSteps: 8, maxWidth: 1024, maxHeight: 1024 },
+  { id: 'sd15', label: 'SD1.5 standard', status: 'supported', mode: 'existing supported txt2img', caveat: 'Full generation path. Supports a curated set of parameters — not all Automatic1111 options are available.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 20, defaultCfgScale: 7, defaultSampler: 'euler_a', minSteps: 1, maxSteps: 150, maxWidth: 2048, maxHeight: 2048 },
+  { id: 'sdxl-base', label: 'SDXL base', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Supports a curated set of generation parameters — not all Automatic1111 options are available.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 7, defaultSampler: 'euler_a', minSteps: 1, maxSteps: 8, maxWidth: 1024, maxHeight: 1024 },
+  { id: 'sdxl-turbo', label: 'SDXL Turbo', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Supports a curated set of generation parameters — not all Automatic1111 options are available.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 0, defaultSampler: 'euler_a', minSteps: 1, maxSteps: 4, maxWidth: 1024, maxHeight: 1024 },
+  { id: 'flux-fp8', label: 'Flux fp8', status: 'proofed', mode: 'proofed controlled generation', caveat: 'Supports a curated set of generation parameters — not all Automatic1111 options are available. Uses the fp8 runtime-proven Flux file.', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, defaultCfgScale: 3.5, defaultSampler: 'euler', minSteps: 1, maxSteps: 8, maxWidth: 1024, maxHeight: 1024 },
   { id: 'sdxl-photonic', label: 'Photonic Fusion SDXL', status: 'staged', mode: 'migrated controlled generation', caveat: 'Migrated wc2tb SDXL checkpoint.', defaultWidth: 1024, defaultHeight: 1024, defaultSteps: 10, defaultCfgScale: 6.5, defaultSampler: 'dpm++2m', minSteps: 1, maxSteps: 150, maxWidth: 2048, maxHeight: 2048 },
   { id: 'sdxl-homochi', label: 'Homochi XL v2', status: 'staged', mode: 'migrated controlled generation', caveat: 'Migrated wc2tb SDXL checkpoint.', defaultWidth: 1024, defaultHeight: 1024, defaultSteps: 10, defaultCfgScale: 6.5, defaultSampler: 'dpm++2m', minSteps: 1, maxSteps: 150, maxWidth: 2048, maxHeight: 2048 },
   { id: 'sdxl-pony', label: 'Pony Diffusion V6 XL', status: 'staged', mode: 'migrated controlled generation', caveat: 'Migrated wc2tb SDXL checkpoint.', defaultWidth: 1024, defaultHeight: 1024, defaultSteps: 10, defaultCfgScale: 6.5, defaultSampler: 'dpm++2m', minSteps: 1, maxSteps: 150, maxWidth: 2048, maxHeight: 2048 },
@@ -48,6 +48,8 @@ function setPill(id, label, kind = '') {
   pill.className = `status-pill ${kind}`;
   const strong = pill.querySelector('strong');
   if (strong) strong.textContent = label;
+  const category = pill.dataset.label || '';
+  pill.setAttribute('aria-label', category ? `${category}: ${label}` : label);
 }
 function notifyLog(text) { $('job-log').textContent = text || 'No log.'; }
 function saveBool(key, value) { localStorage.setItem(key, value ? 'true' : 'false'); }
@@ -100,7 +102,7 @@ function renderControlledTargetCaveat(targetId) {
   const caveat = $('target-caveat');
   if (!caveat) return;
   const spec = getControlledTargetSpec(targetId);
-  caveat.textContent = spec && spec.caveat ? spec.caveat : 'Controlled proofed path; not full A1111 parity.';
+  caveat.textContent = spec && spec.caveat ? spec.caveat : 'Supports a curated set of generation parameters — not all Automatic1111 options are available.';
 }
 function applyControlledTargetDefaults(targetId) {
   const spec = getControlledTargetSpec(targetId);
@@ -1206,7 +1208,17 @@ async function loadGallery(reset = false) {
       const msg = document.createElement('div');
       msg.className = 'empty-state';
       const filterLabels = { all: 'runs', controlled: 'controlled generation runs', 'controlled-sd15': 'SD1.5 runs', 'controlled-sdxl-base': 'SDXL base runs', 'controlled-sdxl-turbo': 'SDXL Turbo runs', 'controlled-flux-fp8': 'Flux fp8 runs', 'hires-fix': 'Hires Fix runs', upscale: 'upscale runs', smoke: 'smoke proof runs', img2img: 'img2img runs', inpaint: 'inpaint runs', failed: 'failed runs' };
-      msg.textContent = 'No ' + (filterLabels[state.libraryFilter] || state.libraryFilter) + ' found.';
+      const filterName = filterLabels[state.libraryFilter] || state.libraryFilter;
+      msg.textContent = 'No ' + filterName + ' yet.';
+      if (state.libraryFilter === 'all') {
+        const goBtn = document.createElement('button');
+        goBtn.className = 'ghost small';
+        goBtn.style.marginTop = '10px';
+        goBtn.textContent = 'Go to Create →';
+        goBtn.addEventListener('click', () => showScreen('create'));
+        msg.appendChild(document.createElement('br'));
+        msg.appendChild(goBtn);
+      }
       el.appendChild(msg);
     }
     state.libraryOffset = typeof data.nextOffset === 'number' ? data.nextOffset : state.libraryOffset + items.length;
@@ -1311,6 +1323,10 @@ function runIndexCard(r) {
 function closeRunDetail() {
   const overlay = $('run-detail-overlay');
   if (overlay) overlay.hidden = true;
+  if (state.lastDetailTrigger) {
+    state.lastDetailTrigger.focus();
+    state.lastDetailTrigger = null;
+  }
 }
 
 function closeRunComparison() {
@@ -1320,6 +1336,11 @@ function closeRunComparison() {
 
 function updateCompareControls() {
   const count = state.libraryCompareIds.length;
+  const compareBar = $('library-compare-bar');
+  if (compareBar) {
+    const hasControlledInGallery = $$('[data-compare-enabled="1"]').length > 0;
+    compareBar.hidden = !hasControlledInGallery && count === 0;
+  }
   const countEl = $('compare-selection-count');
   const compareBtn = $('btn-compare-selected');
   const clearBtn = $('btn-clear-compare');
@@ -1634,7 +1655,6 @@ function showCreateNote(msg, variant) {
   if (!note) return;
   note.textContent = msg || '';
   note.className = 'create-note' + (variant ? ' ' + variant : '');
-  note.hidden = !msg;
 }
 
 function applySectionVisibility() {
@@ -1712,13 +1732,16 @@ function metaItem(label, value, valueClass) {
   return '<div class="run-detail-meta-item"><div class="label">' + esc(label) + '</div><div class="value' + (valueClass ? ' ' + esc(valueClass) : '') + '">' + esc(String(value ?? '—')) + '</div></div>';
 }
 
-async function showRunDetail(runId) {
+async function showRunDetail(runId, triggerEl = null) {
+  state.lastDetailTrigger = triggerEl;
   const overlay = $('run-detail-overlay');
   const content = $('run-detail-content');
   if (!overlay || !content) return;
   content.innerHTML = '<div class="empty-state">Loading…</div>';
   overlay.hidden = false;
   overlay.scrollTop = 0;
+  const firstFocusable = overlay.querySelector('button:not([disabled])');
+  if (firstFocusable) firstFocusable.focus();
 
   // Wire up header action buttons with the runId
   const btnBack = $('btn-detail-back');
@@ -2003,6 +2026,21 @@ async function loadOllamaModels() {
       modelSelect.value = discovered ? preferredModel : '';
       if (manualInput) manualInput.value = discovered ? '' : preferredModel;
     }
+    const compactSel = $('ollama-model-compact');
+    if (compactSel) {
+      compactSel.innerHTML = '';
+      const autoOpt = document.createElement('option');
+      autoOpt.value = '';
+      autoOpt.textContent = 'Auto';
+      compactSel.appendChild(autoOpt);
+      models.forEach(model => {
+        const opt = document.createElement('option');
+        opt.value = model.name;
+        opt.textContent = model.name;
+        compactSel.appendChild(opt);
+      });
+      compactSel.value = modelSelect ? modelSelect.value : '';
+    }
     if (status) status.value = models.length ? `${models.length} model(s)` : 'No models';
   } catch (err) {
     if (status) status.value = 'Unavailable';
@@ -2129,9 +2167,19 @@ function bindEvents() {
   if ($('btn-ollama-send')) $('btn-ollama-send').addEventListener('click', sendOllamaChat);
   if ($('ollama-model')) $('ollama-model').addEventListener('change', () => {
     if ($('ollama-model-manual')) $('ollama-model-manual').value = '';
+    if ($('ollama-model-compact')) $('ollama-model-compact').value = $('ollama-model').value;
     saveSelectedOllamaModel();
   });
-  if ($('ollama-model-manual')) $('ollama-model-manual').addEventListener('input', saveSelectedOllamaModel);
+  if ($('ollama-model-compact')) $('ollama-model-compact').addEventListener('change', () => {
+    if ($('ollama-model')) $('ollama-model').value = $('ollama-model-compact').value;
+    if ($('ollama-model-manual')) $('ollama-model-manual').value = '';
+    saveSelectedOllamaModel();
+  });
+  if ($('ollama-model-manual')) $('ollama-model-manual').addEventListener('input', () => {
+    if ($('ollama-model')) $('ollama-model').value = '';
+    if ($('ollama-model-compact')) $('ollama-model-compact').value = '';
+    saveSelectedOllamaModel();
+  });
   $('set-save-prompts').addEventListener('change', e => saveBool('savePrompts', e.target.checked));
   $('btn-random-seed').addEventListener('click', () => { $('seed').value = String(Math.floor(Math.random() * 2147483647)); });
   $('btn-random-seed-ongoing').addEventListener('click', () => { $('seed').value = '-1'; });
@@ -2208,7 +2256,7 @@ function bindEvents() {
     const lora = event.target.closest('[data-insert-lora]');
     if (lora) insertAtPrompt(lora.dataset.insertLora);
     const detail = event.target.closest('[data-detail-run]');
-    if (detail) showRunDetail(detail.dataset.detailRun);
+    if (detail) showRunDetail(detail.dataset.detailRun, detail);
     const compareInput = event.target.closest('[data-compare-run]');
     if (compareInput) toggleCompareRun(compareInput.dataset.compareRun, compareInput.checked);
     const compareImage = event.target.closest('[data-compare-image]');
