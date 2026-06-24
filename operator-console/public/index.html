@@ -126,6 +126,8 @@
                   <div class="field"><label for="ollama-model">Model</label><select id="ollama-model"><option value="">Auto</option></select></div>
                   <div class="field"><label for="ollama-status">Status</label><input id="ollama-status" value="Not checked" disabled /></div>
                 </div>
+                <div class="field"><label for="ollama-model-manual">Manual model override</label><input id="ollama-model-manual" placeholder="e.g. llama3.1:8b or qwen2.5:latest" /></div>
+                <div class="field"><label for="ollama-base-url">Ollama endpoint</label><input id="ollama-base-url" value="Not checked" disabled /></div>
                 <div class="field"><label for="ollama-chat-input">Message</label><textarea id="ollama-chat-input" rows="3" placeholder="Ask the local Ollama model…"></textarea></div>
                 <div class="quick-row"><button type="button" class="ghost small" id="btn-ollama-refresh">Refresh models</button><button type="button" class="primary small" id="btn-ollama-send">Send</button></div>
                 <div id="ollama-chat-output" class="job-card muted">No chat yet.</div>

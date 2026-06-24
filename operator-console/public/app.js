@@ -18,6 +18,7 @@ const ASPECTS = [
 ];
 const PROMPT_DRAFT_KEY = 'createPromptDraft';
 const HIDDEN_SECTIONS_KEY = 'hiddenCreateSections';
+const OLLAMA_MODEL_KEY = 'ollamaSelectedModel';
 const SECTION_TOGGLES = [
   ['settings-json', 'Settings JSON'],
   ['controlled-sweep', 'Sweep planner'],
@@ -76,6 +77,16 @@ function loadPromptDraft(showNote = false) {
   }
   if (showNote) showCreateNote('Reloaded previous prompt draft.', '');
   return true;
+}
+function getSelectedOllamaModel() {
+  const manual = $('ollama-model-manual') ? $('ollama-model-manual').value.trim() : '';
+  if (manual) return manual;
+  return $('ollama-model') ? $('ollama-model').value : '';
+}
+function saveSelectedOllamaModel() {
+  const model = getSelectedOllamaModel();
+  if (model) localStorage.setItem(OLLAMA_MODEL_KEY, model);
+  else localStorage.removeItem(OLLAMA_MODEL_KEY);
 }
 function getControlledTargets() {
   return (state.capabilities && state.capabilities.modelTargets && state.capabilities.modelTargets.length)
@@ -1969,16 +1980,25 @@ async function runSimpleAction(action) {
 async function loadOllamaModels() {
   const status = $('ollama-status');
   const modelSelect = $('ollama-model');
+  const manualInput = $('ollama-model-manual');
+  const baseUrlInput = $('ollama-base-url');
+  const preferredModel = localStorage.getItem(OLLAMA_MODEL_KEY) || '';
   if (status) status.value = 'Checking...';
   try {
     const data = await api('/api/ollama/status');
     const models = data.models || [];
+    if (baseUrlInput) baseUrlInput.value = data.baseUrl || 'Unknown';
     if (modelSelect) {
       modelSelect.innerHTML = '<option value="">Auto</option>' + models.map(model => `<option value="${esc(model.name)}">${esc(model.name)}</option>`).join('');
+      const discovered = models.some(model => model.name === preferredModel);
+      modelSelect.value = discovered ? preferredModel : '';
+      if (manualInput) manualInput.value = discovered ? '' : preferredModel;
     }
     if (status) status.value = models.length ? `${models.length} model(s)` : 'No models';
   } catch (err) {
     if (status) status.value = 'Unavailable';
+    if (baseUrlInput) baseUrlInput.value = 'Unavailable';
+    if (manualInput && preferredModel) manualInput.value = preferredModel;
     notifyLog('Ollama unavailable: ' + err.message);
   }
 }
@@ -1993,7 +2013,7 @@ async function enhancePromptWithOllama() {
   try {
     const result = await api('/api/ollama/enhance', {
       method: 'POST',
-      body: JSON.stringify({ prompt, model: $('ollama-model') ? $('ollama-model').value : '' })
+      body: JSON.stringify({ prompt, model: getSelectedOllamaModel() })
     });
     promptEl.value = result.prompt || prompt;
     promptEl.dispatchEvent(new Event('input'));
@@ -2017,7 +2037,7 @@ async function sendOllamaChat() {
   try {
     const result = await api('/api/ollama/chat', {
       method: 'POST',
-      body: JSON.stringify({ message, model: $('ollama-model') ? $('ollama-model').value : '' })
+      body: JSON.stringify({ message, model: getSelectedOllamaModel() })
     });
     if (output) output.textContent = `${result.model}\n\n${result.reply}`;
   } catch (err) {
@@ -2091,6 +2111,11 @@ function bindEvents() {
   $('btn-enhance-prompt').addEventListener('click', enhancePromptWithOllama);
   if ($('btn-ollama-refresh')) $('btn-ollama-refresh').addEventListener('click', loadOllamaModels);
   if ($('btn-ollama-send')) $('btn-ollama-send').addEventListener('click', sendOllamaChat);
+  if ($('ollama-model')) $('ollama-model').addEventListener('change', () => {
+    if ($('ollama-model-manual')) $('ollama-model-manual').value = '';
+    saveSelectedOllamaModel();
+  });
+  if ($('ollama-model-manual')) $('ollama-model-manual').addEventListener('input', saveSelectedOllamaModel);
   $('set-save-prompts').addEventListener('change', e => saveBool('savePrompts', e.target.checked));
   $('btn-random-seed').addEventListener('click', () => { $('seed').value = String(Math.floor(Math.random() * 2147483647)); });
   $('btn-random-seed-ongoing').addEventListener('click', () => { $('seed').value = '-1'; });
