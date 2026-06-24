@@ -1,0 +1,17 @@
+# Lighting conditions
+golden hour sunlight
+dramatic side lighting
+rim lighting
+soft studio lighting
+neon lighting
+moonlight
+candlelight
+overcast diffused light
+high-key lighting
+low-key lighting
+volumetric light rays
+harsh direct sunlight
+underwater caustics
+backlit silhouette
+warm indoor lighting
+cool blue hour

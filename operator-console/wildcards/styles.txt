@@ -1,0 +1,21 @@
+# Artistic styles
+photorealistic
+hyperrealistic
+cinematic
+oil painting
+watercolor
+digital art
+concept art
+anime
+manga
+ink sketch
+charcoal drawing
+impressionist
+art nouveau
+baroque
+noir
+vaporwave
+cyberpunk
+dark fantasy
+studio photography
+editorial photography

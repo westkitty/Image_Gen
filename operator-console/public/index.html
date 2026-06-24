@@ -70,6 +70,10 @@
                     <label class="sr-only" for="ollama-model-compact">Ollama model for Enhance</label>
                   <select id="ollama-model-compact" class="ollama-compact-select" title="Ollama model used by Enhance"><option value="">Auto</option></select>
                   <button type="button" class="ghost small" id="btn-enhance-prompt" aria-label="Enhance prompt with Ollama">Enhance</button>
+                  <div class="wildcard-picker-wrap">
+                    <button type="button" class="ghost small" id="btn-wildcard-picker" aria-label="Insert wildcard token" aria-expanded="false" aria-haspopup="listbox">Wildcards</button>
+                    <div id="wildcard-picker" class="wildcard-picker" role="listbox" aria-label="Available wildcards" hidden></div>
+                  </div>
                     <button type="button" class="ghost small" id="btn-save-style">Save style</button>
                   </span>
                 </div>

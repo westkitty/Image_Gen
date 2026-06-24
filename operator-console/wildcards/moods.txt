@@ -1,0 +1,17 @@
+# Mood and atmosphere
+serene
+tense
+melancholic
+euphoric
+mysterious
+foreboding
+intimate
+epic
+peaceful
+chaotic
+nostalgic
+romantic
+unsettling
+triumphant
+desolate
+cozy

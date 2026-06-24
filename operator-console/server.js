@@ -25,6 +25,7 @@ const MODEL_INVENTORY_CACHE = path.join(STATE_DIR, 'model-inventory-cache.json')
 const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md';
 const GENERATION_JOB_SCHEMA = path.join(__dirname, 'schemas/generation-job.schema.json');
 const MODEL_COMPATIBILITY_REGISTRY = path.join(__dirname, 'schemas/model-compatibility.json');
+const WILDCARDS_DIR = path.join(__dirname, 'wildcards');
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
 
 let schedulerSelectionSupported = true;
@@ -437,6 +438,28 @@ function getBuildInfo() {
     workflowRoot: WORKFLOW_ROOT,
     startedAt: new Date().toISOString()
   };
+}
+
+function expandWildcards(prompt, maxDepth = 6) {
+  if (typeof prompt !== 'string') return prompt;
+  const pattern = /__([a-zA-Z0-9_-]+)__/g;
+  let result = prompt;
+  for (let depth = 0; depth < maxDepth; depth++) {
+    const before = result;
+    result = result.replace(pattern, (match, name) => {
+      const filePath = path.join(WILDCARDS_DIR, name + '.txt');
+      if (!filePath.startsWith(WILDCARDS_DIR + path.sep) && filePath !== WILDCARDS_DIR) return match;
+      try {
+        const lines = fs.readFileSync(filePath, 'utf8')
+          .split('\n')
+          .map(l => l.trim())
+          .filter(l => l && !l.startsWith('#'));
+        return lines.length ? lines[Math.floor(Math.random() * lines.length)] : match;
+      } catch { return match; }
+    });
+    if (result === before) break;
+  }
+  return result;
 }
 
 function validatePrompt(prompt) {
@@ -1775,13 +1798,35 @@ async function ollamaRequest(route, body = null, timeoutMs = 90000) {
 }
 
 async function resolveOllamaModel(requestedModel) {
-  const explicit = typeof requestedModel === 'string' ? requestedModel.trim() : '';
-  if (explicit) return explicit;
   const tags = await ollamaRequest('/api/tags', null, 10000);
-  if (!tags.ok) return '';
+  if (!tags.ok) return { model: '', error: 'Ollama unreachable' };
   const models = tags.json && Array.isArray(tags.json.models) ? tags.json.models : [];
-  return models[0] && models[0].name ? models[0].name : '';
+  const names = models.map(m => m.name);
+  const explicit = typeof requestedModel === 'string' ? requestedModel.trim() : '';
+  if (explicit) {
+    if (!names.includes(explicit)) return { model: '', error: `Model "${explicit}" is not installed. Run: ollama pull ${explicit}` };
+    return { model: explicit, error: null };
+  }
+  if (!names.length) return { model: '', error: 'No Ollama models installed. Run: ollama pull llama3.2' };
+  return { model: names[0], error: null };
 }
+
+app.get('/api/wildcards', (req, res) => {
+  try {
+    const files = fs.readdirSync(WILDCARDS_DIR)
+      .filter(f => f.endsWith('.txt'))
+      .map(f => {
+        const name = f.replace(/\.txt$/, '');
+        const lines = fs.readFileSync(path.join(WILDCARDS_DIR, f), 'utf8')
+          .split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+        return { name, count: lines.length, preview: lines.slice(0, 3) };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ wildcards: files });
+  } catch {
+    res.json({ wildcards: [] });
+  }
+});
 
 app.get('/api/ollama/status', async (req, res) => {
   const result = await ollamaRequest('/api/tags', null, 10000);
@@ -1794,8 +1839,8 @@ app.post('/api/ollama/enhance', async (req, res) => {
   const prompt = typeof req.body.prompt === 'string' ? req.body.prompt.trim() : '';
   if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
   if (prompt.length > 12000) return res.status(400).json({ error: 'Prompt is too long' });
-  const model = await resolveOllamaModel(req.body.model);
-  if (!model) return res.status(503).json({ error: 'No Ollama model available' });
+  const { model, error: modelErr } = await resolveOllamaModel(req.body.model);
+  if (modelErr) return res.status(503).json({ error: modelErr });
   const instruction = [
     'Enhance this image-generation prompt.',
     'Return only the improved prompt.',
@@ -1814,8 +1859,8 @@ app.post('/api/ollama/chat', async (req, res) => {
   const message = typeof req.body.message === 'string' ? req.body.message.trim() : '';
   if (!message) return res.status(400).json({ error: 'Message is required' });
   if (message.length > 12000) return res.status(400).json({ error: 'Message is too long' });
-  const model = await resolveOllamaModel(req.body.model);
-  if (!model) return res.status(503).json({ error: 'No Ollama model available' });
+  const { model, error: modelErr } = await resolveOllamaModel(req.body.model);
+  if (modelErr) return res.status(503).json({ error: modelErr });
   const result = await ollamaRequest('/api/chat', {
     model,
     stream: false,
@@ -1836,6 +1881,7 @@ app.post('/api/preview/generation', (req, res) => {
 
 app.post('/api/actions/generate-single', (req, res) => {
   const params = normalizeGenerationBody(req.body || {});
+  params.prompt = expandWildcards(params.prompt);
   const err = validateGenerationParams(params);
   if (err) return res.status(400).json({ error: err });
   const script = params.mode === 'cli' ? 'bin/sdcpp-cli-generate.sh' : 'bin/sdcpp-server-generate.sh';
@@ -1850,6 +1896,7 @@ app.post('/api/actions/generate-single', (req, res) => {
 
 app.post('/api/actions/generate-batch', (req, res) => {
   const params = normalizeGenerationBody(req.body || {});
+  params.prompt = expandWildcards(params.prompt);
   const err = validateGenerationParams(params);
   if (err) return res.status(400).json({ error: err });
   const count = Number(req.body.count || 3);
@@ -1875,6 +1922,7 @@ app.post('/api/actions/generate-controlled', (req, res) => {
     : CONTROLLED_TARGET_BY_ID;
 
   const params = normalizeControlledGenerationBody(req.body || {});
+  params.prompt = expandWildcards(params.prompt);
   const err = validateControlledGenerationParams(params, allTargetById);
   if (err) return res.status(400).json({ error: err });
 

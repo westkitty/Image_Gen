@@ -2073,6 +2073,72 @@ async function enhancePromptWithOllama() {
   }
 }
 
+let wildcardPickerLoaded = false;
+
+async function loadWildcardPicker() {
+  if (wildcardPickerLoaded) return;
+  const picker = $('wildcard-picker');
+  if (!picker) return;
+  try {
+    const data = await api('/api/wildcards');
+    const items = data.wildcards || [];
+    picker.innerHTML = '';
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'fineprint muted';
+      empty.style.padding = '8px 10px';
+      empty.textContent = 'No wildcard files found.';
+      picker.appendChild(empty);
+    } else {
+      items.forEach(wc => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'wildcard-item';
+        btn.setAttribute('role', 'option');
+        btn.setAttribute('aria-label', `Insert __${wc.name}__ (${wc.count} entries)`);
+        const strong = document.createElement('strong');
+        strong.textContent = `__${wc.name}__`;
+        const span = document.createElement('span');
+        span.textContent = wc.preview.join(', ') + (wc.count > 3 ? '…' : '');
+        btn.appendChild(strong);
+        btn.appendChild(span);
+        btn.addEventListener('click', () => insertWildcard(wc.name));
+        picker.appendChild(btn);
+      });
+    }
+    wildcardPickerLoaded = true;
+  } catch (err) {
+    notifyLog('Could not load wildcards: ' + err.message);
+  }
+}
+
+function insertWildcard(name) {
+  const textarea = $('prompt');
+  if (!textarea) return;
+  const token = `__${name}__`;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const before = textarea.value.slice(0, start);
+  const after = textarea.value.slice(end);
+  const sep = before.length && !before.endsWith(' ') ? ', ' : '';
+  textarea.value = before + sep + token + after;
+  const newPos = before.length + sep.length + token.length;
+  textarea.setSelectionRange(newPos, newPos);
+  textarea.dispatchEvent(new Event('input'));
+  textarea.focus();
+  toggleWildcardPicker(false);
+}
+
+function toggleWildcardPicker(forceState) {
+  const picker = $('wildcard-picker');
+  const btn = $('btn-wildcard-picker');
+  if (!picker || !btn) return;
+  const open = forceState !== undefined ? forceState : picker.hidden;
+  picker.hidden = !open;
+  btn.setAttribute('aria-expanded', String(open));
+  if (open) loadWildcardPicker();
+}
+
 async function sendOllamaChat() {
   const input = $('ollama-chat-input');
   const output = $('ollama-chat-output');
@@ -2163,6 +2229,8 @@ function bindEvents() {
   $('btn-save-style').addEventListener('click', saveCurrentStyle);
   $('btn-reload-prompt').addEventListener('click', () => loadPromptDraft(true));
   $('btn-enhance-prompt').addEventListener('click', enhancePromptWithOllama);
+  if ($('btn-wildcard-picker')) $('btn-wildcard-picker').addEventListener('click', e => { e.stopPropagation(); toggleWildcardPicker(); });
+  document.addEventListener('click', e => { if (!e.target.closest('.wildcard-picker-wrap')) toggleWildcardPicker(false); });
   if ($('btn-ollama-refresh')) $('btn-ollama-refresh').addEventListener('click', loadOllamaModels);
   if ($('btn-ollama-send')) $('btn-ollama-send').addEventListener('click', sendOllamaChat);
   if ($('ollama-model')) $('ollama-model').addEventListener('change', () => {
