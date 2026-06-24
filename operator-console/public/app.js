@@ -1657,6 +1657,14 @@ function loadSectionVisibility() {
 function saveSectionVisibility() {
   localStorage.setItem(HIDDEN_SECTIONS_KEY, JSON.stringify(Array.from(state.hiddenSections)));
   applySectionVisibility();
+  updateHiddenSectionCount();
+}
+
+function updateHiddenSectionCount() {
+  const countEl = $('hidden-section-count');
+  if (!countEl) return;
+  const n = state.hiddenSections.size;
+  countEl.textContent = n ? `${n} section${n !== 1 ? 's' : ''} hidden` : 'All sections visible';
 }
 
 function renderSectionToggles() {
@@ -1666,6 +1674,7 @@ function renderSectionToggles() {
     const checked = state.hiddenSections.has(key) ? '' : 'checked';
     return `<label class="check-card section-toggle"><input type="checkbox" data-section-toggle="${esc(key)}" ${checked} /> ${esc(label)}</label>`;
   }).join('');
+  updateHiddenSectionCount();
 }
 
 function replayInCreate(replay, runId) {
@@ -2070,6 +2079,13 @@ function bindEvents() {
     showScreen(btn.dataset.target);
     if (btn.dataset.target === 'enhance') { loadEnhanceRuns(); loadEsrganRuns(); }
     if (btn.dataset.target === 'edit') loadEditRuns();
+    // Close mobile sidebar after navigation
+    const sidebar = $('app-sidebar');
+    const backdrop = $('sidebar-backdrop');
+    const sidebarToggle = $('btn-sidebar-toggle');
+    if (sidebar) sidebar.classList.remove('sidebar-open');
+    if (backdrop) backdrop.hidden = true;
+    if (sidebarToggle) sidebarToggle.setAttribute('aria-expanded', 'false');
   }));
   $('form-create').addEventListener('submit', submitCreate);
   $('btn-preview-create').addEventListener('click', previewCreateCommand);
@@ -2232,6 +2248,50 @@ function bindEvents() {
   });
   document.addEventListener('click', () => { if (ctxMenu) ctxMenu.hidden = true; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && ctxMenu) ctxMenu.hidden = true; });
+
+  // Mobile sidebar toggle
+  const sidebarToggle = $('btn-sidebar-toggle');
+  const sidebar = $('app-sidebar');
+  const backdrop = $('sidebar-backdrop');
+  if (sidebarToggle && sidebar) {
+    sidebarToggle.addEventListener('click', () => {
+      const isOpen = sidebar.classList.contains('sidebar-open');
+      sidebar.classList.toggle('sidebar-open', !isOpen);
+      sidebarToggle.setAttribute('aria-expanded', String(!isOpen));
+      if (backdrop) backdrop.hidden = isOpen;
+    });
+  }
+  if (backdrop) backdrop.addEventListener('click', () => {
+    if (sidebar) sidebar.classList.remove('sidebar-open');
+    if (sidebarToggle) sidebarToggle.setAttribute('aria-expanded', 'false');
+    backdrop.hidden = true;
+  });
+
+  // Batch / XYZ tabs
+  const batchTabsBar = document.querySelector('.batch-tabs-bar');
+  if (batchTabsBar) {
+    batchTabsBar.addEventListener('click', e => {
+      const tab = e.target.closest('[data-batch-tab]');
+      if (!tab) return;
+      batchTabsBar.querySelectorAll('[data-batch-tab]').forEach(t => {
+        const active = t === tab;
+        t.classList.toggle('active', active);
+        t.setAttribute('aria-selected', String(active));
+        const panel = $(t.dataset.batchTab);
+        if (panel) panel.hidden = !active;
+      });
+    });
+  }
+
+  // Reset visible sections
+  const resetSectionsBtn = $('btn-reset-sections');
+  if (resetSectionsBtn) {
+    resetSectionsBtn.addEventListener('click', () => {
+      state.hiddenSections.clear();
+      saveSectionVisibility();
+      renderSectionToggles();
+    });
+  }
   if (ctxMenu) ctxMenu.addEventListener('click', e => {
     const btn = e.target.closest('.ctx-item');
     if (!btn || !ctxTarget) return;

@@ -5,23 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" href="data:," />
   <title>SDCPP Workbench</title>
-  <link rel="stylesheet" href="styles.css?v=2" />
+  <link rel="stylesheet" href="styles.css?v=3" />
 </head>
 <body>
   <div class="app-shell">
-    <aside class="sidebar" aria-label="Primary navigation">
+    <aside class="sidebar" id="app-sidebar" aria-label="Primary navigation">
       <div class="brand-block">
         <div class="brand-mark">SD</div>
-        <div><h1>SDCPP Workbench</h1><p>A1111-style local console</p></div>
+        <div><h1>SDCPP Workbench</h1><p>Automatic1111 (A1111)-style local console</p></div>
       </div>
       <nav class="nav-stack">
-        <button class="nav-btn active" data-target="create">Create</button>
-        <button class="nav-btn" data-target="batch">Batch / Sweep</button>
-        <button class="nav-btn" data-target="edit">Edit</button>
-        <button class="nav-btn" data-target="enhance">Enhance</button>
-        <button class="nav-btn" data-target="library">Library</button>
-        <button class="nav-btn" data-target="models">Models</button>
-        <button class="nav-btn" data-target="system">System</button>
+        <div class="nav-group">
+          <div class="nav-group-label">Workflows</div>
+          <button class="nav-btn active" data-target="create" aria-label="Open Create screen">Create</button>
+          <button class="nav-btn" data-target="batch" aria-label="Open Batch / Sweep screen">Batch / Sweep</button>
+          <button class="nav-btn" data-target="edit" aria-label="Open Edit screen">Edit</button>
+          <button class="nav-btn" data-target="enhance" aria-label="Open Enhance screen">Enhance</button>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Assets</div>
+          <button class="nav-btn" data-target="library" aria-label="Open Library screen">Library</button>
+          <button class="nav-btn" data-target="models" aria-label="Open Models screen">Models</button>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">System</div>
+          <button class="nav-btn" data-target="system" aria-label="Open System screen">System</button>
+        </div>
       </nav>
       <div class="sidebar-foot">
         <div class="tiny-label">Privacy</div>
@@ -29,9 +38,12 @@
         <p class="fineprint">Run records can still be redacted. The current prompt draft is kept locally for reload.</p>
       </div>
     </aside>
+    <!-- Sidebar backdrop for mobile -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden aria-hidden="true"></div>
 
     <div class="main-column">
       <header class="topbar">
+        <button type="button" class="ghost small sidebar-toggle" id="btn-sidebar-toggle" aria-label="Toggle navigation sidebar" aria-expanded="false" aria-controls="app-sidebar">&#9776;</button>
         <div class="status-pill" id="pill-backend"><span></span>Backend <strong>Loading</strong></div>
         <div class="status-pill" id="pill-server"><span></span>Server <strong>Unknown</strong></div>
         <div class="status-pill" id="pill-job"><span></span>Job <strong>Idle</strong></div>
@@ -46,25 +58,56 @@
             <!-- LEFT: main settings — prompt, model, style -->
             <div class="panel control-panel">
               <div class="panel-head"><div><h2>Create</h2><p>Prompt and model selection.</p></div><button type="submit" class="primary big">Generate</button></div>
-              <div id="create-note" class="create-note" hidden></div>
+              <div id="create-note" class="create-note" role="status" aria-live="polite" hidden></div>
 
-              <div class="field"><label for="prompt">Prompt</label><textarea id="prompt" required rows="5" placeholder="Describe the image. Use A1111 prompt syntax if your backend/model supports it."></textarea><div class="meta-row prompt-tools"><span id="prompt-count">0 chars</span><span class="prompt-tool-buttons"><button type="button" class="ghost small" id="btn-reload-prompt">Reload prompt</button><button type="button" class="ghost small" id="btn-enhance-prompt">Enhance</button><button type="button" class="ghost small" id="btn-save-style">Save style</button></span></div></div>
-              <div class="field"><label for="negative_prompt">Negative prompt</label><textarea id="negative_prompt" rows="3" placeholder="low quality, blurry, bad anatomy…"></textarea><div class="meta-row"><span id="neg-prompt-count" class="muted">0 chars</span></div></div>
+              <div class="field">
+                <label for="prompt">Prompt</label>
+                <textarea id="prompt" required rows="5" placeholder="Describe the image. Use A1111 prompt syntax if your backend/model supports it." aria-describedby="create-note prompt-count"></textarea>
+                <div class="meta-row prompt-tools">
+                  <span id="prompt-count">0 chars</span>
+                  <span class="prompt-tool-buttons">
+                    <button type="button" class="ghost small" id="btn-reload-prompt">Reload prompt</button>
+                    <button type="button" class="ghost small" id="btn-enhance-prompt" aria-label="Enhance prompt with Ollama">Enhance</button>
+                    <button type="button" class="ghost small" id="btn-save-style">Save style</button>
+                  </span>
+                </div>
+              </div>
+              <div class="field">
+                <label for="negative_prompt">Negative prompt</label>
+                <textarea id="negative_prompt" rows="3" placeholder="low quality, blurry, bad anatomy…"></textarea>
+                <div class="meta-row"><span id="neg-prompt-count" class="muted">0 chars</span></div>
+              </div>
 
               <div class="two-col">
                 <div class="field"><label for="style-select">Styles</label><select id="style-select"><option value="">No saved style</option></select></div>
                 <div class="field"><label for="preset">Preset</label><select id="preset"></select></div>
               </div>
 
-              <details open class="block"><summary>Model & extra networks</summary>
-                <div class="two-col"><div class="field"><label for="model">Generation target</label><select id="model"></select><div id="target-caveat" class="fineprint">Controlled proofed path; not full A1111 parity.</div></div><div class="field"><label for="vae">VAE</label><select id="vae"></select></div></div>
-                <div class="two-col"><div class="field"><label for="lora-select">LoRA</label><select id="lora-select" disabled><option value="">— none —</option></select></div><div class="field"><label for="lora-weight">Weight</label><input id="lora-weight" type="number" min="0" max="2" step="0.05" value="0.75" disabled /></div></div>
+              <details open class="block"><summary>Model &amp; extra networks</summary>
+                <div class="two-col">
+                  <div class="field">
+                    <label for="model">Generation target</label>
+                    <select id="model"></select>
+                    <div id="target-caveat" class="fineprint">Controlled proofed path; not full A1111 parity.</div>
+                  </div>
+                  <div class="field">
+                    <label for="vae">VAE <span class="fineprint muted">(variational autoencoder)</span></label>
+                    <select id="vae"></select>
+                  </div>
+                </div>
+                <div class="two-col">
+                  <div class="field">
+                    <label for="lora-select">LoRA <span class="fineprint muted">(low-rank adapter)</span></label>
+                    <select id="lora-select" disabled><option value="">— none —</option></select>
+                  </div>
+                  <div class="field"><label for="lora-weight">Weight</label><input id="lora-weight" type="number" min="0" max="2" step="0.05" value="0.75" disabled /></div>
+                </div>
                 <div class="gate-row"><button type="button" class="ghost" id="btn-insert-lora" disabled>Insert LoRA token</button><span id="lora-status" class="muted fineprint"></span></div>
               </details>
 
               <details class="block" data-section-key="settings-json"><summary>Import / paste settings JSON</summary>
                 <p class="fineprint">Paste JSON copied from "Copy settings JSON" in Library. Only the closed target list is accepted; modelPath and arbitrary targets are rejected.</p>
-                <textarea id="settings-import-input" rows="4" aria-label="Settings JSON to import" placeholder='{&#10;  "target": "sdxl-turbo",&#10;  "width": 512,&#10;  "height": 512,&#10;  "steps": 4,&#10;  "cfg_scale": 0,&#10;  "seed": "123456789"&#10;}'></textarea>
+                <textarea id="settings-import-input" rows="4" aria-label="Settings JSON to import" aria-describedby="create-note" placeholder='{&#10;  "target": "sdxl-turbo",&#10;  "width": 512,&#10;  "height": 512,&#10;  "steps": 4,&#10;  "cfg_scale": 0,&#10;  "seed": "123456789"&#10;}'></textarea>
                 <div class="quick-row" style="margin-top:8px">
                   <button type="button" class="ghost small" id="btn-load-settings">Load into Create</button>
                   <button type="button" class="ghost small" id="btn-paste-settings">Paste from clipboard</button>
@@ -72,7 +115,7 @@
               </details>
 
               <details class="block" data-section-key="controlled-sweep"><summary>Controlled sweep planner</summary>
-                <p class="fineprint">Generate multiple controlled jobs from current settings with a varied seed or CFG. Seed and CFG axis only — not full XYZ plot parity. Max 8 jobs per sweep.</p>
+                <p class="fineprint">Generate multiple controlled jobs from current settings with a varied seed or CFG (Classifier-Free Guidance). Seed and CFG axis only — not full XYZ plot parity. Max 8 jobs per sweep.</p>
                 <div class="two-col">
                   <div class="field"><label for="sweep-axis">Sweep axis</label>
                     <select id="sweep-axis"><option value="seed">Seed sweep</option><option value="cfg">CFG scale sweep</option></select>
@@ -86,18 +129,23 @@
                   <div class="field"><label for="sweep-cfg-values">CFG values (comma-separated, 2–8 values, 0–30 each)</label><input id="sweep-cfg-values" placeholder="1, 3, 5, 7" /></div>
                   <p class="fineprint">Job count field is unused for CFG sweep — one job per value.</p>
                 </div>
-                <button type="button" class="ghost" id="btn-run-sweep">Run sweep</button>
-                <div id="sweep-status" class="stacked" style="margin-top:10px" hidden></div>
+                <button type="button" class="ghost" id="btn-run-sweep" aria-describedby="create-note">Run sweep</button>
+                <div id="sweep-status" class="stacked" role="status" aria-live="polite" style="margin-top:10px" hidden></div>
               </details>
             </div>
 
             <!-- CENTER: generated image -->
             <aside class="panel preview-panel">
               <div class="panel-head"><div><h2>Preview</h2><p id="preview-subtitle">Generated outputs and job status.</p></div></div>
-              <div id="preview-stage" class="preview-stage"><div class="empty-state">No image selected. Generate something or open a library item.</div></div>
-              <div class="action-row"><button class="ghost" id="btn-preview-create">Preview command</button><button class="ghost" id="btn-copy-last">Copy params</button><button class="ghost" id="btn-send-img2img">Send to img2img</button><button class="ghost" id="btn-send-upscale">Send to upscale</button></div>
+              <div id="preview-stage" class="preview-stage"><div class="empty-state">Generate an image to see it here.</div></div>
+              <div class="action-row">
+                <button type="button" class="ghost" id="btn-preview-create" aria-label="Preview txt2img command">Preview command</button>
+                <button type="button" class="ghost" id="btn-copy-last">Copy params</button>
+                <button type="button" class="ghost" id="btn-send-img2img">Send to img2img</button>
+                <button type="button" class="ghost" id="btn-send-upscale">Send to upscale</button>
+              </div>
               <pre id="create-debug-preview" data-section-key="preview-json" hidden></pre>
-              <div id="latest-job" class="job-card muted">No active job.</div>
+              <div id="latest-job" class="job-card muted" role="status" aria-live="polite">No active job. Generate an image to see progress here.</div>
             </aside>
 
             <!-- RIGHT: image settings — params, seed, advanced -->
@@ -107,7 +155,10 @@
               <details open class="block"><summary>Generation parameters</summary>
                 <div class="two-col">
                   <div class="field"><label for="steps">Steps</label><input id="steps" type="number" min="1" max="150" value="20" /></div>
-                  <div class="field"><label for="cfg_scale">CFG scale</label><input id="cfg_scale" type="number" min="1" max="30" step="0.5" value="7" /></div>
+                  <div class="field">
+                    <label for="cfg_scale">CFG scale <span class="fineprint muted" title="Classifier-Free Guidance — how closely the image follows the prompt">(guidance strength)</span></label>
+                    <input id="cfg_scale" type="number" min="1" max="30" step="0.5" value="7" />
+                  </div>
                 </div>
                 <div class="field"><label for="sampler">Sampler</label><select id="sampler"></select></div>
                 <div class="two-col">
@@ -121,19 +172,7 @@
                 <div class="quick-row" id="aspect-presets"></div>
               </details>
 
-              <details class="block ollama-chat" data-section-key="ollama-chat"><summary>Ollama chat</summary>
-                <div class="two-col">
-                  <div class="field"><label for="ollama-model">Model</label><select id="ollama-model"><option value="">Auto</option></select></div>
-                  <div class="field"><label for="ollama-status">Status</label><input id="ollama-status" value="Not checked" disabled /></div>
-                </div>
-                <div class="field"><label for="ollama-model-manual">Manual model override</label><input id="ollama-model-manual" placeholder="e.g. llama3.1:8b or qwen2.5:latest" /></div>
-                <div class="field"><label for="ollama-base-url">Ollama endpoint</label><input id="ollama-base-url" value="Not checked" disabled /></div>
-                <div class="field"><label for="ollama-chat-input">Message</label><textarea id="ollama-chat-input" rows="3" placeholder="Ask the local Ollama model…"></textarea></div>
-                <div class="quick-row"><button type="button" class="ghost small" id="btn-ollama-refresh">Refresh models</button><button type="button" class="primary small" id="btn-ollama-send">Send</button></div>
-                <div id="ollama-chat-output" class="job-card muted">No chat yet.</div>
-              </details>
-
-              <details open class="block" data-section-key="seed-variation"><summary>Seed & variation</summary>
+              <details open class="block" data-section-key="seed-variation"><summary>Seed &amp; variation</summary>
                 <div class="field"><label for="seed">Seed</label><input id="seed" placeholder="-1 for random" /></div>
                 <div class="two-col">
                   <div class="field"><label for="variation_seed">Variation seed</label><input id="variation_seed" disabled placeholder="backend missing" /></div>
@@ -143,60 +182,110 @@
                 <p class="fineprint gate" style="margin-top:8px">Variation seed / seed resize visible; backend not wired.</p>
               </details>
 
+              <details class="block ollama-chat" data-section-key="ollama-chat"><summary>Ollama chat</summary>
+                <div class="two-col">
+                  <div class="field"><label for="ollama-model">Model</label><select id="ollama-model"><option value="">Auto</option></select></div>
+                  <div class="field"><label for="ollama-status">Status</label><input id="ollama-status" value="Not checked" disabled /></div>
+                </div>
+                <div class="field"><label for="ollama-model-manual">Manual model override</label><input id="ollama-model-manual" placeholder="e.g. llama3.1:8b or qwen2.5:latest" /></div>
+                <div class="field"><label for="ollama-base-url">Ollama endpoint</label><input id="ollama-base-url" value="Not checked" disabled /></div>
+                <div class="field"><label for="ollama-chat-input">Message</label><textarea id="ollama-chat-input" rows="3" placeholder="Ask the local Ollama model…"></textarea></div>
+                <div class="quick-row"><button type="button" class="ghost small" id="btn-ollama-refresh">Refresh models</button><button type="button" class="primary small" id="btn-ollama-send">Send</button></div>
+                <div id="ollama-chat-output" class="job-card muted" role="status" aria-live="polite">Send a message to start chatting with the selected Ollama model.</div>
+              </details>
+
               <details class="block" data-section-key="hires-faces-tiling"><summary>Hires Fix / faces / tiling</summary>
                 <div class="three-col"><label class="check-card"><input id="hires_fix" type="checkbox" disabled /> Hires Fix</label><label class="check-card"><input id="restore_faces" type="checkbox" disabled /> Restore faces</label><label class="check-card"><input id="tiling" type="checkbox" /> Tiling</label></div>
                 <p class="fineprint">Use the Enhance screen for two-pass Hires Fix. Face restoration requires GFPGAN/CodeFormer on the inference host.</p>
               </details>
 
               <details class="block" data-section-key="backend-routing"><summary>Backend routing</summary>
-                <div class="two-col"><div class="field"><label for="mode">Mode</label><select id="mode"><option value="server">Server</option><option value="cli">CLI</option></select></div><div class="field"><label for="api">Server API</label><select id="api"><option value="openai">OpenAI</option><option value="sdapi">SDAPI</option><option value="both">Both</option><option value="native">Native</option></select></div></div>
-                <div class="field"><label for="clip_skip">CLIP skip</label><input id="clip_skip" type="number" min="1" max="12" placeholder="not wired" /></div>
+                <div class="two-col">
+                  <div class="field"><label for="mode">Mode</label><select id="mode"><option value="server">Server</option><option value="cli">CLI</option></select></div>
+                  <div class="field">
+                    <label for="api">Server API</label>
+                    <select id="api">
+                      <option value="openai">OpenAI</option>
+                      <option value="sdapi">SDAPI (Stable Diffusion API)</option>
+                      <option value="both">Both</option>
+                      <option value="native">Native</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="clip_skip">CLIP skip <span class="fineprint muted" title="CLIP: Contrastive Language-Image Pre-Training">(layer skip)</span></label>
+                  <input id="clip_skip" type="number" min="1" max="12" placeholder="not wired" />
+                </div>
               </details>
             </div>
 
           </form>
         </section>
 
-        <section id="batch" class="screen"><div class="split-grid">
-          <div class="panel"><h2>Batch generation</h2><p>Supported: count, mode/API, seed mode, and core txt2img params.</p><form id="form-batch" class="stacked"><div class="field"><label for="batch_prompt">Prompt</label><textarea id="batch_prompt" required rows="4"></textarea></div><div class="field"><label for="batch_negative">Negative prompt</label><textarea id="batch_negative" rows="2"></textarea></div><div class="three-col"><div class="field"><label for="batch_count">Count</label><input id="batch_count" type="number" min="1" max="24" value="4" /></div><div class="field"><label for="seedMode">Seed mode</label><select id="seedMode"><option value="increment">Increment</option><option value="same">Same</option><option value="random">Random</option></select></div><div class="field"><label for="seedStart">Seed start</label><input id="seedStart" placeholder="optional" /></div></div><button class="primary" type="submit">Run batch</button></form></div>
+        <section id="batch" class="screen">
           <div class="panel">
-            <div class="panel-head"><div><h2>X/Y/Z Plot</h2><p><span class="gate">Partial</span> — requires BigMac server tunnel. Max 16 cells.</p></div></div>
-            <form id="form-xyz" class="stacked">
-              <div class="field"><label for="xyz_prompt">Prompt</label><textarea id="xyz_prompt" required rows="3" placeholder="Describe the image…"></textarea></div>
-              <div class="field"><label for="xyz_negative">Negative prompt</label><textarea id="xyz_negative" rows="2"></textarea></div>
-              <div class="two-col">
-                <div class="field"><label for="xyz_x_type">X axis</label>
-                  <select id="xyz_x_type">
-                    <option value="steps">Steps</option>
-                    <option value="cfg">CFG scale</option>
-                    <option value="sampler">Sampler</option>
-                    <option value="seed">Seed</option>
-                    <option value="width">Width</option>
-                    <option value="height">Height</option>
-                  </select></div>
-                <div class="field"><label for="xyz_x_values">X values (comma-separated)</label>
-                  <input id="xyz_x_values" placeholder="e.g. 10,20,30" /></div>
+            <div class="batch-tabs-bar" role="tablist" aria-label="Batch and sweep modes">
+              <button type="button" class="batch-tab active" role="tab" aria-selected="true" aria-controls="tab-batch" id="tabtrigger-batch" data-batch-tab="tab-batch">Batch</button>
+              <button type="button" class="batch-tab" role="tab" aria-selected="false" aria-controls="tab-xyz" id="tabtrigger-xyz" data-batch-tab="tab-xyz">X/Y/Z Plot <span class="gate" style="font-size:11px">Partial</span></button>
+            </div>
+
+            <div id="tab-batch" role="tabpanel" aria-labelledby="tabtrigger-batch">
+              <h2 style="margin:0 0 4px">Batch generation</h2>
+              <p class="fineprint" style="margin:0 0 14px">Run multiple images with one prompt. Supported: count, seed mode, and core txt2img params.</p>
+              <form id="form-batch" class="stacked">
+                <div class="field"><label for="batch_prompt">Prompt</label><textarea id="batch_prompt" required rows="4"></textarea></div>
+                <div class="field"><label for="batch_negative">Negative prompt</label><textarea id="batch_negative" rows="2"></textarea></div>
+                <div class="three-col">
+                  <div class="field"><label for="batch_count">Count</label><input id="batch_count" type="number" min="1" max="24" value="4" /></div>
+                  <div class="field"><label for="seedMode">Seed mode</label><select id="seedMode"><option value="increment">Increment</option><option value="same">Same</option><option value="random">Random</option></select></div>
+                  <div class="field"><label for="seedStart">Seed start</label><input id="seedStart" placeholder="optional" /></div>
+                </div>
+                <button class="primary" type="submit">Run batch</button>
+              </form>
+            </div>
+
+            <div id="tab-xyz" role="tabpanel" aria-labelledby="tabtrigger-xyz" hidden>
+              <div style="margin-bottom:14px">
+                <h2 style="margin:0 0 4px">X/Y/Z Plot</h2>
+                <p class="fineprint" style="margin:0">Requires BigMac server tunnel. Max 16 cells. Compare outputs across axis values.</p>
               </div>
-              <div class="two-col">
-                <div class="field"><label for="xyz_y_type">Y axis (optional)</label>
-                  <select id="xyz_y_type">
-                    <option value="">— none —</option>
-                    <option value="steps">Steps</option>
-                    <option value="cfg">CFG scale</option>
-                    <option value="sampler">Sampler</option>
-                    <option value="seed">Seed</option>
-                    <option value="width">Width</option>
-                    <option value="height">Height</option>
-                  </select></div>
-                <div class="field"><label for="xyz_y_values">Y values (comma-separated)</label>
-                  <input id="xyz_y_values" placeholder="optional" /></div>
-              </div>
-              <div id="xyz-cell-count" class="fineprint muted">Cells: 0 / 16</div>
-              <div id="xyz-validation-msg" class="gate" style="min-height:1.2em"></div>
-              <button class="primary" type="submit" id="btn-xyz-submit">Run X/Y/Z plot</button>
-            </form>
+              <form id="form-xyz" class="stacked">
+                <div class="field"><label for="xyz_prompt">Prompt</label><textarea id="xyz_prompt" required rows="3" placeholder="Describe the image…"></textarea></div>
+                <div class="field"><label for="xyz_negative">Negative prompt</label><textarea id="xyz_negative" rows="2"></textarea></div>
+                <div class="two-col">
+                  <div class="field"><label for="xyz_x_type">X axis</label>
+                    <select id="xyz_x_type">
+                      <option value="steps">Steps</option>
+                      <option value="cfg">CFG scale</option>
+                      <option value="sampler">Sampler</option>
+                      <option value="seed">Seed</option>
+                      <option value="width">Width</option>
+                      <option value="height">Height</option>
+                    </select></div>
+                  <div class="field"><label for="xyz_x_values">X values (comma-separated)</label>
+                    <input id="xyz_x_values" placeholder="e.g. 10,20,30" aria-describedby="xyz-validation-msg" /></div>
+                </div>
+                <div class="two-col">
+                  <div class="field"><label for="xyz_y_type">Y axis (optional)</label>
+                    <select id="xyz_y_type">
+                      <option value="">— none —</option>
+                      <option value="steps">Steps</option>
+                      <option value="cfg">CFG scale</option>
+                      <option value="sampler">Sampler</option>
+                      <option value="seed">Seed</option>
+                      <option value="width">Width</option>
+                      <option value="height">Height</option>
+                    </select></div>
+                  <div class="field"><label for="xyz_y_values">Y values (comma-separated)</label>
+                    <input id="xyz_y_values" placeholder="optional" /></div>
+                </div>
+                <div id="xyz-cell-count" class="fineprint muted">Cells: 0 / 16</div>
+                <div id="xyz-validation-msg" class="gate" role="alert" aria-live="assertive" style="min-height:1.2em"></div>
+                <button class="primary" type="submit" id="btn-xyz-submit">Run X/Y/Z plot</button>
+              </form>
+            </div>
           </div>
-        </div></section>
+        </section>
 
         <section id="edit" class="screen">
           <div class="cards-grid" id="edit-gates"></div>
@@ -230,7 +319,7 @@
                 <div class="field"><label for="img2img-sampler">Sampler</label><select id="img2img-sampler" disabled></select></div>
                 <div class="field"><label for="img2img-scheduler">Scheduler</label><select id="img2img-scheduler" disabled></select></div>
               </div>
-              <div class="action-row"><button type="button" class="ghost small" id="btn-img2img-preview" disabled>Preview command</button></div>
+              <div class="action-row"><button type="button" class="ghost small" id="btn-img2img-preview" disabled aria-label="Preview img2img command">Preview command</button></div>
               <pre id="img2img-preview" hidden></pre>
               <button class="primary" type="submit" id="btn-img2img-submit" disabled>Run img2img</button>
             </form>
@@ -282,18 +371,19 @@
                 <div class="field"><label for="inpaint-sampler">Sampler</label><select id="inpaint-sampler" disabled></select></div>
                 <div class="field"><label for="inpaint-scheduler">Scheduler</label><select id="inpaint-scheduler" disabled></select></div>
               </div>
-              <div class="action-row"><button type="button" class="ghost small" id="btn-inpaint-preview" disabled>Preview command</button></div>
+              <div class="action-row"><button type="button" class="ghost small" id="btn-inpaint-preview" disabled aria-label="Preview inpaint command">Preview command</button></div>
               <pre id="inpaint-preview" hidden></pre>
               <button class="primary" type="submit" id="btn-inpaint-submit" disabled>Run Inpaint</button>
             </form>
             <div id="inpaint-result" class="job-card muted" style="margin-top:12px;display:none"></div>
           </div>
         </section>
+
         <section id="enhance" class="screen">
           <div class="split-grid">
             <!-- Pillow Upscale — real working panel -->
             <div class="panel">
-              <div class="panel-head"><div><h2>Pillow Upscale</h2><p>Local resize upscale for existing run images. Not AI; not Real-ESRGAN.</p></div></div>
+              <div class="panel-head"><div><h2>Pillow Upscale</h2><p>Available — local resize. Not AI; not Real-ESRGAN.</p></div></div>
               <form id="form-upscale" class="stacked">
                 <div class="field"><label for="upscale-run">Source run</label>
                   <select id="upscale-run"><option value="">Loading runs…</option></select></div>
@@ -317,13 +407,13 @@
                 <label class="check-card"><input id="upscale-overwrite" type="checkbox" /> Overwrite if output exists</label>
                 <button class="primary" type="submit" id="btn-upscale-submit">Upscale image</button>
               </form>
-              <div id="upscale-result" class="job-card muted" style="margin-top:12px">No upscale job yet.</div>
+              <div id="upscale-result" class="job-card muted" style="margin-top:12px">Select a run and image above, then click Upscale image.</div>
               <div id="upscale-preview" style="margin-top:10px"></div>
             </div>
             <!-- Hires Fix — two-pass txt2img → Pillow upscale -->
             <div>
               <div class="panel">
-                <div class="panel-head"><div><h2>Hires Fix</h2><p>Two-pass: txt2img draft → local Pillow upscale. <strong>NOT</strong> full A1111 latent Hires Fix — no denoising second pass.</p></div></div>
+                <div class="panel-head"><div><h2>Hires Fix</h2><p>Available — two-pass: txt2img draft → local Pillow upscale. <strong>NOT</strong> full A1111 latent Hires Fix (no denoising second pass).</p></div></div>
                 <form id="form-hires-fix" class="stacked">
                   <div class="field"><label for="hf-prompt">Prompt <span class="danger">*</span></label>
                     <textarea id="hf-prompt" rows="3" placeholder="Describe your image…"></textarea></div>
@@ -353,7 +443,7 @@
                   </div>
                   <button class="primary" type="submit" id="btn-hf-submit">Run Hires Fix</button>
                 </form>
-                <div id="hf-result" class="job-card muted" style="margin-top:12px">No Hires Fix job yet.</div>
+                <div id="hf-result" class="job-card muted" style="margin-top:12px">Enter a prompt above, then click Run Hires Fix.</div>
                 <div id="hf-preview" style="margin-top:10px"></div>
               </div>
               <h2 style="margin:18px 0 14px">Other Enhance features</h2>
@@ -384,17 +474,18 @@
                     <option value="2">2× passes → 16× total</option>
                   </select></div>
               </div>
-              <p class="fineprint muted">Scale is 4× per repeat using RealESRGAN_x4plus on BigMac M4 Metal (~60s for 512→2048). Model path is server-only.</p>
+              <p class="fineprint muted">Scale is 4× per repeat using RealESRGAN_x4plus on BigMac M4 Metal (~60s for 512→2048). Requires BigMac server.</p>
               <button class="primary" type="submit" id="btn-esrgan-submit" disabled>Run Real-ESRGAN Upscale</button>
             </form>
-            <div id="esrgan-result" class="job-card muted" style="margin-top:12px">No Real-ESRGAN job yet.</div>
+            <div id="esrgan-result" class="job-card muted" style="margin-top:12px">Select a run and image, then click Run Real-ESRGAN Upscale.</div>
           </div>
         </section>
+
         <section id="library" class="screen">
           <div class="panel">
             <div class="panel-head">
               <div><h2>Library</h2><p>Every output is a workflow starting point.</p></div>
-              <button class="ghost" id="btn-load-library">Reload</button>
+              <button class="ghost" id="btn-load-library" aria-label="Reload library">Reload</button>
             </div>
             <div id="library-filters" class="library-filters">
               <button class="filter-btn active" data-filter="all">All</button>
@@ -413,7 +504,7 @@
             <div class="library-compare-bar" id="library-compare-bar">
               <div>
                 <strong>Compare controlled runs</strong>
-                <span id="compare-selection-count" class="fineprint">Select 2-4 controlled runs.</span>
+                <span id="compare-selection-count" class="fineprint">Select 2–4 controlled runs.</span>
               </div>
               <div class="quick-row">
                 <button class="ghost small" id="btn-compare-selected" disabled>Compare selected</button>
@@ -421,7 +512,7 @@
                 <button class="ghost small" id="btn-clear-compare" disabled>Clear</button>
               </div>
             </div>
-            <p class="fineprint">Controlled-run comparison only; this is not full A1111 parity.</p>
+            <p class="fineprint">Controlled-run comparison only; not full A1111 parity.</p>
             <div id="gallery-grid" class="gallery-grid"></div>
             <div id="library-load-more-row" class="library-load-more-row" style="display:none">
               <button class="ghost" id="btn-load-more">Load More</button>
@@ -460,12 +551,13 @@
               </div>
               <div class="run-detail-caveat">Controlled-run comparison only. Existing metadata and images are shown as-is; no regeneration is performed and full A1111 parity is not claimed.</div>
               <div id="run-compare-content" class="run-compare-content">
-                <div class="empty-state">Select 2-4 controlled runs.</div>
+                <div class="empty-state">Select 2–4 controlled runs.</div>
               </div>
             </div>
           </div>
 
         </section>
+
         <section id="models" class="screen">
           <div class="split-grid">
             <div class="panel">
@@ -482,7 +574,7 @@
               </div>
               <div id="model-stage-status" class="model-card" style="margin-bottom:10px"></div>
               <div id="model-inventory-status" class="model-card" style="margin-bottom:10px"></div>
-              <div class="fineprint" style="margin-bottom:10px">Proof action only; not full SDXL UI generation parity.</div>
+              <div class="fineprint" style="margin-bottom:10px">Proof action only; not full SDXL (Stable Diffusion XL) generation parity.</div>
               <div id="asset-cache-status" class="muted fineprint" style="margin-bottom:10px">Asset cache: loading…</div>
               <div id="model-list" class="model-list"></div>
             </div>
@@ -493,6 +585,7 @@
             </div>
           </div>
         </section>
+
         <section id="system" class="screen">
           <div class="split-grid">
             <div class="panel">
@@ -507,12 +600,18 @@
                 <button class="ghost" data-action="probe-upscale">Probe upscale</button>
                 <button class="ghost" data-action="discover-assets">Discover assets</button>
               </div>
-              <h2 style="margin-top:18px">Visible sections</h2>
+              <div class="section-visibility-header">
+                <h2>Visible sections</h2>
+                <div class="section-visibility-controls">
+                  <span id="hidden-section-count" class="fineprint muted" role="status" aria-live="polite"></span>
+                  <button type="button" class="ghost small" id="btn-reset-sections">Reset visible sections</button>
+                </div>
+              </div>
               <div id="system-section-toggles" class="section-toggle-grid"></div>
               <h2 style="margin-top:18px">Capability gates</h2>
               <div id="system-gates" class="model-list"></div>
             </div>
-            <div class="panel"><h2>Job log</h2><pre id="job-log">No log yet.</pre></div>
+            <div class="panel"><h2>Job log</h2><pre id="job-log">Run an action to see output here.</pre></div>
           </div>
         </section>
       </main>
@@ -528,9 +627,9 @@
           <button class="ghost small" id="btn-viewer-copy-path">Copy path</button>
           <a class="ghost small" id="btn-viewer-download" href="#" download>Download</a>
           <button class="ghost small" id="btn-viewer-fullscreen">Full screen</button>
-          <button class="ghost small" id="btn-viewer-upscale">Send to Upscale</button>
-          <button class="ghost small" id="btn-viewer-img2img">Send to img2img</button>
-          <button class="ghost small" id="btn-viewer-inpaint">Send to Inpaint</button>
+          <button class="ghost small" id="btn-viewer-upscale" aria-label="Send to Upscale">Send to Upscale</button>
+          <button class="ghost small" id="btn-viewer-img2img" aria-label="Send to img2img">Send to img2img</button>
+          <button class="ghost small" id="btn-viewer-inpaint" aria-label="Send to Inpaint">Send to Inpaint</button>
           <button class="ghost small" id="btn-viewer-close" aria-label="Close image viewer">&#10005; Close</button>
         </div>
       </div>
