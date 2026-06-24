@@ -135,6 +135,7 @@ async function loadCapabilities() {
     await loadModelInventory();
     hydrateControls();
     renderFeatureGates();
+    renderFeatureLedger();
     renderModels();
     renderSystemGates();
     setPill('pill-backend', 'Ready', 'ok');
@@ -196,9 +197,57 @@ function renderSystemGates() {
         (i.reason ? '<br><span class="fineprint" style="font-size:11px">' + esc(i.reason) + '</span>' : '') +
         '</div>').join('') + '</div>' : '';
   el.innerHTML =
-    renderGroup('✓ Supported', groups.supported, 'derived-badge') +
-    renderGroup('⚡ Partial', groups.partial, 'gate') +
-    renderGroup('✗ Gated / not wired', groups.gated, 'muted');
+    renderGroup('Supported', groups.supported, 'derived-badge') +
+    renderGroup('Partial', groups.partial, 'gate') +
+    renderGroup('Gated / not wired', groups.gated, 'muted');
+}
+
+function gateStatus(gate = {}) {
+  if (gate.supported === true) return { label: 'Available', cls: 'ok' };
+  if (gate.supported === 'partial') return { label: 'Partial', cls: 'partial' };
+  return { label: 'Unavailable', cls: 'blocked' };
+}
+
+function renderFeatureLedger() {
+  const el = $('feature-ledger');
+  if (!el) return;
+  const gates = (state.capabilities && state.capabilities.featureGates) || {};
+  const targetCount = state.controlledTargets && state.controlledTargets.length ? state.controlledTargets.length : getControlledTargets().length;
+  const rows = [
+    ['Create', 'Controlled txt2img', { supported: true, route: '/api/actions/generate-controlled' }, `${targetCount} target${targetCount === 1 ? '' : 's'}; not full A1111 parity.`],
+    ['Create', 'Command preview', gates.commandPreview, 'Dry-run command and normalized params.'],
+    ['Create', 'Prompt tools', { supported: true }, 'Prompt draft, local styles, wildcards, and Ollama enhancement.'],
+    ['Create', 'Variation seed', { supported: false, reason: 'Visible for compatibility; backend does not support variation seed yet.' }, 'Read-only planned controls.'],
+    ['Batch', 'Batch generation', gates.batch, 'Count and seed-mode batch flow.'],
+    ['Batch', 'X/Y/Z plot', gates.xyzPlot, 'Bounded plot flow, max 16 cells.'],
+    ['Edit', 'img2img', gates.img2img, gates.img2img && (gates.img2img.reason || gates.img2img.caveat || 'Source image plus denoise flow.')],
+    ['Edit', 'Inpaint', gates.inpaint, gates.inpaint && (gates.inpaint.reason || gates.inpaint.caveat || 'Mask editor and inpaint command bridge.')],
+    ['Edit', 'Outpaint', gates.outpaint, gates.outpaint && gates.outpaint.reason],
+    ['Enhance', 'Pillow upscale', gates.pillowUpscale || gates.upscale, 'Local resize upscale; not artificial intelligence upscale.'],
+    ['Enhance', 'Real-ESRGAN', gates.realEsrgan, gates.realEsrgan && (gates.realEsrgan.caveat || gates.realEsrgan.reason)],
+    ['Enhance', 'Hires Fix', gates.hiresFix, gates.hiresFix && gates.hiresFix.reason],
+    ['Enhance', 'Face Restore', gates.faceRestore, gates.faceRestore && gates.faceRestore.reason],
+    ['Library', 'Gallery and reuse', gates.gallery, 'Run browser, settings reuse, manifest inspection, image viewer.'],
+    ['Library', 'PNG Info', gates.pngInfo, gates.pngInfo && gates.pngInfo.caveat],
+    ['Library', 'Controlled comparison', { supported: true }, 'Display-only compare; no regeneration.'],
+    ['Models', 'Model staging', gates.sdxl || { supported: true }, 'Model stage checks, inventory, and smoke proofs.'],
+    ['Models', 'LoRA', gates.lora, gates.lora && (gates.lora.reason || 'Allowlisted LoRA token insertion.')],
+    ['Models', 'Textual inversion', gates.textualInversion, gates.textualInversion && gates.textualInversion.reason],
+    ['Models', 'Hypernetworks', gates.hypernetworks, gates.hypernetworks && gates.hypernetworks.reason],
+    ['System', 'Diagnostics', { supported: true }, 'Verify, server status, start/stop, seed test, probes.'],
+    ['Internal', 'Clean old runs', { supported: false, reason: 'Hidden until age preview and confirmation are added.' }, 'Destructive maintenance command intentionally not exposed as a casual button.'],
+    ['Internal', 'Benchmarks and packaging', { supported: false, reason: 'Developer/release tooling, not normal workbench controls.' }, 'Documented outside primary UI.']
+  ];
+  el.innerHTML = rows.map(([area, name, gate, note]) => {
+    const status = gateStatus(gate);
+    const route = gate && gate.route ? `<span class="ledger-route">${esc(gate.route)}</span>` : '';
+    const detail = note || (gate && (gate.reason || gate.caveat)) || '';
+    return `<article class="ledger-row ledger-${status.cls}">
+      <div class="ledger-area">${esc(area)}</div>
+      <div class="ledger-main"><strong>${esc(name)}</strong>${route}<p>${esc(detail)}</p></div>
+      <div class="ledger-status"><span>${status.label}</span></div>
+    </article>`;
+  }).join('');
 }
 
 function hydrateControls() {
@@ -1303,7 +1352,7 @@ function runIndexCard(r) {
   const badgeClass = runTypeBadgeClass(r.filterCategory, r.status);
   const labelText = r.controlledTargetLabel || r.type || r.id;
   const statusBadge = r.status === 'FAIL' ? ' <span class="run-type-badge badge-fail">FAIL</span>' : '';
-  const upscaledBadge = r.hasUpscaled ? '<span class="derived-badge">Upscaled ✓</span>' : '';
+  const upscaledBadge = r.hasUpscaled ? '<span class="derived-badge">Upscaled</span>' : '';
   const canCompare = r.filterCategory === 'controlled' || String(r.type || '').startsWith('controlled-');
   const compareChecked = state.libraryCompareIds.includes(r.id) ? ' checked' : '';
   const compareDisabled = canCompare ? '' : ' disabled title="Comparison is controlled runs only"';
