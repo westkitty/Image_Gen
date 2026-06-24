@@ -1,6 +1,6 @@
 'use strict';
 
-const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null, controlledTargets: [], controlledTargetMap: {}, libraryFilter: 'all', libraryIndex: [], libraryOffset: 0, libraryHasMore: false, libraryLoading: false, libraryCompareIds: [], lastComparisonRows: [] };
+const state = { capabilities: null, runs: [], lastJob: null, lastParams: null, lastSeed: '', activeImage: null, poller: null, modelInventory: null, controlledTargets: [], controlledTargetMap: {}, libraryFilter: 'all', libraryIndex: [], libraryOffset: 0, libraryHasMore: false, libraryLoading: false, libraryCompareIds: [], lastComparisonRows: [], hiddenSections: new Set() };
 const $ = id => document.getElementById(id);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
@@ -15,6 +15,19 @@ const DEFAULT_PRESETS = {
 };
 const ASPECTS = [
   ['1:1', 512, 512], ['Portrait', 512, 768], ['Landscape', 768, 512], ['Wide', 1024, 576], ['Tall', 576, 1024], ['HD', 1024, 1024]
+];
+const PROMPT_DRAFT_KEY = 'createPromptDraft';
+const HIDDEN_SECTIONS_KEY = 'hiddenCreateSections';
+const SECTION_TOGGLES = [
+  ['settings-json', 'Settings JSON'],
+  ['controlled-sweep', 'Sweep planner'],
+  ['preview-json', 'Preview JSON'],
+  ['ollama-chat', 'Ollama chat'],
+  ['seed-variation', 'Seed & variation'],
+  ['hires-faces-tiling', 'Hires / faces / tiling'],
+  ['backend-routing', 'Backend routing'],
+  ['system-gates', 'Capability gates'],
+  ['job-log', 'Job log']
 ];
 
 const FALLBACK_CONTROLLED_TARGETS = [
@@ -38,6 +51,32 @@ function setPill(id, label, kind = '') {
 function notifyLog(text) { $('job-log').textContent = text || 'No log.'; }
 function saveBool(key, value) { localStorage.setItem(key, value ? 'true' : 'false'); }
 function loadBool(key) { return localStorage.getItem(key) === 'true'; }
+function savePromptDraft() {
+  const draft = {
+    prompt: $('prompt') ? $('prompt').value : '',
+    negative_prompt: $('negative_prompt') ? $('negative_prompt').value : '',
+    savedAt: new Date().toISOString()
+  };
+  localStorage.setItem(PROMPT_DRAFT_KEY, JSON.stringify(draft));
+}
+function loadPromptDraft(showNote = false) {
+  let draft = null;
+  try { draft = JSON.parse(localStorage.getItem(PROMPT_DRAFT_KEY) || 'null'); } catch (_) {}
+  if (!draft || typeof draft !== 'object') {
+    if (showNote) showCreateNote('No saved prompt draft found.', 'privacy');
+    return false;
+  }
+  if ($('prompt')) {
+    $('prompt').value = draft.prompt || '';
+    $('prompt').dispatchEvent(new Event('input'));
+  }
+  if ($('negative_prompt')) {
+    $('negative_prompt').value = draft.negative_prompt || '';
+    $('negative_prompt').dispatchEvent(new Event('input'));
+  }
+  if (showNote) showCreateNote('Reloaded previous prompt draft.', '');
+  return true;
+}
 function getControlledTargets() {
   return (state.capabilities && state.capabilities.modelTargets && state.capabilities.modelTargets.length)
     ? state.capabilities.modelTargets
@@ -253,7 +292,8 @@ function getCoreParams(source = '') {
     api: $('api').value,
     clip_skip: $('clip_skip').value,
     tiling: $('tiling').checked,
-    save_prompts: $('set-save-prompts').checked
+    save_prompts: $('set-save-prompts').checked,
+    quantity: $('quantity') ? Number($('quantity').value) : 1
   };
 }
 
@@ -334,7 +374,8 @@ function setPreviewProgress(label = 'Rendering image') {
   $('preview-stage').innerHTML = `
     <div class="render-progress" role="status" aria-live="polite">
       <div class="render-progress-label">${esc(label)}</div>
-      <div class="render-progress-bar" aria-hidden="true"><span></span></div>
+      <div class="render-progress-detail" id="preview-progress-detail">Current render: estimating...</div>
+      <div class="render-progress-bar" role="progressbar" aria-label="Current render progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
     </div>`;
   $('preview-subtitle').textContent = 'Generation in progress.';
 }
@@ -401,8 +442,24 @@ async function trackJob(jobId, label) {
   state.poller = setInterval(() => pollJob(jobId), 1200);
   await pollJob(jobId);
 }
-function renderJobProgress(label, status) {
-  return `<strong>${esc(label || 'Rendering image')}</strong><br>Status: ${esc(status || 'running')}<div class="job-progress" role="progressbar" aria-label="Rendering image"><span></span></div>`;
+function formatProgressLabel(progress) {
+  if (!progress) return 'Current render: estimating...';
+  const current = progress.currentRun || 1;
+  const total = progress.totalRuns || 1;
+  const left = progress.runsLeft != null ? progress.runsLeft : Math.max(0, total - (progress.completedRuns || 0));
+  const currentPercent = Math.round(progress.currentRunPercent || 0);
+  const totalPercent = Math.round(progress.totalPercent || 0);
+  return `Render ${current}/${total} · ${left} left · current ${currentPercent}% · order ${totalPercent}%`;
+}
+function renderProgressBar(percent, label, className = 'job-progress') {
+  const safePercent = Math.max(0, Math.min(100, Math.round(percent || 0)));
+  return `<div class="${className} determinate" role="progressbar" aria-label="${esc(label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${safePercent}"><span style="width:${safePercent}%"></span></div>`;
+}
+function renderJobProgress(label, status, progress = null) {
+  const progressLabel = formatProgressLabel(progress);
+  const currentPercent = progress ? progress.currentRunPercent : 0;
+  const totalPercent = progress ? progress.totalPercent : 0;
+  return `<strong>${esc(label || 'Rendering image')}</strong><br>Status: ${esc(status || 'running')}<div class="job-progress-copy">${esc(progressLabel)}</div>${renderProgressBar(currentPercent, 'Current render progress')}${progress && progress.totalRuns > 1 ? renderProgressBar(totalPercent, 'Total order progress', 'job-progress order-progress') : ''}`;
 }
 async function pollJob(jobId) {
   try {
@@ -411,8 +468,21 @@ async function pollJob(jobId) {
     notifyLog([log.stdout, log.stderr].filter(Boolean).join('\n\n'));
     const targetLine = job.controlledTarget ? `<br>Target: ${esc(job.controlledTarget)}` : '';
     const outputLine = job.controlledOutputImage ? `<br>Output: ${esc(job.controlledOutputImage)}` : '';
-    const progress = (job.status === 'running' || job.status === 'queued') ? '<div class="job-progress" role="progressbar" aria-label="Rendering image"><span></span></div>' : '';
-    $('latest-job').innerHTML = `<strong>${esc(job.commandAction)}</strong><br>Status: ${esc(job.status)}${targetLine}${outputLine}${job.runId ? `<br>Run: ${esc(job.runId)}` : ''}${progress}`;
+    const progress = (job.status === 'running' || job.status === 'queued')
+      ? renderJobProgress(job.commandAction, job.status, job.progress)
+      : '';
+    if (progress) {
+      $('latest-job').innerHTML = `${progress}${targetLine}${outputLine}${job.runId ? `<br>Run: ${esc(job.runId)}` : ''}`;
+      const detail = $('preview-progress-detail');
+      if (detail) detail.textContent = formatProgressLabel(job.progress);
+      const previewBar = $('preview-stage').querySelector('.render-progress-bar');
+      const previewFill = previewBar && previewBar.querySelector('span');
+      const currentPercent = job.progress ? Math.round(job.progress.currentRunPercent || 0) : 0;
+      if (previewBar) previewBar.setAttribute('aria-valuenow', String(currentPercent));
+      if (previewFill) previewFill.style.width = currentPercent + '%';
+    } else {
+      $('latest-job').innerHTML = `<strong>${esc(job.commandAction)}</strong><br>Status: ${esc(job.status)}${targetLine}${outputLine}${job.runId ? `<br>Run: ${esc(job.runId)}` : ''}`;
+    }
     if (job.status !== 'running' && job.status !== 'queued') {
       clearInterval(state.poller);
       setPill('pill-job', job.status, job.status === 'PASS' ? 'ok' : job.status === 'PARTIAL' ? 'run' : 'bad');
@@ -1438,7 +1508,7 @@ async function compareLatestSweep() {
   }
 }
 
-const SETTINGS_ALLOWED_KEYS = new Set(['target', 'width', 'height', 'steps', 'cfg_scale', 'seed', 'prompt', 'negative_prompt']);
+const SETTINGS_ALLOWED_KEYS = new Set(['target', 'width', 'height', 'steps', 'cfg_scale', 'seed', 'prompt', 'negative_prompt', 'quantity']);
 const SETTINGS_BLOCKED_KEYS = new Set(['modelPath', 'model_path', 'checkpoint_path', 'checkpoint', 'lora', 'vae', 'controlnet', 'controlNet', 'version', 'modelVersion']);
 const SETTINGS_ALLOWED_TARGETS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis']);
 
@@ -1455,12 +1525,14 @@ function loadSettingsJson(jsonStr) {
   if (s.height != null && (typeof s.height !== 'number' || s.height < 64 || s.height > 2048)) { showCreateNote('Rejected: height out of range (64–2048).', 'privacy'); return; }
   if (s.steps != null && (typeof s.steps !== 'number' || s.steps < 1 || s.steps > 150)) { showCreateNote('Rejected: steps out of range (1–150).', 'privacy'); return; }
   if (s.cfg_scale != null && (typeof s.cfg_scale !== 'number' || !isFinite(s.cfg_scale))) { showCreateNote('Rejected: cfg_scale must be a finite number.', 'privacy'); return; }
+  if (s.quantity != null && (typeof s.quantity !== 'number' || s.quantity < 1 || s.quantity > 100)) { showCreateNote('Rejected: quantity out of range (1–100).', 'privacy'); return; }
   if (s.target) { const m = $('model'); if (m) { m.value = s.target; applyControlledTargetDefaults(s.target); } }
   if (s.width) $('width').value = s.width;
   if (s.height) $('height').value = s.height;
   if (s.steps) $('steps').value = s.steps;
   if (s.cfg_scale != null) $('cfg_scale').value = s.cfg_scale;
   if (s.seed != null) $('seed').value = String(s.seed);
+  if (s.quantity) $('quantity').value = s.quantity;
   if ($('preset')) $('preset').value = 'Custom';
   if (s.prompt) { $('prompt').value = s.prompt; $('prompt').dispatchEvent(new Event('input')); }
   if (s.negative_prompt) $('negative_prompt').value = s.negative_prompt;
@@ -1552,6 +1624,37 @@ function showCreateNote(msg, variant) {
   note.textContent = msg || '';
   note.className = 'create-note' + (variant ? ' ' + variant : '');
   note.hidden = !msg;
+}
+
+function applySectionVisibility() {
+  SECTION_TOGGLES.forEach(([key]) => {
+    const targets = $$(`[data-section-key="${key}"]`);
+    const byId = $(key);
+    if (byId) targets.push(byId);
+    targets.forEach(el => { el.hidden = state.hiddenSections.has(key); });
+  });
+}
+
+function loadSectionVisibility() {
+  let hidden = [];
+  try { hidden = JSON.parse(localStorage.getItem(HIDDEN_SECTIONS_KEY) || '[]'); } catch (_) {}
+  state.hiddenSections = new Set(Array.isArray(hidden) ? hidden : []);
+  renderSectionToggles();
+  applySectionVisibility();
+}
+
+function saveSectionVisibility() {
+  localStorage.setItem(HIDDEN_SECTIONS_KEY, JSON.stringify(Array.from(state.hiddenSections)));
+  applySectionVisibility();
+}
+
+function renderSectionToggles() {
+  const container = $('system-section-toggles');
+  if (!container) return;
+  container.innerHTML = SECTION_TOGGLES.map(([key, label]) => {
+    const checked = state.hiddenSections.has(key) ? '' : 'checked';
+    return `<label class="check-card section-toggle"><input type="checkbox" data-section-toggle="${esc(key)}" ${checked} /> ${esc(label)}</label>`;
+  }).join('');
 }
 
 function replayInCreate(replay, runId) {
@@ -1863,6 +1966,66 @@ async function runSimpleAction(action) {
     trackJob(result.job_id, `Running ${action}…`);
   } catch (err) { notifyLog(err.message); }
 }
+async function loadOllamaModels() {
+  const status = $('ollama-status');
+  const modelSelect = $('ollama-model');
+  if (status) status.value = 'Checking...';
+  try {
+    const data = await api('/api/ollama/status');
+    const models = data.models || [];
+    if (modelSelect) {
+      modelSelect.innerHTML = '<option value="">Auto</option>' + models.map(model => `<option value="${esc(model.name)}">${esc(model.name)}</option>`).join('');
+    }
+    if (status) status.value = models.length ? `${models.length} model(s)` : 'No models';
+  } catch (err) {
+    if (status) status.value = 'Unavailable';
+    notifyLog('Ollama unavailable: ' + err.message);
+  }
+}
+
+async function enhancePromptWithOllama() {
+  const promptEl = $('prompt');
+  const btn = $('btn-enhance-prompt');
+  const prompt = promptEl ? promptEl.value.trim() : '';
+  if (!prompt) { showCreateNote('Prompt is required before enhancement.', 'privacy'); return; }
+  if (btn) btn.disabled = true;
+  showCreateNote('Enhancing prompt with Ollama...', '');
+  try {
+    const result = await api('/api/ollama/enhance', {
+      method: 'POST',
+      body: JSON.stringify({ prompt, model: $('ollama-model') ? $('ollama-model').value : '' })
+    });
+    promptEl.value = result.prompt || prompt;
+    promptEl.dispatchEvent(new Event('input'));
+    savePromptDraft();
+    showCreateNote(`Prompt enhanced with ${result.model}.`, '');
+  } catch (err) {
+    showCreateNote('Ollama enhancement failed: ' + err.message, 'privacy');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function sendOllamaChat() {
+  const input = $('ollama-chat-input');
+  const output = $('ollama-chat-output');
+  const btn = $('btn-ollama-send');
+  const message = input ? input.value.trim() : '';
+  if (!message) return;
+  if (btn) btn.disabled = true;
+  if (output) output.textContent = 'Ollama is responding...';
+  try {
+    const result = await api('/api/ollama/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message, model: $('ollama-model') ? $('ollama-model').value : '' })
+    });
+    if (output) output.textContent = `${result.model}\n\n${result.reply}`;
+  } catch (err) {
+    if (output) output.textContent = 'Ollama chat failed: ' + err.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
 async function explainUnsupported(feature) {
   try { await api('/api/actions/unsupported', { method: 'POST', body: JSON.stringify({ feature }) }); }
   catch (err) { notifyLog(err.message); }
@@ -1913,6 +2076,8 @@ function bindEvents() {
   ['steps','cfg_scale','sampler','width','height'].forEach(id => $(id).addEventListener('input', () => { $('preset').value = 'Custom'; }));
   $('prompt').addEventListener('input', () => updatePromptStats('prompt', 'prompt-count'));
   $('negative_prompt').addEventListener('input', () => updatePromptStats('negative_prompt', 'neg-prompt-count'));
+  $('prompt').addEventListener('input', savePromptDraft);
+  $('negative_prompt').addEventListener('input', savePromptDraft);
   $('sweep-axis').addEventListener('change', e => {
     const isCfg = e.target.value === 'cfg';
     $('sweep-seed-opts').hidden = isCfg;
@@ -1922,6 +2087,10 @@ function bindEvents() {
   $('btn-run-sweep').addEventListener('click', runControlledSweep);
   $('style-select').addEventListener('change', e => { if (e.target.value) $('prompt').value = `${$('prompt').value.trim()} ${e.target.value}`.trim(); });
   $('btn-save-style').addEventListener('click', saveCurrentStyle);
+  $('btn-reload-prompt').addEventListener('click', () => loadPromptDraft(true));
+  $('btn-enhance-prompt').addEventListener('click', enhancePromptWithOllama);
+  if ($('btn-ollama-refresh')) $('btn-ollama-refresh').addEventListener('click', loadOllamaModels);
+  if ($('btn-ollama-send')) $('btn-ollama-send').addEventListener('click', sendOllamaChat);
   $('set-save-prompts').addEventListener('change', e => saveBool('savePrompts', e.target.checked));
   $('btn-random-seed').addEventListener('click', () => { $('seed').value = String(Math.floor(Math.random() * 2147483647)); });
   $('btn-random-seed-ongoing').addEventListener('click', () => { $('seed').value = '-1'; });
@@ -2013,6 +2182,13 @@ function bindEvents() {
     if (sendUpscale) sendToUpscale(sendUpscale.dataset.sendUpscale, sendUpscale.dataset.upscaleImage);
     const viewUpscaled = event.target.closest('[data-view-upscaled]');
     if (viewUpscaled) viewUpscaledOutputs(viewUpscaled.dataset.viewUpscaled);
+    const sectionToggle = event.target.closest('[data-section-toggle]');
+    if (sectionToggle) {
+      const key = sectionToggle.dataset.sectionToggle;
+      if (sectionToggle.checked) state.hiddenSections.delete(key);
+      else state.hiddenSections.add(key);
+      saveSectionVisibility();
+    }
   });
 
   // Right-click context menu for any image with data-ctx-path set
@@ -2054,7 +2230,10 @@ function bindEvents() {
 
 async function init() {
   bindEvents();
+  loadSectionVisibility();
+  loadPromptDraft(false);
   await loadCapabilities();
+  await loadOllamaModels();
   await loadGallery(true);
   setPill('pill-server', 'Check manually', 'run');
 }

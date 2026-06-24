@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" href="data:," />
   <title>SDCPP Workbench</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2" />
 </head>
 <body>
   <div class="app-shell">
@@ -26,7 +26,7 @@
       <div class="sidebar-foot">
         <div class="tiny-label">Privacy</div>
         <label class="toggle-row"><input id="set-save-prompts" type="checkbox" /> Save prompts in run records</label>
-        <p class="fineprint">Default is redacted. Prompt reuse is limited when redaction stays on.</p>
+        <p class="fineprint">Run records can still be redacted. The current prompt draft is kept locally for reload.</p>
       </div>
     </aside>
 
@@ -48,7 +48,7 @@
               <div class="panel-head"><div><h2>Create</h2><p>Prompt and model selection.</p></div><button type="submit" class="primary big">Generate</button></div>
               <div id="create-note" class="create-note" hidden></div>
 
-              <div class="field"><label for="prompt">Prompt</label><textarea id="prompt" required rows="5" placeholder="Describe the image. Use A1111 prompt syntax if your backend/model supports it."></textarea><div class="meta-row"><span id="prompt-count">0 chars</span><button type="button" class="ghost small" id="btn-save-style">Save style</button></div></div>
+              <div class="field"><label for="prompt">Prompt</label><textarea id="prompt" required rows="5" placeholder="Describe the image. Use A1111 prompt syntax if your backend/model supports it."></textarea><div class="meta-row prompt-tools"><span id="prompt-count">0 chars</span><span class="prompt-tool-buttons"><button type="button" class="ghost small" id="btn-reload-prompt">Reload prompt</button><button type="button" class="ghost small" id="btn-enhance-prompt">Enhance</button><button type="button" class="ghost small" id="btn-save-style">Save style</button></span></div></div>
               <div class="field"><label for="negative_prompt">Negative prompt</label><textarea id="negative_prompt" rows="3" placeholder="low quality, blurry, bad anatomy…"></textarea><div class="meta-row"><span id="neg-prompt-count" class="muted">0 chars</span></div></div>
 
               <div class="two-col">
@@ -62,7 +62,7 @@
                 <div class="gate-row"><button type="button" class="ghost" id="btn-insert-lora" disabled>Insert LoRA token</button><span id="lora-status" class="muted fineprint"></span></div>
               </details>
 
-              <details class="block"><summary>Import / paste settings JSON</summary>
+              <details class="block" data-section-key="settings-json"><summary>Import / paste settings JSON</summary>
                 <p class="fineprint">Paste JSON copied from "Copy settings JSON" in Library. Only the closed target list is accepted; modelPath and arbitrary targets are rejected.</p>
                 <textarea id="settings-import-input" rows="4" aria-label="Settings JSON to import" placeholder='{&#10;  "target": "sdxl-turbo",&#10;  "width": 512,&#10;  "height": 512,&#10;  "steps": 4,&#10;  "cfg_scale": 0,&#10;  "seed": "123456789"&#10;}'></textarea>
                 <div class="quick-row" style="margin-top:8px">
@@ -71,7 +71,7 @@
                 </div>
               </details>
 
-              <details class="block"><summary>Controlled sweep planner</summary>
+              <details class="block" data-section-key="controlled-sweep"><summary>Controlled sweep planner</summary>
                 <p class="fineprint">Generate multiple controlled jobs from current settings with a varied seed or CFG. Seed and CFG axis only — not full XYZ plot parity. Max 8 jobs per sweep.</p>
                 <div class="two-col">
                   <div class="field"><label for="sweep-axis">Sweep axis</label>
@@ -96,7 +96,7 @@
               <div class="panel-head"><div><h2>Preview</h2><p id="preview-subtitle">Generated outputs and job status.</p></div></div>
               <div id="preview-stage" class="preview-stage"><div class="empty-state">No image selected. Generate something or open a library item.</div></div>
               <div class="action-row"><button class="ghost" id="btn-preview-create">Preview command</button><button class="ghost" id="btn-copy-last">Copy params</button><button class="ghost" id="btn-send-img2img">Send to img2img</button><button class="ghost" id="btn-send-upscale">Send to upscale</button></div>
-              <pre id="create-debug-preview" hidden></pre>
+              <pre id="create-debug-preview" data-section-key="preview-json" hidden></pre>
               <div id="latest-job" class="job-card muted">No active job.</div>
             </aside>
 
@@ -112,7 +112,7 @@
                 <div class="field"><label for="sampler">Sampler</label><select id="sampler"></select></div>
                 <div class="two-col">
                   <div class="field"><label for="scheduler">Scheduler</label><select id="scheduler"></select></div>
-                  <div class="field"></div>
+                  <div class="field"><label for="quantity">Quantity</label><input id="quantity" type="number" min="1" max="100" value="1" /></div>
                 </div>
                 <div class="two-col">
                   <div class="field"><label for="width">Width</label><input id="width" type="number" min="64" max="2048" step="8" value="512" /></div>
@@ -121,7 +121,17 @@
                 <div class="quick-row" id="aspect-presets"></div>
               </details>
 
-              <details open class="block"><summary>Seed & variation</summary>
+              <details class="block ollama-chat" data-section-key="ollama-chat"><summary>Ollama chat</summary>
+                <div class="two-col">
+                  <div class="field"><label for="ollama-model">Model</label><select id="ollama-model"><option value="">Auto</option></select></div>
+                  <div class="field"><label for="ollama-status">Status</label><input id="ollama-status" value="Not checked" disabled /></div>
+                </div>
+                <div class="field"><label for="ollama-chat-input">Message</label><textarea id="ollama-chat-input" rows="3" placeholder="Ask the local Ollama model…"></textarea></div>
+                <div class="quick-row"><button type="button" class="ghost small" id="btn-ollama-refresh">Refresh models</button><button type="button" class="primary small" id="btn-ollama-send">Send</button></div>
+                <div id="ollama-chat-output" class="job-card muted">No chat yet.</div>
+              </details>
+
+              <details open class="block" data-section-key="seed-variation"><summary>Seed & variation</summary>
                 <div class="field"><label for="seed">Seed</label><input id="seed" placeholder="-1 for random" /></div>
                 <div class="two-col">
                   <div class="field"><label for="variation_seed">Variation seed</label><input id="variation_seed" disabled placeholder="backend missing" /></div>
@@ -131,12 +141,12 @@
                 <p class="fineprint gate" style="margin-top:8px">Variation seed / seed resize visible; backend not wired.</p>
               </details>
 
-              <details class="block"><summary>Hires Fix / faces / tiling</summary>
+              <details class="block" data-section-key="hires-faces-tiling"><summary>Hires Fix / faces / tiling</summary>
                 <div class="three-col"><label class="check-card"><input id="hires_fix" type="checkbox" disabled /> Hires Fix</label><label class="check-card"><input id="restore_faces" type="checkbox" disabled /> Restore faces</label><label class="check-card"><input id="tiling" type="checkbox" /> Tiling</label></div>
                 <p class="fineprint">Use the Enhance screen for two-pass Hires Fix. Face restoration requires GFPGAN/CodeFormer on the inference host.</p>
               </details>
 
-              <details class="block"><summary>Backend routing</summary>
+              <details class="block" data-section-key="backend-routing"><summary>Backend routing</summary>
                 <div class="two-col"><div class="field"><label for="mode">Mode</label><select id="mode"><option value="server">Server</option><option value="cli">CLI</option></select></div><div class="field"><label for="api">Server API</label><select id="api"><option value="openai">OpenAI</option><option value="sdapi">SDAPI</option><option value="both">Both</option><option value="native">Native</option></select></div></div>
                 <div class="field"><label for="clip_skip">CLIP skip</label><input id="clip_skip" type="number" min="1" max="12" placeholder="not wired" /></div>
               </details>
@@ -495,6 +505,8 @@
                 <button class="ghost" data-action="probe-upscale">Probe upscale</button>
                 <button class="ghost" data-action="discover-assets">Discover assets</button>
               </div>
+              <h2 style="margin-top:18px">Visible sections</h2>
+              <div id="system-section-toggles" class="section-toggle-grid"></div>
               <h2 style="margin-top:18px">Capability gates</h2>
               <div id="system-gates" class="model-list"></div>
             </div>

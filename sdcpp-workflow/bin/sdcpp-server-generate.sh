@@ -31,7 +31,7 @@ Usage: $(basename "$0") [options]
   --scheduler NAME   scheduler (overrides preset/config)
   --vae PATH         path to VAE model (parsed but ignored in server mode)
   --api MODE         openai | sdapi | both | native   (default openai)
-  --seed N|random|fixed   control seed (default: not forced; SDAPI default is random)
+  --seed N|random|fixed   control seed (default: -1; SDAPI default is random)
   --warm-state LABEL metrics label: cold|warm|unknown (default unknown)
   -h, --help
 EOF

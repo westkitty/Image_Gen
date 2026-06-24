@@ -13,7 +13,7 @@ load_config
 # Resolution order: config defaults  ->  --preset values  ->  explicit flags.
 ARG_PROMPT="$PROMPT"
 ARG_NEG="$NEGATIVE_PROMPT"
-ARG_SEED=""           # empty -> let sd-cli use its default (42)
+ARG_SEED=""           # empty -> default to -1 (forces random seed)
 ARG_OUT_NAME=""       # empty -> auto timestamp name
 ARG_PRESET=""
 ARG_SCHEDULER="discrete"
@@ -34,7 +34,7 @@ Usage: $(basename "$0") [options]
   --sampler NAME     sampler (overrides preset/config)
   --scheduler NAME   scheduler (overrides preset/config)
   --vae PATH         path to standalone VAE model
-  --seed N|random|fixed   N=integer, random=recorded random int, fixed=42 (default: not forced -> 42)
+  --seed N|random|fixed   N=integer, random=recorded random int, fixed=42 (default: not forced -> -1)
   --out-name NAME    base name for the PNG (no extension)
   -h, --help         show this help
 EOF
@@ -160,7 +160,7 @@ SCHEDULER_FRAG=""
 
 # Resolve VAE flag
 VAE_FRAG=""
-[ -n "$ARG_VAE" ] && VAE_FRAG="--vae $ARG_VAE"
+[ -n "$ARG_VAE" ] && [ "$ARG_VAE" != "none" ] && VAE_FRAG="--vae $ARG_VAE"
 
 # Resolve LoRA dir and CPU backend: only when prompt contains <lora:...> tags.
 # CPU backend is required because Metal does not support the LoRA tensor ADD op.

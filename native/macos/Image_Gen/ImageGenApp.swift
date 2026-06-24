@@ -392,6 +392,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         appendLog("starting operator-console node server")
         let process = Process()
         process.currentDirectoryURL = URL(fileURLWithPath: operatorRoot)
+        var env = ProcessInfo.processInfo.environment
+        let extraPaths = "/opt/homebrew/bin:/usr/local/bin"
+        if let currentPath = env["PATH"] {
+            env["PATH"] = "\(extraPaths):\(currentPath)"
+        } else {
+            env["PATH"] = extraPaths
+        }
+        process.environment = env
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["node", "server.js"]
         let logHandle = FileHandle(forWritingAtPath: consoleLog) ?? createLogHandle(consoleLog)

@@ -185,7 +185,7 @@ Q_NEG="$(printf '%q' "$ARG_NEG")"
 SCHEDULER_FRAG=""
 [ -n "$ARG_SCHEDULER" ] && SCHEDULER_FRAG="--scheduler $ARG_SCHEDULER"
 VAE_FRAG=""
-[ -n "$ARG_VAE" ] && VAE_FRAG="--vae $ARG_VAE"
+[ -n "$ARG_VAE" ] && [ "$ARG_VAE" != "none" ] && VAE_FRAG="--vae $ARG_VAE"
 
 START_EPOCH="$(now_epoch)"
 if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then

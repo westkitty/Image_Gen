@@ -25,6 +25,12 @@ OPEN=0
 FORCE_LARGE=0
 MAX_COUNT=12
 ARG_SCHEDULER=""
+ARG_STEPS=""
+ARG_WIDTH=""
+ARG_HEIGHT=""
+ARG_CFG=""
+ARG_SAMPLER=""
+ARG_VAE=""
 
 usage() {
   cat <<EOF
@@ -39,6 +45,12 @@ Usage: $(basename "$0") [options]
   --seed-mode same|increment|random   (default increment)
   --api openai|sdapi|native  (server mode; default openai)
   --scheduler NAME           forward scheduler to child generators (discrete, karras, etc.)
+  --steps N                  steps
+  --width N                  width
+  --height N                 height
+  --cfg N                    cfg scale
+  --sampler NAME             sampler
+  --vae PATH                 vae path
   --keep-server-running      (server mode) leave server up after
   --open                     open the first image when done
   --force-large-batch        allow count > $MAX_COUNT
@@ -58,6 +70,12 @@ while [ "$#" -gt 0 ]; do
     --seed-mode) SEED_MODE="${2:?}"; shift 2 ;;
     --api) API="${2:?}"; shift 2 ;;
     --scheduler) ARG_SCHEDULER="${2:?}"; shift 2 ;;
+    --steps) ARG_STEPS="${2:?}"; shift 2 ;;
+    --width) ARG_WIDTH="${2:?}"; shift 2 ;;
+    --height) ARG_HEIGHT="${2:?}"; shift 2 ;;
+    --cfg|--cfg-scale) ARG_CFG="${2:?}"; shift 2 ;;
+    --sampler) ARG_SAMPLER="${2:?}"; shift 2 ;;
+    --vae) ARG_VAE="${2:?}"; shift 2 ;;
     --keep-server-running) KEEP=1; shift ;;
     --open) OPEN=1; shift ;;
     --force-large-batch) FORCE_LARGE=1; shift ;;
@@ -147,15 +165,19 @@ while [ "$i" -le "$COUNT" ]; do
   mkdir -p "$cell"
   log "--- image $idx seed=$seed ---"
 
-  local sched_args=()
-  if [ -n "$ARG_SCHEDULER" ]; then
-    sched_args=(--scheduler "$ARG_SCHEDULER")
-  fi
+  extra_args=()
+  [ -n "$ARG_SCHEDULER" ] && extra_args+=("--scheduler" "$ARG_SCHEDULER")
+  [ -n "$ARG_STEPS" ]     && extra_args+=("--steps"     "$ARG_STEPS")
+  [ -n "$ARG_WIDTH" ]     && extra_args+=("--width"     "$ARG_WIDTH")
+  [ -n "$ARG_HEIGHT" ]    && extra_args+=("--height"    "$ARG_HEIGHT")
+  [ -n "$ARG_CFG" ]       && extra_args+=("--cfg"       "$ARG_CFG")
+  [ -n "$ARG_SAMPLER" ]   && extra_args+=("--sampler"   "$ARG_SAMPLER")
+  [ -n "$ARG_VAE" ]       && extra_args+=("--vae"       "$ARG_VAE")
 
   if [ "$MODE" = "cli" ]; then
     SDCPP_RUN_DIR_OVERRIDE="$cell" "$HERE/sdcpp-cli-generate.sh" \
       --preset "$PRESET" --seed "$seed" --prompt "$ARG_PROMPT" --negative "$ARG_NEG" \
-      "${sched_args[@]}" \
+      "${extra_args[@]}" \
       >"$cell/stdout.log" 2>&1 || true
     src_png="$(ls "$cell"/*.png 2>/dev/null | head -1 || true)"
     api_field="null"
@@ -163,7 +185,7 @@ while [ "$i" -le "$COUNT" ]; do
     SDCPP_RUN_DIR_OVERRIDE="$cell" "$HERE/sdcpp-server-generate.sh" \
       --preset "$PRESET" --api "$API" --seed "$seed" --warm-state warm \
       --prompt "$ARG_PROMPT" --negative "$ARG_NEG" \
-      "${sched_args[@]}" \
+      "${extra_args[@]}" \
       >"$cell/stdout.log" 2>&1 || true
     src_png="$cell/$(api_png "$API")"
     api_field="\"$API\""

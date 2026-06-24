@@ -164,13 +164,13 @@ gen_random_seed() {
 
 resolve_seed() {
   # resolve_seed <raw>  -> echoes "<seed>\t<controlled yes|no>\t<label>"
-  #   raw "" (omitted) -> 42 / no  / default(42)   (CLI default; honest "not forced")
+  #   raw "" (omitted) -> -1 / yes / default(-1)   (CLI default; forces random via < 0 seed)
   #   raw fixed        -> 42 / yes / 42
   #   raw random       -> <rand> / yes / <rand>(random)
   #   raw <int>        -> <int> / yes / <int>
   local raw="$1" s
   case "$raw" in
-    "")     printf '%s\t%s\t%s\n' "42" "no" "default(42)" ;;
+    "")     printf '%s\t%s\t%s\n' "-1" "yes" "default(-1)" ;;
     fixed)  printf '%s\t%s\t%s\n' "42" "yes" "42" ;;
     random) s="$(gen_random_seed)"; printf '%s\t%s\t%s\n' "$s" "yes" "$s(random)" ;;
     -[0-9]*|[0-9]*)

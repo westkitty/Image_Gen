@@ -25,6 +25,7 @@ const MODEL_INVENTORY_CACHE = path.join(STATE_DIR, 'model-inventory-cache.json')
 const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md';
 const GENERATION_JOB_SCHEMA = path.join(__dirname, 'schemas/generation-job.schema.json');
 const MODEL_COMPATIBILITY_REGISTRY = path.join(__dirname, 'schemas/model-compatibility.json');
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
 
 let schedulerSelectionSupported = true;
 let vaeSwitchingSupported = true;
@@ -503,13 +504,14 @@ function validateScheduler(scheduler) {
   return typeof scheduler === 'string' && ALLOWED_SCHEDULERS.has(scheduler);
 }
 function validateVae(vae) {
-  if (!vae || vae === 'auto') return true;
+  if (!vae || vae === 'auto' || vae === 'none') return true;
   const assets = readJsonCache(ASSETS_CACHE);
   if (!assets || !assets.vaes) return false;
   return assets.vaes.some(v => v.id === vae);
 }
 function resolveVaePath(vaeId) {
   if (!vaeId || vaeId === 'auto') return '';
+  if (vaeId === 'none') return 'none';
   const assets = readJsonCache(ASSETS_CACHE);
   if (!assets || !assets.vaes) return '';
   const found = assets.vaes.find(v => v.id === vaeId);
@@ -564,9 +566,57 @@ function createJob(action, summary, requestParams = {}) {
     completedAt: null,
     exitCode: null,
     firstFailedGate: null,
-    runId: null
+    runId: null,
+    progress: null
   };
   return id;
+}
+
+function estimateControlledRunSeconds(params) {
+  const steps = Number(params.steps || 20);
+  const width = Number(params.width || 512);
+  const height = Number(params.height || 512);
+  const pixelFactor = Math.max(1, (width * height) / (512 * 512));
+  const stepFactor = Number.isFinite(steps) && steps > 0 ? steps : 20;
+  return Math.max(20, Math.min(240, Math.round(stepFactor * pixelFactor * 5)));
+}
+
+function updateSequentialProgress(job, patch = {}) {
+  job.progress = {
+    totalRuns: 1,
+    completedRuns: 0,
+    currentRun: 1,
+    currentRunPercent: 0,
+    totalPercent: 0,
+    runsLeft: 1,
+    ...job.progress,
+    ...patch
+  };
+  const totalRuns = job.progress.totalRuns || 1;
+  const completedRuns = job.progress.completedRuns || 0;
+  const currentRunPercent = Math.max(0, Math.min(100, Math.round(job.progress.currentRunPercent || 0)));
+  job.progress.currentRunPercent = currentRunPercent;
+  job.progress.runsLeft = Math.max(0, totalRuns - completedRuns);
+  job.progress.totalPercent = Math.max(0, Math.min(100, Math.round(((completedRuns + currentRunPercent / 100) / totalRuns) * 100)));
+}
+
+function startEstimatedRunProgress(job, runIndex, quantity, estimatedSeconds) {
+  const startedAt = Date.now();
+  updateSequentialProgress(job, {
+    totalRuns: quantity,
+    completedRuns: runIndex,
+    currentRun: runIndex + 1,
+    currentRunPercent: 0,
+    currentRunStartedAt: startedAt,
+    estimatedSeconds
+  });
+  return setInterval(() => {
+    if (!job || job.status !== 'running') return;
+    const elapsedSeconds = (Date.now() - startedAt) / 1000;
+    const estimate = Math.max(1, estimatedSeconds || 60);
+    const pct = Math.min(95, Math.round((elapsedSeconds / estimate) * 100));
+    updateSequentialProgress(job, { currentRunPercent: pct });
+  }, 1200);
 }
 
 function runAction(jobId, scriptPath, args, savePrompts = false) {
@@ -629,6 +679,134 @@ function runAction(jobId, scriptPath, args, savePrompts = false) {
   });
 }
 
+function isFixedSeed(seed) {
+  if (typeof seed === 'number') return seed >= 0;
+  if (typeof seed === 'string') {
+    const trimmed = seed.trim();
+    return /^\d+$/.test(trimmed);
+  }
+  return false;
+}
+
+function runControlledSequential(jobId, spec, params, quantity) {
+  const job = jobs[jobId];
+  job.status = 'running';
+  const env = { ...process.env, SDCPP_REDACT_PROMPTS: params.save_prompts ? '0' : '1' };
+  const sensitives = jobSensitives[jobId] || [];
+  const estimatedSeconds = estimateControlledRunSeconds(params);
+
+  function runNext(runIndex) {
+    const runNumber = runIndex + 1;
+    job.stdout += `\n--- Sequential Run ${runNumber} of ${quantity} ---\n`;
+    let progressTimer = startEstimatedRunProgress(job, runIndex, quantity, estimatedSeconds);
+
+    const args = ['--target', params.target, '--prompt', params.prompt];
+    if (spec.modelPath && !CONTROLLED_TARGET_BY_ID[params.target]) {
+      args.push('--model-path', spec.modelPath);
+    }
+    if (params.negative_prompt) args.push('--negative-prompt', params.negative_prompt);
+    if (params.width) args.push('--width', String(params.width));
+    if (params.height) args.push('--height', String(params.height));
+    if (params.steps) args.push('--steps', String(params.steps));
+    if (params.cfg_scale !== undefined && params.cfg_scale !== null && params.cfg_scale !== '') {
+      args.push('--cfg', String(params.cfg_scale));
+    }
+
+    let seedValue = params.seed;
+    if (isFixedSeed(params.seed)) {
+      seedValue = String(parseInt(params.seed, 10) + runIndex);
+    }
+    if (seedValue !== undefined && seedValue !== null && seedValue !== '') {
+      args.push('--seed', seedValue);
+    }
+
+    if (params.api && spec.id === 'sd15') args.push('--api', params.api);
+    if (params.scheduler) args.push('--scheduler', params.scheduler);
+    if (params.vae && params.vae !== 'auto') {
+      const vaePath = resolveVaePath(params.vae);
+      if (vaePath) args.push('--vae', vaePath);
+    }
+    args.push('--save-prompts', params.save_prompts ? 'true' : 'false');
+
+    const child = spawn('bin/sdcpp-controlled-generate.sh', args, { cwd: WORKFLOW_ROOT, shell: false, env });
+    let runStdout = '';
+    let runStderr = '';
+
+    child.stdout.on('data', data => {
+      const redacted = redactSensitiveText(data.toString(), sensitives);
+      job.stdout += redacted;
+      runStdout += redacted;
+    });
+
+    child.stderr.on('data', data => {
+      const redacted = redactSensitiveText(data.toString(), sensitives);
+      job.stderr += redacted;
+      runStderr += redacted;
+    });
+
+    child.on('error', err => {
+      clearInterval(progressTimer);
+      job.status = 'FAIL';
+      job.stderr += `\nSpawn error in run ${runNumber}: ${err.message}`;
+      job.completedAt = Date.now();
+      job.firstFailedGate = 'spawn';
+      updateSequentialProgress(job, { currentRunPercent: 100 });
+    });
+
+    child.on('close', code => {
+      clearInterval(progressTimer);
+      job.exitCode = code;
+      const combined = runStdout + runStderr;
+      let runPassed = false;
+      if (runStdout.includes('==== PASS ====')) runPassed = true;
+      else if (runStdout.includes('status: PARTIAL') || runStdout.includes('==== PARTIAL ====')) runPassed = true;
+      else if (combined.includes('==== FAIL ====')) runPassed = false;
+      else runPassed = (code === 0);
+
+      if (!runPassed) {
+        job.status = 'FAIL';
+        job.completedAt = Date.now();
+        updateSequentialProgress(job, { currentRunPercent: 100 });
+
+        const gateMatch = combined.match(/First failed gate:\s*(.+?)(?=\n|$)/);
+        if (gateMatch) {
+          job.firstFailedGate = gateMatch[1].trim();
+        } else {
+          const failMatch = runStdout.match(/FAIL:\s*(.+?)(?=\n|$)/);
+          if (failMatch) job.firstFailedGate = failMatch[1].trim();
+          else if (combined.includes('Unknown argument')) job.firstFailedGate = 'args';
+        }
+        return;
+      }
+
+      const runMatch = runStdout.match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
+      if (runMatch) job.runId = runMatch[1];
+      const controlledTargetMatch = runStdout.match(/CONTROLLED_TARGET:\s*(\S+)/);
+      if (controlledTargetMatch) job.controlledTarget = controlledTargetMatch[1];
+      const controlledImageMatch = runStdout.match(/CONTROLLED_OUTPUT_IMAGE:\s*(\S+)/);
+      if (controlledImageMatch) job.controlledOutputImage = controlledImageMatch[1];
+      const controlledManifestMatch = runStdout.match(/CONTROLLED_MANIFEST:\s*(\S+)/);
+      if (controlledManifestMatch) job.controlledManifest = controlledManifestMatch[1];
+      updateSequentialProgress(job, { completedRuns: runNumber, currentRunPercent: 100 });
+
+      if (runIndex < quantity - 1) {
+        runNext(runIndex + 1);
+      } else {
+        const out = job.stdout;
+        if (out.includes('status: PARTIAL') || out.includes('==== PARTIAL ====')) {
+          job.status = 'PARTIAL';
+        } else {
+          job.status = 'PASS';
+        }
+        job.completedAt = Date.now();
+        updateSequentialProgress(job, { completedRuns: quantity, currentRunPercent: 100 });
+      }
+    });
+  }
+
+  runNext(0);
+}
+
 function normalizeGenerationBody(body) {
   const params = {
     prompt: body.prompt,
@@ -676,7 +854,8 @@ function normalizeControlledGenerationBody(body) {
     'cfg_scale',
     'cfg',
     'seed',
-    'save_prompts'
+    'save_prompts',
+    'quantity'
   ]);
   for (const key of Object.keys(body || {})) {
     if (!allowedKeys.has(key)) {
@@ -703,7 +882,8 @@ function normalizeControlledGenerationBody(body) {
     api: body.api !== undefined && body.api !== null && body.api !== '' ? String(body.api) : 'openai',
     scheduler: body.scheduler !== undefined && body.scheduler !== null ? String(body.scheduler).trim() : 'discrete',
     vae: body.vae !== undefined && body.vae !== null ? String(body.vae).trim() : 'auto',
-    save_prompts: !!body.save_prompts
+    save_prompts: !!body.save_prompts,
+    quantity: body.quantity !== undefined && body.quantity !== null && body.quantity !== '' ? Number(body.quantity) : 1
   };
   return params;
 }
@@ -770,6 +950,11 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
 
   if (params.target === 'sdxl-turbo' && cfgScale !== 0) return 'SDXL Turbo requires cfg_scale 0';
   if (params.target === 'flux-fp8' && cfgScale !== 3.5) return 'Flux fp8 requires cfg_scale 3.5';
+  if (params.quantity !== undefined && params.quantity !== null) {
+    if (!Number.isInteger(params.quantity) || params.quantity < 1 || params.quantity > 100) {
+      return 'Quantity must be an integer between 1 and 100';
+    }
+  }
   return null;
 }
 
@@ -1359,6 +1544,7 @@ app.get('/api/capabilities', (req, res) => {
       : [{ id: 'sd15', name: 'SD 1.5 — configured remote model', filename: remoteModel, status: 'available', kind: 'checkpoint', active: true }];
     vaes = [
       { id: 'auto', name: 'Auto (Default)', status: vaeSwitchingSupported ? 'active' : 'limited', reason: vaeSwitchingSupported ? '' : 'Current SDCPP scripts do not expose a VAE switch.' },
+      { id: 'none', name: 'None (Built-in)', status: vaeSwitchingSupported ? 'available' : 'limited', reason: vaeSwitchingSupported ? '' : 'VAE switching is not yet proofed/supported.', kind: 'vae' },
       ...assets.vaes.map(v => ({
         id: v.id,
         name: v.name || v.filename,
@@ -1371,7 +1557,8 @@ app.get('/api/capabilities', (req, res) => {
   } else {
     models = [{ id: 'sd15', name: 'SD 1.5 — configured remote model', filename: remoteModel, status: 'available', kind: 'checkpoint', active: true }];
     vaes = [
-      { id: 'auto', name: 'Auto (Default)', status: vaeSwitchingSupported ? 'active' : 'limited', reason: vaeSwitchingSupported ? '' : 'Current SDCPP scripts do not expose a VAE switch.' }
+      { id: 'auto', name: 'Auto (Default)', status: vaeSwitchingSupported ? 'active' : 'limited', reason: vaeSwitchingSupported ? '' : 'Current SDCPP scripts do not expose a VAE switch.' },
+      { id: 'none', name: 'None (Built-in)', status: vaeSwitchingSupported ? 'available' : 'limited', reason: vaeSwitchingSupported ? '' : 'VAE switching is not yet proofed/supported.', kind: 'vae' }
     ];
   }
 
@@ -1561,6 +1748,86 @@ app.get('/api/model-compatibility', (req, res) => {
   res.json(readSchemaFile(MODEL_COMPATIBILITY_REGISTRY));
 });
 
+async function ollamaRequest(route, body = null, timeoutMs = 90000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const options = { signal: controller.signal };
+    if (body) {
+      options.method = 'POST';
+      options.headers = { 'Content-Type': 'application/json' };
+      options.body = JSON.stringify(body);
+    }
+    const response = await fetch(new URL(route, OLLAMA_BASE_URL), options);
+    const text = await response.text();
+    let json = null;
+    try { json = text ? JSON.parse(text) : null; } catch (_) { json = { raw: text }; }
+    if (!response.ok) {
+      const message = json && json.error ? json.error : (json && json.raw ? json.raw : text);
+      return { ok: false, status: response.status, error: message || response.statusText };
+    }
+    return { ok: true, json };
+  } catch (err) {
+    return { ok: false, status: 502, error: err.name === 'AbortError' ? 'Ollama request timed out' : err.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resolveOllamaModel(requestedModel) {
+  const explicit = typeof requestedModel === 'string' ? requestedModel.trim() : '';
+  if (explicit) return explicit;
+  const tags = await ollamaRequest('/api/tags', null, 10000);
+  if (!tags.ok) return '';
+  const models = tags.json && Array.isArray(tags.json.models) ? tags.json.models : [];
+  return models[0] && models[0].name ? models[0].name : '';
+}
+
+app.get('/api/ollama/status', async (req, res) => {
+  const result = await ollamaRequest('/api/tags', null, 10000);
+  if (!result.ok) return res.status(result.status).json({ error: result.error, baseUrl: OLLAMA_BASE_URL });
+  const models = result.json && Array.isArray(result.json.models) ? result.json.models : [];
+  res.json({ baseUrl: OLLAMA_BASE_URL, models: models.map(model => ({ name: model.name, modified_at: model.modified_at, size: model.size })) });
+});
+
+app.post('/api/ollama/enhance', async (req, res) => {
+  const prompt = typeof req.body.prompt === 'string' ? req.body.prompt.trim() : '';
+  if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
+  if (prompt.length > 12000) return res.status(400).json({ error: 'Prompt is too long' });
+  const model = await resolveOllamaModel(req.body.model);
+  if (!model) return res.status(503).json({ error: 'No Ollama model available' });
+  const instruction = [
+    'Enhance this image-generation prompt.',
+    'Return only the improved prompt.',
+    'Preserve the user intent, subject, style, and any explicit constraints.',
+    'Do not add safety commentary, markdown, labels, or explanations.',
+    '',
+    prompt
+  ].join('\n');
+  const result = await ollamaRequest('/api/generate', { model, prompt: instruction, stream: false }, 120000);
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
+  const enhanced = result.json && typeof result.json.response === 'string' ? result.json.response.trim() : '';
+  res.json({ model, prompt: enhanced || prompt });
+});
+
+app.post('/api/ollama/chat', async (req, res) => {
+  const message = typeof req.body.message === 'string' ? req.body.message.trim() : '';
+  if (!message) return res.status(400).json({ error: 'Message is required' });
+  if (message.length > 12000) return res.status(400).json({ error: 'Message is too long' });
+  const model = await resolveOllamaModel(req.body.model);
+  if (!model) return res.status(503).json({ error: 'No Ollama model available' });
+  const result = await ollamaRequest('/api/chat', {
+    model,
+    stream: false,
+    messages: [{ role: 'user', content: message }]
+  }, 120000);
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
+  const reply = result.json && result.json.message && typeof result.json.message.content === 'string'
+    ? result.json.message.content.trim()
+    : '';
+  res.json({ model, reply });
+});
+
 app.post('/api/preview/generation', (req, res) => {
   const preview = buildGenerationPreview(req.body || {});
   if (!preview.ok) return res.status(preview.status || 400).json({ error: preview.error });
@@ -1636,10 +1903,12 @@ app.post('/api/actions/generate-controlled', (req, res) => {
   args.push('--save-prompts', params.save_prompts ? 'true' : 'false');
 
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
-  const summary = getRedactedCommandSummary('bin/sdcpp-controlled-generate.sh', args, sensitives);
+  const summary = getRedactedCommandSummary('bin/sdcpp-controlled-generate.sh', args, sensitives) + (params.quantity > 1 ? ` (quantity: ${params.quantity})` : '');
   const jobId = createJob('controlled-generate', summary, sanitizeRequestParams({ ...params, target: spec.id }, params.save_prompts));
   jobSensitives[jobId] = sensitives;
-  runAction(jobId, 'bin/sdcpp-controlled-generate.sh', args, params.save_prompts);
+
+  runControlledSequential(jobId, spec, params, params.quantity);
+
   res.json({
     job_id: jobId,
     status: jobs[jobId].status,
@@ -2162,6 +2431,7 @@ app.get('/api/jobs/:jobId', (req, res) => {
     commandSummary: job.commandSummary,
     requestParams: job.requestParams,
     status: job.status,
+    progress: job.progress || null,
     createdAt: job.createdAt,
     completedAt: job.completedAt,
     exitCode: job.exitCode,

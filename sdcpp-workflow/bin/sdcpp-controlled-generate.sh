@@ -79,7 +79,7 @@ if [ -n "$ARG_MODEL_PATH" ]; then
   case "$_mp_rel" in *../*|*/..*) fail "model-path" "Model path must not contain directory traversal." ;; esac
 else
   case "$ARG_TARGET" in
-    sd15|sdxl-base|sdxl-turbo|flux-fp8|sdxl-photonic|sdxl-homochi|sdxl-pony|sd15-homofidelis|sdxl-juggernaut|sdxl-realvisxl|sdxl-cyberrealistic|sdxl-epicrealism|sdxl-biglust|sdxl-lustify|sdxl-biglove) : ;;
+    sd15|sdxl-base|sdxl-turbo|flux-fp8|sdxl-photonic|sdxl-homochi|sdxl-pony|sd15-homofidelis|sdxl-juggernaut|sdxl-realvisxl|sdxl-cyberrealistic|sdxl-epicrealism|sdxl-biglust|sdxl-lustify|sdxl-biglove|sdxl-lustify-lightning|sdxl-juggernaut-lightning) : ;;
     *) fail "target" "Unknown target '$ARG_TARGET'. Pass --model-path to use an auto-discovered model." ;;
   esac
 fi
@@ -642,7 +642,7 @@ if [ "$ARG_TARGET" = "sd15" ] && ! printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[
   if [ -n "$ARG_NEG" ]; then SERVER_ARGS+=(--negative "$ARG_NEG"); fi
   if [ -n "$ARG_SEED" ]; then SERVER_ARGS+=(--seed "$ARG_SEED"); fi
   if [ -n "$ARG_SCHEDULER" ]; then SERVER_ARGS+=(--scheduler "$ARG_SCHEDULER"); fi
-  if [ -n "$ARG_VAE" ]; then SERVER_ARGS+=(--vae "$ARG_VAE"); fi
+  if [ -n "$ARG_VAE" ] && [ "$ARG_VAE" != "none" ]; then SERVER_ARGS+=(--vae "$ARG_VAE"); fi
 
   if ! "$HERE/sdcpp-server-generate.sh" "${SERVER_ARGS[@]}" > "$SERVER_OUT" 2>&1; then
     FIRST_FAILED_GATE="server-generate"
@@ -707,7 +707,7 @@ if [ -n "$ARG_SCHEDULER" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '
 fi
 
 VAE_FLAG=""
-if [ -n "$ARG_VAE" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--vae'; then
+if [ -n "$ARG_VAE" ] && [ "$ARG_VAE" != "none" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--vae'; then
   VAE_FLAG="--vae $ARG_VAE"
 fi
 
@@ -819,7 +819,7 @@ case "$ARG_TARGET" in
     if [ "$REMOTE_MODEL_BYTES" -lt "$_STAGED_MIN_BYTES" ]; then
       controlled_fail "model-size" "$TARGET_LABEL checkpoint is too small (${REMOTE_MODEL_BYTES} bytes; need at least ${_STAGED_MIN_BYTES})."
     fi
-    if [ -n "$TARGET_VAE_PATH" ]; then
+    if [ "$ARG_VAE" != "none" ] && [ -n "$TARGET_VAE_PATH" ]; then
       remote_test "test -s \"$TARGET_VAE_PATH\"" || controlled_fail "vae-present" "$TARGET_LABEL VAE is missing or empty: $TARGET_VAE_PATH"
       REMOTE_VAE_BYTES="$(ssh_remote "stat -f %z \"$TARGET_VAE_PATH\" 2>/dev/null || wc -c < \"$TARGET_VAE_PATH\" 2>/dev/null || printf '0'" 2>&1 | tail -n 1 | tr -d '[:space:]')"
     fi
@@ -834,7 +834,7 @@ case "$ARG_TARGET" in
       SAMPLER_FRAG="--sampling-method $TARGET_SAMPLER"
     fi
     BUILT_VAE_FLAG=""
-    if [ -n "$TARGET_VAE_PATH" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--vae'; then
+    if [ "$ARG_VAE" != "none" ] && [ -n "$TARGET_VAE_PATH" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--vae'; then
       BUILT_VAE_FLAG="--vae \"$TARGET_VAE_PATH\""
     fi
     REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} ${SAMPLER_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${BUILT_VAE_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""

@@ -45,6 +45,7 @@
     "reuse_seed": { "type": "boolean", "default": false },
     "width": { "type": "integer", "minimum": 64, "maximum": 2048, "multipleOf": 8 },
     "height": { "type": "integer", "minimum": 64, "maximum": 2048, "multipleOf": 8 },
+    "quantity": { "type": "integer", "minimum": 1, "maximum": 100, "default": 1 },
     "batch_count": { "type": "integer", "minimum": 1, "maximum": 24, "default": 1 },
     "batch_size": { "type": "integer", "minimum": 1, "maximum": 1, "default": 1 },
     "tiling": { "type": "boolean", "default": false },
