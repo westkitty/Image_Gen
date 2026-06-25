@@ -16,6 +16,15 @@ input[aria-disabled="true"],select[aria-disabled="true"]{opacity:.5;cursor:not-a
 .wildcard-item:hover,.wildcard-item:focus{background:rgba(56,189,248,.12);outline:none}
 .wildcard-item strong{font-size:13px}
 .wildcard-item span{font-size:11px;color:var(--muted)}
+.prompt-hint{margin-top:2px}
+.prompt-hint code{padding:1px 5px;border-radius:999px;background:#0f1318;border:1px solid var(--line);color:var(--soft)}
+#wildcard-autocomplete{position:fixed;z-index:5000;background:linear-gradient(180deg,rgba(22,27,33,.99),rgba(14,18,23,.99));border:1px solid var(--line);border-radius:14px;padding:6px;max-height:240px;overflow:auto;box-shadow:0 16px 48px rgba(0,0,0,.48)}
+#wildcard-autocomplete.open-up{box-shadow:0 -16px 48px rgba(0,0,0,.48)}
+.wildcard-autocomplete-item{display:flex;flex-direction:column;gap:1px;width:100%;border:0;border-radius:10px;padding:8px 10px;background:transparent;color:var(--text);text-align:left}
+.wildcard-autocomplete-item:hover,.wildcard-autocomplete-item.active,.wildcard-autocomplete-item[aria-selected="true"]{background:rgba(56,189,248,.14);outline:none}
+.wildcard-autocomplete-item strong{font-size:13px}
+.wildcard-autocomplete-item span{font-size:11px;color:var(--muted)}
+.wildcard-autocomplete-empty{padding:8px 10px}
 /* Ollama no-models notice */
 .ollama-no-models{color:var(--warn);font-size:12px;margin-top:6px}
 /* Batch tabs */

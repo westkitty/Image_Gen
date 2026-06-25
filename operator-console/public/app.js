@@ -2584,14 +2584,197 @@ async function enhancePromptWithOllama() {
 }
 
 let wildcardPickerLoaded = false;
+let wildcardCatalog = [];
+let wildcardCatalogPromise = null;
+let wildcardAutocompleteRequestSeq = 0;
+let wildcardAutocompleteEl = null;
+let wildcardAutocompleteState = {
+  open: false,
+  textarea: null,
+  start: 0,
+  end: 0,
+  query: '',
+  activeIndex: 0,
+  items: []
+};
+
+function getWildcardTokenBounds(text, caret) {
+  const before = text.slice(0, caret);
+  const start = before.lastIndexOf('__');
+  if (start < 0) return null;
+  const query = text.slice(start + 2, caret);
+  if (/\s/.test(query)) return null;
+  if (!/^[A-Za-z0-9_-]*$/.test(query)) return null;
+  return { start, end: caret, query };
+}
+
+function ensureWildcardAutocomplete() {
+  if (wildcardAutocompleteEl) return wildcardAutocompleteEl;
+  const el = document.createElement('div');
+  el.id = 'wildcard-autocomplete';
+  el.className = 'wildcard-autocomplete';
+  el.hidden = true;
+  el.setAttribute('role', 'listbox');
+  el.setAttribute('aria-label', 'Wildcard suggestions');
+  document.body.appendChild(el);
+  wildcardAutocompleteEl = el;
+  return el;
+}
+
+function hideWildcardAutocomplete() {
+  const el = wildcardAutocompleteEl;
+  if (el) el.hidden = true;
+  wildcardAutocompleteRequestSeq += 1;
+  wildcardAutocompleteState.open = false;
+  wildcardAutocompleteState.textarea = null;
+  wildcardAutocompleteState.items = [];
+  wildcardAutocompleteState.query = '';
+  wildcardAutocompleteState.start = 0;
+  wildcardAutocompleteState.end = 0;
+}
+
+function positionWildcardAutocomplete(textarea, el) {
+  const rect = textarea.getBoundingClientRect();
+  const maxWidth = Math.max(220, Math.min(rect.width, window.innerWidth - 24));
+  const spaceBelow = window.innerHeight - rect.bottom - 16;
+  const spaceAbove = rect.top - 16;
+  const openAbove = spaceBelow < 180 && spaceAbove > spaceBelow;
+  const top = openAbove ? Math.max(8, rect.top - 8) : Math.min(window.innerHeight - 8, rect.bottom + 8);
+  el.style.width = `${maxWidth}px`;
+  el.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - maxWidth - 8))}px`;
+  el.style.top = openAbove ? 'auto' : `${top}px`;
+  el.style.bottom = openAbove ? `${Math.max(8, window.innerHeight - rect.top + 8)}px` : 'auto';
+  el.classList.toggle('open-up', openAbove);
+}
+
+function renderWildcardAutocomplete(items, activeIndex) {
+  const el = ensureWildcardAutocomplete();
+  el.innerHTML = '';
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'fineprint muted wildcard-autocomplete-empty';
+    empty.textContent = 'No wildcard matches.';
+    el.appendChild(empty);
+    return;
+  }
+  items.slice(0, 8).forEach((wc, index) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'wildcard-autocomplete-item';
+    btn.setAttribute('role', 'option');
+    btn.setAttribute('aria-selected', String(index === activeIndex));
+    btn.dataset.index = String(index);
+    const strong = document.createElement('strong');
+    strong.textContent = `__${wc.name}__`;
+    const span = document.createElement('span');
+    span.textContent = wc.preview.join(', ') + (wc.count > 3 ? '…' : '');
+    btn.appendChild(strong);
+    btn.appendChild(span);
+    btn.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      applyWildcardAutocompleteSelection(index);
+    });
+    el.appendChild(btn);
+  });
+}
+
+function updateWildcardAutocompleteSelection(activeIndex) {
+  const el = wildcardAutocompleteEl;
+  if (!el) return;
+  el.querySelectorAll('.wildcard-autocomplete-item').forEach((btn, idx) => {
+    btn.setAttribute('aria-selected', String(idx === activeIndex));
+    btn.classList.toggle('active', idx === activeIndex);
+  });
+}
+
+function applyWildcardAutocompleteSelection(index) {
+  const state = wildcardAutocompleteState;
+  const textarea = state.textarea;
+  const item = state.items[index];
+  if (!textarea || !item) return;
+  const token = `__${item.name}__`;
+  const before = textarea.value.slice(0, state.start);
+  const after = textarea.value.slice(state.end);
+  textarea.value = before + token + after;
+  const newPos = before.length + token.length;
+  textarea.setSelectionRange(newPos, newPos);
+  textarea.dispatchEvent(new Event('input'));
+  textarea.focus();
+  hideWildcardAutocomplete();
+}
+
+function moveWildcardAutocompleteSelection(delta) {
+  const state = wildcardAutocompleteState;
+  if (!state.open || !state.items.length) return false;
+  const next = (state.activeIndex + delta + state.items.length) % state.items.length;
+  state.activeIndex = next;
+  updateWildcardAutocompleteSelection(next);
+  return true;
+}
+
+async function getWildcardCatalog() {
+  if (wildcardCatalog.length) return wildcardCatalog;
+  if (!wildcardCatalogPromise) {
+    wildcardCatalogPromise = api('/api/wildcards')
+      .then(data => {
+        wildcardCatalog = Array.isArray(data.wildcards) ? data.wildcards : [];
+        return wildcardCatalog;
+      })
+      .catch(err => {
+        notifyLog('Could not load wildcards: ' + err.message);
+        wildcardCatalog = [];
+        return wildcardCatalog;
+      })
+      .finally(() => {
+        wildcardCatalogPromise = null;
+      });
+  }
+  return wildcardCatalogPromise;
+}
+
+async function updateWildcardAutocomplete(textarea) {
+  const requestSeq = ++wildcardAutocompleteRequestSeq;
+  if (!textarea || textarea.readOnly || textarea.disabled) {
+    hideWildcardAutocomplete();
+    return;
+  }
+  const bounds = getWildcardTokenBounds(textarea.value, textarea.selectionStart ?? textarea.value.length);
+  if (!bounds) {
+    hideWildcardAutocomplete();
+    return;
+  }
+  const items = await getWildcardCatalog();
+  if (requestSeq !== wildcardAutocompleteRequestSeq) return;
+  const matches = items
+    .filter(wc => wc.name.toLowerCase().startsWith(bounds.query.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 8);
+  if (!matches.length) {
+    hideWildcardAutocomplete();
+    return;
+  }
+  toggleWildcardPicker(false);
+  const el = ensureWildcardAutocomplete();
+  wildcardAutocompleteState = {
+    open: true,
+    textarea,
+    start: bounds.start,
+    end: bounds.end,
+    query: bounds.query,
+    activeIndex: 0,
+    items: matches
+  };
+  renderWildcardAutocomplete(matches, 0);
+  positionWildcardAutocomplete(textarea, el);
+  el.hidden = false;
+}
 
 async function loadWildcardPicker() {
   if (wildcardPickerLoaded) return;
   const picker = $('wildcard-picker');
   if (!picker) return;
   try {
-    const data = await api('/api/wildcards');
-    const items = data.wildcards || [];
+    const items = await getWildcardCatalog();
     picker.innerHTML = '';
     if (!items.length) {
       const empty = document.createElement('div');
@@ -2648,7 +2831,36 @@ function toggleWildcardPicker(forceState) {
   const open = forceState !== undefined ? forceState : picker.hidden;
   picker.hidden = !open;
   btn.setAttribute('aria-expanded', String(open));
-  if (open) loadWildcardPicker();
+  if (open) {
+    hideWildcardAutocomplete();
+    loadWildcardPicker();
+  }
+}
+
+function bindWildcardAutocomplete(textarea) {
+  if (!textarea || textarea.dataset.wildcardAutocompleteBound === '1') return;
+  textarea.dataset.wildcardAutocompleteBound = '1';
+  textarea.addEventListener('input', () => updateWildcardAutocomplete(textarea));
+  textarea.addEventListener('focus', () => updateWildcardAutocomplete(textarea));
+  textarea.addEventListener('click', () => updateWildcardAutocomplete(textarea));
+  textarea.addEventListener('keydown', e => {
+    if (!wildcardAutocompleteState.open || wildcardAutocompleteState.textarea !== textarea) {
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      moveWildcardAutocompleteSelection(1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      moveWildcardAutocompleteSelection(-1);
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      applyWildcardAutocompleteSelection(wildcardAutocompleteState.activeIndex);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      hideWildcardAutocomplete();
+    }
+  });
 }
 
 async function sendOllamaChat() {
@@ -2773,6 +2985,7 @@ function bindEvents() {
   $('negative_prompt').addEventListener('input', () => updatePromptStats('negative_prompt', 'neg-prompt-count'));
   $('prompt').addEventListener('input', savePromptDraft);
   $('negative_prompt').addEventListener('input', savePromptDraft);
+  ['prompt', 'batch_prompt', 'xyz_prompt', 'img2img-prompt', 'inpaint-prompt', 'hf-prompt'].forEach(id => bindWildcardAutocomplete($(id)));
   $('sweep-axis').addEventListener('change', e => {
     const isCfg = e.target.value === 'cfg';
     $('sweep-seed-opts').hidden = isCfg;
@@ -2786,6 +2999,22 @@ function bindEvents() {
   $('btn-enhance-prompt').addEventListener('click', enhancePromptWithOllama);
   if ($('btn-wildcard-picker')) $('btn-wildcard-picker').addEventListener('click', e => { e.stopPropagation(); toggleWildcardPicker(); });
   document.addEventListener('click', e => { if (!e.target.closest('.wildcard-picker-wrap')) toggleWildcardPicker(false); });
+  document.addEventListener('pointerdown', e => {
+    const popup = wildcardAutocompleteEl;
+    if (popup && !popup.hidden && !e.target.closest('#wildcard-autocomplete') && e.target !== wildcardAutocompleteState.textarea) {
+      hideWildcardAutocomplete();
+    }
+  });
+  window.addEventListener('resize', () => {
+    if (wildcardAutocompleteState.open && wildcardAutocompleteState.textarea && wildcardAutocompleteEl) {
+      positionWildcardAutocomplete(wildcardAutocompleteState.textarea, wildcardAutocompleteEl);
+    }
+  });
+  window.addEventListener('scroll', () => {
+    if (wildcardAutocompleteState.open && wildcardAutocompleteState.textarea && wildcardAutocompleteEl) {
+      positionWildcardAutocomplete(wildcardAutocompleteState.textarea, wildcardAutocompleteEl);
+    }
+  }, true);
   if ($('btn-ollama-refresh')) $('btn-ollama-refresh').addEventListener('click', loadOllamaModels);
   if ($('btn-ollama-send')) $('btn-ollama-send').addEventListener('click', sendOllamaChat);
   if ($('ollama-model')) $('ollama-model').addEventListener('change', () => {
