@@ -8,7 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var consoleProcess: Process?
 
     private let projectRoot = ProcessInfo.processInfo.environment["IMAGE_GEN_ROOT"] ?? "/Users/andrew/Image_Gen"
-    private let consoleURL = URL(string: "http://127.0.0.1:31337")!
+    private let serverBaseURL = URL(string: "http://127.0.0.1:31337")!
+    private let consoleURL = URL(string: "http://127.0.0.1:31337/dexdiffusion/")!
 
     private var operatorRoot: String { "\(projectRoot)/operator-console" }
     private var workflowRoot: String { "\(projectRoot)/sdcpp-workflow" }
@@ -57,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "Image_Gen"
-        alert.informativeText = "Local AI image generation console\nOperator console: \(consoleURL.absoluteString)\nProject: \(projectRoot)"
+        alert.informativeText = "Local AI image generation console\nApp URL: \(consoleURL.absoluteString)\nProject: \(projectRoot)"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
@@ -199,7 +200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         var parts: [String] = []
         parts.append("=== Image_Gen Error Report ===")
         parts.append("Date: \(Date())")
-        parts.append("Console URL: \(consoleURL.absoluteString)")
+        parts.append("App URL: \(consoleURL.absoluteString)")
         parts.append("Project root: \(projectRoot)")
 
         if let label = statusLabel {
@@ -381,7 +382,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private func ensureOperatorConsole() {
         let version = currentConsoleVersion()
         if version.matchesExpectedRoot {
-            appendLog("operator-console already listening on 127.0.0.1:31337 from \(version.cwd ?? "unknown") gitHead=\(version.gitHead ?? "unknown")")
+            appendLog("operator-console already listening on \(serverBaseURL.absoluteString) from \(version.cwd ?? "unknown") gitHead=\(version.gitHead ?? "unknown")")
             return
         }
         if version.reachable {
@@ -459,7 +460,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     private func currentConsoleVersion() -> (reachable: Bool, matchesExpectedRoot: Bool, cwd: String?, gitHead: String?, pid: Int?) {
-        let result = runShell("curl -fsS --max-time 2 \(consoleURL.absoluteString)/api/version", timeout: 4)
+        let result = runShell("curl -fsS --max-time 2 \(serverBaseURL.absoluteString)/api/version", timeout: 4)
         guard result.code == 0, let data = result.output.data(using: .utf8) else {
             return (false, false, nil, nil, nil)
         }

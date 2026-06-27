@@ -39,6 +39,9 @@ const MASK_UPLOADS_DIR = path.join(WORKFLOW_ROOT, 'mask-uploads');
 if (!fs.existsSync(MASK_UPLOADS_DIR)) fs.mkdirSync(MASK_UPLOADS_DIR, { recursive: true });
 
 app.use(express.json({ limit: '5mb' }));
+app.get('/', (req, res) => {
+  res.redirect(302, '/dexdiffusion/');
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 const ALLOWED_PRESETS = new Set(['smoke', 'thumbnail', 'fast', 'balanced', 'quality', 'quality_plus', 'Custom']);
