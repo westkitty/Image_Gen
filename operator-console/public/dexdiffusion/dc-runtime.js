@@ -341,6 +341,7 @@
     const templateChildren = Array.from(node.childNodes);
     const anchor = document.createComment('sc-for');
     let managed = []; // flat list of mounted DOM nodes
+    let lastList;     // reference of the list rendered last time
 
     return {
       node: anchor,
@@ -349,6 +350,10 @@
         const parent = anchor.parentNode;
         if (!parent) return;
         const list = resolve(listExpr, vals, scope) || [];
+        // The list is replaced (never mutated) when its data changes, so a
+        // reference check lets us skip rebuilding all items on unrelated renders.
+        if (list === lastList && managed.length) return;
+        lastList = list;
         for (const n of managed) if (n.parentNode === parent) parent.removeChild(n);
         managed = [];
         const ref = anchor.nextSibling;

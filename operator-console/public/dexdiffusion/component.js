@@ -11,6 +11,7 @@ class Component extends DCLogic {
     target: 'sd15',
     prompt: '', negPrompt: '',
     steps: 20, cfg: 7, seed: -1, width: 512, height: 512,
+    sampler: 'euler_a', scheduler: 'discrete',
     jobStatus: 'idle', progress: 0, currentImageSrc: null, lastSeed: null, errorMsg: '',
     // Batch
     batchAxisX: 'seed', batchValuesX: '-1,-1,-1,-1',
@@ -67,18 +68,29 @@ class Component extends DCLogic {
       const r = await fetch(this.state.backendUrl + '/api/run-index?limit=50', { signal: AbortSignal.timeout(6000) });
       if (!r.ok) return;
       const data = await r.json();
-      const runs = (data.items || []).map(item => ({
-        id: item.id,
-        model: item.type || item.target || 'sd15',
-        size: (item.width && item.height) ? item.width + 'x' + item.height : (item.size || '—'),
-        seed: item.seed != null ? item.seed : '—',
-        timestamp: item.createdAt || Date.now(),
-        imageFile: item.image || item.outputImage || null,
-        badge: item.status === 'PASS' ? 'PASS' : item.status === 'FAIL' ? 'FAIL' : '—',
-        badgeColor: item.status === 'PASS' ? '#65d66e' : item.status === 'FAIL' ? '#ef4444' : '#fbbf24',
-        badgeBg: item.status === 'PASS' ? 'rgba(101,214,110,.1)' : item.status === 'FAIL' ? 'rgba(239,68,68,.1)' : 'rgba(251,191,36,.1)',
-        thumb: 'linear-gradient(135deg,#0e2a1a,#1a0e2a)',
-      }));
+      const base = this.state.backendUrl;
+      const runs = (data.items || []).map(item => {
+        // Real /api/run-index fields: id, type, controlledTargetLabel, status,
+        // primaryImage (filename within the run dir), imageCount, createdAt.
+        const img = item.primaryImage || null;
+        const ok = item.status === 'PASS' || item.status === 'PARTIAL';
+        const fail = item.status === 'FAIL';
+        const thumbUrl = img ? base + '/api/run-file?path=' + item.id + '/' + img : null;
+        return {
+          id: item.id,
+          model: item.controlledTargetLabel || item.type || 'sd15',
+          size: item.imageCount ? item.imageCount + ' img' : '—',
+          seed: '—',
+          timestamp: item.createdAt || Date.now(),
+          imageFile: img,
+          badge: ok ? item.status : fail ? 'FAIL' : '—',
+          badgeColor: ok ? '#65d66e' : fail ? '#ef4444' : '#fbbf24',
+          badgeBg: ok ? 'rgba(101,214,110,.1)' : fail ? 'rgba(239,68,68,.1)' : 'rgba(251,191,36,.1)',
+          thumb: thumbUrl
+            ? 'center/cover no-repeat url("' + thumbUrl + '")'
+            : 'linear-gradient(135deg,#0e2a1a,#1a0e2a)',
+        };
+      });
       try { localStorage.setItem('dex_runs', JSON.stringify(runs)); } catch {}
       this.setState({ runs });
     } catch {}
@@ -94,6 +106,11 @@ class Component extends DCLogic {
     if (!runId || !file) return null;
     const name = String(file).split('/').pop();
     return this.state.backendUrl + '/api/run-file?path=' + runId + '/' + name;
+  }
+  // Map the sampler dropdown's display label to a backend-accepted sampler id.
+  _mapSampler(s) {
+    const m = { 'dpm++ 2m': 'dpmpp2m', 'dpm++ sde': 'dpmpp2s_a', 'dpm++ 2s a': 'dpmpp2s_a' };
+    return m[s] || s;
   }
 
   // ── Job poller ────────────────────────────────────────────────
@@ -147,7 +164,7 @@ class Component extends DCLogic {
   // ── Generate (txt2img) ────────────────────────────────────────
   async onGenerate() {
     const { jobStatus, prompt, negPrompt, steps, cfg, seed, width, height,
-            target, backendUrl, savePrompts } = this.state;
+            target, backendUrl, savePrompts, sampler, scheduler } = this.state;
     if (jobStatus === 'generating') {
       clearInterval(this._pollTimer);
       this.setState({ jobStatus: 'idle', progress: 0 });
@@ -161,7 +178,7 @@ class Component extends DCLogic {
       negative_prompt: negPrompt || '',
       steps: +steps, cfg_scale: +cfg, seed: +seed,
       width: +width, height: +height,
-      sampler: 'euler_a', scheduler: 'discrete',
+      sampler: this._mapSampler(sampler), scheduler: scheduler || 'discrete',
       save_prompts: savePrompts,
     };
     try {
@@ -195,7 +212,9 @@ class Component extends DCLogic {
         imageFile: imgFile ? String(imgFile).split('/').pop() : null,
         badge: job.status === 'PARTIAL' ? 'PARTIAL' : 'PASS',
         badgeColor: '#65d66e', badgeBg: 'rgba(101,214,110,.1)',
-        thumb: 'linear-gradient(135deg,#0e2a1a,#1a0e2a)',
+        thumb: imgSrc
+          ? 'center/cover no-repeat url("' + imgSrc + '")'
+          : 'linear-gradient(135deg,#0e2a1a,#1a0e2a)',
       };
       const runs = [run, ...this.state.runs].slice(0, 100);
       try { localStorage.setItem('dex_runs', JSON.stringify(runs)); } catch {}
@@ -211,7 +230,7 @@ class Component extends DCLogic {
 
   // ── Batch / Sweep ─────────────────────────────────────────────
   async onBatchSubmit() {
-    const { batchAxisX, batchValuesX, batchPrompt, batchNeg, batchSteps, batchCfg, batchW, batchH, backendUrl, savePrompts, target } = this.state;
+    const { batchAxisX, batchValuesX, batchPrompt, batchNeg, batchSteps, batchCfg, batchW, batchH, backendUrl, savePrompts, target, sampler, scheduler } = this.state;
     const vals = batchValuesX.split(',').map(v => v.trim()).filter(Boolean);
     if (!vals.length) { this.toast('Enter axis values first', '#fbbf24'); return; }
     if (!batchPrompt.trim()) { this.toast('Enter a batch prompt', '#fbbf24'); return; }
@@ -227,7 +246,7 @@ class Component extends DCLogic {
         cfg_scale: batchAxisX === 'cfg' ? +v : +batchCfg,
         seed: batchAxisX === 'seed' ? +v : -1,
         width: +batchW, height: +batchH,
-        sampler: 'euler_a', scheduler: 'discrete',
+        sampler: this._mapSampler(sampler), scheduler: scheduler || 'discrete',
         save_prompts: savePrompts,
       };
       try {
@@ -343,21 +362,6 @@ class Component extends DCLogic {
     } catch(e) { this.setState({ enhStatus: 'error' }); this.toast(e.message, '#ef4444'); }
   }
 
-
-  // legacy stub kept for any remaining callers
-  completeGeneration(imgSrc, seed, params) {
-    const run = {
-      id: 'local-' + Date.now(), timestamp: Date.now(),
-      model: params.target || 'sd15', size: (params.width||512)+'x'+(params.height||512),
-      seed, imageFile: null,
-      badge: 'PASS', badgeColor: '#65d66e', badgeBg: 'rgba(101,214,110,.1)',
-      thumb: 'linear-gradient(135deg,#0e2a1a,#1a0e2a)',
-    };
-    const runs = [run, ...this.state.runs].slice(0, 100);
-    try { localStorage.setItem('dex_runs', JSON.stringify(runs)); } catch {}
-    this.setState({ jobStatus: 'complete', progress: 100, currentImageSrc: imgSrc, lastSeed: seed, runs });
-  }
-
   buildImageDisplay(jobStatus, progress, imageSrc, lastSeed, errorMsg) {
     if (jobStatus === 'generating') {
       const steps = Math.round(progress / 100 * (+this.state.steps || 20));
@@ -390,6 +394,7 @@ class Component extends DCLogic {
   renderVals() {
     const s = this.state;
     const { version, screens, prompt, negPrompt, steps, cfg, seed, width, height,
+            sampler, scheduler,
             jobStatus, progress, currentImageSrc, lastSeed, errorMsg,
             target, backendOnline, backendUrl, runs, savePrompts, toasts,
             batchAxisX, batchValuesX, batchPrompt, batchNeg, batchSteps, batchCfg, batchW, batchH,
@@ -507,6 +512,9 @@ class Component extends DCLogic {
       onSeedChange: e=>this.setState({seed:e.target.value}),
       onWidthChange: e=>this.setState({width:e.target.value}),
       onHeightChange: e=>this.setState({height:e.target.value}),
+      sampler, scheduler,
+      onSamplerChange: e=>this.setState({sampler:e.target.value}),
+      onSchedulerChange: e=>this.setState({scheduler:e.target.value}),
       setDim512: ()=>this.setState({width:512,height:512}),
       setDim768: ()=>this.setState({width:768,height:512}),
       setDim1024: ()=>this.setState({width:1024,height:1024}),
