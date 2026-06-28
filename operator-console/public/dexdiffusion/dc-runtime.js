@@ -87,6 +87,14 @@
       const n = renderVNode(child);
       if (n) el.appendChild(n);
     }
+    if (v.props) {
+      if ('value' in v.props) {
+        el.value = v.props.value;
+      }
+      if ('checked' in v.props) {
+        el.checked = v.props.checked;
+      }
+    }
     return el;
   }
 

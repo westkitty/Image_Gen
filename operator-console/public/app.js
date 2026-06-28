@@ -41,7 +41,7 @@ const UI_HINTS = Object.freeze({
   '#negative_prompt': 'Optional negative prompt. Compatible models use this to avoid unwanted traits; some turbo or distilled models may ignore it.',
   '#style-select': 'Apply a locally saved prompt style.',
   '#preset': 'Apply a built-in quality/speed preset for common generation settings.',
-  '#model': 'Choose the base generation target/model route.',
+  '#model': 'Choose the target model/route.',
   '#vae': 'Choose the VAE for color/quality decoding. Auto is safest unless a model requires a specific VAE.',
   '#lora-select': 'Choose an optional LoRA adapter for style, subject, speed, or behavior.',
   '#lora-weight': 'Controls how strongly the selected LoRA affects the image.',
@@ -706,10 +706,14 @@ function hydrateControls() {
   const presets = caps.presets || DEFAULT_PRESETS;
   $('preset').innerHTML = Object.keys(presets).map(id => `<option value="${esc(id)}">${esc(id.replace('_', '+'))}</option>`).join('') + '<option value="Custom">Custom</option>';
   $('preset').value = 'quality';
+  const currentModel = $('model') ? $('model').value : '';
   state.controlledTargets = getControlledTargets();
   state.controlledTargetMap = Object.fromEntries(state.controlledTargets.map(t => [t.id, t]));
   const modelOptions = state.controlledTargets.map(t => `<option value="${esc(t.id)}">${esc(t.label)}${t.status ? ` — ${esc(t.status)}` : ''}</option>`).join('');
   $('model').innerHTML = modelOptions || '<option value="sd15">SD1.5 standard</option>';
+  if (currentModel && state.controlledTargetMap[currentModel] && $('model')) {
+    $('model').value = currentModel;
+  }
   $('vae').innerHTML = (caps.vaes || []).map(v => {
     const ok = v.id === 'auto' || v.status === 'available';
     return `<option value="${esc(v.id)}" ${ok ? '' : 'disabled'}>${esc(v.name)}${ok ? '' : ` — disabled (${esc(v.reason || 'Not supported')})`}</option>`;

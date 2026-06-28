@@ -68,11 +68,111 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     // Converts a Swift string to a JSON-encoded JavaScript string literal (safe for interpolation).
     private func jsStringLiteral(_ value: String) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: value),
-              let encoded = String(data: data, encoding: .utf8) else {
+        let wrapper = [value]
+        guard JSONSerialization.isValidJSONObject(wrapper) else {
             return "\"\""
         }
-        return encoded
+        do {
+            let data = try JSONSerialization.data(withJSONObject: wrapper, options: [])
+            guard let encodedArray = String(data: data, encoding: .utf8), encodedArray.count >= 2 else {
+                return "\"\""
+            }
+            let start = encodedArray.index(after: encodedArray.startIndex)
+            let end = encodedArray.index(before: encodedArray.endIndex)
+            return String(encodedArray[start..<end])
+        } catch {
+            return "\"\""
+        }
+    }
+
+    // Recursively converts/sanitizes values to ensure they are JSON-safe.
+    // Unsafe types are converted if supported, otherwise omitted (returning nil).
+    private func sanitizeToJSONSafeValue(_ value: Any) -> Any? {
+        if let str = value as? String {
+            return str
+        }
+        if let num = value as? NSNumber {
+            if num.doubleValue.isNaN || num.doubleValue.isInfinite {
+                return nil
+            }
+            return num
+        }
+        if let boolVal = value as? Bool {
+            return boolVal
+        }
+        if value is NSNull {
+            return value
+        }
+        if let dict = value as? [String: Any] {
+            var sanitized: [String: Any] = [:]
+            for (k, v) in dict {
+                if let safeV = sanitizeToJSONSafeValue(v) {
+                    sanitized[k] = safeV
+                }
+            }
+            return sanitized
+        }
+        if let array = value as? [Any] {
+            var sanitized: [Any] = []
+            for v in array {
+                if let safeV = sanitizeToJSONSafeValue(v) {
+                    sanitized.append(safeV)
+                }
+            }
+            return sanitized
+        }
+        if let url = value as? URL {
+            return url.absoluteString
+        }
+        if let url = value as? NSURL {
+            return url.absoluteString
+        }
+        if let data = value as? Data {
+            return data.base64EncodedString()
+        }
+        return nil
+    }
+
+    // Creates a completely JSON-safe dictionary of pasteboard contents.
+    private func makeJSONSafePastePayload(from pasteboard: NSPasteboard) -> [String: Any] {
+        var rawPayload: [String: Any] = [:]
+        
+        if let text = pasteboard.string(forType: .string) {
+            rawPayload["text"] = text
+        }
+        
+        if let html = pasteboard.string(forType: .html) {
+            rawPayload["html"] = html
+        }
+        
+        if let nsUrl = NSURL(from: pasteboard) {
+            rawPayload["url"] = nsUrl
+        }
+        
+        if pasteboard.types?.contains(.png) == true, let data = pasteboard.data(forType: .png) {
+            rawPayload["image_png_base64"] = data
+        } else if pasteboard.types?.contains(.tiff) == true, let data = pasteboard.data(forType: .tiff) {
+            rawPayload["image_tiff_base64"] = data
+        }
+        
+        // Deep-sanitize raw payload to ensure no invalid types remain
+        guard let sanitized = sanitizeToJSONSafeValue(rawPayload) as? [String: Any] else {
+            return [:]
+        }
+        return sanitized
+    }
+
+    // Diagnostic helper showing key name and type of fields in a dictionary or value.
+    private func describeJSONTypes(_ object: Any) -> String {
+        if let dict = object as? [String: Any] {
+            let descriptions = dict.map { "\($0.key): \(type(of: $0.value))" }
+            return "Dictionary: {\(descriptions.joined(separator: ", "))}"
+        } else if let array = object as? [Any] {
+            let descriptions = array.map { "\(type(of: $0))" }
+            return "Array: [\(descriptions.joined(separator: ", "))]"
+        } else {
+            return "\(type(of: object))"
+        }
     }
 
     @objc func customPaste(_ sender: Any?) {
@@ -81,15 +181,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         // Ensure the WKWebView is first responder so the JS activeElement is current.
         wv.window?.makeFirstResponder(wv)
 
-        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
-            // Nothing on pasteboard — fall through to native WebKit paste.
+        let payload = makeJSONSafePastePayload(from: NSPasteboard.general)
+
+        // If there is no plain text on the pasteboard or it's empty, we fall back immediately to native WebKit paste.
+        guard let text = payload["text"] as? String, !text.isEmpty else {
             wv.perform(NSSelectorFromString("paste:"), with: sender)
             return
         }
 
-        let jsText = jsStringLiteral(text)
+        // Before serialization, verify the object is valid for JSON serialization.
+        guard JSONSerialization.isValidJSONObject(payload) else {
+            appendLog("paste-bridge: Invalid JSON object constructed: \(describeJSONTypes(payload))")
+            wv.perform(NSSelectorFromString("paste:"), with: sender)
+            return
+        }
+
+        let jsonString: String
+        do {
+            let data = try JSONSerialization.data(withJSONObject: payload, options: [])
+            jsonString = String(data: data, encoding: .utf8) ?? "{}"
+        } catch {
+            appendLog("paste-bridge: JSON serialization failed: \(error.localizedDescription)")
+            wv.perform(NSSelectorFromString("paste:"), with: sender)
+            return
+        }
+
         let js = """
         (function() {
+          var payload = \(jsonString);
+          var text = payload.text || '';
+          if (!text) return { ok: false, reason: 'no-text-payload' };
+
           var el = document.activeElement;
           if (!el) return { ok: false, reason: 'no-active-element' };
           var tag = el.tagName ? el.tagName.toLowerCase() : '';
@@ -99,7 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
           var isCE = el.isContentEditable;
           if (!isTextInput && !isCE) return { ok: false, reason: 'not-editable' };
           if (el.disabled || el.readOnly) return { ok: false, reason: 'secure-or-disabled' };
-          var text = \(jsText);
+
           if (isTextInput) {
             var start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
             var end   = typeof el.selectionEnd   === 'number' ? el.selectionEnd   : el.value.length;
@@ -138,8 +260,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             }
             if let dict = result as? [String: Any], let ok = dict["ok"] as? Bool, !ok {
                 let reason = dict["reason"] as? String ?? "unknown"
-                if reason == "no-active-element" || reason == "not-editable" {
-                    // Not in a text field; fall through to WebKit.
+                if reason == "no-active-element" || reason == "not-editable" || reason == "no-text-payload" {
+                    // Not in a text field or no text payload; fall through to WebKit.
                     DispatchQueue.main.async { wv.perform(NSSelectorFromString("paste:"), with: sender) }
                 }
                 // "secure-or-disabled": silently skip — don't paste into protected fields.

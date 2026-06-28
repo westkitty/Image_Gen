@@ -857,7 +857,7 @@ class Component extends DCLogic {
         ? checkpoints.map(cp => React.createElement('option', { key: cp.name, value: cp.name }, cp.title || cp.name))
         : [React.createElement('option', { key: '_cur', value: target }, loadingCheckpoints ? 'Loading models…' : (target || 'sd15'))];
       return React.createElement('div', null,
-        React.createElement('div', { style: labelStyle }, 'Target'),
+        React.createElement('div', { style: labelStyle }, 'Target model'),
         React.createElement('select', { style: selStyle, value: target, onChange: e => this.onSelectTarget(e.target.value) }, ...opts));
     };
     const targetSelectV1 = _makeTargetSelect(
