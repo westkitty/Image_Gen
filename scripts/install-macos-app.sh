@@ -178,6 +178,16 @@ if command -v codesign >/dev/null 2>&1; then
   codesign --force --deep --sign - "$APP" >/dev/null
 fi
 
+# Ensure the app is wired into the macOS Dock
+if ! defaults read com.apple.dock persistent-apps | grep -q "Image_Gen.app"; then
+  echo "Wiring Image_Gen.app into the macOS Dock..."
+  defaults write com.apple.dock persistent-apps -array-add "<dict><key>tile-data</key><dict><key>file-data</key><dict><key>_CFURLString</key><string>file://$APP/</string><key>_CFURLStringType</key><integer>15</integer></dict></dict><key>tile-type</key><string>file-tile</string></dict>"
+  killall Dock
+else
+  echo "Image_Gen.app is already wired into the Dock. Refreshing Dock..."
+  killall Dock
+fi
+
 echo "Installed $APP"
 echo "Binary: $BIN"
 echo "Icon: $ICON"
