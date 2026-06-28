@@ -36,7 +36,7 @@ class Component extends DCLogic {
     // Ollama prompt enhance
     ollamaOnline: false, ollamaModel: '', enhancingPrompt: false,
     // Wildcards
-    wildcards: [], showWildcards: false,
+    wildcards: [], showWildcards: false, wildcardFilter: '',
     // Extra networks / LoRA
     assets: { loras: [], vaes: [], embeddings: [] }, loadingAssets: false,
     // Inpaint (extends the Edit screen)
@@ -158,8 +158,33 @@ class Component extends DCLogic {
     } catch {}
   }
   insertWildcard(name) {
-    this.setState(s => ({ prompt: (s.prompt ? s.prompt + ' ' : '') + '__' + name + '__', showWildcards: false }));
+    this.setState(s => ({ prompt: (s.prompt ? s.prompt + ' ' : '') + '__' + name + '__', showWildcards: false, wildcardFilter: '' }));
     this.toast('Inserted __' + name + '__', '#38bdf8');
+  }
+  // Replace the partial __filter text at cursor with __name__
+  insertWildcardFiltered(name) {
+    const { prompt, wildcardFilter } = this.state;
+    const partial = '__' + wildcardFilter;
+    const idx = prompt.lastIndexOf(partial);
+    if (idx !== -1) {
+      const newPrompt = prompt.slice(0, idx) + '__' + name + '__' + prompt.slice(idx + partial.length);
+      this.setState({ prompt: newPrompt, showWildcards: false, wildcardFilter: '' });
+    } else {
+      this.setState(s => ({ prompt: (s.prompt ? s.prompt + ' ' : '') + '__' + name + '__', showWildcards: false, wildcardFilter: '' }));
+    }
+    this.toast('Inserted __' + name + '__', '#38bdf8');
+  }
+  // Prompt change — detect __ trigger for wildcard autocomplete
+  onPromptChange(e) {
+    const val = e.target.value;
+    const cursor = e.target.selectionStart != null ? e.target.selectionStart : val.length;
+    const before = val.slice(0, cursor);
+    const match = before.match(/__([^_\s]*)$/);
+    if (match) {
+      this.setState({ prompt: val, wildcardFilter: match[1], showWildcards: true });
+    } else {
+      this.setState({ prompt: val, wildcardFilter: '', showWildcards: false });
+    }
   }
 
   // ── Ollama prompt enhancement ─────────────────────────────────
@@ -701,7 +726,7 @@ class Component extends DCLogic {
             enhSrcRunId, enhSrcFile, enhScale, enhMethod, enhStatus, enhResult,
             checkpoints, loadingCheckpoints, activeCheckpoint,
             preset, runFiles, libFilter, libHasMore, libTotal, libLoadingMore,
-            ollamaOnline, enhancingPrompt, wildcards, showWildcards, assets, loadingAssets,
+            ollamaOnline, enhancingPrompt, wildcards, showWildcards, wildcardFilter, assets, loadingAssets,
             inpStatus, inpResult, inpStrength } = s;
     const screen = screens[version];
     const isGenerating = jobStatus === 'generating';
@@ -807,19 +832,46 @@ class Component extends DCLogic {
       React.createElement('span', { style: { fontSize: 11, color: '#6090a8', marginLeft: 10 } }, runs.length + ' of ' + (libTotal || runs.length) + ' runs'));
 
     // ── Prompt tools (Enhance via Ollama + Wildcards) ─────────
+    const wcFiltered = wildcardFilter
+      ? wildcards.filter(w => w.name.toLowerCase().includes(wildcardFilter.toLowerCase()))
+      : wildcards;
     const promptTools = React.createElement('div', { style: { display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap', marginTop: 6, position: 'relative' } },
       React.createElement('button', { onClick: () => this.enhancePrompt(), disabled: !ollamaOnline || enhancingPrompt,
         title: ollamaOnline ? 'Enhance prompt with Ollama' : 'Ollama offline',
         style: { border: '1px solid ' + (ollamaOnline ? accent : 'rgba(148,163,184,.18)'), background: 'transparent', color: ollamaOnline ? accent : '#5a6678', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: ollamaOnline ? 'pointer' : 'not-allowed', opacity: ollamaOnline ? 1 : .6, fontFamily: "'DM Sans',sans-serif" } },
         enhancingPrompt ? '✨ Enhancing…' : '✨ Enhance'),
-      React.createElement('button', { onClick: () => this.setState({ showWildcards: !showWildcards }),
-        style: { border: '1px solid rgba(148,163,184,.18)', background: 'transparent', color: '#b8c7d6', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" } },
-        '⊞ Wildcards (' + wildcards.length + ')'),
-      showWildcards ? React.createElement('div', { style: { position: 'absolute', top: '110%', left: 0, zIndex: 50, background: '#0c1018', border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, padding: 6, display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 240, overflowY: 'auto', minWidth: 200, boxShadow: '0 8px 24px rgba(0,0,0,.5)' } },
-        wildcards.length ? wildcards.map(w => React.createElement('button', { key: w.name, onClick: () => this.insertWildcard(w.name),
+      React.createElement('button', { onClick: () => this.setState(s => ({ showWildcards: !s.showWildcards, wildcardFilter: '' })),
+        style: { border: '1px solid ' + (showWildcards ? accent : 'rgba(148,163,184,.18)'), background: 'transparent', color: showWildcards ? accent : '#b8c7d6', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" } },
+        wildcardFilter ? ('__ ' + wildcardFilter + '… (' + wcFiltered.length + ')') : '⊞ Wildcards (' + wildcards.length + ')'),
+      showWildcards ? React.createElement('div', { style: { position: 'absolute', top: '110%', left: 0, zIndex: 50, background: '#0c1018', border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, padding: 6, display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 240, overflowY: 'auto', minWidth: 220, boxShadow: '0 8px 24px rgba(0,0,0,.5)' } },
+        wildcardFilter ? React.createElement('div', { style: { fontSize: 10, color: '#5a6678', padding: '2px 6px 5px', borderBottom: '1px solid rgba(148,163,184,.1)', marginBottom: 3, fontFamily: "'IBM Plex Mono',monospace" } }, 'autocomplete: __' + wildcardFilter + '…') : null,
+        wcFiltered.length ? wcFiltered.map(w => React.createElement('button', { key: w.name,
+          onClick: () => wildcardFilter ? this.insertWildcardFiltered(w.name) : this.insertWildcard(w.name),
           style: { textAlign: 'left', border: 'none', background: 'transparent', color: '#c0c0d8', borderRadius: 5, padding: '5px 8px', fontSize: 12, cursor: 'pointer', fontFamily: "'IBM Plex Mono',monospace" } },
-          '__' + w.name + '__ ', React.createElement('span', { style: { color: '#5a6678' } }, '(' + (w.count || 0) + ')')))
-          : React.createElement('div', { style: { fontSize: 12, color: '#5a6678', padding: 6 } }, 'No wildcards')) : null);
+          '__' + w.name + '__', React.createElement('span', { style: { color: '#5a6678', marginLeft: 4 } }, '(' + (w.count || 0) + ')')))
+          : React.createElement('div', { style: { fontSize: 12, color: '#5a6678', padding: 6 } }, wildcardFilter ? 'No match for "' + wildcardFilter + '"' : 'No wildcards')) : null);
+
+    // ── Dynamic target selects (populated from /api/capabilities) ─
+    const _makeTargetSelect = (labelStyle, selStyle) => {
+      const opts = checkpoints.length > 0
+        ? checkpoints.map(cp => React.createElement('option', { key: cp.name, value: cp.name }, cp.title || cp.name))
+        : [React.createElement('option', { key: '_cur', value: target }, loadingCheckpoints ? 'Loading models…' : (target || 'sd15'))];
+      return React.createElement('div', null,
+        React.createElement('div', { style: labelStyle }, 'Target'),
+        React.createElement('select', { style: selStyle, value: target, onChange: e => this.onSelectTarget(e.target.value) }, ...opts));
+    };
+    const targetSelectV1 = _makeTargetSelect(
+      { fontSize: '10px', color: '#6090a8', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '4px' },
+      { width: '100%', border: '1px solid rgba(148,163,184,.16)', background: '#091420', color: '#e8f0f7', borderRadius: '7px', padding: '7px', outline: 'none', fontSize: '12px', fontFamily: "'DM Sans',sans-serif" }
+    );
+    const targetSelectV2 = _makeTargetSelect(
+      { fontSize: '10px', color: '#8888b0', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: '4px' },
+      { width: '100%', border: '1px solid rgba(200,180,255,.14)', background: '#110a1e', color: '#eeeaf8', borderRadius: '7px', padding: '7px', outline: 'none', fontSize: '12px', fontFamily: "'DM Sans',sans-serif" }
+    );
+    const targetSelectV3 = _makeTargetSelect(
+      { fontSize: '10px', letterSpacing: '.1em', textTransform: 'uppercase', color: '#7070a0', fontWeight: '600', marginBottom: '4px' },
+      { width: '100%', border: '1px solid rgba(255,255,255,.09)', background: '#141418', color: '#f4f4f8', borderRadius: '6px', padding: '8px', outline: 'none', fontSize: '12px', fontFamily: "'Space Grotesk',sans-serif" }
+    );
 
     // ── Extra Networks (LoRA / VAE) panel ─────────────────────
     const loras = assets.loras || [];
@@ -861,7 +913,7 @@ class Component extends DCLogic {
       // Create form
       prompt, negPrompt, steps: String(steps), cfg: String(cfg), seed: String(seed),
       width: String(width), height: String(height), promptLen: String(prompt.length),
-      onPromptChange: e=>this.setState({prompt:e.target.value}),
+      onPromptChange: e=>this.onPromptChange(e),
       onNegChange: e=>this.setState({negPrompt:e.target.value}),
       onStepsChange: e=>this.setState({steps:e.target.value}),
       onCfgChange: e=>this.setState({cfg:e.target.value}),
@@ -901,6 +953,7 @@ class Component extends DCLogic {
       onStopServer: ()=>{ fetch(this.state.backendUrl+'/api/actions/server-stop',{method:'POST'}).then(r=>r.json()).then(d=>{ const {job_id}=d; if(job_id) this._startPoll(job_id,()=>{ this.toast('Server stopped','#fbbf24'); this.pingBackend(); }); }).catch(()=>this.toast('Stop failed','#ef4444')); },
       onServerStatus: ()=>{ this.pingBackend(); this.loadRuns(); },
       target, onTargetChange: e=>this.onSelectTarget(e.target.value),
+      targetSelectV1, targetSelectV2, targetSelectV3,
       preset, onPresetChange: e=>this.onSelectPreset(e.target.value),
       promptTools, onEnhancePrompt: ()=>this.enhancePrompt(),
       onCopyParams: ()=>{ try{ navigator.clipboard.writeText(JSON.stringify({target,prompt,negPrompt,steps,cfg,seed,width,height,sampler:this._mapSampler(sampler),scheduler},null,2)); this.toast('Params copied to clipboard', '#38bdf8'); }catch{} },
