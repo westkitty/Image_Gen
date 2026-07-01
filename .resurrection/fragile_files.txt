@@ -1,0 +1,5 @@
+operator-console/package-lock.json
+operator-console/package.json
+operator-console/README.md
+sdcpp-workflow/CHANGELOG.md
+sdcpp-workflow/README.md

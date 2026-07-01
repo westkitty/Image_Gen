@@ -1,0 +1,72 @@
+{
+  "git_state": {
+    "available": true,
+    "branch": "main",
+    "dirty": true,
+    "head": "d85b7519196e237349955e1ea615edc9fa97eba5",
+    "head_subject": "feat: automatically wire macOS wrapper app into Dock upon install",
+    "is_repo": true,
+    "remote_url": "git@github.com:westkitty/Image_Gen.git",
+    "repo_root": "/Users/andrew/Image_Gen",
+    "staged_count": 0,
+    "tracked_modified_count": 0,
+    "untracked_count": 3
+  },
+  "identity": {
+    "name": "Image_Gen",
+    "path": "/Users/andrew/Image_Gen"
+  },
+  "project_type": {
+    "confidence": 0.2,
+    "evidence": [],
+    "purpose": "Purpose could not be inferred confidently from filesystem signals.",
+    "type": "unknown"
+  },
+  "recommended_next_actions": [
+    "Inspect the current uncommitted Git changes before making new edits.",
+    "Review secret-risk findings and move sensitive values out of tracked files.",
+    "Back up or review fragile configuration files before any risky changes.",
+    "Read the top-level README.md or AGENTS.md to establish project intent.",
+    "Read `.resurrection/project_report.md` and make one bounded change at a time."
+  ],
+  "scan_timestamp": "2026-06-28T13:33:58+00:00",
+  "scanner_version": "1.1.0",
+  "signature": {
+    "git_dirty": {
+      "dirty": true,
+      "staged_count": 0,
+      "tracked_modified_count": 0,
+      "untracked_count": 3
+    },
+    "git_head": "d85b7519196e237349955e1ea615edc9fa97eba5",
+    "project_type": "unknown",
+    "scanner_version": "1.1.0",
+    "watched_files": {
+      "operator-console/README.md": {
+        "mtime_ns": 1782170523008343082,
+        "sha256": "b7406ba9f10cf1a91aa1e3943e7e2443d4bd01122e8d2fc0a229da425023451f",
+        "size": 7621
+      },
+      "operator-console/package.json": {
+        "mtime_ns": 1782560932307125095,
+        "sha256": "aa95506c04ad944dd36448040dfae41b22cda74390a1c7b266c8dc89b1dcc085",
+        "size": 397
+      },
+      "operator-console/public/dexdiffusion/index.html": {
+        "mtime_ns": 1782646807305402368,
+        "sha256": "6bc70e459c6214856054192913fbe065f5a3a24415c18229c986de34e6c12db5",
+        "size": 132916
+      },
+      "operator-console/public/index.html": {
+        "mtime_ns": 1782649035069471051,
+        "sha256": "35efbb40a6949a1b70a3f595fd76265965e93602b079b5ba1fc2ea5c6a5e1d00",
+        "size": 49514
+      },
+      "sdcpp-workflow/README.md": {
+        "mtime_ns": 1782167145867223483,
+        "sha256": "8c6ced3d95f01212fada25b7fa2f14d53047dc73cf6258893c33f1da5b374c96",
+        "size": 6760
+      }
+    }
+  }
+}

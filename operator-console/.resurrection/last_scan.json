@@ -1,0 +1,69 @@
+{
+  "git_state": {
+    "available": true,
+    "branch": "main",
+    "dirty": true,
+    "head": "865a7c517069270454944cc738ffce2ef4dd1ea8",
+    "head_subject": "fix: make DexDiffusion the default app entrypoint",
+    "is_repo": true,
+    "remote_url": "git@github.com:westkitty/Image_Gen.git",
+    "repo_root": "/Users/andrew/Image_Gen",
+    "staged_count": 0,
+    "tracked_modified_count": 0,
+    "untracked_count": 2
+  },
+  "identity": {
+    "name": "operator-console",
+    "path": "/Users/andrew/Image_Gen/operator-console"
+  },
+  "project_type": {
+    "confidence": 0.71,
+    "evidence": [
+      "Found package.json"
+    ],
+    "purpose": "A web or Node.js project named operator console.",
+    "type": "node_web_app"
+  },
+  "recommended_next_actions": [
+    "Inspect the current uncommitted Git changes before making new edits.",
+    "Review secret-risk findings and move sensitive values out of tracked files.",
+    "Back up or review fragile configuration files before any risky changes.",
+    "Validate the project with the hinted test command: npm run test",
+    "Validate the project with the hinted run/dev command: npm run check"
+  ],
+  "scan_timestamp": "2026-06-27T18:16:13+00:00",
+  "scanner_version": "1.0.0",
+  "signature": {
+    "git_dirty": {
+      "dirty": true,
+      "staged_count": 0,
+      "tracked_modified_count": 0,
+      "untracked_count": 2
+    },
+    "git_head": "865a7c517069270454944cc738ffce2ef4dd1ea8",
+    "project_type": "node_web_app",
+    "scanner_version": "1.0.0",
+    "watched_files": {
+      "README.md": {
+        "mtime_ns": 1782170523008343082,
+        "sha256": "b7406ba9f10cf1a91aa1e3943e7e2443d4bd01122e8d2fc0a229da425023451f",
+        "size": 7621
+      },
+      "package.json": {
+        "mtime_ns": 1782560932307125095,
+        "sha256": "aa95506c04ad944dd36448040dfae41b22cda74390a1c7b266c8dc89b1dcc085",
+        "size": 397
+      },
+      "public/dexdiffusion/index.html": {
+        "mtime_ns": 1782580058343587715,
+        "sha256": "9a2cc78e84aec8fa30d90bfb291b6e6d8bd7aac14f3d71f746c93a3111683706",
+        "size": 134546
+      },
+      "public/index.html": {
+        "mtime_ns": 1782560932348780249,
+        "sha256": "46da71d1c40b38712b4c499920e94a1a43b4293a8f96942fe4b8284cdee6b937",
+        "size": 49519
+      }
+    }
+  }
+}

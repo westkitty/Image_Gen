@@ -1,0 +1,57 @@
+{
+  "commands": [],
+  "duplicate_candidates": [
+    "sibling-near-duplicate: Image_Gen.backup-before-a1111-workbench-20260621-015246"
+  ],
+  "fragile_files": [
+    "operator-console/package-lock.json",
+    "operator-console/package.json",
+    "operator-console/README.md",
+    "sdcpp-workflow/CHANGELOG.md",
+    "sdcpp-workflow/README.md"
+  ],
+  "git_state": {
+    "available": true,
+    "branch": "main",
+    "dirty": true,
+    "head": "d85b7519196e237349955e1ea615edc9fa97eba5",
+    "head_subject": "feat: automatically wire macOS wrapper app into Dock upon install",
+    "is_repo": true,
+    "remote_url": "git@github.com:westkitty/Image_Gen.git",
+    "repo_root": "/Users/andrew/Image_Gen",
+    "staged_count": 0,
+    "tracked_modified_count": 0,
+    "untracked_count": 3
+  },
+  "identity": {
+    "name": "Image_Gen",
+    "path": "/Users/andrew/Image_Gen"
+  },
+  "project_type": {
+    "confidence": 0.2,
+    "evidence": [],
+    "purpose": "Purpose could not be inferred confidently from filesystem signals.",
+    "type": "unknown"
+  },
+  "recommended_next_actions": [
+    "Inspect the current uncommitted Git changes before making new edits.",
+    "Review secret-risk findings and move sensitive values out of tracked files.",
+    "Back up or review fragile configuration files before any risky changes.",
+    "Read the top-level README.md or AGENTS.md to establish project intent.",
+    "Read `.resurrection/project_report.md` and make one bounded change at a time."
+  ],
+  "scan_timestamp": "2026-06-28T13:33:58+00:00",
+  "scanner_version": "1.1.0",
+  "secret_risks": [
+    {
+      "category": "openai_sk_prefix",
+      "line": 45,
+      "path": "Image_Gen_Bible.md"
+    },
+    {
+      "category": "openai_sk_prefix",
+      "line": 1078,
+      "path": "operator-console/server.js"
+    }
+  ]
+}
