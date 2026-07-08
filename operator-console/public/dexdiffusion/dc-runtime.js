@@ -125,6 +125,9 @@
     }
     setState(patch) {
       const next = typeof patch === 'function' ? patch(this.state) : patch;
+      if (!next || typeof next !== 'object') return;
+      const keys = Object.keys(next);
+      if (keys.length && keys.every((key) => Object.is(this.state[key], next[key]))) return;
       this.state = Object.assign({}, this.state, next);
       scheduleRender(this);
     }
@@ -255,11 +258,14 @@
         const slotExpr = exprSegs[0].v;
         const anchor = document.createComment('dc');
         let managed = [];
+        let lastValue = Symbol('unset');
         return {
           node: anchor,
           mount(p) { p.appendChild(anchor); },
           patch(vals) {
             const v = resolve(slotExpr, vals, scope);
+            if (v === lastValue) return;
+            lastValue = v;
             const parent = anchor.parentNode;
             if (!parent) return;
             for (const n of managed) if (n.parentNode === parent) parent.removeChild(n);

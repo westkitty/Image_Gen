@@ -17,5 +17,8 @@
   "type": "commonjs",
   "dependencies": {
     "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.61.1"
   }
 }

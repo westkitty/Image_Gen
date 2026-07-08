@@ -10,9 +10,13 @@ class Component extends DCLogic {
     // Create
     target: 'sd15',
     prompt: '', negPrompt: '',
+    promptOpen: true,
+    settingsOpen: false, compactMode: localStorage.getItem('dex_compact_mode') === 'true',
+    selectedVae: 'default', favoriteName: '',
+    favoritePresets: (() => { try { return JSON.parse(localStorage.getItem('dex_favorite_presets') || '[]'); } catch { return []; } })(),
     steps: 20, cfg: 7, seed: -1, width: 512, height: 512,
     sampler: 'euler_a', scheduler: 'discrete',
-    jobStatus: 'idle', progress: 0, currentImageSrc: null, lastSeed: null, errorMsg: '',
+    jobStatus: 'idle', progress: 0, currentImageSrc: null, lastSeed: null, errorMsg: '', lastGenerationParams: null,
     // Batch
     batchAxisX: 'seed', batchValuesX: '-1,-1,-1,-1',
     batchPrompt: '', batchNeg: '', batchSteps: 20, batchCfg: 7, batchW: 512, batchH: 512,
@@ -26,7 +30,7 @@ class Component extends DCLogic {
     enhSrcRunId: 'last', enhScale: 2, enhMethod: 'pillow',
     enhStatus: 'idle', enhResult: null,
     // Models
-    checkpoints: [], loadingCheckpoints: false, activeCheckpoint: '',
+    checkpoints: [], loadingCheckpoints: false, activeCheckpoint: '', capabilityData: null,
     modelTargets: [],          // raw capability targets (with defaults) for preset application
     preset: 'balanced',
     // img2img / enhance source files (populated from /api/runs/:id/files)
@@ -45,13 +49,18 @@ class Component extends DCLogic {
     backendUrl: localStorage.getItem('dex_backend_url') || 'http://127.0.0.1:31337',
     backendOnline: false,
     runs: (() => { try { return JSON.parse(localStorage.getItem('dex_runs') || '[]'); } catch { return []; } })(),
+    selectedRunId: '', selectedRunDetail: null, loadingRunDetail: false, runSearch: '',
+    assetQuery: '', serverStatusSummary: '', lastValidation: '',
     savePrompts: localStorage.getItem('dex_save_prompts') === 'true',
     toasts: [],
   };
 
   _pingTimer = null; _pollTimer = null; _toastId = 0;
+  _completedImageCache = { key: null, node: null };
 
   componentDidMount() {
+    this._keyHandler = (e) => this.onKeydown(e);
+    window.addEventListener('keydown', this._keyHandler);
     this.pingBackend();
     this._pingTimer = setInterval(() => this.pingBackend(), 20000);
     this.loadRuns();
@@ -62,6 +71,18 @@ class Component extends DCLogic {
   }
   componentWillUnmount() {
     clearInterval(this._pingTimer); clearInterval(this._pollTimer);
+    window.removeEventListener('keydown', this._keyHandler);
+  }
+
+  onKeydown(e) {
+    const tag = (e.target && e.target.tagName || '').toLowerCase();
+    const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); this.onGenerate(); return; }
+    if (inField) return;
+    if (e.key === '/') { e.preventDefault(); this.setState({ promptOpen: true }, () => document.querySelector('textarea[placeholder*="Describe the image"]')?.focus()); }
+    if (e.key.toLowerCase() === 'p') this.setState(s => ({ promptOpen: !s.promptOpen }));
+    if (e.key.toLowerCase() === 's') this.setState(s => ({ settingsOpen: !s.settingsOpen }));
+    if (e.key.toLowerCase() === 'l') this.setScreen('library');
   }
 
   // ── Toast ─────────────────────────────────────────────────────
@@ -75,8 +96,10 @@ class Component extends DCLogic {
   async pingBackend() {
     try {
       const r = await fetch(this.state.backendUrl + '/api/version', { signal: AbortSignal.timeout(3000) });
-      this.setState({ backendOnline: r.ok });
-    } catch { this.setState({ backendOnline: false }); }
+      if (this.state.backendOnline !== r.ok) this.setState({ backendOnline: r.ok });
+    } catch {
+      if (this.state.backendOnline !== false) this.setState({ backendOnline: false });
+    }
   }
 
   // Map one /api/run-index item to the run-card shape the UI uses.
@@ -132,6 +155,16 @@ class Component extends DCLogic {
   setLibFilter(f) { this.setState({ libFilter: f, libOffset: 0 }); this.loadRuns({ filter: f }); }
   loadMoreRuns() { if (this.state.libHasMore && !this.state.libLoadingMore) this.loadRuns({ append: true }); }
 
+  refreshAll() {
+    this.pingBackend();
+    this.loadRuns();
+    this.loadModels();
+    this.loadAssets();
+    this.loadWildcards();
+    this.checkOllama();
+    this.toast('Refreshed visible data', '#38bdf8');
+  }
+
   // ── Assets / LoRA (Extra Networks) ────────────────────────────
   async loadAssets() {
     this.setState({ loadingAssets: true });
@@ -142,6 +175,17 @@ class Component extends DCLogic {
         this.setState({ assets: { loras: d.loras || [], vaes: d.vaes || [], embeddings: d.embeddings || [] }, loadingAssets: false });
       } else { this.setState({ loadingAssets: false }); }
     } catch { this.setState({ loadingAssets: false }); }
+  }
+  async discoverAssets() {
+    try {
+      this.setState({ loadingAssets: true });
+      await fetch(this.state.backendUrl + '/api/actions/discover-assets', { method: 'POST' });
+      await this.loadAssets();
+      this.toast('Asset discovery refreshed', '#38bdf8');
+    } catch (e) {
+      this.setState({ loadingAssets: false });
+      this.toast('Asset discovery failed: ' + e.message, '#ef4444');
+    }
   }
   insertLora(filename) {
     const base = String(filename || '').replace(/\.[^.]+$/, '');
@@ -242,7 +286,10 @@ class Component extends DCLogic {
         const r = await fetch(this.state.backendUrl + '/api/jobs/' + jobId, { signal: AbortSignal.timeout(3000) });
         if (!r.ok) return;
         const job = await r.json();
-        if (job.progress != null) this.setState({ progress: Math.min(99, Math.round(job.progress)) });
+        if (job.progress != null) {
+          const nextProgress = Math.min(99, Math.round(job.progress));
+          if (nextProgress !== this.state.progress) this.setState({ progress: nextProgress });
+        }
         if (this._jobTerminal(job.status)) {
           clearInterval(this._pollTimer);
           onComplete(job);
@@ -270,7 +317,7 @@ class Component extends DCLogic {
           hash: t.status || '',
           status: t.status,
         }));
-        this.setState({ checkpoints, modelTargets: targets, loadingCheckpoints: false });
+        this.setState({ checkpoints, modelTargets: targets, capabilityData: data, loadingCheckpoints: false });
         this.toast('Loaded ' + checkpoints.length + ' targets', '#38bdf8');
       } else { this.setState({ loadingCheckpoints: false }); this.toast('Failed to load capabilities (' + r.status + ')', '#ef4444'); }
     } catch(e) { this.setState({ loadingCheckpoints: false }); this.toast('Cannot reach backend', '#ef4444'); }
@@ -290,7 +337,7 @@ class Component extends DCLogic {
     if (!t) return;
     const preset = presetOverride || this.state.preset || 'balanced';
     const baseSteps = t.defaultSteps || 20;
-    const factor = preset === 'fast' ? 0.5 : preset === 'quality' ? 2 : 1;
+    const factor = preset === 'smoke' ? 0.05 : preset === 'fast' ? 0.5 : preset === 'quality' ? 2 : 1;
     let steps = Math.round(baseSteps * factor);
     if (t.minSteps) steps = Math.max(t.minSteps, steps);
     if (t.maxSteps) steps = Math.min(t.maxSteps, steps);
@@ -305,10 +352,123 @@ class Component extends DCLogic {
   onSelectTarget(id) { this.setState({ target: id, activeCheckpoint: id }); this.applyTargetDefaults(id); }
   onSelectPreset(label) {
     // The prototype's preset options are display labels (e.g. "Fast (SD1.5)"); map to a speed bucket.
-    const k = /fast|turbo|lcm|smoke/i.test(label) ? 'fast' : /qual|high|slow|detail/i.test(label) ? 'quality' : 'balanced';
+    const k = /smoke/i.test(label) ? 'smoke' : /fast|turbo|lcm/i.test(label) ? 'fast' : /qual|high|slow|detail/i.test(label) ? 'quality' : 'balanced';
     this.setState({ preset: k });
     this.applyTargetDefaults(this.state.target, k);
     this.toast('Preset: ' + k, '#38bdf8');
+  }
+
+  currentParams() {
+    const { target, prompt, negPrompt, steps, cfg, seed, width, height, sampler, scheduler, savePrompts, selectedVae, preset } = this.state;
+    return { target, prompt, negative_prompt: negPrompt, steps: +steps, cfg_scale: +cfg, seed, width: +width, height: +height,
+      sampler: this._mapSampler(sampler), scheduler, preset, save_prompts: savePrompts, selectedVae };
+  }
+
+  vaeLabel(value) {
+    if (!value || value === 'default') return 'default / backend-selected';
+    if (value === 'none') return 'none';
+    return value;
+  }
+
+  validationMessages() {
+    const p = this.currentParams();
+    const out = [];
+    if (!String(p.prompt || '').trim()) out.push(['Prompt required', 'warn']);
+    if (!Number.isFinite(p.steps) || p.steps < 1 || p.steps > 150) out.push(['Steps must be 1-150', 'error']);
+    if (!Number.isFinite(p.cfg_scale) || p.cfg_scale < 1 || p.cfg_scale > 30) out.push(['CFG scale must be 1-30', 'error']);
+    if (!Number.isFinite(p.width) || !Number.isFinite(p.height) || p.width % 8 || p.height % 8) out.push(['Width and height must be multiples of 8', 'error']);
+    if (p.selectedVae && p.selectedVae !== 'default' && p.selectedVae !== 'none') out.push(['VAE is cataloged here; generation backend does not yet consume VAE selection', 'info']);
+    if (!out.length) out.push(['Ready to generate', 'ok']);
+    return out;
+  }
+
+  saveFavoritePreset() {
+    const name = (this.state.favoriteName || '').trim() || ('Preset ' + new Date().toLocaleTimeString());
+    const preset = { id: String(Date.now()), name, params: this.currentParams() };
+    const favoritePresets = [preset, ...this.state.favoritePresets.filter(p => p.name !== name)].slice(0, 20);
+    localStorage.setItem('dex_favorite_presets', JSON.stringify(favoritePresets));
+    this.setState({ favoritePresets, favoriteName: '' });
+    this.toast('Saved preset: ' + name, '#38bdf8');
+  }
+
+  applyFavoritePreset(id) {
+    const p = this.state.favoritePresets.find(x => x.id === id);
+    if (!p) return;
+    const v = p.params || {};
+    this.setState({
+      target: v.target || this.state.target,
+      prompt: v.prompt || '',
+      negPrompt: v.negative_prompt || '',
+      steps: v.steps || this.state.steps,
+      cfg: v.cfg_scale || this.state.cfg,
+      seed: v.seed ?? this.state.seed,
+      width: v.width || this.state.width,
+      height: v.height || this.state.height,
+      sampler: v.sampler || this.state.sampler,
+      scheduler: v.scheduler || this.state.scheduler,
+      selectedVae: v.selectedVae || 'default',
+      promptOpen: true
+    });
+    this.toast('Applied preset: ' + p.name, '#65d66e');
+  }
+
+  deleteFavoritePreset(id) {
+    const favoritePresets = this.state.favoritePresets.filter(p => p.id !== id);
+    localStorage.setItem('dex_favorite_presets', JSON.stringify(favoritePresets));
+    this.setState({ favoritePresets });
+  }
+
+  async inspectRun(runId) {
+    if (!runId || runId === 'no runs yet') return;
+    this.setState({ selectedRunId: runId, selectedRunDetail: null, loadingRunDetail: true });
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/runs/' + runId + '/metadata', { signal: AbortSignal.timeout(7000) });
+      if (!r.ok) throw new Error('metadata ' + r.status);
+      const detail = await r.json();
+      this.setState({ selectedRunDetail: detail, loadingRunDetail: false });
+    } catch (e) {
+      this.setState({ loadingRunDetail: false });
+      this.toast('Run metadata unavailable: ' + e.message, '#ef4444');
+    }
+  }
+
+  reuseSelectedRun() {
+    const d = this.state.selectedRunDetail;
+    const replay = d && d.replay;
+    if (!replay || !replay.available) { this.toast('Selected run is not reusable', '#fbbf24'); return; }
+    this.setState({
+      target: replay.target || this.state.target,
+      prompt: replay.prompt || this.state.prompt,
+      negPrompt: replay.negative_prompt || '',
+      steps: replay.steps || this.state.steps,
+      cfg: replay.cfg_scale || this.state.cfg,
+      seed: replay.seed ?? this.state.seed,
+      width: replay.width || this.state.width,
+      height: replay.height || this.state.height,
+      promptOpen: true,
+      screens: { ...this.state.screens, [this.state.version]: 'create' }
+    });
+    this.toast('Run settings loaded into Create', '#65d66e');
+  }
+
+  copyText(label, text) {
+    try {
+      navigator.clipboard.writeText(text);
+      this.toast(label + ' copied', '#38bdf8');
+    } catch {
+      this.toast('Clipboard unavailable', '#ef4444');
+    }
+  }
+
+  async serverStatus() {
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/server-status', { signal: AbortSignal.timeout(5000) });
+      const d = await r.json().catch(() => ({}));
+      this.setState({ serverStatusSummary: d.status || d.summary || JSON.stringify(d).slice(0, 160) });
+      this.toast('Server status refreshed', '#38bdf8');
+    } catch (e) {
+      this.setState({ serverStatusSummary: 'Unavailable: ' + e.message });
+    }
   }
 
   // ── Source files for img2img / Enhance / Inpaint ──────────────
@@ -336,7 +496,6 @@ class Component extends DCLogic {
       return;
     }
     if (!prompt.trim()) { this.toast('Enter a prompt first', '#fbbf24'); return; }
-    this.setState({ jobStatus: 'generating', progress: 0, currentImageSrc: null, errorMsg: '' });
     const body = {
       target: target || 'sd15',
       prompt: prompt.trim(),
@@ -346,6 +505,7 @@ class Component extends DCLogic {
       sampler: this._mapSampler(sampler), scheduler: scheduler || 'discrete',
       save_prompts: savePrompts,
     };
+    this.setState({ jobStatus: 'generating', progress: 0, currentImageSrc: null, errorMsg: '', lastGenerationParams: { ...body, preset: this.state.preset || 'balanced', selectedVae: this.state.selectedVae } });
     try {
       const r = await fetch(backendUrl + '/api/actions/generate-controlled', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -383,7 +543,8 @@ class Component extends DCLogic {
       };
       const runs = [run, ...this.state.runs].slice(0, 100);
       try { localStorage.setItem('dex_runs', JSON.stringify(runs)); } catch {}
-      this.setState({ jobStatus: 'complete', progress: 100, currentImageSrc: imgSrc, lastSeed: params.seed, runs });
+      this.setState(s => ({ jobStatus: 'complete', progress: 100, currentImageSrc: imgSrc, lastSeed: params.seed, runs,
+        lastGenerationParams: { ...(s.lastGenerationParams || params), runId, imageFile: imgFile, status: job.status } }));
       this.toast('Done · ' + (runId || ''), '#65d66e');
       setTimeout(() => this.loadRuns(), 1500);
     } else {
@@ -680,6 +841,30 @@ class Component extends DCLogic {
       inpStatus === 'error' ? h('div', { style: { marginTop: 9, fontSize: 12, color: '#ef4444' } }, '✗ Inpaint failed') : null);
   }
 
+  buildGenerationMeta(params) {
+    if (!params) return null;
+    const h = React.createElement;
+    const row = (label, value, wide) => h('div', { style: { gridColumn: wide ? '1 / -1' : 'auto', minWidth: 0 } },
+      h('div', { style: { fontSize: 10, color: '#6f7898', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 3 } }, label),
+      h('div', { style: { fontSize: 11, color: '#cbd5e1', fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1.45, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' } }, String(value ?? '—')));
+    return h('div', { style: { width: '100%', maxWidth: 720, marginTop: 12, padding: 12, border: '1px solid rgba(148,163,184,.16)', borderRadius: 8, background: 'rgba(5,10,18,.78)', boxShadow: '0 10px 30px rgba(0,0,0,.18)' } },
+      h('div', { style: { fontSize: 11, color: '#94a3b8', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 9 } }, 'Generation settings'),
+      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 9 } },
+        row('Prompt', params.prompt, true),
+        params.negative_prompt ? row('Negative', params.negative_prompt, true) : null,
+        row('Target', params.target),
+        row('Preset', params.preset),
+        row('Steps', params.steps),
+        row('CFG', params.cfg_scale),
+        row('Seed', params.seed),
+        row('Size', (params.width || '—') + ' x ' + (params.height || '—')),
+        row('Sampler', params.sampler),
+        row('Scheduler', params.scheduler),
+        row('VAE', this.vaeLabel(params.selectedVae)),
+        row('Save prompts', params.save_prompts ? 'on' : 'off'),
+        params.runId ? row('Run', params.runId, true) : null));
+  }
+
   buildImageDisplay(jobStatus, progress, imageSrc, lastSeed, errorMsg) {
     if (jobStatus === 'generating') {
       const steps = Math.round(progress / 100 * (+this.state.steps || 20));
@@ -697,7 +882,13 @@ class Component extends DCLogic {
           'step ~' + steps + ' / ' + (this.state.steps || 20)) : null);
     }
     if (jobStatus === 'complete' && imageSrc) {
-      return React.createElement('img', { src: imageSrc, alt: 'Generated image', crossOrigin: 'anonymous', style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 6 } });
+      const metaKey = JSON.stringify(this.state.lastGenerationParams || {});
+      const cacheKey = imageSrc + '|' + metaKey;
+      if (this._completedImageCache.key === cacheKey && this._completedImageCache.node) return this._completedImageCache.node;
+      this._completedImageCache = { key: cacheKey, node: React.createElement('div', { style: { width: '100%', height: '100%', overflowY: 'auto', padding: '16px 10px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start' } },
+        React.createElement('img', { src: imageSrc, alt: 'Generated image', crossOrigin: 'anonymous', style: { width: 'min(100%, 720px)', maxHeight: 'min(70vh, 720px)', objectFit: 'contain', borderRadius: 6, flexShrink: 0 } }),
+        this.buildGenerationMeta(this.state.lastGenerationParams)) };
+      return this._completedImageCache.node;
     }
     if (jobStatus === 'complete') {
       return React.createElement('div', { style: { textAlign: 'center' } },
@@ -716,7 +907,7 @@ class Component extends DCLogic {
 
   renderVals() {
     const s = this.state;
-    const { version, screens, prompt, negPrompt, steps, cfg, seed, width, height,
+    const { version, screens, prompt, negPrompt, promptOpen, steps, cfg, seed, width, height,
             sampler, scheduler,
             jobStatus, progress, currentImageSrc, lastSeed, errorMsg,
             target, backendOnline, backendUrl, runs, savePrompts, toasts,
@@ -874,17 +1065,114 @@ class Component extends DCLogic {
     );
 
     // ── Extra Networks (LoRA / VAE) panel ─────────────────────
-    const loras = assets.loras || [];
+    const assetMatch = item => !s.assetQuery || String((item && (item.name || item.filename || item.id)) || '').toLowerCase().includes(s.assetQuery.toLowerCase());
+    const loras = (assets.loras || []).filter(assetMatch);
+    const vaes = (assets.vaes || []).filter(assetMatch);
+    const embeddings = (assets.embeddings || []).filter(assetMatch);
+    const rawAssetCounts = { loras: (assets.loras || []).length, vaes: (assets.vaes || []).length, embeddings: (assets.embeddings || []).length };
+    const assetRow = (kind, item, action) => React.createElement('div', { key: kind + ':' + (item.id || item.filename || item.name),
+      style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, border: '1px solid rgba(148,163,184,.12)', background: 'rgba(9,20,32,.7)', borderRadius: 8, padding: '7px 10px' } },
+      React.createElement('span', { style: { fontSize: 12, color: '#c0c0d8', fontFamily: "'IBM Plex Mono',monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 } }, item.name || item.filename),
+      action ? React.createElement('button', { onClick: action,
+        style: { border: '1px solid ' + accent, background: 'transparent', color: accent, borderRadius: 6, padding: '3px 9px', fontSize: 11, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" } }, 'Insert') :
+        React.createElement('span', { style: { fontSize: 10, color: '#6090a8', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" } }, 'Available'));
+    const assetSection = (title, items, empty, render) => React.createElement('div', { style: { marginTop: 10 } },
+      React.createElement('div', { style: { fontSize: 10, color: '#6090a8', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6, fontWeight: 700 } }, title),
+      items.length ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 220, overflowY: 'auto', paddingRight: 2 } },
+        ...items.map(render)) : React.createElement('div', { style: { fontSize: 12, color: '#6090a8', fontStyle: 'italic' } }, empty));
     const extraNetworksDisplay = React.createElement('div', null,
       React.createElement('div', { style: { fontSize: 11, color: '#6090a8', marginBottom: 7 } },
-        loadingAssets ? 'Discovering assets…' : (loras.length + ' LoRAs · ' + (assets.vaes || []).length + ' VAEs · ' + (assets.embeddings || []).length + ' embeddings')),
-      loras.length ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 5 } },
-        ...loras.slice(0, 12).map(l => React.createElement('div', { key: l.id || l.filename,
-          style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, border: '1px solid rgba(148,163,184,.12)', background: 'rgba(9,20,32,.7)', borderRadius: 8, padding: '7px 10px' } },
-          React.createElement('span', { style: { fontSize: 12, color: '#c0c0d8', fontFamily: "'IBM Plex Mono',monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 } }, l.name || l.filename),
-          React.createElement('button', { onClick: () => this.insertLora(l.filename || l.name),
-            style: { border: '1px solid ' + accent, background: 'transparent', color: accent, borderRadius: 6, padding: '3px 9px', fontSize: 11, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" } }, 'Insert'))))
-        : React.createElement('div', { style: { fontSize: 12, color: '#6090a8', fontStyle: 'italic' } }, 'No LoRAs detected. Run Discover assets.'));
+        loadingAssets ? 'Discovering assets…' : (rawAssetCounts.loras + ' LoRAs · ' + rawAssetCounts.vaes + ' VAEs · ' + rawAssetCounts.embeddings + ' embeddings')),
+      React.createElement('input', { value: s.assetQuery, onChange: e => this.setState({ assetQuery: e.target.value }), placeholder: 'Search LoRA, VAE, embeddings',
+        style: { width: '100%', border: '1px solid rgba(148,163,184,.16)', background: 'rgba(5,10,18,.72)', color: '#e2e8f0', borderRadius: 7, padding: '7px 9px', outline: 'none', fontSize: 12, fontFamily: "'DM Sans',sans-serif", marginBottom: 8 } }),
+      assetSection('LoRAs', loras, 'No LoRAs detected. Run Discover assets.', l => assetRow('lora', l, () => this.insertLora(l.filename || l.name))),
+      assetSection('VAEs', vaes, 'No VAEs detected.', v => assetRow('vae', v)),
+      assetSection('Embeddings', embeddings, 'No embeddings detected.', e => assetRow('embedding', e)));
+
+    const h = React.createElement;
+    const fieldLabel = { fontSize: 10, color: '#7f8ca8', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4, fontWeight: 700 };
+    const panelInput = { width: '100%', border: '1px solid rgba(148,163,184,.16)', background: 'rgba(5,10,18,.72)', color: '#e2e8f0', borderRadius: 7, padding: '7px 9px', outline: 'none', fontSize: 12, fontFamily: "'DM Sans',sans-serif" };
+    const actionButton = (label, onClick, tone = accent) => h('button', { onClick,
+      style: { border: '1px solid ' + tone + '66', background: tone + '16', color: tone, borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 700 } }, label);
+    const validationPanel = h('div', { style: { display: 'grid', gap: 5, marginBottom: 10 } },
+      ...this.validationMessages().map(([msg, kind]) => h('div', { key: msg,
+        style: { border: '1px solid ' + (kind === 'error' ? 'rgba(239,68,68,.28)' : kind === 'warn' ? 'rgba(251,191,36,.26)' : kind === 'info' ? 'rgba(56,189,248,.24)' : 'rgba(101,214,110,.24)'),
+          background: kind === 'error' ? 'rgba(239,68,68,.07)' : kind === 'warn' ? 'rgba(251,191,36,.07)' : kind === 'info' ? 'rgba(56,189,248,.06)' : 'rgba(101,214,110,.06)',
+          color: kind === 'error' ? '#fca5a5' : kind === 'warn' ? '#fde68a' : kind === 'info' ? '#7dd3fc' : '#86efac',
+          borderRadius: 7, padding: '6px 8px', fontSize: 11, lineHeight: 1.35 } }, msg)));
+    const favoritePresetRows = s.favoritePresets.length
+      ? h('div', { style: { display: 'grid', gap: 5, maxHeight: 160, overflowY: 'auto' } },
+          ...s.favoritePresets.map(p => h('div', { key: p.id, style: { display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(148,163,184,.12)', borderRadius: 7, padding: 6, background: 'rgba(5,10,18,.46)' } },
+            h('button', { onClick: () => this.applyFavoritePreset(p.id), style: { flex: 1, border: 0, background: 'transparent', color: '#cbd5e1', textAlign: 'left', cursor: 'pointer', fontSize: 12, fontFamily: "'DM Sans',sans-serif" } }, p.name),
+            h('button', { onClick: () => this.deleteFavoritePreset(p.id), title: 'Delete preset', style: { border: '1px solid rgba(148,163,184,.16)', background: 'transparent', color: '#94a3b8', borderRadius: 6, cursor: 'pointer', padding: '3px 7px' } }, 'x'))))
+      : h('div', { style: { fontSize: 12, color: '#64748b' } }, 'No saved presets yet.');
+    const favoritePresetPanel = h('div', { style: { borderTop: '1px solid rgba(148,163,184,.12)', marginTop: 10, paddingTop: 10 } },
+      h('div', { style: { ...fieldLabel, marginBottom: 7 } }, 'Favorite presets'),
+      h('div', { style: { display: 'flex', gap: 6, marginBottom: 8 } },
+        h('input', { value: s.favoriteName, onChange: e => this.setState({ favoriteName: e.target.value }), placeholder: 'Name this setup', style: { ...panelInput, flex: 1 } }),
+        actionButton('Save', () => this.saveFavoritePreset())),
+      favoritePresetRows);
+    const vaeSelect = h('select', { value: s.selectedVae, onChange: e => this.setState({ selectedVae: e.target.value }), style: panelInput },
+      h('option', { value: 'default' }, 'Default / backend-selected'),
+      h('option', { value: 'none' }, 'None'),
+      ...vaes.map(v => h('option', { key: v.id || v.filename || v.name, value: v.filename || v.name }, v.name || v.filename)));
+    const compactToggle = h('button', { onClick: () => { const compactMode = !this.state.compactMode; localStorage.setItem('dex_compact_mode', String(compactMode)); this.setState({ compactMode }); },
+      style: { ...panelInput, cursor: 'pointer', textAlign: 'left' } }, s.compactMode ? 'Compact on' : 'Compact off');
+    const settingsDrawerBody = h('div', { style: { padding: 11, display: 'grid', gap: 10 } },
+      validationPanel,
+      h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 } },
+        h('div', null, h('div', { style: fieldLabel }, 'VAE catalog'), vaeSelect),
+        h('div', null, h('div', { style: fieldLabel }, 'Compact mode'), compactToggle)),
+      h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 } },
+        actionButton('Copy prompt + settings', () => this.copyText('Prompt and settings', JSON.stringify(this.currentParams(), null, 2))),
+        actionButton('Send result to img2img', () => this.setScreen('edit'), '#a78bfa')),
+      favoritePresetPanel);
+    const settingsDrawer = h('div', { style: { border: '1px solid rgba(148,163,184,.16)', background: 'rgba(6,10,16,.64)', borderRadius: 9, marginBottom: 10, overflow: 'hidden' } },
+      h('button', { onClick: () => this.setState(x => ({ settingsOpen: !x.settingsOpen })),
+        style: { width: '100%', border: 0, background: 'transparent', padding: '9px 11px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: accent, fontWeight: 800, fontSize: 12, letterSpacing: '.06em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" } },
+        'Settings drawer', h('span', { style: { color: '#7f8ca8', fontWeight: 500, letterSpacing: 0, textTransform: 'none' } }, (s.settingsOpen ? 'hide' : 'show') + ' · model · VAE · output')),
+      s.settingsOpen ? settingsDrawerBody : null);
+
+    const filteredRuns = (runs || []).filter(r => !s.runSearch || String(r.id + ' ' + r.model + ' ' + r.size).toLowerCase().includes(s.runSearch.toLowerCase()));
+    const runInspector = h('div', { style: { border: '1px solid rgba(148,163,184,.14)', background: 'rgba(6,10,16,.64)', borderRadius: 9, padding: 11, marginBottom: 12 } },
+      h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 } },
+        h('div', { style: { fontSize: 12, fontWeight: 800, color: '#cbd5e1', letterSpacing: '.06em', textTransform: 'uppercase' } }, 'Run inspector'),
+        h('div', { style: { flex: 1 } }),
+        actionButton('Refresh', () => this.loadRuns(), '#94a3b8')),
+      h('input', { value: s.runSearch, onChange: e => this.setState({ runSearch: e.target.value }), placeholder: 'Filter loaded runs', style: { ...panelInput, marginBottom: 8 } }),
+      h('div', { style: { display: 'grid', gap: 5, maxHeight: 210, overflowY: 'auto', marginBottom: 8 } },
+        ...(filteredRuns.length ? filteredRuns.slice(0, 20).map(r => h('button', { key: r.id, onClick: () => this.inspectRun(r.id),
+          style: { border: '1px solid ' + (s.selectedRunId === r.id ? accent : 'rgba(148,163,184,.12)'), background: s.selectedRunId === r.id ? accent + '14' : 'rgba(5,10,18,.46)', color: '#cbd5e1', borderRadius: 7, padding: '7px 9px', cursor: 'pointer', textAlign: 'left', fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+          r.id + ' · ' + r.model + ' · ' + r.size)) : [h('div', { style: { color: '#64748b', fontSize: 12 } }, 'No matching loaded runs')])),
+      s.loadingRunDetail ? h('div', { style: { fontSize: 12, color: '#7dd3fc' } }, 'Loading metadata...') :
+      s.selectedRunDetail ? h('div', { style: { borderTop: '1px solid rgba(148,163,184,.12)', paddingTop: 8, display: 'grid', gap: 7 } },
+        h('div', { style: { color: '#94a3b8', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", overflowWrap: 'anywhere' } }, s.selectedRunId),
+        h('div', { style: { color: '#cbd5e1', fontSize: 12 } }, (s.selectedRunDetail.status || s.selectedRunDetail.runCard?.status || 'metadata loaded') + ' · ' + ((s.selectedRunDetail.images || []).length || 0) + ' images'),
+        h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+          actionButton('Reuse in Create', () => this.reuseSelectedRun()),
+          actionButton('Copy metadata', () => this.copyText('Run metadata', JSON.stringify(s.selectedRunDetail, null, 2)), '#94a3b8'))) : null);
+
+    const capability = s.capabilityData || {};
+    const featureGates = capability.featureGates || capability.features || {};
+    const gateRows = [
+      ['txt2img', 'Controlled txt2img', true],
+      ['img2img', 'img2img', featureGates.img2img && featureGates.img2img.supported],
+      ['inpaint', 'Inpaint', featureGates.inpaint && featureGates.inpaint.supported],
+      ['realEsrgan', 'Real-ESRGAN', featureGates.realEsrgan && featureGates.realEsrgan.supported],
+      ['xyzPlot', 'X/Y/Z plot', featureGates.xyzPlot && featureGates.xyzPlot.supported],
+      ['discoverAssets', 'Asset discovery', featureGates.discoverAssets && featureGates.discoverAssets.supported],
+    ];
+    const truthStatusPanel = h('div', { style: { border: '1px solid rgba(148,163,184,.14)', background: 'rgba(6,10,16,.64)', borderRadius: 9, padding: 11, marginBottom: 12 } },
+      h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 } },
+        h('div', { style: { fontSize: 12, fontWeight: 800, color: '#cbd5e1', letterSpacing: '.06em', textTransform: 'uppercase' } }, 'Truth status'),
+        h('div', { style: { flex: 1 } }),
+        actionButton('Refresh all', () => this.refreshAll(), '#94a3b8')),
+      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 6 } },
+        ...gateRows.map(([key, label, ok]) => h('div', { key, style: { border: '1px solid ' + (ok ? 'rgba(101,214,110,.24)' : 'rgba(251,191,36,.2)'), background: ok ? 'rgba(101,214,110,.06)' : 'rgba(251,191,36,.05)', borderRadius: 7, padding: '7px 8px', color: ok ? '#86efac' : '#fde68a', fontSize: 11 } }, (ok ? 'Proven · ' : 'Gated · ') + label))),
+      s.serverStatusSummary ? h('div', { style: { marginTop: 8, color: '#94a3b8', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", overflowWrap: 'anywhere' } }, s.serverStatusSummary) : null);
+
+    const keyboardHelp = h('div', { style: { border: '1px solid rgba(148,163,184,.12)', borderRadius: 8, padding: 9, color: '#94a3b8', fontSize: 11, lineHeight: 1.6, marginBottom: 10, background: 'rgba(5,10,18,.38)' } },
+      'Keyboard shortcuts: Command+Enter generate · / focus prompt · P collapse prompt · S settings · L library');
 
     // ── Inpaint tools (canvas mask editor) inside Edit ────────
     const inpaintTools = this.buildInpaintTools(i2iSrcRunId, i2iSrcFile, inpStatus, inpResult, inpStrength, accent);
@@ -898,7 +1186,7 @@ class Component extends DCLogic {
     )));
 
     return {
-      version, versionStr: String(version), screen,
+      version, versionStr: String(version), screen, compactModeStr: String(s.compactMode),
       isV1: version===1, isV2: version===2, isV3: version===3,
       isV1Str: String(version===1), isV2Str: String(version===2), isV3Str: String(version===3),
       setV1: ()=>this.setVersion(1), setV2: ()=>this.setVersion(2), setV3: ()=>this.setVersion(3),
@@ -914,6 +1202,10 @@ class Component extends DCLogic {
       prompt, negPrompt, steps: String(steps), cfg: String(cfg), seed: String(seed),
       width: String(width), height: String(height), promptLen: String(prompt.length),
       onPromptChange: e=>this.onPromptChange(e),
+      promptPanelDisplay: promptOpen ? 'block' : 'none',
+      promptToggleLabel: promptOpen ? 'Hide prompt' : 'Show prompt',
+      promptChevron: promptOpen ? '▴' : '▾',
+      onTogglePrompt: ()=>this.setState(s => ({promptOpen: !s.promptOpen})),
       onNegChange: e=>this.setState({negPrompt:e.target.value}),
       onStepsChange: e=>this.setState({steps:e.target.value}),
       onCfgChange: e=>this.setState({cfg:e.target.value}),
@@ -951,16 +1243,17 @@ class Component extends DCLogic {
       onVerifyBackend: ()=>{ this.pingBackend(); this.toast('Pinging backend…', '#38bdf8'); },
       onStartServer: ()=>{ fetch(this.state.backendUrl+'/api/actions/server-start',{method:'POST'}).then(r=>r.json()).then(d=>{ const {job_id}=d; if(job_id) this._startPoll(job_id,()=>{ this.toast('Server started','#65d66e'); this.pingBackend(); }); }).catch(()=>this.toast('Start failed','#ef4444')); },
       onStopServer: ()=>{ fetch(this.state.backendUrl+'/api/actions/server-stop',{method:'POST'}).then(r=>r.json()).then(d=>{ const {job_id}=d; if(job_id) this._startPoll(job_id,()=>{ this.toast('Server stopped','#fbbf24'); this.pingBackend(); }); }).catch(()=>this.toast('Stop failed','#ef4444')); },
-      onServerStatus: ()=>{ this.pingBackend(); this.loadRuns(); },
+      onServerStatus: ()=>{ this.pingBackend(); this.loadRuns(); this.serverStatus(); },
       target, onTargetChange: e=>this.onSelectTarget(e.target.value),
       targetSelectV1, targetSelectV2, targetSelectV3,
       preset, onPresetChange: e=>this.onSelectPreset(e.target.value),
       promptTools, onEnhancePrompt: ()=>this.enhancePrompt(),
-      onCopyParams: ()=>{ try{ navigator.clipboard.writeText(JSON.stringify({target,prompt,negPrompt,steps,cfg,seed,width,height,sampler:this._mapSampler(sampler),scheduler},null,2)); this.toast('Params copied to clipboard', '#38bdf8'); }catch{} },
+      onCopyParams: ()=>this.copyText('Params', JSON.stringify(this.currentParams(), null, 2)),
       onReuseLastSeed: ()=>{ if(lastSeed!=null){this.setState({seed:String(lastSeed)}); this.toast('Seed '+lastSeed+' reloaded', '#38bdf8');} },
       goToImg2img: ()=>this.setScreen('edit'),
       savePrompts, onSavePrompts: e=>{ const v=e.target.checked; this.setState({savePrompts:v}); localStorage.setItem('dex_save_prompts',String(v)); },
-      onRefreshRuns: ()=>this.loadRuns(),
+      onRefreshRuns: ()=>this.loadRuns(), onRefreshAll: ()=>this.refreshAll(), onDiscoverAssets: ()=>this.discoverAssets(),
+      settingsDrawer, runInspector, truthStatusPanel, keyboardHelp, validationPanel,
       libraryCards, runsCount: String(runs.length), jobLogDisplay,
       libraryFilters, libraryLoadMore, extraNetworksDisplay,
       onHiresSubmit: ()=>this.onHiresSubmit(),
