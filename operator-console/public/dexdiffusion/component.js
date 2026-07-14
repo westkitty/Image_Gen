@@ -272,6 +272,20 @@ class Component extends DCLogic {
     const name = String(file).split('/').pop();
     return this.state.backendUrl + '/api/run-file?path=' + runId + '/' + name;
   }
+  // img2img and inpaint jobs never populate job.controlledOutputImage (that marker
+  // is only printed by sdcpp-controlled-generate.sh) — resolve their output PNG from
+  // the run's own metadata instead, keyed off job.runId which IS always set.
+  async _resolveOutputImage(job) {
+    if (job.controlledOutputImage) return this._imgUrl(job.runId, job.controlledOutputImage);
+    if (!job.runId) return null;
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/runs/' + job.runId);
+      if (!r.ok) return null;
+      const data = await r.json();
+      const file = (data.metadata && data.metadata.primary_image) || (data.images && data.images[0]) || null;
+      return this._imgUrl(job.runId, file);
+    } catch { return null; }
+  }
   // Map the sampler dropdown's display label to a backend-accepted sampler id.
   _mapSampler(s) {
     const m = { 'dpm++ 2m': 'dpmpp2m', 'dpm++ sde': 'dpmpp2s_a', 'dpm++ 2s a': 'dpmpp2s_a' };
@@ -649,8 +663,8 @@ class Component extends DCLogic {
           if (job.progress != null) this.setState({ i2iProgress: Math.min(99, Math.round(job.progress)) });
           if (this._jobTerminal(job.status)) {
             clearInterval(poll);
-            if (this._jobOk(job.status) && job.runId && job.controlledOutputImage) {
-              const imgSrc = this._imgUrl(job.runId, job.controlledOutputImage);
+            if (this._jobOk(job.status)) {
+              const imgSrc = await this._resolveOutputImage(job);
               this.setState({ i2iStatus: 'done', i2iProgress: 100, i2iResult: imgSrc });
               this.toast('img2img complete', '#65d66e');
               setTimeout(() => this.loadRuns(), 1500);
@@ -784,8 +798,9 @@ class Component extends DCLogic {
           const job = await jr.json();
           if (this._jobTerminal(job.status)) {
             clearInterval(poll);
-            if (this._jobOk(job.status) && job.runId && job.controlledOutputImage) {
-              this.setState({ inpStatus: 'done', inpResult: this._imgUrl(job.runId, job.controlledOutputImage) });
+            if (this._jobOk(job.status)) {
+              const imgSrc = await this._resolveOutputImage(job);
+              this.setState({ inpStatus: 'done', inpResult: imgSrc });
               this.toast('Inpaint complete', '#65d66e'); setTimeout(() => this.loadRuns(), 1500);
             } else { this.setState({ inpStatus: 'error' }); this.toast('Inpaint failed', '#ef4444'); }
           }
