@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# dexdiffusion — start/stop/restart/status/open for the DexDiffusion web UI
+# (operator-console on 127.0.0.1:31337). Runs on the MacBook only.
+#
+#   bin/dexdiffusion start     start the console if it is not already healthy
+#   bin/dexdiffusion stop      stop ONLY the project-owned console process
+#   bin/dexdiffusion restart   stop + start
+#   bin/dexdiffusion status    read-only health report (never repairs anything)
+#   bin/dexdiffusion open      start if needed, then open the local UI
+#
+# Ownership rule: a listener on 31337 is "ours" only if its /api/version
+# reports cwd == <this repo>/operator-console and its pid matches the port
+# owner. Nothing else is ever signalled. Tailscale Serve is never modified.
+# See DEXDIFFUSION.md.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONSOLE_DIR="$ROOT/operator-console"
+PORT="${DEX_PORT:-31337}"          # DEX_PORT: test-only override
+BASE="http://127.0.0.1:$PORT"
+LOCAL_URL="$BASE/dexdiffusion/"
+LOG="$CONSOLE_DIR/server.log"
+PIDFILE="$CONSOLE_DIR/dexdiffusion.pid"
+APP_PATH="/Applications/DexDiffusion.app"
+IMAGES_ROOT="/Users/andrew/images_made"
+SSH_TARGET="${DEX_SSH_TARGET:-westcat}"   # DEX_SSH_TARGET: test-only override
+REMOTE_VENV="/Volumes/wc2tb/dex-imagegen/mflux-venv"
+REMOTE_MODEL='$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit'
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+
+port_pid() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1; }
+version_json() { curl -fsS --max-time 2 "$BASE/api/version" 2>/dev/null; }
+json_field() { python3 -c 'import json,sys; d=json.load(sys.stdin); v=d.get(sys.argv[1]); print("" if v is None else v)' "$1" 2>/dev/null; }
+
+# Prints the pid if the port owner is this project's console, else nothing.
+owned_pid() {
+  local pid v cwd vpid
+  pid="$(port_pid)"; [ -n "$pid" ] || return 1
+  v="$(version_json)" || return 1
+  cwd="$(printf '%s' "$v" | json_field cwd)"
+  vpid="$(printf '%s' "$v" | json_field pid)"
+  [ "$cwd" = "$CONSOLE_DIR" ] && [ "$vpid" = "$pid" ] || return 1
+  printf '%s\n' "$pid"
+}
+
+healthy() { curl -fsS --max-time 3 -o /dev/null "$BASE/api/capabilities" 2>/dev/null; }
+
+tailnet_url() {
+  command -v tailscale >/dev/null 2>&1 || return 1
+  tailscale serve status --json 2>/dev/null | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for hp, web in (d.get("Web") or {}).items():
+    for mount, h in (web.get("Handlers") or {}).items():
+        if (h.get("Proxy") or "").rstrip("/") in ("http://127.0.0.1:31337", "http://localhost:31337"):
+            scope = "PUBLIC (Funnel enabled!)" if (d.get("AllowFunnel") or {}).get(hp) else "tailnet-only"
+            print("https://%s/dexdiffusion/\t%s" % (hp.replace(":443", ""), scope)); sys.exit(0)
+sys.exit(1)' 2>/dev/null
+}
+
+cmd_start() {
+  if pid="$(owned_pid)" && healthy; then
+    echo "DexDiffusion already running (pid $pid)."
+  else
+    if [ -n "$(port_pid)" ]; then
+      echo "ERROR: port $PORT is in use by a process that is not this checkout's operator-console." >&2
+      echo "       Owner: $(ps -o pid=,command= -p "$(port_pid)" 2>/dev/null | cut -c1-160)" >&2
+      echo "       Not touching it. Stop it yourself, then rerun: bin/dexdiffusion start" >&2
+      exit 1
+    fi
+    command -v node >/dev/null 2>&1 || { echo "ERROR: node not found on PATH" >&2; exit 1; }
+    [ -d "$CONSOLE_DIR/node_modules" ] || { echo "ERROR: $CONSOLE_DIR/node_modules missing. Run once: (cd operator-console && npm install)" >&2; exit 1; }
+    echo "Starting DexDiffusion (log: $LOG)..."
+    ( cd "$CONSOLE_DIR" && nohup node server.js >>"$LOG" 2>&1 & echo $! >"$PIDFILE" )
+    for _ in $(seq 1 30); do
+      healthy && break
+      sleep 1
+    done
+    if ! healthy; then
+      echo "ERROR: DexDiffusion did not become healthy within 30s. Last log lines:" >&2
+      tail -n 20 "$LOG" >&2 || true
+      exit 1
+    fi
+    echo "DexDiffusion started (pid $(owned_pid || cat "$PIDFILE"))."
+  fi
+  echo "  local:   $LOCAL_URL"
+  if t="$(tailnet_url)"; then
+    echo "  tailnet: $(printf '%s' "$t" | cut -f1)  ($(printf '%s' "$t" | cut -f2))"
+  else
+    echo "  tailnet: Tailscale Serve route not found (see DEXDIFFUSION.md → Tailnet URL unavailable)"
+  fi
+}
+
+cmd_stop() {
+  local pid
+  if ! pid="$(owned_pid)"; then
+    if [ -n "$(port_pid)" ]; then
+      echo "Port $PORT is held by a process that is not this checkout's operator-console; not stopping it." >&2
+      exit 1
+    fi
+    echo "DexDiffusion is not running."
+    rm -f "$PIDFILE"
+    return 0
+  fi
+  echo "Stopping DexDiffusion (pid $pid)..."
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in $(seq 1 10); do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 1
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "Still running after 10s; sending SIGKILL to pid $pid only."
+    kill -KILL "$pid" 2>/dev/null || true
+  fi
+  rm -f "$PIDFILE"
+  echo "Stopped."
+}
+
+cmd_status() {
+  local up="DOWN" pid="" head=""
+  if pid="$(owned_pid)" && healthy; then
+    up="UP"; head="$(version_json | json_field gitHead)"
+  elif [ -n "$(port_pid)" ]; then
+    up="PORT HELD BY FOREIGN PROCESS"
+  fi
+  local ts ts_url="not configured" ts_scope="-"
+  if ts="$(tailnet_url)"; then ts_url="$(printf '%s' "$ts" | cut -f1)"; ts_scope="$(printf '%s' "$ts" | cut -f2)"; fi
+  local bind; bind="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $9; exit}' || true)"
+
+  local primary="(server down)"
+  if [ "$up" = "UP" ]; then
+    primary="$(curl -fsS --max-time 3 "$BASE/api/capabilities" | python3 -c '
+import json,sys
+t=[x for x in json.load(sys.stdin).get("modelTargets",[]) if x.get("primary")]
+print("%s [%s, %s]" % (t[0]["label"], t[0]["id"], t[0]["status"]) if t else "none designated")' 2>/dev/null || echo unknown)"
+  fi
+
+  local app="MISSING" icon="-" dock="MISSING"
+  if [ -f "$APP_PATH/Contents/Info.plist" ]; then
+    app="PRESENT ($(plutil -extract CFBundleIdentifier raw "$APP_PATH/Contents/Info.plist" 2>/dev/null))"
+    local iconf; iconf="$(plutil -extract CFBundleIconFile raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+    [ -n "$iconf" ] && [ -f "$APP_PATH/Contents/Resources/${iconf%.icns}.icns" ] && icon="OK (${iconf%.icns}.icns)" || icon="MISSING"
+  fi
+  local dockdump; dockdump="$(defaults read com.apple.dock persistent-apps 2>/dev/null || true)"
+  local n; n="$(printf '%s' "$dockdump" | grep -c "file://$APP_PATH/" || true)"
+  if [ "$n" = "1" ]; then dock="INSTALLED (1 entry)"; elif [ "${n:-0}" -gt 1 ] 2>/dev/null; then dock="DUPLICATE ($n entries)"; fi
+  printf '%s' "$dockdump" | grep -q "Image_Gen.app/\|Image_Gen%20Launcher.app/" && dock="$dock; STALE Image_Gen entry present"
+
+  local ssh_state="DOWN" mflux="unknown" model="unknown"
+  local remote
+  if remote="$(ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
+      "printf 'HOST=%s\n' \"\$(hostname)\"; test -x '$REMOTE_VENV/bin/mflux-generate-flux2' && printf 'MFLUX=PRESENT\n' || printf 'MFLUX=MISSING\n'; test -s $REMOTE_MODEL/transformer/model.safetensors.index.json && printf 'MODEL=PRESENT\n' || printf 'MODEL=MISSING\n'; test -x \"\$HOME/stable-diffusion.cpp/build/bin/sd\" && printf 'SDCPP=AVAILABLE\n' || printf 'SDCPP=DORMANT\n'" 2>/dev/null)"; then
+    ssh_state="UP ($(printf '%s' "$remote" | sed -n 's/^HOST=//p'))"
+    mflux="$(printf '%s' "$remote" | sed -n 's/^MFLUX=//p')"
+    model="$(printf '%s' "$remote" | sed -n 's/^MODEL=//p')"
+    sdcpp="$(printf '%s' "$remote" | sed -n 's/^SDCPP=//p')"
+  fi
+  local latest; latest="$(ls -t "$IMAGES_ROOT" 2>/dev/null | grep -v '^\.' | head -1 || true)"
+
+  cat <<EOF
+DEXDIFFUSION STATUS
+
+Web
+  status:    $up${pid:+ (pid $pid${head:+, HEAD $head})}
+  local:     $LOCAL_URL
+  bind:      ${bind:-none}
+  tailnet:   $ts_url
+  serve:     $ts_scope
+
+Launcher
+  app:       $APP_PATH — $app
+  icon:      $icon
+  dock:      $dock
+
+Generation
+  primary:   $primary
+  Big Mac:   ssh $SSH_TARGET — $ssh_state
+  MFLUX env: $REMOTE_VENV — $mflux
+  model:     mlx-community/flux2-klein-4b-4bit — $model
+
+Storage
+  images:    $IMAGES_ROOT${latest:+ (latest: $latest)}
+  Big Mac generated-image retention: ephemeral (deleted after transfer)
+
+Legacy
+  SDCPP:     ${sdcpp:-DORMANT} — runtime/checkpoint assets absent on Big Mac (expected)
+EOF
+}
+
+case "${1:-status}" in
+  start) cmd_start ;;
+  stop) cmd_stop ;;
+  restart) cmd_stop; cmd_start ;;
+  status) cmd_status ;;
+  open) cmd_start >/dev/null && open "$LOCAL_URL" && echo "Opened $LOCAL_URL" ;;
+  -h|--help|help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "usage: bin/dexdiffusion {start|stop|restart|status|open}" >&2; exit 2 ;;
+esac

@@ -1,3 +1,5 @@
+> **Operating DexDiffusion?** See [../DEXDIFFUSION.md](../DEXDIFFUSION.md) (canonical operator guide) and `bin/dexdiffusion status`.
+
 # SDCPP Workbench
 
 A local-only Automatic1111-style workbench for the BigMac SDCPP image-generation workflow.

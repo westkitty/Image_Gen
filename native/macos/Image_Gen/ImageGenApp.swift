@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     private var operatorRoot: String { "\(projectRoot)/operator-console" }
     private var workflowRoot: String { "\(projectRoot)/sdcpp-workflow" }
-    private var wrapperLog: String { "\(operatorRoot)/Image_Gen-macos-wrapper.log" }
+    private var wrapperLog: String { "\(operatorRoot)/DexDiffusion-macos-wrapper.log" }
     private var consoleLog: String { "\(operatorRoot)/server.log" }
     private var expectedConsoleCwd: String { operatorRoot }
     private let wrapperLaunchPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
@@ -50,15 +50,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        consoleProcess?.terminate()
+        // The console is started detached by bin/dexdiffusion and intentionally
+        // outlives this window app (tailnet users keep access).
     }
 
     // MARK: - Menu actions
 
     @objc private func showAbout() {
         let alert = NSAlert()
-        alert.messageText = "Image_Gen"
-        alert.informativeText = "Local AI image generation console\nApp URL: \(consoleURL.absoluteString)\nProject: \(projectRoot)"
+        alert.messageText = "DexDiffusion"
+        alert.informativeText = "Local image generation UI (FLUX.2 Klein 4B via MFLUX on Big Mac)\nApp URL: \(consoleURL.absoluteString)\nImages: /Users/andrew/images_made\nProject: \(projectRoot)\nDocs: \(projectRoot)/DEXDIFFUSION.md"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
@@ -320,7 +321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     @objc private func copyErrorReport() {
         var parts: [String] = []
-        parts.append("=== Image_Gen Error Report ===")
+        parts.append("=== DexDiffusion Error Report ===")
         parts.append("Date: \(Date())")
         parts.append("App URL: \(consoleURL.absoluteString)")
         parts.append("Project root: \(projectRoot)")
@@ -366,15 +367,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         // App menu
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(NSMenuItem(title: "About Image_Gen", action: #selector(showAbout), keyEquivalent: ""))
+        appMenu.addItem(NSMenuItem(title: "About DexDiffusion", action: #selector(showAbout), keyEquivalent: ""))
         appMenu.addItem(.separator())
-        appMenu.addItem(NSMenuItem(title: "Hide Image_Gen", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
+        appMenu.addItem(NSMenuItem(title: "Hide DexDiffusion", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
         let hideOthers = NSMenuItem(title: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(hideOthers)
         appMenu.addItem(NSMenuItem(title: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: ""))
         appMenu.addItem(.separator())
-        appMenu.addItem(NSMenuItem(title: "Quit Image_Gen", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appMenu.addItem(NSMenuItem(title: "Quit DexDiffusion", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
 
@@ -448,7 +449,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = self
 
-        statusLabel = NSTextField(labelWithString: "Starting Image_Gen...")
+        statusLabel = NSTextField(labelWithString: "Starting DexDiffusion...")
         statusLabel.font = NSFont.systemFont(ofSize: 12)
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.lineBreakMode = .byTruncatingTail
@@ -477,7 +478,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             backing: .buffered,
             defer: false
         )
-        window.title = "Image_Gen"
+        window.title = "DexDiffusion"
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
@@ -489,15 +490,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     // MARK: - Service startup
 
     private func ensureServicesThenLoad() {
-        setStatus("Checking local console and BigMac tunnel...")
+        setStatus("Starting DexDiffusion...")
         DispatchQueue.global(qos: .userInitiated).async {
-            self.ensureOperatorConsole()
-            self.ensureSdcppTunnel()
+            // bin/dexdiffusion start reuses a healthy project-owned console or
+            // starts one detached (it keeps running for Tailscale users after
+            // this app quits). Big Mac is not touched at launch: it is only
+            // needed when a generation runs. SDCPP is dormant, so no tunnel.
+            self.ensureOperatorConsoleViaHelper()
             DispatchQueue.main.async {
                 self.showMainWindow()
-                self.setStatus("Loading Image_Gen at \(self.consoleURL.absoluteString)")
+                self.setStatus("Loading DexDiffusion at \(self.consoleURL.absoluteString)")
                 self.webView.load(URLRequest(url: self.consoleURL))
             }
+        }
+    }
+
+    private func ensureOperatorConsoleViaHelper() {
+        let helper = "\(projectRoot)/bin/dexdiffusion"
+        let result = runShell("\(shellQuote(helper)) start", timeout: 45)
+        appendLog("bin/dexdiffusion start (exit \(result.code)):\n\(result.output)")
+        if result.code != 0 {
+            DispatchQueue.main.async { self.setStatus("DexDiffusion did not start. Log: \(self.consoleLog) · Help → Copy Error Report") }
         }
     }
 
@@ -509,7 +522,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         if version.reachable {
             appendLog("operator-console listener is not this checkout. cwd=\(version.cwd ?? "unknown") pid=\(version.pid.map(String.init) ?? "unknown"). Not reusing stale listener.")
-            DispatchQueue.main.async { self.setStatus("Port 31337 is occupied by a different Image_Gen console. Stop it, then relaunch Image_Gen.") }
+            DispatchQueue.main.async { self.setStatus("Port 31337 is occupied by a different console. Stop it, then relaunch DexDiffusion.") }
             return
         }
 

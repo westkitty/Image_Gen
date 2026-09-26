@@ -69,3 +69,4 @@ sdcpp-proof-*/.proof-env
 # Packaging artifacts
 Image_Gen_*.zip
 __MACOSX/
+operator-console/dexdiffusion.pid

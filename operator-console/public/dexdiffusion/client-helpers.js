@@ -31,5 +31,26 @@
     return Math.max(0, Math.min(100, Math.round(value)));
   }
 
-  return { resolveBackendBase, jobProgressPercent };
+  // Pick the target to show once capabilities load:
+  // 1. a saved preference that is still offered, else
+  // 2. the backend-designated primary target if it is proofed, else
+  // 3. the current selection (unchanged behaviour).
+  function chooseInitialTarget(targets, savedId, currentId) {
+    const list = Array.isArray(targets) ? targets : [];
+    const has = id => !!id && list.some(t => t && t.id === id);
+    if (has(savedId)) return savedId;
+    const primary = list.find(t => t && t.primary === true && t.status === 'proofed');
+    if (primary) return primary.id;
+    return currentId;
+  }
+
+  // Dropdown label: marks the primary engine and dormant legacy targets.
+  function targetOptionLabel(t) {
+    const base = (t && (t.label || t.id)) || '';
+    if (t && t.primary) return base + ' — Primary';
+    if (t && t.runtime === 'dormant') return base + ' — dormant';
+    return base;
+  }
+
+  return { resolveBackendBase, jobProgressPercent, chooseInitialTarget, targetOptionLabel };
 });

@@ -1,144 +1,81 @@
 #!/usr/bin/env bash
-# Build and install the native Image_Gen macOS wrapper.
+# Build and install the DexDiffusion macOS launcher app and pin it in the Dock.
+#
+#   scripts/install-macos-app.sh
+#
+# Result: /Applications/DexDiffusion.app (bundle id local.image-gen.wrapper,
+# kept from the original Image_Gen wrapper for continuity). Clicking it runs
+# bin/dexdiffusion start (reuses a healthy console or starts one detached),
+# then shows the local UI http://127.0.0.1:31337/dexdiffusion/ in a window.
+#
+# Icon: built from the DexDiffusion "Dexter" artwork
+#   operator-console/public/dexdiffusion/uploads/grok_image_1775521844329.jpg
+# masked to its circular badge -> Contents/Resources/DexDiffusion.icns.
+#
+# Dock: exactly one DexDiffusion tile. A legacy Image_Gen tile is rewritten in
+# place (same position); otherwise one tile is appended. Other Dock items are
+# never touched, and the previous Dock prefs are backed up first.
+# Legacy launchers (Image_Gen.app / Image_Gen Launcher.app in /Applications or
+# ~/Applications) are moved, not deleted, to the retired-launchers archive.
+# Safe to re-run; this is also the repair procedure. See DEXDIFFUSION.md.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/native/macos/Image_Gen/ImageGenApp.swift"
-APP="/Applications/Image_Gen.app"
+ICON_SRC="$ROOT/operator-console/public/dexdiffusion/uploads/grok_image_1775521844329.jpg"
+APP="/Applications/DexDiffusion.app"
+BUNDLE_ID="local.image-gen.wrapper"
+EXE_NAME="DexDiffusion"
 CONTENTS="$APP/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
-BIN="$MACOS/Image_Gen"
 PLIST="$CONTENTS/Info.plist"
-ICONSET="$RESOURCES/AppIcon.iconset"
-ICON="$RESOURCES/AppIcon.icns"
+ICON="$RESOURCES/DexDiffusion.icns"
+SUPPORT="$HOME/Library/Application Support/DexDiffusion"
+RETIRED="$SUPPORT/retired-launchers"
 GIT_HEAD="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
-if [ ! -f "$SRC" ]; then
-  echo "ERROR: missing Swift source: $SRC" >&2
-  exit 1
-fi
+[ -f "$SRC" ] || { echo "ERROR: missing Swift source: $SRC" >&2; exit 1; }
+[ -f "$ICON_SRC" ] || { echo "ERROR: missing icon source: $ICON_SRC" >&2; exit 1; }
+command -v swiftc >/dev/null 2>&1 || { echo "ERROR: swiftc not found. Install Xcode command line tools." >&2; exit 1; }
+python3 -c 'import PIL' 2>/dev/null || { echo "ERROR: python3 Pillow (PIL) is required to build the icon." >&2; exit 1; }
 
-command -v swiftc >/dev/null 2>&1 || {
-  echo "ERROR: swiftc not found. Install Xcode command line tools." >&2
-  exit 1
-}
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/dexdiffusion-app.XXXXXX")"
+trap 'rm -rf -- "$WORK"' EXIT
 
-mkdir -p "$MACOS" "$RESOURCES"
-rm -rf "$CONTENTS/_CodeSignature" "$ICONSET"
+# ---- build into a staging bundle, then swap into place -----------------------
+STAGE="$WORK/DexDiffusion.app"
+mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources"
+swiftc -O -framework Cocoa -framework WebKit "$SRC" -o "$STAGE/Contents/MacOS/$EXE_NAME"
+chmod 755 "$STAGE/Contents/MacOS/$EXE_NAME"
 
-swiftc \
-  -O \
-  -framework Cocoa \
-  -framework WebKit \
-  "$SRC" \
-  -o "$BIN"
-
-chmod 755 "$BIN"
-
+ICONSET="$WORK/AppIcon.iconset"
 mkdir -p "$ICONSET"
-python3 - "$ICONSET" <<'PY'
-import os
-import struct
+python3 - "$ICON_SRC" "$ICONSET" <<'PY'
 import sys
-import zlib
-
-out = sys.argv[1]
-sizes = {
-    "icon_16x16.png": 16,
-    "icon_16x16@2x.png": 32,
-    "icon_32x32.png": 32,
-    "icon_32x32@2x.png": 64,
-    "icon_128x128.png": 128,
-    "icon_128x128@2x.png": 256,
-    "icon_256x256.png": 256,
-    "icon_256x256@2x.png": 512,
-    "icon_512x512.png": 512,
-    "icon_512x512@2x.png": 1024,
-}
-
-def chunk(kind, data):
-    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
-
-def inside_round_rect(x, y, w, h, r):
-    if x < 0 or y < 0 or x >= w or y >= h:
-        return False
-    cx = r if x < r else (w - r - 1 if x >= w - r else x)
-    cy = r if y < r else (h - r - 1 if y >= h - r else y)
-    return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r
-
-def blend(dst, src):
-    sr, sg, sb, sa = src
-    if sa >= 255:
-        return src
-    dr, dg, db, da = dst
-    a = sa / 255.0
-    return (
-        int(sr * a + dr * (1 - a)),
-        int(sg * a + dg * (1 - a)),
-        int(sb * a + db * (1 - a)),
-        max(da, sa),
-    )
-
-def rect(px, size, x0, y0, x1, y1, color):
-    x0 = max(0, int(x0)); y0 = max(0, int(y0))
-    x1 = min(size, int(x1)); y1 = min(size, int(y1))
-    for y in range(y0, y1):
-        row = px[y]
-        for x in range(x0, x1):
-            row[x] = blend(row[x], color)
-
-def write_png(path, size):
-    px = [[(0, 0, 0, 0) for _ in range(size)] for _ in range(size)]
-    r = int(size * 0.22)
-    for y in range(size):
-        for x in range(size):
-            if inside_round_rect(x, y, size, size, r):
-                t = (x + y) / max(1, 2 * size - 2)
-                px[y][x] = (
-                    int(5 + 18 * t),
-                    int(19 + 32 * t),
-                    int(31 + 40 * t),
-                    255,
-                )
-
-    pad = size * 0.16
-    rect(px, size, pad, pad, size - pad, pad + size * 0.09, (56, 189, 248, 235))
-    rect(px, size, pad, size - pad - size * 0.09, size - pad, size - pad, (101, 214, 110, 235))
-    rect(px, size, pad, pad, pad + size * 0.09, size - pad, (56, 189, 248, 210))
-    rect(px, size, size - pad - size * 0.09, pad, size - pad, size - pad, (101, 214, 110, 210))
-
-    # Stylized "I" and "G" built from rectangles so the icon generator has no font dependency.
-    white = (232, 240, 247, 245)
-    accent = (101, 214, 110, 245)
-    stroke = max(2, size * 0.055)
-    rect(px, size, size * 0.28, size * 0.31, size * 0.44, size * 0.31 + stroke, white)
-    rect(px, size, size * 0.335, size * 0.31, size * 0.335 + stroke, size * 0.69, white)
-    rect(px, size, size * 0.28, size * 0.69 - stroke, size * 0.44, size * 0.69, white)
-    rect(px, size, size * 0.54, size * 0.31, size * 0.76, size * 0.31 + stroke, white)
-    rect(px, size, size * 0.54, size * 0.31, size * 0.54 + stroke, size * 0.69, white)
-    rect(px, size, size * 0.54, size * 0.69 - stroke, size * 0.76, size * 0.69, white)
-    rect(px, size, size * 0.76 - stroke, size * 0.50, size * 0.76, size * 0.69, white)
-    rect(px, size, size * 0.66, size * 0.50, size * 0.76, size * 0.50 + stroke, accent)
-
-    raw = b"".join(b"\x00" + bytes(c for pixel in row for c in pixel) for row in px)
-    data = (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
-        + chunk(b"IDAT", zlib.compress(raw, 9))
-        + chunk(b"IEND", b"")
-    )
-    with open(path, "wb") as f:
-        f.write(data)
-
-for name, size in sizes.items():
-    write_png(os.path.join(out, name), size)
+from PIL import Image, ImageDraw
+src, out = sys.argv[1], sys.argv[2]
+im = Image.open(src).convert("RGBA")
+w, h = im.size
+side = min(w, h)
+im = im.crop(((w - side) // 2, (h - side) // 2, (w - side) // 2 + side, (h - side) // 2 + side))
+# The artwork is a blue circular badge on black; keep the badge, clear the corners.
+scale = 4
+mask = Image.new("L", (side * scale, side * scale), 0)
+inset = int(side * 0.012) * scale
+ImageDraw.Draw(mask).ellipse((inset, inset, side * scale - inset, side * scale - inset), fill=255)
+im.putalpha(mask.resize((side, side), Image.LANCZOS))
+master = im.resize((1024, 1024), Image.LANCZOS)
+for name, px in {"icon_16x16": 16, "icon_16x16@2x": 32, "icon_32x32": 32, "icon_32x32@2x": 64,
+                 "icon_128x128": 128, "icon_128x128@2x": 256, "icon_256x256": 256,
+                 "icon_256x256@2x": 512, "icon_512x512": 512, "icon_512x512@2x": 1024}.items():
+    master.resize((px, px), Image.LANCZOS).save(f"{out}/{name}.png")
 PY
+iconutil -c icns "$ICONSET" -o "$STAGE/Contents/Resources/DexDiffusion.icns"
 
-iconutil -c icns "$ICONSET" -o "$ICON"
-rm -rf "$ICONSET"
-
-cat > "$PLIST" <<'PLIST'
+cat > "$STAGE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -146,23 +83,27 @@ cat > "$PLIST" <<'PLIST'
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
-  <string>Image_Gen</string>
+  <string>$EXE_NAME</string>
   <key>CFBundleIdentifier</key>
-  <string>local.image-gen.wrapper</string>
+  <string>$BUNDLE_ID</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>Image_Gen</string>
+  <string>DexDiffusion</string>
   <key>CFBundleDisplayName</key>
-  <string>Image_Gen</string>
+  <string>DexDiffusion</string>
   <key>CFBundleIconFile</key>
-  <string>AppIcon</string>
+  <string>DexDiffusion</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
+  <string>2.0</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>2</string>
+  <key>DexDiffusionProjectRoot</key>
+  <string>$ROOT</string>
+  <key>DexDiffusionSourceHead</key>
+  <string>$GIT_HEAD</string>
   <key>LSMinimumSystemVersion</key>
   <string>12.0</string>
   <key>NSHighResolutionCapable</key>
@@ -170,25 +111,101 @@ cat > "$PLIST" <<'PLIST'
 </dict>
 </plist>
 PLIST
+plutil -lint "$STAGE/Contents/Info.plist" >/dev/null
+printf 'APPL????' > "$STAGE/Contents/PkgInfo"
+codesign --force --deep --sign - "$STAGE" >/dev/null 2>&1 || echo "WARN: ad-hoc codesign failed (app still runs locally)"
 
-printf 'APPL????' > "$CONTENTS/PkgInfo"
+mkdir -p "$RETIRED"
+if [ -e "$APP" ]; then
+  mv "$APP" "$RETIRED/DexDiffusion-previous-$STAMP.app"
+fi
+# Archived bundles share the bundle id; keep Launch Services pointed only at $APP.
+for b in "$RETIRED"/*.app; do
+  [ -e "$b" ] && [ -x "$LSREGISTER" ] && "$LSREGISTER" -u "$b" >/dev/null 2>&1 || true
+done
+mv "$STAGE" "$APP"
 touch "$APP"
+[ -x "$LSREGISTER" ] && "$LSREGISTER" -f "$APP" >/dev/null 2>&1 || true
 
-if command -v codesign >/dev/null 2>&1; then
-  codesign --force --deep --sign - "$APP" >/dev/null
-fi
+# ---- retire legacy launchers (moved, never deleted) --------------------------
+for old in "/Applications/Image_Gen.app" "/Applications/Image_Gen Launcher.app" \
+           "$HOME/Applications/Image_Gen.app" "$HOME/Applications/Image_Gen Launcher.app" \
+           "/Applications/Image Gen Operator Console.app" "$HOME/Applications/Image Gen Operator Console.app"; do
+  [ -e "$old" ] || continue
+  id="$(plutil -extract CFBundleIdentifier raw "$old/Contents/Info.plist" 2>/dev/null || true)"
+  script="$(osadecompile "$old/Contents/Resources/Scripts/main.scpt" 2>/dev/null || true)"
+  if [ "$id" = "$BUNDLE_ID" ] || [ "$id" = "com.westcat.imagegen.operatorconsole" ] \
+     || printf '%s' "$script" | grep -q "image-gen-launcher\|Image_Gen/operator-console"; then
+    case "$old" in "$HOME"/*) where="home-Applications" ;; *) where="system-Applications" ;; esac
+    dest="$RETIRED/$(basename "$old" .app)-$where-$STAMP.app"
+    mv "$old" "$dest"
+    [ -x "$LSREGISTER" ] && "$LSREGISTER" -u "$dest" >/dev/null 2>&1 || true
+    echo "Retired legacy launcher: $old -> $dest"
+  else
+    echo "Left unrecognised bundle alone: $old"
+  fi
+done
 
-# Ensure the app is wired into the macOS Dock
-if ! defaults read com.apple.dock persistent-apps | grep -q "Image_Gen.app"; then
-  echo "Wiring Image_Gen.app into the macOS Dock..."
-  defaults write com.apple.dock persistent-apps -array-add "<dict><key>tile-data</key><dict><key>file-data</key><dict><key>_CFURLString</key><string>file://$APP/</string><key>_CFURLStringType</key><integer>15</integer></dict></dict><key>tile-type</key><string>file-tile</string></dict>"
-  killall Dock
+# ---- Dock: exactly one DexDiffusion tile, edited in place --------------------
+DOCK_BACKUP="$SUPPORT/dock-backup-$STAMP.plist"
+defaults export com.apple.dock "$DOCK_BACKUP"
+cp "$DOCK_BACKUP" "$WORK/dock.plist"
+DOCK_RESULT="$(python3 - "$WORK/dock.plist" "$APP" <<'PY'
+import plistlib, sys, urllib.parse
+path, app = sys.argv[1], sys.argv[2]
+want = "file://" + urllib.parse.quote(app) + "/"
+legacy = {"file://" + urllib.parse.quote(p) + "/" for p in (
+    "/Applications/Image_Gen.app", "/Applications/Image_Gen Launcher.app",
+    "/Users/andrew/Applications/Image_Gen.app", "/Users/andrew/Applications/Image_Gen Launcher.app",
+    "/Applications/Image Gen Operator Console.app", "/Users/andrew/Applications/Image Gen Operator Console.app")}
+with open(path, "rb") as f:
+    d = plistlib.load(f)
+apps = d.get("persistent-apps", [])
+def url(t):
+    return ((t.get("tile-data") or {}).get("file-data") or {}).get("_CFURLString")
+out, placed, changed = [], False, False
+for t in apps:
+    u = url(t)
+    if u == want or u in legacy:
+        if placed:
+            changed = True          # drop duplicate / extra legacy tile
+            continue
+        td0 = t.get("tile-data") or {}
+        stale_book = b"DexDiffusion.app" not in (td0.get("book") or b"DexDiffusion.app")
+        if u != want or td0.get("file-label") != "DexDiffusion" or stale_book:
+            td = t.setdefault("tile-data", {})
+            # The cached bookmark/mod-dates point at the old bundle (and its old
+            # icon); drop them so the Dock re-resolves the tile from the URL.
+            for k in ("book", "file-mod-date", "parent-mod-date"):
+                td.pop(k, None)
+            td["file-data"] = {"_CFURLString": want, "_CFURLStringType": 15}
+            td["file-label"] = "DexDiffusion"
+            td["bundle-identifier"] = "local.image-gen.wrapper"
+            changed = True
+        placed = True
+    out.append(t)
+if not placed:
+    out.append({"tile-type": "file-tile", "tile-data": {"file-data": {"_CFURLString": want, "_CFURLStringType": 15},
+                "file-label": "DexDiffusion", "bundle-identifier": "local.image-gen.wrapper"}})
+    changed = True
+d["persistent-apps"] = out
+with open(path, "wb") as f:
+    plistlib.dump(d, f)
+print("changed" if changed else "unchanged")
+PY
+)"
+if [ "$DOCK_RESULT" = "changed" ]; then
+  defaults import com.apple.dock "$WORK/dock.plist"
+  echo "Dock updated (backup: $DOCK_BACKUP)"
 else
-  echo "Image_Gen.app is already wired into the Dock. Refreshing Dock..."
-  killall Dock
+  echo "Dock already correct (backup: $DOCK_BACKUP)"
 fi
+# Narrow refresh of the current user's Dock so the new tile/icon are drawn.
+killall Dock 2>/dev/null || true
 
 echo "Installed $APP"
-echo "Binary: $BIN"
-echo "Icon: $ICON"
-echo "Source: $ROOT (HEAD $GIT_HEAD)"
+echo "  bundle id:  $BUNDLE_ID"
+echo "  executable: $APP/Contents/MacOS/$EXE_NAME"
+echo "  icon:       $APP/Contents/Resources/DexDiffusion.icns (from $ICON_SRC)"
+echo "  source:     $ROOT (HEAD $GIT_HEAD)"
+echo "Verify with: bin/dexdiffusion status"

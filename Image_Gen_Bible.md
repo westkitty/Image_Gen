@@ -2765,3 +2765,16 @@ Internal server-side `full_path` preserved in `ASSETS_CACHE` and in `resolveVaeP
 **Gate:**
 - `realEsrganSupported = true` at `server.js` line 31 (proven after endpoint proof)
 - Gate returns: `{supported: true, route: "/api/actions/upscale-esrgan", caveat: "4× scale per repeat (RealESRGAN_x4plus). Not A1111 Extras parity."}`
+
+
+## Reconciliation note — 2026-09-25 (DexDiffusion operationalization)
+
+Drift from earlier entries, recorded additively. The current operator guide is
+`DEXDIFFUSION.md` and current evidence is in `OPERATIONAL_STATE.md`; both take
+precedence over older sections above for day-to-day operation.
+
+- The primary generation engine is now **MFLUX / FLUX.2 Klein 4B 4-bit on Big Mac** (`flux2-klein-4b`). The SDCPP targets remain in code but are **dormant**: their runtime and checkpoint assets are absent on Big Mac.
+- Final images live only in `/Users/andrew/images_made`. Run directories keep metadata only, and Big Mac retains no generated images.
+- Remote access is via Tailscale Serve `https://macbook-air.tailafb7e8.ts.net:8443` (tailnet-only). The node backend is still 127.0.0.1 only.
+- The macOS launcher is now `/Applications/DexDiffusion.app` (bundle id `local.image-gen.wrapper`, Dexter icon), installed by `scripts/install-macos-app.sh`. Older Image_Gen launchers were archived to `~/Library/Application Support/DexDiffusion/retired-launchers/`.
+- Lifecycle is managed with `bin/dexdiffusion start|stop|restart|status`.

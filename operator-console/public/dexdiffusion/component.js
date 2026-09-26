@@ -68,6 +68,7 @@ class Component extends DCLogic {
     this.loadAssets();
     this.loadWildcards();
     this.checkOllama();
+    this.loadSystemInfo();
   }
   componentWillUnmount() {
     clearInterval(this._pingTimer); clearInterval(this._pollTimer);
@@ -162,6 +163,7 @@ class Component extends DCLogic {
     this.loadAssets();
     this.loadWildcards();
     this.checkOllama();
+    this.loadSystemInfo();
     this.toast('Refreshed visible data', '#38bdf8');
   }
 
@@ -328,12 +330,19 @@ class Component extends DCLogic {
         // (the handoff doc called this `controlledTargets`); accept either.
         const targets = data.modelTargets || data.controlledTargets || [];
         const checkpoints = targets.map(t => ({
-          title: t.label || t.id,
+          title: DexClient.targetOptionLabel(t),
           name: t.id,
           hash: t.status || '',
           status: t.status,
         }));
         this.setState({ checkpoints, modelTargets: targets, capabilityData: data, loadingCheckpoints: false });
+        let saved = null;
+        try { saved = localStorage.getItem('dex_target'); } catch {}
+        const initial = DexClient.chooseInitialTarget(targets, saved, this.state.target);
+        if (initial && initial !== this.state.target) {
+          this.setState({ target: initial, activeCheckpoint: initial });
+          this.applyTargetDefaults(initial);
+        }
         this.toast('Loaded ' + checkpoints.length + ' targets', '#38bdf8');
       } else { this.setState({ loadingCheckpoints: false }); this.toast('Failed to load capabilities (' + r.status + ')', '#ef4444'); }
     } catch(e) { this.setState({ loadingCheckpoints: false }); this.toast('Cannot reach backend', '#ef4444'); }
@@ -365,7 +374,18 @@ class Component extends DCLogic {
       sampler: t.defaultSampler || this.state.sampler,
     });
   }
-  onSelectTarget(id) { this.setState({ target: id, activeCheckpoint: id }); this.applyTargetDefaults(id); }
+  onSelectTarget(id) {
+    try { localStorage.setItem('dex_target', id); } catch {}
+    this.setState({ target: id, activeCheckpoint: id });
+    this.applyTargetDefaults(id);
+  }
+
+  async loadSystemInfo() {
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/system-info', { signal: AbortSignal.timeout(8000) });
+      if (r.ok) this.setState({ systemInfo: await r.json() });
+    } catch {}
+  }
   onSelectPreset(label) {
     // The prototype's preset options are display labels (e.g. "Fast (SD1.5)"); map to a speed bucket.
     const k = /smoke/i.test(label) ? 'smoke' : /fast|turbo|lcm/i.test(label) ? 'fast' : /qual|high|slow|detail/i.test(label) ? 'quality' : 'balanced';
@@ -1191,6 +1211,48 @@ class Component extends DCLogic {
         ...gateRows.map(([key, label, ok]) => h('div', { key, style: { border: '1px solid ' + (ok ? 'rgba(101,214,110,.24)' : 'rgba(251,191,36,.2)'), background: ok ? 'rgba(101,214,110,.06)' : 'rgba(251,191,36,.05)', borderRadius: 7, padding: '7px 8px', color: ok ? '#86efac' : '#fde68a', fontSize: 11 } }, (ok ? 'Proven · ' : 'Gated · ') + label))),
       s.serverStatusSummary ? h('div', { style: { marginTop: 8, color: '#94a3b8', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", overflowWrap: 'anywhere' } }, s.serverStatusSummary) : null);
 
+    // ── System / About: operational facts from /api/system-info ─────
+    const si = s.systemInfo;
+    const siRow = (k, v, mono) => h('div', { key: k, style: { display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8, padding: '3px 0', fontSize: 12 } },
+      h('div', { style: { color: '#7f93a8' } }, k),
+      h('div', { style: { color: '#e2e8f0', overflowWrap: 'anywhere', fontFamily: mono ? "'IBM Plex Mono',monospace" : 'inherit' } }, v == null || v === '' ? '—' : String(v)));
+    const siSection = (title, rows) => h('div', { key: title, style: { marginTop: 10 } },
+      h('div', { style: { fontSize: 10, fontWeight: 800, color: '#94a3b8', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 } }, title), ...rows);
+    const siTs = si && si.network && si.network.tailscale;
+    const siLauncher = si && si.launcher;
+    const systemInfoPanel = h('div', { style: { border: '1px solid rgba(56,189,248,.22)', background: 'rgba(6,10,16,.64)', borderRadius: 9, padding: 12, marginBottom: 12 } },
+      h('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+        h('div', { style: { fontSize: 12, fontWeight: 800, color: '#cbd5e1', letterSpacing: '.06em', textTransform: 'uppercase' } }, 'About DexDiffusion'),
+        h('div', { style: { flex: 1 } }),
+        actionButton('Refresh', () => this.loadSystemInfo(), '#94a3b8')),
+      !si ? h('div', { style: { color: '#94a3b8', fontSize: 12, marginTop: 8 } }, 'System info not loaded yet (GET /api/system-info).') : h('div', null,
+        siSection('Access', [
+          siRow('Local', si.network.localUrl, true),
+          siRow('Tailnet', siTs && siTs.serveConfigured ? siTs.url + '  (' + siTs.scope + ')' : ((siTs && siTs.reason) || 'unknown'), true),
+          siRow('Backend bind', si.network.localBind, true),
+        ]),
+        siSection('Primary engine', [
+          siRow('Target', si.primaryTarget ? si.primaryTarget.label + ' · ' + si.primaryTarget.status : '—'),
+          siRow('Model', si.generation.mflux.model + ' (' + si.generation.mflux.quantization + ')', true),
+          siRow('Runtime', 'MFLUX ' + si.generation.mflux.version + ' · ' + si.generation.engine + ' on ' + si.generation.machine),
+          siRow('Normal settings', si.generation.mflux.typical.steps + ' steps · guidance ' + si.generation.mflux.typical.guidance + ' · ' + si.generation.mflux.typical.sizes.join(' or ') + ' · seed supported'),
+          siRow('Not used by MFLUX', si.generation.mflux.unsupported.join(', ')),
+        ]),
+        siSection('Generation & storage', [
+          siRow('Big Mac route', si.generation.route, true),
+          siRow('Generated images', si.storage.canonicalImages, true),
+          siRow('Retention', si.generation.retentionNote),
+        ]),
+        siSection('Mac launcher', [
+          siRow('App', siLauncher.appPath + (siLauncher.installed ? '' : '  (not installed)'), true),
+          siRow('Dock', siLauncher.dockInstalled == null ? 'unknown' : siLauncher.dockInstalled ? 'installed (' + siLauncher.dockEntries + ')' : 'not in Dock'),
+          siRow('Reinstall', siLauncher.installer, true),
+        ]),
+        siSection('Legacy', [
+          siRow('SDCPP', si.legacy.sdcpp.status + ' — ' + si.legacy.sdcpp.reason),
+        ]),
+        h('div', { style: { color: '#7f93a8', fontSize: 11, marginTop: 10 } }, 'Docs: ' + si.app.docs + ' · state: ' + si.app.operationalState + ' · terminal: bin/dexdiffusion status · checked ' + si.checkedAt)));
+
     const keyboardHelp = h('div', { style: { border: '1px solid rgba(148,163,184,.12)', borderRadius: 8, padding: 9, color: '#94a3b8', fontSize: 11, lineHeight: 1.6, marginBottom: 10, background: 'rgba(5,10,18,.38)' } },
       'Keyboard shortcuts: Command+Enter generate · / focus prompt · P collapse prompt · S settings · L library');
 
@@ -1273,7 +1335,7 @@ class Component extends DCLogic {
       goToImg2img: ()=>this.setScreen('edit'),
       savePrompts, onSavePrompts: e=>{ const v=e.target.checked; this.setState({savePrompts:v}); localStorage.setItem('dex_save_prompts',String(v)); },
       onRefreshRuns: ()=>this.loadRuns(), onRefreshAll: ()=>this.refreshAll(), onDiscoverAssets: ()=>this.discoverAssets(),
-      settingsDrawer, runInspector, truthStatusPanel, keyboardHelp, validationPanel,
+      settingsDrawer, runInspector, truthStatusPanel, systemInfoPanel, keyboardHelp, validationPanel,
       libraryCards, runsCount: String(runs.length), jobLogDisplay,
       libraryFilters, libraryLoadMore, extraNetworksDisplay,
       onHiresSubmit: ()=>this.onHiresSubmit(),

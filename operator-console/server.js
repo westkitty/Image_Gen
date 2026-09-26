@@ -5,6 +5,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { controlledScriptFor, buildControlledArgs } = require('./controlled-args');
 const { createImageStore } = require('./image-store');
+const { createSystemInfo, targetRuntime } = require('./system-info');
 
 const app = express();
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
@@ -145,6 +146,7 @@ const CONTROLLED_TARGETS = [
     status: 'proofed',
     mode: 'MLX-native remote generation',
     backend: 'mflux',
+    primary: true,
     route: '/api/actions/generate-controlled',
     caveat: 'MFLUX/MLX path on Big Mac. Distilled FLUX.2 uses guidance 1.0 and does not support negative prompts; not A1111 parity.',
     proofDerived: true,
@@ -1758,6 +1760,8 @@ app.get('/api/capabilities', (req, res) => {
     label: target.label,
     backend: target.backend || 'sdcpp',
     status: target.status,
+    primary: target.primary === true,
+    runtime: targetRuntime(target),
     mode: target.mode,
     caveat: target.caveat,
     route: target.route,
@@ -2595,6 +2599,23 @@ app.get('/api/jobs/:jobId/log', (req, res) => {
 
 app.get('/api/version', (req, res) => {
   res.json(getBuildInfo());
+});
+
+// Read-only operational metadata (access URLs, primary engine, storage,
+// launcher, legacy status). See system-info.js; never includes secrets.
+const getSystemInfo = createSystemInfo();
+app.get('/api/system-info', async (req, res) => {
+  try {
+    const build = getBuildInfo();
+    let sshTarget = 'westcat';
+    try {
+      const m = fs.readFileSync(path.join(WORKFLOW_ROOT, 'config', 'sdcpp.env'), 'utf8').match(/^SSH_TARGET=['"]?([A-Za-z0-9._@-]+)/m);
+      if (m) sshTarget = m[1];
+    } catch (_) {}
+    res.json(await getSystemInfo({ targets: CONTROLLED_TARGETS, build: { ...build, sshTarget } }));
+  } catch (err) {
+    res.status(500).json({ error: 'system-info unavailable' });
+  }
 });
 
 app.get('/api/runs', (req, res) => {

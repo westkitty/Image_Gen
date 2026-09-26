@@ -7,7 +7,7 @@
   "project_name": "Image_Gen / DexDiffusion",
   "project_root": "/Users/andrew/Image_Gen",
   "artifact_path": "operator-console + sdcpp-workflow",
-  "state_revision": 4,
+  "state_revision": 5,
   "last_updated": "2026-09-25",
   "current_baseline": {
     "identity": "main@5287abd plus preserved local modifications",
@@ -20,6 +20,18 @@
   "linked_parent_state": null
 }
 -->
+
+## 0. Current Accepted Architecture (cold-start summary, revision 5)
+
+Operator guide: `DEXDIFFUSION.md`. Live facts: `bin/dexdiffusion status`, `GET /api/system-info`.
+
+- **Verified primary path:** DexDiffusion (MacBook, `operator-console` on 127.0.0.1:31337) → `ssh westcat` → Big Mac MFLUX 0.20.0 → FLUX.2 Klein 4B 4-bit (`mlx-community/flux2-klein-4b-4bit`, model at `$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit`, venv `/Volumes/wc2tb/dex-imagegen/mflux-venv`) → PNG streamed back → `/Users/andrew/images_made`.
+- **Mac launcher:** `/Applications/DexDiffusion.app`, bundle id `local.image-gen.wrapper`, a native WebKit wrapper window. Icon `Contents/Resources/DexDiffusion.icns` is built from `operator-console/public/dexdiffusion/uploads/grok_image_1775521844329.jpg`. Exactly one Dock tile. Clicking it runs `bin/dexdiffusion start` (reuses or starts a detached console) and loads the local UI. Quitting the app leaves the console running. Install/repair: `scripts/install-macos-app.sh`.
+- **Legacy path:** SDCPP — status **dormant**; runtime/checkpoint assets are absent on Big Mac. Code, routing and tests are retained.
+- **Web access:** local loopback only; Tailscale Serve HTTPS :8443 **tailnet-only** → http://127.0.0.1:31337. There is no Funnel for DexDiffusion (the DEX//REACH :443 Funnel is separate and untouched).
+- **Storage:** canonical image root `/Users/andrew/images_made` (sole durable copy).
+- **Retention:** Big Mac generated images are ephemeral only.
+- **Lifecycle:** `bin/dexdiffusion start|stop|restart|status|open`.
 
 ## 1. Project Identity and Scope
 
@@ -77,6 +89,18 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 - **VER-013:** Big Mac cleanup: 6 generated PNGs (wc2tb proof/, q4-test/, runs/) were first saved to `images_made` as `bigmac-legacy-*.png` (SHA-verified), then deleted. A bounded find across wc2tb/dex-imagegen, ~/sdcpp-staging and TMPDIR finds 0 generated images. Model (4.3G internal), HF cache (16G) and venv (1.1G) are intact.
 - **VER-015:** Tailscale HTTPS UI in a real browser: Google Chrome 153 (Playwright `channel: chrome`) on the MacBook loaded `https://macbook-air.tailafb7e8.ts.net:8443/dexdiffusion/`. HTML and all JS returned 200, and `/api/capabilities` returned 200. The only API origin was the ts.net origin, with 0 loopback calls. The script selected FLUX.2 Klein 4B, entered prompt and seed 271828 at 512², and clicked Generate. Progress climbed 0→6→…%, never NaN. Run `20260925-221607-controlled-flux2-klein-4b` finished Done, and the image rendered from `/api/images/20260925-221607-controlled-flux2-klein-4b-s271828-controlled-flux2-klein-4b.png` (200 image/png). File: 512x512 PNG, 253,073 B, decoded IDAT matches the expected size, sha256 `40b12965afcecfe902ea6f33e070803beccd8509c00b5ef697c463a62c88ed4d`. 1 copy on the MacBook, 0 in the run dir, 0 on Big Mac, 0 generated images of any kind in the bounded Big Mac roots, 0 remote temp dirs. The job ID was not captured (the UI does not display it and the server does not log it). A second tailnet device was not verified (none online).
 - **VER-016:** Direct (hand-run) scripts obey the canonical invariant. `sdcpp-lib.sh` records every run dir from `make_run_dir`, and the top-level script's `pass_banner`/`fail` calls `operator-console/bin/canonicalize-image.js`, which uses the same `image-store.js` `finalizeRun()` as the server. Nested scripts (batch, hires-fix, xyz) defer to their parent so their intermediate inputs survive. Proven by the tests `direct (hand-run) SDCPP completion…` (fixture PNG, isolated root, collision → `-2`, metadata points to the canonical file) and `nested scripts defer…`.
+- **VER-017 (revision 5, 2026-09-25):** Operationalization.
+  - `GET /api/system-info` (from `system-info.js`) returns the primary target, MFLUX facts, canonical storage, a live Tailscale Serve probe (`tailnet-only`, funnel false) and a launcher/Dock probe, plus SDCPP dormant. A test asserts it contains no secret-like values.
+  - `/api/capabilities` targets now carry `primary` and `runtime` (SDCPP targets `dormant`).
+  - UI: the target list marks "FLUX.2 Klein 4B (MFLUX) — Primary" and SDCPP targets "— dormant". With no saved preference the primary proofed target is selected; a valid saved `dex_target` wins. The System screen has an "About DexDiffusion" panel (verified rendered in the wrapper).
+  - `bin/dexdiffusion` start/stop/status verified: idempotent start (reused pid 76898); degraded status with the server down and Big Mac unreachable exits 0.
+- **VER-018:** Dock launcher.
+  - `/Applications/DexDiffusion.app` (Info.plist lint OK; CFBundleExecutable `DexDiffusion` is executable; CFBundleIconFile `DexDiffusion` → `DexDiffusion.icns`, verified by extracting it to show the Dexter artwork). Launch Services resolves `local.image-gen.wrapper` only to this path.
+  - Dock: 34 tiles before and after, and the DexDiffusion tile sits at the old Image_Gen position. A screenshot shows the Dexter icon labelled "DexDiffusion".
+  - First attempt showed the stale "IG" icon because the rewritten tile kept the old bookmark (`book`) pointing at Image_Gen.app. Fixed by dropping `book`/mod-date keys (the installer now does this).
+  - Clicking the Dock icon opened the native wrapper window with the UI loaded and reused the running console (1 node process). Quit left the console up (HTTP 200). After `killall Dock` the icon was still correct, and clicking relaunched the wrapper with still one node process.
+  - Legacy launchers archived (not deleted) to `~/Library/Application Support/DexDiffusion/retired-launchers/`: Image_Gen.app ×2, Image_Gen Launcher.app ×2, Image Gen Operator Console.app ×2. Dock prefs backups are in the same folder.
+- **VER-019:** Fresh generation from inside the Dock-launched wrapper: FLUX.2 Klein 4B, 512×512, 4 steps, seed 8675309, prompt "a green apple on a white table". Run `20260925-223804-controlled-flux2-klein-4b` finished Done; progress read 6% (no NaN). File `/Users/andrew/images_made/20260925-223804-controlled-flux2-klein-4b-s8675309-controlled-flux2-klein-4b.png`: PNG 512x512, 265,122 B, sha256 `205fc2fd986362be5e758f056ec840309d11bc0c30611963393e621c29fe06f0`; `/api/images` returns 200 image/png. Copies: 1 on the MacBook, 0 in the run dir, 0 on Big Mac, 0 remote temp dirs.
 - **VER-014:** Image route security (live): traversal, encoded traversal, absolute path, NUL, `.incoming-*`, symlink and unknown names all return 404.
 
 ## 6. Known Not Working
@@ -117,7 +141,7 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 | VER-004 | Direct 4-bit MFLUX 512/1024 generation on Big Mac | verified | exit 0, PNG, dims, sha256 | ssh westcat → mflux-generate-flux2 | 2026-09-25 |
 | VER-005 | DexDiffusion API MFLUX generation works | verified | job PASS, local PNG validated | API request -> job PASS -> valid local PNG | 2026-09-25 |
 | VER-006 | Visible UI selects target and shows result | verified | browser run + screenshot | in-app browser on 127.0.0.1:31337 | 2026-09-25 |
-| TEST | Routing + canonical storage + traversal + same-origin + progress + ephemerality + direct-script finalize | verified | `npm test` 37/37 | `tests/controlled-args.test.js`, `tests/canonical-images.test.js` | 2026-09-25 |
+| TEST | Routing + canonical storage + traversal + same-origin + progress + ephemerality + direct-script finalize + system-info + primary target + status degradation + installer | verified | `npm test` 43/43 | `tests/controlled-args.test.js`, `tests/canonical-images.test.js` | 2026-09-25 |
 | VER-008 | Tailnet-only Serve | verified | serve status, curl over tailnet | `tailscale serve status --json` | 2026-09-25 |
 | VER-010 | One durable image, none on Big Mac | verified | SHA search | bounded find + shasum | 2026-09-25 |
 
@@ -160,3 +184,10 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 - Live SDCPP proof: UNVERIFIED — RUNTIME ASSET ABSENT (IMP-001).
 - :8443 still tailnet-only; the :443 DEX//REACH Funnel was not touched; Node still bound to 127.0.0.1.
 - Published to `westkitty/Image_Gen` `main` in the commit containing this revision (see `git log`).
+
+### Revision 5 — 2026-09-25
+
+- Operationalized DexDiffusion: `DEXDIFFUSION.md` operator guide, root `README.md`, `bin/dexdiffusion`, `/api/system-info`, System/About panel, primary-target default, dormant SDCPP labelling.
+- The Mac launcher is now `/Applications/DexDiffusion.app` with the Dexter icon and a single Dock tile. Legacy launchers are archived.
+- Fresh wrapper generation proof (VER-019). Tests 37 → 43.
+- GitHub baseline: this revision is published in the commit whose subject is "Operationalize DexDiffusion workflow, docs, and Mac launcher" (SHA recorded in the follow-up note below after push).
