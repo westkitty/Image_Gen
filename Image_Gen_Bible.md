@@ -2778,3 +2778,10 @@ precedence over older sections above for day-to-day operation.
 - Remote access is via Tailscale Serve `https://macbook-air.tailafb7e8.ts.net:8443` (tailnet-only). The node backend is still 127.0.0.1 only.
 - The macOS launcher is now `/Applications/DexDiffusion.app` (bundle id `local.image-gen.wrapper`, Dexter icon), installed by `scripts/install-macos-app.sh`. Older Image_Gen launchers were archived to `~/Library/Application Support/DexDiffusion/retired-launchers/`.
 - Lifecycle is managed with `bin/dexdiffusion start|stop|restart|status`.
+
+
+## Reconciliation note — 2026-09-25 (revision 6: remote-png fix, SDCPP restored)
+
+- Fixed the UI failure `remote-png (exit 1)`. Root cause: seed -1 was forwarded to MFLUX (MLX needs seeds ≥ 0). It was masked because Big Mac's Tailscale SSH always returns exit status 0. The remote MFLUX half now reports status in-band, and the runtime venv is on Big Mac's internal SSD.
+- stable-diffusion.cpp is **restored as a secondary backend** at `7f0e728` with SD1.5 (CreativeML OpenRAIL-M) and Real-ESRGAN x4plus (BSD-3-Clause). This supersedes the revision-5 "SDCPP dormant" note above; MFLUX remains primary.
+- Capability status is now derived from real job evidence plus a Big Mac asset probe (`operator-console/capabilities.js`); see `DEXDIFFUSION.md` → Capability truth.

@@ -7,7 +7,7 @@
   "project_name": "Image_Gen / DexDiffusion",
   "project_root": "/Users/andrew/Image_Gen",
   "artifact_path": "operator-console + sdcpp-workflow",
-  "state_revision": 5,
+  "state_revision": 6,
   "last_updated": "2026-09-25",
   "current_baseline": {
     "identity": "main@5287abd plus preserved local modifications",
@@ -21,13 +21,15 @@
 }
 -->
 
-## 0. Current Accepted Architecture (cold-start summary, revision 5)
+## 0. Current Accepted Architecture (cold-start summary, revision 6)
 
 Operator guide: `DEXDIFFUSION.md`. Live facts: `bin/dexdiffusion status`, `GET /api/system-info`.
 
-- **Verified primary path:** DexDiffusion (MacBook, `operator-console` on 127.0.0.1:31337) → `ssh westcat` → Big Mac MFLUX 0.20.0 → FLUX.2 Klein 4B 4-bit (`mlx-community/flux2-klein-4b-4bit`, model at `$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit`, venv `/Volumes/wc2tb/dex-imagegen/mflux-venv`) → PNG streamed back → `/Users/andrew/images_made`.
+- **Verified primary path:** DexDiffusion (MacBook, `operator-console` on 127.0.0.1:31337) → `ssh westcat` → Big Mac MFLUX 0.20.0 → FLUX.2 Klein 4B 4-bit (`mlx-community/flux2-klein-4b-4bit`, model at `$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit`, runtime venv `$HOME/Library/Caches/DexDiffusion/mflux/venv` on the internal SSD; the wc2tb venv is a package-identical fallback) → PNG streamed back → `/Users/andrew/images_made`.
 - **Mac launcher:** `/Applications/DexDiffusion.app`, bundle id `local.image-gen.wrapper`, a native WebKit wrapper window. Icon `Contents/Resources/DexDiffusion.icns` is built from `operator-console/public/dexdiffusion/uploads/grok_image_1775521844329.jpg`. Exactly one Dock tile. Clicking it runs `bin/dexdiffusion start` (reuses or starts a detached console) and loads the local UI. Quitting the app leaves the console running. Install/repair: `scripts/install-macos-app.sh`.
-- **Legacy path:** SDCPP — status **dormant**; runtime/checkpoint assets are absent on Big Mac. Code, routing and tests are retained.
+- **Secondary path (restored rev 6):** stable-diffusion.cpp `7f0e728` (Metal) at `$HOME/stable-diffusion.cpp/build/bin/sd-cli`, with SD1.5 (`$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors`, CreativeML OpenRAIL-M) and Real-ESRGAN x4plus (`/Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth`, BSD-3-Clause). SDXL/Flux-fp8/custom targets are not restored and report `model-missing`.
+- **Capability truth:** derived by `operator-console/capabilities.js` from real job evidence (`sdcpp-workflow/state/capability-evidence.json`) plus a Big Mac asset probe. It is shown in System → Truth status, `/api/system-info` and `bin/dexdiffusion status`.
+- **Remote exit codes:** Big Mac's Tailscale SSH always returns exit status 0, so remote results are read from output or in-band markers only.
 - **Web access:** local loopback only; Tailscale Serve HTTPS :8443 **tailnet-only** → http://127.0.0.1:31337. There is no Funnel for DexDiffusion (the DEX//REACH :443 Funnel is separate and untouched).
 - **Storage:** canonical image root `/Users/andrew/images_made` (sole durable copy).
 - **Retention:** Big Mac generated images are ephemeral only.
@@ -101,18 +103,44 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
   - Clicking the Dock icon opened the native wrapper window with the UI loaded and reused the running console (1 node process). Quit left the console up (HTTP 200). After `killall Dock` the icon was still correct, and clicking relaunched the wrapper with still one node process.
   - Legacy launchers archived (not deleted) to `~/Library/Application Support/DexDiffusion/retired-launchers/`: Image_Gen.app ×2, Image_Gen Launcher.app ×2, Image Gen Operator Console.app ×2. Dock prefs backups are in the same folder.
 - **VER-019:** Fresh generation from inside the Dock-launched wrapper: FLUX.2 Klein 4B, 512×512, 4 steps, seed 8675309, prompt "a green apple on a white table". Run `20260925-223804-controlled-flux2-klein-4b` finished Done; progress read 6% (no NaN). File `/Users/andrew/images_made/20260925-223804-controlled-flux2-klein-4b-s8675309-controlled-flux2-klein-4b.png`: PNG 512x512, 265,122 B, sha256 `205fc2fd986362be5e758f056ec840309d11bc0c30611963393e621c29fe06f0`; `/api/images` returns 200 image/png. Copies: 1 on the MacBook, 0 in the run dir, 0 on Big Mac, 0 remote temp dirs.
+- **VER-020 (rev 6) — remote-png incident.**
+  - UI job `remote-png (exit 1)` = run `20260925-224619-controlled-flux2-klein-4b` (MFLUX, prompt "dude" (typed by Andrew), seed -1, 1024²). remote-command.log shows `TypeError: key(): incompatible function arguments` in `mx.random.key(seed)`: seed -1 was forwarded to MLX, which only takes seeds ≥ 0.
+  - Masked because Tailscale SSH on Big Mac returns exit-status 0 for every command (`ssh westcat 'exit 7'` → 0), so the bridge fell through to the generic `remote-png` gate.
+  - Reproduced outside the UI with `--seed -1` (identical TypeError).
+  - Contributing: a MFLUX Python process sat in uninterruptible I/O for 10+ min on the external USB `wc2tb` (other I/O on that disk, e.g. Transmission).
+  - Fix: negative seed → recorded random seed; the remote half is split into `mflux-remote-generate.sh` with in-band `MFLUX_REMOTE_EXIT`/`MFLUX_REMOTE_FAIL`; specific gates; runtime moved to an internal pinned venv (`uv pip freeze` identical: mflux 0.20.0, mlx 0.32.2, 56 packages).
+  - Post-fix direct run: seed -1 + hostile prompt (quotes, `;`, `&`, `$5`, backticks, Unicode) PASS in 27 s, seed recorded `1920181967(random)`.
+- **VER-021:** P0 UI acceptance in the Dock wrapper: MFLUX 1024², 4 steps, seed 20260925, prompt `a dog's red wagon (vintage) & a "lighthouse" at dusk; film grain`. Run `20260925-231619-controlled-flux2-klein-4b` PASS in 68 s; image visible; progress 14% (no NaN). `/Users/andrew/images_made/20260925-231619-controlled-flux2-klein-4b-s20260925-controlled-flux2-klein-4b.png`, 1024², 1,968,796 B, sha256 `eee8f76776df7679af2f9de2aee3c187845e35fe24e808d169dd4a9de61b7150`. 1 MacBook copy, 0 Big Mac copies.
+- **VER-022:** SDCPP restored. Built `7f0e728` with Metal (Metal.framework linked; version `master-709`) via `uvx --from cmake`. SD1.5 downloaded, sha256 equals the upstream etag. ESRGAN x4plus downloaded; size equals the release asset and the sha256 matches the published value.
+- **VER-023:** Live SDCPP proofs (all via the DexDiffusion API; 0 generated images on Big Mac after each):
+  - **txt2img** sd15: job `b6eb9998`, run `20260925-233017-controlled-sd15`, 512², seed 4242, sha `e4a040ab…`. Lighthouse oil painting, correct content.
+  - **img2img**: job `79dd849b`, run `20260925-233206-img2img`, strength 0.6, seed 5151, sha `9af823c0…`. Composition preserved and re-rendered; "night" weakly applied.
+  - **inpaint**: job `5952b255`, run `20260925-233512-inpaint`, RGBA box mask, seed 6161, sha `d933dcfb…`. Moon inside the mask; mean change 23.8 inside vs 5.8 outside (4.1×). An earlier run with an opaque RGB mask regenerated everything; that was a fixture error, since the UI contract is alpha-painted masks.
+  - **upscale-resample**: job `d464e910`, 512→1024.
+  - **upscale-esrgan**: job `7261a7b2`, run `20260925-233715-esrgan-upscale`, 512→2048, sha `5bfbd239…`.
+  - **hires-fix**: job `0cf96c2a`, run `20260925-234021-hires-fix`, base 512 → final 1024.
+  - Fixes found by these proofs:
+    - img2img/inpaint/esrgan rejected canonical-store inputs → now accept `runs/` or `images_made/` only.
+    - sd15 required a pre-started sd-server tunnel (`tunnel-down`) → now falls back to on-demand sd-cli.
+    - Nested run cells were recorded as runs (`base-base.png`) → `record_run_dir` maps them to the top-level run (earlier run renamed/re-indexed).
+    - `hiresFinalImageUrl` was missing for runs-relative paths.
+- **VER-024:** Final regression.
+  - Console stopped → Dock icon click started it via the helper (1 node process, no lingering helper). This exposed and fixed a `bin/dexdiffusion start` bug where a `cd && node &` subshell held the caller's stdout, which would have hung the wrapper.
+  - Wrapper MFLUX 1024², seed 8080808: job `a000f3ef-25af-413b-adf1-72d60e068bb9`, run `20260925-235025-controlled-flux2-klein-4b`, 72 s, sha256 `c8722e02a8a63199e122256813cf76be2d25695c5287944b5b47ba47328c94f6`. 1 MacBook copy, 0 Big Mac. The evidence recorder logged it automatically.
+  - System → Truth status renders the derived capabilities.
 - **VER-014:** Image route security (live): traversal, encoded traversal, absolute path, NUL, `.incoming-*`, symlink and unknown names all return 404.
 
 ## 6. Known Not Working
 
 - **BRK-001 (resolved by VER-004..006):** No MFLUX generation path was installed or proven at the start of this change.
+- **BRK-005 (resolved rev 6):** `remote-png (exit 1)` on UI renders with seed -1. See VER-020.
 - **BRK-003 (history, kept):** Full-precision `black-forest-labs/FLUX.2-klein-4B` loaded from wc2tb HF cache hit `[METAL] Command buffer execution failed: GPU Timeout Error (kIOGPUCommandBufferCallbackErrorTimeout)` at step 0 (~56 s), and again during a `mx.eval(model.parameters())` prefault experiment (RSS climbed to ~10.6 GB). Prefault approach closed; worker script removed. The ~15 GB model remains cached on wc2tb, unused.
 - **BRK-004 (resolved by VER-010):** UI progress label showed `NaN%`: the server sends `job.progress` as an object. Fixed via `DexClient.jobProgressPercent`.
 - **BRK-002:** Prior local image-generation attempts in other runtimes did not establish a reliable working image path.
 
 ## 7. Implemented but Unverified
 
-- **IMP-001 (R13: UNVERIFIED — RUNTIME ASSET ABSENT, rechecked 2026-09-25):** On Big Mac, `~/sdcpp-staging` is empty, there is no compiled `sd`/`sd-server` binary under `~/stable-diffusion.cpp`, `/Volumes/wc2tb/ImageGen` does not exist, and a bounded wc2tb search finds no SD1.5/SDXL checkpoints. The June asset cache points at those missing paths. No model or binary was acquired. SDCPP remote-image cleanup (`register_remote_ephemeral`) and server-side adoption of SDCPP run images are covered by static checks and unit tests but have not been exercised by a live SDCPP generation. `~/sdcpp-staging` on Big Mac is currently empty, so SDCPP targets could not be run.
+- **IMP-001 (resolved by VER-022/023; history kept) (R13: UNVERIFIED — RUNTIME ASSET ABSENT, rechecked 2026-09-25):** On Big Mac, `~/sdcpp-staging` is empty, there is no compiled `sd`/`sd-server` binary under `~/stable-diffusion.cpp`, `/Volumes/wc2tb/ImageGen` does not exist, and a bounded wc2tb search finds no SD1.5/SDXL checkpoints. The June asset cache points at those missing paths. No model or binary was acquired. SDCPP remote-image cleanup (`register_remote_ephemeral`) and server-side adoption of SDCPP run images are covered by static checks and unit tests but have not been exercised by a live SDCPP generation. `~/sdcpp-staging` on Big Mac is currently empty, so SDCPP targets could not be run.
 - **IMP-002 (resolved by VER-015 for the MacBook browser):** Visible-UI click-through over the Tailscale HTTPS origin: the in-app browser pane blocks subresources from `*.ts.net` (ERR_BLOCKED_BY_CLIENT, client-side policy). The server path was proven by VER-008/011. Browser use from a second tailnet device is not verified; only the MacBook is online among Andrew's devices.
 - **IMP-003 (resolved by VER-016):** Hand-run scripts previously left images in their run dir until the console processed the run.
 
@@ -141,7 +169,7 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 | VER-004 | Direct 4-bit MFLUX 512/1024 generation on Big Mac | verified | exit 0, PNG, dims, sha256 | ssh westcat → mflux-generate-flux2 | 2026-09-25 |
 | VER-005 | DexDiffusion API MFLUX generation works | verified | job PASS, local PNG validated | API request -> job PASS -> valid local PNG | 2026-09-25 |
 | VER-006 | Visible UI selects target and shows result | verified | browser run + screenshot | in-app browser on 127.0.0.1:31337 | 2026-09-25 |
-| TEST | Routing + canonical storage + traversal + same-origin + progress + ephemerality + direct-script finalize + system-info + primary target + status degradation + installer | verified | `npm test` 43/43 | `tests/controlled-args.test.js`, `tests/canonical-images.test.js` | 2026-09-25 |
+| TEST | … + remote-png gates, in-band exit, cleanup ordering, prompt safety, capability derivation, evidence recording, model-missing targets, lifecycle detach | verified | `npm test` 57/57 | `tests/controlled-args.test.js`, `tests/canonical-images.test.js` | 2026-09-25 |
 | VER-008 | Tailnet-only Serve | verified | serve status, curl over tailnet | `tailscale serve status --json` | 2026-09-25 |
 | VER-010 | One durable image, none on Big Mac | verified | SHA search | bounded find + shasum | 2026-09-25 |
 
@@ -192,3 +220,11 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 - Fresh wrapper generation proof (VER-019). Tests 37 → 43.
 - GitHub baseline: this revision is published in the commit whose subject is "Operationalize DexDiffusion workflow, docs, and Mac launcher" (SHA recorded in the follow-up note below after push).
 - Published: `336707b628f2d15b82815c62239e6e1435ce5f63` on `westkitty/Image_Gen` `main` (remote SHA verified equal to local HEAD, 2026-09-25).
+
+### Revision 6 — 2026-09-25
+
+- Fixed the remote-png incident (seed -1 + Tailscale SSH exit status 0 + USB-disk stall). In-band remote status and specific failure gates. Internal MFLUX runtime.
+- Restored SDCPP `7f0e728` + SD1.5 + Real-ESRGAN. txt2img/img2img/inpaint/resample/ESRGAN/hires-fix proven live; batch AVAILABLE (unproven).
+- Capability truth is derived from evidence and assets; the hardcoded Truth Status/gate lists were removed.
+- Fixed the lifecycle helper detach bug, canonical-store inputs for edit scripts, and nested run naming.
+- Tests 43 → 57. Preserved: Dock launcher, Tailscale :8443 tailnet-only, :443 DEX//REACH untouched, canonical storage, zero Big Mac retention.

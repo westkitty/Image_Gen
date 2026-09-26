@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { CANONICAL_IMAGE_ROOT } = require('./image-store');
+const { CAPABILITIES, deriveStatus } = require('./capabilities');
 
 const SYSTEM = {
   app: { name: 'DexDiffusion', docs: 'DEXDIFFUSION.md', operationalState: 'OPERATIONAL_STATE.md' },
@@ -27,17 +28,22 @@ const SYSTEM = {
     license: 'Apache-2.0',
     quantization: '4-bit',
     remoteModelPath: '$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit',
-    remoteVenv: '/Volumes/wc2tb/dex-imagegen/mflux-venv',
+    remoteVenv: '$HOME/Library/Caches/DexDiffusion/mflux/venv',
+    remoteVenvFallback: '/Volumes/wc2tb/dex-imagegen/mflux-venv (package-identical; external USB, not used on the hot path)',
     typical: { steps: 4, guidance: 1, sizes: ['512x512', '1024x1024'], seed: 'supported' },
     unsupported: ['negative prompt', 'alternate VAE', 'SDCPP scheduler', 'SDCPP CFG scale'],
   },
-  legacy: {
-    sdcpp: {
-      status: 'dormant',
-      reason: 'stable-diffusion.cpp runtime/checkpoint assets are not currently installed on Big Mac (no compiled sd binary, ~/sdcpp-staging empty, no SD checkpoints on wc2tb).',
-      lastChecked: '2026-09-25',
-      restore: 'Not restored automatically. Restoring requires building stable-diffusion.cpp and staging checkpoints on Big Mac; see DEXDIFFUSION.md.',
-    },
+  sdcpp: {
+    role: 'secondary / optional (MFLUX stays primary)',
+    upstream: 'https://github.com/leejet/stable-diffusion.cpp',
+    revision: '7f0e728 (master-709), Metal',
+    binary: '$HOME/stable-diffusion.cpp/build/bin/sd-cli (build dir in ~/sdcpp-staging/build_dir.txt)',
+    build: 'cmake -S . -B build -DSD_METAL=ON -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release -j 8 (cmake via uvx)',
+    models: [
+      { use: 'SD1.5 txt2img / img2img / inpaint / hires-fix', path: '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors', source: 'huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5', license: 'CreativeML OpenRAIL-M', sha256: '6ce0161689b3853acaa03779ec93eafe75a02f4ced659bee03f50797806fa2fa' },
+      { use: 'Real-ESRGAN x4 upscale', path: '/Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth', source: 'github.com/xinntao/Real-ESRGAN releases v0.1.0', license: 'BSD-3-Clause', sha256: '4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1' },
+    ],
+    otherTargets: 'SDXL / Flux-fp8 / custom checkpoints are not restored; those targets report model-missing.',
   },
   launcher: {
     platform: 'macOS',
@@ -120,11 +126,8 @@ async function probeLauncher() {
   return result;
 }
 
-function targetRuntime(target) {
-  return (target.backend || 'sdcpp') === 'mflux' ? 'available' : SYSTEM.legacy.sdcpp.status;
-}
 
-function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale, launcher: probeLauncher } } = {}) {
+function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale, launcher: probeLauncher }, getAssets = () => null, getEvidence = () => ({}) } = {}) {
   let cache = null;
   let cachedAt = 0;
   return async function getSystemInfo({ targets = [], build = {} } = {}) {
@@ -146,10 +149,16 @@ function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale,
         tailscale: cache.tailscale,
       },
       launcher: { ...SYSTEM.launcher, ...cache.launcher, dockInstalled: cache.launcher.dockEntries == null ? null : cache.launcher.dockEntries > 0 },
-      legacy: SYSTEM.legacy,
+      sdcpp: SYSTEM.sdcpp,
+      capabilities: capabilitySummary(getAssets(), getEvidence()),
+      assets: getAssets(),
       checkedAt: new Date(cachedAt).toISOString(),
     };
   };
 }
 
-module.exports = { SYSTEM, createSystemInfo, parseServeStatus, targetRuntime, probeTailscale, probeLauncher };
+function capabilitySummary(assets, evidence) {
+  return CAPABILITIES.map(cap => ({ id: cap.id, label: cap.label, backend: cap.backend, primary: !!cap.primary, ...deriveStatus(cap, assets, evidence) }));
+}
+
+module.exports = { SYSTEM, createSystemInfo, parseServeStatus, capabilitySummary, probeTailscale, probeLauncher };

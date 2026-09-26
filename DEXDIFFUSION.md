@@ -29,6 +29,7 @@ sdcpp-workflow/bin/mflux-controlled-generate.sh
         │  ssh westcat
         ▼
 Big Mac: MFLUX 0.20.0 / MLX → FLUX.2 Klein 4B 4-bit → PNG in a private mktemp dir
+         (secondary path: stable-diffusion.cpp sd-cli → SD1.5 / Real-ESRGAN, same ephemeral rules)
         │  PNG streamed back over SSH stdout; remote temp dir deleted (trap) and verified gone
         ▼
 MacBook: /Users/andrew/images_made/<run-id>-s<seed>-<source>.png   (sole durable copy)
@@ -118,12 +119,17 @@ defaults read com.apple.dock persistent-apps | grep -c 'file:///Applications/Dex
 | Model | `mlx-community/flux2-klein-4b-4bit` (base `black-forest-labs/FLUX.2-klein-4B`, Apache-2.0, 4-bit) |
 | Runtime | MFLUX 0.20.0, Python 3.13.13, MLX/Metal on Big Mac |
 | Model path (Big Mac, internal SSD) | `$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit` |
-| MFLUX venv (Big Mac) | `/Volumes/wc2tb/dex-imagegen/mflux-venv` |
-| HF cache (Big Mac) | `/Volumes/wc2tb/dex-imagegen/cache/huggingface` (also holds the unused ~15 GB full-precision model) |
+| MFLUX venv (Big Mac, internal SSD) | `$HOME/Library/Caches/DexDiffusion/mflux/venv` — pinned, package-identical copy (`uv pip freeze` diff = none) of `/Volumes/wc2tb/dex-imagegen/mflux-venv`, which is kept as a fallback but is **not** on the hot path (see incident below) |
+| MFLUX cache (Big Mac) | `$HOME/Library/Caches/DexDiffusion/mflux/cache` (offline; model is loaded from the local dir) |
+| Legacy HF cache (Big Mac) | `/Volumes/wc2tb/dex-imagegen/cache/huggingface` (holds the unused ~15 GB full-precision model; not used at runtime) |
 | Normal settings | 4 steps, guidance 1, 512×512 (~25 s) or 1024×1024 (~60 s), seed supported |
 | **Not used by MFLUX** | negative prompt, alternate VAE, SDCPP scheduler, SDCPP CFG scale. The UI still shows these generic controls, but they are **not forwarded** to MFLUX (`operator-console/controlled-args.js`). |
 
-The exact proven invocation is in `sdcpp-workflow/bin/mflux-controlled-generate.sh`:
+A UI seed of `-1` means **random**: the bridge resolves it to a recorded
+non-negative seed (label `<n>(random)`), because MLX only accepts seeds ≥ 0.
+
+The exact proven invocation is in `sdcpp-workflow/bin/mflux-remote-generate.sh`
+(the Big Mac half, sent over ssh) driven by `mflux-controlled-generate.sh`:
 `mflux-generate-flux2 --model <model path> --base-model flux2-klein-4b --prompt … --steps 4 --seed … --width … --height … --output <remote tmp>`.
 It runs with `HF_HUB_OFFLINE=1`.
 
@@ -207,17 +213,71 @@ curl -s -X POST http://127.0.0.1:31337/api/actions/generate-controlled -H 'conte
 | MFLUX/model missing | `bin/dexdiffusion status` shows MFLUX env / model PRESENT/MISSING. See OPERATIONAL_STATE.md for the verified install (do not reinstall blindly). |
 | Metal GPU timeout | Known history: full-precision weights from wc2tb timed out. The 4-bit model on internal storage is the fix. Do not switch back. |
 | Generation passed but image missing | `ls -t /Users/andrew/images_made \| head`; `cat sdcpp-workflow/runs/<run>/canonical-images.json`. |
-| SDCPP targets fail | Expected: SDCPP is **dormant** (see below). |
+| `generator-exit` / `output-*` gate | Read `sdcpp-workflow/runs/<run>/remote-command.log` (prompt-redacted); the job error names the remote exception. |
+| Generation very slow to start | Check Big Mac disk contention; the MFLUX runtime must be the internal venv (`bin/dexdiffusion status` → MFLUX env). |
+| SDXL/Flux-fp8 target "— model missing" | Expected: only SD1.5 is restored. Staging another checkpoint is an explicit decision. |
+| Capability shows BROKEN | The latest real run failed at a runtime gate; fix the cause and re-run once to return to PROVEN. |
 
-## SDCPP (legacy, dormant)
+## SDCPP (restored, secondary)
 
-The stable-diffusion.cpp integration (targets `sd15`, `sdxl-*`, `flux-fp8`, …;
-`sdcpp-workflow/bin/sdcpp-*.sh`) stays in the code, routing and tests, but it is
-**dormant**. Big Mac currently has no compiled `sd` binary, `~/sdcpp-staging` is
-empty, and no SD checkpoints are on wc2tb (checked 2026-09-25). Those targets show
-as "— dormant" in the target list and in `/api/capabilities` (`runtime: "dormant"`).
-Restoring SDCPP means building stable-diffusion.cpp on Big Mac and re-staging
-checkpoints. That is a separate, explicit decision, and nothing does it automatically.
+MFLUX stays **primary**. stable-diffusion.cpp is a restored **secondary** backend
+used for SD1.5 txt2img, img2img, inpaint, hires-fix, batch and Real-ESRGAN.
+
+| Item | Value |
+|---|---|
+| Upstream / revision | https://github.com/leejet/stable-diffusion.cpp @ `7f0e728` (`master-709`), Metal |
+| Checkout | `$HOME/stable-diffusion.cpp` (pinned, clean) |
+| Build | `cd ~/stable-diffusion.cpp && uvx --from cmake cmake -S . -B build -DSD_METAL=ON -DCMAKE_BUILD_TYPE=Release && uvx --from cmake cmake --build build --config Release -j 8` (cmake 4.4.3 via uv, no system install) |
+| Binaries | `$HOME/stable-diffusion.cpp/build/bin/{sd-cli,sd-server}` — pointer in `~/sdcpp-staging/build_dir.txt` |
+| SD1.5 model | `$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors` — https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5 · **CreativeML OpenRAIL-M** · 4,265,146,304 B · sha256 `6ce0161689b3853acaa03779ec93eafe75a02f4ced659bee03f50797806fa2fa` |
+| Real-ESRGAN | `/Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth` — https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.1.0 · **BSD-3-Clause** · 67,040,989 B · sha256 `4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1` |
+| Not restored | SDXL, SDXL-Turbo, Flux-fp8 and custom checkpoints — those targets show **"— model missing"** and are never offered as ready |
+
+SD1.5 uses a warm `sd-server` only when its tunnel is already running; otherwise it
+runs on-demand `sd-cli` per job (no standing service on Big Mac). All SDCPP remote
+images are registered with `register_remote_ephemeral` and deleted on exit.
+
+**Rebuild from scratch:** clone upstream to `~/stable-diffusion.cpp`, `git checkout 7f0e728`,
+`git submodule update --init --recursive`, run the build above, write the build dir to
+`~/sdcpp-staging/build_dir.txt`, download the two models above to the listed paths and
+verify their sha256.
+
+## Capability truth
+
+Status is **derived**, never hand-written (`operator-console/capabilities.js`):
+real job results are recorded in `sdcpp-workflow/state/capability-evidence.json`
+(machine-local) and combined with a read-only Big Mac asset probe.
+
+| Status | Meaning |
+|---|---|
+| PROVEN | a real job of this capability passed here (date shown) |
+| AVAILABLE · unproven | implementation + assets present, no real pass recorded |
+| DORMANT | a required runtime/model asset is missing |
+| BROKEN | the latest real run failed at a runtime gate (after any pass) |
+| UNAVAILABLE | not provided by the architecture |
+
+Shown in **System → Truth status**, `GET /api/system-info` (`capabilities`), and
+`bin/dexdiffusion status`. Unit tests cannot make anything PROVEN.
+
+## Incident 2026-09-25: `Job FAIL · gate: remote-png (exit 1)`
+
+- **Symptom:** MFLUX renders from the UI failed with `remote-png`.
+- **Root cause 1:** the UI default seed `-1` (SDCPP "random") was forwarded to MFLUX;
+  `mx.random.key(-1)` raised `TypeError` before any image was written
+  (run `20260925-224619-controlled-flux2-klein-4b`). Every earlier success used an explicit seed.
+- **Root cause 2 (masking):** Big Mac's ssh is **Tailscale SSH**, which runs commands via
+  `/usr/bin/login -f … zsh -c` and always returns exit-status **0**, so the bridge's
+  `ssh` exit check could not see the crash and reported the generic `remote-png` gate.
+- **Contributing:** the MFLUX venv on the external USB drive (`wc2tb`, busy with other
+  I/O) stalled Python imports for 10+ minutes.
+- **Fix:** negative seeds → recorded random seed; the remote half
+  (`mflux-remote-generate.sh`) reports `MFLUX_REMOTE_EXIT` / `MFLUX_REMOTE_FAIL` in-band;
+  failures now name the gate (`generator-exit`, `output-missing`, `output-empty`,
+  `output-invalid`, `transfer-failed`, `sha-mismatch`, `canonicalization-failed`,
+  `cleanup-failed`) with the remote error line and log path; the hot-path runtime moved
+  to Big Mac's internal SSD. Regression tests: `operator-console/tests/mflux-bridge.test.js`.
+- **Rule for all remote code:** never trust `ssh westcat` exit codes; check output
+  (`remote_test` in `sdcpp-lib.sh`) or in-band markers.
 
 ## Protected invariants (do not change)
 
@@ -226,7 +286,8 @@ checkpoints. That is a separate, explicit decision, and nothing does it automati
   for DexDiffusion. The separate DEX//REACH Funnel on `:443` is not ours; do not touch it.
 - Big Mac is never exposed; the MacBook reaches it only via `ssh westcat`.
 - Generated images live only in `/Users/andrew/images_made`; Big Mac keeps zero copies.
-- MFLUX (`flux2-klein-4b`) is the primary backend; SDCPP is dormant unless explicitly restored.
+- MFLUX (`flux2-klein-4b`) is the primary backend; SDCPP (restored) is secondary/optional.
+- Never trust ssh exit codes to Big Mac (Tailscale SSH returns 0); use output or in-band markers.
 - The Dock launcher is `/Applications/DexDiffusion.app` only.
 
 **Never delete:** `/Users/andrew/images_made`, Big Mac's model dir, the MFLUX venv,
@@ -245,7 +306,8 @@ the HF cache on wc2tb, `OPERATIONAL_STATE.md`, run metadata.
 | Image store | `operator-console/image-store.js`, `operator-console/bin/canonicalize-image.js` |
 | Backend routing | `operator-console/controlled-args.js` |
 | UI | `operator-console/public/dexdiffusion/{index.html,component.js,client-helpers.js}` |
-| MFLUX bridge | `sdcpp-workflow/bin/mflux-controlled-generate.sh` |
+| MFLUX bridge | `sdcpp-workflow/bin/mflux-controlled-generate.sh` + `mflux-remote-generate.sh` |
+| Capability truth | `operator-console/capabilities.js` (+ `sdcpp-workflow/state/capability-evidence.json`, local) |
 | Shared shell lib | `sdcpp-workflow/bin/sdcpp-lib.sh` |
 | Lifecycle / status | `bin/dexdiffusion` |
 | Mac app | `native/macos/Image_Gen/ImageGenApp.swift`, `scripts/install-macos-app.sh` |

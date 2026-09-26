@@ -8,6 +8,7 @@ start/stop/status, troubleshooting and protected invariants.
   (tailnet: https://macbook-air.tailafb7e8.ts.net:8443/dexdiffusion/)
 - Control: `bin/dexdiffusion start | stop | restart | status`
 - Primary engine: FLUX.2 Klein 4B (`mlx-community/flux2-klein-4b-4bit`) via MFLUX on Big Mac (`ssh westcat`)
+- Secondary: stable-diffusion.cpp `7f0e728` (SD1.5 txt2img/img2img/inpaint/hires, Real-ESRGAN); live capability status: System → Truth status or `bin/dexdiffusion status`
 - Images: `/Users/andrew/images_made` (only durable copy; Big Mac keeps none)
 - Mac app: `/Applications/DexDiffusion.app`, rebuilt/repaired by `scripts/install-macos-app.sh`
 - Evidence and history: [OPERATIONAL_STATE.md](OPERATIONAL_STATE.md); long-form project log: [Image_Gen_Bible.md](Image_Gen_Bible.md)

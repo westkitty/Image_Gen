@@ -68,14 +68,20 @@ export SDCPP_LOGFILE
 MANIFEST="$RUN_DIR/controlled-manifest.json"
 REPORT="$RUN_DIR/controlled-generate-report.md"
 RUN_ID="$(basename "$RUN_DIR")"
-REMOTE_ROOT="/Volumes/wc2tb/dex-imagegen"
-REMOTE_VENV="$REMOTE_ROOT/mflux-venv"
-REMOTE_MFLUX="$REMOTE_VENV/bin/mflux-generate-flux2"
+# Runtime paths are relative to Big Mac's $HOME (resolved remotely). Everything
+# on the generation hot path is on Big Mac's INTERNAL SSD: the external USB
+# volume (wc2tb) stalled MFLUX imports for 10+ minutes under concurrent disk
+# load (incident 2026-09-25). The internal venv is a pinned, package-identical
+# copy of /Volumes/wc2tb/dex-imagegen/mflux-venv (kept as a fallback).
+REMOTE_VENV_REL="Library/Caches/DexDiffusion/mflux/venv"
+REMOTE_MFLUX_REL="$REMOTE_VENV_REL/bin/mflux-generate-flux2"
+REMOTE_VENV="\$HOME/$REMOTE_VENV_REL"
+REMOTE_MFLUX="\$HOME/$REMOTE_MFLUX_REL"
 # Proven configuration (2026-09-25): 4-bit MFLUX checkpoint
 # mlx-community/flux2-klein-4b-4bit staged on Big Mac INTERNAL storage.
 # The full-precision model read from wc2tb hit Metal GPU watchdog timeouts.
 REMOTE_MODEL_DIR='$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit'
-REMOTE_CACHE="$REMOTE_ROOT/cache"
+REMOTE_CACHE_REL="Library/Caches/DexDiffusion/mflux/cache"
 REMOTE_STDOUT_LOG="$RUN_DIR/remote-command.log"
 CREATED_AT="$(iso_now)"
 START_EPOCH="$(date +%s)"
@@ -100,32 +106,28 @@ if [ "$SEED_CONTROLLED" != "yes" ]; then
   SEED_VALUE="$(date +%s)"
   SEED_LABEL="$SEED_VALUE"
 fi
+# The UI's "-1" means random (SDCPP convention). MLX's mx.random.key() only
+# accepts non-negative seeds; forwarding -1 crashed MFLUX before any image was
+# written (incident 2026-09-25, run 20260925-224619). Resolve to a recorded
+# random seed so the run stays reproducible.
+case "$SEED_VALUE" in
+  -*) SEED_VALUE="$(gen_random_seed)"; SEED_LABEL="$SEED_VALUE(random)" ;;
+esac
+is_uint "$SEED_VALUE" && [ "${#SEED_VALUE}" -le 10 ] && [ "$SEED_VALUE" -le 4294967295 ] \
+  || fail "seed" "Seed must be an integer 0-4294967295 or -1 for random."
 
 PROMPT_B64="$(python3 -c 'import base64,sys; print(base64.b64encode(sys.argv[1].encode("utf-8")).decode("ascii"))' "$ARG_PROMPT")"
 
-# Remote side: PNG is generated into a private mktemp dir that a trap removes on
-# any exit (success, failure, SSH hangup). stdout carries only the PNG bytes;
-# every log line goes to stderr.
-REMOTE_SCRIPT='set -euo pipefail
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/dexdiffusion-mflux.XXXXXXXX")"
-trap '"'"'rm -rf -- "$tmp"'"'"' EXIT
-trap "exit 129" HUP; trap "exit 130" INT; trap "exit 143" TERM
-echo "MFLUX_REMOTE_TMP: $tmp" >&2
-export HF_HOME="$6/huggingface" XDG_CACHE_HOME="$6/xdg" TOKENIZERS_PARALLELISM=false HF_HUB_OFFLINE=1
-prompt="$(printf %s "$1" | base64 --decode)"
-"$7" --model "$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit" --base-model flux2-klein-4b \
-  --prompt "$prompt" --steps "$2" --seed "$3" --width "$4" --height "$5" --output "$tmp/out.png" >&2
-if [ ! -s "$tmp/out.png" ] || ! file "$tmp/out.png" | grep -q "PNG image data"; then
-  echo "MFLUX_REMOTE_FAIL: missing or invalid PNG" >&2; exit 3
-fi
-echo "MFLUX_REMOTE_PNG_SHA256: $(shasum -a 256 "$tmp/out.png" | cut -d" " -f1)" >&2
-cat "$tmp/out.png"'
+# Remote side lives in mflux-remote-generate.sh (sent via bash -c; stdout is the
+# PNG, stderr carries markers incl. MFLUX_REMOTE_EXIT, since Tailscale SSH on
+# Big Mac always reports exit-status 0).
+REMOTE_SCRIPT="$(cat "$HERE/mflux-remote-generate.sh")"
 
 log "Running FLUX.2 Klein 4B through MFLUX on Big Mac (ephemeral remote image)."
 set +e
-ssh -o ConnectTimeout=15 "$SSH_TARGET" "bash -c $(printf '%q' "$REMOTE_SCRIPT") dexdiffusion-mflux $PROMPT_B64 $ARG_STEPS $SEED_VALUE $ARG_WIDTH $ARG_HEIGHT $(printf '%q' "$REMOTE_CACHE") $(printf '%q' "$REMOTE_MFLUX")" \
+ssh -o ConnectTimeout=15 "$SSH_TARGET" "bash -c $(printf '%q' "$REMOTE_SCRIPT") dexdiffusion-mflux $PROMPT_B64 $ARG_STEPS $SEED_VALUE $ARG_WIDTH $ARG_HEIGHT $(printf '%q' "$REMOTE_CACHE_REL") $(printf '%q' "$REMOTE_MFLUX_REL")" \
   > "$INCOMING" 2> "$RAW_STDERR"
-SSH_RC=$?
+SSH_RC=$?   # transport-level only (255 = ssh failed); remote status is in-band
 set -e
 python3 -c '
 import sys
@@ -137,20 +139,33 @@ rm -f -- "$RAW_STDERR"
 
 REMOTE_TMP="$(sed -n 's/^MFLUX_REMOTE_TMP: //p' "$REMOTE_STDOUT_LOG" | head -1)"
 REMOTE_SHA="$(sed -n 's/^MFLUX_REMOTE_PNG_SHA256: //p' "$REMOTE_STDOUT_LOG" | head -1)"
+REMOTE_EXIT="$(sed -n 's/^MFLUX_REMOTE_EXIT: //p' "$REMOTE_STDOUT_LOG" | tail -1)"
+REMOTE_FAIL="$(sed -n 's/^MFLUX_REMOTE_FAIL: //p' "$REMOTE_STDOUT_LOG" | head -1)"
+# Last error-looking line from the (already prompt-redacted) remote log, for the message.
+REMOTE_ERR="$(grep -E '^[A-Za-z_.]*(Error|Exception)|RuntimeError|\[METAL\]' "$REMOTE_STDOUT_LOG" | tail -1 | cut -c1-240 || true)"
 if [ -n "$REMOTE_TMP" ]; then
   case "$REMOTE_TMP" in
     */dexdiffusion-mflux.*) ;;
-    *) fail "remote-ephemeral" "Unexpected remote temp path: $REMOTE_TMP" ;;
+    *) fail "cleanup-failed" "Unexpected remote temp path: $REMOTE_TMP" ;;
   esac
   # Defensive second cleanup (the remote trap normally already removed it), then prove it is gone.
   ssh_remote "rm -rf -- $(printf '%q' "$REMOTE_TMP")" >/dev/null 2>&1 || true
   remote_test "test ! -e $(printf '%q' "$REMOTE_TMP")" \
-    || fail "remote-ephemeral" "Big Mac temporary image still present: $REMOTE_TMP"
+    || fail "cleanup-failed" "Big Mac temporary image still present: $REMOTE_TMP"
 fi
-[ "$SSH_RC" -eq 0 ] || fail "mflux-remote" "Remote MFLUX generation failed (exit $SSH_RC); see $REMOTE_STDOUT_LOG"
-[ -n "$REMOTE_SHA" ] || fail "remote-png" "Remote PNG was not validated on Big Mac."
+LOG_HINT="see $REMOTE_STDOUT_LOG"
+if [ -z "$REMOTE_EXIT" ]; then
+  fail "transfer-failed" "Remote script did not report completion (ssh transport exit $SSH_RC); $LOG_HINT"
+fi
+if [ "$REMOTE_EXIT" != "0" ]; then
+  gate="$(printf '%s' "$REMOTE_FAIL" | awk '{print $1}')"
+  case "$gate" in generator-exit|output-missing|output-empty|output-invalid) ;; *) gate="generator-exit" ;; esac
+  fail "$gate" "${REMOTE_FAIL:-remote exit $REMOTE_EXIT}${REMOTE_ERR:+ — $REMOTE_ERR}; $LOG_HINT"
+fi
+[ -n "$REMOTE_SHA" ] || fail "output-invalid" "Remote reported success but no PNG checksum; $LOG_HINT"
+[ -s "$INCOMING" ] || fail "transfer-failed" "No PNG bytes arrived over ssh; $LOG_HINT"
 LOCAL_SHA="$(shasum -a 256 "$INCOMING" | cut -d' ' -f1)"
-[ "$LOCAL_SHA" = "$REMOTE_SHA" ] || fail "transfer" "Streamed PNG checksum mismatch (remote $REMOTE_SHA, local $LOCAL_SHA)."
+[ "$LOCAL_SHA" = "$REMOTE_SHA" ] || fail "sha-mismatch" "Streamed PNG checksum mismatch (remote $REMOTE_SHA, local $LOCAL_SHA)."
 
 if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
   strip_png_metadata "$INCOMING" || fail "png-redact" "Could not strip PNG metadata."
@@ -163,7 +178,7 @@ for n in 1 2 3 4 5 6 7 8 9; do
   candidate="$DEX_IMAGES_ROOT/$IMAGE_BASE$([ "$n" = 1 ] || printf -- '-%s' "$n").png"
   if ln "$INCOMING" "$candidate" 2>/dev/null; then LOCAL_PNG="$candidate"; break; fi
 done
-[ -n "$LOCAL_PNG" ] || fail "canonical-name" "No free canonical filename for $IMAGE_BASE"
+[ -n "$LOCAL_PNG" ] || fail "canonicalization-failed" "No free canonical filename for $IMAGE_BASE"
 rm -f -- "$INCOMING"
 IMAGE_ID="$(basename "$LOCAL_PNG")"
 IMAGE_URL="/api/images/$IMAGE_ID"

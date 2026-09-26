@@ -108,10 +108,12 @@ test('progress formatting never yields NaN and stays within 0-100', () => {
 });
 
 test('MFLUX bridge streams into the canonical root and keeps Big Mac images ephemeral', () => {
-  const src = fs.readFileSync(path.join(WORKFLOW_BIN, 'mflux-controlled-generate.sh'), 'utf8');
+  const src = fs.readFileSync(path.join(WORKFLOW_BIN, 'mflux-controlled-generate.sh'), 'utf8')
+    + fs.readFileSync(path.join(WORKFLOW_BIN, 'mflux-remote-generate.sh'), 'utf8');
   assert.match(src, /INCOMING="\$DEX_IMAGES_ROOT\/\.incoming-\$RUN_ID\.png"/);
   assert.match(src, /mktemp -d "\$\{TMPDIR:-\/tmp\}\/dexdiffusion-mflux\.XXXXXXXX"/);
-  assert.match(src, /trap .*rm -rf -- "\$tmp".* EXIT/);
+  assert.match(src, /rm -rf -- "\$tmp"/);
+  assert.match(src, /trap finish EXIT/);
   assert.match(src, /remote_test "test ! -e /);
   assert.doesNotMatch(src, /\bscp\b/);
   assert.doesNotMatch(src, /\$RUN_DIR\/controlled-\$ARG_TARGET\.png/);

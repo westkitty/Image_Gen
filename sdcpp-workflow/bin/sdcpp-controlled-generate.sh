@@ -617,7 +617,22 @@ SCHED_FRAG=""
 
 # Use fast server tunnel for sd15 ONLY when no LoRA tags are requested.
 # If LoRAs are present, fall back to CLI mode to correctly load them from the directory.
+# SD1.5 uses a warm sd-server only when its tunnel is already up; otherwise it
+# takes the same on-demand sd-cli path as every other target (no standing
+# service on Big Mac, remote images registered for deletion on exit).
+SD15_TUNNEL_PORT="$LOCAL_TUNNEL_PORT"
+if [ -f "$SDCPP_STATE_DIR/current-ports.env" ]; then
+  SD15_TUNNEL_PORT="$( . "$SDCPP_STATE_DIR/current-ports.env"; printf '%s' "${LOCAL_TUNNEL_PORT:-$SD15_TUNNEL_PORT}")"
+fi
+SD15_USE_SERVER=false
 if [ "$ARG_TARGET" = "sd15" ] && ! printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
+  if lsof -nP -iTCP:"$SD15_TUNNEL_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    SD15_USE_SERVER=true
+  else
+    log "sd-server tunnel not running on $SD15_TUNNEL_PORT; using on-demand sd-cli for SD1.5."
+  fi
+fi
+if [ "$SD15_USE_SERVER" = "true" ]; then
   LPORT="$LOCAL_TUNNEL_PORT"
   RPORT="$REMOTE_SERVER_PORT"
   if [ -f "$SDCPP_STATE_DIR/current-ports.env" ]; then

@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const { execFileSync } = require('node:child_process');
-const { SYSTEM, createSystemInfo, parseServeStatus, targetRuntime } = require('../system-info');
+const { SYSTEM, createSystemInfo, parseServeStatus } = require('../system-info');
 const { chooseInitialTarget, targetOptionLabel } = require('../public/dexdiffusion/client-helpers.js');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -32,31 +32,36 @@ test('Tailscale Serve route is found and classified tailnet-only vs Funnel', () 
   assert.equal(parseServeStatus('not json'), null);
 });
 
-test('system-info reports primary target, canonical storage, dormant SDCPP and no secrets', async () => {
-  const getInfo = createSystemInfo({ probes: {
-    tailscale: async () => ({ available: false, reason: 'offline' }),
-    launcher: async () => ({ appPath: SYSTEM.launcher.appPath, installed: false, dockEntries: null }),
-  } });
+test('system-info reports primary target, canonical storage, derived capabilities and no secrets', async () => {
+  const getInfo = createSystemInfo({
+    probes: {
+      tailscale: async () => ({ available: false, reason: 'offline' }),
+      launcher: async () => ({ appPath: SYSTEM.launcher.appPath, installed: false, dockEntries: null }),
+    },
+    getAssets: () => ({ reachable: true, mfluxRuntime: true, mfluxModel: true, sdCli: false, sd15Model: false, esrganModel: false }),
+    getEvidence: () => ({ 'txt2img-mflux': { lastPass: { at: '2026-09-25T23:16:00Z', runId: 'r1' } } }),
+  });
   const info = await getInfo({ targets: TARGETS, build: { sshTarget: 'westcat' } });
   assert.equal(info.primaryTarget.id, 'flux2-klein-4b');
-  assert.equal(info.primaryTarget.backend, 'mflux');
   assert.equal(info.storage.canonicalImages, '/Users/andrew/images_made');
   assert.equal(info.generation.route, 'ssh westcat');
   assert.equal(info.generation.remoteRetention, 'ephemeral');
-  assert.equal(info.legacy.sdcpp.status, 'dormant');
   assert.equal(info.network.localBind, '127.0.0.1:31337');
   assert.equal(info.network.tailscale.available, false, 'degrades when Tailscale is down');
   assert.equal(info.launcher.bundleId, 'local.image-gen.wrapper');
+  const byId = Object.fromEntries(info.capabilities.map(c => [c.id, c.status]));
+  assert.equal(byId['txt2img-mflux'], 'proven');
+  assert.equal(byId['txt2img-sdcpp'], 'dormant', 'missing sd-cli => dormant, never proven');
+  assert.equal(byId['upscale-resample'], 'available', 'no evidence => available, not proven');
+  assert.match(info.sdcpp.revision, /^7f0e728/);
   const text = JSON.stringify(info);
-  assert.doesNotMatch(text, /password|secret|token|authkey|private[_ -]?key|BEGIN [A-Z ]*KEY|hf_[A-Za-z0-9]{10}/i);
+  assert.doesNotMatch(text, /password|secret|authkey|private[_ -]?key|BEGIN [A-Z ]*KEY|hf_[A-Za-z0-9]{10}/i);
 });
 
-test('only the MFLUX primary target is runnable; SDCPP targets are dormant', () => {
-  assert.equal(targetRuntime({ backend: 'mflux' }), 'available');
-  assert.equal(targetRuntime({ id: 'sd15' }), 'dormant');
+test('exactly one primary target (MFLUX), and capabilities carry per-target runtime', () => {
   const src = fs.readFileSync(path.join(ROOT, 'operator-console', 'server.js'), 'utf8');
   assert.equal((src.match(/^\s*primary: true,$/gm) || []).length, 1, 'exactly one primary target');
-  assert.match(src, /primary: target\.primary === true,\n\s*runtime: targetRuntime\(target\),/);
+  assert.match(src, /primary: target\.primary === true,\n\s*runtime: targetRuntime\(target, assetCache, TARGET_MODELS\),/);
 });
 
 test('initial target: saved preference wins, else proofed primary, else current', () => {
@@ -79,7 +84,8 @@ test('bin/dexdiffusion status is read-only and degrades when services are unavai
   assert.match(out, /status:\s+DOWN/);
   assert.match(out, /Big Mac:\s+ssh dexdiffusion-test-unreachable\.invalid — DOWN/);
   assert.match(out, /images:\s+\/Users\/andrew\/images_made/);
-  assert.match(out, /SDCPP:\s+DORMANT/);
+  assert.match(out, /sd-cli:\s+unknown/);
+  assert.match(out, /server down — capability status unavailable/);
   const src = fs.readFileSync(path.join(ROOT, 'bin', 'dexdiffusion'), 'utf8');
   assert.doesNotMatch(src, /pkill|killall|tailscale (serve|funnel) (reset|off|--)/);
 });

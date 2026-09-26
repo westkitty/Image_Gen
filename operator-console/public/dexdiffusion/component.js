@@ -1194,21 +1194,20 @@ class Component extends DCLogic {
 
     const capability = s.capabilityData || {};
     const featureGates = capability.featureGates || capability.features || {};
-    const gateRows = [
-      ['txt2img', 'Controlled txt2img', true],
-      ['img2img', 'img2img', featureGates.img2img && featureGates.img2img.supported],
-      ['inpaint', 'Inpaint', featureGates.inpaint && featureGates.inpaint.supported],
-      ['realEsrgan', 'Real-ESRGAN', featureGates.realEsrgan && featureGates.realEsrgan.supported],
-      ['xyzPlot', 'X/Y/Z plot', featureGates.xyzPlot && featureGates.xyzPlot.supported],
-      ['discoverAssets', 'Asset discovery', featureGates.discoverAssets && featureGates.discoverAssets.supported],
-    ];
     const truthStatusPanel = h('div', { style: { border: '1px solid rgba(148,163,184,.14)', background: 'rgba(6,10,16,.64)', borderRadius: 9, padding: 11, marginBottom: 12 } },
       h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 } },
         h('div', { style: { fontSize: 12, fontWeight: 800, color: '#cbd5e1', letterSpacing: '.06em', textTransform: 'uppercase' } }, 'Truth status'),
         h('div', { style: { flex: 1 } }),
         actionButton('Refresh all', () => this.refreshAll(), '#94a3b8')),
-      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 6 } },
-        ...gateRows.map(([key, label, ok]) => h('div', { key, style: { border: '1px solid ' + (ok ? 'rgba(101,214,110,.24)' : 'rgba(251,191,36,.2)'), background: ok ? 'rgba(101,214,110,.06)' : 'rgba(251,191,36,.05)', borderRadius: 7, padding: '7px 8px', color: ok ? '#86efac' : '#fde68a', fontSize: 11 } }, (ok ? 'Proven · ' : 'Gated · ') + label))),
+      // Derived from /api/system-info capabilities (runtime evidence + Big Mac asset probe).
+      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 6 } },
+        ...((s.systemInfo && s.systemInfo.capabilities) || []).map(c => {
+          const b = DexClient.capabilityBadge(c.status);
+          const [border, bg, fg] = ({ ok: ['rgba(101,214,110,.24)', 'rgba(101,214,110,.06)', '#86efac'], warn: ['rgba(251,191,36,.2)', 'rgba(251,191,36,.05)', '#fde68a'], bad: ['rgba(248,113,113,.3)', 'rgba(248,113,113,.07)', '#fca5a5'], off: ['rgba(148,163,184,.18)', 'rgba(148,163,184,.04)', '#94a3b8'] })[b.tone];
+          const when = c.lastPass && c.status === 'proven' ? ' · ' + String(c.lastPass.at).slice(0, 10) : '';
+          return h('div', { key: c.id, title: c.reason || (c.lastPass ? 'last pass: run ' + c.lastPass.runId : ''), style: { border: '1px solid ' + border, background: bg, borderRadius: 7, padding: '7px 8px', color: fg, fontSize: 11 } }, b.label + ' · ' + c.label + when);
+        })),
+      !(s.systemInfo && s.systemInfo.capabilities) ? h('div', { style: { color: '#94a3b8', fontSize: 11 } }, 'Capability status loading (GET /api/system-info)…') : null,
       s.serverStatusSummary ? h('div', { style: { marginTop: 8, color: '#94a3b8', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", overflowWrap: 'anywhere' } }, s.serverStatusSummary) : null);
 
     // ── System / About: operational facts from /api/system-info ─────
@@ -1248,8 +1247,12 @@ class Component extends DCLogic {
           siRow('Dock', siLauncher.dockInstalled == null ? 'unknown' : siLauncher.dockInstalled ? 'installed (' + siLauncher.dockEntries + ')' : 'not in Dock'),
           siRow('Reinstall', siLauncher.installer, true),
         ]),
-        siSection('Legacy', [
-          siRow('SDCPP', si.legacy.sdcpp.status + ' — ' + si.legacy.sdcpp.reason),
+        siSection('SDCPP (secondary)', [
+          siRow('Role', si.sdcpp.role),
+          siRow('Revision', si.sdcpp.revision, true),
+          siRow('Binary', si.sdcpp.binary, true),
+          siRow('Models', si.sdcpp.models.map(m => m.path + ' (' + m.license + ')').join(' · '), true),
+          siRow('Other targets', si.sdcpp.otherTargets),
         ]),
         h('div', { style: { color: '#7f93a8', fontSize: 11, marginTop: 10 } }, 'Docs: ' + si.app.docs + ' · state: ' + si.app.operationalState + ' · terminal: bin/dexdiffusion status · checked ' + si.checkedAt)));
 

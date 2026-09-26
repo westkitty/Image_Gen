@@ -77,7 +77,13 @@ if [ -z "${DEX_TOP_PID:-}" ]; then
 fi
 
 record_run_dir() {
-  [ -n "${DEX_RUN_DIRS_FILE:-}" ] && printf '%s\n' "$1" >> "$DEX_RUN_DIRS_FILE" 2>/dev/null || true
+  # Nested cells (hires-fix base/, batch cells) are recorded as their top-level
+  # run dir so images are named after, and indexed in, the real run.
+  local d="$1" rel
+  case "$d" in
+    "$SDCPP_RUNS_DIR"/*/*) rel="${d#"$SDCPP_RUNS_DIR"/}"; d="$SDCPP_RUNS_DIR/${rel%%/*}" ;;
+  esac
+  [ -n "${DEX_RUN_DIRS_FILE:-}" ] && printf '%s\n' "$d" >> "$DEX_RUN_DIRS_FILE" 2>/dev/null || true
 }
 
 canonicalize_session_images() {

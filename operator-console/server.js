@@ -5,7 +5,8 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { controlledScriptFor, buildControlledArgs } = require('./controlled-args');
 const { createImageStore } = require('./image-store');
-const { createSystemInfo, targetRuntime } = require('./system-info');
+const { createSystemInfo } = require('./system-info');
+const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime } = require('./capabilities');
 
 const app = express();
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
@@ -631,7 +632,11 @@ function finalizeJobImages(job, stdoutText) {
     if (path.dirname(path.resolve(value)) === imageStore.root) {
       canonical = imageStore.resolveImage(path.basename(value));
     } else {
-      const rel = path.relative(RUNS_DIR, path.resolve(WORKFLOW_ROOT, value));
+      // Scripts report absolute paths, workflow-relative ("runs/<id>/…") or
+      // runs-relative ("<id>/…", e.g. HIRES_FINAL_IMAGE) paths.
+      const abs = path.isAbsolute(value) ? value
+        : (/^20\d{6}-\d{6}-/.test(value) ? path.resolve(RUNS_DIR, value) : path.resolve(WORKFLOW_ROOT, value));
+      const rel = path.relative(RUNS_DIR, abs);
       const [runId, ...rest] = rel.split(path.sep);
       if (runId && rest.length && !rel.startsWith('..')) {
         const hit = imageStore.resolveRunImage(path.join(RUNS_DIR, runId), rest.join('/'));
@@ -642,6 +647,35 @@ function finalizeJobImages(job, stdoutText) {
       job[field] = canonical.path;
       job[field + 'Url'] = imageStore.imageUrl(canonical.id);
     }
+  }
+}
+
+// ---- Capability truth: runtime evidence + Big Mac asset probe ------------------
+function readSdcppEnv(key, fallback) {
+  try {
+    const m = fs.readFileSync(path.join(WORKFLOW_ROOT, 'config', 'sdcpp.env'), 'utf8').match(new RegExp('^' + key + "=['\"]?([^'\"\\n]+)", 'm'));
+    return m ? m[1] : fallback;
+  } catch (_) { return fallback; }
+}
+const SSH_TARGET_NAME = readSdcppEnv('SSH_TARGET', 'westcat');
+const TARGET_MODELS = targetModelMap(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-controlled-generate.sh'),
+  readSdcppEnv('REMOTE_MODEL', '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors'));
+const evidenceStore = createEvidenceStore(path.join(STATE_DIR, 'capability-evidence.json'));
+let assetCache = null;
+async function refreshAssets() {
+  const probed = await probeAssets({ sshTarget: SSH_TARGET_NAME, targetModels: TARGET_MODELS });
+  assetCache = { ...probed, checkedAt: new Date().toISOString() };
+  return assetCache;
+}
+refreshAssets().catch(() => {});
+setInterval(() => refreshAssets().catch(() => {}), 5 * 60 * 1000).unref();
+function recordJobEvidence(job) {
+  try {
+    const tid = job.controlledTarget || (job.requestParams && job.requestParams.target);
+    const spec = tid && CONTROLLED_TARGET_BY_ID[tid];
+    evidenceStore.record(job, spec ? (spec.backend || 'sdcpp') : 'sdcpp');
+  } catch (err) {
+    job.stderr += `\ncapability-evidence: ${err.message}`;
   }
 }
 
@@ -762,7 +796,7 @@ function runAction(jobId, scriptPath, args, savePrompts = false) {
   });
   child.on('close', code => {
     clearTimeout(timeoutTimer);
-    if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, job.stdout); return; }
+    if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, job.stdout); recordJobEvidence(job); return; }
     job.exitCode = code;
     job.completedAt = Date.now();
     const out = job.stdout;
@@ -801,6 +835,7 @@ function runAction(jobId, scriptPath, args, savePrompts = false) {
     const hiresManifestMatch = out.match(/HIRES_MANIFEST:\s*(\S+)/);
     if (hiresManifestMatch) job.hiresManifest = hiresManifestMatch[1];
     finalizeJobImages(job, out);
+    recordJobEvidence(job);
   });
 }
 
@@ -895,6 +930,7 @@ function runControlledSequential(jobId, spec, params, quantity) {
           else if (combined.includes('Unknown argument')) job.firstFailedGate = 'args';
         }
         finalizeJobImages(job, runStdout);
+        recordJobEvidence(job);
         return;
       }
 
@@ -920,6 +956,7 @@ function runControlledSequential(jobId, spec, params, quantity) {
         }
         job.completedAt = Date.now();
         updateSequentialProgress(job, { completedRuns: quantity, currentRunPercent: 100 });
+        recordJobEvidence(job);
       }
     });
   }
@@ -1761,7 +1798,7 @@ app.get('/api/capabilities', (req, res) => {
     backend: target.backend || 'sdcpp',
     status: target.status,
     primary: target.primary === true,
-    runtime: targetRuntime(target),
+    runtime: targetRuntime(target, assetCache, TARGET_MODELS),
     mode: target.mode,
     caveat: target.caveat,
     route: target.route,
@@ -2603,16 +2640,11 @@ app.get('/api/version', (req, res) => {
 
 // Read-only operational metadata (access URLs, primary engine, storage,
 // launcher, legacy status). See system-info.js; never includes secrets.
-const getSystemInfo = createSystemInfo();
+const getSystemInfo = createSystemInfo({ getAssets: () => assetCache, getEvidence: () => evidenceStore.read() });
 app.get('/api/system-info', async (req, res) => {
   try {
-    const build = getBuildInfo();
-    let sshTarget = 'westcat';
-    try {
-      const m = fs.readFileSync(path.join(WORKFLOW_ROOT, 'config', 'sdcpp.env'), 'utf8').match(/^SSH_TARGET=['"]?([A-Za-z0-9._@-]+)/m);
-      if (m) sshTarget = m[1];
-    } catch (_) {}
-    res.json(await getSystemInfo({ targets: CONTROLLED_TARGETS, build: { ...build, sshTarget } }));
+    if (req.query.refresh === '1') await refreshAssets();
+    res.json(await getSystemInfo({ targets: CONTROLLED_TARGETS, build: { ...getBuildInfo(), sshTarget: SSH_TARGET_NAME } }));
   } catch (err) {
     res.status(500).json({ error: 'system-info unavailable' });
   }

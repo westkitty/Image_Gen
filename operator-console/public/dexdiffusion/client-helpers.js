@@ -37,7 +37,8 @@
   // 3. the current selection (unchanged behaviour).
   function chooseInitialTarget(targets, savedId, currentId) {
     const list = Array.isArray(targets) ? targets : [];
-    const has = id => !!id && list.some(t => t && t.id === id);
+    const NOT_READY = new Set(['dormant', 'model-missing']);
+    const has = id => !!id && list.some(t => t && t.id === id && !NOT_READY.has(t.runtime));
     if (has(savedId)) return savedId;
     const primary = list.find(t => t && t.primary === true && t.status === 'proofed');
     if (primary) return primary.id;
@@ -49,8 +50,19 @@
     const base = (t && (t.label || t.id)) || '';
     if (t && t.primary) return base + ' — Primary';
     if (t && t.runtime === 'dormant') return base + ' — dormant';
+    if (t && t.runtime === 'model-missing') return base + ' — model missing';
     return base;
   }
 
-  return { resolveBackendBase, jobProgressPercent, chooseInitialTarget, targetOptionLabel };
+  // Truth-status presentation for a derived capability status.
+  const CAPABILITY_LABELS = {
+    proven: ['Proven', 'ok'], available: ['Available · unproven', 'warn'], dormant: ['Dormant', 'off'],
+    unavailable: ['Unavailable', 'off'], broken: ['Broken', 'bad'],
+  };
+  function capabilityBadge(status) {
+    const [label, tone] = CAPABILITY_LABELS[status] || ['Unknown', 'off'];
+    return { label, tone };
+  }
+
+  return { resolveBackendBase, jobProgressPercent, chooseInitialTarget, targetOptionLabel, capabilityBadge };
 });
