@@ -104,12 +104,8 @@ function targetModelMap(controlledScript, remoteModel, stageRoot = '/Volumes/wc2
   return map;
 }
 
-// Expected install locations for dormant workers (see media.js createWorkerRegistry).
-const DORMANT_PATHS = [
-  ['qwen3-tts:runtime', '$HOME/Library/Caches/DexDiffusion/qwen3-tts/venv'], ['qwen3-tts:model', '$HOME/Library/Caches/DexDiffusion/qwen3-tts/model'],
-  ['ace-step:runtime', '$HOME/Library/Caches/DexDiffusion/ace-step/venv'], ['ace-step:model', '/Volumes/wc2tb/ImageGen/ace-step'],
-  ['ltx-video:runtime', '$HOME/Library/Caches/DexDiffusion/ltx/venv'], ['ltx-video:model', '/Volumes/wc2tb/ImageGen/ltx'],
-];
+// Voice/music/video worker install locations: single source of truth in media.js.
+const DORMANT_PATHS = require('./media').WORKER_PROBE_PATHS;
 
 function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 12000 } = {}) {
   const paths = [...new Set(Object.values(targetModels))];

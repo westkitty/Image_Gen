@@ -105,8 +105,8 @@ test('external-load detection parses ollama ps conservatively', () => {
 test('workers: dormant voice/music/video are real, truthful and refuse to run', () => {
   const reg = M.createWorkerRegistry();
   const d = Object.fromEntries(reg.describe({}).map(w => [w.id, w]));
-  for (const id of ['mflux', 'sdcpp', 'qwen3-tts', 'ace-step', 'ltx-video']) assert.ok(d[id], id);
-  for (const id of ['qwen3-tts', 'ace-step', 'ltx-video']) {
+  for (const id of ['mflux', 'sdcpp', 'qwen3-tts', 'ace-step', 'magenta-rt', 'ltx-video']) assert.ok(d[id], id);
+  for (const id of ['qwen3-tts', 'ace-step', 'magenta-rt', 'ltx-video']) {
     assert.deepEqual([d[id].architecture_available, d[id].runtime_available, d[id].model_available, d[id].enabled, d[id].proven], [true, false, false, false, false]);
     assert.equal(d[id].state, 'RUNTIME MISSING');
     const w = reg.get(id);
@@ -114,9 +114,38 @@ test('workers: dormant voice/music/video are real, truthful and refuse to run', 
     assert.equal(w.execute().gate, 'runtime-missing');
   }
   assert.equal(d['qwen3-tts'].media_kind, 'voice'); assert.equal(d['ace-step'].media_kind, 'music'); assert.equal(d['ltx-video'].media_kind, 'video');
-  // present runtime+model still stays disabled/unproven until a real proof
-  const both = reg.get('ace-step').probe({ 'ace-step:runtime': true, 'ace-step:model': true });
-  assert.equal(both.enabled, false); assert.equal(both.proven, false);
+  // Installed runtime+model (every authoritative path present) stays disabled/unproven
+  // until an execution bridge is proven, and is never reported as "missing".
+  const all = Object.fromEntries(M.WORKER_PROBE_PATHS.filter(([k]) => k.startsWith('ace-step:')).map(([k]) => [k, true]));
+  const both = reg.get('ace-step').probe(all);
+  assert.deepEqual([both.runtime_available, both.model_available, both.installed, both.enabled, both.proven], [true, true, true, false, false]);
+  assert.match(both.state, /INSTALLED — execution bridge disabled\/unproven/);
+  assert.equal(reg.get('ace-step').execute(all).gate, 'worker-unavailable');
+  assert.match(reg.get('ace-step').execute(all).error, /installed but execution bridge not enabled\/proven/);
+  // one missing checkpoint -> MODEL MISSING, with per-variant truth
+  const partial = { ...all, 'ace-step:model:lm-0.6b': false };
+  assert.equal(reg.get('ace-step').probe(partial).state, 'MODEL MISSING');
+  assert.equal(reg.get('ace-step').probe(partial).model_variants['lm-0.6b'], false);
+  // Qwen reports Base and VoiceDesign separately
+  const q = reg.get('qwen3-tts').probe({ 'qwen3-tts:runtime:python': true, 'qwen3-tts:model:base': true, 'qwen3-tts:model:voice-design': false });
+  assert.deepEqual(q.model_variants, { base: true, 'voice-design': false });
+  assert.equal(q.model_available, false);
+});
+
+test('worker paths: single authoritative table matches the model-stack install layout', () => {
+  const P = M.WORKER_PATHS;
+  assert.equal(P['qwen3-tts'].runtime.python, '$HOME/Library/Caches/DexDiffusion/voice/venv/bin/python');
+  assert.match(P['qwen3-tts'].models.base, /^\/Volumes\/wc2tb\/generative-models\/voice\/qwen3-tts-base\/Qwen3-TTS-12Hz-1\.7B-Base-bf16\//);
+  assert.match(P['qwen3-tts'].models['voice-design'], /qwen3-tts-voice-design\/Qwen3-TTS-12Hz-1\.7B-VoiceDesign-8bit\//);
+  assert.equal(P['ace-step'].runtime.python, '$HOME/Library/Caches/DexDiffusion/music/ACE-Step-1.5/.venv/bin/python');
+  for (const k of ['turbo', 'vae', 'embedding', 'lm-0.6b']) assert.match(P['ace-step'].models[k], /^\/Volumes\/wc2tb\/generative-models\/music\/ace-step\/checkpoints\//);
+  assert.match(P['magenta-rt'].models['mrt2-small'], /magenta-rt-v2\/models\/mrt2_small$/);
+  // no stale placeholder paths anywhere
+  for (const f of ['media.js', 'capabilities.js', 'server.js']) {
+    const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    assert.doesNotMatch(src, /DexDiffusion\/qwen3-tts\/|DexDiffusion\/ace-step\/|ImageGen\/ace-step|ImageGen\/ltx/, f);
+  }
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'capabilities.js'), 'utf8'), /require\('\.\/media'\)\.WORKER_PROBE_PATHS/);
 });
 
 // ---- Media store -------------------------------------------------------------------------
@@ -198,6 +227,7 @@ test('server wiring: leases for heavy jobs, generic job adapter, safe routes, do
   const gen = src.slice(src.indexOf("app.post('/api/media/generate'"), src.indexOf('// ---- Active jobs'));
   assert.ok(!gen.includes('arbiter.acquire') && !gen.includes('withLease'));
   assert.match(gen, /Runtime\/model not installed/);
+  assert.match(gen, /Installed but execution bridge not enabled\/proven/);
   // imports never land in images_made
   assert.match(src, /import-\$\{Date\.now\(\)\}-\$\{crypto\.randomBytes\(4\)\.toString\('hex'\)\}\.png`\);/);
   assert.match(src, /const out = path\.join\(MASK_UPLOADS_DIR, `import-/);

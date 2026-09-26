@@ -186,18 +186,65 @@ function parseOllamaPs(text, minGb = 8) {
 }
 
 // ---- Worker registry -----------------------------------------------------------
-// Dormant workers are real entities that report truthfully and refuse to run.
-function dormantWorker({ id, media_kind, label, runtimePath, modelPath, activation }) {
+// Authoritative Big Mac install locations for voice/music/video workers (the
+// layout written by the model-stack installer; see MODEL_STACK.md). The asset
+// probe (capabilities.js) tests exactly these paths; a worker's runtime/model
+// is "available" only when every listed path exists.
+const GEN_MODELS = '/Volumes/wc2tb/generative-models';
+const DEX_CACHE = '$HOME/Library/Caches/DexDiffusion';
+const WORKER_PATHS = {
+  'qwen3-tts': {
+    runtime: { python: `${DEX_CACHE}/voice/venv/bin/python` },
+    models: {
+      base: `${GEN_MODELS}/voice/qwen3-tts-base/Qwen3-TTS-12Hz-1.7B-Base-bf16/config.json`,
+      'voice-design': `${GEN_MODELS}/voice/qwen3-tts-voice-design/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit/config.json`,
+    },
+  },
+  'ace-step': {
+    runtime: { python: `${DEX_CACHE}/music/ACE-Step-1.5/.venv/bin/python` },
+    models: {
+      turbo: `${GEN_MODELS}/music/ace-step/checkpoints/acestep-v15-turbo`,
+      vae: `${GEN_MODELS}/music/ace-step/checkpoints/vae`,
+      embedding: `${GEN_MODELS}/music/ace-step/checkpoints/Qwen3-Embedding-0.6B`,
+      'lm-0.6b': `${GEN_MODELS}/music/ace-step/checkpoints/acestep-5Hz-lm-0.6B`,
+    },
+  },
+  'magenta-rt': {
+    runtime: { python: `${DEX_CACHE}/music/magenta-rt-venv/bin/python` },
+    models: { 'mrt2-small': `${GEN_MODELS}/music/magenta-realtime/magenta-rt-v2/models/mrt2_small` },
+  },
+  'ltx-video': {
+    runtime: { venv: `${DEX_CACHE}/ltx/venv` },
+    models: { main: `${GEN_MODELS}/video/ltx` },
+  },
+};
+// Flat [probeKey, path] list for the read-only Big Mac existence probe.
+const WORKER_PROBE_PATHS = Object.entries(WORKER_PATHS).flatMap(([id, p]) => [
+  ...Object.entries(p.runtime).map(([k, v]) => [`${id}:runtime:${k}`, v]),
+  ...Object.entries(p.models).map(([k, v]) => [`${id}:model:${k}`, v]),
+]);
+
+// Workers without an execution bridge: they report install state truthfully
+// and refuse to run. Installed assets never make them enabled/proven.
+function dormantWorker({ id, media_kind, label, activation }) {
+  const paths = WORKER_PATHS[id];
+  const all = (assets, kind) => {
+    const keys = Object.keys(paths[kind]).map(k => `${id}:${kind === 'runtime' ? 'runtime' : 'model'}:${k}`);
+    return keys.every(k => assets[k] === true);
+  };
   return {
     id, media_kind, label, resource_class: 'heavy', dormant: true,
     probe(assets = {}) {
-      const rt = assets[`${id}:runtime`] === true, md = assets[`${id}:model`] === true;
-      return { architecture_available: true, runtime_available: rt, model_available: md, enabled: false, proven: false,
-        state: !rt ? 'RUNTIME MISSING' : !md ? 'MODEL MISSING' : 'AVAILABLE (unproven, disabled)', runtimePath, modelPath, activation };
+      const rt = all(assets, 'runtime'), md = all(assets, 'models');
+      const variants = Object.fromEntries(Object.keys(paths.models).map(k => [k, assets[`${id}:model:${k}`] === true]));
+      return { architecture_available: true, runtime_available: rt, model_available: md, model_variants: variants, enabled: false, proven: false,
+        installed: rt && md,
+        state: !rt ? 'RUNTIME MISSING' : !md ? 'MODEL MISSING' : 'INSTALLED — execution bridge disabled/unproven',
+        runtimePath: Object.values(paths.runtime).join(', '), modelPath: Object.values(paths.models).join(', '), activation };
     },
     capabilities() { return { generate: false, cancel_supported: false }; },
-    prepare() { return { ok: false, gate: 'runtime-missing', error: `${label}: runtime/model not installed` }; },
-    execute() { return { ok: false, gate: 'runtime-missing', error: `${label}: runtime/model not installed` }; },
+    prepare(assets = {}) { const p = this.probe(assets); return p.installed ? { ok: false, gate: 'worker-unavailable', error: `${label}: installed but execution bridge not enabled/proven` } : { ok: false, gate: 'runtime-missing', error: `${label}: runtime/model not installed` }; },
+    execute(assets = {}) { return this.prepare(assets); },
     status() { return null; }, cancel() { return { ok: false, reason: 'not running' }; }, cleanup() { return { ok: true }; },
   };
 }
@@ -206,12 +253,14 @@ function createWorkerRegistry({ imageAdapters = {} } = {}) {
   const workers = [
     Object.assign({ id: 'mflux', media_kind: 'image', label: 'MFLUX (FLUX.2 Klein 4B)', resource_class: 'heavy', dormant: false }, imageAdapters.mflux),
     Object.assign({ id: 'sdcpp', media_kind: 'image', label: 'stable-diffusion.cpp 7f0e728', resource_class: 'heavy', dormant: false }, imageAdapters.sdcpp),
-    dormantWorker({ id: 'qwen3-tts', media_kind: 'voice', label: 'Qwen3-TTS', runtimePath: '$HOME/Library/Caches/DexDiffusion/qwen3-tts/venv', modelPath: '$HOME/Library/Caches/DexDiffusion/qwen3-tts/model',
-      activation: 'Install runtime venv + model at these paths on Big Mac, add the voice script bridge, run one real speech proof, then enable.' }),
-    dormantWorker({ id: 'ace-step', media_kind: 'music', label: 'ACE-Step', runtimePath: '$HOME/Library/Caches/DexDiffusion/ace-step/venv', modelPath: '/Volumes/wc2tb/ImageGen/ace-step',
-      activation: 'Install runtime venv + model on Big Mac, add the music script bridge, run one real song proof, then enable.' }),
-    dormantWorker({ id: 'ltx-video', media_kind: 'video', label: 'LTX Video', runtimePath: '$HOME/Library/Caches/DexDiffusion/ltx/venv', modelPath: '/Volumes/wc2tb/ImageGen/ltx',
-      activation: 'Install runtime + model on Big Mac, add the video bridge, prove one clip, then enable.' }),
+    dormantWorker({ id: 'qwen3-tts', media_kind: 'voice', label: 'Qwen3-TTS (Base + VoiceDesign)',
+      activation: 'Runtime and models are installed by the model-stack installer at these paths. Next: add the voice execution bridge (script using the heavy lease + mediaStore.finalize), run one real DexDiffusion speech proof, then enable.' }),
+    dormantWorker({ id: 'ace-step', media_kind: 'music', label: 'ACE-Step 1.5 (Turbo + 0.6B LM)',
+      activation: 'Runtime and checkpoints are installed at these paths. Next: add the music execution bridge, run one real DexDiffusion song proof, then enable.' }),
+    dormantWorker({ id: 'magenta-rt', media_kind: 'music', label: 'Magenta RealTime 2 (small)',
+      activation: 'Runtime and mrt2_small are installed at these paths. Next: add a music execution bridge, run one real DexDiffusion proof, then enable.' }),
+    dormantWorker({ id: 'ltx-video', media_kind: 'video', label: 'LTX Video',
+      activation: 'Not installed (video is out of scope). Install runtime + model at these paths, add the video bridge, prove one clip, then enable.' }),
   ];
   const byId = Object.fromEntries(workers.map(w => [w.id, w]));
   function describe(assets) {
@@ -415,6 +464,6 @@ function createStaging({ root, limits = STAGING_LIMITS, now = () => Date.now() }
 
 module.exports = {
   MEDIA_KINDS, CANONICAL_ROOTS, JOB_STATES, FAILURE_GATES, PRIVATE_KEYS, safeParams,
-  createJobStore, createResourceArbiter, parseOllamaPs, createWorkerRegistry, createMediaStore, createStaging,
+  createJobStore, createResourceArbiter, parseOllamaPs, createWorkerRegistry, WORKER_PATHS, WORKER_PROBE_PATHS, createMediaStore, createStaging,
   sniff, imageDims, wavInfo, atomicWriteJson, STAGING_LIMITS,
 };

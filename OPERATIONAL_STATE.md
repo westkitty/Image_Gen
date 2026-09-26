@@ -7,7 +7,7 @@
   "project_name": "Image_Gen / DexDiffusion",
   "project_root": "/Users/andrew/Image_Gen",
   "artifact_path": "operator-console + sdcpp-workflow",
-  "state_revision": 9,
+  "state_revision": 10,
   "last_updated": "2026-09-26",
   "current_baseline": {
     "identity": "main@5287abd plus preserved local modifications",
@@ -171,6 +171,35 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
   - **Hard cancel:** still unsupported (`cancel_supported: false` with a reason on the mflux/sdcpp adapters). Termination through Tailscale SSH to the remote process is not proven.
   - **Image regression (live):** MFLUX, SD1.5 txt2img ×2 (under the lease), import → Img2Img, and the Library (223 canonical images) all pass. Big Mac has 0 generated files in 2 h and no sd-cli/mflux process. The only listener is 127.0.0.1:31337; :8443 → 31337 without Funnel; :443 DEX//REACH is untouched. Canary `DEXPRIVACY-CANARY-927` was not found in state (jobs, queues, staging, media), the server log, run dirs or temp areas.
   - Tests 90 → 97. Nothing was downloaded or installed (no Qwen3-TTS, ACE-Step, LTX, ControlNet, LoRA or VAE).
+- **VER-029 (rev 10, 2026-09-26) — Big Mac voice/music model stack installed (see `MODEL_STACK.md` / `MODEL_STACK.json`).**
+  - **Installer.** The installer is `/tmp/dex-model-stack-install.sh` (not in Git). It was run from the MacBook, and the remote half runs over `ssh westcat`. Success is gated on the in-band marker `REMOTE MODEL STACK INSTALLATION: PASS`; it was observed, and manifests were fetched only after that.
+  - **Repairs this pass:**
+    - Broken arithmetic for MISSING_ESTIMATE/REQUIRED_NOW was replaced with `(( ))`/`$(( ))`.
+    - Kokoro needed `misaki[en]` and `en_core_web_sm`.
+    - The Magenta venv pins `mlx==0.31.1`: the published `mrt2_small.mlxfn` was exported with MLX 0.31.1, and MLX 0.32.2 raised "[import_function] Invalid string size".
+    - The ACE cleanliness check now ignores its own `checkpoints` symlink.
+    - The script's own git publication was removed, so publishing happens here in one commit.
+  - The earlier failed attempts had published an empty `MODEL_STACK.md`/`MODEL_STACK.json` in 7cebf9a; these are now superseded.
+  - **Installed** under `/Volumes/wc2tb/generative-models` (16 GiB total, 17,565,040,568 bytes):
+    - voice/kokoro/Kokoro-82M-bf16 (a71e4d38): short WAV PASS.
+    - voice/qwen3-tts-base/Qwen3-TTS-12Hz-1.7B-Base-bf16 (a6eb4f68): reference voice-clone WAV PASS.
+    - voice/qwen3-tts-voice-design/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit (f90d6177): VoiceDesign WAV PASS.
+    - music/ace-step/checkpoints: Ace-Step1.5@19671f40 (VAE, Qwen3-Embedding-0.6B, acestep-v15-turbo) + acestep-5Hz-lm-0.6B@148d8ea0. Runtime imports, safetensors headers and the official 0.6B MLX LM loader PASS. **No full song generation was run.**
+    - music/magenta-realtime/magenta-rt-v2 (010aa0dc, resources + mrt2_small only): a 4.0 s MLX generation produced a 48 kHz stereo WAV (PASS).
+  - **Runtimes:**
+    - voice: `~/Library/Caches/DexDiffusion/voice/venv` (mlx-audio 0.5.6).
+    - ACE-Step: `~/Library/Caches/DexDiffusion/music/ACE-Step-1.5` at git ca1e85fe with a project `.venv` (checkpoints symlinked).
+    - Magenta: `~/Library/Caches/DexDiffusion/music/magenta-rt-venv` (magenta-rt 2.0.3, MLX 0.31.1).
+  - **DexDiffusion probe reconciliation:** `media.js` `WORKER_PATHS` is now the single source of truth, and `capabilities.js` probes exactly those paths. Qwen reports the Base and VoiceDesign variants separately; ACE reports turbo/vae/embedding/lm-0.6b; a `magenta-rt` music worker was added. The old placeholder paths are gone (enforced by a test).
+    - Live `/api/workers`: qwen3-tts, ace-step and magenta-rt are `INSTALLED — execution bridge disabled/unproven` (runtime ✓, model ✓, enabled ✗, proven ✗); ltx-video is RUNTIME MISSING; mflux and sdcpp remain PROVEN.
+    - `/api/media/generate` for an installed worker returns gate `worker-unavailable` ("Installed but execution bridge not enabled/proven"); LTX still returns `runtime-missing`.
+    - Doctor shows `AVAILABLE / INSTALLED — execution bridge disabled/unproven` for these workers.
+  - **Preserved:**
+    - Big Mac identity bigmac@bigmac. wc2tb has 52 GiB free (reserve 15 GiB) and internal storage 58 GiB (reserve 10 GiB).
+    - The MFLUX model/venv, `/Volumes/wc2tb/ImageGen` and `/Users/bigmac/.ollama/models` are intact, with 0 files added.
+    - The Google Drive rclone migration was RUNNING throughout and was never touched.
+    - No video/LTX was installed.
+  - **Not yet done:** DexDiffusion voice/music execution bridges. No voice or music has been generated *through DexDiffusion*.
 - **VER-014:** Image route security (live): traversal, encoded traversal, absolute path, NUL, `.incoming-*`, symlink and unknown names all return 404.
 
 ## 6. Known Not Working
@@ -304,3 +333,7 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
   - The canary is absent from state, logs, run dirs, temp areas, the Doctor output and localStorage.
   - 375/768: all 10 screens show 0 overflow; no JS exceptions. Big Mac: 0 outputs and 0 generation processes. npm test 97/97.
 - Future activation (no redesign): install the runtime and model at the worker's `runtimePath`/`modelPath` on Big Mac → the probe flips runtime/model to available → add the worker's execution bridge (script that uses the lease and `mediaStore.finalize`) → one real proof → set enabled/proven.
+
+### Revision 10 — 2026-09-26
+
+- Voice/music model stack installed and validated on Big Mac (VER-029). DexDiffusion worker probes now point at the real install paths. Qwen3-TTS/ACE-Step/Magenta report INSTALLED with execution bridges disabled/unproven. The bogus MODEL_STACK files from 7cebf9a are superseded. LTX is still not installed.

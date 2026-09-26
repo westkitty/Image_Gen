@@ -107,12 +107,13 @@
     const w = this._worker(workerId);
     const enabled = !!(w && w.enabled);
     return h('div', { style: Object.assign({}, css.row, { marginTop: 10 }) },
-      h('button', { type: 'button', disabled: !enabled, 'aria-disabled': String(!enabled), title: enabled ? 'Generate' : 'Runtime/model not installed',
+      h('button', { type: 'button', disabled: !enabled, 'aria-disabled': String(!enabled), title: enabled ? 'Generate' : this._disabledReason(w),
         style: { flex: '1 1 220px', minHeight: 44, borderRadius: 9, border: 0, fontWeight: 800, fontSize: 14, cursor: enabled ? 'pointer' : 'not-allowed',
           background: enabled ? 'linear-gradient(90deg,#8b5cf6,#22d3ee)' : 'rgba(148,163,184,.12)', color: enabled ? '#06060a' : '#94a3b8' },
-        onClick: () => enabled && this.mediaGenerate(workerId, kind, operation) }, enabled ? 'Generate' : 'Generate — Runtime/model not installed'),
-      h('span', { style: css.muted }, enabled ? '' : 'Install and prove ' + ((w && w.label) || workerId) + ' to enable. Nothing is downloaded from here.'));
+        onClick: () => enabled && this.mediaGenerate(workerId, kind, operation) }, enabled ? 'Generate' : 'Generate — ' + this._disabledReason(w)),
+      h('span', { style: css.muted }, enabled ? '' : (w && w.installed ? 'Runtime and model are installed on Big Mac; the DexDiffusion execution bridge is not built/proven yet.' : 'Install and prove ' + ((w && w.label) || workerId) + ' to enable.') + ' Nothing is downloaded from here.'));
   };
+  P._disabledReason = function (w) { return w && w.installed ? 'Installed — execution bridge not enabled' : 'Runtime/model not installed'; };
   P.mediaGenerate = async function (worker, kind, operation) {
     const r = await fetch(this.state.backendUrl + '/api/media/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ media_kind: kind, worker, operation, save_prompts: !!this.state.savePrompts }) });
@@ -137,7 +138,7 @@
     const m = this._mws();
     const modes = [['speech', 'Speech'], ['clone', 'Voice Clone'], ['design', 'Voice Design']];
     const common = h('div', { style: css.grid2 },
-      field('Worker / model', h('select', { style: css.input, value: 'qwen3-tts' }, h('option', { value: 'qwen3-tts' }, 'Qwen3-TTS (not installed)'))),
+      field('Worker / model', h('select', { style: css.input, value: 'qwen3-tts' }, h('option', { value: 'qwen3-tts' }, 'Qwen3-TTS · ' + ((this._worker('qwen3-tts') || {}).state || 'checking…')))),
       field('Language', h('select', { style: css.input, value: m.language, onChange: e => this.mSet({ language: e.target.value }) }, ...['auto', 'en', 'zh', 'ja', 'ko', 'de', 'fr', 'es'].map(l => h('option', { value: l }, l)))),
       field('Seed', this._input('seed', { type: 'number', min: '0', placeholder: 'random' })),
       field('Speed', this._input('speed', { type: 'number', min: '0.5', max: '2', step: '0.05' })));
@@ -177,12 +178,12 @@
             field('Style', this._input('style', { placeholder: 'e.g. lo-fi' })), field('Genre', this._input('genre', { placeholder: 'e.g. electronic' })),
             field('Mood', this._input('mood', { placeholder: 'e.g. wistful' })), field('Instrumentation', this._input('instruments', { placeholder: 'e.g. piano, pads, 808' })),
             field('Duration (s)', this._input('duration', { type: 'number', min: '10', max: '600' })), field('Seed', this._input('seed', { type: 'number', min: '0', placeholder: 'random' })),
-            field('Worker / model', h('select', { style: css.input }, h('option', null, 'ACE-Step (not installed)')))),
+            field('Worker / model', h('select', { style: css.input }, h('option', null, 'ACE-Step · ' + ((this._worker('ace-step') || {}).state || 'checking…')), h('option', null, 'Magenta RealTime 2 · ' + ((this._worker('magenta-rt') || {}).state || 'checking…'))))),
           this.buildReferenceStager('musicRef', 'Reference audio (optional)'),
           m.refs.musicRef ? field('Reference influence · ' + Number(m.influence).toFixed(2), h('input', { type: 'range', min: '0', max: '1', step: '0.05', value: String(m.influence), onChange: e => this.mSet({ influence: e.target.value }), style: { minHeight: 30 } })) : null,
           h('div', { style: css.muted }, 'Available controls will follow the installed worker; not every worker supports every control.')),
         this._generateBar('ace-step', 'music', 'song')),
-      this._workerCard('ace-step'), this._resultArea('music'));
+      this._workerCard('ace-step'), this._workerCard('magenta-rt'), this._resultArea('music'));
   };
 
   // ── Video (dormant slot) ─────────────────────────────────────────

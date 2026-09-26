@@ -3319,8 +3319,10 @@ app.post('/api/media/generate', (req, res) => {
   const job = jobStore.create({ media_kind: kind, operation: String(body.operation || 'generate').slice(0, 40), worker_id: w.id, resource_class: 'heavy', params: body, persist_text: body.save_prompts === true });
   const gate = !probe.runtime_available ? 'runtime-missing' : !probe.model_available ? 'model-missing' : 'worker-unavailable';
   if (!probe.enabled) {
-    jobStore.transition(job.job_id, 'FAILED', { first_failed_gate: gate, error: `${w.label}: runtime/model not installed` });
-    return res.status(409).json({ error: 'Runtime/model not installed', gate, worker: w.id, job_id: job.job_id, state: probe.state });
+    // Truthful: installed assets without an execution bridge are not "missing".
+    const msg = gate === 'worker-unavailable' ? 'Installed but execution bridge not enabled/proven' : gate === 'model-missing' ? 'Model not installed' : 'Runtime/model not installed';
+    jobStore.transition(job.job_id, 'FAILED', { first_failed_gate: gate, error: `${w.label}: ${msg}` });
+    return res.status(409).json({ error: msg, gate, worker: w.id, job_id: job.job_id, state: probe.state });
   }
   jobStore.transition(job.job_id, 'FAILED', { first_failed_gate: 'worker-unavailable', error: 'no execution bridge for this worker yet' });
   res.status(409).json({ error: 'Worker has no execution bridge yet', gate: 'worker-unavailable', job_id: job.job_id });
@@ -3405,7 +3407,9 @@ app.get('/api/doctor', async (req, res) => {
   add('Heavy-compute lease', 'PASS', `${rs.group} capacity ${rs.capacity}; owner ${rs.owner ? rs.owner.label : 'none'}; waiting ${rs.waiting.length}`);
   add('External heavy load (Big Mac)', rs.external.occupied ? 'WARN' : 'PASS', rs.external.occupied ? rs.external.detail : (rs.external.checkedAt ? 'none detected (ollama ps)' : 'not yet checked'));
   for (const w of workerRegistry.describe(workerAssets())) {
-    if (w.dormant) add(`Worker · ${w.label} (${w.media_kind})`, 'WARN', `${w.state}; enabled ${w.enabled}; proven ${w.proven} — NOT INSTALLED is expected`);
+    if (w.dormant) add(`Worker · ${w.label} (${w.media_kind})`, 'WARN', w.installed
+      ? `AVAILABLE / INSTALLED — execution bridge disabled/unproven (enabled ${w.enabled}, proven ${w.proven})`
+      : `${w.state}; enabled ${w.enabled}; proven ${w.proven} — not installed`);
     else add(`Worker · ${w.label}`, w.runtime_available && w.model_available ? 'PASS' : 'FAIL', w.state);
   }
   add('Unified Media Library', 'PASS', `images ${imageSourceMap().size}, voice ${mediaStore.list('voice').length}, music ${mediaStore.list('music').length}, video ${mediaStore.list('video').length}`);

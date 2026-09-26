@@ -293,7 +293,8 @@ Shown in **System → Truth status**, `GET /api/system-info` (`capabilities`), a
 ## Media workstation (rev 9)
 
 - **Screens:** Create (images), Voice, Music, Video, Library, Batch, Edit, Enhance, Models, System.
-- **Workers** (`GET /api/workers`): MFLUX and SDCPP are proven. Qwen3-TTS (voice), ACE-Step (music) and LTX (video) are *architecture ready, runtime missing*; their Generate buttons stay disabled. Nothing is downloaded from the UI.
+- **Workers** (`GET /api/workers`): MFLUX and SDCPP are proven. Qwen3-TTS (voice; Base + VoiceDesign), ACE-Step 1.5 (music; Turbo + 0.6B LM) and Magenta RealTime 2 small (music) are **installed on Big Mac and validated outside DexDiffusion** (see `MODEL_STACK.md`), but their DexDiffusion execution bridges are not built yet, so they show *INSTALLED — execution bridge disabled/unproven* and Generate stays disabled. LTX (video) is not installed. Nothing is downloaded from the UI.
+- **Model stack paths** (single source: `operator-console/media.js` `WORKER_PATHS`): models under `/Volumes/wc2tb/generative-models/{voice,music}`; runtimes under `~/Library/Caches/DexDiffusion/{voice/venv, music/ACE-Step-1.5/.venv, music/magenta-rt-venv}` on Big Mac.
 - **Big Mac heavy compute** is one lease (`GET /api/resources`). A second heavy job waits ("Waiting for Big Mac — …"), and a large Ollama model loaded on Big Mac also blocks it (read-only check).
 - **Jobs** are durable (`sdcpp-workflow/state/jobs.json`). After a console restart, finished jobs keep their results. In-flight jobs show INTERRUPTED and are not re-run; re-enter the text to retry when prompt saving was off.
 - **Imports:** Edit and Voice/Music references accept file, drag/drop or paste. They are staged for 24 h in `sdcpp-workflow/state/staging/` and never become canonical media.
