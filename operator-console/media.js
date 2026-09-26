@@ -45,7 +45,8 @@ const FAILURE_GATES = ['worker-unavailable', 'runtime-missing', 'model-missing',
   'canonicalization-failed', 'cleanup-failed', 'server-restart'];
 // Keys never written to durable job state (private text), whatever the caller passes.
 const PRIVATE_KEYS = new Set(['prompt', 'negative_prompt', 'negativePrompt', 'extension_prompt', 'text', 'lyrics', 'description',
-  'voice_description', 'reference_transcript', 'style_instruction', 'mask_data']);
+  'voice_description', 'reference_transcript', 'style_instruction', 'mask_data',
+  'instruct', 'ref_text', 'caption', 'style', 'genre', 'mood', 'instruments']);
 
 function safeParams(params, persistText) {
   const out = {};
@@ -193,12 +194,17 @@ function parseOllamaPs(text, minGb = 8) {
 const GEN_MODELS = '/Volumes/wc2tb/generative-models';
 const DEX_CACHE = '$HOME/Library/Caches/DexDiffusion';
 const WORKER_PATHS = {
-  'qwen3-tts': {
+  kokoro: {
     runtime: { python: `${DEX_CACHE}/voice/venv/bin/python` },
-    models: {
-      base: `${GEN_MODELS}/voice/qwen3-tts-base/Qwen3-TTS-12Hz-1.7B-Base-bf16/config.json`,
-      'voice-design': `${GEN_MODELS}/voice/qwen3-tts-voice-design/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit/config.json`,
-    },
+    models: { voices: `${GEN_MODELS}/voice/kokoro/Kokoro-82M-bf16/voices` },
+  },
+  'qwen3-tts-base': {
+    runtime: { python: `${DEX_CACHE}/voice/venv/bin/python` },
+    models: { base: `${GEN_MODELS}/voice/qwen3-tts-base/Qwen3-TTS-12Hz-1.7B-Base-bf16/config.json` },
+  },
+  'qwen3-tts-voice-design': {
+    runtime: { python: `${DEX_CACHE}/voice/venv/bin/python` },
+    models: { 'voice-design': `${GEN_MODELS}/voice/qwen3-tts-voice-design/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit/config.json` },
   },
   'ace-step': {
     runtime: { python: `${DEX_CACHE}/music/ACE-Step-1.5/.venv/bin/python` },
@@ -223,6 +229,38 @@ const WORKER_PROBE_PATHS = Object.entries(WORKER_PATHS).flatMap(([id, p]) => [
   ...Object.entries(p.runtime).map(([k, v]) => [`${id}:runtime:${k}`, v]),
   ...Object.entries(p.models).map(([k, v]) => [`${id}:model:${k}`, v]),
 ]);
+
+function installState(id, assets) {
+  const paths = WORKER_PATHS[id];
+  const all = kind => Object.keys(paths[kind]).map(k => `${id}:${kind === 'runtime' ? 'runtime' : 'model'}:${k}`).every(k => assets[k] === true);
+  const rt = all('runtime'), md = all('models');
+  const variants = Object.fromEntries(Object.keys(paths.models).map(k => [k, assets[`${id}:model:${k}`] === true]));
+  return { rt, md, variants, runtimePath: Object.values(paths.runtime).join(', '), modelPath: Object.values(paths.models).join(', ') };
+}
+
+// Bridged voice/music workers (execution in media-bridge.js). enabled means the
+// live probe found runtime + model and a bridge exists; proven means a real
+// job launched through DexDiffusion reached canonical MacBook output
+// (recorded by the bridge in media-evidence.json) - never inferred from
+// installer smoke tests.
+function bridgedWorker({ id, media_kind, label, getEvidence }) {
+  return {
+    id, media_kind, label, resource_class: 'heavy', dormant: false, bridged: true,
+    probe(assets = {}) {
+      const s = installState(id, assets);
+      const ev = (getEvidence() || {})[id] || {};
+      const enabled = s.rt && s.md;
+      const proven = enabled && !!ev.lastPass;
+      return { architecture_available: true, runtime_available: s.rt, model_available: s.md, model_variants: s.variants, installed: enabled,
+        enabled, proven, lastPass: ev.lastPass || null,
+        state: !s.rt ? 'RUNTIME MISSING' : !s.md ? 'MODEL MISSING' : proven ? 'PROVEN' : 'ENABLED — awaiting first DexDiffusion proof',
+        runtimePath: s.runtimePath, modelPath: s.modelPath };
+    },
+    capabilities() { return { generate: true, cancel_supported: false, cancel_reason: 'Targeted termination of the remote Big Mac generator via Tailscale SSH is not proven safe; jobs run to completion.' }; },
+    prepare() { return { ok: true }; }, execute() { return { ok: false, gate: 'worker-unavailable', error: 'execution runs through media-bridge.js' }; },
+    status() { return null; }, cancel() { return { ok: false, reason: 'cancel not supported' }; }, cleanup() { return { ok: true }; },
+  };
+}
 
 // Workers without an execution bridge: they report install state truthfully
 // and refuse to run. Installed assets never make them enabled/proven.
@@ -249,16 +287,15 @@ function dormantWorker({ id, media_kind, label, activation }) {
   };
 }
 
-function createWorkerRegistry({ imageAdapters = {} } = {}) {
+function createWorkerRegistry({ imageAdapters = {}, getEvidence = () => ({}) } = {}) {
   const workers = [
     Object.assign({ id: 'mflux', media_kind: 'image', label: 'MFLUX (FLUX.2 Klein 4B)', resource_class: 'heavy', dormant: false }, imageAdapters.mflux),
     Object.assign({ id: 'sdcpp', media_kind: 'image', label: 'stable-diffusion.cpp 7f0e728', resource_class: 'heavy', dormant: false }, imageAdapters.sdcpp),
-    dormantWorker({ id: 'qwen3-tts', media_kind: 'voice', label: 'Qwen3-TTS (Base + VoiceDesign)',
-      activation: 'Runtime and models are installed by the model-stack installer at these paths. Next: add the voice execution bridge (script using the heavy lease + mediaStore.finalize), run one real DexDiffusion speech proof, then enable.' }),
-    dormantWorker({ id: 'ace-step', media_kind: 'music', label: 'ACE-Step 1.5 (Turbo + 0.6B LM)',
-      activation: 'Runtime and checkpoints are installed at these paths. Next: add the music execution bridge, run one real DexDiffusion song proof, then enable.' }),
-    dormantWorker({ id: 'magenta-rt', media_kind: 'music', label: 'Magenta RealTime 2 (small)',
-      activation: 'Runtime and mrt2_small are installed at these paths. Next: add a music execution bridge, run one real DexDiffusion proof, then enable.' }),
+    bridgedWorker({ id: 'kokoro', media_kind: 'voice', label: 'Kokoro 82M (speech)', getEvidence }),
+    bridgedWorker({ id: 'qwen3-tts-base', media_kind: 'voice', label: 'Qwen3-TTS Base (voice clone)', getEvidence }),
+    bridgedWorker({ id: 'qwen3-tts-voice-design', media_kind: 'voice', label: 'Qwen3-TTS VoiceDesign', getEvidence }),
+    bridgedWorker({ id: 'ace-step', media_kind: 'music', label: 'ACE-Step 1.5 (Turbo + 0.6B LM)', getEvidence }),
+    bridgedWorker({ id: 'magenta-rt', media_kind: 'music', label: 'Magenta RealTime 2 (small)', getEvidence }),
     dormantWorker({ id: 'ltx-video', media_kind: 'video', label: 'LTX Video',
       activation: 'Not installed (video is out of scope). Install runtime + model at these paths, add the video bridge, prove one clip, then enable.' }),
   ];

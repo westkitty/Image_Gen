@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { controlledScriptFor, buildControlledArgs, nativeBatchEligible } = require('./controlled-args');
 const W = require('./workstation');
 const M = require('./media');
+const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
 const { createSystemInfo } = require('./system-info');
 const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime } = require('./capabilities');
@@ -879,7 +880,12 @@ const arbiter = M.createResourceArbiter({
 setInterval(() => { arbiter.refreshExternal().catch(() => {}); }, 60 * 1000).unref();
 setInterval(() => {
   const st = arbiter.state();
-  if (st.owner && (!jobs[st.owner.job_id] || !['queued', 'running'].includes(jobs[st.owner.job_id].status))) arbiter.release(st.owner.job_id);
+  if (!st.owner) return;
+  // Image jobs live in `jobs`; voice/music jobs only in the durable job store.
+  const img = jobs[st.owner.job_id], gen = jobStore.get(st.owner.job_id);
+  const imageActive = img && ['queued', 'running'].includes(img.status);
+  const mediaActive = !img && gen && ['QUEUED', 'RUNNING', 'TRANSFERRING'].includes(gen.status);
+  if (!imageActive && !mediaActive) arbiter.release(st.owner.job_id);
 }, 5000).unref();
 function leaseLabel(job) {
   const t = job.requestParams && job.requestParams.target;
@@ -3252,6 +3258,11 @@ app.get('/api/staging/:id', (req, res) => {
 app.delete('/api/staging/:id', (req, res) => res.json({ removed: staging.remove(req.params.id) }));
 
 // ---- Canonical media (artifact-id lookup only) ---------------------------------
+app.post('/api/media/:id/keeper', (req, res) => {
+  const k = mediaStore.setKeeper(req.params.id, !!(req.body && req.body.keeper));
+  if (k === null) return res.status(404).json({ error: 'Not found' });
+  res.json({ id: req.params.id, keeper: k });
+});
 app.get('/api/media/:id', (req, res) => {
   const id = req.params.id;
   const img = imageStore.resolveImage(id);
@@ -3280,14 +3291,19 @@ app.get('/api/library', (req, res) => {
   }
   if (kind !== 'image') {
     const recs = mediaStore.list(kind === 'all' || kind === 'keepers' ? null : kind).filter(r => kind !== 'keepers' || r.keeper);
-    items = items.concat(recs.map(r => ({ artifact_id: r.artifact_id, kind: r.kind, url: r.safe_url, mime: r.mime, duration: r.duration, keeper: r.keeper, model: r.model, seed: r.seed, worker: r.worker, bytes: r.bytes })));
+    // Only operational metadata is exposed; no generation text is stored in media records.
+    items = items.concat(recs.map(r => ({ artifact_id: r.artifact_id, kind: r.kind, url: r.safe_url, mime: r.mime, duration: r.duration, keeper: r.keeper, model: r.model, seed: r.seed,
+      worker: r.worker, bytes: r.bytes, created_at: r.created_at, job_id: r.job_id, operation: r.meta && r.meta.operation, reference_used: !!(r.meta && r.meta.reference_used) })));
   }
   const counts = { image: imageSourceMap().size, voice: mediaStore.list('voice').length, music: mediaStore.list('music').length, video: mediaStore.list('video').length };
   res.json({ kind, total: items.length, counts, items });
 });
 
 // ---- Workers / resources / generic jobs ----------------------------------------------
+const MEDIA_EVIDENCE_FILE = path.join(STATE_DIR, 'media-evidence.json');
+function readMediaEvidence() { try { return JSON.parse(fs.readFileSync(MEDIA_EVIDENCE_FILE, 'utf8')); } catch (_) { return {}; } }
 const workerRegistry = M.createWorkerRegistry({
+  getEvidence: readMediaEvidence,
   imageAdapters: {
     mflux: {
       probe: a => ({ architecture_available: true, runtime_available: a.mfluxRuntime !== false, model_available: a.mfluxModel !== false, enabled: true, proven: true, state: a.mfluxRuntime === false || a.mfluxModel === false ? 'MODEL/RUNTIME MISSING' : 'PROVEN' }),
@@ -3303,8 +3319,21 @@ function workerAssets() {
   const a = assetCache || {};
   return { ...a, ...(a.dormant || {}) };
 }
-app.get('/api/workers', (req, res) => res.json({ workers: workerRegistry.describe(workerAssets()) }));
+const mediaBridge = createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget: SSH_TARGET_NAME, evidenceFile: MEDIA_EVIDENCE_FILE, log: m => console.log(m) });
+// Orphaned remote job dirs (interrupted by a console restart) are removed once
+// they are older than 60 min, i.e. after any still-running remote generator
+// has finished writing. Runs at startup and hourly.
+setTimeout(() => mediaBridge.sweepRemoteOrphans(60).catch(() => {}), 15000).unref();
+setInterval(() => mediaBridge.sweepRemoteOrphans(60).catch(() => {}), 60 * 60 * 1000).unref();
+app.get('/api/workers', (req, res) => res.json({ workers: workerRegistry.describe(workerAssets()), options: { kokoro_voices: KOKORO_VOICES, languages: require('./media-bridge').LANGS } }));
 app.get('/api/resources', (req, res) => res.json(arbiter.state()));
+app.get('/api/generic-jobs/:id', (req, res) => {
+  const g = jobStore.get(req.params.id);
+  if (!g) return res.status(404).json({ error: 'Job not found' });
+  const rs = arbiter.state();
+  const artifacts = g.artifacts.map(id => { const r = mediaStore.resolve(id); return r ? { artifact_id: id, url: r.safe_url, kind: r.kind, duration: r.duration, sha256: r.sha256, bytes: r.bytes, seed: r.seed } : { artifact_id: id }; });
+  res.json({ ...g, artifacts_detail: artifacts, waiting: g.status === 'QUEUED' ? { position: arbiter.position(g.job_id), blocked_reason: rs.blocked_reason } : null });
+});
 app.get('/api/generic-jobs', (req, res) => res.json({ jobs: jobStore.list({ media_kind: req.query.kind || undefined, status: req.query.status || undefined, limit: 100 }) }));
 
 // Voice / Music / Video generation: capability-gated BEFORE any lease is taken.
@@ -3316,6 +3345,12 @@ app.post('/api/media/generate', (req, res) => {
   if (!['voice', 'music', 'video'].includes(kind)) return res.status(400).json({ error: 'media_kind must be voice, music or video', gate: 'worker-unavailable' });
   if (!w || w.media_kind !== kind) return res.status(400).json({ error: 'Unknown worker for ' + kind, gate: 'worker-unavailable' });
   const probe = w.probe(workerAssets());
+  if (w.bridged) {
+    // Real execution: validation + install gating happen before any lease.
+    const r = mediaBridge.start(w.id, body, { probe, saveText: body.save_prompts === true });
+    if (r.error) return res.status(r.status || 400).json({ error: r.error, gate: r.gate, worker: w.id });
+    return res.json({ job_id: r.job_id, status: r.status, worker: w.id });
+  }
   const job = jobStore.create({ media_kind: kind, operation: String(body.operation || 'generate').slice(0, 40), worker_id: w.id, resource_class: 'heavy', params: body, persist_text: body.save_prompts === true });
   const gate = !probe.runtime_available ? 'runtime-missing' : !probe.model_available ? 'model-missing' : 'worker-unavailable';
   if (!probe.enabled) {
@@ -3407,7 +3442,9 @@ app.get('/api/doctor', async (req, res) => {
   add('Heavy-compute lease', 'PASS', `${rs.group} capacity ${rs.capacity}; owner ${rs.owner ? rs.owner.label : 'none'}; waiting ${rs.waiting.length}`);
   add('External heavy load (Big Mac)', rs.external.occupied ? 'WARN' : 'PASS', rs.external.occupied ? rs.external.detail : (rs.external.checkedAt ? 'none detected (ollama ps)' : 'not yet checked'));
   for (const w of workerRegistry.describe(workerAssets())) {
-    if (w.dormant) add(`Worker · ${w.label} (${w.media_kind})`, 'WARN', w.installed
+    if (w.bridged) add(`Worker · ${w.label} (${w.media_kind})`, w.proven ? 'PASS' : w.enabled ? 'WARN' : 'FAIL',
+      `${w.state}; enabled ${w.enabled}; proven ${w.proven}${w.lastPass ? ' (last proof ' + String(w.lastPass.at).slice(0, 16) + ')' : ''}`);
+    else if (w.dormant) add(`Worker · ${w.label} (${w.media_kind})`, 'WARN', w.installed
       ? `AVAILABLE / INSTALLED — execution bridge disabled/unproven (enabled ${w.enabled}, proven ${w.proven})`
       : `${w.state}; enabled ${w.enabled}; proven ${w.proven} — not installed`);
     else add(`Worker · ${w.label}`, w.runtime_available && w.model_available ? 'PASS' : 'FAIL', w.state);

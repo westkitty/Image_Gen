@@ -102,50 +102,73 @@ test('external-load detection parses ollama ps conservatively', () => {
 });
 
 // ---- Worker registry -----------------------------------------------------------------
-test('workers: dormant voice/music/video are real, truthful and refuse to run', () => {
-  const reg = M.createWorkerRegistry();
+const allKeys = id => Object.fromEntries(M.WORKER_PROBE_PATHS.filter(([k]) => k.startsWith(id + ':')).map(([k]) => [k, true]));
+
+test('workers: bridged voice/music workers promote only on live probe + real DexDiffusion evidence; LTX stays dormant', () => {
+  let ev = {};
+  const reg = M.createWorkerRegistry({ getEvidence: () => ev });
   const d = Object.fromEntries(reg.describe({}).map(w => [w.id, w]));
-  for (const id of ['mflux', 'sdcpp', 'qwen3-tts', 'ace-step', 'magenta-rt', 'ltx-video']) assert.ok(d[id], id);
-  for (const id of ['qwen3-tts', 'ace-step', 'magenta-rt', 'ltx-video']) {
-    assert.deepEqual([d[id].architecture_available, d[id].runtime_available, d[id].model_available, d[id].enabled, d[id].proven], [true, false, false, false, false]);
-    assert.equal(d[id].state, 'RUNTIME MISSING');
+  const bridged = ['kokoro', 'qwen3-tts-base', 'qwen3-tts-voice-design', 'ace-step', 'magenta-rt'];
+  for (const id of ['mflux', 'sdcpp', ...bridged, 'ltx-video']) assert.ok(d[id], id);
+  for (const id of [...bridged, 'ltx-video']) {
     const w = reg.get(id);
     for (const fn of ['probe', 'capabilities', 'prepare', 'execute', 'status', 'cancel', 'cleanup']) assert.equal(typeof w[fn], 'function', id + '.' + fn);
-    assert.equal(w.execute().gate, 'runtime-missing');
+    assert.deepEqual([d[id].runtime_available, d[id].model_available, d[id].enabled, d[id].proven], [false, false, false, false], id);
+    assert.equal(d[id].state, 'RUNTIME MISSING');
+    assert.equal(w.capabilities().cancel_supported, false);
   }
-  assert.equal(d['qwen3-tts'].media_kind, 'voice'); assert.equal(d['ace-step'].media_kind, 'music'); assert.equal(d['ltx-video'].media_kind, 'video');
-  // Installed runtime+model (every authoritative path present) stays disabled/unproven
-  // until an execution bridge is proven, and is never reported as "missing".
-  const all = Object.fromEntries(M.WORKER_PROBE_PATHS.filter(([k]) => k.startsWith('ace-step:')).map(([k]) => [k, true]));
-  const both = reg.get('ace-step').probe(all);
-  assert.deepEqual([both.runtime_available, both.model_available, both.installed, both.enabled, both.proven], [true, true, true, false, false]);
-  assert.match(both.state, /INSTALLED — execution bridge disabled\/unproven/);
-  assert.equal(reg.get('ace-step').execute(all).gate, 'worker-unavailable');
-  assert.match(reg.get('ace-step').execute(all).error, /installed but execution bridge not enabled\/proven/);
-  // one missing checkpoint -> MODEL MISSING, with per-variant truth
-  const partial = { ...all, 'ace-step:model:lm-0.6b': false };
+  assert.deepEqual(bridged.map(id => d[id].media_kind), ['voice', 'voice', 'voice', 'music', 'music']);
+  // installed (live probe) -> enabled but NOT proven until real DexDiffusion evidence exists
+  for (const id of bridged) {
+    const p = reg.get(id).probe(allKeys(id));
+    assert.deepEqual([p.runtime_available, p.model_available, p.enabled, p.proven], [true, true, true, false], id);
+    assert.match(p.state, /ENABLED — awaiting first DexDiffusion proof/);
+  }
+  ev = { kokoro: { lastPass: { at: '2026-09-26T00:00:00Z', job_id: 'j', artifact_id: 'a.wav' } } };
+  assert.equal(reg.get('kokoro').probe(allKeys('kokoro')).proven, true);
+  assert.equal(reg.get('kokoro').probe(allKeys('kokoro')).state, 'PROVEN');
+  assert.equal(reg.get('kokoro').probe({}).proven, false, 'evidence never overrides a failed live probe');
+  assert.equal(reg.get('qwen3-tts-base').probe(allKeys('qwen3-tts-base')).proven, false, 'evidence is per worker');
+  // one missing checkpoint -> MODEL MISSING with per-variant truth
+  const partial = { ...allKeys('ace-step'), 'ace-step:model:lm-0.6b': false };
   assert.equal(reg.get('ace-step').probe(partial).state, 'MODEL MISSING');
   assert.equal(reg.get('ace-step').probe(partial).model_variants['lm-0.6b'], false);
-  // Qwen reports Base and VoiceDesign separately
-  const q = reg.get('qwen3-tts').probe({ 'qwen3-tts:runtime:python': true, 'qwen3-tts:model:base': true, 'qwen3-tts:model:voice-design': false });
-  assert.deepEqual(q.model_variants, { base: true, 'voice-design': false });
-  assert.equal(q.model_available, false);
+  // LTX: dormant, even with fake assets it is never enabled
+  assert.equal(reg.get('ltx-video').probe(allKeys('ltx-video')).enabled, false);
+  assert.equal(reg.get('ltx-video').execute({}).gate, 'runtime-missing');
 });
 
 test('worker paths: single authoritative table matches the model-stack install layout', () => {
   const P = M.WORKER_PATHS;
-  assert.equal(P['qwen3-tts'].runtime.python, '$HOME/Library/Caches/DexDiffusion/voice/venv/bin/python');
-  assert.match(P['qwen3-tts'].models.base, /^\/Volumes\/wc2tb\/generative-models\/voice\/qwen3-tts-base\/Qwen3-TTS-12Hz-1\.7B-Base-bf16\//);
-  assert.match(P['qwen3-tts'].models['voice-design'], /qwen3-tts-voice-design\/Qwen3-TTS-12Hz-1\.7B-VoiceDesign-8bit\//);
+  const voice = '$HOME/Library/Caches/DexDiffusion/voice/venv/bin/python';
+  for (const id of ['kokoro', 'qwen3-tts-base', 'qwen3-tts-voice-design']) assert.equal(P[id].runtime.python, voice, id);
+  assert.equal(P.kokoro.models.voices, '/Volumes/wc2tb/generative-models/voice/kokoro/Kokoro-82M-bf16/voices');
+  assert.match(P['qwen3-tts-base'].models.base, /^\/Volumes\/wc2tb\/generative-models\/voice\/qwen3-tts-base\/Qwen3-TTS-12Hz-1\.7B-Base-bf16\//);
+  assert.match(P['qwen3-tts-voice-design'].models['voice-design'], /qwen3-tts-voice-design\/Qwen3-TTS-12Hz-1\.7B-VoiceDesign-8bit\//);
   assert.equal(P['ace-step'].runtime.python, '$HOME/Library/Caches/DexDiffusion/music/ACE-Step-1.5/.venv/bin/python');
   for (const k of ['turbo', 'vae', 'embedding', 'lm-0.6b']) assert.match(P['ace-step'].models[k], /^\/Volumes\/wc2tb\/generative-models\/music\/ace-step\/checkpoints\//);
+  assert.equal(P['magenta-rt'].runtime.python, '$HOME/Library/Caches/DexDiffusion/music/magenta-rt-venv/bin/python');
   assert.match(P['magenta-rt'].models['mrt2-small'], /magenta-rt-v2\/models\/mrt2_small$/);
   // no stale placeholder paths anywhere
-  for (const f of ['media.js', 'capabilities.js', 'server.js']) {
+  for (const f of ['media.js', 'capabilities.js', 'server.js', 'media-bridge.js']) {
     const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     assert.doesNotMatch(src, /DexDiffusion\/qwen3-tts\/|DexDiffusion\/ace-step\/|ImageGen\/ace-step|ImageGen\/ltx/, f);
   }
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'capabilities.js'), 'utf8'), /require\('\.\/media'\)\.WORKER_PROBE_PATHS/);
+  // the persisted installer keeps its hard-won fixes
+  const inst = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'install-bigmac-media-model-stack.sh'), 'utf8');
+  assert.match(inst, /MISSING_ESTIMATE=\$\(\(EXPECTED_BYTES - CURRENT_MODEL_BYTES\)\)/);
+  assert.match(inst, /REQUIRED_NOW=\$\(\(MISSING_ESTIMATE \+ RESERVE_BYTES \+ GLOBAL_MARGIN_BYTES\)\)/);
+  assert.match(inst, /\[\[ -d \/Users\/bigmac\/\.ollama\/models \]\]/);
+  assert.match(inst, /echo "REMOTE MODEL STACK INSTALLATION: PASS"/);
+  assert.match(inst, /grep -qx 'REMOTE MODEL STACK INSTALLATION: PASS'/);
+  assert.match(inst, /'misaki\[en\]'/);
+  assert.match(inst, /en-core-web-sm @/);
+  assert.match(inst, /'mlx==0\.31\.1'/);
+  assert.match(inst, /':!checkpoints'/);
+  assert.match(inst, /--verify/);
+  assert.doesNotMatch(inst, /git (add|commit|push)/);
+  assert.doesNotMatch(inst, /ltx|LTX-Video/i);
 });
 
 // ---- Media store -------------------------------------------------------------------------

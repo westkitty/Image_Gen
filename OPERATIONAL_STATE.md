@@ -7,7 +7,7 @@
   "project_name": "Image_Gen / DexDiffusion",
   "project_root": "/Users/andrew/Image_Gen",
   "artifact_path": "operator-console + sdcpp-workflow",
-  "state_revision": 10,
+  "state_revision": 11,
   "last_updated": "2026-09-26",
   "current_baseline": {
     "identity": "main@5287abd plus preserved local modifications",
@@ -200,6 +200,22 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
     - The Google Drive rclone migration was RUNNING throughout and was never touched.
     - No video/LTX was installed.
   - **Not yet done:** DexDiffusion voice/music execution bridges. No voice or music has been generated *through DexDiffusion*.
+- **VER-030 (rev 11, 2026-09-26) — Voice/music execution bridges live through DexDiffusion.**
+  - **Bridge:** `operator-console/media-bridge.js` sends `operator-console/bridges/dexmedia_remote.py` over `ssh westcat bash -s` (Big Mac stays compute only, no server). The request travels as a 0600 `request.json` that the driver deletes on read, so private text never reaches argv. Results are read from in-band `DEXMEDIA_*` markers. Flow: remote job dir `~/Library/Caches/DexDiffusion/tmp/dexmedia.*` → validated WAV → scp → sha256 → `mediaStore.finalize` → `/Users/andrew/audio_made/{voice,music}` → Library → remote dir removed. Gates: worker-unavailable, runtime-missing, model-missing, resource, reference-invalid, generation, output-missing, output-invalid, transfer, checksum, canonicalization, cleanup, interrupted. Orphan sweep runs at startup and hourly.
+  - **Live proofs (all through DexDiffusion, prompt saving off):**
+    - Kokoro speech: 6.25 s.
+    - Qwen3-TTS Base clone from a staged reference: 3.68 s.
+    - VoiceDesign: 4.8 s.
+    - Magenta mrt2_small: 8 s, 48 kHz stereo.
+    - ACE-Step turbo + 0.6B LM: 30 s, 48 kHz stereo, ~6.6 min.
+    - All five files have non-zero RMS. All five workers are PROVEN in `/api/workers` and Doctor (evidence in `sdcpp-workflow/state/media-evidence.json`).
+    - UI: a Voice-screen Kokoro render played in the Current Job panel, and the ACE song played from Library.
+  - **Arbitration:** Magenta waited at position 1 behind VoiceDesign and started after release. The lease ended free.
+  - **Restart:** a RUNNING Magenta job became INTERRUPTED with no lease left. COMPLETE jobs stayed COMPLETE and their media was served. The orphaned remote dir was swept, leaving Big Mac tmp empty.
+  - **Privacy:** canary `DEXVOICE-CANARY-778` is absent from state, staging, server.log, localStorage and the diff. It was stored only as `[REDACTED]`.
+  - **Regression:** MFLUX 512², seed 9261, PASS into `/Users/andrew/images_made`; lease free.
+  - **Layout and tests:** 375/768/desktop show 0 overflow and no JS exceptions. npm test 0 failures.
+  - **Installer:** persisted as `scripts/install-bigmac-media-model-stack.sh` (`--verify` read-only mode → VERIFY PASS).
 - **VER-014:** Image route security (live): traversal, encoded traversal, absolute path, NUL, `.incoming-*`, symlink and unknown names all return 404.
 
 ## 6. Known Not Working
@@ -213,6 +229,7 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 - **LIM-007 (rev 7):** ControlNet — **ENGINE SUPPORTED — MODEL ASSET MISSING.** sd-cli 7f0e728 exposes `--control-net`, `--control-image`, `--control-strength` and `--canny`, but no SD1.5 ControlNet model exists on Big Mac. Minimum for a future proof: one SD1.5 Canny ControlNet (`control_v11p_sd15_canny`, ~1.4 GB fp16 safetensors). The UI never offers Control.
 - **LIM-008 (rev 7):** LoRA and alternate-VAE generation are TEST WITHHELD: no LoRA or standalone VAE files exist. The UI passes `--vae` only for SDCPP targets and marks it as ignored for MFLUX.
 - **LIM-009 (rev 7, updated rev 8):** Queues persist across console restarts (items that were running become INTERRUPTED and retryable). Individual Create/edit jobs are still in memory.
+- **LIM-011 (rev 11):** Voice/music jobs cannot be cancelled mid-run (`cancel_supported: false`); a restart marks them INTERRUPTED and the sweep removes the remote dir once the generator exits. ACE-Step takes ~6–7 min per 30 s song. LTX video is not installed.
 - **LIM-010 (rev 7):** Hard cancel of a running remote generation is not implemented (Stop After Current only). Temporary source import (upload/paste) is deferred.
 
 ## 7. Implemented but Unverified
@@ -337,3 +354,7 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 ### Revision 10 — 2026-09-26
 
 - Voice/music model stack installed and validated on Big Mac (VER-029). DexDiffusion worker probes now point at the real install paths. Qwen3-TTS/ACE-Step/Magenta report INSTALLED with execution bridges disabled/unproven. The bogus MODEL_STACK files from 7cebf9a are superseded. LTX is still not installed.
+
+### Revision 11 — 2026-09-26
+
+- DexDiffusion voice/music execution bridges (VER-030). Kokoro, Qwen3-TTS Base clone, Qwen3-TTS VoiceDesign, ACE-Step and Magenta RT run end-to-end through the job store, lease, staging and media store. They were promoted to PROVEN only from real DexDiffusion evidence. Working Voice/Music screens, installer persisted, Doctor updated.

@@ -293,13 +293,15 @@ Shown in **System → Truth status**, `GET /api/system-info` (`capabilities`), a
 ## Media workstation (rev 9)
 
 - **Screens:** Create (images), Voice, Music, Video, Library, Batch, Edit, Enhance, Models, System.
-- **Workers** (`GET /api/workers`): MFLUX and SDCPP are proven. Qwen3-TTS (voice; Base + VoiceDesign), ACE-Step 1.5 (music; Turbo + 0.6B LM) and Magenta RealTime 2 small (music) are **installed on Big Mac and validated outside DexDiffusion** (see `MODEL_STACK.md`), but their DexDiffusion execution bridges are not built yet, so they show *INSTALLED — execution bridge disabled/unproven* and Generate stays disabled. LTX (video) is not installed. Nothing is downloaded from the UI.
+- **Workers** (`GET /api/workers`): MFLUX, SDCPP, Kokoro (speech), Qwen3-TTS Base (voice clone from a staged reference), Qwen3-TTS VoiceDesign, ACE-Step 1.5 (full song; Turbo + 0.6B LM) and Magenta RealTime 2 small (instrumental, 2–60 s) are all **proven through DexDiffusion**. LTX (video) is not installed. Nothing is downloaded from the UI.
+- **Voice/music execution:** `media-bridge.js` runs `bridges/dexmedia_remote.py` on Big Mac over `ssh westcat` (no server on Big Mac). Private text travels in a 0600 request file the driver deletes on read. Output flow: remote temp → validated WAV → scp → sha256 → `audio_made/{voice,music}` → Library → remote temp removed. Failures name their gate (e.g. `reference-invalid`, `output-invalid`, `checksum`). Jobs cannot be cancelled mid-run. ACE-Step takes ~6–7 min for 30 s. Poll `GET /api/generic-jobs/<id>`.
+- **Reinstall/verify the stack:** `scripts/install-bigmac-media-model-stack.sh` (`--verify` is read-only).
 - **Model stack paths** (single source: `operator-console/media.js` `WORKER_PATHS`): models under `/Volumes/wc2tb/generative-models/{voice,music}`; runtimes under `~/Library/Caches/DexDiffusion/{voice/venv, music/ACE-Step-1.5/.venv, music/magenta-rt-venv}` on Big Mac.
 - **Big Mac heavy compute** is one lease (`GET /api/resources`). A second heavy job waits ("Waiting for Big Mac — …"), and a large Ollama model loaded on Big Mac also blocks it (read-only check).
 - **Jobs** are durable (`sdcpp-workflow/state/jobs.json`). After a console restart, finished jobs keep their results. In-flight jobs show INTERRUPTED and are not re-run; re-enter the text to retry when prompt saving was off.
 - **Imports:** Edit and Voice/Music references accept file, drag/drop or paste. They are staged for 24 h in `sdcpp-workflow/state/staging/` and never become canonical media.
 - **Canonical roots:** images `/Users/andrew/images_made`, voice `/Users/andrew/audio_made/voice`, music `/Users/andrew/audio_made/music`, video `/Users/andrew/video_made`. Served only by id: `/api/images/:id`, `/api/media/:id`.
-- **Activating a future worker:** install the runtime and model at the paths shown under *Activation path*, add its execution bridge, prove one real generation, then enable it.
+- **Activating a future worker (e.g. LTX):** install the runtime and model at the paths shown under *Activation path*, add its execution bridge, prove one real generation, then enable it.
 
 ## Protected invariants (do not change)
 

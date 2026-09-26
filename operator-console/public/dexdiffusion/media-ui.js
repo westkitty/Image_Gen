@@ -30,7 +30,7 @@
 
   // ── state ────────────────────────────────────────────────────────
   P._mws = function () {
-    if (!this.mws) this.mws = { voiceMode: 'speech', workers: null, resources: null, lib: { kind: 'all', items: [], counts: {}, showTest: false, loading: false }, refs: {}, seed: '', speed: 1, language: 'auto', duration: 60, instrumental: false, influence: 0.5 };
+    if (!this.mws) this.mws = { voiceMode: 'speech', workers: null, resources: null, lib: { kind: 'all', items: [], counts: {}, showTest: false, loading: false }, refs: {}, jobs: {}, options: null, speed: 1, language: 'en', vSeed: '', mSeed: '', aceDuration: 30, magDuration: 8, musicWorker: 'ace-step', kokoroVoice: 'af_heart', instrumental: false, influence: 0.5 };
     if (!this._mtext) this._mtext = {}; // private text: memory only
     return this.mws;
   };
@@ -38,22 +38,24 @@
   P.loadWorkers = async function () {
     try {
       const [w, r] = await Promise.all([fetch(this.state.backendUrl + '/api/workers').then(x => x.json()), fetch(this.state.backendUrl + '/api/resources').then(x => x.json())]);
-      this.mSet({ workers: w.workers, resources: r });
+      this.mSet({ workers: w.workers, options: w.options || null, resources: r });
     } catch (_) {}
   };
   P._worker = function (id) { return ((this._mws().workers) || []).find(w => w.id === id) || null; };
 
   // Persistent media elements: the runtime rebuilds vnodes each render, so a
   // cached real <audio>/<video> node keeps playback position across renders.
-  P._mediaEl = function (url, kind) {
+  // slot separates places that show the same file (a DOM node can live in one place only).
+  P._mediaEl = function (url, kind, slot) {
     this._mediaEls = this._mediaEls || new Map();
-    let el = this._mediaEls.get(url);
+    const key = (slot || '') + '|' + url;
+    let el = this._mediaEls.get(key);
     if (!el) {
       el = document.createElement(kind === 'video' ? 'video' : 'audio');
       el.src = url; el.controls = true; el.preload = 'metadata';
       el.style.cssText = 'width:100%;min-height:40px;display:block;border-radius:8px;';
       el.setAttribute('aria-label', kind + ' player');
-      this._mediaEls.set(url, el);
+      this._mediaEls.set(key, el);
     }
     return el;
   };
@@ -103,87 +105,171 @@
       w.activation ? h('details', { style: { marginTop: 6 } }, h('summary', { style: Object.assign({}, css.muted, { cursor: 'pointer' }) }, '▸ Activation path'),
         h('div', { style: css.mono }, w.activation + ' Runtime: ' + w.runtimePath + ' · Model: ' + w.modelPath)) : null);
   };
-  P._generateBar = function (workerId, kind, operation) {
-    const w = this._worker(workerId);
-    const enabled = !!(w && w.enabled);
-    return h('div', { style: Object.assign({}, css.row, { marginTop: 10 }) },
-      h('button', { type: 'button', disabled: !enabled, 'aria-disabled': String(!enabled), title: enabled ? 'Generate' : this._disabledReason(w),
-        style: { flex: '1 1 220px', minHeight: 44, borderRadius: 9, border: 0, fontWeight: 800, fontSize: 14, cursor: enabled ? 'pointer' : 'not-allowed',
-          background: enabled ? 'linear-gradient(90deg,#8b5cf6,#22d3ee)' : 'rgba(148,163,184,.12)', color: enabled ? '#06060a' : '#94a3b8' },
-        onClick: () => enabled && this.mediaGenerate(workerId, kind, operation) }, enabled ? 'Generate' : 'Generate — ' + this._disabledReason(w)),
-      h('span', { style: css.muted }, enabled ? '' : (w && w.installed ? 'Runtime and model are installed on Big Mac; the DexDiffusion execution bridge is not built/proven yet.' : 'Install and prove ' + ((w && w.label) || workerId) + ' to enable.') + ' Nothing is downloaded from here.'));
+  // ── Generation (voice/music bridges) ─────────────────────────────
+  const VOICE_WORKER = { speech: 'kokoro', clone: 'qwen3-tts-base', design: 'qwen3-tts-voice-design' };
+  const TERMINAL = ['COMPLETE', 'FAILED', 'INTERRUPTED', 'CANCELLED'];
+  const MEDIA_JOBS_KEY = 'dex_media_jobs'; // job ids only (no text) for reload recovery
+  P._disabledReason = function (w) {
+    if (!w) return 'Checking worker…';
+    if (!w.runtime_available) return 'Runtime not installed';
+    if (!w.model_available) return 'Model not installed';
+    return w.enabled ? '' : 'Worker disabled';
   };
-  P._disabledReason = function (w) { return w && w.installed ? 'Installed — execution bridge not enabled' : 'Runtime/model not installed'; };
+  P._jobLabel = function (j) {
+    if (!j) return null;
+    if (j.status === 'QUEUED') return j.waiting && j.waiting.blocked_reason ? j.waiting.blocked_reason : 'Queued…';
+    if (j.status === 'RUNNING') return 'Generating on Big Mac… ' + Math.round((Date.now() - (j.started_at || Date.now())) / 1000) + 's';
+    if (j.status === 'TRANSFERRING') return 'Transferring and verifying…';
+    return null;
+  };
+  P._generateBar = function (workerId, kind, operation) {
+    const w = this._worker(workerId), j = this._mws().jobs[kind];
+    const busy = j && !TERMINAL.includes(j.status);
+    const reason = this._disabledReason(w);
+    const enabled = !!(w && w.enabled) && !busy;
+    const label = busy ? this._jobLabel(j) : reason ? 'Generate — ' + reason : 'Generate';
+    return h('div', { style: Object.assign({}, css.row, { marginTop: 10 }) },
+      h('button', { type: 'button', disabled: !enabled, 'aria-disabled': String(!enabled), 'aria-busy': String(!!busy), title: label,
+        style: { flex: '1 1 220px', minHeight: 44, borderRadius: 9, border: 0, fontWeight: 800, fontSize: 14, cursor: enabled ? 'pointer' : 'not-allowed',
+          background: enabled ? 'linear-gradient(90deg,#8b5cf6,#22d3ee)' : busy ? 'rgba(56,189,248,.18)' : 'rgba(148,163,184,.12)', color: enabled ? '#06060a' : busy ? '#7dd3fc' : '#94a3b8' },
+        onClick: () => enabled && this.mediaGenerate(workerId, kind, operation) }, label),
+      h('span', { style: css.muted }, w && w.proven ? 'Proven through DexDiffusion.' : w && w.enabled ? 'Enabled; first DexDiffusion proof pending.' : ''));
+  };
+  P._mediaBody = function (workerId) {
+    const m = this._mws(), t = this._mtext;
+    const body = { save_prompts: !!this.state.savePrompts };
+    if (workerId === 'kokoro') Object.assign(body, { text: t.voiceText, voice: m.kokoroVoice || 'af_heart', speed: m.speed || 1 });
+    if (workerId === 'qwen3-tts-base') Object.assign(body, { text: t.voiceText, ref_text: t.voiceTranscript, staged_ref: m.refs.voiceRef && m.refs.voiceRef.id, language: m.language || 'en', seed: m.vSeed });
+    if (workerId === 'qwen3-tts-voice-design') Object.assign(body, { text: t.voiceText, instruct: t.voiceDescription, language: m.language || 'en', seed: m.vSeed });
+    if (workerId === 'ace-step') Object.assign(body, { prompt: t.musicPrompt, lyrics: m.instrumental ? '' : t.musicLyrics, instrumental: !!m.instrumental, style: m.style, genre: m.genre, mood: m.mood, instruments: m.instruments,
+      duration: m.aceDuration || 30, seed: m.mSeed, language: m.language || 'en', staged_ref: m.refs.musicRef && m.refs.musicRef.id, influence: m.influence });
+    if (workerId === 'magenta-rt') Object.assign(body, { prompt: t.musicPrompt, duration: m.magDuration || 8 });
+    return body;
+  };
   P.mediaGenerate = async function (worker, kind, operation) {
-    const r = await fetch(this.state.backendUrl + '/api/media/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ media_kind: kind, worker, operation, save_prompts: !!this.state.savePrompts }) });
+    const body = Object.assign({ media_kind: kind, worker, operation }, this._mediaBody(worker));
+    const r = await fetch(this.state.backendUrl + '/api/media/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({}));
-    this.toast((d.error || 'Generation unavailable') + (d.gate ? ' · ' + d.gate : ''), '#fbbf24');
+    if (!r.ok || !d.job_id) { this.toast((d.error || 'Generation rejected') + (d.gate ? ' · ' + d.gate : ''), '#ef4444'); return; }
+    this._followMediaJob(kind, d.job_id);
+  };
+  P._followMediaJob = function (kind, jobId) {
+    const m = this._mws();
+    this.mSet({ jobs: Object.assign({}, m.jobs, { [kind]: { job_id: jobId, status: 'QUEUED' } }) });
+    try { const k = JSON.parse(localStorage.getItem(MEDIA_JOBS_KEY) || '{}'); k[kind] = jobId; localStorage.setItem(MEDIA_JOBS_KEY, JSON.stringify(k)); } catch (_) {}
+    this._mediaTimers = this._mediaTimers || {};
+    clearInterval(this._mediaTimers[kind]);
+    const tick = async () => {
+      const r = await fetch(this.state.backendUrl + '/api/generic-jobs/' + jobId).catch(() => null);
+      if (!r || !r.ok) { clearInterval(this._mediaTimers[kind]); return; }
+      const j = await r.json();
+      this.mSet({ jobs: Object.assign({}, this._mws().jobs, { [kind]: j }) });
+      if (TERMINAL.includes(j.status)) {
+        clearInterval(this._mediaTimers[kind]);
+        try { const k = JSON.parse(localStorage.getItem(MEDIA_JOBS_KEY) || '{}'); delete k[kind]; localStorage.setItem(MEDIA_JOBS_KEY, JSON.stringify(k)); } catch (_) {}
+        if (j.status === 'COMPLETE') { this.toast(kind + ' ready · ' + (j.artifacts[0] || ''), '#65d66e'); this.loadMediaLibrary(kind); this.loadWorkers(); }
+        else this.toast(kind + ' ' + j.status.toLowerCase() + (j.first_failed_gate ? ' · ' + j.first_failed_gate : ''), '#ef4444');
+      }
+    };
+    tick();
+    this._mediaTimers[kind] = setInterval(tick, 2000);
+  };
+  P.toggleMediaKeeper = async function (id, keeper) {
+    const r = await fetch(this.state.backendUrl + '/api/media/' + encodeURIComponent(id) + '/keeper', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keeper }) });
+    if (r.ok) this.loadMediaLibrary();
+  };
+  P._jobPanel = function (kind) {
+    const j = this._mws().jobs[kind];
+    if (!j) return null;
+    const base = this.state.backendUrl;
+    const tone2 = j.status === 'COMPLETE' ? tone.ok : TERMINAL.includes(j.status) ? tone.bad : tone.info;
+    const art = (j.artifacts_detail || [])[0];
+    return h('div', { style: Object.assign({}, css.panel, { borderColor: tone2 + '55' }) },
+      h('div', { style: Object.assign({}, css.row, { marginBottom: 6 }) }, h('div', { style: css.title }, 'Current job'), chip(j.status, tone2),
+        j.worker_id ? chip(j.worker_id, '#a78bfa') : null, h('span', { style: css.mono }, String(j.job_id).slice(0, 8))),
+      !TERMINAL.includes(j.status) ? h('div', { role: 'status', style: { color: tone.info, fontSize: 12 } }, this._jobLabel(j)) : null,
+      j.status === 'FAILED' || j.status === 'INTERRUPTED' ? h('div', { role: 'alert', style: { color: tone.bad, fontSize: 12 } }, 'Failed at gate ' + (j.first_failed_gate || '?') + (j.error ? ' — ' + j.error : '')) : null,
+      art && art.url ? h('div', { style: { display: 'grid', gap: 6 } }, this._mediaEl(base + art.url, 'audio', 'job'),
+        h('div', { style: css.muted }, [art.artifact_id, fmtTime(art.duration), art.seed != null ? 'seed ' + art.seed : null, art.sha256 ? 'sha256 ' + art.sha256.slice(0, 12) + '…' : null].filter(Boolean).join(' · ')),
+        h('div', { style: css.row }, btn('Open in Library', () => { this.setScreen('library'); this.loadMediaLibrary(kind); }, '#38bdf8'),
+          h('a', { href: base + art.url, download: art.artifact_id, style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 4px' } }, 'Download WAV'))) : null);
   };
   P._resultArea = function (kind) {
     const items = ((this._mws().lib.items) || []).filter(i => i.kind === kind).slice(0, 4);
     return h('div', { style: css.panel },
-      h('div', { style: Object.assign({}, css.title, { marginBottom: 8 }) }, 'Results'),
-      items.length ? h('div', { style: { display: 'grid', gap: 8 } }, ...items.map(i => this._mediaCard(i)))
-        : h('div', { style: css.muted }, 'No ' + kind + ' results yet. Finished ' + kind + ' files will play here with position, duration, volume, model and seed, and appear in the Library.'));
+      h('div', { style: Object.assign({}, css.title, { marginBottom: 8 }) }, 'Recent ' + kind),
+      items.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(84px,1fr))', gap: 8 } }, ...items.map(i => this._mediaCard(i)))
+        : h('div', { style: css.muted }, 'No ' + kind + ' results yet.'));
   };
   const field = (label, control) => h('label', { style: { display: 'grid', gap: 4, minWidth: 0 } }, h('span', { style: css.label }, label), control);
   P._text = function (key, placeholder, rows) {
     return h('textarea', { rows: rows || 3, value: this._mtext[key] || '', placeholder, onChange: e => { this._mtext[key] = e.target.value; }, style: Object.assign({}, css.input, { resize: 'vertical' }) });
   };
   P._input = function (key, attrs) { const m = this._mws(); return h('input', Object.assign({ value: String(m[key] ?? ''), onChange: e => this.mSet({ [key]: e.target.value }), style: css.input }, attrs || {})); };
+  const langSelect = (m, set) => h('select', { style: css.input, value: m.language || 'en', onChange: e => set({ language: e.target.value }) },
+    ...['en', 'zh', 'ja', 'ko', 'de', 'fr', 'es', 'it', 'pt', 'ru'].map(l => h('option', { value: l }, l)));
+  // Visually marks a control group as not used by the selected worker (still readable, not interactive).
+  const notUsed = (applies, note, node) => applies ? node : h('div', { 'aria-disabled': 'true', title: note, style: { opacity: 0.4, pointerEvents: 'none' } }, node);
 
   // ── Voice ─────────────────────────────────────────────────────────
   P.buildVoiceWorkspace = function () {
     const m = this._mws();
-    const modes = [['speech', 'Speech'], ['clone', 'Voice Clone'], ['design', 'Voice Design']];
-    const common = h('div', { style: css.grid2 },
-      field('Worker / model', h('select', { style: css.input, value: 'qwen3-tts' }, h('option', { value: 'qwen3-tts' }, 'Qwen3-TTS · ' + ((this._worker('qwen3-tts') || {}).state || 'checking…')))),
-      field('Language', h('select', { style: css.input, value: m.language, onChange: e => this.mSet({ language: e.target.value }) }, ...['auto', 'en', 'zh', 'ja', 'ko', 'de', 'fr', 'es'].map(l => h('option', { value: l }, l)))),
-      field('Seed', this._input('seed', { type: 'number', min: '0', placeholder: 'random' })),
-      field('Speed', this._input('speed', { type: 'number', min: '0.5', max: '2', step: '0.05' })));
+    const modes = [['speech', 'Speech · Kokoro'], ['clone', 'Voice Clone · Qwen Base'], ['design', 'Voice Design · Qwen']];
+    const worker = VOICE_WORKER[m.voiceMode] || 'kokoro';
+    const voices = ((m.options && m.options.kokoro_voices) || ['af_heart']);
     const body = m.voiceMode === 'speech' ? h('div', { style: { display: 'grid', gap: 10 } },
       field('Text to speak', this._text('voiceText', 'What should be said…', 4)),
-      field('Voice / profile', h('select', { style: css.input }, h('option', null, 'Default voice'))),
-      field('Style / instruction', this._text('voiceStyle', 'e.g. calm, warm, slightly slower', 2)))
+      h('div', { style: css.grid2 },
+        field('Voice', h('select', { style: css.input, value: m.kokoroVoice || 'af_heart', onChange: e => this.mSet({ kokoroVoice: e.target.value }) }, ...voices.map(v => h('option', { value: v }, v)))),
+        field('Speed', this._input('speed', { type: 'number', min: '0.5', max: '2', step: '0.05' }))),
+      h('div', { style: css.muted }, 'Kokoro is deterministic (no seed). Language follows the voice (a = US English, b = UK English).'))
       : m.voiceMode === 'clone' ? h('div', { style: { display: 'grid', gap: 10 } },
-        this.buildReferenceStager('voiceRef', 'Reference voice audio'),
-        field('Reference transcript', this._text('voiceTranscript', 'Exact words spoken in the reference (improves cloning)', 2)),
-        field('Profile name', this._input('profileName', { placeholder: 'e.g. Narrator A' })),
-        field('Text to speak', this._text('voiceText', 'What the cloned voice should say…', 3)))
+        this.buildReferenceStager('voiceRef', 'Reference voice audio (required)'),
+        field('Reference transcript (optional, improves cloning)', this._text('voiceTranscript', 'Exact words spoken in the reference', 2)),
+        field('Text to speak', this._text('voiceText', 'What the cloned voice should say…', 3)),
+        h('div', { style: css.grid2 }, field('Language', langSelect(m, p => this.mSet(p))), field('Seed', this._input('vSeed', { type: 'number', min: '0', placeholder: 'random' }))))
       : h('div', { style: { display: 'grid', gap: 10 } },
         field('Voice description', this._text('voiceDescription', 'e.g. middle-aged, gravelly, British, measured pace', 3)),
         field('Text to speak', this._text('voiceText', 'Preview line…', 3)),
-        h('div', { style: css.muted }, 'Saved voice designs will appear under Voice / profile once the worker is active.'));
+        h('div', { style: css.grid2 }, field('Language', langSelect(m, p => this.mSet(p))), field('Seed', this._input('vSeed', { type: 'number', min: '0', placeholder: 'random' }))));
     return h('div', { style: { display: 'grid', gap: 12, minWidth: 0 } },
       h('div', { style: css.panel },
         h('div', { style: Object.assign({}, css.row, { marginBottom: 10 }) }, h('div', { style: css.title }, 'Voice'), ...modes.map(([k, l]) => btn(l, () => this.mSet({ voiceMode: k }), m.voiceMode === k ? '#a78bfa' : '#94a3b8'))),
-        body, h('div', { style: { height: 10 } }), common,
-        h('div', { style: Object.assign({}, css.muted, { marginTop: 8 }) }, this.state.savePrompts ? 'Prompt saving is on: text may be kept with results.' : 'Prompt saving is off: text stays in this tab only and is never stored.'),
-        this._generateBar('qwen3-tts', 'voice', m.voiceMode)),
-      this._workerCard('qwen3-tts'), this._resultArea('voice'));
+        body,
+        h('div', { style: Object.assign({}, css.muted, { marginTop: 8 }) }, this.state.savePrompts ? 'Prompt saving is on: text may be kept with the job record.' : 'Prompt saving is off: text is sent for this job only and never stored.'),
+        this._generateBar(worker, 'voice', m.voiceMode)),
+      this._jobPanel('voice'), this._workerCard(worker), this._resultArea('voice'));
   };
 
   // ── Music ─────────────────────────────────────────────────────────
   P.buildMusicWorkspace = function () {
     const m = this._mws();
+    const worker = m.musicWorker || 'ace-step';
+    const ace = worker === 'ace-step';
+    const note = 'Not used by Magenta RealTime 2 (prompt + duration only)';
     return h('div', { style: { display: 'grid', gap: 12, minWidth: 0 } },
       h('div', { style: css.panel },
-        h('div', { style: Object.assign({}, css.title, { marginBottom: 10 }) }, 'Music'),
+        h('div', { style: Object.assign({}, css.row, { marginBottom: 10 }) }, h('div', { style: css.title }, 'Music'),
+          btn('ACE-Step · full songs', () => this.mSet({ musicWorker: 'ace-step' }), ace ? '#22d3ee' : '#94a3b8'),
+          btn('Magenta RT · short loops', () => this.mSet({ musicWorker: 'magenta-rt' }), !ace ? '#22d3ee' : '#94a3b8')),
+        h('div', { style: Object.assign({}, css.muted, { marginBottom: 8 }) }, ace
+          ? 'ACE-Step 1.5 Turbo + 0.6B LM: songs with optional lyrics, 10–240 s. Allow several minutes per song.'
+          : 'Magenta RealTime 2 (mrt2_small): instrumental music from a text prompt, 2–60 s. No lyrics, seed or reference.'),
         h('div', { style: { display: 'grid', gap: 10 } },
-          field('Song description', this._text('musicPrompt', 'e.g. dreamy synth-pop about a night drive', 3)),
-          h('label', { style: Object.assign({}, css.row, { color: '#dbe4ee', fontSize: 12 }) }, h('input', { type: 'checkbox', checked: !!m.instrumental, onChange: e => this.mSet({ instrumental: e.target.checked }) }), 'Instrumental (no vocals)'),
-          m.instrumental ? null : field('Lyrics', this._text('musicLyrics', '[verse]\n…\n[chorus]\n…', 5)),
-          h('div', { style: css.grid2 },
-            field('Style', this._input('style', { placeholder: 'e.g. lo-fi' })), field('Genre', this._input('genre', { placeholder: 'e.g. electronic' })),
-            field('Mood', this._input('mood', { placeholder: 'e.g. wistful' })), field('Instrumentation', this._input('instruments', { placeholder: 'e.g. piano, pads, 808' })),
-            field('Duration (s)', this._input('duration', { type: 'number', min: '10', max: '600' })), field('Seed', this._input('seed', { type: 'number', min: '0', placeholder: 'random' })),
-            field('Worker / model', h('select', { style: css.input }, h('option', null, 'ACE-Step · ' + ((this._worker('ace-step') || {}).state || 'checking…')), h('option', null, 'Magenta RealTime 2 · ' + ((this._worker('magenta-rt') || {}).state || 'checking…'))))),
-          this.buildReferenceStager('musicRef', 'Reference audio (optional)'),
-          m.refs.musicRef ? field('Reference influence · ' + Number(m.influence).toFixed(2), h('input', { type: 'range', min: '0', max: '1', step: '0.05', value: String(m.influence), onChange: e => this.mSet({ influence: e.target.value }), style: { minHeight: 30 } })) : null,
-          h('div', { style: css.muted }, 'Available controls will follow the installed worker; not every worker supports every control.')),
-        this._generateBar('ace-step', 'music', 'song')),
-      this._workerCard('ace-step'), this._workerCard('magenta-rt'), this._resultArea('music'));
+          field(ace ? 'Song description' : 'Music prompt', this._text('musicPrompt', 'e.g. dreamy synth-pop about a night drive', 3)),
+          notUsed(ace, note, h('div', { style: { display: 'grid', gap: 10 } },
+            h('label', { style: Object.assign({}, css.row, { color: '#dbe4ee', fontSize: 12 }) }, h('input', { type: 'checkbox', checked: !!m.instrumental, onChange: e => this.mSet({ instrumental: e.target.checked }) }), 'Instrumental (no vocals)'),
+            m.instrumental ? null : field('Lyrics', this._text('musicLyrics', '[verse]\n…\n[chorus]\n…', 5)),
+            h('div', { style: css.grid2 },
+              field('Style', this._input('style', { placeholder: 'e.g. lo-fi' })), field('Genre', this._input('genre', { placeholder: 'e.g. electronic' })),
+              field('Mood', this._input('mood', { placeholder: 'e.g. wistful' })), field('Instrumentation', this._input('instruments', { placeholder: 'e.g. piano, pads, 808' })),
+              field('Seed', this._input('mSeed', { type: 'number', min: '0', placeholder: 'random' })), field('Vocal language', langSelect(m, p => this.mSet(p)))),
+            this.buildReferenceStager('musicRef', 'Reference audio (optional · style influence)'),
+            m.refs.musicRef ? field('Reference influence · ' + Number(m.influence).toFixed(2), h('input', { type: 'range', min: '0', max: '1', step: '0.05', value: String(m.influence), onChange: e => this.mSet({ influence: e.target.value }), style: { minHeight: 30 } })) : null)),
+          field('Duration (s)', ace ? this._input('aceDuration', { type: 'number', min: '10', max: '240', placeholder: '30' }) : this._input('magDuration', { type: 'number', min: '2', max: '60', placeholder: '8' }))),
+        h('div', { style: Object.assign({}, css.muted, { marginTop: 8 }) }, this.state.savePrompts ? 'Prompt saving is on: text may be kept with the job record.' : 'Prompt saving is off: description and lyrics are sent for this job only and never stored.'),
+        this._generateBar(worker, 'music', ace ? 'song' : 'music')),
+      this._jobPanel('music'), this._workerCard(worker), this._resultArea('music'));
   };
 
   // ── Video (dormant slot) ─────────────────────────────────────────
@@ -214,8 +300,11 @@
         (i.keeper ? '★ ' : '') + (i.test_artifact ? '[test] ' : '') + (i.operation || 'image')));
     return h('div', { style: { gridColumn: '1 / -1', border: '1px solid rgba(148,163,184,.16)', borderRadius: 8, padding: 8, display: 'grid', gap: 6, minWidth: 0 } },
       h('div', { style: css.row }, chip(i.kind, i.kind === 'voice' ? '#a78bfa' : i.kind === 'music' ? '#22d3ee' : '#f59e0b'), h('span', { style: css.mono }, i.artifact_id),
-        h('span', { style: css.muted }, fmtTime(i.duration) + (i.model ? ' · ' + i.model : '') + (i.seed != null ? ' · seed ' + i.seed : '') + (i.keeper ? ' · ★' : ''))),
-      this._mediaEl(base + i.url, i.kind === 'video' ? 'video' : 'audio'));
+        h('span', { style: css.muted }, [fmtTime(i.duration), i.worker || i.model, i.operation, i.seed != null ? 'seed ' + i.seed : null,
+          i.created_at ? new Date(i.created_at).toLocaleString() : null, i.reference_used ? 'from reference audio' : null].filter(Boolean).join(' · '))),
+      this._mediaEl(base + i.url, i.kind === 'video' ? 'video' : 'audio'),
+      h('div', { style: css.row }, btn(i.keeper ? '★ Keeper' : '☆ Keeper', () => this.toggleMediaKeeper(i.artifact_id, !i.keeper), '#fbbf24'),
+        h('a', { href: base + i.url, download: i.artifact_id, style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 4px' } }, 'Download')));
   };
   P.buildMediaLibraryPanel = function () {
     const m = this._mws(), lib = m.lib;
@@ -263,6 +352,8 @@
     _mount.call(this);
     this._resTimer = setInterval(() => this._pollResources(), 3000);
     this.loadWorkers();
+    // Reattach to voice/music jobs that were running when the page reloaded.
+    try { const k = JSON.parse(localStorage.getItem(MEDIA_JOBS_KEY) || '{}'); for (const [kind, id] of Object.entries(k)) if (id) this._followMediaJob(kind, id); } catch (_) {}
   };
   const _unmount = P.componentWillUnmount;
   P.componentWillUnmount = function () { clearInterval(this._resTimer); _unmount.call(this); };
