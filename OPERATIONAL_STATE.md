@@ -191,3 +191,4 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 - The Mac launcher is now `/Applications/DexDiffusion.app` with the Dexter icon and a single Dock tile. Legacy launchers are archived.
 - Fresh wrapper generation proof (VER-019). Tests 37 → 43.
 - GitHub baseline: this revision is published in the commit whose subject is "Operationalize DexDiffusion workflow, docs, and Mac launcher" (SHA recorded in the follow-up note below after push).
+- Published: `336707b628f2d15b82815c62239e6e1435ce5f63` on `westkitty/Image_Gen` `main` (remote SHA verified equal to local HEAD, 2026-09-25).
