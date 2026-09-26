@@ -5,6 +5,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { controlledScriptFor, buildControlledArgs, nativeBatchEligible } = require('./controlled-args');
 const W = require('./workstation');
+const M = require('./media');
 const { createImageStore } = require('./image-store');
 const { createSystemInfo } = require('./system-info');
 const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime } = require('./capabilities');
@@ -23,6 +24,14 @@ const STATE_DIR = path.join(WORKFLOW_ROOT, 'state');
 const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
 // Lineage + Keepers, keyed by canonical image id (metadata only, never prompts).
 const imageMeta = W.createImageMetaStore(path.join(STATE_DIR, 'image-meta.json'));
+// Media-neutral core (media.js): durable generic jobs, heavy-compute lease,
+// worker registry, non-image media store and secure temporary staging.
+const jobStore = M.createJobStore(path.join(STATE_DIR, 'jobs.json'));
+const mediaStore = M.createMediaStore({ registryFile: path.join(STATE_DIR, 'media-artifacts.json') });
+try { mediaStore.ensureRoots(); } catch (_) {}
+const staging = M.createStaging({ root: path.join(STATE_DIR, 'staging') });
+setInterval(() => { try { staging.sweep(); } catch (_) {} }, 30 * 60 * 1000).unref();
+const HEAVY_ACTIONS = new Set(['controlled-generate', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test']);
 const IMAGE_EDIT_CACHE = path.join(STATE_DIR, 'image-edit-capabilities.json');
 const UPSCALE_CACHE = path.join(STATE_DIR, 'upscale-capabilities.json');
 const MODEL_STAGE_CACHE = path.join(STATE_DIR, 'model-stage-cache.json');
@@ -662,7 +671,26 @@ function imageSourceMap() {
 // Accept a canonical image id as an edit source (the UI never handles run ids).
 // Rewrites body.run_id/init_image_file for the existing validated handlers and
 // returns the source image id for lineage.
+// Imported (staged) image -> temporary PNG working copy in mask-uploads/ (the
+// edit scripts accept that area). Never enters images_made.
+function stagedToWorkingPng(stagedId) {
+  const st = staging.get(stagedId);
+  if (!st || st.kind !== 'image') return { error: 'Imported source not found or expired.' };
+  const out = path.join(MASK_UPLOADS_DIR, `import-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.png`);
+  try {
+    execFileSync('python3', ['-c', 'import sys\nfrom PIL import Image\nim=Image.open(sys.argv[1]); im.load(); im.convert("RGB").save(sys.argv[2])\nprint(im.size[0], im.size[1])', st.path, out], { timeout: 30000 });
+  } catch (_) { try { fs.unlinkSync(out); } catch (__) {} return { error: 'reference-invalid: imported image could not be decoded' }; }
+  return { path: out, dims: pngSize(out) };
+}
+
 function resolveImageSource(body) {
+  if (typeof body.staged_id === 'string' && body.staged_id) {
+    const w = stagedToWorkingPng(body.staged_id);
+    if (w.error) return { error: w.error };
+    body.__initPath = w.path;
+    if (w.dims && (body.width === undefined || body.width === '' || body.width === null)) { body.width = w.dims.width; body.height = w.dims.height; }
+    return { imageId: null, staged: true, path: w.path, dims: w.dims, temp: w.path };
+  }
   if (typeof body.image_id === 'string' && body.image_id) {
     const img = imageStore.resolveImage(body.image_id);
     if (!img) return { error: 'Source image not found in the canonical image store.' };
@@ -798,6 +826,7 @@ async function refreshAssets() {
 refreshAssets().catch(() => {});
 setInterval(() => refreshAssets().catch(() => {}), 5 * 60 * 1000).unref();
 function recordJobEvidence(job) {
+  try { syncGenericTerminal(job); } catch (err) { job.stderr += `\ngeneric-job: ${err.message}`; }
   try {
     const tid = job.controlledTarget || (job.requestParams && job.requestParams.target);
     const spec = tid && CONTROLLED_TARGET_BY_ID[tid];
@@ -824,7 +853,62 @@ function createJob(action, summary, requestParams = {}) {
     runId: null,
     progress: null
   };
+  try {
+    const tid = requestParams && requestParams.target;
+    const spec = tid && CONTROLLED_TARGET_BY_ID[tid];
+    jobStore.create({
+      job_id: id, media_kind: 'image', operation: action,
+      worker_id: action === 'upscale' ? 'local' : (spec && spec.backend === 'mflux') ? 'mflux' : 'sdcpp',
+      model_id: tid || null, resource_class: HEAVY_ACTIONS.has(action) ? 'heavy' : 'light',
+      params: requestParams, persist_text: !!(requestParams && requestParams.save_prompts),
+    });
+  } catch (_) {}
   return id;
+}
+
+// ---- Heavy-compute lease (server-enforced) ----------------------------------
+// Heavy Big Mac jobs wait (status 'queued') until they own the lease; it is
+// released when the job reaches any terminal state (see recordJobEvidence and
+// the sweep below, which also covers failure paths).
+const arbiter = M.createResourceArbiter({
+  externalProbe: () => new Promise(resolve => {
+    require('child_process').execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=6', SSH_TARGET_NAME, 'ollama ps 2>/dev/null; printf "\nPROBE_DONE\n"'],
+      { timeout: 12000, encoding: 'utf8' }, (err, out) => resolve(String(out || '').includes('PROBE_DONE') ? M.parseOllamaPs(out.split('PROBE_DONE')[0]) : { occupied: false, detail: null }));
+  }),
+});
+setInterval(() => { arbiter.refreshExternal().catch(() => {}); }, 60 * 1000).unref();
+setInterval(() => {
+  const st = arbiter.state();
+  if (st.owner && (!jobs[st.owner.job_id] || !['queued', 'running'].includes(jobs[st.owner.job_id].status))) arbiter.release(st.owner.job_id);
+}, 5000).unref();
+function leaseLabel(job) {
+  const t = job.requestParams && job.requestParams.target;
+  return (t ? t + ' ' : '') + job.commandAction;
+}
+// Run `start` now for light jobs, or once the heavy lease is granted.
+function withLease(jobId, start) {
+  const job = jobs[jobId];
+  if (!job || !HEAVY_ACTIONS.has(job.commandAction)) { start(); return; }
+  if (arbiter.holds(jobId)) { start(); return; }
+  job.waitingForLease = true;
+  arbiter.acquire(jobId, leaseLabel(job)).then(r => {
+    job.waitingForLease = false;
+    if (!r.granted || job.status !== 'queued') return;
+    jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+    start();
+  });
+}
+function syncGenericTerminal(job) {
+  const map = { PASS: 'COMPLETE', PARTIAL: 'COMPLETE', FAIL: 'FAILED', CANCELLED: 'CANCELLED' };
+  const st = map[job.status];
+  if (!st) return;
+  const g = jobStore.get(job.id);
+  if (g && g.status === 'QUEUED') jobStore.transition(job.id, 'RUNNING');
+  jobStore.transition(job.id, st, {
+    artifacts: (job.results || []).filter(r => r.imageId).map(r => r.imageId).concat(job.controlledOutputImageUrl && !(job.results || []).length ? [decodeURIComponent(job.controlledOutputImageUrl.split('/').pop())] : []),
+    first_failed_gate: job.firstFailedGate || null, error: st === 'FAILED' ? `failed at gate ${job.firstFailedGate || 'unknown'}` : null,
+  });
+  arbiter.release(job.id);
 }
 
 function estimateControlledRunSeconds(params) {
@@ -901,8 +985,12 @@ function markJobTimedOut(job, child, timeoutMs, label) {
 }
 
 function runAction(jobId, scriptPath, args, savePrompts = false) {
+  withLease(jobId, () => runActionNow(jobId, scriptPath, args, savePrompts));
+}
+function runActionNow(jobId, scriptPath, args, savePrompts = false) {
   const job = jobs[jobId];
   job.status = 'running';
+  if (jobStore.get(jobId) && jobStore.get(jobId).status === 'QUEUED') jobStore.transition(jobId, 'RUNNING');
   const env = { ...process.env, SDCPP_REDACT_PROMPTS: savePrompts ? '0' : '1' };
   const child = spawn(scriptPath, args, { cwd: WORKFLOW_ROOT, shell: false, env, detached: true });
   const sensitives = jobSensitives[jobId] || [];
@@ -985,8 +1073,12 @@ function runGateFrom(combined, runStdout) {
 // otherwise, or if the native command cannot be built, runs are sequential.
 // The legacy single-image job fields keep pointing at the latest output.
 function runControlledSequential(jobId, spec, params, quantity, opts = {}) {
+  withLease(jobId, () => runControlledSequentialNow(jobId, spec, params, quantity, opts));
+}
+function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
   const job = jobs[jobId];
   job.status = 'running';
+  if (jobStore.get(jobId) && jobStore.get(jobId).status === 'QUEUED') jobStore.transition(jobId, 'RUNNING');
   job.results = job.results || [];
   const env = { ...process.env, SDCPP_REDACT_PROMPTS: params.save_prompts ? '0' : '1' };
   const sensitives = jobSensitives[jobId] || [];
@@ -2548,6 +2640,7 @@ app.post('/api/actions/img2img', (req, res) => {
   const body = { ...(req.body || {}) };
   const srcInfo = resolveImageSource(body);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
+  if (srcInfo.staged) { body.run_id = '20000101-000000-import'; body.init_image_file = 'import.png'; }
 
   const runId = typeof body.run_id === 'string' ? body.run_id.trim() : '';
   const initImageFile = typeof body.init_image_file === 'string' ? body.init_image_file.trim() : '';
@@ -2570,6 +2663,7 @@ app.post('/api/actions/img2img', (req, res) => {
   if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
     return res.status(403).json({ error: 'Init image path resolves outside runs directory' });
   }
+  if (body.__initPath) initImgPath = body.__initPath;
   if (!fs.existsSync(initImgPath)) initImgPath = resolveRunImageForRead(runId, initImageFile) || initImgPath;
   if (!fs.existsSync(initImgPath)) {
     return res.status(404).json({ error: `Init image not found: ${runId}/${initImageFile}` });
@@ -2616,7 +2710,7 @@ app.post('/api/actions/img2img', (req, res) => {
   jobSensitives[jobId] = sensitives;
   jobs[jobId].sourceImageId = srcInfo.imageId || null;
   jobs[jobId].lineageOp = 'img2img';
-  if (prepPath) jobs[jobId].tempFiles = [prepPath];
+  jobs[jobId].tempFiles = [prepPath, srcInfo.temp].filter(Boolean);
   runAction(jobId, 'bin/sdcpp-img2img.sh', args, params.save_prompts);
 
   res.json({ job_id: jobId, status: jobs[jobId].status });
@@ -2637,6 +2731,7 @@ app.post('/api/actions/inpaint', (req, res) => {
   const body = { ...(req.body || {}) };
   const srcInfo = resolveImageSource(body);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
+  if (srcInfo.staged) { body.run_id = '20000101-000000-import'; body.init_image_file = 'import.png'; }
 
   const runId = typeof body.run_id === 'string' ? body.run_id.trim() : '';
   const initImageFile = typeof body.init_image_file === 'string' ? body.init_image_file.trim() : '';
@@ -2661,6 +2756,7 @@ app.post('/api/actions/inpaint', (req, res) => {
   if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
     return res.status(403).json({ error: 'Init image path resolves outside runs directory' });
   }
+  if (body.__initPath) initImgPath = body.__initPath;
   if (!fs.existsSync(initImgPath)) initImgPath = resolveRunImageForRead(runId, initImageFile) || initImgPath;
   if (!fs.existsSync(initImgPath)) {
     return res.status(404).json({ error: `Init image not found: ${runId}/${initImageFile}` });
@@ -2758,7 +2854,7 @@ app.post('/api/actions/inpaint', (req, res) => {
   jobSensitives[jobId] = sensitives;
   jobs[jobId].sourceImageId = srcInfo.imageId || null;
   jobs[jobId].lineageOp = 'inpaint';
-  jobs[jobId].tempFiles = [maskPath];
+  jobs[jobId].tempFiles = [maskPath, srcInfo.temp].filter(Boolean);
   jobs[jobId].outpaintComposite = { src: initImgPath, mask: maskPath, left: 0, top: 0, blur: 4, fit: true };
   runAction(jobId, 'bin/sdcpp-inpaint.sh', args, params.save_prompts);
 
@@ -2801,6 +2897,7 @@ app.post('/api/actions/upscale-esrgan', (req, res) => {
   if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
     return res.status(403).json({ error: 'Init image path resolves outside runs directory' });
   }
+  if (body.__initPath) initImgPath = body.__initPath;
   if (!fs.existsSync(initImgPath)) initImgPath = resolveRunImageForRead(runId, initImageFile) || initImgPath;
   if (!fs.existsSync(initImgPath)) {
     return res.status(404).json({ error: `Init image not found: ${runId}/${initImageFile}` });
@@ -2943,8 +3040,10 @@ function planOutpaint(dims, ext) {
 app.post('/api/actions/outpaint', (req, res) => {
   if (!inpaintSupported) return res.status(409).json({ error: 'Outpaint needs the inpaint backend, which is not available.', gate: 'inpaint' });
   const body = { ...(req.body || {}) };
-  if (!body.image_id) return res.status(400).json({ error: 'image_id is required' });
-  const src = resolveImageSource({ image_id: body.image_id });
+  if (!body.image_id && !body.staged_id) return res.status(400).json({ error: 'image_id or staged_id is required' });
+  const src = resolveImageSource(body.staged_id ? { staged_id: body.staged_id } : { image_id: body.image_id });
+  // Extension Prompt: describes only the NEW area; used instead of the main prompt when given.
+  if (typeof body.extension_prompt === 'string' && body.extension_prompt.trim()) body.prompt = body.extension_prompt.trim();
   if (src.error) return res.status(404).json({ error: src.error, gate: 'source' });
   if (!src.dims) return res.status(400).json({ error: 'Outpaint source must be a PNG image.' });
   const plan = planOutpaint(src.dims, body);
@@ -2976,7 +3075,7 @@ app.post('/api/actions/outpaint', (req, res) => {
   const summary = getRedactedCommandSummary('bin/sdcpp-inpaint.sh', args, sensitives) + ` (outpaint L${plan.left} R${plan.right} T${plan.top} B${plan.bottom})`;
   const jobId = createJob('outpaint', summary, sanitizeRequestParams({ ...params, image_id: body.image_id, strength, extend: { left: plan.left, right: plan.right, top: plan.top, bottom: plan.bottom } }, params.save_prompts));
   jobSensitives[jobId] = sensitives;
-  Object.assign(jobs[jobId], { sourceImageId: body.image_id, lineageOp: 'outpaint', tempFiles: [prepPath, maskPath], outpaintComposite: { src: src.path, mask: maskPath, left: plan.left, top: plan.top } });
+  Object.assign(jobs[jobId], { sourceImageId: body.image_id || null, lineageOp: 'outpaint', tempFiles: [prepPath, maskPath, src.temp].filter(Boolean), outpaintComposite: { src: src.path, mask: maskPath, left: plan.left, top: plan.top } });
   runAction(jobId, 'bin/sdcpp-inpaint.sh', args, params.save_prompts);
   res.json({ job_id: jobId, status: jobs[jobId].status, canvas: { width: plan.width, height: plan.height }, extend: { left: plan.left, right: plan.right, top: plan.top, bottom: plan.bottom } });
 });
@@ -3006,12 +3105,25 @@ app.post('/api/images/:id/keeper', (req, res) => {
   const keeper = imageMeta.setKeeper(req.params.id, !!(req.body && req.body.keeper));
   res.json({ id: req.params.id, keeper });
 });
+// Metadata-only flag for known test/regression artifacts: the file is never
+// moved, copied or deleted; flagged images are hidden from default Library views.
+app.post('/api/images/:id/test-artifact', (req, res) => {
+  if (!imageStore.resolveImage(req.params.id)) return res.status(404).json({ error: 'Image not found' });
+  const on = !!(req.body && req.body.test_artifact);
+  const note = on ? String((req.body && req.body.note) || 'test artifact').slice(0, 200) : '';
+  const cur = imageMeta.get(req.params.id) || {};
+  imageMeta.record(req.params.id, { test_artifact: on ? true : undefined, note: note || undefined });
+  if (!on && cur.test_artifact) { const all = imageMeta.all(); delete all[req.params.id].test_artifact; delete all[req.params.id].note; imageMeta.record(req.params.id, {}); }
+  res.json({ id: req.params.id, test_artifact: on, note });
+});
 app.get('/api/library/images', (req, res) => {
   const filter = String(req.query.filter || 'all');
   const all = imageMeta.all();
   // "All" also covers legacy images that only have a run record (no lineage yet).
   const pool = filter === 'all' ? [...new Set([...Object.keys(all), ...imageSourceMap().keys()])] : Object.keys(all);
   let ids = pool.filter(id => imageStore.resolveImage(id));
+  // Known test/regression artifacts stay on disk but are hidden unless asked for.
+  if (req.query.show_test !== '1') ids = ids.filter(id => !(all[id] && all[id].test_artifact));
   if (filter === 'keepers') ids = ids.filter(id => all[id].keeper);
   else if (filter !== 'all') ids = ids.filter(id => all[id].operation === filter || all[id].target === filter);
   // Canonical ids start with the run timestamp, so id order is creation order.
@@ -3122,6 +3234,98 @@ app.post('/api/queues/:id/items/:qi/:action', (req, res) => {
   res.json(v);
 });
 
+// ---- Secure staging: temporary source/reference imports ----------------------
+// Raw body upload; type decided by magic bytes, never by name or client path.
+app.post('/api/staging', express.raw({ type: () => true, limit: '41mb' }), (req, res) => {
+  const accept = String(req.query.accept || 'image,audio').split(',').filter(k => k === 'image' || k === 'audio');
+  const r = staging.stage(req.body, { accept });
+  if (r.error) return res.status(400).json({ error: r.error, gate: 'reference-invalid' });
+  const { path: _p, file: _f, ...pub } = r;
+  res.json({ ...pub, url: '/api/staging/' + r.id });
+});
+app.get('/api/staging/:id', (req, res) => {
+  const st = staging.get(req.params.id);
+  if (!st) return res.status(404).json({ error: 'Not found' });
+  res.set('Cache-Control', 'no-store');
+  res.type(st.mime).sendFile(st.path);
+});
+app.delete('/api/staging/:id', (req, res) => res.json({ removed: staging.remove(req.params.id) }));
+
+// ---- Canonical media (artifact-id lookup only) ---------------------------------
+app.get('/api/media/:id', (req, res) => {
+  const id = req.params.id;
+  const img = imageStore.resolveImage(id);
+  if (img) return res.type(img.contentType).sendFile(img.path);
+  const rec = mediaStore.resolve(id);
+  if (!rec) return res.status(404).json({ error: 'Not found' });
+  res.type(rec.mime).sendFile(rec.path);
+});
+
+// ---- Unified Media Library ---------------------------------------------------------
+// Images come from the canonical image store (+ lineage/keeper metadata);
+// voice/music/video from the generic media registry. No duplicate image records.
+app.get('/api/library', (req, res) => {
+  const kind = String(req.query.kind || 'all');
+  const showTest = req.query.show_test === '1';
+  const meta = imageMeta.all();
+  let items = [];
+  if (kind === 'all' || kind === 'image' || kind === 'keepers') {
+    const ids = [...new Set([...Object.keys(meta), ...imageSourceMap().keys()])].filter(id => imageStore.resolveImage(id))
+      .filter(id => showTest || !(meta[id] && meta[id].test_artifact))
+      .filter(id => kind !== 'keepers' || (meta[id] && meta[id].keeper));
+    ids.sort((a, b) => b.localeCompare(a));
+    items = ids.slice(0, 200).map(id => ({ artifact_id: id, kind: 'image', url: imageStore.imageUrl(id), keeper: !!(meta[id] && meta[id].keeper),
+      operation: meta[id] && meta[id].operation, model: meta[id] && meta[id].target, seed: meta[id] && meta[id].seed, parent: meta[id] && meta[id].parent,
+      width: meta[id] && meta[id].width, height: meta[id] && meta[id].height, test_artifact: !!(meta[id] && meta[id].test_artifact) }));
+  }
+  if (kind !== 'image') {
+    const recs = mediaStore.list(kind === 'all' || kind === 'keepers' ? null : kind).filter(r => kind !== 'keepers' || r.keeper);
+    items = items.concat(recs.map(r => ({ artifact_id: r.artifact_id, kind: r.kind, url: r.safe_url, mime: r.mime, duration: r.duration, keeper: r.keeper, model: r.model, seed: r.seed, worker: r.worker, bytes: r.bytes })));
+  }
+  const counts = { image: imageSourceMap().size, voice: mediaStore.list('voice').length, music: mediaStore.list('music').length, video: mediaStore.list('video').length };
+  res.json({ kind, total: items.length, counts, items });
+});
+
+// ---- Workers / resources / generic jobs ----------------------------------------------
+const workerRegistry = M.createWorkerRegistry({
+  imageAdapters: {
+    mflux: {
+      probe: a => ({ architecture_available: true, runtime_available: a.mfluxRuntime !== false, model_available: a.mfluxModel !== false, enabled: true, proven: true, state: a.mfluxRuntime === false || a.mfluxModel === false ? 'MODEL/RUNTIME MISSING' : 'PROVEN' }),
+      capabilities: () => ({ generate: true, cancel_supported: false, cancel_reason: 'Tailscale SSH does not reliably propagate termination to the remote MFLUX process; not proven safe.' }),
+    },
+    sdcpp: {
+      probe: a => ({ architecture_available: true, runtime_available: a.sdCli !== false, model_available: a.sd15Model !== false, enabled: true, proven: true, state: a.sdCli === false ? 'RUNTIME MISSING' : 'PROVEN' }),
+      capabilities: () => ({ generate: true, img2img: true, inpaint: true, outpaint: true, hiresRefine: true, nativeBatch: true, controlNet: false, controlNet_state: 'ENGINE SUPPORTED — MODEL ASSET MISSING', cancel_supported: false, cancel_reason: 'Remote sd-cli termination via Tailscale SSH not proven safe; use Stop After Current.' }),
+    },
+  },
+});
+function workerAssets() {
+  const a = assetCache || {};
+  return { ...a, ...(a.dormant || {}) };
+}
+app.get('/api/workers', (req, res) => res.json({ workers: workerRegistry.describe(workerAssets()) }));
+app.get('/api/resources', (req, res) => res.json(arbiter.state()));
+app.get('/api/generic-jobs', (req, res) => res.json({ jobs: jobStore.list({ media_kind: req.query.kind || undefined, status: req.query.status || undefined, limit: 100 }) }));
+
+// Voice / Music / Video generation: capability-gated BEFORE any lease is taken.
+// Dormant workers fail immediately and truthfully; nothing is installed or downloaded.
+app.post('/api/media/generate', (req, res) => {
+  const body = req.body || {};
+  const kind = String(body.media_kind || '');
+  const w = workerRegistry.get(String(body.worker || ''));
+  if (!['voice', 'music', 'video'].includes(kind)) return res.status(400).json({ error: 'media_kind must be voice, music or video', gate: 'worker-unavailable' });
+  if (!w || w.media_kind !== kind) return res.status(400).json({ error: 'Unknown worker for ' + kind, gate: 'worker-unavailable' });
+  const probe = w.probe(workerAssets());
+  const job = jobStore.create({ media_kind: kind, operation: String(body.operation || 'generate').slice(0, 40), worker_id: w.id, resource_class: 'heavy', params: body, persist_text: body.save_prompts === true });
+  const gate = !probe.runtime_available ? 'runtime-missing' : !probe.model_available ? 'model-missing' : 'worker-unavailable';
+  if (!probe.enabled) {
+    jobStore.transition(job.job_id, 'FAILED', { first_failed_gate: gate, error: `${w.label}: runtime/model not installed` });
+    return res.status(409).json({ error: 'Runtime/model not installed', gate, worker: w.id, job_id: job.job_id, state: probe.state });
+  }
+  jobStore.transition(job.job_id, 'FAILED', { first_failed_gate: 'worker-unavailable', error: 'no execution bridge for this worker yet' });
+  res.status(409).json({ error: 'Worker has no execution bridge yet', gate: 'worker-unavailable', job_id: job.job_id });
+});
+
 // ---- Active jobs (reload recovery) ------------------------------------------
 app.get('/api/jobs', (req, res) => {
   const active = Object.values(jobs).filter(j => j.status === 'queued' || j.status === 'running');
@@ -3189,13 +3393,37 @@ app.get('/api/doctor', async (req, res) => {
       add('DexDiffusion Funnel absent', ts.funnel ? 'FAIL' : 'PASS', ts.funnel ? 'Funnel is ENABLED for DexDiffusion' : 'tailnet-only');
     }
   } catch (_) { add('Tailscale Serve', 'WARN', 'probe failed'); }
+  // Media-neutral workstation checks (read-only).
+  try { const n = jobStore.list({ limit: 100000 }).length; add('Generic job store', 'PASS', `${n} durable job records (${path.basename(jobStore.file)})`); }
+  catch (_) { add('Generic job store', 'FAIL', 'unreadable'); }
+  for (const k of M.MEDIA_KINDS) {
+    const root = mediaStore.roots[k];
+    try { fs.accessSync(root, fs.constants.W_OK); add(`Media root · ${k}`, 'PASS', root); } catch (_) { add(`Media root · ${k}`, k === 'video' ? 'WARN' : 'FAIL', root + ' not writable'); }
+  }
+  try { const st = staging.stats(); fs.accessSync(st.root, fs.constants.W_OK); add('Reference staging', 'PASS', `${st.files} staged file(s), 24 h expiry`); } catch (_) { add('Reference staging', 'FAIL', 'staging dir not writable'); }
+  const rs = arbiter.state();
+  add('Heavy-compute lease', 'PASS', `${rs.group} capacity ${rs.capacity}; owner ${rs.owner ? rs.owner.label : 'none'}; waiting ${rs.waiting.length}`);
+  add('External heavy load (Big Mac)', rs.external.occupied ? 'WARN' : 'PASS', rs.external.occupied ? rs.external.detail : (rs.external.checkedAt ? 'none detected (ollama ps)' : 'not yet checked'));
+  for (const w of workerRegistry.describe(workerAssets())) {
+    if (w.dormant) add(`Worker · ${w.label} (${w.media_kind})`, 'WARN', `${w.state}; enabled ${w.enabled}; proven ${w.proven} — NOT INSTALLED is expected`);
+    else add(`Worker · ${w.label}`, w.runtime_available && w.model_available ? 'PASS' : 'FAIL', w.state);
+  }
+  add('Unified Media Library', 'PASS', `images ${imageSourceMap().size}, voice ${mediaStore.list('voice').length}, music ${mediaStore.list('music').length}, video ${mediaStore.list('video').length}`);
   const worst = rows.some(r => r.state === 'FAIL') ? 'FAIL' : rows.some(r => r.state === 'WARN') ? 'WARN' : 'PASS';
   res.json({ overall: worst, checkedAt: new Date().toISOString(), rows });
 });
 
 app.get('/api/jobs/:jobId', (req, res) => {
   const job = jobs[req.params.jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (!job) {
+    // After a console restart the in-memory job is gone; the durable generic record tells the truth.
+    const g = jobStore.get(req.params.jobId);
+    if (!g) return res.status(404).json({ error: 'Job not found' });
+    const legacy = { COMPLETE: 'PASS', FAILED: 'FAIL', INTERRUPTED: 'INTERRUPTED', CANCELLED: 'CANCELLED' }[g.status] || g.status.toLowerCase();
+    return res.json({ id: g.job_id, commandAction: g.operation, status: legacy, generic: g, firstFailedGate: g.first_failed_gate,
+      results: g.artifacts.map((a, i) => ({ index: i, status: 'DONE', imageId: a, imageUrl: g.media_kind === 'image' ? imageStore.imageUrl(a) : '/api/media/' + encodeURIComponent(a) })),
+      restored: true });
+  }
   res.json({
     id: job.id,
     commandAction: job.commandAction,
@@ -3226,7 +3454,9 @@ app.get('/api/jobs/:jobId', (req, res) => {
     nativeBatch: !!job.nativeBatch,
     nativeFallback: !!job.nativeFallback,
     sourceImageId: job.sourceImageId || null,
-    progressEstimated: job.commandAction === 'controlled-generate'
+    progressEstimated: job.commandAction === 'controlled-generate',
+    resource: job.status === 'queued' && job.waitingForLease ? { waiting: true, position: arbiter.position(job.id), blocked_reason: arbiter.state().blocked_reason } : null,
+    generic: jobStore.get(job.id)
   });
 });
 app.get('/api/jobs/:jobId/log', (req, res) => {

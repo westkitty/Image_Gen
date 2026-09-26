@@ -290,6 +290,16 @@ Shown in **System → Truth status**, `GET /api/system-info` (`capabilities`), a
 - **Recipes** store settings only unless prompt saving is on.
 - **ControlNet:** the engine supports it, but no SD1.5 ControlNet model is installed, so the UI does not offer it.
 
+## Media workstation (rev 9)
+
+- **Screens:** Create (images), Voice, Music, Video, Library, Batch, Edit, Enhance, Models, System.
+- **Workers** (`GET /api/workers`): MFLUX and SDCPP are proven. Qwen3-TTS (voice), ACE-Step (music) and LTX (video) are *architecture ready, runtime missing*; their Generate buttons stay disabled. Nothing is downloaded from the UI.
+- **Big Mac heavy compute** is one lease (`GET /api/resources`). A second heavy job waits ("Waiting for Big Mac — …"), and a large Ollama model loaded on Big Mac also blocks it (read-only check).
+- **Jobs** are durable (`sdcpp-workflow/state/jobs.json`). After a console restart, finished jobs keep their results. In-flight jobs show INTERRUPTED and are not re-run; re-enter the text to retry when prompt saving was off.
+- **Imports:** Edit and Voice/Music references accept file, drag/drop or paste. They are staged for 24 h in `sdcpp-workflow/state/staging/` and never become canonical media.
+- **Canonical roots:** images `/Users/andrew/images_made`, voice `/Users/andrew/audio_made/voice`, music `/Users/andrew/audio_made/music`, video `/Users/andrew/video_made`. Served only by id: `/api/images/:id`, `/api/media/:id`.
+- **Activating a future worker:** install the runtime and model at the paths shown under *Activation path*, add its execution bridge, prove one real generation, then enable it.
+
 ## Protected invariants (do not change)
 
 - The node backend stays bound to **127.0.0.1:31337**. Never `0.0.0.0`, never LAN.

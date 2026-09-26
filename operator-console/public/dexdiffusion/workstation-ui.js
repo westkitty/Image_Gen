@@ -343,7 +343,8 @@
   };
   P._ensureEditSource = async function () {
     const ws = this._ws();
-    if (ws.editSourceId && (!ws.editSource || ws.editSource.id !== ws.editSourceId)) {
+    if (ws.editSourceId && String(ws.editSourceId).startsWith('staged:') && !ws.editSource) this.wsSet({ editSourceId: null, editOriginalId: null });
+    else if (ws.editSourceId && (!ws.editSource || ws.editSource.id !== ws.editSourceId)) {
       const m = await this._imageMeta(ws.editSourceId);
       if (m) { this.wsSet({ editSource: m }); this._resetMaskFor(m); } else this.wsSet({ editSourceId: null, editSource: null });
     }
@@ -356,6 +357,24 @@
   P._randomSeedIfUnset = function (v) {
     const n = parseInt(v, 10);
     return Number.isInteger(n) && n >= 0 ? n : Math.floor(Math.random() * 2000000000) + 1;
+  };
+  // Edit source reference: canonical image id, or a staged (imported) temporary source.
+  P._srcRef = function () {
+    const ws = this._ws();
+    return ws.editSource && ws.editSource.staged ? { staged_id: ws.editSource.stagedId } : { image_id: ws.editSourceId };
+  };
+  // Import an image file as a temporary edit source (secure staging; never canonical).
+  P.importEditSource = async function (file) {
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) { this.toast('Image too large (25 MB max)', '#ef4444'); return; }
+    const r = await fetch(this.state.backendUrl + '/api/staging?accept=image', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+    const d = await r.json().catch(() => ({ error: r.statusText }));
+    if (!r.ok) { this.toast(d.error || 'Import rejected', '#ef4444'); return; }
+    const src = { id: d.id, stagedId: d.id, staged: true, url: d.url, width: d.width, height: d.height, meta: { operation: 'imported (temporary)' }, keeper: false, parent: null };
+    this.wsSet({ editSourceId: 'staged:' + d.id, editSource: src, editOriginalId: 'staged:' + d.id });
+    this._resetMaskFor(src);
+    this.setScreen('edit');
+    this.toast('Imported ' + d.width + '×' + d.height + ' as a temporary source', '#a78bfa');
   };
   P._editCommon = function () {
     const s = this.state;
@@ -390,7 +409,7 @@
   P.onImg2imgSubmit = async function () {
     const ws = this._ws();
     if (!ws.editSourceId) return _origImg2img.call(this);
-    const body = Object.assign({ image_id: ws.editSourceId, strength: +this.state.i2iDenoise }, this._editCommon());
+    const body = Object.assign(this._srcRef(), { strength: +this.state.i2iDenoise }, this._editCommon());
     if (ws.prep && ws.prep !== 'none') body.source_prep = ws.prep;
     const r = await this._runEditJob('/api/actions/img2img', body, 'img2img');
     if (r && !r.ok) this.toast(r.data.error || 'img2img rejected', '#ef4444');
@@ -479,7 +498,7 @@
     const v = D.maskVerdict(this._maskAlpha());
     if (v.kind === 'blank') { this.toast(v.message, '#fbbf24'); return; }
     if (v.kind === 'full' && !confirmed && !window.confirm(v.message + '\n\nContinue anyway?')) return;
-    const body = Object.assign({ image_id: ws.editSourceId, mask_data: this._maskDataUrl(), strength: +this.state.inpStrength, confirm_full_mask: v.kind === 'full' }, this._editCommon());
+    const body = Object.assign(this._srcRef(), { mask_data: this._maskDataUrl(), strength: +this.state.inpStrength, confirm_full_mask: v.kind === 'full' }, this._editCommon());
     const r = await this._runEditJob('/api/actions/inpaint', body, 'inpaint');
     if (r && !r.ok) {
       if (r.data.needs_confirmation && window.confirm(r.data.error + '\n\nContinue anyway?')) return this.onInpaintSubmit(true);
@@ -490,7 +509,9 @@
     const ws = this._ws();
     if (!ws.editSourceId) { this.toast('Choose a source image first', '#fbbf24'); return; }
     const o = ws.out;
-    const body = Object.assign({ image_id: ws.editSourceId, left: +o.left || 0, right: +o.right || 0, top: +o.top || 0, bottom: +o.bottom || 0, strength: +o.strength }, this._editCommon());
+    const body = Object.assign(this._srcRef(), { left: +o.left || 0, right: +o.right || 0, top: +o.top || 0, bottom: +o.bottom || 0, strength: +o.strength }, this._editCommon());
+    // Extension Prompt: in memory only; sent per request, never stored in the session.
+    if (String(this._extPrompt || '').trim()) body.extension_prompt = String(this._extPrompt).trim();
     const r = await this._runEditJob('/api/actions/outpaint', body, 'outpaint');
     if (r && !r.ok) this.toast(r.data.error || 'Outpaint rejected', '#ef4444');
   };
@@ -508,8 +529,22 @@
   };
   P.buildEditSourceCard = function () {
     const ws = this._ws(), src = ws.editSource, base = this.state.backendUrl;
-    const panel = body => h('div', { style: Object.assign({}, css.panel, { maxWidth: 760 }) }, h('div', { style: Object.assign({}, css.title, { marginBottom: 8 }) }, 'Source image'), body);
-    if (!src) return panel(h('div', { style: css.muted }, 'Choose Img2Img, Inpaint or Outpaint on any result or Library image; it appears here as the source. Legacy runs can still be picked under Advanced Source Selection below.'));
+    const panel = (...body) => h('div', { style: Object.assign({}, css.panel, { maxWidth: 760 }) }, h('div', { style: Object.assign({}, css.title, { marginBottom: 8 }) }, 'Source image'), ...body);
+    const importer = h('div', { style: Object.assign({}, css.row, { marginTop: 8 }) },
+      h('label', { style: { border: '1px dashed rgba(167,139,250,.5)', color: '#c4b5fd', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', fontSize: 12, fontWeight: 700 },
+        onDragover: e => e.preventDefault(), onDrop: e => { e.preventDefault(); this.importEditSource(e.dataTransfer.files[0]); } },
+        'Import image (PNG/JPEG/WebP) — click, drop or paste',
+        h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', style: { display: 'none' }, onChange: e => this.importEditSource(e.target.files[0]) })),
+      h('span', { style: css.muted }, 'Imports are temporary source material (24 h) and never enter images_made.'));
+    if (!this._pasteBound) {
+      this._pasteBound = true;
+      window.addEventListener('paste', e => {
+        if (this.state.screens[this.state.version] !== 'edit') return;
+        const f = [...((e.clipboardData && e.clipboardData.files) || [])].find(x => /^image\//.test(x.type));
+        if (f) { e.preventDefault(); this.importEditSource(f); }
+      });
+    }
+    if (!src) return panel(h('div', null, h('div', { style: css.muted }, 'Choose Img2Img, Inpaint or Outpaint on any result or Library image; it appears here as the source. Legacy runs can still be picked under Advanced Source Selection below.'), importer));
     return panel(h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(90px,140px) minmax(0,1fr)', gap: 10, alignItems: 'start' } },
       h('img', { src: base + src.url, alt: 'edit source', style: { width: '100%', borderRadius: 7, border: '1px solid rgba(148,163,184,.2)' } }),
       h('div', { style: { display: 'grid', gap: 6 } },
@@ -519,7 +554,8 @@
           ws.editOriginalId && ws.editOriginalId !== src.id ? btn('Return to Original', () => this.returnToOriginal(), '#94a3b8') : null,
           src.parent ? btn('View Parent', () => this.useAsNewSource(src.parent), '#94a3b8') : null,
           btn('Open', () => window.open(base + src.url, '_blank'), '#94a3b8'),
-          btn('Clear source', () => this.wsSet({ editSourceId: null, editSource: null, editOriginalId: null }), '#94a3b8')))));
+          btn('Clear source', () => { if (src.staged) fetch(base + '/api/staging/' + src.stagedId, { method: 'DELETE' }); this.wsSet({ editSourceId: null, editSource: null, editOriginalId: null }); }, '#94a3b8'))),
+      ), importer);
   };
   P._editBody = function (src, base, s, ws, mi, b, zoomW, strength, panelFor) {
 
@@ -570,6 +606,10 @@
       numInput(o[k], v => this.wsSet({ out: Object.assign({}, o, { [k]: v }) }), { min: '0', max: '512', step: '64' }));
     const outW = src.width + (+o.left || 0) + (+o.right || 0), outH = src.height + (+o.top || 0) + (+o.bottom || 0);
     const outpaint = h('div', { style: { display: 'grid', gap: 8 } },
+      h('label', { style: Object.assign({}, css.label, { marginBottom: 0 }) }, 'Extension Prompt'),
+      h('textarea', { rows: 2, value: this._extPrompt || '', onChange: e => { this._extPrompt = e.target.value; }, placeholder: 'e.g. empty wooden desk and plain gray wall',
+        style: Object.assign({}, css.input, { resize: 'vertical' }) }),
+      h('div', { style: css.muted }, 'Describe what should appear in the NEW area rather than restating the existing subject. Leave empty to use the edit prompt.'),
       h('div', { style: css.row }, side('left', 'Left px'), side('right', 'Right px'), side('top', 'Top px'), side('bottom', 'Bottom px')),
       h('div', { style: css.row },
         btn('+25% right', () => this.wsSet({ out: Object.assign({}, o, { left: 0, right: Math.round(src.width / 4 / 64) * 64 || 64, top: 0, bottom: 0 }) }), '#94a3b8'),

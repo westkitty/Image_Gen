@@ -104,6 +104,13 @@ function targetModelMap(controlledScript, remoteModel, stageRoot = '/Volumes/wc2
   return map;
 }
 
+// Expected install locations for dormant workers (see media.js createWorkerRegistry).
+const DORMANT_PATHS = [
+  ['qwen3-tts:runtime', '$HOME/Library/Caches/DexDiffusion/qwen3-tts/venv'], ['qwen3-tts:model', '$HOME/Library/Caches/DexDiffusion/qwen3-tts/model'],
+  ['ace-step:runtime', '$HOME/Library/Caches/DexDiffusion/ace-step/venv'], ['ace-step:model', '/Volumes/wc2tb/ImageGen/ace-step'],
+  ['ltx-video:runtime', '$HOME/Library/Caches/DexDiffusion/ltx/venv'], ['ltx-video:model', '/Volumes/wc2tb/ImageGen/ltx'],
+];
+
 function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 12000 } = {}) {
   const paths = [...new Set(Object.values(targetModels))];
   const checks = [
@@ -115,6 +122,8 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
     ...paths.map((p, i) => `printf 'model${i}=%s\\n' "$(test -s ${JSON.stringify(p).replace(/^"\$HOME/, '"$HOME')} && echo 1 || echo 0)"`),
     `printf 'identity=%s@%s\\n' "$(whoami)" "$(hostname -s)"`,
     `printf 'wc2tb=%s\\n' "$(test -d /Volumes/wc2tb/ImageGen && echo 1 || echo 0)"`,
+    // Dormant future workers: existence checks only (nothing is installed or started).
+    ...DORMANT_PATHS.map(([k, pth]) => `printf '${k}=%s\\n' "$(test -e "${pth}" && echo 1 || echo 0)"`),
     `printf 'probe=done\\n'`,
   ].join('; ');
   return new Promise(resolve => {
@@ -133,6 +142,7 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
         mfluxRuntime: flag('mfluxRuntime'), mfluxModel: flag('mfluxModel'),
         sdCli: flag('sdCli'), sd15Model: flag('sd15Model'), esrganModel: flag('esrganModel'),
         identity: kv.identity || null, wc2tb: flag('wc2tb'),
+        dormant: Object.fromEntries(DORMANT_PATHS.map(([k]) => [k, flag(k)])),
         models,
       });
     });
