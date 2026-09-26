@@ -46,7 +46,7 @@ class Component extends DCLogic {
     // Inpaint (extends the Edit screen)
     inpStatus: 'idle', inpResult: null, inpMaskData: null, inpStrength: 0.75,
     // Global
-    backendUrl: localStorage.getItem('dex_backend_url') || 'http://127.0.0.1:31337',
+    backendUrl: (() => { try { return DexClient.resolveBackendBase(localStorage.getItem('dex_backend_url')); } catch { return ''; } })(),
     backendOnline: false,
     runs: (() => { try { return JSON.parse(localStorage.getItem('dex_runs') || '[]'); } catch { return []; } })(),
     selectedRunId: '', selectedRunDetail: null, loadingRunDetail: false, runSearch: '',
@@ -272,6 +272,21 @@ class Component extends DCLogic {
     const name = String(file).split('/').pop();
     return this.state.backendUrl + '/api/run-file?path=' + runId + '/' + name;
   }
+  // img2img and inpaint jobs never populate job.controlledOutputImage (that marker
+  // is only printed by sdcpp-controlled-generate.sh) — resolve their output PNG from
+  // the run's own metadata instead, keyed off job.runId which IS always set.
+  async _resolveOutputImage(job) {
+    if (job.controlledOutputImageUrl) return this.state.backendUrl + job.controlledOutputImageUrl;
+    if (job.controlledOutputImage) return this._imgUrl(job.runId, job.controlledOutputImage);
+    if (!job.runId) return null;
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/runs/' + job.runId);
+      if (!r.ok) return null;
+      const data = await r.json();
+      const file = (data.metadata && data.metadata.primary_image) || (data.images && data.images[0]) || null;
+      return this._imgUrl(job.runId, file);
+    } catch { return null; }
+  }
   // Map the sampler dropdown's display label to a backend-accepted sampler id.
   _mapSampler(s) {
     const m = { 'dpm++ 2m': 'dpmpp2m', 'dpm++ sde': 'dpmpp2s_a', 'dpm++ 2s a': 'dpmpp2s_a' };
@@ -286,8 +301,9 @@ class Component extends DCLogic {
         const r = await fetch(this.state.backendUrl + '/api/jobs/' + jobId, { signal: AbortSignal.timeout(3000) });
         if (!r.ok) return;
         const job = await r.json();
-        if (job.progress != null) {
-          const nextProgress = Math.min(99, Math.round(job.progress));
+        const pct = DexClient.jobProgressPercent(job.progress);
+        if (pct != null) {
+          const nextProgress = Math.min(99, pct);
           if (nextProgress !== this.state.progress) this.setState({ progress: nextProgress });
         }
         if (this._jobTerminal(job.status)) {
@@ -361,7 +377,8 @@ class Component extends DCLogic {
   currentParams() {
     const { target, prompt, negPrompt, steps, cfg, seed, width, height, sampler, scheduler, savePrompts, selectedVae, preset } = this.state;
     return { target, prompt, negative_prompt: negPrompt, steps: +steps, cfg_scale: +cfg, seed, width: +width, height: +height,
-      sampler: this._mapSampler(sampler), scheduler, preset, save_prompts: savePrompts, selectedVae };
+      sampler: this._mapSampler(sampler), scheduler, preset, save_prompts: savePrompts,
+      vae: selectedVae === 'default' ? 'auto' : selectedVae, selectedVae };
   }
 
   vaeLabel(value) {
@@ -489,7 +506,7 @@ class Component extends DCLogic {
   // ── Generate (txt2img) ────────────────────────────────────────
   async onGenerate() {
     const { jobStatus, prompt, negPrompt, steps, cfg, seed, width, height,
-            target, backendUrl, savePrompts, sampler, scheduler } = this.state;
+            target, backendUrl, savePrompts, sampler, scheduler, selectedVae } = this.state;
     if (jobStatus === 'generating') {
       clearInterval(this._pollTimer);
       this.setState({ jobStatus: 'idle', progress: 0 });
@@ -503,6 +520,7 @@ class Component extends DCLogic {
       steps: +steps, cfg_scale: +cfg, seed: +seed,
       width: +width, height: +height,
       sampler: this._mapSampler(sampler), scheduler: scheduler || 'discrete',
+      vae: selectedVae === 'default' ? 'auto' : selectedVae,
       save_prompts: savePrompts,
     };
     this.setState({ jobStatus: 'generating', progress: 0, currentImageSrc: null, errorMsg: '', lastGenerationParams: { ...body, preset: this.state.preset || 'balanced', selectedVae: this.state.selectedVae } });
@@ -527,7 +545,7 @@ class Component extends DCLogic {
     if (this._jobOk(job.status)) {
       const runId = job.runId;
       const imgFile = job.controlledOutputImage;
-      const imgSrc = this._imgUrl(runId, imgFile);
+      const imgSrc = job.controlledOutputImageUrl ? backendUrl + job.controlledOutputImageUrl : this._imgUrl(runId, imgFile);
       const run = {
         id: runId || ('local-' + Date.now()),
         model: params.target || 'sd15',
@@ -649,8 +667,8 @@ class Component extends DCLogic {
           if (job.progress != null) this.setState({ i2iProgress: Math.min(99, Math.round(job.progress)) });
           if (this._jobTerminal(job.status)) {
             clearInterval(poll);
-            if (this._jobOk(job.status) && job.runId && job.controlledOutputImage) {
-              const imgSrc = this._imgUrl(job.runId, job.controlledOutputImage);
+            if (this._jobOk(job.status)) {
+              const imgSrc = await this._resolveOutputImage(job);
               this.setState({ i2iStatus: 'done', i2iProgress: 100, i2iResult: imgSrc });
               this.toast('img2img complete', '#65d66e');
               setTimeout(() => this.loadRuns(), 1500);
@@ -720,7 +738,8 @@ class Component extends DCLogic {
       this._startPoll(job_id, (job) => {
         if (this._jobOk(job.status)) {
           const img = job.hiresFinalImage || job.controlledOutputImage;
-          const imgSrc = this._imgUrl(job.runId || job.hiresRunId, img);
+          const imgUrl = job.hiresFinalImageUrl || (!job.hiresFinalImage && job.controlledOutputImageUrl);
+          const imgSrc = imgUrl ? this.state.backendUrl + imgUrl : this._imgUrl(job.runId || job.hiresRunId, img);
           this.setState({ jobStatus: 'complete', progress: 100, currentImageSrc: imgSrc, lastSeed: +seed });
           this.toast('Hires Fix complete', '#65d66e'); setTimeout(() => this.loadRuns(), 1500);
         } else { this.setState({ jobStatus: 'error', errorMsg: 'Hires Fix ' + job.status }); this.toast('Hires Fix failed', '#ef4444'); }
@@ -784,8 +803,9 @@ class Component extends DCLogic {
           const job = await jr.json();
           if (this._jobTerminal(job.status)) {
             clearInterval(poll);
-            if (this._jobOk(job.status) && job.runId && job.controlledOutputImage) {
-              this.setState({ inpStatus: 'done', inpResult: this._imgUrl(job.runId, job.controlledOutputImage) });
+            if (this._jobOk(job.status)) {
+              const imgSrc = await this._resolveOutputImage(job);
+              this.setState({ inpStatus: 'done', inpResult: imgSrc });
               this.toast('Inpaint complete', '#65d66e'); setTimeout(() => this.loadRuns(), 1500);
             } else { this.setState({ inpStatus: 'error' }); this.toast('Inpaint failed', '#ef4444'); }
           }
@@ -1239,7 +1259,7 @@ class Component extends DCLogic {
       // System
       backendUrl, backendStatusColor: backendOnline ? '#65d66e' : '#ef4444',
       backendStatusText: backendOnline ? '✓ Online' : '✗ Offline',
-      onBackendUrlChange: e=>{ const u=e.target.value; this.setState({backendUrl:u}); localStorage.setItem('dex_backend_url',u); },
+      onBackendUrlChange: e=>{ const u=DexClient.resolveBackendBase(e.target.value); this.setState({backendUrl:u}); try { localStorage.setItem('dex_backend_url',u); } catch {} },
       onVerifyBackend: ()=>{ this.pingBackend(); this.toast('Pinging backend…', '#38bdf8'); },
       onStartServer: ()=>{ fetch(this.state.backendUrl+'/api/actions/server-start',{method:'POST'}).then(r=>r.json()).then(d=>{ const {job_id}=d; if(job_id) this._startPoll(job_id,()=>{ this.toast('Server started','#65d66e'); this.pingBackend(); }); }).catch(()=>this.toast('Start failed','#ef4444')); },
       onStopServer: ()=>{ fetch(this.state.backendUrl+'/api/actions/server-stop',{method:'POST'}).then(r=>r.json()).then(d=>{ const {job_id}=d; if(job_id) this._startPoll(job_id,()=>{ this.toast('Server stopped','#fbbf24'); this.pingBackend(); }); }).catch(()=>this.toast('Stop failed','#ef4444')); },

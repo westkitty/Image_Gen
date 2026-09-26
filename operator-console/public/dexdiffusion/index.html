@@ -212,7 +212,7 @@
       <div style="margin-bottom:12px;">
         <div style="font-size:10px;color:#7070a0;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;">Backend URL</div>
         <div style="display:flex;gap:8px;">
-          <input value="{{ backendUrl }}" onChange="{{ onBackendUrlChange }}" placeholder="http://127.0.0.1:31337" style="flex:1;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.3);color:#e0e0f0;border-radius:7px;padding:8px 10px;outline:none;font-size:12px;font-family:'IBM Plex Mono',monospace;" />
+          <input value="{{ backendUrl }}" onChange="{{ onBackendUrlChange }}" placeholder="(same origin)" style="flex:1;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.3);color:#e0e0f0;border-radius:7px;padding:8px 10px;outline:none;font-size:12px;font-family:'IBM Plex Mono',monospace;" />
           <button onClick="{{ onVerifyBackend }}" style="border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#b0b0d0;border-radius:7px;padding:8px 12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;">Verify</button>
         </div>
         <div style="margin-top:7px;display:flex;align-items:center;gap:7px;">
@@ -382,7 +382,7 @@
       <div style="margin-bottom:12px;">
         <div style="font-size:10px;color:#7070a0;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;">Backend URL</div>
         <div style="display:flex;gap:8px;">
-          <input value="{{ backendUrl }}" onChange="{{ onBackendUrlChange }}" placeholder="http://127.0.0.1:31337" style="flex:1;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.3);color:#e0e0f0;border-radius:7px;padding:8px 10px;outline:none;font-size:12px;font-family:'IBM Plex Mono',monospace;" />
+          <input value="{{ backendUrl }}" onChange="{{ onBackendUrlChange }}" placeholder="(same origin)" style="flex:1;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.3);color:#e0e0f0;border-radius:7px;padding:8px 10px;outline:none;font-size:12px;font-family:'IBM Plex Mono',monospace;" />
           <button onClick="{{ onVerifyBackend }}" style="border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#b0b0d0;border-radius:7px;padding:8px 12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;">Verify</button>
         </div>
         <div style="margin-top:7px;display:flex;align-items:center;gap:7px;">
@@ -541,7 +541,7 @@
       <div style="margin-bottom:12px;">
         <div style="font-size:10px;color:#7070a0;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;">Backend URL</div>
         <div style="display:flex;gap:8px;">
-          <input value="{{ backendUrl }}" onChange="{{ onBackendUrlChange }}" placeholder="http://127.0.0.1:31337" style="flex:1;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.3);color:#e0e0f0;border-radius:7px;padding:8px 10px;outline:none;font-size:12px;font-family:'IBM Plex Mono',monospace;" />
+          <input value="{{ backendUrl }}" onChange="{{ onBackendUrlChange }}" placeholder="(same origin)" style="flex:1;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.3);color:#e0e0f0;border-radius:7px;padding:8px 10px;outline:none;font-size:12px;font-family:'IBM Plex Mono',monospace;" />
           <button onClick="{{ onVerifyBackend }}" style="border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#b0b0d0;border-radius:7px;padding:8px 12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;">Verify</button>
         </div>
         <div style="margin-top:7px;display:flex;align-items:center;gap:7px;">
@@ -586,6 +586,7 @@
   </template>
 
   <script src="dc-runtime.js"></script>
+  <script src="client-helpers.js"></script>
   <script src="component.js"></script>
   <script>
     // Bootstrap: mount the ported DexDiffusion component onto the DC runtime.

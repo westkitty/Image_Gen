@@ -52,12 +52,47 @@ fail() {
       printf 'Error: %s\n' "$*"
     } >> "$SDCPP_LOGFILE" 2>/dev/null || true
   fi
+  canonicalize_session_images
   exit 1
 }
 
 pass_banner() {
   # pass_banner <message...>
   printf '\n==== PASS ====\n%s\n' "$*"
+  canonicalize_session_images
+}
+
+# ----- canonical image finalization -------------------------------------------
+# Every entrypoint (UI, API or a hand-run script) must end with its generated
+# images in DEX_IMAGES_ROOT, never in run dirs. The top-level script of an
+# invocation owns this: make_run_dir records every run dir created during the
+# invocation (nested scripts included), and the top-level pass_banner/fail hands
+# them to operator-console/bin/canonicalize-image.js, which applies the same
+# image-store.js rules the server uses. Nested scripts defer, because their
+# outputs are often the parent's inputs (hires-fix, batch, xyz).
+DEX_CANONICALIZE_JS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/operator-console/bin/canonicalize-image.js"
+if [ -z "${DEX_TOP_PID:-}" ]; then
+  export DEX_TOP_PID="$$"
+  export DEX_RUN_DIRS_FILE="${TMPDIR:-/tmp}/dexdiffusion-rundirs.$$"
+fi
+
+record_run_dir() {
+  [ -n "${DEX_RUN_DIRS_FILE:-}" ] && printf '%s\n' "$1" >> "$DEX_RUN_DIRS_FILE" 2>/dev/null || true
+}
+
+canonicalize_session_images() {
+  [ "${DEX_TOP_PID:-}" = "$$" ] || return 0
+  [ -n "${DEX_RUN_DIRS_FILE:-}" ] && [ -f "$DEX_RUN_DIRS_FILE" ] || return 0
+  local dirs=() d
+  while IFS= read -r d; do [ -d "$d" ] && dirs+=("$d"); done < <(sort -u "$DEX_RUN_DIRS_FILE")
+  rm -f -- "$DEX_RUN_DIRS_FILE"
+  [ "${#dirs[@]}" -gt 0 ] || return 0
+  if ! command -v node >/dev/null 2>&1; then
+    printf 'WARN: node not found; images not canonicalized in: %s\n' "${dirs[*]}" >&2
+    return 0
+  fi
+  DEX_IMAGES_ROOT_OVERRIDE="${DEX_IMAGES_ROOT_OVERRIDE:-}" node "$DEX_CANONICALIZE_JS" "${dirs[@]}" >&2 \
+    || printf 'WARN: canonical image finalization reported an error\n' >&2
 }
 
 # ----- config -----------------------------------------------------------------
@@ -106,12 +141,14 @@ make_run_dir() {
   # output), that dir is created and returned instead.
   if [ -n "${SDCPP_RUN_DIR_OVERRIDE:-}" ]; then
     mkdir -p "$SDCPP_RUN_DIR_OVERRIDE"
+    record_run_dir "$SDCPP_RUN_DIR_OVERRIDE"
     printf '%s\n' "$SDCPP_RUN_DIR_OVERRIDE"
     return 0
   fi
   local suffix="${1:-run}"
   local dir="$SDCPP_RUNS_DIR/$(timestamp)-$suffix"
   mkdir -p "$dir"
+  record_run_dir "$dir"
   printf '%s\n' "$dir"
 }
 
@@ -324,6 +361,65 @@ ssh_remote() {
   # The command runs in a remote shell on BigMac. REMOTE_* values that contain
   # a literal $HOME are expanded there. Add -o ConnectTimeout to fail fast.
   ssh -o ConnectTimeout=15 "${SSH_TARGET:?SSH_TARGET unset}" "$@"
+}
+
+# ---- canonical image authority ----------------------------------------------
+# Every final DexDiffusion image lives once under DEX_IMAGES_ROOT on the MacBook.
+# Run dirs keep metadata; canonical-images.json maps run-relative names to it.
+# DEX_IMAGES_ROOT_OVERRIDE exists for tests only.
+DEX_IMAGES_ROOT="${DEX_IMAGES_ROOT_OVERRIDE:-/Users/andrew/images_made}"
+
+resolve_canonical_run_image() {
+  # resolve_canonical_run_image <run-dir> <run-relative-image>  -> canonical path
+  python3 - "$1" "$2" "$DEX_IMAGES_ROOT" <<'PYRESOLVE'
+import json, os, sys
+run_dir, rel, root = sys.argv[1:]
+try:
+    images = json.load(open(os.path.join(run_dir, "canonical-images.json")))["images"]
+except Exception:
+    sys.exit(1)
+base = os.path.basename(rel)
+for e in images:
+    if e.get("run_file") in (rel,) or os.path.basename(e.get("run_file", "")) == base or e.get("image_id") == base:
+        p = os.path.join(root, os.path.basename(e["image_id"]))
+        if os.path.isfile(p) and not os.path.islink(p):
+            print(p); sys.exit(0)
+sys.exit(1)
+PYRESOLVE
+}
+
+# ---- Big Mac image ephemerality -----------------------------------------------
+# Big Mac may hold generated image bytes only while a script runs. Scripts
+# register every remote image path they create; all are deleted on exit
+# (success, failure or interrupt). Only image files under REMOTE_OUTPUT_DIR
+# or the MFLUX run root are accepted, so this can never touch models/caches.
+SDCPP_REMOTE_EPHEMERAL=()
+
+register_remote_ephemeral() {
+  local p
+  for p in "$@"; do
+    [ -n "$p" ] || continue
+    case "$p" in *..*) continue ;; esac
+    case "$p" in
+      "$REMOTE_OUTPUT_DIR"/*.png|"$REMOTE_OUTPUT_DIR"/*.jpg|"$REMOTE_OUTPUT_DIR"/*.jpeg|"$REMOTE_OUTPUT_DIR"/*.webp) ;;
+      *) continue ;;
+    esac
+    SDCPP_REMOTE_EPHEMERAL+=("$p")
+  done
+  trap cleanup_remote_ephemeral EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+}
+
+cleanup_remote_ephemeral() {
+  local rc=$? cmd="" p
+  [ "${#SDCPP_REMOTE_EPHEMERAL[@]}" -gt 0 ] || return "$rc"
+  for p in "${SDCPP_REMOTE_EPHEMERAL[@]}"; do
+    cmd="$cmd rm -f -- \"$p\";"
+  done
+  ssh_remote "$cmd" >/dev/null 2>&1 || true
+  SDCPP_REMOTE_EPHEMERAL=()
+  return "$rc"
 }
 
 remote_eval_path() {

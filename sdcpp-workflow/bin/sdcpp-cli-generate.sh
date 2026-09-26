@@ -98,6 +98,7 @@ verify_model >/dev/null
 ensure_remote_dirs
 
 REMOTE_PNG="$REMOTE_OUTPUT_DIR/$NAME.png"
+register_remote_ephemeral "$REMOTE_PNG"
 REMOTE_LOG="$REMOTE_LOG_DIR/$NAME.log"
 
 # Resolve seed (N|random|fixed|omitted). Only pass --seed when controlled.

@@ -89,6 +89,7 @@ print(img.size[0], img.size[1])
 
 REMOTE_INPUT="$REMOTE_OUTPUT_DIR/${NAME}-input.png"
 REMOTE_OUTPUT="$REMOTE_OUTPUT_DIR/${NAME}-4x.png"
+register_remote_ephemeral "$REMOTE_INPUT" "$REMOTE_OUTPUT"
 
 # ----- metadata --------------------------------------------------------------
 EXPECTED_SCALE=$(( ARG_REPEATS * 4 ))

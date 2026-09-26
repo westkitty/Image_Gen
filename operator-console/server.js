@@ -3,6 +3,8 @@ const { spawn, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { controlledScriptFor, buildControlledArgs } = require('./controlled-args');
+const { createImageStore } = require('./image-store');
 
 const app = express();
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
@@ -11,6 +13,8 @@ const APP_VERSION = 'image-gen-console-2026-06-22-render-wrapper';
 
 const WORKFLOW_ROOT = path.resolve(__dirname, '../sdcpp-workflow');
 const RUNS_DIR = path.join(WORKFLOW_ROOT, 'runs');
+const imageStore = createImageStore();
+imageStore.ensureRoot();
 const CONFIG_DIR = path.join(WORKFLOW_ROOT, 'config');
 const STATE_DIR = path.join(WORKFLOW_ROOT, 'state');
 const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
@@ -27,6 +31,7 @@ const GENERATION_JOB_SCHEMA = path.join(__dirname, 'schemas/generation-job.schem
 const MODEL_COMPATIBILITY_REGISTRY = path.join(__dirname, 'schemas/model-compatibility.json');
 const WILDCARDS_DIR = path.join(__dirname, 'wildcards');
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || 'http://127.0.0.1:11435';
+const JOB_TIMEOUT_MS = Math.max(60000, Number(process.env.SDCPP_JOB_TIMEOUT_MS || 12 * 60 * 1000));
 
 let schedulerSelectionSupported = true;
 let vaeSwitchingSupported = true;
@@ -53,7 +58,7 @@ const ALLOWED_SAMPLERS = new Set([
   'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm'
 ]);
 const ALLOWED_SCHEDULERS = new Set(['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple']);
-const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis', 'sdxl-juggernaut', 'sdxl-realvisxl', 'sdxl-cyberrealistic', 'sdxl-epicrealism', 'sdxl-biglust', 'sdxl-lustify', 'sdxl-biglove']);
+const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'flux2-klein-4b', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis', 'sdxl-juggernaut', 'sdxl-realvisxl', 'sdxl-cyberrealistic', 'sdxl-epicrealism', 'sdxl-biglust', 'sdxl-lustify', 'sdxl-biglove']);
 const CONTROLLED_TARGETS = [
   {
     id: 'sd15',
@@ -131,6 +136,26 @@ const CONTROLLED_TARGETS = [
     defaultSampler: 'euler',
     maxWidth: 1024,
     maxHeight: 1024,
+    minSteps: 1,
+    maxSteps: 8
+  },
+  {
+    id: 'flux2-klein-4b',
+    label: 'FLUX.2 Klein 4B (MFLUX)',
+    status: 'proofed',
+    mode: 'MLX-native remote generation',
+    backend: 'mflux',
+    route: '/api/actions/generate-controlled',
+    caveat: 'MFLUX/MLX path on Big Mac. Distilled FLUX.2 uses guidance 1.0 and does not support negative prompts; not A1111 parity.',
+    proofDerived: true,
+    fullParityClaim: false,
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    defaultSteps: 4,
+    defaultCfgScale: 1,
+    defaultSampler: 'euler',
+    maxWidth: 2048,
+    maxHeight: 2048,
     minSteps: 1,
     maxSteps: 8
   },
@@ -578,6 +603,46 @@ function sanitizeRequestParams(params, savePrompts) {
   return clean;
 }
 
+// Central output authority: after any generation job, move every generated
+// image out of the run dirs it touched into the canonical image root, and
+// point the job's image fields at the canonical files.
+const JOB_IMAGE_FIELDS = ['controlledOutputImage', 'hiresBaseImage', 'hiresFinalImage', 'upscaledImage'];
+function resolveRunImageForRead(runId, rel) {
+  const hit = imageStore.resolveRunImage(path.join(RUNS_DIR, runId), rel);
+  return hit ? hit.path : null;
+}
+function finalizeJobImages(job, stdoutText) {
+  const runIds = [...new Set([...String(stdoutText || '').matchAll(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/g)].map(m => m[1]))];
+  for (const runId of runIds) {
+    const runDir = path.join(RUNS_DIR, runId);
+    if (!fs.existsSync(runDir)) continue;
+    try {
+      imageStore.finalizeRun(runDir);
+    } catch (err) {
+      job.stderr += `\nimage-store: ${err.message}`;
+    }
+  }
+  for (const field of JOB_IMAGE_FIELDS) {
+    const value = job[field];
+    if (!value) continue;
+    let canonical = null;
+    if (path.dirname(path.resolve(value)) === imageStore.root) {
+      canonical = imageStore.resolveImage(path.basename(value));
+    } else {
+      const rel = path.relative(RUNS_DIR, path.resolve(WORKFLOW_ROOT, value));
+      const [runId, ...rest] = rel.split(path.sep);
+      if (runId && rest.length && !rel.startsWith('..')) {
+        const hit = imageStore.resolveRunImage(path.join(RUNS_DIR, runId), rest.join('/'));
+        if (hit) canonical = hit;
+      }
+    }
+    if (canonical) {
+      job[field] = canonical.path;
+      job[field + 'Url'] = imageStore.imageUrl(canonical.id);
+    }
+  }
+}
+
 function createJob(action, summary, requestParams = {}) {
   const id = crypto.randomUUID();
   jobs[id] = {
@@ -645,12 +710,40 @@ function startEstimatedRunProgress(job, runIndex, quantity, estimatedSeconds) {
   }, 1200);
 }
 
+function terminateChildTree(child) {
+  if (!child || !child.pid) return;
+  try {
+    process.kill(-child.pid, 'SIGTERM');
+  } catch (_) {
+    try { child.kill('SIGTERM'); } catch (_) {}
+  }
+  setTimeout(() => {
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+    } catch (_) {
+      try { child.kill('SIGKILL'); } catch (_) {}
+    }
+  }, 5000).unref();
+}
+
+function markJobTimedOut(job, child, timeoutMs, label) {
+  if (!job || job.status !== 'running') return;
+  job.status = 'FAIL';
+  job.completedAt = Date.now();
+  job.exitCode = null;
+  job.firstFailedGate = 'timeout';
+  job.stderr += `\nTimed out after ${Math.round(timeoutMs / 1000)}s waiting for ${label || job.commandAction || 'job'} to finish.`;
+  terminateChildTree(child);
+}
+
 function runAction(jobId, scriptPath, args, savePrompts = false) {
   const job = jobs[jobId];
   job.status = 'running';
   const env = { ...process.env, SDCPP_REDACT_PROMPTS: savePrompts ? '0' : '1' };
-  const child = spawn(scriptPath, args, { cwd: WORKFLOW_ROOT, shell: false, env });
+  const child = spawn(scriptPath, args, { cwd: WORKFLOW_ROOT, shell: false, env, detached: true });
   const sensitives = jobSensitives[jobId] || [];
+  const timeoutTimer = setTimeout(() => markJobTimedOut(job, child, JOB_TIMEOUT_MS, scriptPath), JOB_TIMEOUT_MS);
+  timeoutTimer.unref();
 
   child.stdout.on('data', data => {
     job.stdout += redactSensitiveText(data.toString(), sensitives);
@@ -659,12 +752,15 @@ function runAction(jobId, scriptPath, args, savePrompts = false) {
     job.stderr += redactSensitiveText(data.toString(), sensitives);
   });
   child.on('error', err => {
+    clearTimeout(timeoutTimer);
     job.status = 'FAIL';
     job.stderr += `\n${err.message}`;
     job.completedAt = Date.now();
     job.firstFailedGate = 'spawn';
   });
   child.on('close', code => {
+    clearTimeout(timeoutTimer);
+    if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, job.stdout); return; }
     job.exitCode = code;
     job.completedAt = Date.now();
     const out = job.stdout;
@@ -702,6 +798,7 @@ function runAction(jobId, scriptPath, args, savePrompts = false) {
     if (hiresFinalMatch) job.hiresFinalImage = hiresFinalMatch[1];
     const hiresManifestMatch = out.match(/HIRES_MANIFEST:\s*(\S+)/);
     if (hiresManifestMatch) job.hiresManifest = hiresManifestMatch[1];
+    finalizeJobImages(job, out);
   });
 }
 
@@ -720,43 +817,33 @@ function runControlledSequential(jobId, spec, params, quantity) {
   const env = { ...process.env, SDCPP_REDACT_PROMPTS: params.save_prompts ? '0' : '1' };
   const sensitives = jobSensitives[jobId] || [];
   const estimatedSeconds = estimateControlledRunSeconds(params);
+  const controlledScript = controlledScriptFor(spec);
 
   function runNext(runIndex) {
     const runNumber = runIndex + 1;
     job.stdout += `\n--- Sequential Run ${runNumber} of ${quantity} ---\n`;
     let progressTimer = startEstimatedRunProgress(job, runIndex, quantity, estimatedSeconds);
 
-    const args = ['--target', params.target, '--prompt', params.prompt];
-    if (spec.modelPath && !CONTROLLED_TARGET_BY_ID[params.target]) {
-      args.push('--model-path', spec.modelPath);
-    }
-    if (params.negative_prompt) args.push('--negative-prompt', params.negative_prompt);
-    if (params.width) args.push('--width', String(params.width));
-    if (params.height) args.push('--height', String(params.height));
-    if (params.steps) args.push('--steps', String(params.steps));
-    if (params.cfg_scale !== undefined && params.cfg_scale !== null && params.cfg_scale !== '') {
-      args.push('--cfg', String(params.cfg_scale));
-    }
-
     let seedValue = params.seed;
     if (isFixedSeed(params.seed)) {
       seedValue = String(parseInt(params.seed, 10) + runIndex);
     }
-    if (seedValue !== undefined && seedValue !== null && seedValue !== '') {
-      args.push('--seed', seedValue);
-    }
+    const args = buildControlledArgs(spec, params, {
+      seedValue,
+      isDiscovered: !CONTROLLED_TARGET_BY_ID[params.target],
+      resolveVaePath,
+    });
 
-    if (params.api && spec.id === 'sd15') args.push('--api', params.api);
-    if (params.scheduler) args.push('--scheduler', params.scheduler);
-    if (params.vae && params.vae !== 'auto') {
-      const vaePath = resolveVaePath(params.vae);
-      if (vaePath) args.push('--vae', vaePath);
-    }
-    args.push('--save-prompts', params.save_prompts ? 'true' : 'false');
-
-    const child = spawn('bin/sdcpp-controlled-generate.sh', args, { cwd: WORKFLOW_ROOT, shell: false, env });
+    const child = spawn(controlledScript, args, { cwd: WORKFLOW_ROOT, shell: false, env, detached: true });
     let runStdout = '';
     let runStderr = '';
+    const runTimeoutMs = Math.min(JOB_TIMEOUT_MS, Math.max(3 * 60 * 1000, estimatedSeconds * 3000 + 60 * 1000));
+    const timeoutTimer = setTimeout(() => {
+      clearInterval(progressTimer);
+      markJobTimedOut(job, child, runTimeoutMs, `controlled generation run ${runNumber}`);
+      updateSequentialProgress(job, { currentRunPercent: 100 });
+    }, runTimeoutMs);
+    timeoutTimer.unref();
 
     child.stdout.on('data', data => {
       const redacted = redactSensitiveText(data.toString(), sensitives);
@@ -771,6 +858,7 @@ function runControlledSequential(jobId, spec, params, quantity) {
     });
 
     child.on('error', err => {
+      clearTimeout(timeoutTimer);
       clearInterval(progressTimer);
       job.status = 'FAIL';
       job.stderr += `\nSpawn error in run ${runNumber}: ${err.message}`;
@@ -780,7 +868,9 @@ function runControlledSequential(jobId, spec, params, quantity) {
     });
 
     child.on('close', code => {
+      clearTimeout(timeoutTimer);
       clearInterval(progressTimer);
+      if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, runStdout); return; }
       job.exitCode = code;
       const combined = runStdout + runStderr;
       let runPassed = false;
@@ -802,6 +892,7 @@ function runControlledSequential(jobId, spec, params, quantity) {
           if (failMatch) job.firstFailedGate = failMatch[1].trim();
           else if (combined.includes('Unknown argument')) job.firstFailedGate = 'args';
         }
+        finalizeJobImages(job, runStdout);
         return;
       }
 
@@ -813,6 +904,7 @@ function runControlledSequential(jobId, spec, params, quantity) {
       if (controlledImageMatch) job.controlledOutputImage = controlledImageMatch[1];
       const controlledManifestMatch = runStdout.match(/CONTROLLED_MANIFEST:\s*(\S+)/);
       if (controlledManifestMatch) job.controlledManifest = controlledManifestMatch[1];
+      finalizeJobImages(job, runStdout);
       updateSequentialProgress(job, { completedRuns: runNumber, currentRunPercent: 100 });
 
       if (runIndex < quantity - 1) {
@@ -1166,9 +1258,10 @@ function validateInpaintBody(body) {
     return { ok: false, status: 400, error: 'init_image_file must be a safe filename (no path separators or traversal)' };
   }
   if (!initImageFile.toLowerCase().endsWith('.png')) return { ok: false, status: 400, error: 'init_image_file must be a .png file' };
-  const initImgPath = path.resolve(RUNS_DIR, runId, initImageFile);
+  let initImgPath = path.resolve(RUNS_DIR, runId, initImageFile);
   const relCheck = path.relative(RUNS_DIR, initImgPath);
   if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) return { ok: false, status: 403, error: 'Init image path resolves outside runs directory' };
+  if (!fs.existsSync(initImgPath)) initImgPath = resolveRunImageForRead(runId, initImageFile) || initImgPath;
   if (!fs.existsSync(initImgPath)) return { ok: false, status: 404, error: `Init image not found: ${runId}/${initImageFile}` };
   const strength = body.strength !== undefined ? Number(body.strength) : 0.75;
   if (!Number.isFinite(strength) || strength < 0.01 || strength > 0.99) {
@@ -1296,6 +1389,9 @@ function listRunFiles(runPath) {
     }
   };
   walk(runPath);
+  for (const name of imageStore.listRunImageNames(runPath)) {
+    if (!files.includes(name)) files.push(name);
+  }
   return files.sort();
 }
 function inferRunType(dirName) {
@@ -1660,6 +1756,7 @@ app.get('/api/capabilities', (req, res) => {
   const modelTargets = [...CONTROLLED_TARGETS, ...discoveredTargets].map(target => ({
     id: target.id,
     label: target.label,
+    backend: target.backend || 'sdcpp',
     status: target.status,
     mode: target.mode,
     caveat: target.caveat,
@@ -1930,31 +2027,15 @@ app.post('/api/actions/generate-controlled', (req, res) => {
   if (err) return res.status(400).json({ error: err });
 
   const spec = allTargetById[params.target];
-  const args = ['--target', params.target, '--prompt', params.prompt];
-  // Discovered targets supply a model path; the script's *) catch-all handles them.
-  if (spec.modelPath && !CONTROLLED_TARGET_BY_ID[params.target]) {
-    args.push('--model-path', spec.modelPath);
-  }
-  if (params.negative_prompt) args.push('--negative-prompt', params.negative_prompt);
-  if (params.width) args.push('--width', String(params.width));
-  if (params.height) args.push('--height', String(params.height));
-  if (params.steps) args.push('--steps', String(params.steps));
-  if (params.cfg_scale !== undefined && params.cfg_scale !== null && params.cfg_scale !== '') {
-    args.push('--cfg', String(params.cfg_scale));
-  }
-  if (params.seed !== undefined && params.seed !== null && params.seed !== '') {
-    args.push('--seed', String(params.seed));
-  }
-  if (params.api && spec.id === 'sd15') args.push('--api', params.api);
-  if (params.scheduler) args.push('--scheduler', params.scheduler);
-  if (params.vae && params.vae !== 'auto') {
-    const vaePath = resolveVaePath(params.vae);
-    if (vaePath) args.push('--vae', vaePath);
-  }
-  args.push('--save-prompts', params.save_prompts ? 'true' : 'false');
+  const controlledScript = controlledScriptFor(spec);
+  const args = buildControlledArgs(spec, params, {
+    seedValue: params.seed,
+    isDiscovered: !CONTROLLED_TARGET_BY_ID[params.target],
+    resolveVaePath,
+  });
 
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
-  const summary = getRedactedCommandSummary('bin/sdcpp-controlled-generate.sh', args, sensitives) + (params.quantity > 1 ? ` (quantity: ${params.quantity})` : '');
+  const summary = getRedactedCommandSummary(controlledScript, args, sensitives) + (params.quantity > 1 ? ` (quantity: ${params.quantity})` : '');
   const jobId = createJob('controlled-generate', summary, sanitizeRequestParams({ ...params, target: spec.id }, params.save_prompts));
   jobSensitives[jobId] = sensitives;
 
@@ -2199,11 +2280,12 @@ app.post('/api/actions/img2img', (req, res) => {
     return res.status(400).json({ error: 'init_image_file must be a .png file' });
   }
 
-  const initImgPath = path.resolve(RUNS_DIR, runId, initImageFile);
+  let initImgPath = path.resolve(RUNS_DIR, runId, initImageFile);
   const relCheck = path.relative(RUNS_DIR, initImgPath);
   if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
     return res.status(403).json({ error: 'Init image path resolves outside runs directory' });
   }
+  if (!fs.existsSync(initImgPath)) initImgPath = resolveRunImageForRead(runId, initImageFile) || initImgPath;
   if (!fs.existsSync(initImgPath)) {
     return res.status(404).json({ error: `Init image not found: ${runId}/${initImageFile}` });
   }
@@ -2274,11 +2356,12 @@ app.post('/api/actions/inpaint', (req, res) => {
     return res.status(400).json({ error: 'init_image_file must be a .png file' });
   }
 
-  const initImgPath = path.resolve(RUNS_DIR, runId, initImageFile);
+  let initImgPath = path.resolve(RUNS_DIR, runId, initImageFile);
   const relCheck = path.relative(RUNS_DIR, initImgPath);
   if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
     return res.status(403).json({ error: 'Init image path resolves outside runs directory' });
   }
+  if (!fs.existsSync(initImgPath)) initImgPath = resolveRunImageForRead(runId, initImageFile) || initImgPath;
   if (!fs.existsSync(initImgPath)) {
     return res.status(404).json({ error: `Init image not found: ${runId}/${initImageFile}` });
   }
@@ -2402,11 +2485,12 @@ app.post('/api/actions/upscale-esrgan', (req, res) => {
     return res.status(400).json({ error: 'init_image_file must be a .png file' });
   }
 
-  const initImgPath = path.resolve(RUNS_DIR, runId, initImageFile);
+  let initImgPath = path.resolve(RUNS_DIR, runId, initImageFile);
   const relCheck = path.relative(RUNS_DIR, initImgPath);
   if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
     return res.status(403).json({ error: 'Init image path resolves outside runs directory' });
   }
+  if (!fs.existsSync(initImgPath)) initImgPath = resolveRunImageForRead(runId, initImageFile) || initImgPath;
   if (!fs.existsSync(initImgPath)) {
     return res.status(404).json({ error: `Init image not found: ${runId}/${initImageFile}` });
   }
@@ -2492,11 +2576,15 @@ app.get('/api/jobs/:jobId', (req, res) => {
     upscaleManifest: job.upscaleManifest || null,
     controlledTarget: job.controlledTarget || null,
     controlledOutputImage: job.controlledOutputImage || null,
+    controlledOutputImageUrl: job.controlledOutputImageUrl || null,
     controlledManifest: job.controlledManifest || null,
     hiresRunId: job.hiresRunId || null,
     hiresBaseImage: job.hiresBaseImage || null,
+    hiresBaseImageUrl: job.hiresBaseImageUrl || null,
     hiresFinalImage: job.hiresFinalImage || null,
-    hiresManifest: job.hiresManifest || null
+    hiresFinalImageUrl: job.hiresFinalImageUrl || null,
+    hiresManifest: job.hiresManifest || null,
+    upscaledImageUrl: job.upscaledImageUrl || null
   });
 });
 app.get('/api/jobs/:jobId/log', (req, res) => {
@@ -2657,7 +2745,7 @@ app.get('/api/runs/:runId/metadata', (req, res) => {
     const pngFull = path.resolve(runPath, primaryRaw);
     const pngRel = path.relative(runPath, pngFull);
     if (!pngRel.startsWith('..') && !path.isAbsolute(pngRel)) {
-      pngInfo = readPngTextChunks(pngFull);
+      pngInfo = readPngTextChunks(fs.existsSync(pngFull) ? pngFull : (resolveRunImageForRead(runId, primaryRaw) || pngFull));
     }
   }
 
@@ -2767,6 +2855,7 @@ function buildRunIndex() {
         }
       }
     } catch (_) {}
+    imageCount += imageStore.listRunImageNames(runPath).length;
     const CONTROLLED_TARGET_LABELS_IDX = {
       'controlled-sd15': 'SD1.5',
       'controlled-sdxl-base': 'SDXL base',
@@ -2844,8 +2933,23 @@ app.get('/api/run-file', (req, res) => {
   if (relPath.startsWith('..') || path.isAbsolute(relPath)) return res.status(403).send('Forbidden');
   const allowedExts = ['.png', '.md', '.json', '.tsv', '.txt', '.log'];
   if (!allowedExts.includes(path.extname(fullPath).toLowerCase())) return res.status(403).send('Forbidden extension');
-  if (!fs.existsSync(fullPath)) return res.status(404).send('File not found');
+  if (!fs.existsSync(fullPath)) {
+    // Generated images live in the canonical root; the run dir keeps only a reference.
+    const [runId, ...rest] = relPath.split(path.sep);
+    const hit = safeRunId(runId) && rest.length ? imageStore.resolveRunImage(path.join(RUNS_DIR, runId), rest.join('/')) : null;
+    if (hit) return res.redirect(302, hit.url);
+    return res.status(404).send('File not found');
+  }
   res.sendFile(fullPath);
+});
+
+// Canonical generated images. Only plain filenames inside the fixed root are served.
+app.get('/api/images/:id', (req, res) => {
+  const img = imageStore.resolveImage(req.params.id);
+  if (!img) return res.status(404).send('Image not found');
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.type(img.contentType);
+  res.sendFile(img.path);
 });
 
 app.listen(PORT, HOST, () => {

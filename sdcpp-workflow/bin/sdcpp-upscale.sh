@@ -119,7 +119,11 @@ print(p)
 PYCONTAIN
 )" || fail "path-containment" "Resolved path escapes RUNS_DIR: $RUN_ID/$IMAGE_REL"
 
-[ -f "$INPUT_FULL" ] || fail "input-missing" "Source image not found: $INPUT_FULL"
+if [ ! -f "$INPUT_FULL" ]; then
+  # Generated images live in the canonical image root; the run dir keeps a reference.
+  INPUT_FULL="$(resolve_canonical_run_image "$RUN_PATH" "$IMAGE_REL")" \
+    || fail "input-missing" "Source image not found: $RUN_ID/$IMAGE_REL"
+fi
 
 # ---- validate file extension -------------------------------------------------
 case "$INPUT_FULL" in

@@ -134,6 +134,7 @@ ensure_remote_dirs
 REMOTE_INIT_IMG="$REMOTE_OUTPUT_DIR/${NAME}-init.png"
 REMOTE_MASK_IMG="$REMOTE_OUTPUT_DIR/${NAME}-mask.png"
 REMOTE_PNG="$REMOTE_OUTPUT_DIR/$NAME.png"
+register_remote_ephemeral "$REMOTE_INIT_IMG" "$REMOTE_MASK_IMG" "$REMOTE_PNG"
 REMOTE_LOG="$REMOTE_LOG_DIR/$NAME.log"
 
 # Resolve seed
