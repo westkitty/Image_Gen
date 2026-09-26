@@ -7,8 +7,8 @@
   "project_name": "Image_Gen / DexDiffusion",
   "project_root": "/Users/andrew/Image_Gen",
   "artifact_path": "operator-console + sdcpp-workflow",
-  "state_revision": 6,
-  "last_updated": "2026-09-25",
+  "state_revision": 8,
+  "last_updated": "2026-09-26",
   "current_baseline": {
     "identity": "main@5287abd plus preserved local modifications",
     "state": "current-baseline",
@@ -128,6 +128,35 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
   - Console stopped → Dock icon click started it via the helper (1 node process, no lingering helper). This exposed and fixed a `bin/dexdiffusion start` bug where a `cd && node &` subshell held the caller's stdout, which would have hung the wrapper.
   - Wrapper MFLUX 1024², seed 8080808: job `a000f3ef-25af-413b-adf1-72d60e068bb9`, run `20260925-235025-controlled-flux2-klein-4b`, 72 s, sha256 `c8722e02a8a63199e122256813cf76be2d25695c5287944b5b47ba47328c94f6`. 1 MacBook copy, 0 Big Mac. The evidence recorder logged it automatically.
   - System → Truth status renders the derived capabilities.
+- **VER-025 (rev 7, 2026-09-26) — Workstation upgrade.** All proofs ran through DexDiffusion (console 127.0.0.1:31337), and afterwards Big Mac held 0 generated images (a bounded find over sdcpp-staging, wc2tb/dex-imagegen, wc2tb/ImageGen and TMPDIR, 2 h window). Every output is one canonical file in `images_made`.
+  - **Native SDCPP quantity:** `sd-cli -b 3 -s 1000` (direct) logged seeds 1000/1001/1002 and wrote 3 PNGs. Batch image 2 was byte-identical to a single run at seed 1001 (`8ff39ae2…`). Through DexDiffusion, job `6405c062` (sd15, qty 3, seed 5000) used one sd-cli invocation (3 "generating image", 1 process) and produced 3 canonical files `…110647-controlled-sd15-s500{0,1,2}-controlled-sd15-b0{0,1,2}.png` (sha `e54296ab…`, `38b91f58…`, `078e2616…`). The run dir holds no image bytes, and `controlled-extras.json` records the per-output seeds. A sequential DexDiffusion run at seed 5001 (job `4a5c8b94`) was byte-identical to b01. **Verdict: PROVEN NATIVE BATCH** for SDCPP quantity 2–16. Larger quantities, MFLUX, and native-command build failures fall back to sequential.
+  - **MFLUX quantity 3 (UI):** job `0a7f395c`, 512², sequential, 3 independent random non-negative seeds (38720525, 1247961809, 1894433810), 3 canonical files. The result strip showed all 3 with seed/model/size/status.
+  - **Reload recovery:** mid-job reload reattached to the same backend job (`/api/jobs` showed 1 active job, no duplicate). A mid-queue reload reattached to the same queue.
+  - **Lineage chain (UI):** FLUX txt2img `…111730-…s1247961809…` → img2img 0.35 (`…112016-img2img…`, mean Δ 9.4) → Use as New Source → img2img 0.75 (`…112120-img2img…`, mean Δ 34.3) → inpaint (`…112249-inpaint…`, masked bbox Δ 37.8 vs outside 2.5 = 15.1×) → Real-ESRGAN 512→2048 (`…112420-esrgan…`) and Lanczos 512→1024. Parent, children and ancestors resolve via `/api/images/:id/meta`. Keeper toggled on `…111730…` as metadata only.
+  - **Mask safety (UI):** a blank mask is refused client-side with a toast (the server's `mask-empty` 400 remains). A full mask (Invert on empty = coverage 1.0) triggers the "entire image is masked" confirm. The server returns 409 `mask-full` without `confirm_full_mask`. Grow/Shrink/Feather/Blur/Invert/Undo/Redo were exercised; the mask stays 512×512 (source resolution).
+  - **Outpaint:** job on `…112249-inpaint…`, right +128 → `…112626-inpaint…` 640×512. The source region was kept (mean Δ 2.6), and the new strip continues the desk and wall with a visible soft seam. **Verdict: LIVE PASS (seam visible).**
+  - **High-Res Refine:** sd15 512², seed 777, `--hires --hires-scale 1.5 --hires-steps 8 --hires-denoising-strength 0.45 --hires-upscaler Latent` → `…112753-controlled-sd15-s777…` 768×768. The remote log shows "hires Latent upscale 64x64 -> 96x96" and "hires sampling 1/1 completed", so this is sd-cli's diffusion second pass, not the Pillow hires-fix route. **PROVEN.**
+  - **Seed Lab:** seeds 775–779 around 777 in one native batch (job `7272abc7`). Target, size, steps, CFG and scheduler were identical and the prompt was redacted in the stored params.
+  - **Prompt A/B:** two sd15 runs at seed 777 with identical stored params. Only the prompt differed, and no prompt text was stored (save_prompts off).
+  - **Numbered Batch queue (UI):** 3 prompts, #2 containing an unknown LoRA → `1 DONE, 2 FAILED (validation), 3 DONE`. Retry Failed re-ran only #2 (attempts 2; #1/#3 attempts 1). Stop After Current, remove and reorder are unit-tested only. The 10-entry fixture parses to exactly 10 entries via `/api/batch/parse` (no warnings).
+  - **Source prep:** img2img with `crop-landscape` on a 512² FLUX image → 512×384. The temporary copy was removed and the canonical source was untouched.
+  - **Doctor:** `bin/dexdiffusion doctor` / `GET /api/doctor` → 13 PASS, 1 WARN (14 configured SDXL/Flux model files absent), with Serve tailnet-only and Funnel absent. It generates nothing.
+  - **Privacy:** after all runs, grepping the prompt words across `state/`, today's run dirs and `mask-uploads/` finds nothing. The old Favorite Presets persisted prompt text regardless of `save_prompts`. They are now Recipes, stored via `sanitizeRecipe`, and existing presets are scrubbed on load when prompt saving is off.
+- **VER-026 (rev 7) — Model inventory (bounded search of wc2tb minus media/backups, sdcpp-staging, DexDiffusion cache, ~/models, ~/ai, ~/Downloads):** SD1.5 `v1-5-pruned-emaonly` (BASE, LIVE PASS), RealESRGAN_x4plus (UPSCALER, LIVE PASS), FLUX.2 Klein 4B 4-bit (BASE, LIVE PASS, internal cache, not moved), Wan2.1-T2V-1.3B on `/Volumes/wc2tb/wan models/` (video model + T5/VAE components; FOUND — UNSUPPORTED for image generation). There is **no ControlNet, no LoRA and no standalone VAE** anywhere searched. `/Volumes/wc2tb/ImageGen/loras` does not exist. No model was moved, because no useful unmoved image model exists.
+- **VER-027 (rev 8, 2026-09-26) — Closure corrections, live on the final working tree.**
+  - **Outpaint seam:** new regions start from an 8 px edge-band extension (the old whole-source blurred stretch copied the teapot handle into the new strip). The mask ramps 0→255 over a 48 px overlap inside the source. After generation the source is composited back over the canonical output, exact in the interior and graded across the band. Default strength is 0.85. Same source, +128 right, seed 31337 → `…121817-inpaint…` 640×512, interior change **0.00** (the old pipeline gave 2.50). The old hard vertical line at the boundary is gone. Naming the main subject in the prompt can still make SD1.5 draw a duplicate (seen with a "teapot" prompt), so the UI now advises describing the new area.
+  - **Inpaint** uses the same composite (mask softened 4 px). Box mask → masked change 10.7 vs unmasked **0.00** (`…121934-inpaint…`). Before this, textured unmasked areas drifted about 10 from sd-cli's full-image re-encode.
+  - A regression caught during this pass (the outpaint source was stretched when left=top=0) was fixed with an explicit inpaint-only `fit` flag. Its one bad output (`…121654-inpaint…`) remains in images_made; it was left in place, not deleted.
+  - **375px:** single-column grid panes are `minmax(0,1fr)`, and the mobile media query collapses to `minmax(0,1fr)` (was `1fr`, whose min-content let the long values in System and the names in Models force 476–622 px panels). Doctor rows stack their detail under the check name. At 375 and 768, all 7 screens report 0 elements past the viewport and document scrollWidth equals the viewport.
+  - **Edit:** a Source Image card comes first. The legacy run/file pickers moved into a collapsed "▸ Advanced Source Selection". Library → Img2Img, Library → Inpaint, result → Img2Img and result → Inpaint all set the source without touching them.
+  - **Durable queues:** `sdcpp-workflow/state/queues.json` (gitignored), written atomically (tmp + fsync + rename). Prompts and the negative prompt are written only when save_prompts=true. On load, RUNNING becomes INTERRUPTED (gate `server-restart`, retryable); DONE, FAILED, SKIPPED and QUEUED are kept. A restored queue without saved prompts resumes only after the same numbered text is re-pasted (numbers and titles must match; otherwise 409).
+  - **Live queue controls (queue `b5c1f9a8`, 4 SD1.5 items, prompt saving off, canary prompts):** while #1 ran, reordering RUNNING returned 409, #4 moved up (order 1,2,4,3), #2 was removed (SKIPPED), and Stop After Current was set. #1 finished and nothing else started (STOPPED, 0 active jobs 6 s later). A controlled `bin/dexdiffusion restart` then showed restored=true with DONE/SKIPPED/QUEUED intact. Resume without text returned 409, wrong text returned 409, and the correct text started Resume Remaining with #4 RUNNING. A second restart mid-item left #4 INTERRUPTED, and the child ended with the console (no image, no Big Mac process). The UI banner read "Restarted queue detected. 1 completed · 1 queued · 1 interrupted". Retry Interrupted/Failed from the UI with the pasted text ran #4 (attempt 2) then #3. #1 was never re-run (attempts 1). Final: DONE, SKIPPED, DONE, DONE.
+  - **Failure isolation (queue, canary prompts):** 1 DONE, 2 FAILED (unknown LoRA), 3 DONE. Retry Failed re-ran only #2 (attempts 2).
+  - **Re-verified live:** FLUX qty 3 from the UI (3 cards, seeds 1169503531/884147437/885660009). SD1.5 native qty 3 (6000–6002) and Seed Lab (5999–6003, one native batch). High-Res Refine 512→768. Prompt A/B at seed 777 (the negative-prompt text is no longer echoed in the "held constant" line). Img2Img subtle 0.35 (Δ 7.6) vs strong 0.75 (Δ 12.3) from the same source, and Use as New Source. Lanczos 512→1024 and Real-ESRGAN 512→2048. Keeper on/off and the Keeper filter. Recipe save/apply/rename/delete, settings only. Lineage txt2img → img2img → inpaint → ESRGAN/Lanczos. Result selection keeps the pane scroll (408.5 → 408.5). Frontend reload reattached the running job (1 backend job, no duplicate).
+  - **Privacy canary `DEXPRIVACY-CANARY-926`** was used in Create, Recipe, Batch/queue (including restarts), A/B, Img2Img, Inpaint and negative prompts. grep over `sdcpp-workflow/state/`, `operator-console/server.log`, today's run dirs, `mask-uploads/` and the UI session in localStorage found **no matches**.
+  - **Storage/network:** 0 image files in today's run dirs. Big Mac has 0 PNG/JPG/WebP in 4 h under sdcpp-staging, wc2tb/ImageGen and TMPDIR, and no sd-cli process. Only one listener, on 127.0.0.1:31337. Serve :8443 → 127.0.0.1:31337 with no Funnel; AllowFunnel lists only :443 (DEX//REACH → :8787, untouched). Doctor: 13 PASS, 1 WARN (configured SDXL/Flux files absent).
+  - **Not built (non-blocking):** hard cancel (there is still no proof that a targeted kill stops the Big Mac process and cleans up) and upload/paste source import (security surface). ControlNet remains ENGINE SUPPORTED — MODEL ASSET MISSING. LoRA/alternate VAE: TEST WITHHELD (no assets).
+  - Tests 86 → 90.
 - **VER-014:** Image route security (live): traversal, encoded traversal, absolute path, NUL, `.incoming-*`, symlink and unknown names all return 404.
 
 ## 6. Known Not Working
@@ -137,6 +166,11 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 - **BRK-003 (history, kept):** Full-precision `black-forest-labs/FLUX.2-klein-4B` loaded from wc2tb HF cache hit `[METAL] Command buffer execution failed: GPU Timeout Error (kIOGPUCommandBufferCallbackErrorTimeout)` at step 0 (~56 s), and again during a `mx.eval(model.parameters())` prefault experiment (RSS climbed to ~10.6 GB). Prefault approach closed; worker script removed. The ~15 GB model remains cached on wc2tb, unused.
 - **BRK-004 (resolved by VER-010):** UI progress label showed `NaN%`: the server sends `job.progress` as an object. Fixed via `DexClient.jobProgressPercent`.
 - **BRK-002:** Prior local image-generation attempts in other runtimes did not establish a reliable working image path.
+
+- **LIM-007 (rev 7):** ControlNet — **ENGINE SUPPORTED — MODEL ASSET MISSING.** sd-cli 7f0e728 exposes `--control-net`, `--control-image`, `--control-strength` and `--canny`, but no SD1.5 ControlNet model exists on Big Mac. Minimum for a future proof: one SD1.5 Canny ControlNet (`control_v11p_sd15_canny`, ~1.4 GB fp16 safetensors). The UI never offers Control.
+- **LIM-008 (rev 7):** LoRA and alternate-VAE generation are TEST WITHHELD: no LoRA or standalone VAE files exist. The UI passes `--vae` only for SDCPP targets and marks it as ignored for MFLUX.
+- **LIM-009 (rev 7, updated rev 8):** Queues persist across console restarts (items that were running become INTERRUPTED and retryable). Individual Create/edit jobs are still in memory.
+- **LIM-010 (rev 7):** Hard cancel of a running remote generation is not implemented (Stop After Current only). Temporary source import (upload/paste) is deferred.
 
 ## 7. Implemented but Unverified
 
@@ -172,6 +206,8 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 | TEST | … + remote-png gates, in-band exit, cleanup ordering, prompt safety, capability derivation, evidence recording, model-missing targets, lifecycle detach | verified | `npm test` 57/57 | `tests/controlled-args.test.js`, `tests/canonical-images.test.js` | 2026-09-25 |
 | VER-008 | Tailnet-only Serve | verified | serve status, curl over tailnet | `tailscale serve status --json` | 2026-09-25 |
 | VER-010 | One durable image, none on Big Mac | verified | SHA search | bounded find + shasum | 2026-09-25 |
+
+| VER-025 | Workstation upgrade (quantity, native batch, staging, edit chain, outpaint, High-Res Refine, Seed Lab, A/B, queue, Doctor) | verified | job ids + sha/size in VER-025 | live API/UI + `npm test` 86/86 | 2026-09-26 |
 
 ## 12. Current Change Scope and Impact Radius
 
@@ -228,3 +264,17 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 - Capability truth is derived from evidence and assets; the hardcoded Truth Status/gate lists were removed.
 - Fixed the lifecycle helper detach bug, canonical-store inputs for edit scripts, and nested run naming.
 - Tests 43 → 57. Preserved: Dock launcher, Tailscale :8443 tailnet-only, :443 DEX//REACH untouched, canonical storage, zero Big Mac retention.
+
+### Revision 7 — 2026-09-26
+
+- Workstation upgrade (VER-025/026). Quantity UI and structured `job.results`. Native SDCPP `--batch-count` (PROVEN) with sequential fallback. Result staging with image actions. Seed Lab. Prompt A/B. Recipes (privacy fix). Model-aware controls (per-target `capabilities`).
+- Numbered Batch parser and backend queue (`/api/batch/parse`, `/api/queues*`) with preflight, Retry Failed, Stop After Current, remove/reorder.
+- Image-first Edit: img2img by canonical image id, strength presets, source prep, mask editor with brush/eraser/undo/redo/grow/shrink/feather/blur/invert, full-mask guard, and Outpaint (LIVE PASS).
+- Enhance workspace (Lanczos vs Real-ESRGAN vs High-Res Refine, clearly separated). Native High-Res Refine is PROVEN.
+- Lineage and Keepers in `sdcpp-workflow/state/image-meta.json` (metadata only). Library image grid, filters, lineage navigation, and a 2–4 image compare workspace with metadata diff.
+- Doctor (`/api/doctor`, `bin/dexdiffusion doctor`). Reload recovery for jobs and queues.
+- ControlNet: ENGINE SUPPORTED — MODEL ASSET MISSING. No model moves. Tests 57 → 86.
+
+### Revision 8 — 2026-09-26
+
+- Closure pass (VER-027). Outpaint seam fix (edge-band fill, 48 px graded overlap, source composite). Inpaint keeps unmasked pixels exact. 375px layout fixes (System, Models, Doctor). Edit is image-first with legacy pickers collapsed. Durable, privacy-aware queue state with restart reconciliation, live-proven with reorder/remove/Stop After Current/Resume/Retry. Canary privacy audit clean. Tests 90/90.

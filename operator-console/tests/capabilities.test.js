@@ -73,7 +73,11 @@ test('UI truth status is data-driven (no hard-coded Proven/gate lists)', () => {
 test('SDCPP edit/upscale scripts accept canonical-store inputs but nothing arbitrary', () => {
   for (const f of ['sdcpp-img2img.sh', 'sdcpp-inpaint.sh', 'sdcpp-esrgan-upscale.sh']) {
     const src = fs.readFileSync(path.join(BIN, f), 'utf8');
-    assert.match(src, /"\$SDCPP_RUNS_DIR\/"\*\|"\$DEX_IMAGES_ROOT\/"\*\) ;;/, f);
+    // img2img/inpaint additionally accept the temporary mask-uploads area (prepared sources, outpaint canvases)
+    const allowed = f !== 'sdcpp-esrgan-upscale.sh'
+      ? /"\$SDCPP_RUNS_DIR\/"\*\|"\$DEX_IMAGES_ROOT\/"\*\|"\$\(dirname "\$SDCPP_RUNS_DIR"\)\/mask-uploads\/"\*\) ;;/
+      : /"\$SDCPP_RUNS_DIR\/"\*\|"\$DEX_IMAGES_ROOT\/"\*\) ;;/;
+    assert.match(src, allowed, f);
     assert.match(src, /\*\) fail "init-img"/, f);
   }
 });

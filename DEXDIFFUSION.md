@@ -170,6 +170,7 @@ bin/dexdiffusion start     # start if not already healthy; prints local + tailne
 bin/dexdiffusion stop      # stop ONLY the project-owned console (never pkill/killall node)
 bin/dexdiffusion restart
 bin/dexdiffusion status    # read-only report: web, launcher, Dock, Big Mac, MFLUX, model, storage, SDCPP
+bin/dexdiffusion doctor    # read-only PASS/WARN/FAIL health check (same as System → DexDiffusion Doctor); never generates
 bin/dexdiffusion open      # start if needed, open the local URL in the default browser
 ```
 
@@ -278,6 +279,16 @@ Shown in **System → Truth status**, `GET /api/system-info` (`capabilities`), a
   to Big Mac's internal SSD. Regression tests: `operator-console/tests/mflux-bridge.test.js`.
 - **Rule for all remote code:** never trust `ssh westcat` exit codes; check output
   (`remote_test` in `sdcpp-lib.sh`) or in-band markers.
+
+## Workstation workflow (rev 7)
+
+- **Create:** set Quantity (1–100). SDCPP targets run 2–16 images as one native `sd-cli --batch-count` job (seeds S…S+N-1); MFLUX runs sequentially with independent seeds. Every image appears in **Results** with seed, model, size and status, plus actions: Open, Variation, Explore Seeds (Seed Lab), Img2Img, Inpaint, Outpaint, Enhance, Compare, Reuse Seed/Settings, Keeper, Lineage, Copy path. Actions appear only when their capability gate is open.
+- **High-Res Refine** (SDCPP only) is sd-cli's native diffusion second pass. It is not Lanczos resizing and not Real-ESRGAN.
+- **Batch:** paste a numbered collection (`1. Title`, blank line, prompt…). Only a line starting `<n>. Title` after a blank line starts an entry. Preview, preflight, then a backend queue with Stop After Current / Retry Failed / remove / reorder. Queues survive a console restart (`sdcpp-workflow/state/queues.json`): a running item becomes INTERRUPTED and can be retried. When prompt saving is off, prompts are not stored, so paste the same numbered text again to resume.
+- **Edit:** any image becomes the source (shown first; legacy run/file pickers are under *Advanced Source Selection*). Inpaint and Outpaint restore the original pixels outside the mask; for Outpaint, describe what the new area should contain. It offers img2img strength presets, source prep (temporary copy), a mask editor (brush, eraser, undo/redo, grow/shrink/feather/blur/invert; a full mask needs confirmation) and Outpaint (canvas extension through the SD1.5 inpaint path).
+- **Library:** image grid with filters (Keepers, model, operation), parent/children lineage, and 2–4 image compare. Lineage and Keepers are metadata in `sdcpp-workflow/state/image-meta.json`, and images are never copied.
+- **Recipes** store settings only unless prompt saving is on.
+- **ControlNet:** the engine supports it, but no SD1.5 ControlNet model is installed, so the UI does not offer it.
 
 ## Protected invariants (do not change)
 

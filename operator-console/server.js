@@ -3,7 +3,8 @@ const { spawn, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { controlledScriptFor, buildControlledArgs } = require('./controlled-args');
+const { controlledScriptFor, buildControlledArgs, nativeBatchEligible } = require('./controlled-args');
+const W = require('./workstation');
 const { createImageStore } = require('./image-store');
 const { createSystemInfo } = require('./system-info');
 const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime } = require('./capabilities');
@@ -20,6 +21,8 @@ imageStore.ensureRoot();
 const CONFIG_DIR = path.join(WORKFLOW_ROOT, 'config');
 const STATE_DIR = path.join(WORKFLOW_ROOT, 'state');
 const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
+// Lineage + Keepers, keyed by canonical image id (metadata only, never prompts).
+const imageMeta = W.createImageMetaStore(path.join(STATE_DIR, 'image-meta.json'));
 const IMAGE_EDIT_CACHE = path.join(STATE_DIR, 'image-edit-capabilities.json');
 const UPSCALE_CACHE = path.join(STATE_DIR, 'upscale-capabilities.json');
 const MODEL_STAGE_CACHE = path.join(STATE_DIR, 'model-stage-cache.json');
@@ -43,6 +46,8 @@ let realEsrganSupported = true; // proven: endpoint proof run 20260623-005030-es
 let inpaintSupported = true; // enabled: sdcpp-inpaint.sh implemented 2026-06-23
 
 const MASK_UPLOADS_DIR = path.join(WORKFLOW_ROOT, 'mask-uploads');
+const FULL_MASK_COVERAGE = 0.98; // painted fraction treated as "entire image masked"
+const LARGE_REQUEST_IMAGES = 12; // preflight asks for explicit confirmation above this
 if (!fs.existsSync(MASK_UPLOADS_DIR)) fs.mkdirSync(MASK_UPLOADS_DIR, { recursive: true });
 
 app.use(express.json({ limit: '5mb' }));
@@ -614,6 +619,143 @@ function resolveRunImageForRead(runId, rel) {
   const hit = imageStore.resolveRunImage(path.join(RUNS_DIR, runId), rel);
   return hit ? hit.path : null;
 }
+// Script-reported image path -> canonical image record (after finalizeRun).
+// Scripts report absolute paths, workflow-relative ("runs/<id>/…") or
+// runs-relative ("<id>/…", e.g. HIRES_FINAL_IMAGE) paths.
+function canonicalForReportedPath(value) {
+  if (!value) return null;
+  if (path.dirname(path.resolve(value)) === imageStore.root) return imageStore.resolveImage(path.basename(value));
+  const abs = path.isAbsolute(value) ? value
+    : (/^20\d{6}-\d{6}-/.test(value) ? path.resolve(RUNS_DIR, value) : path.resolve(WORKFLOW_ROOT, value));
+  const rel = path.relative(RUNS_DIR, abs);
+  const [runId, ...rest] = rel.split(path.sep);
+  if (runId && rest.length && !rel.startsWith('..')) return imageStore.resolveRunImage(path.join(RUNS_DIR, runId), rest.join('/'));
+  return null;
+}
+
+// PNG width/height from the IHDR chunk (no decoding).
+function pngSize(file) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const b = Buffer.alloc(24);
+    if (fs.readSync(fd, b, 0, 24, 0) < 24 || b.toString('latin1', 12, 16) !== 'IHDR') return null;
+    return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
+  } catch (_) { return null; } finally { if (fd !== undefined) fs.closeSync(fd); }
+}
+
+// canonical image id -> { runId, runFile } from the run dirs' canonical-images.json.
+let imageSourceCache = { at: 0, map: new Map() };
+function imageSourceMap() {
+  if (Date.now() - imageSourceCache.at < 5000) return imageSourceCache.map;
+  const map = new Map();
+  try {
+    for (const d of fs.readdirSync(RUNS_DIR, { withFileTypes: true })) {
+      if (!d.isDirectory()) continue;
+      for (const e of imageStore.readRunIndex(path.join(RUNS_DIR, d.name))) map.set(e.image_id, { runId: d.name, runFile: e.run_file });
+    }
+  } catch (_) {}
+  imageSourceCache = { at: Date.now(), map };
+  return map;
+}
+
+// Accept a canonical image id as an edit source (the UI never handles run ids).
+// Rewrites body.run_id/init_image_file for the existing validated handlers and
+// returns the source image id for lineage.
+function resolveImageSource(body) {
+  if (typeof body.image_id === 'string' && body.image_id) {
+    const img = imageStore.resolveImage(body.image_id);
+    if (!img) return { error: 'Source image not found in the canonical image store.' };
+    const src = imageSourceMap().get(body.image_id);
+    if (!src) return { error: 'Source image has no originating run record; it cannot be edited.' };
+    body.run_id = src.runId;
+    body.init_image_file = path.basename(src.runFile);
+    const dims = pngSize(img.path);
+    if (dims && (body.width === undefined || body.width === '' || body.width === null)) { body.width = dims.width; body.height = dims.height; }
+    return { imageId: body.image_id, path: img.path, dims };
+  }
+  if (typeof body.run_id === 'string' && typeof body.init_image_file === 'string') {
+    const hit = imageStore.resolveRunImage(path.join(RUNS_DIR, body.run_id), body.init_image_file);
+    return { imageId: hit ? hit.id : null, path: hit ? hit.path : null };
+  }
+  return { imageId: null };
+}
+
+// After a non-controlled edit job (img2img, inpaint, outpaint, upscale) finishes,
+// expose its canonical outputs as job.results and record lineage.
+function recordEditResults(job, stdoutText) {
+  if (!job.lineageOp) return;
+  const runIds = [...new Set([...String(stdoutText || '').matchAll(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/g)].map(m => m[1]))];
+  job.results = job.results || [];
+  for (const runId of runIds) {
+    for (const e of imageStore.readRunIndex(path.join(RUNS_DIR, runId))) {
+      if (job.results.some(r => r.imageId === e.image_id) || e.image_id === job.sourceImageId) continue;
+      const img = imageStore.resolveImage(e.image_id);
+      if (!img) continue;
+      const dims = pngSize(img.path) || {};
+      const rp = job.requestParams || {};
+      const seed = /^\d+$/.test(String(rp.seed || '')) ? Number(rp.seed) : null;
+      job.results.push({ index: job.results.length, status: 'DONE', imageId: e.image_id, imageUrl: imageStore.imageUrl(e.image_id), runId, seed, target: 'sd15', width: dims.width, height: dims.height, operation: job.lineageOp });
+      try {
+        imageMeta.record(e.image_id, { operation: job.lineageOp, parent: job.sourceImageId, runId, target: 'sd15', seed, width: dims.width, height: dims.height, steps: rp.steps, cfg: rp.cfg_scale, strength: rp.strength });
+      } catch (err) { job.stderr += `\nimage-meta: ${err.message}`; }
+    }
+  }
+}
+
+// Img2Img source preparation into the temporary mask-uploads area.
+const SOURCE_PREP_MODES = new Set(['crop-square', 'crop-portrait', 'crop-landscape', 'fit-square', 'resize-512']);
+const SOURCE_PREP_PY = [
+  'import sys',
+  'from PIL import Image, ImageFilter',
+  'src, out, mode = sys.argv[1], sys.argv[2], sys.argv[3]',
+  'im = Image.open(src).convert("RGB"); w, h = im.size',
+  'def r64(v): return max(64, int(round(v / 64.0)) * 64)',
+  'def crop(aw, ah):',
+  '    tw, th = (w, int(w * ah / aw)) if w * ah / aw <= h else (int(h * aw / ah), h)',
+  '    x, y = (w - tw) // 2, (h - th) // 2',
+  '    c = im.crop((x, y, x + tw, y + th)); return c.resize((r64(tw), r64(th)), Image.LANCZOS)',
+  'if mode == "crop-square": o = crop(1, 1)',
+  'elif mode == "crop-portrait": o = crop(3, 4)',
+  'elif mode == "crop-landscape": o = crop(4, 3)',
+  'elif mode == "fit-square":',
+  '    s = r64(max(w, h)); bg = im.resize((s, s)).filter(ImageFilter.GaussianBlur(radius=s // 16))',
+  '    k = s / float(max(w, h)); fw, fh = int(w * k), int(h * k); bg.paste(im.resize((fw, fh), Image.LANCZOS), ((s - fw) // 2, (s - fh) // 2)); o = bg',
+  'else:',
+  '    k = 512.0 / max(w, h); o = im.resize((r64(w * k), r64(h * k)), Image.LANCZOS)',
+  'o.save(out); print(o.size[0], o.size[1])',
+].join('\n');
+function prepareSource(srcPath, mode) {
+  if (!SOURCE_PREP_MODES.has(mode)) return { error: 'Unknown source_prep mode' };
+  const out = path.join(MASK_UPLOADS_DIR, `prep-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.png`);
+  try {
+    const [w, h] = execFileSync('python3', ['-c', SOURCE_PREP_PY, srcPath, out, mode], { timeout: 30000 }).toString().trim().split(' ').map(Number);
+    return { path: out, width: w, height: h };
+  } catch (_) {
+    try { fs.unlinkSync(out); } catch (__) {}
+    return { error: 'Could not prepare the source image.' };
+  }
+}
+
+// Outpaint: blend the untouched source back over this job's own new output.
+// Runs after canonicalization (the script adopts its PNG itself), editing the
+// single canonical copy in place before lineage is recorded.
+function compositeOutpaint(job, stdoutText) {
+  const c = job.outpaintComposite;
+  const m = String(stdoutText || '').match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
+  if (!m) return;
+  const runDir = path.join(RUNS_DIR, m[1]);
+  const files = imageStore.readRunIndex(runDir).map(e => imageStore.resolveImage(e.image_id)).filter(Boolean).map(i => i.path);
+  for (const f of files) {
+    try { execFileSync('python3', ['-c', OUTPAINT_COMPOSITE_PY, f, c.src, c.mask, String(c.left), String(c.top), String(c.blur || 0), c.fit ? 'fit' : 'offset'], { timeout: 30000 }); job.stdout += `\n${job.lineageOp}: source composited outside the mask\n`; }
+    catch (err) { job.stderr += `\nmask-composite: ${err.message}`; }
+  }
+}
+
+function cleanupJobTempFiles(job) {
+  for (const f of job.tempFiles || []) { try { fs.unlinkSync(f); } catch (_) {} }
+}
+
 function finalizeJobImages(job, stdoutText) {
   const runIds = [...new Set([...String(stdoutText || '').matchAll(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/g)].map(m => m[1]))];
   for (const runId of runIds) {
@@ -628,21 +770,7 @@ function finalizeJobImages(job, stdoutText) {
   for (const field of JOB_IMAGE_FIELDS) {
     const value = job[field];
     if (!value) continue;
-    let canonical = null;
-    if (path.dirname(path.resolve(value)) === imageStore.root) {
-      canonical = imageStore.resolveImage(path.basename(value));
-    } else {
-      // Scripts report absolute paths, workflow-relative ("runs/<id>/…") or
-      // runs-relative ("<id>/…", e.g. HIRES_FINAL_IMAGE) paths.
-      const abs = path.isAbsolute(value) ? value
-        : (/^20\d{6}-\d{6}-/.test(value) ? path.resolve(RUNS_DIR, value) : path.resolve(WORKFLOW_ROOT, value));
-      const rel = path.relative(RUNS_DIR, abs);
-      const [runId, ...rest] = rel.split(path.sep);
-      if (runId && rest.length && !rel.startsWith('..')) {
-        const hit = imageStore.resolveRunImage(path.join(RUNS_DIR, runId), rest.join('/'));
-        if (hit) canonical = hit;
-      }
-    }
+    const canonical = canonicalForReportedPath(value);
     if (canonical) {
       job[field] = canonical.path;
       job[field + 'Url'] = imageStore.imageUrl(canonical.id);
@@ -796,7 +924,7 @@ function runAction(jobId, scriptPath, args, savePrompts = false) {
   });
   child.on('close', code => {
     clearTimeout(timeoutTimer);
-    if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, job.stdout); recordJobEvidence(job); return; }
+    if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, job.stdout); cleanupJobTempFiles(job); recordJobEvidence(job); return; }
     job.exitCode = code;
     job.completedAt = Date.now();
     const out = job.stdout;
@@ -835,43 +963,93 @@ function runAction(jobId, scriptPath, args, savePrompts = false) {
     const hiresManifestMatch = out.match(/HIRES_MANIFEST:\s*(\S+)/);
     if (hiresManifestMatch) job.hiresManifest = hiresManifestMatch[1];
     finalizeJobImages(job, out);
+    if (job.outpaintComposite && job.status === 'PASS') compositeOutpaint(job, out);
+    if (job.status === 'PASS' || job.status === 'PARTIAL') recordEditResults(job, out);
+    cleanupJobTempFiles(job);
     recordJobEvidence(job);
   });
 }
 
-function isFixedSeed(seed) {
-  if (typeof seed === 'number') return seed >= 0;
-  if (typeof seed === 'string') {
-    const trimmed = seed.trim();
-    return /^\d+$/.test(trimmed);
-  }
-  return false;
+function runGateFrom(combined, runStdout) {
+  const gateMatch = combined.match(/First failed gate:\s*(.+?)(?=\n|$)/);
+  if (gateMatch) return gateMatch[1].trim();
+  const failMatch = runStdout.match(/FAIL:\s*(.+?)(?=\n|$)/);
+  if (failMatch) return failMatch[1].trim();
+  if (combined.includes('Unknown argument')) return 'args';
+  return null;
 }
 
-function runControlledSequential(jobId, spec, params, quantity) {
+// Controlled generation for quantity N. Each image becomes one entry in
+// job.results (canonical id/url, run, resolved seed, target, size, status).
+// SDCPP quantity 2-16 uses ONE native sd-cli --batch-count run (one model load);
+// otherwise, or if the native command cannot be built, runs are sequential.
+// The legacy single-image job fields keep pointing at the latest output.
+function runControlledSequential(jobId, spec, params, quantity, opts = {}) {
   const job = jobs[jobId];
   job.status = 'running';
+  job.results = job.results || [];
   const env = { ...process.env, SDCPP_REDACT_PROMPTS: params.save_prompts ? '0' : '1' };
   const sensitives = jobSensitives[jobId] || [];
-  const estimatedSeconds = estimateControlledRunSeconds(params);
+  const native = opts.native !== undefined ? opts.native : nativeBatchEligible(spec, quantity);
+  const seeds = opts.seeds || W.planSeeds(params.seed, quantity, { consecutive: native });
+  job.seeds = seeds;
+  job.nativeBatch = native;
+  if (native) job.capabilityId = 'quantity-native-batch';
+  else if (params.hires_scale) job.capabilityId = 'hires-refine';
+  const runsTotal = native ? 1 : quantity;
+  const perImage = estimateControlledRunSeconds(params);
+  const estimatedSeconds = native ? Math.round(perImage * (1 + 0.45 * (quantity - 1))) : perImage;
   const controlledScript = controlledScriptFor(spec);
+  const finish = () => {
+    job.completedAt = Date.now();
+    recordJobEvidence(job);
+    if (opts.onDone) { try { opts.onDone(job); } catch (_) {} }
+  };
+
+  function pushResults(runStdout, runIndex) {
+    const runMatch = runStdout.match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
+    const runId = runMatch ? runMatch[1] : null;
+    const reported = native
+      ? [...runStdout.matchAll(/CONTROLLED_BATCH_IMAGE:\s*(\S+)/g)].map(m => m[1])
+      : [(runStdout.match(/CONTROLLED_OUTPUT_IMAGE:\s*(\S+)/) || [])[1]].filter(Boolean);
+    reported.forEach((p, k) => {
+      const c = canonicalForReportedPath(p);
+      const seed = native ? seeds[k] : seeds[runIndex];
+      const dims = (c && pngSize(c.path)) || {};
+      const item = {
+        index: job.results.length, status: c ? 'DONE' : 'FAILED', seed, target: spec.id, runId,
+        width: dims.width || Number(params.width) || spec.defaultWidth, height: dims.height || Number(params.height) || spec.defaultHeight,
+        imageId: c ? c.id : null, imageUrl: c ? imageStore.imageUrl(c.id) : null,
+        operation: params.operation || 'txt2img', parentImageId: params.parent_image_id || null,
+      };
+      if (!c) item.error = 'output was not canonicalized';
+      job.results.push(item);
+      if (c) {
+        try {
+          imageMeta.record(c.id, {
+            operation: item.operation, parent: params.parent_image_id || undefined, runId, target: spec.id, seed,
+            width: item.width, height: item.height, steps: params.steps || spec.defaultSteps,
+            cfg: spec.backend === 'mflux' ? undefined : params.cfg_scale, scheduler: spec.backend === 'mflux' ? undefined : params.scheduler,
+            queueId: opts.queueId, batchNumber: opts.batchNumber,
+          });
+        } catch (err) { job.stderr += `\nimage-meta: ${err.message}`; }
+      }
+    });
+  }
 
   function runNext(runIndex) {
     const runNumber = runIndex + 1;
-    job.stdout += `\n--- Sequential Run ${runNumber} of ${quantity} ---\n`;
-    let progressTimer = startEstimatedRunProgress(job, runIndex, quantity, estimatedSeconds);
-
-    let seedValue = params.seed;
-    if (isFixedSeed(params.seed)) {
-      seedValue = String(parseInt(params.seed, 10) + runIndex);
-    }
+    job.stdout += native ? `\n--- Native batch run: ${quantity} images, seeds ${seeds[0]}..${seeds[quantity - 1]} ---\n` : `\n--- Sequential Run ${runNumber} of ${quantity} ---\n`;
+    const progressTimer = startEstimatedRunProgress(job, runIndex, runsTotal, estimatedSeconds);
     const args = buildControlledArgs(spec, params, {
-      seedValue,
+      seedValue: native ? seeds[0] : seeds[runIndex],
       isDiscovered: !CONTROLLED_TARGET_BY_ID[params.target],
       resolveVaePath,
+      batchCount: native ? quantity : 1,
     });
 
     const child = spawn(controlledScript, args, { cwd: WORKFLOW_ROOT, shell: false, env, detached: true });
+    job.activeChildPid = child.pid;
     let runStdout = '';
     let runStderr = '';
     const runTimeoutMs = Math.min(JOB_TIMEOUT_MS, Math.max(3 * 60 * 1000, estimatedSeconds * 3000 + 60 * 1000));
@@ -887,50 +1065,51 @@ function runControlledSequential(jobId, spec, params, quantity) {
       job.stdout += redacted;
       runStdout += redacted;
     });
-
     child.stderr.on('data', data => {
       const redacted = redactSensitiveText(data.toString(), sensitives);
       job.stderr += redacted;
       runStderr += redacted;
     });
-
     child.on('error', err => {
       clearTimeout(timeoutTimer);
       clearInterval(progressTimer);
       job.status = 'FAIL';
       job.stderr += `\nSpawn error in run ${runNumber}: ${err.message}`;
-      job.completedAt = Date.now();
       job.firstFailedGate = 'spawn';
       updateSequentialProgress(job, { currentRunPercent: 100 });
+      finish();
     });
 
     child.on('close', code => {
       clearTimeout(timeoutTimer);
       clearInterval(progressTimer);
-      if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, runStdout); return; }
+      job.activeChildPid = null;
+      if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, runStdout); finish(); return; }
       job.exitCode = code;
       const combined = runStdout + runStderr;
-      let runPassed = false;
+      let runPassed;
       if (runStdout.includes('==== PASS ====')) runPassed = true;
       else if (runStdout.includes('status: PARTIAL') || runStdout.includes('==== PARTIAL ====')) runPassed = true;
       else if (combined.includes('==== FAIL ====')) runPassed = false;
       else runPassed = (code === 0);
 
       if (!runPassed) {
-        job.status = 'FAIL';
-        job.completedAt = Date.now();
-        updateSequentialProgress(job, { currentRunPercent: 100 });
-
-        const gateMatch = combined.match(/First failed gate:\s*(.+?)(?=\n|$)/);
-        if (gateMatch) {
-          job.firstFailedGate = gateMatch[1].trim();
-        } else {
-          const failMatch = runStdout.match(/FAIL:\s*(.+?)(?=\n|$)/);
-          if (failMatch) job.firstFailedGate = failMatch[1].trim();
-          else if (combined.includes('Unknown argument')) job.firstFailedGate = 'args';
-        }
+        const gate = runGateFrom(combined, runStdout);
         finalizeJobImages(job, runStdout);
-        recordJobEvidence(job);
+        // Native command could not be built (nothing generated): fall back to sequential.
+        if (native && (gate === 'command' || gate === 'sd-cli-help')) {
+          job.stdout += `\n[native batch unavailable (${gate}); falling back to sequential runs]\n`;
+          job.nativeFallback = true;
+          delete job.capabilityId;
+          runControlledSequential(jobId, spec, params, quantity, { ...opts, native: false, seeds: W.planSeeds(params.seed, quantity) });
+          return;
+        }
+        job.status = 'FAIL';
+        job.firstFailedGate = gate;
+        const failed = native ? seeds.length : 1;
+        for (let k = 0; k < failed; k++) job.results.push({ index: job.results.length, status: 'FAILED', seed: native ? seeds[k] : seeds[runIndex], target: spec.id, error: gate || 'failed' });
+        updateSequentialProgress(job, { currentRunPercent: 100 });
+        finish();
         return;
       }
 
@@ -943,20 +1122,17 @@ function runControlledSequential(jobId, spec, params, quantity) {
       const controlledManifestMatch = runStdout.match(/CONTROLLED_MANIFEST:\s*(\S+)/);
       if (controlledManifestMatch) job.controlledManifest = controlledManifestMatch[1];
       finalizeJobImages(job, runStdout);
+      pushResults(runStdout, runIndex);
       updateSequentialProgress(job, { completedRuns: runNumber, currentRunPercent: 100 });
 
-      if (runIndex < quantity - 1) {
+      if (!native && runIndex < quantity - 1) {
         runNext(runIndex + 1);
       } else {
         const out = job.stdout;
-        if (out.includes('status: PARTIAL') || out.includes('==== PARTIAL ====')) {
-          job.status = 'PARTIAL';
-        } else {
-          job.status = 'PASS';
-        }
-        job.completedAt = Date.now();
-        updateSequentialProgress(job, { completedRuns: quantity, currentRunPercent: 100 });
-        recordJobEvidence(job);
+        job.status = (out.includes('status: PARTIAL') || out.includes('==== PARTIAL ====')) ? 'PARTIAL' : 'PASS';
+        if (job.results.some(r => r.status !== 'DONE')) job.status = 'PARTIAL';
+        updateSequentialProgress(job, { completedRuns: runsTotal, currentRunPercent: 100 });
+        finish();
       }
     });
   }
@@ -1012,7 +1188,13 @@ function normalizeControlledGenerationBody(body) {
     'cfg',
     'seed',
     'save_prompts',
-    'quantity'
+    'quantity',
+    'hires_scale',
+    'hires_steps',
+    'hires_denoise',
+    'hires_upscaler',
+    'parent_image_id',
+    'operation'
   ]);
   for (const key of Object.keys(body || {})) {
     if (!allowedKeys.has(key)) {
@@ -1040,7 +1222,13 @@ function normalizeControlledGenerationBody(body) {
     scheduler: body.scheduler !== undefined && body.scheduler !== null ? String(body.scheduler).trim() : 'discrete',
     vae: body.vae !== undefined && body.vae !== null ? String(body.vae).trim() : 'auto',
     save_prompts: !!body.save_prompts,
-    quantity: body.quantity !== undefined && body.quantity !== null && body.quantity !== '' ? Number(body.quantity) : 1
+    quantity: body.quantity !== undefined && body.quantity !== null && body.quantity !== '' ? Number(body.quantity) : 1,
+    hires_scale: body.hires_scale !== undefined && body.hires_scale !== null && body.hires_scale !== '' ? Number(body.hires_scale) : null,
+    hires_steps: body.hires_steps !== undefined && body.hires_steps !== null && body.hires_steps !== '' ? Number(body.hires_steps) : 0,
+    hires_denoise: body.hires_denoise !== undefined && body.hires_denoise !== null && body.hires_denoise !== '' ? Number(body.hires_denoise) : 0.5,
+    hires_upscaler: body.hires_upscaler ? String(body.hires_upscaler) : 'Latent',
+    parent_image_id: typeof body.parent_image_id === 'string' && body.parent_image_id ? body.parent_image_id : null,
+    operation: body.operation ? String(body.operation) : 'txt2img'
   };
   return params;
 }
@@ -1112,6 +1300,18 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
       return 'Quantity must be an integer between 1 and 100';
     }
   }
+  if (params.hires_scale !== null && params.hires_scale !== undefined) {
+    if ((spec.backend || 'sdcpp') === 'mflux') return 'High-Res Refine is an SDCPP feature; MFLUX targets do not support it';
+    if (!(params.hires_scale >= 1.1 && params.hires_scale <= 2)) return 'hires_scale must be between 1.1 and 2.0';
+    if (!Number.isInteger(params.hires_steps) || params.hires_steps < 0 || params.hires_steps > 150) return 'hires_steps must be an integer 0-150';
+    if (!(params.hires_denoise >= 0.05 && params.hires_denoise <= 0.95)) return 'hires_denoise must be between 0.05 and 0.95';
+    if (!['Latent', 'Lanczos', 'Nearest'].includes(params.hires_upscaler)) return 'hires_upscaler must be Latent, Lanczos or Nearest';
+    const w = Number(params.width || spec.defaultWidth), h = Number(params.height || spec.defaultHeight);
+    if (w * params.hires_scale > 2048 || h * params.hires_scale > 2048) return 'High-Res Refine output would exceed 2048 px';
+  }
+  if (!['txt2img', 'variation', 'seed-lab', 'prompt-ab', 'batch'].includes(params.operation)) return 'Invalid operation';
+  if (params.parent_image_id && !imageStore.resolveImage(params.parent_image_id)) return 'parent_image_id is not a canonical image';
+  if (W.isFixedSeedValue(params.seed) && parseInt(params.seed, 10) + (params.quantity || 1) - 1 > W.MAX_SEED) return 'seed + quantity exceeds the maximum seed';
   return null;
 }
 
@@ -1685,6 +1885,19 @@ function readPngTextChunks(filePath) {
   return chunks;
 }
 
+// Model-aware control truth for one target. The UI reads this instead of
+// branching on model names. Only claims what the backend actually consumes.
+function targetCapabilities(target) {
+  const mflux = (target.backend || 'sdcpp') === 'mflux';
+  const sd15 = target.id === 'sd15';
+  return {
+    backend: mflux ? 'mflux' : 'sdcpp',
+    negativePrompt: !mflux, cfg: !mflux, scheduler: !mflux, sampler: false, vae: !mflux, lora: !mflux,
+    img2img: sd15, inpaint: sd15, outpaint: sd15, controlNet: false, hiresRefine: !mflux,
+    nativeBatch: !mflux, maxQuantity: 100,
+  };
+}
+
 app.get('/api/capabilities', (req, res) => {
   const cfg = getWorkflowConfig();
   const remoteModel = cfg.REMOTE_MODEL || cfg.MODEL || 'v1-5-pruned-emaonly.safetensors';
@@ -1812,7 +2025,8 @@ app.get('/api/capabilities', (req, res) => {
     maxWidth: target.maxWidth,
     maxHeight: target.maxHeight,
     minSteps: target.minSteps,
-    maxSteps: target.maxSteps
+    maxSteps: target.maxSteps,
+    capabilities: targetCapabilities(target)
   }));
 
   res.json({
@@ -1867,7 +2081,12 @@ app.get('/api/capabilities', (req, res) => {
       sdxl: buildModelGate('sdxl', modelStage),
       img2img: img2imgGate,
       inpaint: inpaintGate,
-      outpaint: { supported: false, reason: 'Outpaint requires canvas-extend pre-processing not present in SDCPP CLI.' },
+      outpaint: inpaintSupported
+        ? { supported: true, route: '/api/actions/outpaint', caveat: 'Canvas extension + generated mask through the SDCPP inpaint path (SD1.5).' }
+        : { supported: false, reason: 'Needs the SDCPP inpaint backend.' },
+      hiresRefine: { supported: true, route: '/api/actions/generate-controlled', caveat: 'Native sd-cli --hires diffusion second pass (SDCPP targets only). Distinct from Lanczos resize and Real-ESRGAN.' },
+      nativeBatch: { supported: true, caveat: 'SDCPP quantity 2-16 runs as one sd-cli --batch-count invocation (seeds S..S+N-1); MFLUX is sequential.' },
+      controlNet: { supported: false, state: 'ENGINE SUPPORTED — MODEL ASSET MISSING', reason: 'sd-cli 7f0e728 supports --control-net/--control-image/--canny, but no SD1.5 ControlNet model exists on Big Mac.', unlock_requires: 'Stage an SD1.5 ControlNet (e.g. control_v11p_sd15_canny .safetensors, ~1.4 GB) under /Volumes/wc2tb/ImageGen/controlnet, then prove it.' },
       upscale: upscaleGate,
       hiresFix: hiresGate,
       faceRestore: faceGate,
@@ -2056,17 +2275,16 @@ app.post('/api/actions/generate-batch', (req, res) => {
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
-app.post('/api/actions/generate-controlled', (req, res) => {
+function allControlledTargets() {
   const discoveredTargets = buildDiscoveredTargets(readJsonCache(ASSETS_CACHE));
-  const allTargetById = discoveredTargets.length
+  return discoveredTargets.length
     ? { ...CONTROLLED_TARGET_BY_ID, ...Object.fromEntries(discoveredTargets.map(t => [t.id, t])) }
     : CONTROLLED_TARGET_BY_ID;
+}
 
-  const params = normalizeControlledGenerationBody(req.body || {});
-  params.prompt = expandWildcards(params.prompt);
-  const err = validateControlledGenerationParams(params, allTargetById);
-  if (err) return res.status(400).json({ error: err });
-
+// Validated params -> running controlled job. Shared by the Create API and the
+// numbered Batch queue so both use the one generation path.
+function startControlledJob(params, allTargetById, opts = {}) {
   const spec = allTargetById[params.target];
   const controlledScript = controlledScriptFor(spec);
   const args = buildControlledArgs(spec, params, {
@@ -2074,13 +2292,22 @@ app.post('/api/actions/generate-controlled', (req, res) => {
     isDiscovered: !CONTROLLED_TARGET_BY_ID[params.target],
     resolveVaePath,
   });
-
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
   const summary = getRedactedCommandSummary(controlledScript, args, sensitives) + (params.quantity > 1 ? ` (quantity: ${params.quantity})` : '');
   const jobId = createJob('controlled-generate', summary, sanitizeRequestParams({ ...params, target: spec.id }, params.save_prompts));
   jobSensitives[jobId] = sensitives;
+  runControlledSequential(jobId, spec, params, params.quantity, opts);
+  return { jobId, spec };
+}
 
-  runControlledSequential(jobId, spec, params, params.quantity);
+app.post('/api/actions/generate-controlled', (req, res) => {
+  const allTargetById = allControlledTargets();
+  const params = normalizeControlledGenerationBody(req.body || {});
+  params.prompt = expandWildcards(params.prompt);
+  const err = validateControlledGenerationParams(params, allTargetById);
+  if (err) return res.status(400).json({ error: err });
+
+  const { jobId, spec } = startControlledJob(params, allTargetById);
 
   res.json({
     job_id: jobId,
@@ -2088,7 +2315,10 @@ app.post('/api/actions/generate-controlled', (req, res) => {
     controlledTarget: spec.id,
     controlledOutputImage: null,
     controlledManifest: null,
-    firstFailedGate: null
+    firstFailedGate: null,
+    quantity: params.quantity,
+    seeds: jobs[jobId].seeds,
+    nativeBatch: !!jobs[jobId].nativeBatch
   });
 });
 
@@ -2193,7 +2423,17 @@ const ALLOWED_UPSCALE_RESAMPLES = new Set(['nearest', 'bilinear', 'bicubic', 'la
 
 // Pillow upscale endpoint — local only, no SSH, no prompt fields
 app.post('/api/actions/upscale', (req, res) => {
-  const body = req.body || {};
+  const body = { ...(req.body || {}) };
+  let upscaleSource = { imageId: null };
+  if (body.image_id) {
+    upscaleSource = resolveImageSource(body);
+    if (upscaleSource.error) return res.status(404).json({ error: upscaleSource.error, gate: 'source' });
+    body.runId = body.run_id;
+    body.image = imageSourceMap().get(body.image_id).runFile;
+  } else if (body.runId && body.image) {
+    const hit = imageStore.resolveRunImage(path.join(RUNS_DIR, String(body.runId)), String(body.image));
+    upscaleSource = { imageId: hit ? hit.id : null };
+  }
 
   // Accept either { path } or { runId, image }
   let upscalePath = null;
@@ -2243,6 +2483,8 @@ app.post('/api/actions/upscale', (req, res) => {
   const safeParams = { path: upscalePath, scale, resample };
   const summary = `bin/sdcpp-upscale.sh --path ${upscalePath} --scale ${scale} --resample ${resample}`;
   const jobId = createJob('upscale', summary, safeParams);
+  jobs[jobId].sourceImageId = upscaleSource.imageId || null;
+  jobs[jobId].lineageOp = 'lanczos';
   runAction(jobId, 'bin/sdcpp-upscale.sh', args);
 
   res.json({ job_id: jobId, status: jobs[jobId].status });
@@ -2303,7 +2545,9 @@ app.post('/api/actions/img2img', (req, res) => {
     });
   }
 
-  const body = req.body || {};
+  const body = { ...(req.body || {}) };
+  const srcInfo = resolveImageSource(body);
+  if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
 
   const runId = typeof body.run_id === 'string' ? body.run_id.trim() : '';
   const initImageFile = typeof body.init_image_file === 'string' ? body.init_image_file.trim() : '';
@@ -2336,9 +2580,19 @@ app.post('/api/actions/img2img', (req, res) => {
     return res.status(400).json({ error: 'strength must be a number between 0.01 and 0.99' });
   }
 
+  // Optional source preparation: a temporary working copy (never the canonical file).
+  let prepPath = null;
+  if (body.source_prep && body.source_prep !== 'none') {
+    const prep = prepareSource(initImgPath, String(body.source_prep));
+    if (prep.error) return res.status(400).json({ error: prep.error });
+    prepPath = prep.path;
+    initImgPath = prep.path;
+    body.width = prep.width; body.height = prep.height;
+  }
+
   const params = normalizeGenerationBody(body);
   const genErr = validateGenerationParams(params);
-  if (genErr) return res.status(400).json({ error: genErr });
+  if (genErr) { if (prepPath) try { fs.unlinkSync(prepPath); } catch (_) {} return res.status(400).json({ error: genErr }); }
 
   const args = ['--init-img', initImgPath, '--strength', String(strength), '--prompt', params.prompt];
   if (params.negative_prompt) args.push('--negative', params.negative_prompt);
@@ -2360,6 +2614,9 @@ app.post('/api/actions/img2img', (req, res) => {
     { ...params, run_id: runId, init_image_file: initImageFile, strength }, params.save_prompts
   ));
   jobSensitives[jobId] = sensitives;
+  jobs[jobId].sourceImageId = srcInfo.imageId || null;
+  jobs[jobId].lineageOp = 'img2img';
+  if (prepPath) jobs[jobId].tempFiles = [prepPath];
   runAction(jobId, 'bin/sdcpp-img2img.sh', args, params.save_prompts);
 
   res.json({ job_id: jobId, status: jobs[jobId].status });
@@ -2377,7 +2634,9 @@ app.post('/api/actions/inpaint', (req, res) => {
     });
   }
 
-  const body = req.body || {};
+  const body = { ...(req.body || {}) };
+  const srcInfo = resolveImageSource(body);
+  if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
 
   const runId = typeof body.run_id === 'string' ? body.run_id.trim() : '';
   const initImageFile = typeof body.init_image_file === 'string' ? body.init_image_file.trim() : '';
@@ -2444,7 +2703,7 @@ app.post('/api/actions/inpaint', (req, res) => {
     'mask = a.point([0] + [255]*255)',  // 0→black(keep), 1..255→white(inpaint)
     'if mask.getbbox():',
     '    mask.save(sys.argv[2])',
-    '    print("ok")',
+    '    print("ok %.5f %d %d" % (mask.histogram()[255] / float(mask.size[0] * mask.size[1]), mask.size[0], mask.size[1]))',
     'else:',
     '    print("blank")',
   ].join('\n');
@@ -2460,7 +2719,12 @@ app.post('/api/actions/inpaint', (req, res) => {
   }
 
   if (maskConvResult === 'blank') {
-    return res.status(400).json({ error: 'Mask has no painted pixels. Paint over the region to inpaint first.' });
+    return res.status(400).json({ error: 'Mask has no painted pixels. Paint over the region to inpaint first.', gate: 'mask-empty' });
+  }
+  const coverage = Number((maskConvResult.split(' ')[1]) || 0);
+  if (coverage >= FULL_MASK_COVERAGE && body.confirm_full_mask !== true) {
+    try { fs.unlinkSync(maskPath); } catch (_) {}
+    return res.status(409).json({ error: 'The entire image is masked. This will regenerate nearly everything.', gate: 'mask-full', coverage, needs_confirmation: true });
   }
 
   const params = normalizeGenerationBody(body);
@@ -2492,6 +2756,10 @@ app.post('/api/actions/inpaint', (req, res) => {
     { ...params, run_id: runId, init_image_file: initImageFile, strength }, params.save_prompts
   ));
   jobSensitives[jobId] = sensitives;
+  jobs[jobId].sourceImageId = srcInfo.imageId || null;
+  jobs[jobId].lineageOp = 'inpaint';
+  jobs[jobId].tempFiles = [maskPath];
+  jobs[jobId].outpaintComposite = { src: initImgPath, mask: maskPath, left: 0, top: 0, blur: 4, fit: true };
   runAction(jobId, 'bin/sdcpp-inpaint.sh', args, params.save_prompts);
 
   res.json({ job_id: jobId, status: jobs[jobId].status });
@@ -2509,7 +2777,9 @@ app.post('/api/actions/upscale-esrgan', (req, res) => {
     });
   }
 
-  const body = req.body || {};
+  const body = { ...(req.body || {}) };
+  const srcInfo = resolveImageSource(body);
+  if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
   const runId = typeof body.run_id === 'string' ? body.run_id.trim() : '';
   const initImageFile = typeof body.init_image_file === 'string' ? body.init_image_file.trim() : '';
 
@@ -2549,6 +2819,8 @@ app.post('/api/actions/upscale-esrgan', (req, res) => {
   const args = ['--init-img', initImgPath, '--tile-size', String(tileSize), '--repeats', String(repeats)];
   const summary = `bin/sdcpp-esrgan-upscale.sh --init-img ${runId}/${initImageFile} --tile-size ${tileSize} --repeats ${repeats}`;
   const jobId = createJob('upscale-esrgan', summary, { run_id: runId, init_image_file: initImageFile, tile_size: tileSize, repeats });
+  jobs[jobId].sourceImageId = srcInfo.imageId || null;
+  jobs[jobId].lineageOp = 'esrgan';
   runAction(jobId, 'bin/sdcpp-esrgan-upscale.sh', args);
 
   res.json({ job_id: jobId, status: jobs[jobId].status });
@@ -2598,6 +2870,329 @@ app.post('/api/actions/xyz-plot', (req, res) => {
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
+// ---- Outpaint: expanded canvas + generated mask through the existing inpaint script.
+// Seam strategy: new regions start from a blurred stretch of the source; the mask ramps linearly from 0 to 255 across an
+// overlap band inside the source; after generation the untouched source is
+// composited back with the same ramp (OUTPAINT_COMPOSITE_PY), so the interior
+// is exact and the boundary is a graded blend instead of a hard edge.
+const OUTPAINT_PREP_PY = [
+  'import sys',
+  'from PIL import Image, ImageFilter',
+  'src, out_img, out_mask = sys.argv[1], sys.argv[2], sys.argv[3]',
+  'l, t, W, H, ov = [int(x) for x in sys.argv[4:9]]',
+  'im = Image.open(src).convert("RGB")',
+  'w, h = im.size',
+  // Background: extend only the outermost 8 px band of each extended side (continues
+  // wall/table tones without copying objects), blur it, then place the source.
+  'r = W - l - w; b = H - t - h; e = 8',
+  'bg = im.resize((W, H), Image.BICUBIC).filter(ImageFilter.GaussianBlur(radius=max(8, min(W, H) // 12)))',
+  'if l: bg.paste(im.crop((0, 0, e, h)).resize((l, h)), (0, t))',
+  'if r: bg.paste(im.crop((w - e, 0, w, h)).resize((r, h)), (l + w, t))',
+  'if t: bg.paste(im.crop((0, 0, w, e)).resize((w, t)), (l, 0))',
+  'if b: bg.paste(im.crop((0, h - e, w, h)).resize((w, b)), (l, t + h))',
+  'bg = bg.filter(ImageFilter.GaussianBlur(radius=6))',
+  'bg.paste(im, (l, t))',
+  'bg.save(out_img)',
+  // Mask: 255 outside the source; inside, 0 except a linear ramp toward extended sides.
+  'm = Image.new("L", (W, H), 255)',
+  'inner = Image.new("L", (w, h), 0); px = inner.load()',
+  'for y in range(h):',
+  '    for x in range(w):',
+  '        d = min([ov] + ([x] if l else []) + ([w - 1 - x] if r else []) + ([y] if t else []) + ([h - 1 - y] if b else []))',
+  '        px[x, y] = int(255 * (1 - d / float(ov))) if d < ov else 0',
+  'm.paste(inner, (l, t))',
+  'm.save(out_mask)',
+  'print("ok", W, H)',
+].join('\n');
+
+// After generation (outpaint and inpaint): restore the source wherever the mask
+// did not ask for change, graded where the mask is soft. sd-cli re-encodes the
+// whole image, so without this unmasked pixels drift (VAE round-trip).
+const OUTPAINT_COMPOSITE_PY = [
+  'import sys',
+  'from PIL import Image, ImageFilter',
+  'gen, src, mask = sys.argv[1], sys.argv[2], sys.argv[3]',
+  'l, t = int(sys.argv[4]), int(sys.argv[5])',
+  'o = Image.open(gen).convert("RGB"); s = Image.open(src).convert("RGB"); m = Image.open(mask).convert("L")',
+  'if m.size != o.size: m = m.resize(o.size, Image.BILINEAR)',
+  // Inpaint only ("fit"): the source is the whole canvas; outpaint keeps the source at its offset.
+  'if len(sys.argv) > 7 and sys.argv[7] == "fit" and s.size != o.size: s = s.resize(o.size, Image.LANCZOS)',
+  // Optional softening for hard (binary) masks so the restored edge blends.
+  'blur = int(sys.argv[6]) if len(sys.argv) > 6 else 0',
+  'if blur: m = m.filter(ImageFilter.GaussianBlur(radius=blur))',
+  'keep = m.crop((l, t, l + s.width, t + s.height)).point(lambda v: 255 - v)',
+  'o.paste(s, (l, t), keep)',
+  'o.save(gen)',
+  'print("composited")',
+].join('\n');
+
+function planOutpaint(dims, ext) {
+  const round8 = v => Math.ceil(Math.max(0, Math.min(512, Math.round(Number(v) || 0))) / 8) * 8;
+  const e = { left: round8(ext.left), right: round8(ext.right), top: round8(ext.top), bottom: round8(ext.bottom) };
+  if (!(e.left + e.right + e.top + e.bottom)) return { error: 'Choose at least one side to extend.' };
+  let W = dims.width + e.left + e.right;
+  let H = dims.height + e.top + e.bottom;
+  // SD1.5 wants multiples of 64: pad on an extended side.
+  const padW = (64 - (W % 64)) % 64, padH = (64 - (H % 64)) % 64;
+  if (padW) { if (e.right || !e.left) e.right += padW; else e.left += padW; W += padW; }
+  if (padH) { if (e.bottom || !e.top) e.bottom += padH; else e.top += padH; H += padH; }
+  if (W > 2048 || H > 2048) return { error: `Outpaint canvas ${W}x${H} exceeds 2048 px.` };
+  return { ...e, width: W, height: H };
+}
+
+app.post('/api/actions/outpaint', (req, res) => {
+  if (!inpaintSupported) return res.status(409).json({ error: 'Outpaint needs the inpaint backend, which is not available.', gate: 'inpaint' });
+  const body = { ...(req.body || {}) };
+  if (!body.image_id) return res.status(400).json({ error: 'image_id is required' });
+  const src = resolveImageSource({ image_id: body.image_id });
+  if (src.error) return res.status(404).json({ error: src.error, gate: 'source' });
+  if (!src.dims) return res.status(400).json({ error: 'Outpaint source must be a PNG image.' });
+  const plan = planOutpaint(src.dims, body);
+  if (plan.error) return res.status(400).json({ error: plan.error });
+  const strength = body.strength !== undefined ? Number(body.strength) : 0.85;
+  if (!Number.isFinite(strength) || strength < 0.5 || strength > 0.99) return res.status(400).json({ error: 'strength must be between 0.5 and 0.99 for outpaint' });
+  const params = normalizeGenerationBody({ ...body, width: plan.width, height: plan.height });
+  const genErr = validateGenerationParams(params);
+  if (genErr) return res.status(400).json({ error: genErr });
+
+  const tag = `outpaint-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const prepPath = path.join(MASK_UPLOADS_DIR, `${tag}-canvas.png`);
+  const maskPath = path.join(MASK_UPLOADS_DIR, `${tag}-mask.png`);
+  try {
+    execFileSync('python3', ['-c', OUTPAINT_PREP_PY, src.path, prepPath, maskPath, String(plan.left), String(plan.top), String(plan.width), String(plan.height), '48'], { timeout: 30000 });
+  } catch (e) {
+    for (const f of [prepPath, maskPath]) { try { fs.unlinkSync(f); } catch (_) {} }
+    return res.status(500).json({ error: 'Could not prepare the outpaint canvas.', gate: 'outpaint-prep' });
+  }
+  const args = ['--init-img', prepPath, '--mask', maskPath, '--strength', String(strength), '--prompt', params.prompt,
+    '--width', String(plan.width), '--height', String(plan.height)];
+  if (params.negative_prompt) args.push('--negative', params.negative_prompt);
+  if (params.steps) args.push('--steps', String(params.steps));
+  if (params.cfg_scale) args.push('--cfg-scale', String(params.cfg_scale));
+  if (params.sampler) args.push('--sampler', params.sampler);
+  if (params.scheduler) args.push('--scheduler', params.scheduler);
+  if (params.seed) args.push('--seed', String(params.seed));
+  const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
+  const summary = getRedactedCommandSummary('bin/sdcpp-inpaint.sh', args, sensitives) + ` (outpaint L${plan.left} R${plan.right} T${plan.top} B${plan.bottom})`;
+  const jobId = createJob('outpaint', summary, sanitizeRequestParams({ ...params, image_id: body.image_id, strength, extend: { left: plan.left, right: plan.right, top: plan.top, bottom: plan.bottom } }, params.save_prompts));
+  jobSensitives[jobId] = sensitives;
+  Object.assign(jobs[jobId], { sourceImageId: body.image_id, lineageOp: 'outpaint', tempFiles: [prepPath, maskPath], outpaintComposite: { src: src.path, mask: maskPath, left: plan.left, top: plan.top } });
+  runAction(jobId, 'bin/sdcpp-inpaint.sh', args, params.save_prompts);
+  res.json({ job_id: jobId, status: jobs[jobId].status, canvas: { width: plan.width, height: plan.height }, extend: { left: plan.left, right: plan.right, top: plan.top, bottom: plan.bottom } });
+});
+
+// ---- Image lineage + Keepers (metadata only; images are never copied) --------
+function imageView(id) {
+  const img = imageStore.resolveImage(id);
+  if (!img) return null;
+  const meta = imageMeta.get(id) || {};
+  const src = imageSourceMap().get(id) || null;
+  const dims = pngSize(img.path) || {};
+  return {
+    id, url: imageStore.imageUrl(id), path: img.path, width: dims.width, height: dims.height,
+    runId: meta.runId || (src && src.runId) || null, keeper: !!meta.keeper, meta,
+    parent: meta.parent && imageStore.resolveImage(meta.parent) ? meta.parent : null,
+    children: imageMeta.children(id).filter(c => imageStore.resolveImage(c)),
+    ancestors: imageMeta.ancestors(id).filter(c => imageStore.resolveImage(c)),
+  };
+}
+app.get('/api/images/:id/meta', (req, res) => {
+  const v = imageView(req.params.id);
+  if (!v) return res.status(404).json({ error: 'Image not found' });
+  res.json(v);
+});
+app.post('/api/images/:id/keeper', (req, res) => {
+  if (!imageStore.resolveImage(req.params.id)) return res.status(404).json({ error: 'Image not found' });
+  const keeper = imageMeta.setKeeper(req.params.id, !!(req.body && req.body.keeper));
+  res.json({ id: req.params.id, keeper });
+});
+app.get('/api/library/images', (req, res) => {
+  const filter = String(req.query.filter || 'all');
+  const all = imageMeta.all();
+  // "All" also covers legacy images that only have a run record (no lineage yet).
+  const pool = filter === 'all' ? [...new Set([...Object.keys(all), ...imageSourceMap().keys()])] : Object.keys(all);
+  let ids = pool.filter(id => imageStore.resolveImage(id));
+  if (filter === 'keepers') ids = ids.filter(id => all[id].keeper);
+  else if (filter !== 'all') ids = ids.filter(id => all[id].operation === filter || all[id].target === filter);
+  // Canonical ids start with the run timestamp, so id order is creation order.
+  ids.sort((a, b) => b.localeCompare(a));
+  res.json({ filter, total: ids.length, items: ids.slice(0, 200).map(imageView) });
+});
+
+// ---- Numbered Batch: parse preview + backend-owned queue ----------------------
+app.post('/api/batch/parse', (req, res) => {
+  const r = W.parseNumberedPrompts((req.body && req.body.text) || '');
+  // Preview never echoes prompt bodies beyond what the client already holds.
+  res.json({ ok: r.ok, count: r.entries.length, warnings: r.warnings, errors: r.errors,
+    entries: r.entries.map(e => ({ index: e.index, number: e.number, title: e.title, chars: e.prompt.length, preview: e.prompt.slice(0, 160) })) });
+});
+
+// Durable queue state (runtime, gitignored). Prompts and settings.private are
+// persisted only for queues created with save_prompts=true.
+const queueRunner = W.createQueueRunner({
+  file: path.join(STATE_DIR, 'queues.json'),
+  runItem: (it, prompt, settings, q) => new Promise(resolve => {
+    const priv = settings.private || {};
+    const params = normalizeControlledGenerationBody({ ...settings.body, negative_prompt: priv.negative_prompt || '', prompt, operation: 'batch' });
+    params.prompt = expandWildcards(params.prompt);
+    const allTargetById = allControlledTargets();
+    const err = validateControlledGenerationParams(params, allTargetById);
+    if (err) return resolve({ ok: false, error: err, gate: 'validation' });
+    const { jobId } = startControlledJob(params, allTargetById, {
+      queueId: q.id, batchNumber: it.number,
+      onDone: job => resolve({
+        ok: job.status === 'PASS' || job.status === 'PARTIAL', jobId, results: job.results, seeds: job.seeds,
+        gate: job.firstFailedGate, error: job.status === 'PASS' || job.status === 'PARTIAL' ? null : `failed at gate ${job.firstFailedGate || 'unknown'}`,
+      }),
+    });
+    it.jobId = jobId;
+    it.seeds = jobs[jobId].seeds || [];
+  }),
+});
+
+app.post('/api/queues', (req, res) => {
+  const body = req.body || {};
+  const parsed = W.parseNumberedPrompts(body.text || '');
+  if (!parsed.ok) return res.status(400).json({ error: parsed.errors[0] || 'No prompts parsed', errors: parsed.errors, warnings: parsed.warnings });
+  const settings = { ...(body.settings || {}) };
+  delete settings.prompt;
+  const probe = normalizeControlledGenerationBody({ ...settings, prompt: 'x' });
+  const err = validateControlledGenerationParams(probe, allControlledTargets());
+  if (err) return res.status(400).json({ error: err });
+  const total = parsed.entries.length * (probe.quantity || 1);
+  if (total > LARGE_REQUEST_IMAGES && body.confirm_large !== true) {
+    return res.status(409).json({ error: `This queue requests ${total} images (${parsed.entries.length} prompts × ${probe.quantity || 1}). Confirm to continue.`, needs_confirmation: true, total });
+  }
+  const negative = settings.negative_prompt || settings.negativePrompt || '';
+  delete settings.negative_prompt; delete settings.negativePrompt;
+  const view = queueRunner.create({
+    entries: parsed.entries,
+    settings: { target: probe.target, quantity: probe.quantity, width: probe.width, height: probe.height, steps: probe.steps, seed: probe.seed, save_prompts: probe.save_prompts, body: settings, private: { negative_prompt: negative } },
+  });
+  res.json(queueRunner.get(view.id));
+});
+app.get('/api/queues', (req, res) => res.json({ queues: queueRunner.list().map(q => ({ id: q.id, status: q.status, total: q.total, complete: q.complete, failed: q.failed, queued: q.queued, interrupted: q.interrupted, restored: q.restored, promptsMissing: q.promptsMissing, createdAt: q.createdAt, updatedAt: q.updatedAt })) }));
+function queueWithProgress(v) {
+  if (!v) return v;
+  for (const it of v.items) {
+    const j = it.jobId && jobs[it.jobId];
+    if (it.status === 'RUNNING' && j) it.progress = DexProgress(j);
+  }
+  return v;
+}
+function DexProgress(job) {
+  const p = job.progress;
+  return p && typeof p === 'object' ? { percent: p.totalPercent, estimated: true } : null;
+}
+app.get('/api/queues/:id', (req, res) => {
+  const v = queueWithProgress(queueRunner.get(req.params.id));
+  if (!v) return res.status(404).json({ error: 'Queue not found (queues live in memory and do not survive a console restart).' });
+  res.json(v);
+});
+app.post('/api/queues/:id/:action', (req, res) => {
+  const { id, action } = req.params;
+  const fns = { 'stop-after-current': queueRunner.stopAfterCurrent, resume: queueRunner.resume, 'retry-failed': queueRunner.retryFailed };
+  if (!fns[action]) return res.status(404).json({ error: 'Unknown queue action' });
+  // A restored queue without saved prompts can be resumed by re-pasting the same numbered text.
+  let prompts;
+  if (req.body && typeof req.body.text === 'string' && req.body.text.trim()) {
+    const cur = queueRunner.get(id);
+    if (!cur) return res.status(404).json({ error: 'Queue not found' });
+    const parsed = W.parseNumberedPrompts(req.body.text);
+    const byIndex = [...cur.items].sort((a, b) => a.queueIndex - b.queueIndex);
+    if (!parsed.ok || parsed.entries.length !== byIndex.length || parsed.entries.some((e, i) => e.number !== byIndex[i].number || e.title !== byIndex[i].title)) {
+      return res.status(409).json({ error: 'That text does not match this queue (same numbers and titles are required).' });
+    }
+    prompts = parsed.entries.map((e, i) => ({ queueIndex: byIndex[i].queueIndex, prompt: e.prompt }));
+  }
+  const v = fns[action](id, prompts);
+  if (!v) return res.status(404).json({ error: 'Queue not found' });
+  if (v.error) return res.status(409).json(v);
+  res.json(v);
+});
+app.post('/api/queues/:id/items/:qi/:action', (req, res) => {
+  const { id, action } = req.params;
+  const qi = Number(req.params.qi);
+  let v;
+  if (action === 'remove') v = queueRunner.removeItem(id, qi);
+  else if (action === 'up' || action === 'down') v = queueRunner.moveItem(id, qi, action);
+  else return res.status(404).json({ error: 'Unknown item action' });
+  if (!v) return res.status(404).json({ error: 'Queue not found' });
+  if (v.error) return res.status(409).json(v);
+  res.json(v);
+});
+
+// ---- Active jobs (reload recovery) ------------------------------------------
+app.get('/api/jobs', (req, res) => {
+  const active = Object.values(jobs).filter(j => j.status === 'queued' || j.status === 'running');
+  res.json({ jobs: active.map(j => ({ id: j.id, commandAction: j.commandAction, status: j.status, createdAt: j.createdAt, progress: j.progress || null })) });
+});
+
+// ---- Preflight (cheap, read-only) ---------------------------------------------
+async function freeBytes(dir) {
+  try { const st = await fs.promises.statfs(dir); return st.bavail * st.bsize; } catch (_) { return null; }
+}
+app.post('/api/preflight', async (req, res) => {
+  const body = req.body || {};
+  const prompts = Math.max(1, Number(body.prompts) || 1);
+  const quantity = Math.max(1, Number(body.quantity) || 1);
+  const total = prompts * quantity;
+  const target = CONTROLLED_TARGET_BY_ID[body.target] || allControlledTargets()[body.target];
+  const rows = [];
+  rows.push({ check: 'Local backend', state: 'PASS', detail: 'operator console responding' });
+  if (!target) rows.push({ check: 'Target', state: 'FAIL', detail: 'unknown target' });
+  const assets = assetCache && Date.now() - Date.parse(assetCache.checkedAt) < 60000 ? assetCache : await refreshAssets();
+  rows.push({ check: 'Big Mac', state: assets.reachable ? 'PASS' : 'FAIL', detail: assets.reachable ? 'reachable over ssh westcat' : 'Big Mac unreachable (ssh westcat)' });
+  if (target) {
+    const rt = targetRuntime(target, assets, TARGET_MODELS);
+    rows.push({ check: 'Target runtime/model', state: rt === 'available' ? 'PASS' : rt === 'unknown' ? 'WARN' : 'FAIL', detail: `${target.label}: ${rt}` });
+  }
+  let writable = true;
+  try { fs.accessSync(imageStore.root, fs.constants.W_OK); } catch (_) { writable = false; }
+  rows.push({ check: 'Image store', state: writable ? 'PASS' : 'FAIL', detail: imageStore.root + (writable ? ' writable' : ' NOT writable') });
+  const free = await freeBytes(imageStore.root);
+  const needed = total * 3 * 1024 * 1024;
+  rows.push({ check: 'Free space', state: free == null ? 'WARN' : free > needed + 2e9 ? 'PASS' : 'FAIL', detail: free == null ? 'unknown' : `${(free / 1e9).toFixed(1)} GB free` });
+  const ok = rows.every(r => r.state !== 'FAIL');
+  res.json({ ok, prompts, quantity, total, needsConfirmation: total > LARGE_REQUEST_IMAGES, summary: `${prompts} prompt${prompts > 1 ? 's' : ''} × ${quantity} = ${total} image${total > 1 ? 's' : ''}`, rows });
+});
+
+// ---- Doctor: read-only health check (never generates) ------------------------
+app.get('/api/doctor', async (req, res) => {
+  const rows = [];
+  const add = (check, state, detail) => rows.push({ check, state, detail });
+  add('Operator console', 'PASS', `responding (pid ${process.pid})`);
+  add('Loopback bind', HOST === '127.0.0.1' ? 'PASS' : 'FAIL', `${HOST}:${PORT}`);
+  try { fs.accessSync(imageStore.root, fs.constants.R_OK | fs.constants.W_OK); add('Canonical image root', 'PASS', imageStore.root + ' readable/writable'); }
+  catch (_) { add('Canonical image root', 'FAIL', imageStore.root + ' not accessible'); }
+  const a = await refreshAssets();
+  if (!a.reachable) add('Big Mac', 'FAIL', 'unreachable via ssh ' + SSH_TARGET_NAME);
+  else {
+    add('Big Mac', 'PASS', 'reachable via ssh ' + SSH_TARGET_NAME);
+    add('Big Mac identity', a.identity === 'bigmac@bigmac' ? 'PASS' : 'WARN', a.identity || 'unknown');
+    add('wc2tb mounted', a.wc2tb ? 'PASS' : 'FAIL', '/Volumes/wc2tb' + (a.wc2tb ? '' : ' not mounted'));
+    add('MFLUX runtime', a.mfluxRuntime ? 'PASS' : 'FAIL', 'internal venv');
+    add('MFLUX model (FLUX.2 Klein 4B 4-bit)', a.mfluxModel ? 'PASS' : 'FAIL', '$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit');
+    add('SDCPP sd-cli', a.sdCli ? 'PASS' : 'FAIL', 'stable-diffusion.cpp 7f0e728');
+    add('SD1.5 model', a.sd15Model ? 'PASS' : 'FAIL', '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors');
+    add('Real-ESRGAN model', a.esrganModel ? 'PASS' : 'FAIL', 'RealESRGAN_x4plus.pth');
+    const missing = Object.entries(a.models || {}).filter(([, v]) => v === false).length;
+    add('Configured SDCPP targets', missing ? 'WARN' : 'PASS', missing ? `${missing} configured model file(s) absent (targets report model-missing)` : 'all present');
+  }
+  try {
+    const si = await getSystemInfo({ targets: CONTROLLED_TARGETS, build: { ...getBuildInfo(), sshTarget: SSH_TARGET_NAME } });
+    const ts = si.network && si.network.tailscale;
+    if (!ts || !ts.available) add('Tailscale Serve', 'WARN', (ts && ts.reason) || 'unknown');
+    else if (!ts.serveConfigured) add('Tailscale Serve', 'WARN', ts.reason || 'not configured');
+    else {
+      add('Tailscale Serve', 'PASS', `${ts.url} (${ts.scope})`);
+      add('DexDiffusion Funnel absent', ts.funnel ? 'FAIL' : 'PASS', ts.funnel ? 'Funnel is ENABLED for DexDiffusion' : 'tailnet-only');
+    }
+  } catch (_) { add('Tailscale Serve', 'WARN', 'probe failed'); }
+  const worst = rows.some(r => r.state === 'FAIL') ? 'FAIL' : rows.some(r => r.state === 'WARN') ? 'WARN' : 'PASS';
+  res.json({ overall: worst, checkedAt: new Date().toISOString(), rows });
+});
+
 app.get('/api/jobs/:jobId', (req, res) => {
   const job = jobs[req.params.jobId];
   if (!job) return res.status(404).json({ error: 'Job not found' });
@@ -2625,7 +3220,13 @@ app.get('/api/jobs/:jobId', (req, res) => {
     hiresFinalImage: job.hiresFinalImage || null,
     hiresFinalImageUrl: job.hiresFinalImageUrl || null,
     hiresManifest: job.hiresManifest || null,
-    upscaledImageUrl: job.upscaledImageUrl || null
+    upscaledImageUrl: job.upscaledImageUrl || null,
+    results: job.results || [],
+    seeds: job.seeds || null,
+    nativeBatch: !!job.nativeBatch,
+    nativeFallback: !!job.nativeFallback,
+    sourceImageId: job.sourceImageId || null,
+    progressEstimated: job.commandAction === 'controlled-generate'
   });
 });
 app.get('/api/jobs/:jobId/log', (req, res) => {

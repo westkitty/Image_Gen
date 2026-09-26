@@ -25,6 +25,11 @@ ARG_SAVE_PROMPTS="false"
 ARG_SCHEDULER=""
 ARG_VAE=""
 ARG_MODEL_PATH=""
+ARG_BATCH_COUNT="1"
+ARG_HIRES_SCALE=""
+ARG_HIRES_STEPS="0"
+ARG_HIRES_DENOISE="0.5"
+ARG_HIRES_UPSCALER="Latent"
 
 usage() {
   cat <<EOF
@@ -43,6 +48,11 @@ Usage: $(basename "$0") [options]
   --api openai|sdapi|both|native
                               SD1.5 server-tunnel API path (default openai)
   --save-prompts true|false   persist prompts in run records (default false)
+  --batch-count N             native sd-cli batch (1-16): one model load, N outputs, seeds S..S+N-1
+  --hires-scale F             enable native sd-cli high-res second pass (1.1-2.0)
+  --hires-steps N             second-pass steps (0 = reuse --steps)
+  --hires-denoise F           second-pass denoising strength (0.05-0.95, default 0.5)
+  --hires-upscaler NAME       Latent|Lanczos|Nearest (default Latent)
   -h, --help
 EOF
 }
@@ -62,6 +72,11 @@ while [ "$#" -gt 0 ]; do
     --scheduler) ARG_SCHEDULER="${2:?}"; shift 2 ;;
     --vae) ARG_VAE="${2:?}"; shift 2 ;;
     --save-prompts) ARG_SAVE_PROMPTS="${2:?}"; shift 2 ;;
+    --batch-count) ARG_BATCH_COUNT="${2:?}"; shift 2 ;;
+    --hires-scale) ARG_HIRES_SCALE="${2:?}"; shift 2 ;;
+    --hires-steps) ARG_HIRES_STEPS="${2:?}"; shift 2 ;;
+    --hires-denoise) ARG_HIRES_DENOISE="${2:?}"; shift 2 ;;
+    --hires-upscaler) ARG_HIRES_UPSCALER="${2:?}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) fail "args" "Unknown argument: $1 (see --help)" ;;
   esac
@@ -82,6 +97,13 @@ else
     sd15|sdxl-base|sdxl-turbo|flux-fp8|sdxl-photonic|sdxl-homochi|sdxl-pony|sd15-homofidelis|sdxl-juggernaut|sdxl-realvisxl|sdxl-cyberrealistic|sdxl-epicrealism|sdxl-biglust|sdxl-lustify|sdxl-biglove|sdxl-lustify-lightning|sdxl-juggernaut-lightning) : ;;
     *) fail "target" "Unknown target '$ARG_TARGET'. Pass --model-path to use an auto-discovered model." ;;
   esac
+fi
+case "$ARG_BATCH_COUNT" in ''|*[!0-9]*) fail "args" "--batch-count must be an integer 1-16" ;; esac
+[ "$ARG_BATCH_COUNT" -ge 1 ] && [ "$ARG_BATCH_COUNT" -le 16 ] || fail "args" "--batch-count must be an integer 1-16"
+if [ -n "$ARG_HIRES_SCALE" ]; then
+  python3 -c 'import sys; s,d,n=float(sys.argv[1]),float(sys.argv[2]),int(sys.argv[3]); sys.exit(0 if 1.1<=s<=2.0 and 0.05<=d<=0.95 and 0<=n<=150 else 1)' "$ARG_HIRES_SCALE" "$ARG_HIRES_DENOISE" "$ARG_HIRES_STEPS" 2>/dev/null \
+    || fail "args" "--hires-scale 1.1-2.0, --hires-denoise 0.05-0.95, --hires-steps 0-150"
+  case "$ARG_HIRES_UPSCALER" in Latent|Lanczos|Nearest) : ;; *) fail "args" "--hires-upscaler must be Latent|Lanczos|Nearest" ;; esac
 fi
 case "$ARG_API" in openai|sdapi|both|native) : ;; *) fail "args" "--api must be openai|sdapi|both|native" ;; esac
 if [ "$ARG_SAVE_PROMPTS" = "true" ]; then
@@ -625,7 +647,7 @@ if [ -f "$SDCPP_STATE_DIR/current-ports.env" ]; then
   SD15_TUNNEL_PORT="$( . "$SDCPP_STATE_DIR/current-ports.env"; printf '%s' "${LOCAL_TUNNEL_PORT:-$SD15_TUNNEL_PORT}")"
 fi
 SD15_USE_SERVER=false
-if [ "$ARG_TARGET" = "sd15" ] && ! printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
+if [ "$ARG_TARGET" = "sd15" ] && [ "$ARG_BATCH_COUNT" = "1" ] && [ -z "$ARG_HIRES_SCALE" ] && ! printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
   if lsof -nP -iTCP:"$SD15_TUNNEL_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
     SD15_USE_SERVER=true
   else
@@ -861,6 +883,31 @@ if [ -z "$REMOTE_STDOUT_CMD" ]; then
   controlled_fail "command" "Could not build a controlled generation command."
 fi
 
+# Native sd-cli extras (pinned 7f0e728): --batch-count and --hires second pass.
+NATIVE_EXTRA=""
+REMOTE_OUT_ARG="$REMOTE_PNG"
+if [ -n "$ARG_HIRES_SCALE" ]; then
+  printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--hires-denoising-strength' || controlled_fail "sd-cli-help" "sd-cli help does not show --hires."
+  NATIVE_EXTRA="--hires --hires-scale $ARG_HIRES_SCALE --hires-steps $ARG_HIRES_STEPS --hires-denoising-strength $ARG_HIRES_DENOISE --hires-upscaler $ARG_HIRES_UPSCALER"
+fi
+BATCH_REMOTE_PNGS=()
+if [ "$ARG_BATCH_COUNT" -gt 1 ]; then
+  printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--batch-count' || controlled_fail "sd-cli-help" "sd-cli help does not show --batch-count."
+  case "$SEED_VALUE" in -*) SEED_VALUE="$(gen_random_seed)"; SEED_LABEL="$SEED_VALUE(random)"; REMOTE_STDOUT_CMD="${REMOTE_STDOUT_CMD/$SEED_FRAG/--seed $SEED_VALUE}"; SEED_FRAG="--seed $SEED_VALUE" ;; esac
+  NATIVE_EXTRA="$NATIVE_EXTRA -b $ARG_BATCH_COUNT"
+  REMOTE_OUT_ARG="$REMOTE_RUN_DIR/controlled-$ARG_TARGET-b%02d.png"
+  for ((bi = 0; bi < ARG_BATCH_COUNT; bi++)); do
+    BATCH_REMOTE_PNGS+=("$(printf '%s/controlled-%s-b%02d.png' "$REMOTE_RUN_DIR" "$ARG_TARGET" "$bi")")
+  done
+  register_remote_ephemeral "${BATCH_REMOTE_PNGS[@]}"
+fi
+if [ -n "$NATIVE_EXTRA" ]; then
+  _needle="-o \"$REMOTE_PNG\""
+  case "$REMOTE_STDOUT_CMD" in *"$_needle"*) : ;; *) controlled_fail "command" "Native batch/hires is not supported for target $ARG_TARGET." ;; esac
+  REMOTE_STDOUT_CMD="${REMOTE_STDOUT_CMD/"$_needle"/$NATIVE_EXTRA -o \"$REMOTE_OUT_ARG\"}"
+  log "Native sd-cli extras: $NATIVE_EXTRA"
+fi
+
 log "Running controlled generation on BigMac"
 if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
   ssh_remote "mkdir -p \"$REMOTE_RUN_DIR\" && $REMOTE_STDOUT_CMD" 2>&1 | python3 -c "
@@ -885,6 +932,40 @@ fi
 REMOTE_ELAPSED="$(extract_remote_elapsed "$REMOTE_LOG")"
 [ -n "$REMOTE_ELAPSED" ] || REMOTE_ELAPSED="n/a"
 
+if [ "$ARG_BATCH_COUNT" -gt 1 ]; then
+  # Every native batch output must exist remotely, then be copied, validated
+  # and (on EXIT) deleted from Big Mac. Seeds are S, S+1, ... (sd-cli contract).
+  OUTPUT_SEEDS_JSON="{"
+  LOCAL_BATCH_PNGS=()
+  for ((bi = 0; bi < ARG_BATCH_COUNT; bi++)); do
+    rp="${BATCH_REMOTE_PNGS[$bi]}"
+    remote_test "test -s \"$rp\" && file \"$rp\" | grep -q 'PNG image data'" || controlled_fail "remote-png" "Native batch output $((bi + 1))/$ARG_BATCH_COUNT missing or invalid: $rp"
+    lp="$RUN_DIR/controlled-$ARG_TARGET-b$(printf '%02d' "$bi").png"
+    scp "$SSH_TARGET:$(remote_eval_path "$rp")" "$lp" >/dev/null 2>&1 || controlled_fail "scp" "Could not copy native batch output $((bi + 1))"
+    if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+      strip_png_metadata "$lp" || controlled_fail "png-redact" "Could not strip PNG metadata from $lp"
+    fi
+    verify_png "$lp" "Native batch PNG $((bi + 1))"
+    LOCAL_BATCH_PNGS+=("$lp")
+    [ "$bi" -gt 0 ] && OUTPUT_SEEDS_JSON="$OUTPUT_SEEDS_JSON,"
+    OUTPUT_SEEDS_JSON="$OUTPUT_SEEDS_JSON\"$(basename "$lp")\":$((SEED_VALUE + bi))"
+  done
+  OUTPUT_SEEDS_JSON="$OUTPUT_SEEDS_JSON}"
+  LOCAL_PNG="${LOCAL_BATCH_PNGS[0]}"
+  RUN_STATUS="PASS"
+  controlled_write_artifacts "PASS"
+  printf '{"schema":"dexdiffusion.controlled_extras.v1","native_batch_count":%s,"output_seeds":%s,"hires":%s}\n' \
+    "$ARG_BATCH_COUNT" "$OUTPUT_SEEDS_JSON" "$([ -n "$ARG_HIRES_SCALE" ] && printf '{"scale":%s,"steps":%s,"denoise":%s,"upscaler":"%s"}' "$ARG_HIRES_SCALE" "$ARG_HIRES_STEPS" "$ARG_HIRES_DENOISE" "$ARG_HIRES_UPSCALER" || printf null)" \
+    > "$RUN_DIR/controlled-extras.json"
+  for lp in "${LOCAL_BATCH_PNGS[@]}"; do printf 'CONTROLLED_BATCH_IMAGE: %s\n' "$lp"; done
+  pass_banner "CONTROLLED GENERATE PASS ($ARG_TARGET native batch x$ARG_BATCH_COUNT, seeds=$SEED_VALUE..$((SEED_VALUE + ARG_BATCH_COUNT - 1))).
+Target:  $TARGET_LABEL
+Run:     $RUN_DIR
+Report:  $REPORT
+Manifest: $MANIFEST"
+  exit 0
+fi
+
 if ! remote_test "test -s \"$REMOTE_PNG\" && file \"$REMOTE_PNG\" | grep -q 'PNG image data'"; then
   controlled_fail "remote-png" "Remote PNG missing or invalid: $REMOTE_PNG"
 fi
@@ -898,6 +979,10 @@ verify_png "$LOCAL_PNG" "Controlled PNG"
 RUN_STATUS="PASS"
 
 controlled_write_artifacts "PASS"
+if [ -n "$ARG_HIRES_SCALE" ]; then
+  printf '{"schema":"dexdiffusion.controlled_extras.v1","native_batch_count":1,"output_seeds":null,"hires":{"scale":%s,"steps":%s,"denoise":%s,"upscaler":"%s"}}\n' \
+    "$ARG_HIRES_SCALE" "$ARG_HIRES_STEPS" "$ARG_HIRES_DENOISE" "$ARG_HIRES_UPSCALER" > "$RUN_DIR/controlled-extras.json"
+fi
 
 pass_banner "CONTROLLED GENERATE PASS ($ARG_TARGET, seed=$SEED_LABEL).
 Target:  $TARGET_LABEL

@@ -9,7 +9,14 @@ function controlledScriptFor(spec) {
 
 // MFLUX (FLUX.2 Klein) has no negative prompt, SDCPP CFG flag, scheduler or
 // VAE switch; those are never forwarded to the MFLUX script.
-function buildControlledArgs(spec, params, { seedValue, isDiscovered = false, resolveVaePath = () => null } = {}) {
+// Native sd-cli --batch-count: one model load for N outputs (proved equivalent
+// to N sequential runs at seeds S..S+N-1). SDCPP only; MFLUX stays sequential.
+const NATIVE_BATCH_MAX = 16;
+function nativeBatchEligible(spec, quantity, env = process.env) {
+  return spec.backend !== 'mflux' && env.DEX_NATIVE_BATCH !== '0' && quantity >= 2 && quantity <= NATIVE_BATCH_MAX;
+}
+
+function buildControlledArgs(spec, params, { seedValue, isDiscovered = false, resolveVaePath = () => null, batchCount = 1 } = {}) {
   const mflux = spec.backend === 'mflux';
   const args = ['--target', params.target, '--prompt', params.prompt];
   if (spec.modelPath && isDiscovered) args.push('--model-path', spec.modelPath);
@@ -27,8 +34,13 @@ function buildControlledArgs(spec, params, { seedValue, isDiscovered = false, re
     const vaePath = resolveVaePath(params.vae);
     if (vaePath) args.push('--vae', vaePath);
   }
+  if (!mflux && batchCount > 1) args.push('--batch-count', String(batchCount));
+  if (!mflux && params.hires_scale) {
+    args.push('--hires-scale', String(params.hires_scale), '--hires-steps', String(params.hires_steps || 0),
+      '--hires-denoise', String(params.hires_denoise || 0.5), '--hires-upscaler', params.hires_upscaler || 'Latent');
+  }
   args.push('--save-prompts', params.save_prompts ? 'true' : 'false');
   return args;
 }
 
-module.exports = { controlledScriptFor, buildControlledArgs };
+module.exports = { controlledScriptFor, buildControlledArgs, nativeBatchEligible, NATIVE_BATCH_MAX };

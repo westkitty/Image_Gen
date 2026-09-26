@@ -71,8 +71,9 @@ done
 INIT_IMG_ABS="$(cd "$(dirname "$ARG_INIT_IMG")" 2>/dev/null && pwd)/$(basename "$ARG_INIT_IMG")" \
   || fail "init-img" "Cannot resolve init image path: $ARG_INIT_IMG"
 case "$INIT_IMG_ABS" in
-  "$SDCPP_RUNS_DIR/"*|"$DEX_IMAGES_ROOT/"*) ;;   # run dirs or the canonical image store
-  *) fail "init-img" "Init image must be within $SDCPP_RUNS_DIR or $DEX_IMAGES_ROOT (got: $INIT_IMG_ABS)" ;;
+  # run dirs, the canonical image store, or temporary prepared canvases (outpaint)
+  "$SDCPP_RUNS_DIR/"*|"$DEX_IMAGES_ROOT/"*|"$(dirname "$SDCPP_RUNS_DIR")/mask-uploads/"*) ;;
+  *) fail "init-img" "Init image must be within $SDCPP_RUNS_DIR, $DEX_IMAGES_ROOT or mask-uploads/ (got: $INIT_IMG_ABS)" ;;
 esac
 [ -f "$INIT_IMG_ABS" ] || fail "init-img" "Init image file not found: $INIT_IMG_ABS"
 

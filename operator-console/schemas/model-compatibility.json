@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-06-23",
+  "updated": "2026-09-26",
   "engine": "stable-diffusion.cpp",
   "statuses": [
     "implemented",
@@ -18,7 +18,7 @@
       "default_height": 512,
       "compatibility_warnings": [
         "Best proven path for normal txt2img/img2img/inpaint in this console.",
-        "ControlNet remains external/deferred unless a real stable-diffusion.cpp path is added."
+        "ControlNet: engine supported, model asset missing (no SD1.5 ControlNet installed)."
       ]
     },
     "sdxl": {
@@ -52,24 +52,24 @@
   "parity_categories": {
     "txt2img full control surface": { "status": "partially implemented", "notes": "Prompt, negative prompt, target, VAE, sampler, scheduler, steps, CFG, seed, size, tiling, and metadata toggles are visible; A1111-only extras remain gated." },
     "img2img full control surface": { "status": "partially implemented", "notes": "Backend accepts core generation controls plus denoising strength and init image; UI parity controls are being folded into the edit panel." },
-    "inpainting": { "status": "partially implemented", "notes": "Canvas mask, alpha-to-mask conversion, blank-mask rejection, and core generation params are supported; A1111 mask blur/masked content/inpaint area are not claimed." },
-    "outpainting": { "status": "external/deferred", "notes": "No canvas extension workflow exists." },
-    "highres fix": { "status": "partially implemented", "notes": "Two-pass txt2img to Pillow upscale only; not A1111 latent highres fix." },
+    "inpainting": { "status": "implemented", "notes": "Mask editor at source resolution with brush/eraser/undo/redo/grow/shrink/feather/blur/invert; blank rejected, full mask needs confirmation." },
+    "outpainting": { "status": "implemented", "notes": "Canvas extension + generated mask through the SD1.5 inpaint path; live-proven 2026-09-26 (soft seam visible)." },
+    "highres fix": { "status": "implemented", "notes": "Native sd-cli --hires diffusion second pass (High-Res Refine), proven 2026-09-26. The older Pillow two-pass route remains separate." },
     "upscale/extras": { "status": "partially implemented", "notes": "Pillow upscale and Real-ESRGAN route exist; face restoration is gated." },
     "model registry": { "status": "partially implemented", "notes": "Capabilities expose configured and discovered targets." },
     "VAE registry": { "status": "partially implemented", "notes": "Discovered VAE selection is exposed when supported." },
     "LoRA registry with weights": { "status": "partially implemented", "notes": "Discovered LoRAs can be inserted as prompt tokens with weights; true A1111 extension parity is not claimed." },
-    "ControlNet SD1.5-gated support": { "status": "external/deferred", "notes": "No fake ControlNet path." },
-    "styles/presets": { "status": "partially implemented", "notes": "Local presets exist; A1111 style database parity is deferred." },
+    "ControlNet SD1.5-gated support": { "status": "blocked by engine", "notes": "ENGINE SUPPORTED — MODEL ASSET MISSING: sd-cli 7f0e728 supports --control-net/--canny; no SD1.5 ControlNet model on Big Mac." },
+    "styles/presets": { "status": "partially implemented", "notes": "Recipes store settings; prompt text only when prompt saving is on." },
     "prompt weighting": { "status": "unknown, needs probing", "notes": "Depends on stable-diffusion.cpp prompt parser behavior." },
     "metadata save/read/restore": { "status": "partially implemented", "notes": "Run manifests and metadata reads exist; arbitrary PNG restore is partial." },
-    "send-to workflows": { "status": "partially implemented", "notes": "Gallery/image viewer can send to img2img, inpaint, and upscale." },
+    "send-to workflows": { "status": "implemented", "notes": "Any canonical image -> Img2Img / Inpaint / Outpaint / Enhance / Compare by image id." },
     "history/gallery": { "status": "implemented", "notes": "Run index, filters, detail, compare, and badges exist." },
-    "queue/progress/cancel": { "status": "partially implemented", "notes": "In-memory job queue and progress polling exist; cancel is not implemented." },
+    "queue/progress/cancel": { "status": "partially implemented", "notes": "Backend queue with Stop After Current, Retry Failed, remove/reorder; progress is time-estimated per item; no hard cancel." },
     "X/Y/Z plot": { "status": "partially implemented", "notes": "Bounded axis support exists; not full A1111 plot parity." },
     "prompt matrix": { "status": "external/deferred", "notes": "No current script/UI path." },
-    "variations": { "status": "UI present but not wired", "notes": "Variation fields are visible as disabled controls." },
-    "batch processing": { "status": "partially implemented", "notes": "Batch count/seed mode exist; batch size is intentionally 1." },
+    "variations": { "status": "implemented", "notes": "Variation (new seed, same settings, parent recorded) and Seed Lab (S±2 or N random)." },
+    "batch processing": { "status": "implemented", "notes": "Quantity 1-100 with structured results; native sd-cli --batch-count for SDCPP 2-16; numbered-prompt backend queue." },
     "settings/defaults": { "status": "partially implemented", "notes": "Preset defaults and capability-driven options exist." },
     "native API": { "status": "partially implemented", "notes": "Operator Console API exists for current workflows." },
     "A1111-compatible /sdapi/v1 adapter": { "status": "external/deferred", "notes": "No compatible adapter is claimed." },

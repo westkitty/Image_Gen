@@ -142,14 +142,16 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT } = {}) {
   }
 
   // Move every real generated image out of a run dir into the canonical root.
-  function adoptRunImages(runDir, { seed } = {}) {
+  function adoptRunImages(runDir, { seed, seedFor } = {}) {
     const runId = path.basename(runDir);
     const images = readRunIndex(runDir);
     const adopted = [];
     for (const file of findRunImageFiles(runDir)) {
       if (!hasImageSignature(file)) continue;
       const runFile = path.relative(runDir, file);
-      const entry = adoptFile(file, { runId, seed, runFile });
+      const fileSeed = seedFor ? seedFor(runFile) : undefined;
+      const entry = adoptFile(file, { runId, seed: fileSeed !== undefined ? fileSeed : seed, runFile });
+      if (fileSeed !== undefined) entry.seed = fileSeed;
       images.push(entry);
       adopted.push(entry);
     }
@@ -169,8 +171,20 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT } = {}) {
 
   // Finalize a completed run: the single entrypoint used by the server and by
   // bin/canonicalize-image.js (direct shell runs).
+  // Native sd-cli batches write per-output seeds to controlled-extras.json.
+  function runOutputSeeds(runDir) {
+    try {
+      const x = JSON.parse(fs.readFileSync(path.join(runDir, 'controlled-extras.json'), 'utf8'));
+      return x && x.output_seeds && typeof x.output_seeds === 'object' ? x.output_seeds : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function finalizeRun(runDir) {
-    return adoptRunImages(runDir, { seed: runSeedLabel(runDir) });
+    const seeds = runOutputSeeds(runDir);
+    const seedFor = seeds ? f => (Object.prototype.hasOwnProperty.call(seeds, path.basename(f)) ? String(seeds[path.basename(f)]) : undefined) : null;
+    return adoptRunImages(runDir, { seed: runSeedLabel(runDir), seedFor });
   }
 
   function findIndexEntry(runDir, name) {

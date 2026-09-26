@@ -30,6 +30,10 @@ const CAPABILITIES = [
   { id: 'upscale-esrgan', label: 'Upscale · Real-ESRGAN x4 (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'esrganModel'], job: { action: 'upscale-esrgan' } },
   { id: 'hires-fix', label: 'Hires fix (SDCPP + Lanczos)', backend: 'sdcpp', needs: ['sdCli', 'sd15Model'], job: { action: 'hires-fix' } },
   { id: 'batch', label: 'Batch / sweep (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'sd15Model'], job: { action: 'batch-generate' } },
+  { id: 'quantity-native-batch', label: 'Quantity · native sd-cli batch (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'sd15Model'], job: { action: 'controlled-generate', capabilityId: true } },
+  { id: 'hires-refine', label: 'High-Res Refine · native 2nd pass (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'sd15Model'], job: { action: 'controlled-generate', capabilityId: true } },
+  { id: 'outpaint', label: 'Outpaint (canvas prep + SDCPP inpaint)', backend: 'sdcpp', needs: ['sdCli', 'sd15Model'], job: { action: 'outpaint' } },
+  { id: 'controlnet', label: 'ControlNet (SD1.5 Canny)', backend: 'sdcpp', implemented: false, reason: 'ENGINE SUPPORTED — MODEL ASSET MISSING: no SD1.5 ControlNet model on Big Mac (needs e.g. control_v11p_sd15_canny)', needs: [], job: { action: 'controlnet' } },
 ];
 
 // Failures of these gates are request/validation problems, not runtime breakage.
@@ -48,8 +52,11 @@ function deriveStatus(cap, assets, evidence) {
   return { status: STATUS.AVAILABLE, reason: unknown.length ? 'no live proof recorded; assets not probed (Big Mac unreachable?)' : 'no live proof recorded yet' };
 }
 
+// A job may name its capability explicitly (native batch, High-Res Refine);
+// those capabilities are never matched by action alone.
 function capabilityForJob(job, targetBackend) {
-  return CAPABILITIES.find(c => c.job.action === job.commandAction && (!c.job.backend || c.job.backend === targetBackend)) || null;
+  if (job.capabilityId) return CAPABILITIES.find(c => c.id === job.capabilityId) || null;
+  return CAPABILITIES.find(c => !c.job.capabilityId && c.job.action === job.commandAction && (!c.job.backend || c.job.backend === targetBackend)) || null;
 }
 
 function createEvidenceStore(file) {
@@ -106,6 +113,8 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
     `printf 'sd15Model=%s\\n' "$(test -s "$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors" && echo 1 || echo 0)"`,
     `printf 'esrganModel=%s\\n' "$(test -s /Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth && echo 1 || echo 0)"`,
     ...paths.map((p, i) => `printf 'model${i}=%s\\n' "$(test -s ${JSON.stringify(p).replace(/^"\$HOME/, '"$HOME')} && echo 1 || echo 0)"`),
+    `printf 'identity=%s@%s\\n' "$(whoami)" "$(hostname -s)"`,
+    `printf 'wc2tb=%s\\n' "$(test -d /Volumes/wc2tb/ImageGen && echo 1 || echo 0)"`,
     `printf 'probe=done\\n'`,
   ].join('; ');
   return new Promise(resolve => {
@@ -123,6 +132,7 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
         reachable: true,
         mfluxRuntime: flag('mfluxRuntime'), mfluxModel: flag('mfluxModel'),
         sdCli: flag('sdCli'), sd15Model: flag('sd15Model'), esrganModel: flag('esrganModel'),
+        identity: kv.identity || null, wc2tb: flag('wc2tb'),
         models,
       });
     });

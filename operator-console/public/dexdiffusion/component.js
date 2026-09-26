@@ -6,14 +6,24 @@
 class Component extends DCLogic {
   state = {
     version: (() => { const v = Number(localStorage.getItem('dex_version')); return v === 2 || v === 3 ? v : 1; })(),
-    screens: { 1: 'create', 2: 'create', 3: 'create' },
+    screens: (() => { let s = 'create'; try { s = sessionStorage.getItem('dex_screen') || 'create'; } catch {} return { 1: s, 2: s, 3: s }; })(),
     // Create
     target: 'sd15',
     prompt: '', negPrompt: '',
     promptOpen: true,
     settingsOpen: false, compactMode: localStorage.getItem('dex_compact_mode') === 'true',
     selectedVae: 'default', favoriteName: '',
-    favoritePresets: (() => { try { return JSON.parse(localStorage.getItem('dex_favorite_presets') || '[]'); } catch { return []; } })(),
+    // Recipes (formerly Favorite presets). Prompt text persists only when prompt saving is on;
+    // older presets that stored prompts are scrubbed on load when it is off.
+    favoritePresets: (() => {
+      try {
+        const save = localStorage.getItem('dex_save_prompts') === 'true';
+        const raw = JSON.parse(localStorage.getItem('dex_favorite_presets') || '[]');
+        const clean = raw.map(p => DexClient.sanitizeRecipe(p.params ? { id: p.id, name: p.name, target: p.params.target, width: p.params.width, height: p.params.height, steps: p.params.steps, cfg: p.params.cfg_scale, sampler: p.params.sampler, scheduler: p.params.scheduler, vae: p.params.selectedVae, preset: p.params.preset, prompt: p.params.prompt, negPrompt: p.params.negative_prompt } : p, save));
+        localStorage.setItem('dex_favorite_presets', JSON.stringify(clean));
+        return clean;
+      } catch { return []; }
+    })(),
     steps: 20, cfg: 7, seed: -1, width: 512, height: 512,
     sampler: 'euler_a', scheduler: 'discrete',
     jobStatus: 'idle', progress: 0, currentImageSrc: null, lastSeed: null, errorMsg: '', lastGenerationParams: null,
@@ -317,7 +327,7 @@ class Component extends DCLogic {
   }
 
   setVersion(v) { try { localStorage.setItem('dex_version', String(v)); } catch {} this.setState({ version: v }); }
-  setScreen(s) { const { version, screens } = this.state; this.setState({ screens: { ...screens, [version]: s } }); }
+  setScreen(s) { const { version, screens } = this.state; try { sessionStorage.setItem('dex_screen', s); } catch {} this.setState({ screens: { ...screens, [version]: s } }); }
 
   // ── Models — load from /api/capabilities ──────────────────────
   async loadModels() {
@@ -414,39 +424,52 @@ class Component extends DCLogic {
     if (!Number.isFinite(p.steps) || p.steps < 1 || p.steps > 150) out.push(['Steps must be 1-150', 'error']);
     if (!Number.isFinite(p.cfg_scale) || p.cfg_scale < 1 || p.cfg_scale > 30) out.push(['CFG scale must be 1-30', 'error']);
     if (!Number.isFinite(p.width) || !Number.isFinite(p.height) || p.width % 8 || p.height % 8) out.push(['Width and height must be multiples of 8', 'error']);
-    if (p.selectedVae && p.selectedVae !== 'default' && p.selectedVae !== 'none') out.push(['VAE is cataloged here; generation backend does not yet consume VAE selection', 'info']);
+    const ctl = DexClient.controlsFor((this.state.modelTargets || []).find(t => t.id === p.target));
+    if (p.selectedVae && p.selectedVae !== 'default' && p.selectedVae !== 'none') out.push([ctl.vae ? 'VAE override is passed to sd-cli --vae for this SDCPP target' : 'This target ignores VAE selection', ctl.vae ? 'info' : 'warn']);
     if (!out.length) out.push(['Ready to generate', 'ok']);
     return out;
   }
 
   saveFavoritePreset() {
-    const name = (this.state.favoriteName || '').trim() || ('Preset ' + new Date().toLocaleTimeString());
-    const preset = { id: String(Date.now()), name, params: this.currentParams() };
+    const name = (this.state.favoriteName || '').trim() || ('Recipe ' + new Date().toLocaleTimeString());
+    const s = this.state;
+    const preset = DexClient.sanitizeRecipe({ id: String(Date.now()), name, target: s.target, width: +s.width, height: +s.height, steps: +s.steps, cfg: +s.cfg,
+      sampler: s.sampler, scheduler: s.scheduler, vae: s.selectedVae, preset: s.preset, quantity: this.ws ? this.ws.quantity : 1, prompt: s.prompt, negPrompt: s.negPrompt }, s.savePrompts);
     const favoritePresets = [preset, ...this.state.favoritePresets.filter(p => p.name !== name)].slice(0, 20);
     localStorage.setItem('dex_favorite_presets', JSON.stringify(favoritePresets));
     this.setState({ favoritePresets, favoriteName: '' });
-    this.toast('Saved preset: ' + name, '#38bdf8');
+    this.toast('Saved recipe: ' + name + (this.state.savePrompts ? '' : ' (settings only — prompt saving is off)'), '#38bdf8');
   }
 
   applyFavoritePreset(id) {
     const p = this.state.favoritePresets.find(x => x.id === id);
     if (!p) return;
-    const v = p.params || {};
+    // Settings only; the current prompt is kept unless the recipe carries one.
     this.setState({
-      target: v.target || this.state.target,
-      prompt: v.prompt || '',
-      negPrompt: v.negative_prompt || '',
-      steps: v.steps || this.state.steps,
-      cfg: v.cfg_scale || this.state.cfg,
-      seed: v.seed ?? this.state.seed,
-      width: v.width || this.state.width,
-      height: v.height || this.state.height,
-      sampler: v.sampler || this.state.sampler,
-      scheduler: v.scheduler || this.state.scheduler,
-      selectedVae: v.selectedVae || 'default',
+      target: p.target || this.state.target,
+      prompt: typeof p.prompt === 'string' ? p.prompt : this.state.prompt,
+      negPrompt: typeof p.negPrompt === 'string' ? p.negPrompt : this.state.negPrompt,
+      steps: p.steps || this.state.steps,
+      cfg: p.cfg ?? this.state.cfg,
+      width: p.width || this.state.width,
+      height: p.height || this.state.height,
+      sampler: p.sampler || this.state.sampler,
+      scheduler: p.scheduler || this.state.scheduler,
+      selectedVae: p.vae || 'default',
       promptOpen: true
     });
-    this.toast('Applied preset: ' + p.name, '#65d66e');
+    if (this.ws && p.quantity) this.ws.quantity = p.quantity;
+    this.toast('Applied recipe: ' + p.name, '#65d66e');
+  }
+
+  renameFavoritePreset(id) {
+    const p = this.state.favoritePresets.find(x => x.id === id);
+    if (!p) return;
+    const name = (window.prompt('Rename recipe', p.name) || '').trim();
+    if (!name) return;
+    const favoritePresets = this.state.favoritePresets.map(x => x.id === id ? { ...x, name: name.slice(0, 80) } : x);
+    localStorage.setItem('dex_favorite_presets', JSON.stringify(favoritePresets));
+    this.setState({ favoritePresets });
   }
 
   deleteFavoritePreset(id) {
@@ -1144,13 +1167,14 @@ class Component extends DCLogic {
       ? h('div', { style: { display: 'grid', gap: 5, maxHeight: 160, overflowY: 'auto' } },
           ...s.favoritePresets.map(p => h('div', { key: p.id, style: { display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(148,163,184,.12)', borderRadius: 7, padding: 6, background: 'rgba(5,10,18,.46)' } },
             h('button', { onClick: () => this.applyFavoritePreset(p.id), style: { flex: 1, border: 0, background: 'transparent', color: '#cbd5e1', textAlign: 'left', cursor: 'pointer', fontSize: 12, fontFamily: "'DM Sans',sans-serif" } }, p.name),
-            h('button', { onClick: () => this.deleteFavoritePreset(p.id), title: 'Delete preset', style: { border: '1px solid rgba(148,163,184,.16)', background: 'transparent', color: '#94a3b8', borderRadius: 6, cursor: 'pointer', padding: '3px 7px' } }, 'x'))))
-      : h('div', { style: { fontSize: 12, color: '#64748b' } }, 'No saved presets yet.');
+            h('button', { onClick: () => this.renameFavoritePreset(p.id), title: 'Rename recipe', style: { border: '1px solid rgba(148,163,184,.16)', background: 'transparent', color: '#94a3b8', borderRadius: 6, cursor: 'pointer', padding: '3px 7px' } }, 'Rename'),
+            h('button', { onClick: () => this.deleteFavoritePreset(p.id), title: 'Delete recipe', style: { border: '1px solid rgba(148,163,184,.16)', background: 'transparent', color: '#94a3b8', borderRadius: 6, cursor: 'pointer', padding: '3px 7px' } }, 'x'))))
+      : h('div', { style: { fontSize: 12, color: '#64748b' } }, 'No saved recipes yet.');
     const favoritePresetPanel = h('div', { style: { borderTop: '1px solid rgba(148,163,184,.12)', marginTop: 10, paddingTop: 10 } },
-      h('div', { style: { ...fieldLabel, marginBottom: 7 } }, 'Favorite presets'),
+      h('div', { style: { ...fieldLabel, marginBottom: 7 } }, 'Recipes' + (s.savePrompts ? ' · settings + prompt' : ' · settings only (prompt saving off)')),
       h('div', { style: { display: 'flex', gap: 6, marginBottom: 8 } },
         h('input', { value: s.favoriteName, onChange: e => this.setState({ favoriteName: e.target.value }), placeholder: 'Name this setup', style: { ...panelInput, flex: 1 } }),
-        actionButton('Save', () => this.saveFavoritePreset())),
+        actionButton('Save Recipe', () => this.saveFavoritePreset())),
       favoritePresetRows);
     const vaeSelect = h('select', { value: s.selectedVae, onChange: e => this.setState({ selectedVae: e.target.value }), style: panelInput },
       h('option', { value: 'default' }, 'Default / backend-selected'),
@@ -1212,7 +1236,7 @@ class Component extends DCLogic {
 
     // ── System / About: operational facts from /api/system-info ─────
     const si = s.systemInfo;
-    const siRow = (k, v, mono) => h('div', { key: k, style: { display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8, padding: '3px 0', fontSize: 12 } },
+    const siRow = (k, v, mono) => h('div', { key: k, style: { display: 'grid', gridTemplateColumns: 'minmax(80px,150px) minmax(0,1fr)', gap: 8, padding: '3px 0', fontSize: 12 } },
       h('div', { style: { color: '#7f93a8' } }, k),
       h('div', { style: { color: '#e2e8f0', overflowWrap: 'anywhere', fontFamily: mono ? "'IBM Plex Mono',monospace" : 'inherit' } }, v == null || v === '' ? '—' : String(v)));
     const siSection = (title, rows) => h('div', { key: title, style: { marginTop: 10 } },

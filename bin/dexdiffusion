@@ -7,6 +7,7 @@
 #   bin/dexdiffusion restart   stop + start
 #   bin/dexdiffusion status    read-only health report (never repairs anything)
 #   bin/dexdiffusion open      start if needed, then open the local UI
+#   bin/dexdiffusion doctor    read-only PASS/WARN/FAIL health check (via /api/doctor; never generates)
 #
 # Ownership rule: a listener on 31337 is "ours" only if its /api/version
 # reports cwd == <this repo>/operator-console and its pid matches the port
@@ -205,12 +206,29 @@ $caps
 EOF
 }
 
+# Doctor is served by the console (one implementation, reused probes).
+cmd_doctor() {
+  local out
+  if ! out="$(curl -fsS --max-time 40 "$BASE/api/doctor" 2>/dev/null)"; then
+    echo "FAIL  Operator console      not responding on $BASE (run: bin/dexdiffusion start)"
+    return 1
+  fi
+  printf '%s' "$out" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for r in d["rows"]:
+    print("%-5s %-36s %s" % (r["state"], r["check"], r["detail"]))
+print("\nOverall: %s  (checked %s)" % (d["overall"], d["checkedAt"]))
+sys.exit(1 if d["overall"] == "FAIL" else 0)'
+}
+
 case "${1:-status}" in
   start) cmd_start ;;
   stop) cmd_stop ;;
   restart) cmd_stop; cmd_start ;;
   status) cmd_status ;;
   open) cmd_start >/dev/null && open "$LOCAL_URL" && echo "Opened $LOCAL_URL" ;;
-  -h|--help|help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) echo "usage: bin/dexdiffusion {start|stop|restart|status|open}" >&2; exit 2 ;;
+  doctor) cmd_doctor ;;
+  -h|--help|help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "usage: bin/dexdiffusion {start|stop|restart|status|open|doctor}" >&2; exit 2 ;;
 esac
