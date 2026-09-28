@@ -358,3 +358,23 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 ### Revision 11 — 2026-09-26
 
 - DexDiffusion voice/music execution bridges (VER-030). Kokoro, Qwen3-TTS Base clone, Qwen3-TTS VoiceDesign, ACE-Step and Magenta RT run end-to-end through the job store, lease, staging and media store. They were promoted to PROVEN only from real DexDiffusion evidence. Working Voice/Music screens, installer persisted, Doctor updated.
+
+### Revision 12 — 2026-09-28: Workstation V12 Live Operations, Library, Workflows, Recovery and UX
+
+- Executed coordinated campaign for DexDiffusion Workstation V12.
+- **F01 (Event-driven Job Bus)**: Same-origin SSE control plane at `/api/events` with native Server-Sent Events, monotonic IDs, bounded replay ring, client disconnection cleanup, snapshot transmission, and privacy-safe allowlisted payloads.
+- **F02 (Global Job Center)**: Persistent cross-screen drawer with Active, Queue, and Recent jobs, elapsed timing, status badges, progress updates, and inline cancellation actions.
+- **F03 (Durable Image Jobs)**: Unified image and media job models across the durable job store (`jobs.json`) with safe restart reconciliation to INTERRUPTED.
+- **F04 (Library Turbo)**: Rebuildable incremental metadata index (`library-index.js`), server-side query/filter/sort, pagination, derived thumbnail generation service via `sips`/`convert` with path traversal protections (`/api/thumbnails/:id`).
+- **F05 (Collections / Boards)**: Persistent collections store (`collections.json`) supporting creation, tagging, reordering, and multi-select addition/removal of canonical artifact IDs without byte duplication.
+- **F06 (Queue ETA & Resource HUD)**: Real-time global HUD displaying Big Mac lease arbitration status (`BIG MAC · FREE` / owner) and robust median completion duration ETA estimation based on minimum 3 completed samples.
+- **F07 (Adaptive Control Surface)**: Capability-driven controls dynamically showing Basic vs Advanced options and auto-hiding SD-specific settings (negative prompt, CFG, VAE) when MFLUX targets are selected.
+- **F08 (Command Palette & Global Keyboard)**: `Cmd/Ctrl + K` global command palette, `Cmd/Ctrl + Shift + J` Job Center drawer toggle, `Cmd/Ctrl + Enter` primary generation trigger, and Escape stack management.
+- **F09 (Lineage Settings Diff)**: Ancestry settings delta comparison endpoint (`/api/lineage/:id/diff`) highlighting changed operation/dimensions/seed/guidance while strictly enforcing privacy contracts (`PRIVATE / NOT SAVED` for unsaved prompts).
+- **F10 (Synchronized Image Comparison)**: Synchronized 2-image comparison modes (Side by Side, Linked Pan/Zoom, A/B flicker, Swipe divider) and 2–4 image synchronized grid comparison.
+- **F11 (Workflow Macros)**: Declarative, versioned macro schema `dexdiffusion.macro.v1` (`macros.json`) supporting safe execution chains, pause on `WAITING_INPUT`, and strict disallowance of arbitrary shell strings or execution commands.
+- **F12 (Reproducibility Bundles)**: Versioned JSON schema `dexdiffusion.repro.v1` (`/api/repro/export`, `/api/repro/validate`) with runtime capability compatibility checks; configuration restoration without auto-execution.
+- **F13 (Unified Recipes)**: Versioned schema `dexdiffusion.recipe.v1` (`recipes.json`) with atomic persistence, CRUD, default settings-only privacy protection, and migration path from browser-local styles.
+- **F14 (Scoped Cancellation)**: Immediate queued job cancellation, local PID-verified graceful termination (`SIGTERM` -> `SIGKILL`), and remote job-scoped identity marker verification failing closed against killing unrelated processes.
+- **F15 (Decomposition)**: Modularized backend services (`event-bus.js`, `operational-jobs.js`, `timing-store.js`, `library-index.js`, `collections-store.js`, `recipes-store.js`, `macro-store.js`, `repro-bundle.js`, `thumbnail-service.js`, `cancellation.js`) and unified frontend live engine (`public/dexdiffusion-v12.js`).
+- Test suite expanded from 109 to 128 tests (100% pass, zero regressions, full privacy canary verification).
