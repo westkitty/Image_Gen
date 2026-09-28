@@ -958,8 +958,13 @@ async function trackJob(jobId, label) {
   setPreviewProgress(label);
   $('latest-job').innerHTML = renderJobProgress(label, 'queued');
   clearInterval(state.poller);
-  state.poller = setInterval(() => pollJob(jobId), 1200);
-  await pollJob(jobId);
+  // V12 Performance Uplift: If SSE event bus is active, avoid aggressive HTTP polling
+  if (window.__DEX_V12 && window.__DEX_V12.connected) {
+    await pollJob(jobId); // single fetch to establish initial state
+  } else {
+    state.poller = setInterval(() => pollJob(jobId), 2500);
+    await pollJob(jobId);
+  }
 }
 function formatProgressLabel(progress) {
   if (!progress) return 'Current render: estimating...';
