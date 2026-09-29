@@ -139,6 +139,7 @@ rm -f -- "$RAW_STDERR"
 
 REMOTE_TMP="$(sed -n 's/^MFLUX_REMOTE_TMP: //p' "$REMOTE_STDOUT_LOG" | head -1)"
 REMOTE_SHA="$(sed -n 's/^MFLUX_REMOTE_PNG_SHA256: //p' "$REMOTE_STDOUT_LOG" | head -1)"
+REMOTE_CLEANUP="$(sed -n 's/^MFLUX_REMOTE_CLEANUP: //p' "$REMOTE_STDOUT_LOG" | tail -1)"
 REMOTE_EXIT="$(sed -n 's/^MFLUX_REMOTE_EXIT: //p' "$REMOTE_STDOUT_LOG" | tail -1)"
 REMOTE_FAIL="$(sed -n 's/^MFLUX_REMOTE_FAIL: //p' "$REMOTE_STDOUT_LOG" | head -1)"
 # Last error-looking line from the (already prompt-redacted) remote log, for the message.
@@ -148,10 +149,6 @@ if [ -n "$REMOTE_TMP" ]; then
     */dexdiffusion-mflux.*) ;;
     *) fail "cleanup-failed" "Unexpected remote temp path: $REMOTE_TMP" ;;
   esac
-  # Defensive second cleanup (the remote trap normally already removed it), then prove it is gone.
-  ssh_remote "rm -rf -- $(printf '%q' "$REMOTE_TMP")" >/dev/null 2>&1 || true
-  remote_test "test ! -e $(printf '%q' "$REMOTE_TMP")" \
-    || fail "cleanup-failed" "Big Mac temporary image still present: $REMOTE_TMP"
 fi
 LOG_HINT="see $REMOTE_STDOUT_LOG"
 if [ -z "$REMOTE_EXIT" ]; then
@@ -159,8 +156,11 @@ if [ -z "$REMOTE_EXIT" ]; then
 fi
 if [ "$REMOTE_EXIT" != "0" ]; then
   gate="$(printf '%s' "$REMOTE_FAIL" | awk '{print $1}')"
-  case "$gate" in generator-exit|output-missing|output-empty|output-invalid) ;; *) gate="generator-exit" ;; esac
+  case "$gate" in generator-exit|output-missing|output-empty|output-invalid|cleanup-failed) ;; *) gate="generator-exit" ;; esac
   fail "$gate" "${REMOTE_FAIL:-remote exit $REMOTE_EXIT}${REMOTE_ERR:+ — $REMOTE_ERR}; $LOG_HINT"
+fi
+if [ "$REMOTE_CLEANUP" != "OK" ]; then
+  fail "cleanup-failed" "Remote cleanup unverified (marker: ${REMOTE_CLEANUP:-missing}); $LOG_HINT"
 fi
 [ -n "$REMOTE_SHA" ] || fail "output-invalid" "Remote reported success but no PNG checksum; $LOG_HINT"
 [ -s "$INCOMING" ] || fail "transfer-failed" "No PNG bytes arrived over ssh; $LOG_HINT"

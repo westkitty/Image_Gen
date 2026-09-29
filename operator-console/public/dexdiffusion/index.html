@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>DexDiffusion</title>
   <link rel="icon" href="uploads/grok_image_1775518226929.jpg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@300..700&display=swap" rel="stylesheet" />
   <style>
     *,*::before,*::after{box-sizing:border-box}
     html,body{height:100%;overflow:hidden;margin:0;padding:0}
@@ -47,6 +45,23 @@
       [data-v] [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:minmax(0,1fr)!important}
       [data-v] nav{overflow-x:auto}
     }
+    @media (max-width: 900px){
+      [data-shell-header]{padding:0 8px!important;gap:4px!important}
+      [data-brand-subtitle]{display:none}
+      [data-shell-header] [data-version-buttons]{flex-shrink:0;gap:2px!important}
+      [data-shell-header] [data-version-buttons] button{padding:4px 7px!important;font-size:10px!important}
+      [data-v="1"] [style*="grid-template-columns:258px 1fr"]{grid-template-rows:auto minmax(0,1fr)}
+      [data-v="1"] aside{display:flex!important;min-width:0;height:auto;overflow:hidden;border-right:0!important;border-bottom:1px solid rgba(148,163,184,.16)}
+      [data-v="1"] aside > div:first-child,[data-v="1"] aside > div:last-child{display:none}
+      [data-v="1"] aside nav{display:flex;align-items:center;gap:3px;min-width:0;max-width:100%;min-height:44px;overflow-x:auto;overflow-y:hidden;padding:3px 8px!important;scrollbar-width:thin}
+      [data-v="1"] aside nav > div{display:none}
+      [data-v="1"] aside nav [data-nav]{display:block!important;flex:0 0 auto;width:auto!important;min-height:36px;border-left:0!important;border-bottom:2px solid transparent!important;border-radius:6px!important;padding:7px 10px!important;white-space:nowrap}
+      [data-v="1"] aside nav [data-nav][data-active="true"]{border-bottom-color:#38bdf8!important}
+      [data-v="2"] header > div:first-child,[data-v="2"] header > div:last-child{display:none!important}
+      [data-v="2"] header nav{flex:1;min-width:0;max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+      [data-prompt-tools-row]{flex-wrap:wrap;min-width:0}
+      [data-prompt-tools-row] > div{min-width:0;max-width:100%}
+    }
     /* Indeterminate progress shimmer when the backend reports no percentage */
     @keyframes dexIndeterminate{0%{left:-45%}100%{left:100%}}
     @media (prefers-reduced-motion: reduce){.dex-indeterminate-bar{animation:none!important}}
@@ -56,12 +71,12 @@
   <div id="app-root"></div>
   <template id="dc-template">
 <div data-v="{{ versionStr }}" data-compact="{{ compactModeStr }}" style="height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:#08080c;font-family:'DM Sans',system-ui,sans-serif;color:#e2e2e8;">
-  <div style="height:40px;background:#08080c;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;padding:0 14px;gap:6px;flex-shrink:0;">
+  <div data-shell-header style="height:40px;background:#08080c;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;padding:0 14px;gap:6px;flex-shrink:0;">
     <img src="uploads/grok_image_1775518226929.jpg" style="width:20px;height:20px;border-radius:4px;object-fit:cover;object-position:center 24%;opacity:.55;" alt="" />
     <span style="font-size:10px;color:#6060a0;letter-spacing:.12em;text-transform:uppercase;font-weight:700;">DexDiffusion</span>
-    <span style="font-size:10px;color:#40406a;letter-spacing:.06em;">· Corrected Reworks</span>
+    <span data-brand-subtitle style="font-size:10px;color:#40406a;letter-spacing:.06em;">· Corrected Reworks</span>
     <div style="flex:1;"></div>
-    <div style="display:flex;gap:3px;">
+    <div data-version-buttons style="display:flex;gap:3px;">
       <button data-vbtn="1" data-active="{{ isV1Str }}" onClick="{{ setV1 }}" style="border:1px solid rgba(255,255,255,.1);background:transparent;color:#7070a8;border-radius:6px;padding:4px 13px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">V1 · Console</button>
       <button data-vbtn="2" data-active="{{ isV2Str }}" onClick="{{ setV2 }}" style="border:1px solid rgba(255,255,255,.1);background:transparent;color:#7070a8;border-radius:6px;padding:4px 13px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">V2 · Studio</button>
       <button data-vbtn="3" data-active="{{ isV3Str }}" onClick="{{ setV3 }}" style="border:1px solid rgba(255,255,255,.1);background:transparent;color:#7070a8;border-radius:6px;padding:4px 13px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">V3 · Focus</button>
@@ -116,7 +131,7 @@
                   </button>
                   <div style="display:{{ promptPanelDisplay }};margin-top:8px;">
                   <textarea rows="5" value="{{ prompt }}" onChange="{{ onPromptChange }}" placeholder="Describe the image. A1111 syntax supported." style="width:100%;border:1px solid rgba(148,163,184,.16);background:#141418;color:#e8f0f7;border-radius:8px;padding:10px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;line-height:1.5;display:block;"></textarea>
-                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-top:6px;"><span style="font-size:10px;color:#6090a8;">{{ promptLen }} chars</span>{{ promptTools }}</div>
+                  <div data-prompt-tools-row style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-top:6px;"><span style="font-size:10px;color:#6090a8;">{{ promptLen }} chars</span>{{ promptTools }}</div>
                   </div>
                 </div>
                 <div style="margin-bottom:12px;">
@@ -322,7 +337,7 @@
           </button>
           <div style="display:{{ promptPanelDisplay }};margin-top:9px;">
             <div style="margin-bottom:5px;"><textarea rows="5" value="{{ prompt }}" onChange="{{ onPromptChange }}" placeholder="Describe the image. A1111 syntax supported." style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:9px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;line-height:1.5;display:block;"></textarea></div>
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;"><span style="font-size:10px;color:#8888b0;">{{ promptLen }} chars</span>{{ promptTools }}<button style="border:none;background:none;color:#f59e0b;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;">Save style ↗</button></div>
+            <div data-prompt-tools-row style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;"><span style="font-size:10px;color:#8888b0;">{{ promptLen }} chars</span>{{ promptTools }}<button style="border:none;background:none;color:#f59e0b;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;">Save style ↗</button></div>
             <div><textarea rows="2" value="{{ negPrompt }}" onChange="{{ onNegChange }}" data-ctl-off="{{ ctlNeg }}" placeholder="Negative: what to avoid…" style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:9px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;display:block;"></textarea></div>
           </div>
         </div>
@@ -460,7 +475,7 @@
             <span style="font-size:10px;color:#7070a0;">{{ promptLen }} chars · {{ promptToggleLabel }} {{ promptChevron }}</span>
           </button>
           <div style="display:{{ promptPanelDisplay }};margin-top:9px;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><span style="font-size:10px;color:#7070a0;">{{ promptLen }} chars</span>{{ promptTools }}</div>
+            <div data-prompt-tools-row style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><span style="font-size:10px;color:#7070a0;">{{ promptLen }} chars</span>{{ promptTools }}</div>
             <textarea rows="5" value="{{ prompt }}" onChange="{{ onPromptChange }}" placeholder="Describe the image…" style="width:100%;border:1px solid rgba(255,255,255,.09);background:#141418;color:#f4f4f8;border-radius:6px;padding:10px;outline:none;font-size:13px;font-family:'Space Grotesk',sans-serif;line-height:1.5;display:block;margin-top:6px;"></textarea>
             <button style="border:none;background:none;color:#8b5cf6;font-size:11px;cursor:pointer;text-align:right;padding:2px 0 0;font-family:'Space Grotesk',sans-serif;display:block;margin-left:auto;">Save style ↗</button>
           </div>

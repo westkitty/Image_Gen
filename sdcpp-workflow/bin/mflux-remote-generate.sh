@@ -24,11 +24,60 @@ set -uo pipefail
 model_dir="${8:-$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit}"
 case "$6" in /*) cache_root="$6" ;; *) cache_root="$HOME/$6" ;; esac
 case "$7" in /*) mflux_bin="$7" ;; *) mflux_bin="$HOME/$7" ;; esac
+
+tmp_root="${TMPDIR:-/tmp}"
+
+# Stale recovery: safely clean abandoned dexdiffusion-mflux.* older than 60 minutes
+find "$tmp_root" -mindepth 1 -maxdepth 1 -type d -name 'dexdiffusion-mflux.*' -mmin +60 -exec rm -rf -- {} + 2>/dev/null || true
+
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/dexdiffusion-mflux.XXXXXXXX")" || { echo "MFLUX_REMOTE_FAIL: output-missing mktemp failed" >&2; echo "MFLUX_REMOTE_EXIT: 20" >&2; exit 20; }
+
+cleaned=0
+clean_tmp() {
+  if [ "$cleaned" -eq 1 ]; then
+    return 0
+  fi
+  case "$tmp" in
+    "$tmp_root"/dexdiffusion-mflux.[A-Za-z0-9]*)
+      rm -rf -- "$tmp" 2>/dev/null || true
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  local retries=3
+  while [ "$retries" -gt 0 ]; do
+    if [ ! -e "$tmp" ]; then
+      cleaned=1
+      return 0
+    fi
+    retries=$((retries - 1))
+    sleep 0.1
+  done
+  return 1
+}
+
+exit_emitted=0
+emit_exit() {
+  if [ "$exit_emitted" -eq 0 ]; then
+    exit_emitted=1
+    echo "MFLUX_REMOTE_EXIT: $1" >&2
+  fi
+}
+
 finish() {
   local rc=$?
-  rm -rf -- "$tmp"
-  echo "MFLUX_REMOTE_EXIT: $rc" >&2
+  if [ "$cleaned" -ne 1 ]; then
+    if clean_tmp; then
+      echo "MFLUX_REMOTE_CLEANUP: OK" >&2
+    else
+      echo "MFLUX_REMOTE_CLEANUP: FAIL" >&2
+      echo "MFLUX_REMOTE_FAIL: cleanup-failed remote temp directory deletion could not be verified" >&2
+      if [ "$rc" -eq 0 ]; then rc=22; fi
+    fi
+  fi
+  emit_exit "$rc"
 }
 trap finish EXIT
 trap 'exit 129' HUP
@@ -61,4 +110,14 @@ if ! file "$tmp/out.png" | grep -q "PNG image data"; then
 fi
 echo "MFLUX_REMOTE_PNG_SHA256: $(shasum -a 256 "$tmp/out.png" | cut -d' ' -f1)" >&2
 cat "$tmp/out.png" || exit 14
-exit 0
+
+if clean_tmp; then
+  echo "MFLUX_REMOTE_CLEANUP: OK" >&2
+  emit_exit 0
+  exit 0
+else
+  echo "MFLUX_REMOTE_CLEANUP: FAIL" >&2
+  echo "MFLUX_REMOTE_FAIL: cleanup-failed remote temp directory deletion could not be verified" >&2
+  emit_exit 22
+  exit 22
+fi

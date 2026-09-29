@@ -1,0 +1,2 @@
+# Provenance-locked wildcard banks retain their upstream bytes and SHA-256 hashes.
+operator-console/wildcards/*.txt whitespace=-blank-at-eol,cr-at-eol

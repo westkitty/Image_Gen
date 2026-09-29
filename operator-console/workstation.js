@@ -120,7 +120,7 @@ const { sanitizeRecipe, RECIPE_FIELDS } = require('./public/dexdiffusion/client-
 // ---- Image metadata: lineage + keepers --------------------------------------
 // One compact JSON document keyed by canonical image id. Never holds prompts or
 // image bytes. Written atomically (tmp + rename).
-const META_FIELDS = ['operation', 'parent', 'runId', 'target', 'seed', 'width', 'height', 'steps', 'cfg', 'scheduler', 'strength', 'queueId', 'batchNumber', 'test_artifact', 'note'];
+const META_FIELDS = ['operation', 'parent', 'detailed_from', 'runId', 'target', 'seed', 'width', 'height', 'steps', 'cfg', 'scheduler', 'strength', 'queueId', 'batchNumber', 'test_artifact', 'note'];
 
 function createImageMetaStore(file) {
   let cache = null;

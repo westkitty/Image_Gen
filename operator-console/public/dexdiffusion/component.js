@@ -43,16 +43,21 @@ class Component extends DCLogic {
     checkpoints: [], loadingCheckpoints: false, activeCheckpoint: '', capabilityData: null,
     modelTargets: [],          // raw capability targets (with defaults) for preset application
     preset: 'balanced',
+    modelCards: [], loadingModelCards: false, modelSearch: '', modelFamilyFilter: 'all',
+    modelBrowserOpen: false, modelSwitchWarning: null,
     // img2img / enhance source files (populated from /api/runs/:id/files)
     runFiles: {}, i2iSrcFile: '', enhSrcFile: '',
     // Library filters + pagination
     libFilter: 'all', libOffset: 0, libTotal: 0, libHasMore: false, libLoadingMore: false,
     // Ollama prompt enhance
     ollamaOnline: false, ollamaModel: '', enhancingPrompt: false,
+    enhancementResult: null, previousPrompt: null,
     // Wildcards
     wildcards: [], showWildcards: false, wildcardFilter: '',
     // Extra networks / LoRA
-    assets: { loras: [], vaes: [], embeddings: [] }, loadingAssets: false,
+    assets: { loras: [], vaes: [], embeddings: { count: 0, items: [], empty_state_message: 'No Textual Inversion embeddings discovered' } },
+    loadingAssets: false, extraNetworksTab: 'loras',
+    loraWeights: {},
     // Inpaint (extends the Edit screen)
     inpStatus: 'idle', inpResult: null, inpMaskData: null, inpStrength: 0.75,
     // Global
@@ -181,10 +186,18 @@ class Component extends DCLogic {
   async loadAssets() {
     this.setState({ loadingAssets: true });
     try {
-      const r = await fetch(this.state.backendUrl + '/api/assets', { signal: AbortSignal.timeout(8000) });
+      const target = this.state.target || 'flux2-klein-4b';
+      const r = await fetch(this.state.backendUrl + '/api/extra-networks?target=' + encodeURIComponent(target), { signal: AbortSignal.timeout(8000) });
       if (r.ok) {
         const d = await r.json();
-        this.setState({ assets: { loras: d.loras || [], vaes: d.vaes || [], embeddings: d.embeddings || [] }, loadingAssets: false });
+        this.setState({
+          assets: {
+            loras: d.loras || [],
+            vaes: d.vaes || [],
+            embeddings: d.embeddings || { count: 0, items: [], empty_state_message: 'No Textual Inversion embeddings discovered' }
+          },
+          loadingAssets: false
+        });
       } else { this.setState({ loadingAssets: false }); }
     } catch { this.setState({ loadingAssets: false }); }
   }
@@ -199,11 +212,79 @@ class Component extends DCLogic {
       this.toast('Asset discovery failed: ' + e.message, '#ef4444');
     }
   }
-  insertLora(filename) {
+  insertLora(filename, weight = 0.8) {
     const base = String(filename || '').replace(/\.[^.]+$/, '');
-    const tag = '<lora:' + base + ':0.8>';
+    const w = Number(weight || 0.8).toFixed(2).replace(/\.?0+$/, '');
+    const tag = '<lora:' + base + ':' + w + '>';
     this.setState(s => ({ prompt: (s.prompt ? s.prompt + ' ' : '') + tag }));
     this.toast('Inserted ' + tag, '#38bdf8');
+  }
+  getActiveLoras() {
+    const prompt = this.state.prompt || '';
+    const re = /<lora:([^:>]+)(?::([0-9.]+))?>/g;
+    const loras = [];
+    const knownLoras = Array.isArray(this.state.loras) ? this.state.loras : [];
+    let m;
+    while ((m = re.exec(prompt)) !== null) {
+      const name = m[1];
+      const weight = m[2] != null ? parseFloat(m[2]) : 1.0;
+      const found = knownLoras.find(k => k.name === name || (k.filename && k.filename.replace(/\.[^.]+$/, '') === name));
+      let family = found && found.family ? found.family : null;
+      if (!family) {
+        const lower = name.toLowerCase();
+        if (lower.includes('flux2')) family = 'flux2';
+        else if (lower.includes('flux')) family = 'flux1';
+        else if (lower.includes('pony')) family = 'pony';
+        else if (lower.includes('sd15') || lower.includes('sd_1_5') || lower.includes('homofidelis')) family = 'sd15';
+        else if (lower.includes('sdxl') || lower.includes('turbo') || lower.includes('photonic')) family = 'sdxl';
+        else family = 'unknown';
+      }
+      loras.push({ name, weight, family, token: m[0] });
+    }
+    return loras;
+  }
+  getActiveWildcards() {
+    const prompt = this.state.prompt || '';
+    const re = /__([A-Za-z0-9_-]+)__/g;
+    const wcs = [];
+    let m;
+    while ((m = re.exec(prompt)) !== null) {
+      wcs.push({ name: m[1], token: m[0] });
+    }
+    return wcs;
+  }
+  setLoraWeight(name, weight) {
+    const prompt = this.state.prompt || '';
+    const w = Number(weight).toFixed(2).replace(/\.?0+$/, '');
+    const re = new RegExp('<lora:' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?::[0-9.]+)?\\>', 'g');
+    if (re.test(prompt)) {
+      const nextPrompt = prompt.replace(re, '<lora:' + name + ':' + w + '>');
+      this.setState({ prompt: nextPrompt });
+    } else {
+      const tag = '<lora:' + name + ':' + w + '>';
+      this.setState(s => ({ prompt: (s.prompt ? s.prompt + ' ' : '') + tag }));
+    }
+  }
+  removeLora(token) {
+    const prompt = this.state.prompt || '';
+    const next = prompt.replace(token, '').replace(/\s{2,}/g, ' ').trim();
+    this.setState({ prompt: next });
+    this.toast('Removed ' + token, '#94a3b8');
+  }
+  removeWildcard(token) {
+    const prompt = this.state.prompt || '';
+    const next = prompt.replace(token, '').replace(/\s{2,}/g, ' ').trim();
+    this.setState({ prompt: next });
+    this.toast('Removed ' + token, '#94a3b8');
+  }
+  addTriggerWord(word) {
+    if (!word) return;
+    this.setState(s => {
+      const p = s.prompt ? s.prompt.trim() : '';
+      if (p.includes(word)) return {};
+      return { prompt: p ? p + ', ' + word : word };
+    });
+    this.toast('Added trigger: ' + word, '#38bdf8');
   }
 
   // ── Wildcards ─────────────────────────────────────────────────
@@ -236,7 +317,8 @@ class Component extends DCLogic {
     const cursor = e.target.selectionStart != null ? e.target.selectionStart : val.length;
     const before = val.slice(0, cursor);
     const match = before.match(/__([^_\s]*)$/);
-    if (match) {
+    const markerCount = (before.match(/__/g) || []).length;
+    if (match && markerCount % 2 === 1) {
       this.setState({ prompt: val, wildcardFilter: match[1], showWildcards: true });
     } else {
       this.setState({ prompt: val, wildcardFilter: '', showWildcards: false });
@@ -255,22 +337,78 @@ class Component extends DCLogic {
     } catch { this.setState({ ollamaOnline: false }); }
   }
   async enhancePrompt() {
-    const { prompt, backendUrl, ollamaModel, enhancingPrompt } = this.state;
+    const { prompt, target, backendUrl, ollamaModel, enhancingPrompt } = this.state;
     if (enhancingPrompt) return;
     if (!prompt.trim()) { this.toast('Write a prompt to enhance first', '#fbbf24'); return; }
-    this.setState({ enhancingPrompt: true });
+    this.setState({ enhancingPrompt: true, enhancementResult: null });
     try {
       const r = await fetch(backendUrl + '/api/ollama/enhance', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, model: ollamaModel || undefined }),
+        body: JSON.stringify({ prompt, target, model: ollamaModel || undefined, save_prompts: !!this.state.savePrompts }),
         signal: AbortSignal.timeout(60000),
       });
-      if (!r.ok) { this.setState({ enhancingPrompt: false }); this.toast('Ollama unavailable (' + r.status + ')', '#ef4444'); return; }
+      if (!r.ok) {
+        const failure = await r.json().catch(() => ({}));
+        this.setState({ enhancingPrompt: false });
+        this.toast(failure.error || ('Enhancement failed (' + r.status + ')'), '#ef4444');
+        return;
+      }
       const d = await r.json();
-      const enhanced = d.enhanced || d.prompt || d.result || d.response || '';
-      if (enhanced) { this.setState({ prompt: String(enhanced).trim(), enhancingPrompt: false }); this.toast('Prompt enhanced', '#65d66e'); }
-      else { this.setState({ enhancingPrompt: false }); this.toast('No enhancement returned', '#fbbf24'); }
+      const enhanced = d.enhanced_prompt || d.prompt || d.enhanced;
+      if (enhanced) {
+        const result = {
+          ...d,
+          enhanced,
+          original: d.original_prompt || d.original || prompt,
+          explanation: d.notes || d.explanation || '',
+          suggested_settings: d.setting_suggestions || d.suggested_settings || null,
+        };
+        this.setState({ enhancingPrompt: false, enhancementResult: result });
+        this.toast('Enhancement ready for review', '#65d66e');
+      } else {
+        this.setState({ enhancingPrompt: false });
+        this.toast('No enhancement returned', '#fbbf24');
+      }
     } catch (e) { this.setState({ enhancingPrompt: false }); this.toast('Enhance failed: ' + e.message, '#ef4444'); }
+  }
+  applyEnhancement() {
+    const { prompt, enhancementResult } = this.state;
+    if (!enhancementResult || !enhancementResult.enhanced) return;
+    this.setState({
+      prompt: enhancementResult.enhanced,
+      previousPrompt: prompt,
+      enhancementResult: null
+    });
+    this.toast('Prompt updated (Undo available)', '#65d66e');
+  }
+  appendEnhancement() {
+    const { prompt, enhancementResult } = this.state;
+    if (!enhancementResult || !enhancementResult.enhanced) return;
+    this.setState({
+      prompt: (prompt ? prompt + '\n\n' : '') + enhancementResult.enhanced,
+      previousPrompt: prompt,
+      enhancementResult: null
+    });
+    this.toast('Prompt appended (Undo available)', '#65d66e');
+  }
+  undoEnhancement() {
+    const { previousPrompt } = this.state;
+    if (previousPrompt != null) {
+      this.setState({ prompt: previousPrompt, previousPrompt: null });
+      this.toast('Restored previous prompt', '#38bdf8');
+    }
+  }
+  dismissEnhancement() {
+    this.setState({ enhancementResult: null });
+  }
+  applySuggestedSettings(settings) {
+    if (!settings) return;
+    const patch = {};
+    if (settings.steps) patch.steps = settings.steps;
+    if (settings.cfg != null) patch.cfg = settings.cfg;
+    if (settings.sampler) patch.sampler = settings.sampler;
+    this.setState(patch);
+    this.toast('Applied settings: ' + Object.entries(patch).map(([k,v])=>k+'='+v).join(', '), '#65d66e');
   }
 
   // ── Job status helpers ────────────────────────────────────────
@@ -329,15 +467,16 @@ class Component extends DCLogic {
   setVersion(v) { try { localStorage.setItem('dex_version', String(v)); } catch {} this.setState({ version: v }); }
   setScreen(s) { const { version, screens } = this.state; try { sessionStorage.setItem('dex_screen', s); } catch {} this.setState({ screens: { ...screens, [version]: s } }); }
 
-  // ── Models — load from /api/capabilities ──────────────────────
+  // ── Models — load from /api/capabilities & /api/models ───────
   async loadModels() {
-    this.setState({ loadingCheckpoints: true });
+    this.setState({ loadingCheckpoints: true, loadingModelCards: true });
     try {
-      const r = await fetch(this.state.backendUrl + '/api/capabilities', { signal: AbortSignal.timeout(8000) });
-      if (r.ok) {
-        const data = await r.json();
-        // Real backend exposes the controlled-generate targets under `modelTargets`
-        // (the handoff doc called this `controlledTargets`); accept either.
+      const [capRes, modelsRes] = await Promise.allSettled([
+        fetch(this.state.backendUrl + '/api/capabilities', { signal: AbortSignal.timeout(8000) }),
+        fetch(this.state.backendUrl + '/api/models', { signal: AbortSignal.timeout(8000) })
+      ]);
+      if (capRes.status === 'fulfilled' && capRes.value.ok) {
+        const data = await capRes.value.json();
         const targets = data.modelTargets || data.controlledTargets || [];
         const checkpoints = targets.map(t => ({
           title: DexClient.targetOptionLabel(t),
@@ -345,17 +484,55 @@ class Component extends DCLogic {
           hash: t.status || '',
           status: t.status,
         }));
-        this.setState({ checkpoints, modelTargets: targets, capabilityData: data, modelState: data.modelState || null, loadingCheckpoints: false });
+        this.setState({ checkpoints, modelTargets: targets, capabilityData: data, modelState: data.modelState || null });
         let saved = null;
         try { saved = localStorage.getItem('dex_target'); } catch {}
         const initial = DexClient.chooseInitialTarget(targets, saved, this.state.target);
         if (initial && initial !== this.state.target) await this.onSelectTarget(initial, { quiet: true });
-        this.toast('Loaded ' + checkpoints.length + ' targets', '#38bdf8');
-      } else { this.setState({ loadingCheckpoints: false }); this.toast('Failed to load capabilities (' + r.status + ')', '#ef4444'); }
-    } catch(e) { this.setState({ loadingCheckpoints: false }); this.toast('Cannot reach backend', '#ef4444'); }
+      }
+      if (modelsRes.status === 'fulfilled' && modelsRes.value.ok) {
+        const data = await modelsRes.value.json();
+        this.setState({ modelCards: data.models || [] });
+      }
+      this.setState({ loadingCheckpoints: false, loadingModelCards: false });
+      this.toast('Loaded models & capabilities', '#38bdf8');
+    } catch(e) {
+      this.setState({ loadingCheckpoints: false, loadingModelCards: false });
+      this.toast('Cannot reach backend', '#ef4444');
+    }
   }
 
-  loadCheckpoint(name) { this.onSelectTarget(name); }
+  loadCheckpoint(name) { this.selectModelWithValidation(name); }
+
+  async selectModelWithValidation(id) {
+    const fromId = this.state.target;
+    const activeLoras = this.getActiveLoras();
+    try {
+      const res = await fetch(this.state.backendUrl + '/api/models/check-switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromModelId: fromId,
+          toModelId: id,
+          activeResources: {
+            negativePrompt: this.state.negPrompt,
+            loras: activeLoras
+          }
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.warnings && data.warnings.length) {
+          this.setState({ modelSwitchWarning: data.warnings });
+          const firstMsg = data.warnings[0].message || data.warnings[0];
+          this.toast(firstMsg, '#fbbf24');
+        } else {
+          this.setState({ modelSwitchWarning: null });
+        }
+      }
+    } catch (_) {}
+    await this.onSelectTarget(id, { preserveSettings: true });
+  }
 
   // Apply a target's capability defaults (dims/steps/cfg/sampler), scaled by the
   // active speed preset, when the Target or Preset dropdown changes.
@@ -378,6 +555,30 @@ class Component extends DCLogic {
       scheduler: t.defaultScheduler || 'discrete',
     });
   }
+
+  applyModelDefaults() {
+    const tId = this.state.target;
+    const t = (this.state.modelTargets || []).find(x => x.id === tId);
+    const card = (this.state.modelCards || []).find(c => c.id === tId);
+    if (!t && !card) return;
+    this.applyTargetDefaults(tId);
+    const steps = card ? (card.default_steps || t.defaultSteps) : t.defaultSteps;
+    const cfg = card ? (card.default_cfg != null ? card.default_cfg : t.defaultCfgScale) : t.defaultCfgScale;
+    let w = t ? t.defaultWidth : 512;
+    let h = t ? t.defaultHeight : 512;
+    if (card && card.native_resolution) {
+      const [nw, nh] = card.native_resolution.split('x').map(Number);
+      if (nw && nh) { w = nw; h = nh; }
+    }
+    const patch = { availableModelDefaults: null };
+    if (steps) patch.steps = steps;
+    if (cfg != null) patch.cfg = cfg;
+    if (w && h) { patch.width = w; patch.height = h; }
+    this.setState(patch);
+    const name = card ? card.display_name : (t ? t.label : tId);
+    this.toast(`Applied model defaults for ${name} (${w}×${h}, ${steps} steps, CFG ${cfg})`, '#38bdf8');
+  }
+
   async onSelectTarget(id, options = {}) {
     const target = (this.state.modelTargets || []).find(t => t.id === id);
     if (!target) return;
@@ -396,8 +597,45 @@ class Component extends DCLogic {
       }
     }
     try { localStorage.setItem('dex_target', id); } catch {}
-    this.setState({ target: id, activeCheckpoint: id });
-    this.applyTargetDefaults(id);
+
+    const card = (this.state.modelCards || []).find(c => c.id === id);
+    const recW = (card && card.native_resolution ? Number(card.native_resolution.split('x')[0]) : target.defaultWidth) || 512;
+    const recH = (card && card.native_resolution ? Number(card.native_resolution.split('x')[1]) : target.defaultHeight) || 512;
+    const recSteps = (card && card.default_steps) || target.defaultSteps || 20;
+    const recCfg = (card && card.default_cfg != null ? card.default_cfg : target.defaultCfgScale) != null ? (card && card.default_cfg != null ? card.default_cfg : target.defaultCfgScale) : 7.0;
+
+    const defaultsInfo = {
+      targetId: id,
+      displayName: (card && card.display_name) || target.label || id,
+      width: recW,
+      height: recH,
+      steps: recSteps,
+      cfg: recCfg,
+      sampler: target.defaultSampler,
+      scheduler: target.defaultScheduler
+    };
+
+    if (options.preserveSettings) {
+      // Preserve current user settings by default; apply only necessary normalization
+      const dims = DexClient.dimensionsForTarget(target, { width: this.state.width, height: this.state.height });
+      const patch = {
+        target: id,
+        activeCheckpoint: id,
+        width: dims.width,
+        height: dims.height,
+        availableModelDefaults: defaultsInfo
+      };
+      if (target.maxSteps && this.state.steps > target.maxSteps) patch.steps = target.maxSteps;
+      if (target.minSteps && this.state.steps < target.minSteps) patch.steps = target.minSteps;
+      if (target.fixedCfgScale != null) patch.cfg = target.fixedCfgScale;
+      if ((target.backend || 'sdcpp') === 'mflux') patch.sampler = 'euler';
+      this.setState(patch);
+    } else {
+      this.setState({ target: id, activeCheckpoint: id, availableModelDefaults: defaultsInfo });
+      this.applyTargetDefaults(id);
+    }
+
+    this.loadAssets();
     if (!options.quiet) this.toast('Target set: ' + id, '#38bdf8');
   }
 
@@ -991,9 +1229,9 @@ class Component extends DCLogic {
             batchRunning, batchDone, batchTotal, batchStatus,
             i2iPrompt, i2iNeg, i2iDenoise, i2iSteps, i2iCfg, i2iSeed, i2iSrcRunId, i2iSrcFile, i2iStatus, i2iProgress, i2iResult,
             enhSrcRunId, enhSrcFile, enhScale, enhMethod, enhStatus, enhResult,
-            checkpoints, loadingCheckpoints, activeCheckpoint,
+            checkpoints, loadingCheckpoints, loadingModelCards, activeCheckpoint,
             preset, runFiles, libFilter, libHasMore, libTotal, libLoadingMore,
-            ollamaOnline, enhancingPrompt, wildcards, showWildcards, wildcardFilter, assets, loadingAssets,
+            ollamaOnline, ollamaModel, enhancingPrompt, wildcards, showWildcards, wildcardFilter, assets, loadingAssets,
             inpStatus, inpResult, inpStrength } = s;
     const screen = screens[version];
     const isGenerating = jobStatus === 'generating';
@@ -1048,23 +1286,210 @@ class Component extends DCLogic {
       null
     );
 
-    // ── Models list display ───────────────────────────────────
-    const modelsListDisplay = loadingCheckpoints
-      ? React.createElement('div', { style: { fontSize: 12, color: '#38bdf8', fontFamily: "'IBM Plex Mono',monospace" } }, 'Loading…')
-      : checkpoints.length === 0
-        ? React.createElement('div', { style: { fontSize: 12, color: '#5060a0' } }, 'No checkpoints loaded — click Refresh above')
-        : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 5 } },
-            ...checkpoints.map(cp => React.createElement('div', { key: cp.name,
-              onClick: () => this.loadCheckpoint(cp.name),
-              role: 'button', tabIndex: 0,
-              'aria-pressed': String(activeCheckpoint === cp.name),
-              'aria-label': 'Set target ' + (cp.title || cp.name),
-              onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.loadCheckpoint(cp.name); } },
-              style: { padding: '8px 12px', border: '1px solid ' + (activeCheckpoint === cp.name ? 'rgba(101,214,110,.35)' : 'rgba(255,255,255,.08)'), background: activeCheckpoint === cp.name ? 'rgba(101,214,110,.07)' : 'rgba(255,255,255,.02)', borderRadius: 8, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-              React.createElement('span', { style: { fontSize: 12, color: activeCheckpoint === cp.name ? '#65d66e' : '#c0c0d8', fontFamily: "'IBM Plex Mono',monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: 8 } }, cp.title || cp.name),
-              cp.hash ? React.createElement('span', { style: { fontSize: 10, color: '#5060a0', fontFamily: "'IBM Plex Mono',monospace", flexShrink: 0 } }, cp.hash.slice(0,8)) : null
-            ))
-          );
+    // ── Models list display (Visual Model Cards Browser) ───────
+    const modelSearchTerm = (s.modelSearch || '').toLowerCase().trim();
+    const modelFamilyFilter = s.modelFamilyFilter || 'all';
+    const allCards = (s.modelCards && s.modelCards.length > 0)
+      ? s.modelCards
+      : checkpoints.map(cp => ({
+          id: cp.name,
+          display_name: cp.title || cp.name,
+          family: 'unknown',
+          backend: 'sdcpp',
+          status: cp.status || 'PROVEN',
+          primary: cp.name.includes('flux2'),
+          preview_image: null,
+          preview_provenance: 'placeholder',
+          description: cp.title || cp.name,
+          why_use: 'Standard image generation target.',
+          best_for: ['General image generation'],
+          specialties: ['Standard'],
+          avoid_for: ['Untested edge cases'],
+          native_resolution: '512x512',
+          default_steps: 20,
+          default_cfg: 7,
+          speed_class: 'Standard',
+          supports_negative_prompt: true,
+          supports_lora: true,
+          supports_embeddings: false,
+          caveat: ''
+        }));
+
+    const filteredCards = allCards.filter(c => {
+      if (modelFamilyFilter === 'proven' && c.status !== 'PROVEN') return false;
+      if (modelFamilyFilter === 'fast' && !(c.speed_class && c.speed_class.toLowerCase().includes('fast'))) return false;
+      if (modelFamilyFilter === 'photoreal' && !(c.specialties && c.specialties.includes('Photoreal'))) return false;
+      if (modelFamilyFilter === 'flux' && !(c.family && c.family.startsWith('flux'))) return false;
+      if (modelFamilyFilter === 'sdxl' && !(c.family && c.family.startsWith('sdxl'))) return false;
+      if (modelFamilyFilter === 'sd15' && c.family !== 'sd15') return false;
+      if (modelSearchTerm) {
+        const text = (c.id + ' ' + c.display_name + ' ' + (c.description || '') + ' ' + (c.specialties || []).join(' ') + ' ' + (c.best_for || []).join(' ')).toLowerCase();
+        if (!text.includes(modelSearchTerm)) return false;
+      }
+      return true;
+    });
+
+    const modelFilterTabs = [
+      ['all', 'All (' + allCards.length + ')'],
+      ['proven', 'Proven Only'],
+      ['fast', 'Fast'],
+      ['photoreal', 'Photoreal'],
+      ['flux', 'FLUX'],
+      ['sdxl', 'SDXL'],
+      ['sd15', 'SD1.5']
+    ];
+
+    const modelsListDisplay = React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+      // Search + Filter Row
+      React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' } },
+        React.createElement('input', {
+          value: s.modelSearch || '',
+          onChange: e => this.setState({ modelSearch: e.target.value }),
+          placeholder: 'Search models (name, tag, specialty)…',
+          style: { flex: '1 1 200px', border: '1px solid rgba(148,163,184,.18)', background: 'rgba(5,10,18,.75)', color: '#e2e8f0', borderRadius: 7, padding: '7px 9px', outline: 'none', fontSize: 12, fontFamily: "'DM Sans',sans-serif" }
+        }),
+        React.createElement('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap' } },
+          ...modelFilterTabs.map(([key, label]) => React.createElement('button', {
+            key,
+            type: 'button',
+            onClick: () => this.setState({ modelFamilyFilter: key }),
+            style: { border: '1px solid ' + (modelFamilyFilter === key ? accent : 'rgba(148,163,184,.16)'), background: modelFamilyFilter === key ? accent + '22' : 'rgba(255,255,255,.03)', color: modelFamilyFilter === key ? accent : '#94a3b8', borderRadius: 6, padding: '4px 8px', fontSize: 10, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 700 }
+          }, label))
+        )
+      ),
+
+      // Switch Warning Banner
+      s.modelSwitchWarning && s.modelSwitchWarning.length ? React.createElement('div', {
+        style: { border: '1px solid rgba(251,191,36,.4)', background: 'rgba(251,191,36,.08)', borderRadius: 8, padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }
+      },
+        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+          React.createElement('div', { style: { fontSize: 11, fontWeight: 700, color: '#fde68a' } }, '⚠️ Model Switch Notice'),
+          ...s.modelSwitchWarning.map((w, idx) => React.createElement('div', { key: idx, style: { fontSize: 11, color: '#fef08a' } }, '• ' + (w.message || w)))
+        ),
+        React.createElement('button', {
+          type: 'button',
+          onClick: () => this.setState({ modelSwitchWarning: null }),
+          style: { border: 'none', background: 'transparent', color: '#fde68a', cursor: 'pointer', fontSize: 14, fontWeight: 700 }
+        }, '×')
+      ) : null,
+
+      // Cards Grid
+      loadingCheckpoints || loadingModelCards
+        ? React.createElement('div', { style: { fontSize: 12, color: '#38bdf8', padding: 12, fontFamily: "'IBM Plex Mono',monospace" } }, 'Loading model cards…')
+        : filteredCards.length === 0
+          ? React.createElement('div', { style: { fontSize: 12, color: '#64748b', padding: 12 } }, 'No models match filter.')
+          : React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 10 } },
+              ...filteredCards.map(c => {
+                const isActive = activeCheckpoint === c.id || target === c.id;
+                const provTone = c.preview_provenance === 'exact-model' ? '#10b981' : c.preview_provenance === 'family-sample' ? '#f59e0b' : '#64748b';
+                const provLabel = c.preview_provenance === 'exact-model' ? '✓ EXACT MODEL (LOCAL)' : c.preview_provenance === 'family-sample' ? 'FAMILY SAMPLE' : 'PLACEHOLDER';
+                const statusTone = c.status === 'PROVEN' ? '#65d66e' : '#fbbf24';
+
+                return React.createElement('div', {
+                  key: c.id,
+                  style: { border: '1px solid ' + (isActive ? '#65d66e' : 'rgba(148,163,184,.14)'), background: isActive ? 'rgba(101,214,110,.05)' : 'rgba(8,12,18,.85)', borderRadius: 9, overflow: 'hidden', display: 'flex', flexDirection: 'column' }
+                },
+                  // Visual preview banner
+                  React.createElement('div', { style: { position: 'relative', width: '100%', height: 110, background: 'linear-gradient(135deg,#0a101a,#141026)', overflow: 'hidden' } },
+                    c.preview_image
+                      ? React.createElement('img', { src: c.preview_image, alt: c.display_name, style: { width: '100%', height: '100%', objectFit: 'cover' } })
+                      : React.createElement('div', { style: { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, opacity: 0.25 } }, '🎴'),
+                    // Provenance badge
+                    React.createElement('div', { style: { position: 'absolute', top: 6, left: 6, background: 'rgba(5,10,18,.85)', border: '1px solid ' + provTone, color: provTone, borderRadius: 5, padding: '2px 6px', fontSize: 9, fontWeight: 800, letterSpacing: '.05em' } }, provLabel),
+                    // Primary badge
+                    c.primary ? React.createElement('div', { style: { position: 'absolute', top: 6, right: 6, background: 'rgba(251,191,36,.9)', color: '#000', borderRadius: 5, padding: '2px 6px', fontSize: 9, fontWeight: 800 } }, '★ PRIMARY') : null
+                  ),
+
+                  // Card details
+                  React.createElement('div', { style: { padding: 10, display: 'flex', flexDirection: 'column', gap: 6, flex: 1 } },
+                    // Title and badges
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 } },
+                      React.createElement('div', { style: { fontSize: 13, fontWeight: 800, color: '#f1f5f9', fontFamily: "'DM Sans',sans-serif" } }, c.display_name),
+                      React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                        React.createElement('span', { style: { border: '1px solid rgba(56,189,248,.4)', background: 'rgba(56,189,248,.1)', color: '#38bdf8', borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700 } }, c.backend.toUpperCase()),
+                        React.createElement('span', { style: { border: '1px solid ' + statusTone + '55', background: statusTone + '15', color: statusTone, borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700 } }, c.status)
+                      )
+                    ),
+
+                    // Description (What is it)
+                    React.createElement('div', { style: { fontSize: 11, color: '#94a3b8', lineHeight: 1.35 } }, c.description),
+
+                    // Why use it
+                    c.why_use ? React.createElement('div', { style: { fontSize: 11, color: '#cbd5e1', lineHeight: 1.35 } },
+                      React.createElement('span', { style: { color: '#7dd3fc', fontWeight: 700 } }, 'Why: '), c.why_use
+                    ) : null,
+
+                    // Best for (Strong at)
+                    c.best_for && c.best_for.length ? React.createElement('div', { style: { fontSize: 10, color: '#86efac', display: 'flex', flexDirection: 'column', gap: 2 } },
+                      ...c.best_for.slice(0, 2).map((b, bi) => React.createElement('div', { key: bi }, '✓ ' + b))
+                    ) : null,
+
+                    // Avoid for / caveat
+                    c.avoid_for && c.avoid_for.length ? React.createElement('div', { style: { fontSize: 10, color: '#fca5a5' } },
+                      '⚠ Avoid: ' + c.avoid_for[0]
+                    ) : null,
+
+                    // Caveat notice
+                    c.caveat ? React.createElement('div', { style: { fontSize: 10, color: '#fde68a', fontStyle: 'italic' } }, c.caveat) : null,
+
+                    // Specs & Capability Chips
+                    React.createElement('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 } },
+                      React.createElement('span', { style: { border: '1px solid rgba(148,163,184,.14)', background: 'rgba(255,255,255,.03)', color: '#94a3b8', borderRadius: 4, padding: '1px 5px', fontSize: 9, fontFamily: "'IBM Plex Mono',monospace" } }, c.native_resolution),
+                      React.createElement('span', { style: { border: '1px solid rgba(148,163,184,.14)', background: 'rgba(255,255,255,.03)', color: '#94a3b8', borderRadius: 4, padding: '1px 5px', fontSize: 9, fontFamily: "'IBM Plex Mono',monospace" } }, c.default_steps + ' steps'),
+                      React.createElement('span', { style: { border: '1px solid rgba(148,163,184,.14)', background: 'rgba(255,255,255,.03)', color: '#94a3b8', borderRadius: 4, padding: '1px 5px', fontSize: 9, fontFamily: "'IBM Plex Mono',monospace" } }, 'CFG ' + c.default_cfg),
+                      React.createElement('span', { style: { border: '1px solid rgba(148,163,184,.14)', background: 'rgba(255,255,255,.03)', color: '#94a3b8', borderRadius: 4, padding: '1px 5px', fontSize: 9 } }, c.speed_class)
+                    ),
+
+                    // Negative prompt & LoRA explicit badges
+                    React.createElement('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap' } },
+                      c.supports_negative_prompt
+                        ? React.createElement('span', { style: { color: '#86efac', fontSize: 9, fontWeight: 700 } }, '✓ Neg prompt')
+                        : React.createElement('span', { style: { color: '#f87171', fontSize: 9, fontWeight: 800 } }, '❌ No neg prompt (ignored)'),
+                      React.createElement('span', { style: { color: c.supports_lora ? '#86efac' : '#94a3b8', fontSize: 9 } }, c.supports_lora ? '✓ LoRA' : 'No LoRA'),
+                      React.createElement('span', { style: { color: c.supports_embeddings ? '#86efac' : '#94a3b8', fontSize: 9 } }, c.supports_embeddings ? '✓ Embeddings' : 'No Embeddings')
+                    ),
+
+                    // Action Buttons
+                    React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 } },
+                      React.createElement('button', {
+                        type: 'button',
+                        onClick: () => this.selectModelWithValidation(c.id),
+                        style: {
+                          flex: '1 1 auto',
+                          border: '1px solid ' + (isActive ? '#65d66e' : '#38bdf8'),
+                          background: isActive ? 'rgba(101,214,110,.15)' : 'rgba(56,189,248,.12)',
+                          color: isActive ? '#65d66e' : '#38bdf8',
+                          borderRadius: 6,
+                          padding: '6px 10px',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontFamily: "'DM Sans',sans-serif"
+                        }
+                      }, isActive ? '✓ Active Model' : 'Select Model'),
+                      (isActive && s.availableModelDefaults && (s.availableModelDefaults.targetId === c.id || s.target === c.id))
+                        ? React.createElement('button', {
+                            type: 'button',
+                            onClick: () => this.applyModelDefaults(),
+                            style: {
+                              border: '1px solid #38bdf8',
+                              background: 'rgba(56,189,248,.2)',
+                              color: '#38bdf8',
+                              borderRadius: 6,
+                              padding: '6px 10px',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              fontFamily: "'DM Sans',sans-serif"
+                            }
+                          }, '⚡ Use model defaults')
+                        : null
+                    )
+                  )
+                );
+              })
+            )
+    );
 
     // ── Source run + image pickers for i2i / enhance / inpaint ──
     const selStyle = { width: '100%', border: '1px solid rgba(255,255,255,.12)', background: 'rgba(0,0,0,.3)', color: '#e0e0f0', borderRadius: 7, padding: '7px', outline: 'none', fontSize: 12, fontFamily: "'DM Sans',sans-serif" };
@@ -1098,25 +1523,136 @@ class Component extends DCLogic {
         libLoadingMore ? 'Loading…' : 'Load More') : null,
       React.createElement('span', { style: { fontSize: 11, color: '#6090a8', marginLeft: 10 } }, runs.length + ' of ' + (libTotal || runs.length) + ' runs'));
 
-    // ── Prompt tools (Enhance via Ollama + Wildcards) ─────────
+    // ── Prompt tools (Enhance via Ollama + Wildcards + Active Resource Chips) ─
     const wcFiltered = wildcardFilter
       ? wildcards.filter(w => w.name.toLowerCase().includes(wildcardFilter.toLowerCase()))
       : wildcards;
-    const promptTools = React.createElement('div', { style: { display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap', marginTop: 6, position: 'relative' } },
-      React.createElement('button', { onClick: () => this.enhancePrompt(), disabled: !ollamaOnline || enhancingPrompt,
-        title: ollamaOnline ? 'Enhance prompt with Ollama' : 'Ollama offline',
-        style: { border: '1px solid ' + (ollamaOnline ? accent : 'rgba(148,163,184,.18)'), background: 'transparent', color: ollamaOnline ? accent : '#5a6678', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: ollamaOnline ? 'pointer' : 'not-allowed', opacity: ollamaOnline ? 1 : .6, fontFamily: "'DM Sans',sans-serif" } },
-        enhancingPrompt ? '✨ Enhancing…' : '✨ Enhance'),
-      React.createElement('button', { onClick: () => this.setState(s => ({ showWildcards: !s.showWildcards, wildcardFilter: '' })),
-        style: { border: '1px solid ' + (showWildcards ? accent : 'rgba(148,163,184,.18)'), background: 'transparent', color: showWildcards ? accent : '#b8c7d6', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" } },
-        wildcardFilter ? ('__ ' + wildcardFilter + '… (' + wcFiltered.length + ')') : '⊞ Wildcards (' + wildcards.length + ')'),
-      showWildcards ? React.createElement('div', { style: { position: 'absolute', top: '110%', left: 0, zIndex: 50, background: '#0c1018', border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, padding: 6, display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 240, overflowY: 'auto', minWidth: 220, boxShadow: '0 8px 24px rgba(0,0,0,.5)' } },
-        wildcardFilter ? React.createElement('div', { style: { fontSize: 10, color: '#5a6678', padding: '2px 6px 5px', borderBottom: '1px solid rgba(148,163,184,.1)', marginBottom: 3, fontFamily: "'IBM Plex Mono',monospace" } }, 'autocomplete: __' + wildcardFilter + '…') : null,
-        wcFiltered.length ? wcFiltered.map(w => React.createElement('button', { key: w.name,
-          onClick: () => wildcardFilter ? this.insertWildcardFiltered(w.name) : this.insertWildcard(w.name),
-          style: { textAlign: 'left', border: 'none', background: 'transparent', color: '#c0c0d8', borderRadius: 5, padding: '5px 8px', fontSize: 12, cursor: 'pointer', fontFamily: "'IBM Plex Mono',monospace" } },
-          '__' + w.name + '__', React.createElement('span', { style: { color: '#5a6678', marginLeft: 4 } }, '(' + (w.count || 0) + ')')))
-          : React.createElement('div', { style: { fontSize: 12, color: '#5a6678', padding: 6 } }, wildcardFilter ? 'No match for "' + wildcardFilter + '"' : 'No wildcards')) : null);
+
+    const activeLoras = this.getActiveLoras();
+    const activeWildcards = this.getActiveWildcards();
+    const hasActiveResources = activeLoras.length > 0 || activeWildcards.length > 0;
+
+    const promptTools = React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4, width: '100%' } },
+      // Top Controls Row
+      React.createElement('div', { style: { display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap', position: 'relative' } },
+        React.createElement('button', {
+          onClick: () => this.enhancePrompt(),
+          disabled: !ollamaOnline || enhancingPrompt,
+          title: ollamaOnline ? ('Enhance prompt with ' + (ollamaModel || 'qwen3.8:27b-mlx')) : 'Ollama offline',
+          style: { border: '1px solid ' + (ollamaOnline ? '#a78bfa' : 'rgba(148,163,184,.18)'), background: ollamaOnline ? 'rgba(167,139,250,.12)' : 'transparent', color: ollamaOnline ? '#c4b5fd' : '#5a6678', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: ollamaOnline ? 'pointer' : 'not-allowed', opacity: ollamaOnline ? 1 : .6, fontFamily: "'DM Sans',sans-serif", fontWeight: 700 }
+        }, enhancingPrompt ? '✨ Enhancing…' : ('✨ Enhance (' + (ollamaModel ? ollamaModel.replace(':latest', '') : 'Ollama') + ')')),
+
+        React.createElement('button', {
+          onClick: () => this.setState(s => ({ showWildcards: !s.showWildcards, wildcardFilter: '' })),
+          style: { border: '1px solid ' + (showWildcards ? accent : 'rgba(148,163,184,.18)'), background: 'transparent', color: showWildcards ? accent : '#b8c7d6', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }
+        }, wildcardFilter ? ('__ ' + wildcardFilter + '… (' + wcFiltered.length + ')') : ('⊞ Wildcards (' + wildcards.length + ')')),
+
+        s.previousPrompt != null ? React.createElement('button', {
+          onClick: () => this.undoEnhancement(),
+          title: 'Restore prompt before enhancement',
+          style: { border: '1px solid rgba(56,189,248,.3)', background: 'rgba(56,189,248,.08)', color: '#38bdf8', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }
+        }, '↺ Undo Enhance') : null,
+
+        // Wildcard dropdown
+        showWildcards ? React.createElement('div', {
+          style: { position: 'absolute', top: '110%', left: 0, zIndex: 60, background: '#0c1018', border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, padding: 6, display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 240, overflowY: 'auto', minWidth: 260, boxShadow: '0 8px 24px rgba(0,0,0,.5)' }
+        },
+          wildcardFilter ? React.createElement('div', { style: { fontSize: 10, color: '#5a6678', padding: '2px 6px 5px', borderBottom: '1px solid rgba(148,163,184,.1)', marginBottom: 3, fontFamily: "'IBM Plex Mono',monospace" } }, 'autocomplete: __' + wildcardFilter + '…') : null,
+          wcFiltered.length ? wcFiltered.map(w => React.createElement('button', {
+            key: w.name,
+            onClick: () => wildcardFilter ? this.insertWildcardFiltered(w.name) : this.insertWildcard(w.name),
+            style: { textAlign: 'left', border: 'none', background: 'transparent', color: '#c0c0d8', borderRadius: 5, padding: '5px 8px', fontSize: 12, cursor: 'pointer', fontFamily: "'IBM Plex Mono',monospace", display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+          },
+            React.createElement('span', null, '__' + w.name + '__'),
+            React.createElement('span', { style: { color: '#64748b', fontSize: 10 } }, (w.count || 0) + ' items')
+          )) : React.createElement('div', { style: { fontSize: 12, color: '#5a6678', padding: 6 } }, wildcardFilter ? 'No match for "' + wildcardFilter + '"' : 'No wildcards')
+        ) : null
+      ),
+
+      // Prompt Enhancement Review Box
+      s.enhancementResult ? React.createElement('div', {
+        style: { border: '1px solid rgba(167,139,250,.4)', background: 'rgba(167,139,250,.07)', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, overflowWrap: 'anywhere' }
+      },
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+          React.createElement('div', { style: { fontSize: 11, fontWeight: 800, color: '#c4b5fd' } }, '✨ Prompt Enhancement Review (' + (s.enhancementResult.profile || target) + ')'),
+          React.createElement('button', { onClick: () => this.dismissEnhancement(), style: { border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: 13 } }, '×')
+        ),
+        React.createElement('div', { style: { fontSize: 10, fontWeight: 700, color: '#94a3b8' } }, 'ORIGINAL'),
+        React.createElement('div', { style: { fontSize: 11, color: '#cbd5e1' } }, s.enhancementResult.original),
+        React.createElement('div', { style: { fontSize: 10, fontWeight: 700, color: '#c4b5fd' } }, 'ENHANCED'),
+        React.createElement('div', { style: { fontSize: 12, color: '#f1f5f9', background: 'rgba(0,0,0,.3)', padding: 6, borderRadius: 5, lineHeight: 1.4 } }, s.enhancementResult.enhanced),
+        s.enhancementResult.explanation ? React.createElement('div', { style: { fontSize: 11, color: '#7dd3fc' } }, 'Why: ' + s.enhancementResult.explanation) : null,
+        s.enhancementResult.suggested_settings ? React.createElement('button', {
+          onClick: () => this.applySuggestedSettings(s.enhancementResult.suggested_settings),
+          style: { alignSelf: 'flex-start', border: '1px solid rgba(101,214,110,.4)', background: 'rgba(101,214,110,.1)', color: '#86efac', borderRadius: 5, padding: '3px 8px', fontSize: 10, cursor: 'pointer', fontWeight: 700 }
+        }, '⚙ Apply suggested: ' + Object.entries(s.enhancementResult.suggested_settings).map(([k, v]) => k + '=' + v).join(', ')) : null,
+        React.createElement('div', { style: { display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' } },
+          React.createElement('button', {
+            onClick: () => this.applyEnhancement(),
+            style: { border: '1px solid rgba(167,139,250,.6)', background: 'rgba(167,139,250,.2)', color: '#e9d5ff', borderRadius: 6, padding: '5px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }
+          }, 'Apply Enhancement'),
+          React.createElement('button', {
+            onClick: () => this.appendEnhancement(),
+            style: { border: '1px solid rgba(148,163,184,.2)', background: 'rgba(255,255,255,.05)', color: '#cbd5e1', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer' }
+          }, 'Append'),
+          React.createElement('button', {
+            onClick: () => this.dismissEnhancement(),
+            style: { border: 'none', background: 'transparent', color: '#94a3b8', padding: '5px 8px', fontSize: 11, cursor: 'pointer' }
+          }, 'Cancel')
+        )
+      ) : null,
+
+      // Active Resource Chips
+      hasActiveResources ? React.createElement('div', { style: { display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center', marginTop: 2 } },
+        React.createElement('span', { style: { fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 } }, 'Active:'),
+        // LoRA chips
+        ...activeLoras.map(l => {
+          const loraAsset = (assets.loras || []).find(a => a.name.toLowerCase() === l.name.toLowerCase() || a.filename.toLowerCase().startsWith(l.name.toLowerCase()));
+          const compat = loraAsset ? loraAsset.compatibility : 'Unknown';
+          const compatTone = compat === 'Compatible' ? '#65d66e' : compat === 'Probably compatible' ? '#fbbf24' : compat === 'Incompatible' ? '#ef4444' : '#94a3b8';
+
+          return React.createElement('span', {
+            key: l.token,
+            style: { display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid rgba(148,163,184,.18)', background: 'rgba(15,23,42,.8)', borderRadius: 6, padding: '2px 6px', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace" }
+          },
+            React.createElement('span', { style: { color: compatTone } }, '●'),
+            React.createElement('span', { style: { color: '#e2e8f0' } }, l.name),
+            React.createElement('button', {
+              onClick: () => this.setLoraWeight(l.name, Math.max(0, l.weight - 0.1)),
+              style: { border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', padding: '0 2px' }
+            }, '-'),
+            React.createElement('span', { style: { color: '#38bdf8', fontWeight: 700 } }, l.weight.toFixed(2)),
+            React.createElement('button', {
+              onClick: () => this.setLoraWeight(l.name, Math.min(2, l.weight + 0.1)),
+              style: { border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', padding: '0 2px' }
+            }, '+'),
+            React.createElement('button', {
+              onClick: () => this.removeLora(l.token),
+              title: 'Remove LoRA',
+              style: { border: 'none', background: 'transparent', color: '#f87171', cursor: 'pointer', marginLeft: 2, fontWeight: 700 }
+            }, '×')
+          );
+        }),
+        // Wildcard chips
+        ...activeWildcards.map(w => {
+          const bank = wildcards.find(b => b.name.toLowerCase() === w.name.toLowerCase());
+          const count = bank ? bank.count : '?';
+
+          return React.createElement('span', {
+            key: w.token,
+            style: { display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid rgba(167,139,250,.3)', background: 'rgba(167,139,250,.1)', borderRadius: 6, padding: '2px 6px', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", color: '#d8b4fe' }
+          },
+            '⊞ __' + w.name + '__',
+            React.createElement('span', { style: { color: '#94a3b8', fontSize: 10 } }, '(' + count + ')'),
+            React.createElement('button', {
+              onClick: () => this.removeWildcard(w.token),
+              title: 'Remove Wildcard',
+              style: { border: 'none', background: 'transparent', color: '#f87171', cursor: 'pointer', marginLeft: 2, fontWeight: 700 }
+            }, '×')
+          );
+        })
+      ) : null
+    );
 
     // ── Dynamic target selects (populated from /api/capabilities) ─
     const _makeTargetSelect = (labelStyle, selStyle) => {
@@ -1125,7 +1661,7 @@ class Component extends DCLogic {
         : [React.createElement('option', { key: '_cur', value: target }, loadingCheckpoints ? 'Loading models…' : (target || 'sd15'))];
       return React.createElement('div', null,
         React.createElement('div', { style: labelStyle }, 'Target model'),
-        React.createElement('select', { style: selStyle, value: target, onChange: e => this.onSelectTarget(e.target.value) }, ...opts));
+        React.createElement('select', { style: selStyle, value: target, onChange: e => this.selectModelWithValidation(e.target.value) }, ...opts));
     };
     const targetSelectV1 = _makeTargetSelect(
       { fontSize: '10px', color: '#6090a8', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '4px' },
@@ -1140,30 +1676,162 @@ class Component extends DCLogic {
       { width: '100%', border: '1px solid rgba(255,255,255,.09)', background: '#141418', color: '#f4f4f8', borderRadius: '6px', padding: '8px', outline: 'none', fontSize: '12px', fontFamily: "'Space Grotesk',sans-serif" }
     );
 
-    // ── Extra Networks (LoRA / VAE) panel ─────────────────────
-    const assetMatch = item => !s.assetQuery || String((item && (item.name || item.filename || item.id)) || '').toLowerCase().includes(s.assetQuery.toLowerCase());
-    const loras = (assets.loras || []).filter(assetMatch);
-    const vaes = (assets.vaes || []).filter(assetMatch);
-    const embeddings = (assets.embeddings || []).filter(assetMatch);
-    const rawAssetCounts = { loras: (assets.loras || []).length, vaes: (assets.vaes || []).length, embeddings: (assets.embeddings || []).length };
-    const assetRow = (kind, item, action) => React.createElement('div', { key: kind + ':' + (item.id || item.filename || item.name),
-      style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, border: '1px solid rgba(148,163,184,.12)', background: 'rgba(9,20,32,.7)', borderRadius: 8, padding: '7px 10px' } },
-      React.createElement('span', { style: { fontSize: 12, color: '#c0c0d8', fontFamily: "'IBM Plex Mono',monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 } }, item.name || item.filename),
-      action ? React.createElement('button', { onClick: action,
-        style: { border: '1px solid ' + accent, background: 'transparent', color: accent, borderRadius: 6, padding: '3px 9px', fontSize: 11, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" } }, 'Insert') :
-        React.createElement('span', { style: { fontSize: 10, color: '#6090a8', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" } }, 'Available'));
-    const assetSection = (title, items, empty, render) => React.createElement('div', { style: { marginTop: 10 } },
-      React.createElement('div', { style: { fontSize: 10, color: '#6090a8', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6, fontWeight: 700 } }, title),
-      items.length ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 220, overflowY: 'auto', paddingRight: 2 } },
-        ...items.map(render)) : React.createElement('div', { style: { fontSize: 12, color: '#6090a8', fontStyle: 'italic' } }, empty));
-    const extraNetworksDisplay = React.createElement('div', null,
-      React.createElement('div', { style: { fontSize: 11, color: '#6090a8', marginBottom: 7 } },
-        loadingAssets ? 'Discovering assets…' : (rawAssetCounts.loras + ' LoRAs · ' + rawAssetCounts.vaes + ' VAEs · ' + rawAssetCounts.embeddings + ' embeddings')),
-      React.createElement('input', { value: s.assetQuery, onChange: e => this.setState({ assetQuery: e.target.value }), placeholder: 'Search LoRA, VAE, embeddings',
-        style: { width: '100%', border: '1px solid rgba(148,163,184,.16)', background: 'rgba(5,10,18,.72)', color: '#e2e8f0', borderRadius: 7, padding: '7px 9px', outline: 'none', fontSize: 12, fontFamily: "'DM Sans',sans-serif", marginBottom: 8 } }),
-      assetSection('LoRAs', loras, 'No LoRAs detected. Run Discover assets.', l => assetRow('lora', l, () => this.insertLora(l.filename || l.name))),
-      assetSection('VAEs', vaes, 'No VAEs detected.', v => assetRow('vae', v)),
-      assetSection('Embeddings', embeddings, 'No embeddings detected.', e => assetRow('embedding', e)));
+    // ── Extra Networks (LoRA, Embeddings, VAE) panel ───────────
+    const extraNetworksTab = s.extraNetworksTab || 'loras';
+    const assetQuery = (s.assetQuery || '').toLowerCase().trim();
+    const lorasList = (assets.loras || []).filter(item => !assetQuery || (item.name || item.filename || '').toLowerCase().includes(assetQuery));
+    const vaesList = (assets.vaes || []).filter(item => !assetQuery || (item.name || item.filename || '').toLowerCase().includes(assetQuery));
+    const embeddingsState = assets.embeddings || { count: 0, items: [], empty_state_message: 'No Textual Inversion embeddings discovered' };
+
+    const extraNetworksDisplay = React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+      // Tabs header
+      React.createElement('div', { style: { display: 'flex', gap: 6, borderBottom: '1px solid rgba(148,163,184,.14)', paddingBottom: 6 } },
+        React.createElement('button', {
+          type: 'button',
+          onClick: () => this.setState({ extraNetworksTab: 'loras' }),
+          style: { border: 'none', background: 'transparent', color: extraNetworksTab === 'loras' ? accent : '#64748b', fontSize: 12, fontWeight: 700, cursor: 'pointer', borderBottom: extraNetworksTab === 'loras' ? '2px solid ' + accent : 'none', padding: '4px 8px' }
+        }, 'LoRAs (' + (assets.loras || []).length + ')'),
+        React.createElement('button', {
+          type: 'button',
+          onClick: () => this.setState({ extraNetworksTab: 'embeddings' }),
+          style: { border: 'none', background: 'transparent', color: extraNetworksTab === 'embeddings' ? accent : '#64748b', fontSize: 12, fontWeight: 700, cursor: 'pointer', borderBottom: extraNetworksTab === 'embeddings' ? '2px solid ' + accent : 'none', padding: '4px 8px' }
+        }, 'Embeddings (' + (embeddingsState.count || 0) + ')'),
+        React.createElement('button', {
+          type: 'button',
+          onClick: () => this.setState({ extraNetworksTab: 'vaes' }),
+          style: { border: 'none', background: 'transparent', color: extraNetworksTab === 'vaes' ? accent : '#64748b', fontSize: 12, fontWeight: 700, cursor: 'pointer', borderBottom: extraNetworksTab === 'vaes' ? '2px solid ' + accent : 'none', padding: '4px 8px' }
+        }, 'VAEs (' + (assets.vaes || []).length + ')')
+      ),
+
+      // Search input
+      React.createElement('input', {
+        value: s.assetQuery || '',
+        onChange: e => this.setState({ assetQuery: e.target.value }),
+        placeholder: 'Search ' + extraNetworksTab + '…',
+        style: { width: '100%', border: '1px solid rgba(148,163,184,.16)', background: 'rgba(5,10,18,.72)', color: '#e2e8f0', borderRadius: 7, padding: '7px 9px', outline: 'none', fontSize: 12, fontFamily: "'DM Sans',sans-serif" }
+      }),
+
+      // Tab Content: LoRAs
+      extraNetworksTab === 'loras' ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380, overflowY: 'auto' } },
+        loadingAssets ? React.createElement('div', { style: { fontSize: 12, color: '#38bdf8' } }, 'Scanning LoRAs…') :
+        lorasList.length === 0 ? React.createElement('div', { style: { fontSize: 12, color: '#64748b', fontStyle: 'italic' } }, 'No LoRAs match search.') :
+        lorasList.map(l => {
+          const baseName = l.name.replace(/\.[^.]+$/, '');
+          const inPrompt = (prompt || '').includes('<lora:' + baseName);
+          const activeWeight = (activeLoras.find(a => a.name === baseName) || {}).weight ?? (s.loraWeights[l.id] || l.default_weight || 0.8);
+          const compatTone = l.compatibility === 'Compatible' ? '#65d66e' : l.compatibility === 'Probably compatible' ? '#fbbf24' : l.compatibility === 'Incompatible' ? '#ef4444' : '#94a3b8';
+
+          return React.createElement('div', {
+            key: l.id,
+            style: { border: '1px solid rgba(148,163,184,.14)', background: 'rgba(9,20,32,.7)', borderRadius: 8, padding: 9, display: 'flex', flexDirection: 'column', gap: 6 }
+          },
+            // Title & compatibility badges
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+              React.createElement('div', { style: { fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: "'IBM Plex Mono',monospace" } }, l.name),
+              React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                React.createElement('span', { style: { border: '1px solid rgba(148,163,184,.2)', background: 'rgba(255,255,255,.04)', color: '#94a3b8', borderRadius: 4, padding: '1px 5px', fontSize: 9 } }, l.family.toUpperCase()),
+                React.createElement('span', { style: { border: '1px solid ' + compatTone + '55', background: compatTone + '15', color: compatTone, borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700 } }, l.compatibility)
+              )
+            ),
+
+            // Weight controls
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              React.createElement('span', { style: { fontSize: 10, color: '#7f8ca8', textTransform: 'uppercase' } }, 'Weight:'),
+              React.createElement('input', {
+                type: 'range',
+                min: '0',
+                max: '2',
+                step: '0.05',
+                value: activeWeight,
+                onChange: e => {
+                  const val = parseFloat(e.target.value);
+                  this.setState(st => ({ loraWeights: { ...st.loraWeights, [l.id]: val } }));
+                  if (inPrompt) this.setLoraWeight(baseName, val);
+                },
+                style: { flex: 1, accentColor: accent }
+              }),
+              React.createElement('span', { style: { fontSize: 11, color: '#38bdf8', fontFamily: "'IBM Plex Mono',monospace", width: 34 } }, activeWeight.toFixed(2))
+            ),
+
+            // Trigger words
+            l.trigger_words && l.trigger_words.length ? React.createElement('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' } },
+              React.createElement('span', { style: { fontSize: 10, color: '#64748b' } }, 'Triggers:'),
+              ...l.trigger_words.map(tw => React.createElement('button', {
+                key: tw,
+                type: 'button',
+                onClick: () => this.addTriggerWord(tw),
+                title: 'Click to add to prompt',
+                style: { border: '1px solid rgba(56,189,248,.3)', background: 'rgba(56,189,248,.08)', color: '#7dd3fc', borderRadius: 4, padding: '1px 6px', fontSize: 10, cursor: 'pointer' }
+              }, '+ ' + tw))
+            ) : null,
+
+            // Action Buttons
+            React.createElement('div', { style: { display: 'flex', gap: 6, marginTop: 2 } },
+              inPrompt
+                ? React.createElement('button', {
+                    type: 'button',
+                    onClick: () => this.removeLora('<lora:' + baseName),
+                    style: { border: '1px solid rgba(239,68,68,.4)', background: 'rgba(239,68,68,.1)', color: '#f87171', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }
+                  }, 'Remove from Prompt')
+                : React.createElement('button', {
+                    type: 'button',
+                    onClick: () => this.insertLora(l.filename || l.name, activeWeight),
+                    style: { border: '1px solid ' + accent, background: accent + '18', color: accent, borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }
+                  }, 'Add to Prompt'),
+              React.createElement('button', {
+                type: 'button',
+                onClick: () => {
+                  this.setState(st => ({ loraWeights: { ...st.loraWeights, [l.id]: 0.8 } }));
+                  if (inPrompt) this.setLoraWeight(baseName, 0.8);
+                },
+                style: { border: '1px solid rgba(148,163,184,.18)', background: 'transparent', color: '#94a3b8', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }
+              }, 'Reset')
+            )
+          );
+        })
+      ) : null,
+
+      // Tab Content: Embeddings (Honest Empty State)
+      extraNetworksTab === 'embeddings' ? React.createElement('div', {
+        style: { border: '1px solid rgba(148,163,184,.16)', background: 'rgba(9,20,32,.7)', borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'center' }
+      },
+        React.createElement('div', { style: { fontSize: 13, fontWeight: 700, color: '#cbd5e1' } }, embeddingsState.empty_state_message || 'No Textual Inversion embeddings discovered'),
+        React.createElement('div', { style: { fontSize: 11, color: '#94a3b8', lineHeight: 1.4 } },
+          'SDCPP supports .bin and .safetensors textual inversion embeddings in the configured directory, but none are currently staged.'
+        ),
+        React.createElement('div', { style: { background: 'rgba(5,10,18,.8)', border: '1px solid rgba(148,163,184,.1)', borderRadius: 6, padding: '6px 10px', fontSize: 10, color: '#38bdf8', fontFamily: "'IBM Plex Mono',monospace", margin: '4px 0' } },
+          '/Volumes/wc2tb/ImageGen/embeddings'
+        ),
+        React.createElement('div', { style: { fontSize: 10, color: '#64748b' } },
+          'To use embeddings, drop compatible files into the directory above and click Discover Assets.'
+        )
+      ) : null,
+
+      // Tab Content: VAEs
+      extraNetworksTab === 'vaes' ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380, overflowY: 'auto' } },
+        vaesList.length === 0 ? React.createElement('div', { style: { fontSize: 12, color: '#64748b' } }, 'No VAEs discovered.') :
+        vaesList.map(v => {
+          const isSelected = s.selectedVae === v.filename;
+          return React.createElement('div', {
+            key: v.id,
+            style: { border: '1px solid ' + (isSelected ? '#65d66e' : 'rgba(148,163,184,.14)'), background: isSelected ? 'rgba(101,214,110,.08)' : 'rgba(9,20,32,.7)', borderRadius: 8, padding: 9, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+          },
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
+              React.createElement('span', { style: { fontSize: 12, color: '#e2e8f0', fontFamily: "'IBM Plex Mono',monospace" } }, v.name || v.filename),
+              React.createElement('span', { style: { fontSize: 10, color: '#94a3b8' } }, 'Family: ' + v.family + ' · ' + v.compatibility)
+            ),
+            React.createElement('button', {
+              type: 'button',
+              onClick: () => {
+                this.setState({ selectedVae: v.filename });
+                this.toast('Selected VAE: ' + v.filename, '#65d66e');
+              },
+              style: { border: '1px solid ' + (isSelected ? '#65d66e' : '#38bdf8'), background: 'transparent', color: isSelected ? '#65d66e' : '#38bdf8', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }
+            }, isSelected ? '✓ Active VAE' : 'Select VAE')
+          );
+        })
+      ) : null
+    );
 
     const h = React.createElement;
     const fieldLabel = { fontSize: 10, color: '#7f8ca8', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4, fontWeight: 700 };
@@ -1189,6 +1857,7 @@ class Component extends DCLogic {
         h('input', { value: s.favoriteName, onChange: e => this.setState({ favoriteName: e.target.value }), placeholder: 'Name this setup', style: { ...panelInput, flex: 1 } }),
         actionButton('Save Recipe', () => this.saveFavoritePreset())),
       favoritePresetRows);
+    const vaes = (assets && assets.vaes) || [];
     const vaeSelect = h('select', { value: s.selectedVae, onChange: e => this.setState({ selectedVae: e.target.value }), style: panelInput },
       h('option', { value: 'default' }, 'Default / backend-selected'),
       h('option', { value: 'none' }, 'None'),

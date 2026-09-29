@@ -1,0 +1,20 @@
+{
+  "job_id": "0620d5d8-f6bf-4d07-9195-5fdcf3e05bb8",
+  "status": "PASS",
+  "target": "flux2-klein-4b",
+  "quantity": 2,
+  "images": [
+    {
+      "name": "20260929-141936-controlled-flux2-klein-4b-s1374894029-controlled-flux2-klein-4b.png",
+      "path": "/Users/andrew/images_made/20260929-141936-controlled-flux2-klein-4b-s1374894029-controlled-flux2-klein-4b.png",
+      "size": 1590794,
+      "sha256": "079420b41ea5655fd388c49485a29795b82e787cd08f528f19d92e47c60677ff"
+    },
+    {
+      "name": "20260929-142044-controlled-flux2-klein-4b-s26719822-controlled-flux2-klein-4b.png",
+      "path": "/Users/andrew/images_made/20260929-142044-controlled-flux2-klein-4b-s26719822-controlled-flux2-klein-4b.png",
+      "size": 1471988,
+      "sha256": "583180c57a4748a6f2f95ab0e11e6c9b69d9f768e4957cf2841467404200e745"
+    }
+  ]
+}

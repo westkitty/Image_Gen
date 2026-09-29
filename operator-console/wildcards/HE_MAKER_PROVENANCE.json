@@ -1,0 +1,82 @@
+{
+  "schema": "dexdiffusion.wildcards.he_maker.v1",
+  "source_repository": "westkitty/He-Maker",
+  "source_commit": "5904d101e1a4a64f0cf477328bd97edfc65d581b",
+  "banks": {
+    "BewareTheFey.txt": {
+      "sha256": "010548d99c30cb311d6ffd918adc951af125f4ffe5f9b16013ea2ba276dac950",
+      "bytes": 100219,
+      "entry_count": 367
+    },
+    "IconicLandmarkLocations.txt": {
+      "sha256": "e68c24c76c4b40f07c7e86ac835b8872cb2f9128d9bdd441582fa01530781336",
+      "bytes": 9221,
+      "entry_count": 472
+    },
+    "ScenesFromGreekMythology.txt": {
+      "sha256": "c29ab9b3e9bd0691f636d3420ea5fbb15ab6883a1e1518f35740e71edd152984",
+      "bytes": 20317,
+      "entry_count": 100
+    },
+    "ScenesFromNorseMythology.txt": {
+      "sha256": "62a46f23b7f98b68c7e22a94464d25185b0358984b2a3a2e5f3b94440f197379",
+      "bytes": 21052,
+      "entry_count": 142
+    },
+    "ScenesFromRagnarok.txt": {
+      "sha256": "cd5a4f4dcc4c7261ad7eb1ecbdc81bb56c14b417a9738200772198ec78c46bc8",
+      "bytes": 9192,
+      "entry_count": 22
+    },
+    "ScenesFromTheOdysessy.txt": {
+      "sha256": "dc9d749dd495f306b698cbdfa6f80c59f26d01942a3d8823e485130811b3acf2",
+      "bytes": 14694,
+      "entry_count": 55
+    },
+    "SpellsCastFromHisHand.txt": {
+      "sha256": "88091b9a828e5116cb61b97e64bc4951b08c187f738e34cb04c194ad206044d4",
+      "bytes": 36050,
+      "entry_count": 436
+    },
+    "bewaretheYokai.txt": {
+      "sha256": "f195ed2abdb09c5084a8c0dde001f630f170041076a512f12d15b9a5111e02cd",
+      "bytes": 104511,
+      "entry_count": 556
+    },
+    "menusingmagicalabilitiesandorartifacts.txt": {
+      "sha256": "36effa0030ff5b631592f808002a8ae952fcbbfb27ee0350f5c948e592690a8a",
+      "bytes": 119579,
+      "entry_count": 634
+    },
+    "menusingsuperpowers.txt": {
+      "sha256": "4fc23b222b2dd6e2dd188b75d600077d3ccda0f6109a513bd0c239fa3c3142a1",
+      "bytes": 106599,
+      "entry_count": 639
+    },
+    "simple_actions_wildcard.txt": {
+      "sha256": "6efdb5b17d8d43e51072f9f8d32f8449ad310b5c1b1ba590917020ec438c9280",
+      "bytes": 2528,
+      "entry_count": 77
+    },
+    "sitting_on_a.txt": {
+      "sha256": "4948533dec66abe328722ff9706b804fdff3fe937a9a33c58e71abdcb5d435ca",
+      "bytes": 3765,
+      "entry_count": 144
+    },
+    "stuff_hands_do.txt": {
+      "sha256": "0ae5e99cf5ec51d16e72b475858b5f4d50a55ad7127e97a55cb42c1ad7b7daf9",
+      "bytes": 2512,
+      "entry_count": 104
+    },
+    "touchofdivine.txt": {
+      "sha256": "1b62d7a921bdd938a3b3b8a2f0b37ee1e2b7f87f89b506e7db8f98215180ebc3",
+      "bytes": 103315,
+      "entry_count": 514
+    },
+    "touchofinfernal.txt": {
+      "sha256": "e0806e9b3b69e7ee3f6d194ea782ac41a763db17fb9f050ed65ae3c1a3222675",
+      "bytes": 129202,
+      "entry_count": 620
+    }
+  }
+}

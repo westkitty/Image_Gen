@@ -11,6 +11,12 @@ const { createImageStore } = require('./image-store');
 const { createSystemInfo } = require('./system-info');
 const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime } = require('./capabilities');
 const { rulesForTarget, validateDimensions } = require('./dimension-policy');
+const { enhancePrompt: runPromptEnhance, extractProtectedLiterals } = require('./prompt-enhancement');
+const { PROFILES, resolvePromptProfile } = require('./prompt-profiles');
+const { getWildcardCatalog, expandWildcards: expandWildcardsUtil } = require('./wildcards');
+const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily } = require('./extra-networks');
+const { MODEL_CARDS, getModelCards, getModelCardById, checkModelSwitchWarnings } = require('./model-registry');
+const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt } = require('./detailer');
 
 const app = express();
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
@@ -46,7 +52,7 @@ const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md'
 const GENERATION_JOB_SCHEMA = path.join(__dirname, 'schemas/generation-job.schema.json');
 const MODEL_COMPATIBILITY_REGISTRY = path.join(__dirname, 'schemas/model-compatibility.json');
 const WILDCARDS_DIR = path.join(__dirname, 'wildcards');
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || 'http://127.0.0.1:11435';
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || 'http://127.0.0.1:11436';
 const JOB_TIMEOUT_MS = Math.max(60000, Number(process.env.SDCPP_JOB_TIMEOUT_MS || 12 * 60 * 1000));
 
 let schedulerSelectionSupported = true;
@@ -491,25 +497,7 @@ function getBuildInfo() {
 }
 
 function expandWildcards(prompt, maxDepth = 6) {
-  if (typeof prompt !== 'string') return prompt;
-  const pattern = /__([a-zA-Z0-9_-]+)__/g;
-  let result = prompt;
-  for (let depth = 0; depth < maxDepth; depth++) {
-    const before = result;
-    result = result.replace(pattern, (match, name) => {
-      const filePath = path.join(WILDCARDS_DIR, name + '.txt');
-      if (!filePath.startsWith(WILDCARDS_DIR + path.sep) && filePath !== WILDCARDS_DIR) return match;
-      try {
-        const lines = fs.readFileSync(filePath, 'utf8')
-          .split('\n')
-          .map(l => l.trim())
-          .filter(l => l && !l.startsWith('#'));
-        return lines.length ? lines[Math.floor(Math.random() * lines.length)] : match;
-      } catch { return match; }
-    });
-    if (result === before) break;
-  }
-  return result;
+  return expandWildcardsUtil(prompt, { maxDepth, wildcardsDir: WILDCARDS_DIR });
 }
 
 function validatePrompt(prompt) {
@@ -700,7 +688,14 @@ function resolveImageSource(body) {
     const img = imageStore.resolveImage(body.image_id);
     if (!img) return { error: 'Source image not found in the canonical image store.' };
     const src = imageSourceMap().get(body.image_id);
-    if (!src) return { error: 'Source image has no originating run record; it cannot be edited.' };
+    if (!src) {
+      body.run_id = '20000101-000000-canonical';
+      body.init_image_file = path.basename(img.path);
+      body.__initPath = img.path;
+      const dims = pngSize(img.path);
+      if (dims && (body.width === undefined || body.width === '' || body.width === null)) { body.width = dims.width; body.height = dims.height; }
+      return { imageId: body.image_id, path: img.path, dims };
+    }
     body.run_id = src.runId;
     body.init_image_file = path.basename(src.runFile);
     const dims = pngSize(img.path);
@@ -730,7 +725,19 @@ function recordEditResults(job, stdoutText) {
       const seed = /^\d+$/.test(String(rp.seed || '')) ? Number(rp.seed) : null;
       job.results.push({ index: job.results.length, status: 'DONE', imageId: e.image_id, imageUrl: imageStore.imageUrl(e.image_id), runId, seed, target: 'sd15', width: dims.width, height: dims.height, operation: job.lineageOp });
       try {
-        imageMeta.record(e.image_id, { operation: job.lineageOp, parent: job.sourceImageId, runId, target: 'sd15', seed, width: dims.width, height: dims.height, steps: rp.steps, cfg: rp.cfg_scale, strength: rp.strength });
+        imageMeta.record(e.image_id, {
+          operation: job.lineageOp,
+          parent: job.sourceImageId,
+          detailed_from: rp.detailed_from || (job.lineageOp === 'detailer' ? job.sourceImageId : undefined),
+          runId,
+          target: 'sd15',
+          seed,
+          width: dims.width,
+          height: dims.height,
+          steps: rp.steps,
+          cfg: rp.cfg_scale,
+          strength: rp.strength
+        });
       } catch (err) { job.stderr += `\nimage-meta: ${err.message}`; }
     }
   }
@@ -1141,7 +1148,9 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
       if (c) {
         try {
           imageMeta.record(c.id, {
-            operation: item.operation, parent: params.parent_image_id || undefined, runId, target: spec.id, seed,
+            operation: item.operation, parent: params.parent_image_id || undefined,
+            detailed_from: params.detailed_from || undefined,
+            runId, target: spec.id, seed,
             width: item.width, height: item.height, steps: params.steps || spec.defaultSteps,
             cfg: spec.backend === 'mflux' ? undefined : params.cfg_scale, scheduler: spec.backend === 'mflux' ? undefined : params.scheduler,
             queueId: opts.queueId, batchNumber: opts.batchNumber,
@@ -2319,20 +2328,238 @@ async function resolveOllamaModel(requestedModel) {
   return { model: names[0], error: null };
 }
 
+app.get('/api/prompt/profiles', (req, res) => {
+  res.json({ profiles: PROFILES });
+});
+
+app.post('/api/prompt/resolve-profile', (req, res) => {
+  const p = resolvePromptProfile(req.body || {});
+  res.json({ profile: p });
+});
+
 app.get('/api/wildcards', (req, res) => {
   try {
-    const files = fs.readdirSync(WILDCARDS_DIR)
-      .filter(f => f.endsWith('.txt'))
-      .map(f => {
-        const name = f.replace(/\.txt$/, '');
-        const lines = fs.readFileSync(path.join(WILDCARDS_DIR, f), 'utf8')
-          .split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
-        return { name, count: lines.length, preview: lines.slice(0, 3) };
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
-    res.json({ wildcards: files });
-  } catch {
-    res.json({ wildcards: [] });
+    res.json({ wildcards: getWildcardCatalog(WILDCARDS_DIR) });
+  } catch (err) {
+    res.status(500).json({ error: err.message, wildcards: [] });
+  }
+});
+
+app.post('/api/wildcards/expand', (req, res) => {
+  try {
+    const prompt = (req.body && req.body.prompt) || '';
+    if (typeof prompt !== 'string') return res.status(400).json({ error: 'prompt must be a string' });
+    const expanded = expandWildcards(prompt);
+    res.json({ original: prompt, expanded });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/models', (req, res) => {
+  const targets = Object.values(allControlledTargets());
+  res.json({ models: getModelCards(req.query, targets) });
+});
+
+app.get('/api/models/:id', (req, res) => {
+  const targets = Object.values(allControlledTargets());
+  const card = getModelCardById(req.params.id, targets);
+  if (!card) return res.status(404).json({ error: 'Model not found' });
+  res.json({ model: card });
+});
+
+app.post('/api/models/check-switch', (req, res) => {
+  const body = req.body || {};
+  const fromModelId = body.fromModelId || body.fromTarget;
+  const toModelId = body.toModelId || body.toTarget;
+  let activeResources = { ...(body.activeResources || {}) };
+
+  if (!activeResources.negativePrompt && (body.negative_prompt || body.negativePrompt)) {
+    activeResources.negativePrompt = body.negative_prompt || body.negativePrompt;
+  }
+  if (!activeResources.loras && body.prompt) {
+    const loraMatches = String(body.prompt).matchAll(/<lora:([^:>]+)(?::([^>]*))?>/g);
+    const parsedLoras = [];
+    for (const m of loraMatches) {
+      parsedLoras.push({ name: m[1], weight: m[2] ? parseFloat(m[2]) : 1.0 });
+    }
+    if (parsedLoras.length > 0) activeResources.loras = parsedLoras;
+  }
+
+  // Ensure active LoRAs have family resolved from asset cache if missing
+  if (Array.isArray(activeResources.loras)) {
+    const assets = readJsonCache(ASSETS_CACHE) || {};
+    const assetLoras = assets.loras || [];
+    activeResources.loras = activeResources.loras.map(l => {
+      const name = typeof l === 'string' ? l : (l && l.name);
+      const weight = typeof l === 'object' && l && l.weight != null ? l.weight : 1.0;
+      let family = typeof l === 'object' && l ? l.family : null;
+      if (!family && name) {
+        const found = assetLoras.find(al => {
+          const fn = (al.filename || '').replace(/\.[^.]+$/, '');
+          return fn.toLowerCase() === name.toLowerCase() || (al.name && al.name.toLowerCase() === name.toLowerCase());
+        });
+        if (found) {
+          family = inferAssetFamily(found.filename || found.path);
+        } else {
+          family = inferAssetFamily(name);
+        }
+      }
+      return { name, weight, family };
+    });
+  }
+
+  const targets = Object.values(allControlledTargets());
+  const warnings = checkModelSwitchWarnings(fromModelId, toModelId, activeResources, targets);
+  res.json({ allowed: warnings.length === 0, warnings });
+});
+
+app.get('/api/extra-networks', (req, res) => {
+  const targetId = req.query.target || 'flux2-klein-4b';
+  const assets = readJsonCache(ASSETS_CACHE) || {};
+  const loras = buildLoraCards(assets.loras || [], targetId);
+  const vaes = buildVaeCards(assets.vaes || [], targetId);
+  const embeddings = buildEmbeddingState(assets.embeddings || [], targetId);
+  res.json({ loras, vaes, embeddings });
+});
+
+app.get('/api/detailer/status', (req, res) => {
+  res.json({
+    available: isVisionDetailerAvailable(),
+    backend: 'apple-vision',
+    supported_modes: ['face', 'hand', 'person'],
+    default_prompts: {
+      face: getDefaultDetailerPrompt('face'),
+      hand: getDefaultDetailerPrompt('hand'),
+      person: getDefaultDetailerPrompt('person')
+    }
+  });
+});
+
+app.post('/api/detailer/detect', async (req, res) => {
+  const { image_id, mode, threshold, padding, feather, maxTargets, targetSelection } = req.body || {};
+  if (!image_id) return res.status(400).json({ error: 'image_id is required' });
+  const resolved = imageStore.resolveImage(image_id);
+  if (!resolved || !fs.existsSync(resolved.path)) {
+    return res.status(404).json({ error: 'Source image not found' });
+  }
+
+  try {
+    const result = await detectRegions(resolved.path, {
+      mode: mode || 'face',
+      threshold,
+      padding,
+      feather,
+      maxTargets,
+      targetSelection
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/detailer/mask-preview', async (req, res) => {
+  const { image_id, mode, threshold, padding, feather, maxTargets, targetSelection } = req.body || {};
+  if (!image_id) return res.status(400).json({ error: 'image_id is required' });
+  const resolved = imageStore.resolveImage(image_id);
+  if (!resolved || !fs.existsSync(resolved.path)) {
+    return res.status(404).json({ error: 'Source image not found' });
+  }
+
+  const maskName = `mask-preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+  const maskPath = path.join(RUNS_DIR, maskName);
+  try {
+    const result = await detectRegions(resolved.path, {
+      mode: mode || 'face',
+      threshold,
+      padding,
+      feather,
+      maxTargets,
+      targetSelection,
+      outputMask: maskPath
+    });
+    const maskData = fs.readFileSync(maskPath);
+    const maskBase64 = `data:image/png;base64,${maskData.toString('base64')}`;
+    try { fs.unlinkSync(maskPath); } catch (_) {}
+    res.json({ status: 'ok', mask_preview: maskBase64, detections: result.detections });
+  } catch (err) {
+    try { if (fs.existsSync(maskPath)) fs.unlinkSync(maskPath); } catch (_) {}
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/detailer/run', async (req, res) => {
+  const {
+    image_id,
+    imageId,
+    mode,
+    threshold,
+    padding,
+    feather,
+    maxTargets,
+    targetSelection,
+    prompt,
+    negative_prompt,
+    strength,
+    steps,
+    cfg_scale,
+    seed,
+    sampler,
+    scheduler
+  } = req.body || {};
+
+  const targetImageId = image_id || imageId;
+  if (!targetImageId) return res.status(400).json({ error: 'image_id is required' });
+  const resolved = imageStore.resolveImage(targetImageId);
+  if (!resolved || !fs.existsSync(resolved.path)) {
+    return res.status(404).json({ error: 'Source image not found' });
+  }
+
+  const maskName = `mask-detailer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+  const maskPath = path.join(MASK_UPLOADS_DIR, maskName);
+
+  try {
+    const result = await detectRegions(resolved.path, {
+      mode: mode || 'face',
+      threshold,
+      padding: padding !== undefined ? padding : 0.25,
+      feather: feather !== undefined ? feather : 16,
+      maxTargets,
+      targetSelection,
+      outputMask: maskPath
+    });
+
+    if (!result.detections || result.detections.length === 0) {
+      try { if (fs.existsSync(maskPath)) fs.unlinkSync(maskPath); } catch (_) {}
+      return res.status(422).json({
+        error: `No target regions detected for mode '${mode || 'face'}'. Try adjusting detection threshold or padding.`,
+        detections: []
+      });
+    }
+
+    const maskData = fs.readFileSync(maskPath);
+    const maskBase64 = `data:image/png;base64,${maskData.toString('base64')}`;
+    try { fs.unlinkSync(maskPath); } catch (_) {}
+
+    // Prepare inpaint request body
+    req.body = {
+      ...(req.body || {}),
+      image_id: resolved.id,
+      mask_data: maskBase64,
+      operation: 'detailer',
+      detailed_from: resolved.id,
+      parent_image_id: resolved.id,
+      mode: 'cli',
+      detailer_mode: mode || 'face',
+      strength: strength !== undefined ? Number(strength) : 0.4,
+      confirm_full_mask: true
+    };
+
+    return handleInpaint(req, res);
+  } catch (err) {
+    try { if (fs.existsSync(maskPath)) fs.unlinkSync(maskPath); } catch (_) {}
+    return res.status(500).json({ error: 'Detailer failed: ' + err.message });
   }
 });
 
@@ -2349,18 +2576,42 @@ app.post('/api/ollama/enhance', async (req, res) => {
   if (prompt.length > 12000) return res.status(400).json({ error: 'Prompt is too long' });
   const { model, error: modelErr } = await resolveOllamaModel(req.body.model);
   if (modelErr) return res.status(503).json({ error: modelErr });
-  const instruction = [
-    'Enhance this image-generation prompt.',
-    'Return only the improved prompt.',
-    'Preserve the user intent, subject, style, and any explicit constraints.',
-    'Do not add safety commentary, markdown, labels, or explanations.',
-    '',
-    prompt
-  ].join('\n');
-  const result = await ollamaRequest('/api/generate', { model, prompt: instruction, stream: false }, 120000);
-  if (!result.ok) return res.status(result.status).json({ error: result.error });
-  const enhanced = result.json && typeof result.json.response === 'string' ? result.json.response.trim() : '';
-  res.json({ model, prompt: enhanced || prompt });
+
+  const result = await runPromptEnhance({
+    prompt,
+    negativePrompt: req.body.negative_prompt || req.body.negativePrompt || '',
+    mode: req.body.mode || 'balanced',
+    target: req.body.target || 'flux2-klein-4b',
+    generatorId: req.body.generatorId || '',
+    modality: req.body.modality || 'image',
+    operation: req.body.operation || 'txt2img',
+    ollamaRequester: ollamaRequest,
+    ollamaModel: model,
+    savePrompts: !!req.body.save_prompts
+  });
+
+  if (!result.ok) {
+    return res.status(500).json({
+      error: result.error,
+      model,
+      prompt,
+      enhanced_prompt: prompt,
+      profile: result.profile
+    });
+  }
+
+  res.json({
+    ok: true,
+    model,
+    prompt: result.enhanced_prompt,
+    enhanced_prompt: result.enhanced_prompt,
+    original_prompt: result.original_prompt,
+    negative_prompt: result.negative_prompt,
+    setting_suggestions: result.setting_suggestions,
+    notes: result.notes,
+    profile: result.profile,
+    mode: result.mode
+  });
 });
 
 app.post('/api/ollama/chat', async (req, res) => {
@@ -2774,7 +3025,7 @@ app.post('/api/actions/img2img', (req, res) => {
 
 // Inpaint — gated behind inpaintSupported; init image and mask must be within workflow dir.
 // mask_data must be a base64-encoded PNG data URL; converted to L-mode grayscale and saved to mask-uploads/.
-app.post('/api/actions/inpaint', (req, res) => {
+function handleInpaint(req, res) {
   if (!inpaintSupported) {
     return res.status(409).json({
       error: 'Inpaint is not currently supported.',
@@ -2905,17 +3156,18 @@ app.post('/api/actions/inpaint', (req, res) => {
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
   const summary = getRedactedCommandSummary('bin/sdcpp-inpaint.sh', args, sensitives);
   const jobId = createJob('inpaint', summary, sanitizeRequestParams(
-    { ...params, run_id: runId, init_image_file: initImageFile, strength }, params.save_prompts
+    { ...params, run_id: runId, init_image_file: initImageFile, strength, detailed_from: body.detailed_from }, params.save_prompts
   ));
   jobSensitives[jobId] = sensitives;
   jobs[jobId].sourceImageId = srcInfo.imageId || null;
-  jobs[jobId].lineageOp = 'inpaint';
+  jobs[jobId].lineageOp = (body.operation === 'detailer' || body.detailed_from) ? 'detailer' : 'inpaint';
   jobs[jobId].tempFiles = [maskPath, srcInfo.temp].filter(Boolean);
   jobs[jobId].outpaintComposite = { src: initImgPath, mask: maskPath, left: 0, top: 0, blur: 4, fit: true };
   runAction(jobId, 'bin/sdcpp-inpaint.sh', args, params.save_prompts);
 
   res.json({ job_id: jobId, status: jobs[jobId].status });
-});
+}
+app.post('/api/actions/inpaint', handleInpaint);
 
 // Real-ESRGAN upscale — gated behind realEsrganSupported; init image must be within runs/
 // Model path is never accepted from client; resolved server-side via REMOTE_ESRGAN_MODEL in sdcpp.env.
@@ -3521,7 +3773,18 @@ app.get('/api/jobs/:jobId', (req, res) => {
     if (!g) return res.status(404).json({ error: 'Job not found' });
     const legacy = { COMPLETE: 'PASS', FAILED: 'FAIL', INTERRUPTED: 'INTERRUPTED', CANCELLED: 'CANCELLED' }[g.status] || g.status.toLowerCase();
     return res.json({ id: g.job_id, commandAction: g.operation, status: legacy, generic: g, firstFailedGate: g.first_failed_gate,
-      results: g.artifacts.map((a, i) => ({ index: i, status: 'DONE', imageId: a, imageUrl: g.media_kind === 'image' ? imageStore.imageUrl(a) : '/api/media/' + encodeURIComponent(a) })),
+      results: g.artifacts.map((a, i) => {
+        const seedMatch = String(a).match(/-s(\d+)-/);
+        const seed = seedMatch ? Number(seedMatch[1]) : (g.params && g.params.seed >= 0 ? g.params.seed : null);
+        return {
+          index: i,
+          status: 'DONE',
+          imageId: a,
+          imageUrl: g.media_kind === 'image' ? imageStore.imageUrl(a) : '/api/media/' + encodeURIComponent(a),
+          seed,
+          target: g.model_id || (g.params && g.params.target) || null
+        };
+      }),
       restored: true });
   }
   res.json({
@@ -3550,6 +3813,38 @@ app.get('/api/jobs/:jobId', (req, res) => {
     hiresManifest: job.hiresManifest || null,
     upscaledImageUrl: job.upscaledImageUrl || null,
     results: job.results || [],
+    images: (() => {
+      const items = (job.results || []).filter(r => r.imageId).map((r, idx) => ({
+        image_id: r.imageId,
+        url: r.imageUrl || imageStore.imageUrl(r.imageId),
+        thumbnail_url: r.imageUrl || imageStore.imageUrl(r.imageId),
+        seed: r.seed,
+        index: r.index !== undefined ? r.index : idx,
+        run_id: r.runId,
+        target: r.target,
+        width: r.width,
+        height: r.height,
+        status: r.status,
+        operation: r.operation
+      }));
+      if (items.length === 0 && (job.controlledOutputImage || job.controlledOutputImageUrl)) {
+        const imgId = job.controlledOutputImage || (job.controlledOutputImageUrl && decodeURIComponent(job.controlledOutputImageUrl.split('/').pop()));
+        if (imgId) {
+          items.push({
+            image_id: imgId,
+            url: job.controlledOutputImageUrl || imageStore.imageUrl(imgId),
+            thumbnail_url: job.controlledOutputImageUrl || imageStore.imageUrl(imgId),
+            seed: (job.seeds && job.seeds[0]) || (job.requestParams && job.requestParams.seed),
+            index: 0,
+            run_id: job.runId,
+            target: job.controlledTarget,
+            status: job.status === 'PASS' || job.status === 'DONE' ? 'DONE' : job.status,
+            operation: (job.requestParams && job.requestParams.operation) || 'txt2img'
+          });
+        }
+      }
+      return items;
+    })(),
     seeds: job.seeds || null,
     nativeBatch: !!job.nativeBatch,
     nativeFallback: !!job.nativeFallback,

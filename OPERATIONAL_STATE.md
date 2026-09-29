@@ -363,3 +363,34 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 ### Revision 11 — 2026-09-26
 
 - DexDiffusion voice/music execution bridges (VER-030). Kokoro, Qwen3-TTS Base clone, Qwen3-TTS VoiceDesign, ACE-Step and Magenta RT run end-to-end through the job store, lease, staging and media store. They were promoted to PROVEN only from real DexDiffusion evidence. Working Voice/Music screens, installer persisted, Doctor updated.
+
+### Revision 13 — 2026-09-29
+
+- **Gate 0 MFLUX Zero-Retention Repair**: Eliminated redundant secondary SSH round trips that caused post-generation stalls. Big Mac cleanup is executed within the primary SSH session, strictly validated against `${TMPDIR:-/tmp}/dexdiffusion-mflux.[A-Za-z0-9]*`, and emits `MFLUX_REMOTE_CLEANUP: OK` before exit `0`. MacBook fails closed if cleanup marker is missing. Live proofed via job `6f6e80a3-4a34-4ade-bb8b-cae4d0babb5f` (FLUX.2 Klein 4B, quantity: 2, 0 Big Mac residue).
+- **Model-Aware Prompt Intelligence**: Ollama `qwen3.8:27b-mlx` on Big Mac via the managed SSH tunnel `127.0.0.1:11436` (console endpoint override: `OLLAMA_BASE_URL` or `OLLAMA_HOST`). Profiles for FLUX, SDXL, Pony, SD1.5, Audio, Music, Video, and Detailer. Protected literals extraction (<lora:...>, __wildcard__, quotes, Pony scores, embeddings). Non-destructive review panel with diff and setting suggestion chips. Enforced `keep_alive: 0` to preserve unified memory.
+- **15 He-Maker Wildcard Banks**: Vendored from `westkitty/He-Maker` with full provenance in `HE_MAKER_PROVENANCE.json` (SHA-256 hashes recorded). Case-insensitive `__bank__` expansion at generation-time with recursion guards and UI autocomplete.
+- **Extra Networks & Active Resource Chips**: LoRA catalog with family compatibility badges, weight sliders, and trigger words. Honest empty state for embeddings. Active resource chips in Create with weight steppers and remove buttons.
+- **Visual Model Browser**: 9 comprehensive model cards answering 5 questions, honest provenance badges (`exact-model` vs `placeholder`), and live switch check warnings (`/api/models/check-switch`) flagging negative prompt and LoRA incompatibilities.
+- **Multi-Output Hero Workspace**: Dominant hero display with vertical filmstrip rail (desktop/tablet), horizontal rail (mobile), sibling promotion, and keyboard navigation. Live multi-output proofed via job `66d288bc-3cc7-4dcb-a6b4-eda8e0c463fe` (SD1.5, quantity: 3, seeds 1001-1003).
+- **Native Apple Vision Detailer**: MacBook-native Swift binary (`vision-detailer`) for face, person, and derived hands detection with Gaussian feathering and mask preview (`/api/detailer/mask-preview`). Inpainting pipeline tracks `detailed_from` in canonical image metadata. Live proofed via job `22359b32-fd7e-4f60-bad1-d834e6ba244d`.
+- **Capability Truth**: Face swap kept explicitly `UNAVAILABLE` due to licensing and safety constraints.
+- **Test Suite**: 152/152 passing unit tests in `operator-console`. Zero Big Mac retention verified across all runs.
+
+### Revision 14 — 2026-09-29 (Completion Gaps Fully Closed)
+
+- **Gap A (Dynamic Model Card Completeness)**: Replaced static 9-card list with dynamic 1:1 coverage of all 17 live selectable targets returned by `/api/capabilities` (`getModelCards({}, allControlledTargets())`). Curated card definitions for 16 primary targets and dynamic honest fallback generation (`createFallbackCard`) for auto-discovered checkpoints (`sd15-auto-v1-5-pruned-emaonly`). Set difference `targets - cards` is strictly `[]`.
+- **Gap B (Settings Preservation on Model Switch)**: Model selection preserves user's current generation parameters (`steps`, `cfg`, `width`, `height`) by default. Bounds normalization applies only when out of bounds. The system offers an explicit `⚡ Use model defaults` banner in the Create workbench and on active model cards to allow 1-click application of model recommendations without destroying active configurations.
+- **Gap C (Structured Switch Warnings Schema)**: Structured warning objects conforming to `{ code, message, severity, resource_id }` with LoRA family compatibility checks. Fixed string/object warning rendering in UI (`• undefined` eliminated).
+- **Gap D & Sec 4 (Browser Visual QA Pass)**: Full visual validation using Playwright Chromium across desktop (1440×900) and mobile (390×844) viewports. Visual proof captures saved to `output/playwright/`:
+  - `browser-qa-desktop-1440.png`: Desktop layout with Output panel and `⚡ Use model defaults` banner.
+  - `browser-qa-mobile-390.png`: Mobile responsive layout, zero horizontal overflow.
+  - `browser-qa-models-tab.png`: Models tab showing 17 visual model cards, search input, filter pills, provenance badges, and Extra Networks catalog.
+  - `browser-qa-hero-workspace-siblings.png`: Dominant Hero image with filmstrip rail (`SIBLINGS (2)`).
+  - `browser-qa-detailer-face.png`: Native Apple Vision Detailer modal with live face detection and Gaussian-feathered mask preview.
+- **Gap 5 (Fresh Traceable MFLUX Quantity-2 Proof)**: Live generation via `POST /api/actions/generate-controlled`:
+  - Job ID: `0620d5d8-f6bf-4d07-9195-5fdcf3e05bb8` (status: `PASS`, exit code: 0).
+  - Target: `flux2-klein-4b`, 1024×1024, 4 steps, quantity: 2.
+  - Sibling 1: Seed `1374894029`, Run `20260929-141936-controlled-flux2-klein-4b`, File `20260929-141936-controlled-flux2-klein-4b-s1374894029-controlled-flux2-klein-4b.png` (1,590,794 bytes, SHA-256: `079420b41ea5655fd388c49485a29795b82e787cd08f528f19d92e47c60677ff`).
+  - Sibling 2: Seed `26719822`, Run `20260929-142044-controlled-flux2-klein-4b`, File `20260929-142044-controlled-flux2-klein-4b-s26719822-controlled-flux2-klein-4b.png` (1,471,988 bytes, SHA-256: `583180c57a4748a6f2f95ab0e11e6c9b69d9f768e4957cf2841467404200e745`).
+  - Zero Big Mac retention: `ssh westcat 'find /tmp -maxdepth 1 -type d -name "dexdiffusion-mflux.*"'` confirmed strictly 0 directories.
+- **Regression Test Suite**: Expanded from 152 to 154 tests; all 154 passing (0 failures).

@@ -792,13 +792,18 @@ if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--lora-model-dir'; then
   fi
 fi
 
+EMBD_DIR_FLAG=""
+if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--embd-dir'; then
+  EMBD_DIR_FLAG="--embd-dir /Volumes/wc2tb/ImageGen/embeddings"
+fi
+
 case "$ARG_TARGET" in
   sd15)
     REMOTE_MODEL_BYTES="$(verify_model)"
     if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--cfg-scale'; then
       CFG_FLAG="--cfg-scale $ARG_CFG"
     fi
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} --sampling-method ${TARGET_SAMPLER:-euler_a} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} --sampling-method ${TARGET_SAMPLER:-euler_a} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   sdxl-base)
     TARGET_MODEL_PATH="$SDXL_MODEL_ROOT/sd_xl_base_1.0.safetensors"
@@ -814,7 +819,7 @@ case "$ARG_TARGET" in
     if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--cfg-scale'; then
       CFG_FLAG="--cfg-scale $ARG_CFG"
     fi
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   sdxl-turbo)
     TARGET_MODEL_PATH="$SDXL_MODEL_ROOT/sd_xl_turbo_1.0_fp16.safetensors"
@@ -827,7 +832,7 @@ case "$ARG_TARGET" in
     for flag in '--model' '--prompt' '--output' '--width' '--height' '--steps' '--cfg-scale' '--prediction'; do
       printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- "$flag" || controlled_fail "sd-cli-help" "sd-cli help does not show required flag $flag."
     done
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --cfg-scale 1 --prediction eps $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --cfg-scale 1 --prediction eps $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   flux-fp8)
     TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/flux/flux1-schnell/flux1-schnell-fp8.safetensors"
@@ -908,7 +913,7 @@ case "$ARG_TARGET" in
     if [ "$ARG_VAE" != "none" ] && [ -n "$TARGET_VAE_PATH" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--vae'; then
       BUILT_VAE_FLAG="--vae \"$TARGET_VAE_PATH\""
     fi
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} ${SAMPLER_FRAG:-} ${CLIP_SKIP_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${BUILT_VAE_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} ${SAMPLER_FRAG:-} ${CLIP_SKIP_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${BUILT_VAE_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
 esac
 

@@ -1,0 +1,473 @@
+Eiffel Tower  
+Mount Rushmore  
+Great Wall of China  
+Statue of Liberty  
+Taj Mahal  
+Colosseum  
+Big Ben  
+Sydney Opera House  
+Machu Picchu  
+Pyramids of Giza  
+Golden Gate Bridge  
+Times Square  
+Buckingham Palace  
+Stonehenge  
+Christ the Redeemer  
+Notre-Dame Cathedral  
+Leaning Tower of Pisa  
+Mount Fuji  
+Angkor Wat  
+The Louvre  
+Empire State Building  
+The Parthenon  
+The Acropolis  
+The Vatican  
+The Sagrada Familia  
+The Alhambra  
+The Kremlin  
+The Great Sphinx  
+The Forbidden City  
+The Sydney Harbour Bridge  
+The London Eye  
+The Burj Khalifa  
+The CN Tower  
+The Grand Canyon  
+The Niagara Falls  
+The Matterhorn  
+The Brandenburg Gate  
+The Arc de Triomphe  
+The Tower Bridge  
+The St. Peter's Basilica  
+The Hagia Sophia  
+The Blue Mosque  
+The Sydney Harbour  
+The Hollywood Sign  
+The Space Needle  
+The Mount Everest  
+The Amazon Rainforest  
+The Great Barrier Reef
+Eiffel Tower
+Statue of Liberty
+Great Wall of China
+Taj Mahal
+Colosseum
+Machu Picchu
+Christ the Redeemer
+Pyramids of Giza
+Grand Canyon
+Niagara Falls
+Big Ben
+Sydney Opera House
+Golden Gate Bridge
+Mount Everest
+Times Square
+Burj Khalifa
+Chichen Itza
+Stonehenge
+Mount Fuji
+Victoria Falls
+Hollywood Sign
+Great Barrier Reef
+Amazon Rainforest
+Serengeti National Park
+Sahara Desert
+Uluru
+Angkor Wat
+Forbidden City
+Kremlin
+White House
+Buckingham Palace
+Leaning Tower of Pisa
+Trevi Fountain
+Brandenburg Gate
+Acropolis
+Hagia Sophia
+Mount Rushmore
+Yellowstone National Park
+Yosemite National Park
+Loch Ness
+Giant's Causeway
+CN Tower
+Petronas Twin Towers
+Empire State Building
+Central Park
+Golden Temple
+Meiji Shrine
+Wailing Wall
+Dead Sea
+Las Vegas Strip
+Disneyland
+Hollywood Walk of Fame
+Times Square Ball
+Area 51
+Bermuda Triangle
+Mount Everest  
+The Empire State Building  
+The Leaning Tower of Pisa  
+The Christ the Redeemer Statue  
+The Petronas Towers  
+The Shard  
+The White House  
+The Tower of London  
+The Roman Forum  
+The Mount Fuji  
+The Uluru  
+The Table Mountain
+Petra
+Death Valley
+Mount Kilimanjaro
+Iguazu Falls
+Lake Baikal
+Galapagos Islands
+Alcatraz Island
+Mecca
+Western Wall
+Tower Bridge
+Notre Dame Cathedral
+St Peters Basilica
+Spanish Steps
+
+Acropolis of Athens
+Great Sphinx of Giza
+London Bridge
+Tower of London
+Lincoln Memorial
+Arc de Triomphe
+Louvre Museum
+British Museum
+Brooklyn Bridge
+Gobi Desert
+Rio de Janeiro Carnival
+Red Square
+Trafalgar Square
+Piccadilly Circus
+Oxford University
+Cambridge University
+Harvard University
+Grand Central Terminal
+Carnegie Hall
+Grand Canyon  
+Great Barrier Reef  
+Louvre Museum  
+Niagara Falls  
+Sagrada Familia  
+Petra  
+Acropolis of Athens  
+Burj Khalifa  
+Victoria Falls  
+Brandenburg Gate  
+Alhambra  
+Chichen Itza  
+Hollywood Sign  
+Tower Bridge  
+Santorini  
+Versailles Palace  
+St Peter's Basilica  
+Uluru  
+Blue Mosque  
+Kremlin  
+Edinburgh Castle  
+Forbidden City  
+Table Mountain  
+Neuschwanstein Castle  
+Hagia Sophia  
+Yellowstone National Park  
+Mecca  
+Dubai Mall  
+Florence Cathedral  
+Banff National Park
+Chrysler Building
+St Peter's Basilica
+Pantheon
+Roman Forum
+Alhambra
+Plitvice Lakes National Park
+Tokyo Tower
+Berlin Wall
+Palace of Versailles
+Westminster Abbey
+Tower of London  
+Notre Dame Cathedral  
+Mount Kilimanjaro  
+St Basil's Cathedral  
+Fjordland National Park  
+Vatican City  
+Moai Statues  
+Palace of Westminster  
+Berlin Wall  
+CN Tower  
+Rialto Bridge  
+Red Square  
+Versailles  
+St Basil’s Cathedral  
+Blue Lagoon  
+Matterhorn  
+Banff National Park  
+Serengeti
+Meenakshi Amman Temple
+Fremantle Prison
+Kuala Lumpur Tower
+Borobudur
+Prague Castle
+Charles Bridge
+St Marks Basilica
+Canal Grande
+Piazza San Marco
+Cathedral of Santiago de Compostela
+ Atomium
+Neuschwanstein Castle
+Champs Elysees
+Sagrada Familia
+Space Needle
+Willis Tower
+St Louis Arch
+Bourbon Street
+French Quarter
+Alamo
+Niagara on the Lake
+Mackinac Island
+Sleeping Bear Dunes
+Lake Tahoe
+Crater Lake
+Mount Denali
+Glacier National Park
+Arches National Park
+Zion National Park
+Bryce Canyon National Park
+Mesa Verde National Park
+Badlands National Park
+Grand Teton National Park
+Carlsbad Caverns National Park
+Mammoth Cave National Park
+Great Smoky Mountains National Park
+Acadia National Park
+Everglades National Park
+Dry Tortugas National Park
+Channel Islands National Park
+Olympic National Park
+Redwood National and State Parks
+Mount Rainier National Park
+Hawaii Volcanoes National Park
+Haleakala National Park
+Yosemite Valley
+Giant Forest
+Sequoia National Park
+Kings Canyon National Park
+Rocky Mountain National Park
+Grand Canyon Village
+Zion Canyon
+Bryce Canyon
+Arches National Park Delicate Arch
+Mesa Verde Cliff Palace
+Badlands Pinnacles
+Grand Teton Jenny Lake
+Carlsbad Caverns Big Room
+Mammoth Cave Frozen Niagara
+Great Smoky Mountains Cades Cove
+Acadia National Park Cadillac Mountain
+Everglades National Park Anhinga Trail
+Dry Tortugas National Park Fort Jefferson
+Channel Islands National Park Scorpion Anchorage
+Olympic National Park Hurricane Ridge
+Redwood National and State Parks Tall Trees Grove
+Mount Rainier National Park Paradise
+Hawaii Volcanoes National Park Kilauea Iki Trail
+Haleakala National Park Haleakala Crater
+Yellowstone National Park Old Faithful
+Grand Prismatic Spring
+Niagara Falls Horseshoe Falls
+Victoria Falls Devil's Pool
+Amazon Rainforest Tambopata National Reserve
+Serengeti National Park Seronera Valley
+Great Barrier Reef Heart Reef
+Uluru Kata Tjuta
+St. Peter's Basilica  
+Easter Island Statues  
+Fushimi Inari Shrine  
+Pompeii  
+Lake Bled  
+Great Sphinx of Giza  
+Rock of Gibraltar  
+Serengeti National Park  
+Dead Sea  
+Galápagos Islands  
+Bora Bora  
+Trevi Fountain  
+Prague Castle  
+Salzburg Castle  
+St. Basil's Cathedral  
+Wailing Wall  
+Lake Baikal  
+Sistine Chapel  
+Mont Saint-Michel  
+Hollywood Walk of Fame  
+Hermitage Museum  
+Auschwitz Memorial  
+Ha Long Bay  
+Yosemite National Park  
+Zion National Park  
+Golden Temple  
+Mount Etna  
+Smithsonian Institution  
+Guggenheim Museum  
+Champs-Élysées  
+St. Mark's Basilica  
+Canterbury Cathedral  
+Gateway Arch  
+Alcatraz  
+Vatican Museums  
+Plaza de Mayo  
+Prambanan Temple  
+Old Faithful  
+Las Vegas Strip  
+Petronas Towers  
+Himeji Castle  
+Death Valley  
+Rijksmuseum  
+Cappadocia  
+Kinkaku-ji  
+Bruges  
+Monument Valley
+Great Pyramid of Giza
+Parthenon
+Moai Statues of Easter Island
+Potala Palace
+Pyramids of Teotihuacan
+Moraine Lake
+Hoover Dam
+Matterhorn
+Moai Statues
+Sugarloaf Mountain
+Sistine Chapel
+Dome of the Rock
+Bagan
+Santorini
+Kinkakuji Temple
+Rialto Bridge
+Pyramids of Tikal
+Potosi
+Corcovado
+The Great Pyramid of Giza
+The Taj Mahal
+The Great Wall of China
+The Eiffel Tower
+The Statue of Liberty
+The Sydney Opera House
+The Grand Canyon
+The Great Lakes
+The Parthenon
+The Golden Gate Bridge
+The White House
+The Colosseum
+The Berlin Wall
+The Acropolis
+The Empire State Building
+The Louvre Museum
+The Colosseum Rome
+The Acropolis of Athens
+The Kremlin Moscow
+The Angel's Mouth
+The Rosetta Stone
+The United Nations Headquarters
+The New York Public Library
+The Big Ben London
+The Chichen Itza
+The Stonehenge
+The Prado Museum
+The Kremlin Wall
+The Chachapoyan Cathedral
+The Hagia Sophia
+The Library of Congress
+The TAJ Mahal India
+The Geppetto statue in Venice
+The Field of Mars
+The Parlamento Stazione Trasimeno
+The Treasury
+The Monument to the Unknown Soldier
+The Museum of the Russian Revolution
+The Monet Museum
+The Diana Visitor Center
+The Indeagah Hindu Temple
+The Narayana Temple
+The Montmartre Square
+The Algiers Mosque
+The Luxembourg Gardens
+The Musee des Arts Asiatiques
+The Golden Gate Bridge picnic area
+The Natural Bridges Monument
+The Giant's Causeway
+The Great Cross Road
+The Louvre of Milan
+The magnificent monastery - Najaf Shrine
+Tower of Pisa  
+Tokyo Tower  
+Westminster Abbey  
+Lake Louise  
+Arc de Triomphe  
+Jerusalem Old City  
+Milan Cathedral  
+Alcatraz Island  
+St Mark's Basilica  
+Plitvice Lakes  
+Singapore Marina Bay Sands  
+Giza Sphinx  
+Palace of Knossos  
+Patagonia  
+Brooklyn Bridge  
+Panama Canal  
+Teotihuacan  
+Matterhorn Glacier  
+Tikal  
+Jungfrau Region  
+K2  
+Monument Valley  
+Niigata Snow Festival  
+Mount St Helens  
+Salar de Uyuni  
+Twelve Apostles  
+Antelope Canyon  
+Redwood National Park
+Venice Canals
+Notre-Dame Cathedral
+Easter Island
+Ayers Rock
+St. Peter's Basilica
+London Eye
+Cappadocia
+Blue Lagoon
+Tiananmen Square
+Versailles Palace
+Gaudi's La Sagrada Familia
+Milan Cathedral
+Meteora
+Pamukkale
+Cinque Terre
+Amalfi Coast
+Dubrovnik
+Edinburgh Castle
+Windsor Castle
+Mont-Saint-Michel
+Keukenhof
+Alcazar of Seville
+Canal Ring
+Schonbrunn Palace
+Lake Bled
+Chateau de Chambord
+Hermitage Museum
+St. Basil's Cathedral
+Blue Mosque
+Grand Palace
+Temple of Heaven
+Cliffs of Moher
+Lofoten Islands
+Borobudur Temple
+Himeji Castle
+Petronas Towers
+Marina Bay Sands
+Burj Al Arab
+Sheikh Zayed Grand Mosque
+Taktsang Monastery
+Hawa Mahal
+Amer Fort
+Capitol Building
+Washington Monument

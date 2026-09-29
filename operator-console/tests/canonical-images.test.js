@@ -114,7 +114,7 @@ test('MFLUX bridge streams into the canonical root and keeps Big Mac images ephe
   assert.match(src, /mktemp -d "\$\{TMPDIR:-\/tmp\}\/dexdiffusion-mflux\.XXXXXXXX"/);
   assert.match(src, /rm -rf -- "\$tmp"/);
   assert.match(src, /trap finish EXIT/);
-  assert.match(src, /remote_test "test ! -e /);
+  assert.match(src, /MFLUX_REMOTE_CLEANUP/);
   assert.doesNotMatch(src, /\bscp\b/);
   assert.doesNotMatch(src, /\$RUN_DIR\/controlled-\$ARG_TARGET\.png/);
 });

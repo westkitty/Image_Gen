@@ -186,11 +186,20 @@
 
   // Normalise a job into a result list (structured results, else the legacy single image).
   function jobResults(job) {
-    if (job && Array.isArray(job.results) && job.results.length) return job.results;
+    if (job && Array.isArray(job.results) && job.results.length) {
+      return job.results.map((r, i) => {
+        if (r.seed == null && r.imageId) {
+          const m = String(r.imageId).match(/-s(\d+)-/);
+          if (m) return Object.assign({}, r, { seed: Number(m[1]) });
+        }
+        return r;
+      });
+    }
     const url = job && (job.controlledOutputImageUrl || job.upscaledImageUrl || job.hiresFinalImageUrl);
     if (!url) return [];
     const id = decodeURIComponent(String(url).split('/').pop());
-    return [{ index: 0, status: 'DONE', imageId: id, imageUrl: url, runId: job.runId || null, seed: null, target: job.controlledTarget || null }];
+    const m = id.match(/-s(\d+)-/);
+    return [{ index: 0, status: 'DONE', imageId: id, imageUrl: url, runId: job.runId || null, seed: m ? Number(m[1]) : null, target: job.controlledTarget || null }];
   }
 
   // Metadata differences for the comparison workspace.

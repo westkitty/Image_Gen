@@ -65,6 +65,7 @@
       lib: { filter: 'all', items: [], total: 0, selectedId: null, selected: null, loading: false },
       compareIds: Array.isArray(saved.compareIds) ? saved.compareIds.slice(0, 4) : [], compareItems: [], compareZoom: 1,
       doctor: null, doctorBusy: false, activeJobId: saved.activeJobId || null, recovered: false,
+      detailer: saved.detailer || { open: false, imageId: null, mode: 'face', threshold: 0.3, padding: 0.2, feather: 8.0, strength: 0.45, prompt: '', maskPreview: null, loading: false },
     };
     return this.ws;
   };
@@ -211,6 +212,7 @@
     if (this._gate('inpaint')) add('Inpaint', () => this.sendToEdit(id, 'inpaint'), '#a78bfa');
     if (this._gate('outpaint')) add('Outpaint', () => this.sendToEdit(id, 'outpaint'), '#a78bfa');
     add('Enhance', () => this.sendToEnhance(id), '#f59e0b');
+    add('Detailer', () => this.openDetailer(id), '#a855f7');
     add(this._ws().compareIds.includes(id) ? 'In compare ✓' : 'Compare', () => this.toggleCompare(id), '#38bdf8');
     if (generated && img.seed != null) add('Reuse Seed', () => { this.setState({ seed: String(img.seed) }); this.toast('Seed ' + img.seed + ' set', '#38bdf8'); }, '#94a3b8');
     add('Reuse Settings', () => this.reuseSettings(id), '#94a3b8');
@@ -743,7 +745,8 @@
             (it.keeper ? '★ ' : '') + ((it.meta && it.meta.operation) || '') + (it.meta && it.meta.seed != null ? ' ' + it.meta.seed : '')))))
           : h('div', { style: css.muted }, lib.loading ? '' : 'No images for this filter.'),
         detail),
-      this.buildCompareWorkspace());
+      this.buildCompareWorkspace(),
+      this.buildDetailerModal());
   };
   P.buildCompareWorkspace = function () {
     const ws = this._ws(), base = this.state.backendUrl, items = ws.compareItems;
@@ -893,7 +896,7 @@
   };
 
   // ── Create extras (quantity, QoL, High-Res Refine, staging) ─────
-  P.buildCreateWorkbench = function () {
+  P.buildCreateWorkbench = function (modelsListDisplay) {
     const ws = this._ws(), s = this.state, ctl = this._controls(), spec = this._targetSpec() || {};
     const setDims = kind => { const d = D.aspectDims(kind, spec.defaultWidth || s.width, spec.maxWidth); this.setState({ width: d.width, height: d.height }); };
     const q = Math.max(1, parseInt(ws.quantity, 10) || 1);
@@ -902,7 +905,35 @@
       h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) },
         h('div', { style: css.title }, 'Output'),
         chip((spec.label || s.target) + ' · ' + ctl.backend.toUpperCase(), '#38bdf8'),
-        chip(q + ' image' + (q > 1 ? 's' : '') + (q > 1 && ctl.nativeBatch && q <= 16 ? ' · native batch' : q > 1 ? ' · sequential' : ''), '#65d66e')),
+        chip(q + ' image' + (q > 1 ? 's' : '') + (q > 1 && ctl.nativeBatch && q <= 16 ? ' · native batch' : q > 1 ? ' · sequential' : ''), '#65d66e'),
+        btn(s.modelBrowserOpen ? 'Close Models 🎴' : 'Browse Models 🎴', () => this.setState({ modelBrowserOpen: !s.modelBrowserOpen }), '#a78bfa')),
+      s.availableModelDefaults ? h('div', {
+        style: {
+          background: 'rgba(56, 189, 248, 0.08)',
+          border: '1px solid rgba(56, 189, 248, 0.3)',
+          borderRadius: 8,
+          padding: '8px 12px',
+          marginTop: 6,
+          marginBottom: 6,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+          flexWrap: 'wrap',
+          fontSize: 12
+        }
+      },
+        h('span', { style: { color: '#93c5fd' } },
+          `Recommended defaults for ${s.availableModelDefaults.displayName || s.target}: ${s.availableModelDefaults.width}×${s.availableModelDefaults.height} · ${s.availableModelDefaults.steps} steps · CFG ${s.availableModelDefaults.cfg}`
+        ),
+        h('div', { style: { display: 'flex', gap: 6 } },
+          btn('⚡ Use model defaults', () => this.applyModelDefaults(), '#38bdf8'),
+          btn('Dismiss', () => this.setState({ availableModelDefaults: null }), '#94a3b8')
+        )
+      ) : null,
+      s.modelBrowserOpen && modelsListDisplay ? h('div', { style: { borderTop: '1px solid rgba(148,163,184,.14)', marginTop: 8, paddingTop: 8, marginBottom: 8, maxHeight: 440, overflowY: 'auto' } },
+        modelsListDisplay
+      ) : null,
       h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) },
         h('label', { style: Object.assign({}, css.label, { marginBottom: 0 }) }, 'Quantity'),
         numInput(ws.quantity, v => this.wsSet({ quantity: v }), { min: '1', max: '100', step: '1', 'aria-label': 'Quantity' }),
@@ -927,18 +958,349 @@
           h('span', { style: css.muted }, '→ ' + Math.round(s.width * ws.hiresScale / 8) * 8 + '×' + Math.round(s.height * ws.hiresScale / 8) * 8)) : null) : null);
   };
 
+  // ── Detailer (Apple Vision Face / Hand / Person) ──────────────
+  P.openDetailer = function (imageId) {
+    const ws = this._ws();
+    const active = this._activeResult();
+    const targetId = imageId || (active && active.imageId) || (ws.lib && ws.lib.selectedId) || null;
+    if (!targetId) { this.toast('Select an image to detail', '#fbbf24'); return; }
+    this.wsSet({
+      detailer: {
+        open: true,
+        imageId: targetId,
+        mode: 'face',
+        threshold: 0.3,
+        padding: 0.2,
+        feather: 8.0,
+        strength: 0.45,
+        prompt: 'preserve identity, pose and expression; improve facial anatomy, eyes, mouth and skin detail',
+        maskPreview: null,
+        loading: false,
+        detections: []
+      }
+    });
+  };
+
+  P.closeDetailer = function () {
+    const ws = this._ws();
+    this.wsSet({ detailer: Object.assign({}, ws.detailer, { open: false, maskPreview: null }) });
+  };
+
+  P.previewDetailerMask = async function () {
+    const ws = this._ws(), d = ws.detailer;
+    if (!d || !d.imageId) return;
+    this.wsSet({ detailer: Object.assign({}, d, { loading: true }) });
+    try {
+      const res = await this._api('/api/detailer/mask-preview', {
+        image_id: d.imageId,
+        mode: d.mode,
+        threshold: d.threshold,
+        padding: d.padding,
+        feather: d.feather
+      });
+      if (res.ok && res.data.mask_preview) {
+        this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { loading: false, maskPreview: res.data.mask_preview, detections: res.data.detections || [] }) });
+        this.toast('Mask generated · ' + (res.data.detections || []).length + ' target(s)', '#38bdf8');
+      } else {
+        this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { loading: false }) });
+        this.toast(res.data.error || 'Mask preview failed', '#ef4444');
+      }
+    } catch (e) {
+      this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { loading: false }) });
+      this.toast('Error generating mask: ' + e.message, '#ef4444');
+    }
+  };
+
+  P.runDetailer = async function () {
+    const ws = this._ws(), d = ws.detailer;
+    if (!d || !d.imageId) return;
+    this.wsSet({ detailer: Object.assign({}, d, { loading: true }) });
+    try {
+      let maskData = d.maskPreview;
+      if (!maskData) {
+        const pRes = await this._api('/api/detailer/mask-preview', {
+          image_id: d.imageId,
+          mode: d.mode,
+          threshold: d.threshold,
+          padding: d.padding,
+          feather: d.feather
+        });
+        if (!pRes.ok || !pRes.data.mask_preview) {
+          throw new Error(pRes.data.error || 'Failed to detect targets for detailer mask');
+        }
+        maskData = pRes.data.mask_preview;
+      }
+
+      const promptText = d.prompt || (d.mode === 'hand'
+        ? 'preserve hand pose and interaction; correct hand anatomy and finger structure'
+        : d.mode === 'person'
+        ? 'preserve pose and scene composition; improve anatomy and clothing detail'
+        : 'preserve identity, pose and expression; improve facial anatomy, eyes, mouth and skin detail');
+
+      const inpaintRes = await this._api('/api/actions/inpaint', {
+        image_id: d.imageId,
+        mask_data: maskData,
+        prompt: promptText,
+        strength: d.strength || 0.45,
+        parent_image_id: d.imageId,
+        detailed_from: d.imageId,
+        operation: 'detailer'
+      });
+      if (!inpaintRes.ok) throw new Error(inpaintRes.data.error || 'Inpaint submission failed');
+      this.toast('Detailer inpaint submitted to Big Mac…', '#a855f7');
+      this.closeDetailer();
+      const job = await this._waitJob(inpaintRes.data.job_id);
+      this._onCreateDone(job, null);
+    } catch (e) {
+      this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { loading: false }) });
+      this.toast('Detailer failed: ' + e.message, '#ef4444');
+    }
+  };
+
+  P.buildDetailerModal = function () {
+    const ws = this._ws(), d = ws.detailer || {};
+    if (!d || !d.open) return null;
+    return h('div', {
+      style: {
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(2,4,8,.85)', backdropFilter: 'blur(8px)',
+        zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 16
+      }
+    },
+      h('div', {
+        style: {
+          background: '#090d16', border: '1px solid rgba(168,85,247,.35)',
+          borderRadius: 12, padding: 18, maxWidth: 640, width: '100%',
+          maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12
+        }
+      },
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+          h('div', { style: { fontSize: 15, fontWeight: 800, color: '#f3e8ff', fontFamily: "\'DM Sans\',sans-serif" } }, 'Native Vision Detailer'),
+          btn('Close', () => this.closeDetailer(), '#94a3b8')
+        ),
+        h('div', { style: css.muted }, 'Targeted inpaint refinement using Apple Vision detection on MacBook Air. Reuses existing inpaint pipeline and preserves source image.'),
+        h('div', { style: css.row },
+          btn('Face', () => this.wsSet({ detailer: Object.assign({}, d, { mode: 'face', prompt: 'preserve identity, pose and expression; improve facial anatomy, eyes, mouth and skin detail' }) }), d.mode === 'face' ? '#a855f7' : '#94a3b8'),
+          btn('Hand (Derived ROI)', () => this.wsSet({ detailer: Object.assign({}, d, { mode: 'hand', prompt: 'preserve hand pose and interaction; correct hand anatomy and finger structure' }) }), d.mode === 'hand' ? '#a855f7' : '#94a3b8'),
+          btn('Person', () => this.wsSet({ detailer: Object.assign({}, d, { mode: 'person', prompt: 'preserve pose and scene composition; improve anatomy and clothing detail' }) }), d.mode === 'person' ? '#a855f7' : '#94a3b8')
+        ),
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+          h('div', null,
+            h('div', { style: css.label }, 'Denoise strength: ' + (d.strength || 0.45)),
+            h('input', { type: 'range', min: '0.10', max: '0.80', step: '0.05', value: String(d.strength || 0.45),
+              onChange: e => this.wsSet({ detailer: Object.assign({}, d, { strength: +e.target.value }) }), style: { width: '100%' } })
+          ),
+          h('div', null,
+            h('div', { style: css.label }, 'Detection threshold: ' + (d.threshold || 0.3)),
+            h('input', { type: 'range', min: '0.10', max: '0.90', step: '0.05', value: String(d.threshold || 0.3),
+              onChange: e => this.wsSet({ detailer: Object.assign({}, d, { threshold: +e.target.value }) }), style: { width: '100%' } })
+          ),
+          h('div', null,
+            h('div', { style: css.label }, 'ROI Padding: ' + (d.padding || 0.2)),
+            h('input', { type: 'range', min: '0.00', max: '0.60', step: '0.05', value: String(d.padding || 0.2),
+              onChange: e => this.wsSet({ detailer: Object.assign({}, d, { padding: +e.target.value }) }), style: { width: '100%' } })
+          ),
+          h('div', null,
+            h('div', { style: css.label }, 'Feather radius: ' + (d.feather || 8) + 'px'),
+            h('input', { type: 'range', min: '0', max: '20', step: '1', value: String(d.feather || 8),
+              onChange: e => this.wsSet({ detailer: Object.assign({}, d, { feather: +e.target.value }) }), style: { width: '100%' } })
+          )
+        ),
+        h('div', null,
+          h('div', { style: css.label }, 'Repair prompt override'),
+          h('textarea', {
+            rows: 2, value: d.prompt || '',
+            onChange: e => this.wsSet({ detailer: Object.assign({}, d, { prompt: e.target.value }) }),
+            placeholder: 'Delta prompt…',
+            style: Object.assign({}, css.input, { resize: 'vertical' })
+          })
+        ),
+        d.maskPreview ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+          h('div', { style: css.label }, 'Mask Preview (White = inpaint region, ' + (d.detections ? d.detections.length : 0) + ' target(s))'),
+          h('img', { src: d.maskPreview, alt: 'Mask preview', style: { maxHeight: 180, objectFit: 'contain', borderRadius: 6, border: '1px solid rgba(168,85,247,.4)' } })
+        ) : null,
+        h('div', { style: { borderTop: '1px solid rgba(148,163,184,.14)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+          h('span', { style: { fontSize: 11, color: '#f87171', fontStyle: 'italic' } }, 'Face Swap: UNAVAILABLE (No proven license-safe local model)'),
+          h('div', { style: css.row },
+            btn(d.loading ? 'Scanning…' : 'Preview Mask', () => this.previewDetailerMask(), '#38bdf8', { disabled: d.loading }),
+            btn(d.loading ? 'Processing…' : 'Run Detailer', () => this.runDetailer(), '#a855f7', { disabled: d.loading })
+          )
+        )
+      )
+    );
+  };
+
   P.buildResultStaging = function () {
     const ws = this._ws(), s = this.state, base = s.backendUrl;
-    const res = ws.results;
-    const active = res[ws.activeIndex];
-    const lab = ws.seedLab, ab = ws.ab;
-    const grid = res.length > 1 || (res.length === 1 && res[0].status !== 'DONE') ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(88px,1fr))', gap: 6, marginBottom: 8 } },
-      ...res.map((r, i) => h('div', { key: i }, r.imageUrl
-        ? thumb(base + r.imageUrl, i === ws.activeIndex, () => this.selectResult(i), r.imageId, (r.keeper ? '★ ' : '') + 's' + r.seed)
-        : h('div', { style: { aspectRatio: '1 / 1', border: '1px dashed rgba(148,163,184,.25)', borderRadius: 8, display: 'grid', placeItems: 'center', fontSize: 10, color: stateTone(r.status), textAlign: 'center', padding: 4 } }, r.status + (r.seed != null ? '\nseed ' + r.seed : '') + (r.error ? '\n' + r.error : ''))))) : null;
-    const info = active && active.imageId ? h('div', { style: Object.assign({}, css.muted, { marginBottom: 6 }) },
-      [active.target, active.width + '×' + active.height, 'seed ' + active.seed, active.operation, active.status].filter(Boolean).join(' · ')) : null;
-    const actions = active && active.imageId ? h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, ...this.imageActions(active)) : null;
+    const res = ws.results || [];
+    const activeIdx = Math.max(0, Math.min(res.length - 1, ws.activeIndex || 0));
+    const active = res[activeIdx];
+    const lab = ws.seedLab, ab = ws.ab, d = ws.detailer || {};
+    const isNarrow = typeof window !== 'undefined' && window.innerWidth < 768;
+
+    // Sibling filmstrip thumbnails
+    const filmstripItems = res.map((r, i) => {
+      const isHero = i === activeIdx;
+      const borderStyle = isHero ? '2px solid #38bdf8' : '1px solid rgba(148,163,184,.22)';
+      const bgStyle = isHero ? 'rgba(56,189,248,.12)' : 'rgba(10,16,28,.6)';
+
+      return h('div', {
+        key: r.imageId || i,
+        onClick: () => this.selectResult(i),
+        style: {
+          cursor: 'pointer',
+          borderRadius: 8,
+          border: borderStyle,
+          background: bgStyle,
+          padding: 4,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 4,
+          flexShrink: 0,
+          width: isNarrow ? '96px' : '100%',
+          boxSizing: 'border-box',
+          transition: 'all .15s ease'
+        }
+      },
+        r.imageUrl
+          ? h('div', { style: { position: 'relative', width: '100%', aspectRatio: '1 / 1', overflow: 'hidden', borderRadius: 6 } },
+              h('img', {
+                src: base + r.imageUrl,
+                alt: 'Result ' + (i + 1),
+                style: { width: '100%', height: '100%', objectFit: 'cover' }
+              }),
+              h('span', {
+                style: {
+                  position: 'absolute', bottom: 3, left: 3,
+                  background: 'rgba(0,0,0,.75)', color: isHero ? '#38bdf8' : '#cbd5e1',
+                  borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700,
+                  fontFamily: "'IBM Plex Mono',monospace"
+                }
+              }, isHero ? 'HERO #' + (i + 1) : '#' + (i + 1))
+            )
+          : h('div', {
+              style: {
+                aspectRatio: '1 / 1', width: '100%',
+                border: '1px dashed rgba(148,163,184,.25)', borderRadius: 6,
+                display: 'grid', placeItems: 'center', fontSize: 10,
+                color: stateTone(r.status), textAlign: 'center', padding: 4
+              }
+            }, r.status + (r.seed != null ? '\ns' + r.seed : '')),
+        h('div', {
+          style: {
+            fontSize: 10, color: isHero ? '#7dd3fc' : '#94a3b8',
+            fontFamily: "'IBM Plex Mono',monospace", whiteSpace: 'nowrap',
+            overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%'
+          }
+        }, (r.keeper ? '★ ' : '') + 's' + (r.seed != null ? r.seed : '—'))
+      );
+    });
+
+    // Large Dominant Hero display
+    const heroImage = active && active.imageUrl
+      ? h('div', { style: { position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' } },
+          h('img', {
+            src: base + active.imageUrl,
+            alt: 'Hero result',
+            style: {
+              width: '100%', maxHeight: '680px', objectFit: 'contain',
+              borderRadius: 8, background: '#030710', border: '1px solid rgba(148,163,184,.14)'
+            }
+          }),
+          h('div', {
+            style: {
+              position: 'absolute', bottom: 8, left: 8, right: 8,
+              background: 'rgba(4,8,16,.85)', backdropFilter: 'blur(6px)',
+              border: '1px solid rgba(148,163,184,.2)', borderRadius: 6,
+              padding: '6px 10px', display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center', fontSize: 11, color: '#e2e8f0', fontFamily: "'IBM Plex Mono',monospace"
+            }
+          },
+            h('span', null, [
+              '#' + (activeIdx + 1) + ' of ' + res.length,
+              active.target,
+              active.width + '×' + active.height,
+              'seed ' + active.seed,
+              active.operation
+            ].filter(Boolean).join(' · ')),
+            h('span', { style: { color: active.keeper ? '#fbbf24' : '#94a3b8' } },
+              active.keeper ? '★ Keeper' : 'Normal')
+          )
+        )
+      : (active ? h('div', {
+          style: {
+            minHeight: '260px', width: '100%', display: 'grid', placeItems: 'center',
+            border: '1px dashed rgba(148,163,184,.25)', borderRadius: 8, color: stateTone(active.status)
+          }
+        }, 'Generating image #' + (activeIdx + 1) + '… ' + active.status) : null);
+
+    // Multi-Output Hero Workspace layout
+    const multiOutputWorkspace = res.length > 0 ? h('div', {
+      className: 'dex-hero-workspace',
+      style: {
+        display: 'flex',
+        flexDirection: isNarrow ? 'column' : 'row',
+        gap: 12,
+        alignItems: 'stretch',
+        marginBottom: 10
+      }
+    },
+      // Dominant Hero column
+      h('div', {
+        style: {
+          flex: '1 1 0%',
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8
+        }
+      },
+        heroImage,
+        active && active.imageId ? h('div', { style: Object.assign({}, css.row, { marginTop: 4, flexWrap: 'wrap' }) },
+          btn(active.keeper ? '★ Keeper' : '☆ Keeper', () => this.toggleKeeper(active.imageId, !active.keeper, active), '#fbbf24'),
+          btn('Copy Seed', () => { navigator.clipboard.writeText(String(active.seed)); this.toast('Copied seed ' + active.seed, '#38bdf8'); }, '#94a3b8'),
+          btn('Reuse Settings', () => this.reuseSettings(active.imageId), '#94a3b8'),
+          btn('Same / New Seed', () => this.generateVariation(active), '#65d66e'),
+          this._gate('img2img') ? btn('Send to Img2Img', () => this.sendToEdit(active.imageId, 'img2img'), '#a78bfa') : null,
+          this._gate('inpaint') ? btn('Send to Inpaint', () => this.sendToEdit(active.imageId, 'inpaint'), '#a78bfa') : null,
+          btn('Upscale', () => this.sendToEnhance(active.imageId), '#f59e0b'),
+          btn('Detailer', () => this.openDetailer(active.imageId), '#a855f7'),
+          btn('Open', () => window.open(base + '/api/images/' + encodeURIComponent(active.imageId), '_blank'), '#94a3b8'),
+          btn('Lineage', () => this.showInLibrary(active.imageId), '#94a3b8')
+        ) : null
+      ),
+      // Siblings Filmstrip Rail
+      res.length > 1 ? h('div', {
+        className: 'dex-filmstrip-rail',
+        style: isNarrow ? {
+          display: 'flex',
+          flexDirection: 'row',
+          gap: 8,
+          overflowX: 'auto',
+          paddingBottom: 6,
+          width: '100%'
+        } : {
+          flex: '0 0 148px',
+          width: '148px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          maxHeight: '680px',
+          overflowY: 'auto',
+          paddingRight: 4,
+          borderLeft: '1px solid rgba(148,163,184,.14)',
+          paddingLeft: 8
+        }
+      },
+        h('div', { style: Object.assign({}, css.label, { marginBottom: 2 }) }, 'Siblings (' + res.length + ')'),
+        ...filmstripItems
+      ) : null
+    ) : null;
+
+    // Detailer Modal / Drawer
+    const detailerPanel = this.buildDetailerModal();
+
     const seedLab = lab.open ? h('div', { style: { borderTop: '1px solid rgba(148,163,184,.12)', paddingTop: 8, marginTop: 4, display: 'grid', gap: 6 } },
       h('div', { style: css.row }, h('div', { style: css.title }, 'Seed Lab'), btn('Close', () => this.wsSet({ seedLab: Object.assign({}, lab, { open: false }) }), '#94a3b8')),
       h('div', { style: css.row },
@@ -949,6 +1311,7 @@
       h('div', { style: css.muted }, lab.mode === 'neighbors'
         ? 'Seeds ' + (neighborSeeds(lab.base != null ? lab.base : s.seed, 2).join(', ') || '— (pick a result or set a fixed seed)') + '. Everything else stays constant. Pick any result, then Reuse Seed to make it the new reference.'
         : 'Independent random non-negative seeds; everything else constant.')) : null;
+
     const abPanel = h('div', { style: { borderTop: '1px solid rgba(148,163,184,.12)', paddingTop: 8, marginTop: 4, display: 'grid', gap: 6 } },
       h('div', { style: css.row }, h('div', { style: css.title }, 'Prompt A/B'),
         btn(ab.open ? 'Hide' : 'Show', () => this.wsSet({ ab: Object.assign({}, ab, { open: !ab.open }) }), '#94a3b8')),
@@ -961,11 +1324,16 @@
             p.imageUrl ? thumb(base + p.imageUrl, false, () => window.open(base + p.imageUrl, '_blank'), p.imageId, 'Prompt ' + p.label + ' · s' + p.seed) : h('div', { style: { color: tone.bad } }, p.label + ': failed'),
             p.imageId ? h('div', { style: css.row }, btn('Compare', () => this.toggleCompare(p.imageId), '#38bdf8'), btn('Keeper', () => this.toggleKeeper(p.imageId, !p.keeper, p), '#fbbf24')) : null))) : null,
         ab.held ? h('div', { style: css.mono }, 'Held constant: ' + Object.entries(ab.held).map(([k, v]) => k + '=' + v).join(' · ') + ' · Changed: prompt only') : null) : null);
-    if (!res.length && !lab.open) return h('div', { style: { marginTop: 8 } }, abPanel);
+
+    if (!res.length && !lab.open) return h('div', { style: { marginTop: 8 } }, abPanel, detailerPanel);
     return h('div', { 'data-results-anchor': '1', style: Object.assign({}, css.panel, { marginTop: 10 }) },
-      res.length ? h('div', { style: Object.assign({}, css.row, { marginBottom: 6 }) }, h('div', { style: css.title }, 'Results'),
-        h('span', { style: css.muted }, res.filter(r => r.status === 'DONE').length + ' / ' + res.length + ' done')) : null,
-      grid, info, actions, seedLab, abPanel);
+      res.length ? h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) },
+        h('div', { style: css.title }, 'Workspace Results'),
+        h('span', { style: css.muted }, res.filter(r => r.status === 'DONE').length + ' / ' + res.length + ' done'),
+        h('span', { style: { marginLeft: 'auto', fontSize: 10, color: '#64748b', fontFamily: "'IBM Plex Mono',monospace" } },
+          'Navigate: ↑/↓/←/→ · Home/End')
+      ) : null,
+      multiOutputWorkspace, seedLab, abPanel, detailerPanel);
   };
 
   // ── Reload recovery: resume the active job / queue from backend state ──
@@ -997,6 +1365,42 @@
   const _unmount = P.componentWillUnmount;
   P.componentWillUnmount = function () { clearInterval(this._queueTimer); _unmount.call(this); };
 
+  // ── Keyboard navigation: siblings filmstrip rail (Up/Down/Left/Right/Home/End) ──
+  const _onKeydown = P.onKeydown;
+  P.onKeydown = function (e) {
+    const tag = (e.target && e.target.tagName || '').toLowerCase();
+    const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
+    const curScreen = (this.state.screens && this.state.screens[this.state.version]) || 'create';
+    if (!inField && curScreen === 'create') {
+      const ws = this._ws();
+      const res = (ws && ws.results) ? ws.results.filter(r => r.imageUrl) : [];
+      if (res.length > 1) {
+        const curIdx = ws.activeIndex || 0;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+          e.preventDefault();
+          this.selectResult((curIdx + 1) % res.length);
+          return;
+        }
+        if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          this.selectResult((curIdx - 1 + res.length) % res.length);
+          return;
+        }
+        if (e.key === 'Home') {
+          e.preventDefault();
+          this.selectResult(0);
+          return;
+        }
+        if (e.key === 'End') {
+          e.preventDefault();
+          this.selectResult(res.length - 1);
+          return;
+        }
+      }
+    }
+    if (_onKeydown) _onKeydown.call(this, e);
+  };
+
   // ── Render: merge workstation slots into the template values ────
   const _renderVals = P.renderVals;
   P.renderVals = function () {
@@ -1008,7 +1412,7 @@
     vals.ctlNeg = String(!ctl.negativePrompt);
     vals.ctlCfg = String(!ctl.cfg);
     vals.ctlSched = String(!ctl.scheduler);
-    vals.createWorkbench = this.buildCreateWorkbench();
+    vals.createWorkbench = this.buildCreateWorkbench(vals.modelsListDisplay);
     vals.resultStaging = this.buildResultStaging();
     vals.batchWorkspace = this.buildBatchWorkspace();
     vals.inpaintTools = this.buildInpaintTools();
