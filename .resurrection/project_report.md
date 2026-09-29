@@ -1,8 +1,8 @@
-# Project Resurrection Report: Image_Gen
+# Project Resurrection Report: painting-urgent-fix-54542b
 
 ## Identity
-- Name: Image_Gen
-- Path: /Users/andrew/Image_Gen
+- Name: painting-urgent-fix-54542b
+- Path: /Users/andrew/Image_Gen/.claude/worktrees/painting-urgent-fix-54542b
 - Project type: unknown
 - Confidence: 0.2
 - Inferred purpose: Purpose could not be inferred confidently from filesystem signals.
@@ -10,11 +10,11 @@
   - No strong signals found.
 
 ## Git State
-- Summary: Repo root: /Users/andrew/Image_Gen | Branch: main | Status: dirty | Remote: git@github.com:westkitty/Image_Gen.git
-- Latest commit: d85b7519196e237349955e1ea615edc9fa97eba5 feat: automatically wire macOS wrapper app into Dock upon install
-- Tracked modified count: 0
-- Untracked count: 3
-- Staged count: 0
+- Summary: Repo root: /Users/andrew/Image_Gen/.claude/worktrees/painting-urgent-fix-54542b | Branch: claude/painting-urgent-fix-54542b | Status: dirty | Remote: git@github.com:westkitty/Image_Gen.git
+- Latest commit: 8bc0c435935bb60f0c5b16302c1c21c3618a2e5a fix: show img2img/inpaint result instead of false failure
+- Tracked modified count: 4
+- Untracked count: 0
+- Staged count: 1
 
 ## Commands Detected
 - None detected.
@@ -27,7 +27,7 @@
 - sdcpp-workflow/README.md
 
 ## Duplicate Or Stale Candidates
-- sibling-near-duplicate: Image_Gen.backup-before-a1111-workbench-20260621-015246
+- None detected.
 
 ## Secret-Risk Findings
 - Image_Gen_Bible.md:45 (openai_sk_prefix)
@@ -41,5 +41,5 @@
 5. Read `.resurrection/project_report.md` and make one bounded change at a time.
 
 ## Scan Metadata
-- Timestamp: 2026-06-28T13:33:58+00:00
+- Timestamp: 2026-07-14T20:26:03+00:00
 - Scanner version: 1.1.0

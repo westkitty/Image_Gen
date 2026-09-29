@@ -1,15 +1,15 @@
-# Codex Handoff: Image_Gen
+# Codex Handoff: painting-urgent-fix-54542b
 
 Read this handoff and project_report.md first.
 
 ## Project Identity
-- Name: Image_Gen
-- Path: /Users/andrew/Image_Gen
+- Name: painting-urgent-fix-54542b
+- Path: /Users/andrew/Image_Gen/.claude/worktrees/painting-urgent-fix-54542b
 - Purpose: Purpose could not be inferred confidently from filesystem signals.
 
 ## Current Git State
-- Repo root: /Users/andrew/Image_Gen | Branch: main | Status: dirty | Remote: git@github.com:westkitty/Image_Gen.git
-- Latest commit: d85b7519196e237349955e1ea615edc9fa97eba5 feat: automatically wire macOS wrapper app into Dock upon install
+- Repo root: /Users/andrew/Image_Gen/.claude/worktrees/painting-urgent-fix-54542b | Branch: claude/painting-urgent-fix-54542b | Status: dirty | Remote: git@github.com:westkitty/Image_Gen.git
+- Latest commit: 8bc0c435935bb60f0c5b16302c1c21c3618a2e5a fix: show img2img/inpaint result instead of false failure
 
 ## Detected Project Type
 - Type: unknown
@@ -28,7 +28,7 @@ Read this handoff and project_report.md first.
 - sdcpp-workflow/README.md
 
 ## Duplicate Or Stale Candidates
-- sibling-near-duplicate: Image_Gen.backup-before-a1111-workbench-20260621-015246
+- None detected.
 
 ## Secret-Risk Warning Summary
 - Image_Gen_Bible.md:45 (openai_sk_prefix)

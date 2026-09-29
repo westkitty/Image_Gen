@@ -1,8 +1,6 @@
 {
   "commands": [],
-  "duplicate_candidates": [
-    "sibling-near-duplicate: Image_Gen.backup-before-a1111-workbench-20260621-015246"
-  ],
+  "duplicate_candidates": [],
   "fragile_files": [
     "operator-console/package-lock.json",
     "operator-console/package.json",
@@ -12,20 +10,20 @@
   ],
   "git_state": {
     "available": true,
-    "branch": "main",
+    "branch": "claude/painting-urgent-fix-54542b",
     "dirty": true,
-    "head": "d85b7519196e237349955e1ea615edc9fa97eba5",
-    "head_subject": "feat: automatically wire macOS wrapper app into Dock upon install",
+    "head": "8bc0c435935bb60f0c5b16302c1c21c3618a2e5a",
+    "head_subject": "fix: show img2img/inpaint result instead of false failure",
     "is_repo": true,
     "remote_url": "git@github.com:westkitty/Image_Gen.git",
-    "repo_root": "/Users/andrew/Image_Gen",
-    "staged_count": 0,
-    "tracked_modified_count": 0,
-    "untracked_count": 3
+    "repo_root": "/Users/andrew/Image_Gen/.claude/worktrees/painting-urgent-fix-54542b",
+    "staged_count": 1,
+    "tracked_modified_count": 4,
+    "untracked_count": 0
   },
   "identity": {
-    "name": "Image_Gen",
-    "path": "/Users/andrew/Image_Gen"
+    "name": "painting-urgent-fix-54542b",
+    "path": "/Users/andrew/Image_Gen/.claude/worktrees/painting-urgent-fix-54542b"
   },
   "project_type": {
     "confidence": 0.2,
@@ -40,7 +38,7 @@
     "Read the top-level README.md or AGENTS.md to establish project intent.",
     "Read `.resurrection/project_report.md` and make one bounded change at a time."
   ],
-  "scan_timestamp": "2026-06-28T13:33:58+00:00",
+  "scan_timestamp": "2026-07-14T20:26:03+00:00",
   "scanner_version": "1.1.0",
   "secret_risks": [
     {
