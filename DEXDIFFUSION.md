@@ -216,7 +216,7 @@ curl -s -X POST http://127.0.0.1:31337/api/actions/generate-controlled -H 'conte
 | Generation passed but image missing | `ls -t /Users/andrew/images_made \| head`; `cat sdcpp-workflow/runs/<run>/canonical-images.json`. |
 | `generator-exit` / `output-*` gate | Read `sdcpp-workflow/runs/<run>/remote-command.log` (prompt-redacted); the job error names the remote exception. |
 | Generation very slow to start | Check Big Mac disk contention; the MFLUX runtime must be the internal venv (`bin/dexdiffusion status` → MFLUX env). |
-| SDXL/Flux-fp8 target "— model missing" | Expected: only SD1.5 is restored. Staging another checkpoint is an explicit decision. |
+| Secondary target "— model missing" | The configured source checkpoint is absent. Restore that exact checkpoint before selecting it; the managed slot never substitutes another model. |
 | Capability shows BROKEN | The latest real run failed at a runtime gate; fix the cause and re-run once to return to PROVEN. |
 
 ## SDCPP (restored, secondary)
@@ -232,7 +232,7 @@ used for SD1.5 txt2img, img2img, inpaint, hires-fix, batch and Real-ESRGAN.
 | Binaries | `$HOME/stable-diffusion.cpp/build/bin/{sd-cli,sd-server}` — pointer in `~/sdcpp-staging/build_dir.txt` |
 | SD1.5 model | `$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors` — https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5 · **CreativeML OpenRAIL-M** · 4,265,146,304 B · sha256 `6ce0161689b3853acaa03779ec93eafe75a02f4ced659bee03f50797806fa2fa` |
 | Real-ESRGAN | `/Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth` — https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.1.0 · **BSD-3-Clause** · 67,040,989 B · sha256 `4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1` |
-| Not restored | SDXL, SDXL-Turbo, Flux-fp8 and custom checkpoints — those targets show **"— model missing"** and are never offered as ready |
+| Managed secondary sources | SD1.5, Photonic Fusion SDXL, SDXL base 1.0 and SDXL Turbo are currently available. Selection atomically points `$HOME/Library/Caches/DexDiffusion/secondary-model/current/model.safetensors` at exactly one validated source checkpoint. Missing sources remain unavailable. FLUX cannot enter this slot. |
 
 SD1.5 uses a warm `sd-server` only when its tunnel is already running; otherwise it
 runs on-demand `sd-cli` per job (no standing service on Big Mac). All SDCPP remote
@@ -300,7 +300,9 @@ Shown in **System → Truth status**, `GET /api/system-info` (`capabilities`), a
 - **Big Mac heavy compute** is one lease (`GET /api/resources`). A second heavy job waits ("Waiting for Big Mac — …"), and a large Ollama model loaded on Big Mac also blocks it (read-only check).
 - **Jobs** are durable (`sdcpp-workflow/state/jobs.json`). After a console restart, finished jobs keep their results. In-flight jobs show INTERRUPTED and are not re-run; re-enter the text to retry when prompt saving was off.
 - **Imports:** Edit and Voice/Music references accept file, drag/drop or paste. They are staged for 24 h in `sdcpp-workflow/state/staging/` and never become canonical media.
-- **Canonical roots:** images `/Users/andrew/images_made`, voice `/Users/andrew/audio_made/voice`, music `/Users/andrew/audio_made/music`, video `/Users/andrew/video_made`. Served only by id: `/api/images/:id`, `/api/media/:id`.
+- **Canonical roots:** images `/Users/andrew/images_made`, voice `/Users/andrew/audio_made/voice`, music `/Users/andrew/audio_made/music`, video `/Users/andrew/video_made`. Served only by id: `/api/images/:id`, `/api/media/:id`. Audio playback uses `/api/media/:id`; downloads use the same-origin attachment route `/api/media/:id/download` (MIME, filename, `nosniff`). The native WebKit wrapper handles that route with `WKDownload` and saves a collision-safe filename in `~/Downloads` instead of navigating to the audio player.
+- **Custom dimensions:** Width and Height remain independent numeric request fields. MFLUX accepts 256–2048 per axis in multiples of 16 (its installed code rounds to 16, so DexDiffusion rejects misalignment explicitly); SDCPP accepts 64–the selected target's `maxWidth`/`maxHeight` in multiples of 8 (the VAE scale factor). Presets are shortcuts only. A model change preserves each valid axis and replaces only an axis that the new target cannot accept.
+- **Secondary hot slot:** FLUX.2 Klein remains the protected MFLUX primary at `$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit`. SDCPP source checkpoints remain in their existing libraries. Exactly one active secondary is represented by `$HOME/Library/Caches/DexDiffusion/secondary-model/current`, an atomic symlink to one version under `secondary-model/versions/`; `current/state.json` is the authority exposed by `GET /api/models/secondary`, `/api/capabilities`, and `/api/system-info`. Switching uses the existing capacity-1 Big Mac lease, rejects a switch while generation is active, validates the replacement before swapping, and stops only the project-owned warm SDCPP server if one exists. Normal controlled SDCPP generation remains per-job `sd-cli` and consumes `current/model.safetensors`.
 - **Activating a future worker (e.g. LTX):** install the runtime and model at the paths shown under *Activation path*, add its execution bridge, prove one real generation, then enable it.
 
 ## Protected invariants (do not change)

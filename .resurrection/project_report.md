@@ -11,15 +11,20 @@
 
 ## Git State
 - Summary: Repo root: /Users/andrew/Image_Gen | Branch: main | Status: dirty | Remote: git@github.com:westkitty/Image_Gen.git
-- Latest commit: d85b7519196e237349955e1ea615edc9fa97eba5 feat: automatically wire macOS wrapper app into Dock upon install
-- Tracked modified count: 0
-- Untracked count: 3
-- Staged count: 0
+- Latest commit: 5287abdfb800b3068624e9ba0188fd536e37cac3 Improve DexDiffusion UI serviceability
+- Tracked modified count: 6
+- Untracked count: 1
+- Staged count: 1
 
 ## Commands Detected
 - None detected.
 
 ## Fragile Files
+- .claude/worktrees/painting-urgent-fix-54542b/operator-console/package-lock.json
+- .claude/worktrees/painting-urgent-fix-54542b/operator-console/package.json
+- .claude/worktrees/painting-urgent-fix-54542b/operator-console/README.md
+- .claude/worktrees/painting-urgent-fix-54542b/sdcpp-workflow/CHANGELOG.md
+- .claude/worktrees/painting-urgent-fix-54542b/sdcpp-workflow/README.md
 - operator-console/package-lock.json
 - operator-console/package.json
 - operator-console/README.md
@@ -31,7 +36,15 @@
 
 ## Secret-Risk Findings
 - Image_Gen_Bible.md:45 (openai_sk_prefix)
-- operator-console/server.js:1078 (openai_sk_prefix)
+- .claude/worktrees/painting-urgent-fix-54542b/Image_Gen_Bible.md:45 (openai_sk_prefix)
+- .claude/worktrees/painting-urgent-fix-54542b/operator-console/server.js:1078 (openai_sk_prefix)
+- operator-console/server.js:1120 (openai_sk_prefix)
+- sdcpp-workflow/runs/20260708-031145-inpaint/run-metadata.json:7 (openai_sk_prefix)
+- sdcpp-workflow/runs/20260708-031145-inpaint/inpaint-run-report.md:5 (openai_sk_prefix)
+- sdcpp-workflow/runs/20260714-145317-inpaint/run-metadata.json:7 (openai_sk_prefix)
+- sdcpp-workflow/runs/20260714-145317-inpaint/inpaint-run-report.md:5 (openai_sk_prefix)
+- sdcpp-workflow/runs/20260714-144727-inpaint/run-metadata.json:7 (openai_sk_prefix)
+- sdcpp-workflow/runs/20260714-144727-inpaint/inpaint-run-report.md:5 (openai_sk_prefix)
 
 ## Recommended Next Actions
 1. Inspect the current uncommitted Git changes before making new edits.
@@ -41,5 +54,5 @@
 5. Read `.resurrection/project_report.md` and make one bounded change at a time.
 
 ## Scan Metadata
-- Timestamp: 2026-06-28T13:33:58+00:00
+- Timestamp: 2026-07-14T19:41:25+00:00
 - Scanner version: 1.1.0

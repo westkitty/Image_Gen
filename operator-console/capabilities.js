@@ -23,7 +23,10 @@ const STATUS = { PROVEN: 'proven', AVAILABLE: 'available', DORMANT: 'dormant', U
 // needs: asset keys from probeAssets(); job: how finished jobs map onto it.
 const CAPABILITIES = [
   { id: 'txt2img-mflux', label: 'txt2img · FLUX.2 Klein 4B (MFLUX)', backend: 'mflux', primary: true, needs: ['mfluxRuntime', 'mfluxModel'], job: { action: 'controlled-generate', backend: 'mflux' } },
-  { id: 'txt2img-sdcpp', label: 'txt2img · SD1.5 (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'sd15Model'], job: { action: 'controlled-generate', backend: 'sdcpp' } },
+  { id: 'txt2img-sdcpp', label: 'txt2img · SD1.5 (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'sd15Model'], job: { action: 'controlled-generate', backend: 'sdcpp', target: 'sd15' } },
+  { id: 'txt2img-sdxl-photonic', label: 'txt2img · Photonic Fusion SDXL (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'photonicModel'], job: { action: 'controlled-generate', backend: 'sdcpp', target: 'sdxl-photonic' } },
+  { id: 'txt2img-sdxl-base', label: 'txt2img · SDXL base 1.0 (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'sdxlBaseModel'], job: { action: 'controlled-generate', backend: 'sdcpp', target: 'sdxl-base' } },
+  { id: 'txt2img-sdxl-turbo', label: 'txt2img · SDXL Turbo (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'sdxlTurboModel'], job: { action: 'controlled-generate', backend: 'sdcpp', target: 'sdxl-turbo' } },
   { id: 'img2img', label: 'img2img (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'sd15Model'], job: { action: 'img2img' } },
   { id: 'inpaint', label: 'Inpaint (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'sd15Model'], job: { action: 'inpaint' } },
   { id: 'upscale-resample', label: 'Upscale · Lanczos (MacBook)', backend: 'local', needs: [], job: { action: 'upscale' } },
@@ -54,9 +57,12 @@ function deriveStatus(cap, assets, evidence) {
 
 // A job may name its capability explicitly (native batch, High-Res Refine);
 // those capabilities are never matched by action alone.
+// Target-specific capabilities only match their own target, so a failure of one
+// checkpoint (e.g. a missing custom model) is never recorded against another.
 function capabilityForJob(job, targetBackend) {
   if (job.capabilityId) return CAPABILITIES.find(c => c.id === job.capabilityId) || null;
-  return CAPABILITIES.find(c => !c.job.capabilityId && c.job.action === job.commandAction && (!c.job.backend || c.job.backend === targetBackend)) || null;
+  const targetId = job.controlledTarget || (job.requestParams && job.requestParams.target) || null;
+  return CAPABILITIES.find(c => !c.job.capabilityId && c.job.action === job.commandAction && (!c.job.backend || c.job.backend === targetBackend) && (!c.job.target || c.job.target === targetId)) || null;
 }
 
 function createEvidenceStore(file) {
@@ -99,7 +105,7 @@ function targetModelMap(controlledScript, remoteModel, stageRoot = '/Volumes/wc2
   while ((m = re.exec(body))) {
     if (map[m[1]]) continue;
     const p = /TARGET_MODEL_PATH="([^"]+)"/.exec(m[2]);
-    map[m[1]] = p ? p[1].replace('$MODEL_STAGE_ROOT', stageRoot) : remoteModel;
+    map[m[1]] = p ? p[1].replace('$MODEL_STAGE_ROOT', stageRoot).replace('$SDXL_MODEL_ROOT', '$HOME/sdcpp-staging/models') : remoteModel;
   }
   return map;
 }
@@ -114,10 +120,14 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
     `printf 'mfluxModel=%s\\n' "$(test -s "$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit/transformer/model.safetensors.index.json" && echo 1 || echo 0)"`,
     `bd="$(cat "$HOME/sdcpp-staging/build_dir.txt" 2>/dev/null)"; printf 'sdCli=%s\\n' "$(test -n "$bd" && test -x "$bd/bin/sd-cli" && echo 1 || echo 0)"`,
     `printf 'sd15Model=%s\\n' "$(test -s "$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors" && echo 1 || echo 0)"`,
+    `printf 'photonicModel=%s\\n' "$(test -s "$HOME/sdcpp-staging/models/photonic_fusion_sdxl_finale_v1.safetensors" && echo 1 || echo 0)"`,
+    `printf 'sdxlBaseModel=%s\\n' "$(test -s "$HOME/sdcpp-staging/models/sd_xl_base_1.0.safetensors" && echo 1 || echo 0)"`,
+    `printf 'sdxlTurboModel=%s\\n' "$(test -s "$HOME/sdcpp-staging/models/sd_xl_turbo_1.0_fp16.safetensors" && echo 1 || echo 0)"`,
     `printf 'esrganModel=%s\\n' "$(test -s /Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth && echo 1 || echo 0)"`,
     ...paths.map((p, i) => `printf 'model${i}=%s\\n' "$(test -s ${JSON.stringify(p).replace(/^"\$HOME/, '"$HOME')} && echo 1 || echo 0)"`),
     `printf 'identity=%s@%s\\n' "$(whoami)" "$(hostname -s)"`,
     `printf 'wc2tb=%s\\n' "$(test -d /Volumes/wc2tb/ImageGen && echo 1 || echo 0)"`,
+    `printf 'secondaryStateB64=%s\\n' "$(test -s "$HOME/Library/Caches/DexDiffusion/secondary-model/current/state.json" && /usr/bin/base64 < "$HOME/Library/Caches/DexDiffusion/secondary-model/current/state.json" | tr -d '\\n' || true)"`,
     // Dormant future workers: existence checks only (nothing is installed or started).
     ...DORMANT_PATHS.map(([k, pth]) => `printf '${k}=%s\\n' "$(test -e "${pth}" && echo 1 || echo 0)"`),
     `printf 'probe=done\\n'`,
@@ -133,13 +143,21 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
       const flag = k => (kv[k] === '1' ? true : kv[k] === '0' ? false : null);
       const models = {};
       paths.forEach((p, i) => { models[p] = flag(`model${i}`); });
+      let secondary = {};
+      try { secondary = JSON.parse(Buffer.from(kv.secondaryStateB64 || '', 'base64').toString('utf8')); } catch (_) {}
       resolve({
         reachable: true,
         mfluxRuntime: flag('mfluxRuntime'), mfluxModel: flag('mfluxModel'),
-        sdCli: flag('sdCli'), sd15Model: flag('sd15Model'), esrganModel: flag('esrganModel'),
+        sdCli: flag('sdCli'), sd15Model: flag('sd15Model'), photonicModel: flag('photonicModel'), sdxlBaseModel: flag('sdxlBaseModel'), sdxlTurboModel: flag('sdxlTurboModel'), esrganModel: flag('esrganModel'),
         identity: kv.identity || null, wc2tb: flag('wc2tb'),
         dormant: Object.fromEntries(DORMANT_PATHS.map(([k]) => [k, flag(k)])),
         models,
+        secondaryModelState: secondary.secondaryModelState || 'inactive',
+        activeSecondaryModel: secondary.activeSecondaryModel || null,
+        secondarySourcePath: secondary.sourcePath || null,
+        secondaryActivePath: secondary.activePath || null,
+        secondaryModelIdentity: secondary.modelIdentity || null,
+        secondaryLastSwitchResult: secondary.lastSwitchResult || null,
       });
     });
   });

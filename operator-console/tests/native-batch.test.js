@@ -79,7 +79,7 @@ test('server falls back to sequential when the native command cannot be built', 
 });
 
 test('explicit capability ids (native batch, High-Res Refine) never swallow ordinary txt2img evidence', () => {
-  const plain = capabilityForJob({ commandAction: 'controlled-generate' }, 'sdcpp');
+  const plain = capabilityForJob({ commandAction: 'controlled-generate', controlledTarget: 'sd15' }, 'sdcpp');
   assert.equal(plain.id, 'txt2img-sdcpp');
   assert.equal(capabilityForJob({ commandAction: 'controlled-generate', capabilityId: 'quantity-native-batch' }, 'sdcpp').id, 'quantity-native-batch');
   assert.equal(capabilityForJob({ commandAction: 'controlled-generate', capabilityId: 'hires-refine' }, 'sdcpp').id, 'hires-refine');

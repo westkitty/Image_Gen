@@ -20,8 +20,10 @@ function loadComponent() {
       this.state = Object.assign({}, this.state, next);
     }
   }
+  const DexClient = require('../public/dexdiffusion/client-helpers.js');
   const sandbox = {
     window: {}, DCLogic, console,
+    DexClient,
     React: { createElement: (type, props, ...children) => ({ __vnode: true, type, props: props || {}, children }) },
     localStorage: { getItem: () => null, setItem() {} },
     fetch: () => Promise.reject(new Error('no network in tests')),
@@ -87,13 +89,14 @@ test('run-index item maps to card shape (real API keys)', () => {
   assert.ok(failCard.thumb.startsWith('linear-gradient'));
 });
 
-test('applyTargetDefaults applies capability defaults, scaled by preset', () => {
+test('applyTargetDefaults scales presets while preserving valid independent dimensions', () => {
   const c = make();
   c.state.modelTargets = [{ id: 'sdxl-turbo', defaultSteps: 4, defaultCfgScale: 0, defaultWidth: 768, defaultHeight: 768, defaultSampler: 'euler', minSteps: 1, maxSteps: 8 }];
   c.state.preset = 'balanced';
   c.applyTargetDefaults('sdxl-turbo');
   assert.equal(c.state.steps, 4);
-  assert.equal(c.state.width, 768);
+  assert.equal(c.state.width, 512);
+  assert.equal(c.state.height, 512);
   assert.equal(c.state.sampler, 'euler');
   c.applyTargetDefaults('sdxl-turbo', 'fast');     // half steps, clamped to >= minSteps
   assert.equal(c.state.steps, 2);

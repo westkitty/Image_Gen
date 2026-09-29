@@ -345,25 +345,17 @@ class Component extends DCLogic {
           hash: t.status || '',
           status: t.status,
         }));
-        this.setState({ checkpoints, modelTargets: targets, capabilityData: data, loadingCheckpoints: false });
+        this.setState({ checkpoints, modelTargets: targets, capabilityData: data, modelState: data.modelState || null, loadingCheckpoints: false });
         let saved = null;
         try { saved = localStorage.getItem('dex_target'); } catch {}
         const initial = DexClient.chooseInitialTarget(targets, saved, this.state.target);
-        if (initial && initial !== this.state.target) {
-          this.setState({ target: initial, activeCheckpoint: initial });
-          this.applyTargetDefaults(initial);
-        }
+        if (initial && initial !== this.state.target) await this.onSelectTarget(initial, { quiet: true });
         this.toast('Loaded ' + checkpoints.length + ' targets', '#38bdf8');
       } else { this.setState({ loadingCheckpoints: false }); this.toast('Failed to load capabilities (' + r.status + ')', '#ef4444'); }
     } catch(e) { this.setState({ loadingCheckpoints: false }); this.toast('Cannot reach backend', '#ef4444'); }
   }
 
-  loadCheckpoint(name) {
-    // Setting the active target — no separate HTTP call needed; target is passed on generate
-    this.setState({ activeCheckpoint: name, target: name });
-    this.applyTargetDefaults(name);
-    this.toast('Target set: ' + name, '#38bdf8');
-  }
+  loadCheckpoint(name) { this.onSelectTarget(name); }
 
   // Apply a target's capability defaults (dims/steps/cfg/sampler), scaled by the
   // active speed preset, when the Target or Preset dropdown changes.
@@ -376,18 +368,37 @@ class Component extends DCLogic {
     let steps = Math.round(baseSteps * factor);
     if (t.minSteps) steps = Math.max(t.minSteps, steps);
     if (t.maxSteps) steps = Math.min(t.maxSteps, steps);
+    const dims = DexClient.dimensionsForTarget(t, { width: this.state.width, height: this.state.height });
     this.setState({
       steps,
       cfg: t.defaultCfgScale != null ? t.defaultCfgScale : this.state.cfg,
-      width: t.defaultWidth || this.state.width,
-      height: t.defaultHeight || this.state.height,
+      width: dims.width,
+      height: dims.height,
       sampler: t.defaultSampler || this.state.sampler,
+      scheduler: t.defaultScheduler || 'discrete',
     });
   }
-  onSelectTarget(id) {
+  async onSelectTarget(id, options = {}) {
+    const target = (this.state.modelTargets || []).find(t => t.id === id);
+    if (!target) return;
+    if ((target.backend || 'sdcpp') !== 'mflux') {
+      if (!options.quiet) this.toast('Switching secondary model…', '#fbbf24');
+      try {
+        const response = await fetch(this.state.backendUrl + '/api/models/secondary/activate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: id }), signal: AbortSignal.timeout(45000)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
+        this.setState({ modelState: data.modelState || data });
+      } catch (error) {
+        this.toast('Model switch failed: ' + error.message, '#ef4444');
+        return;
+      }
+    }
     try { localStorage.setItem('dex_target', id); } catch {}
     this.setState({ target: id, activeCheckpoint: id });
     this.applyTargetDefaults(id);
+    if (!options.quiet) this.toast('Target set: ' + id, '#38bdf8');
   }
 
   async loadSystemInfo() {
@@ -423,8 +434,10 @@ class Component extends DCLogic {
     if (!String(p.prompt || '').trim()) out.push(['Prompt required', 'warn']);
     if (!Number.isFinite(p.steps) || p.steps < 1 || p.steps > 150) out.push(['Steps must be 1-150', 'error']);
     if (!Number.isFinite(p.cfg_scale) || p.cfg_scale < 1 || p.cfg_scale > 30) out.push(['CFG scale must be 1-30', 'error']);
-    if (!Number.isFinite(p.width) || !Number.isFinite(p.height) || p.width % 8 || p.height % 8) out.push(['Width and height must be multiples of 8', 'error']);
-    const ctl = DexClient.controlsFor((this.state.modelTargets || []).find(t => t.id === p.target));
+    const target = (this.state.modelTargets || []).find(t => t.id === p.target);
+    const dimensionError = DexClient.dimensionIssue(target, p.width, p.height);
+    if (dimensionError) out.push([dimensionError, 'error']);
+    const ctl = DexClient.controlsFor(target);
     if (p.selectedVae && p.selectedVae !== 'default' && p.selectedVae !== 'none') out.push([ctl.vae ? 'VAE override is passed to sd-cli --vae for this SDCPP target' : 'This target ignores VAE selection', ctl.vae ? 'info' : 'warn']);
     if (!out.length) out.push(['Ready to generate', 'ok']);
     return out;
@@ -1273,6 +1286,10 @@ class Component extends DCLogic {
         ]),
         siSection('SDCPP (secondary)', [
           siRow('Role', si.sdcpp.role),
+          siRow('Slot state', si.modelState.secondaryModelState),
+          siRow('Active secondary', si.modelState.activeSecondaryModel || 'none'),
+          siRow('Active path', si.modelState.activePath || 'none', true),
+          siRow('Last switch', si.modelState.lastSwitchResult && (si.modelState.lastSwitchResult.status || si.modelState.lastSwitchResult), true),
           siRow('Revision', si.sdcpp.revision, true),
           siRow('Binary', si.sdcpp.binary, true),
           siRow('Models', si.sdcpp.models.map(m => m.path + ' (' + m.license + ')').join(' · '), true),
@@ -1310,6 +1327,7 @@ class Component extends DCLogic {
       // Create form
       prompt, negPrompt, steps: String(steps), cfg: String(cfg), seed: String(seed),
       width: String(width), height: String(height), promptLen: String(prompt.length),
+      dimensionSummary: (() => { const d = DexClient.dimensionInfo(width, height); return d.aspectRatio + ' · ' + d.megapixels + ' MP'; })(),
       onPromptChange: e=>this.onPromptChange(e),
       promptPanelDisplay: promptOpen ? 'block' : 'none',
       promptToggleLabel: promptOpen ? 'Hide prompt' : 'Show prompt',
@@ -1326,6 +1344,7 @@ class Component extends DCLogic {
       onSchedulerChange: e=>this.setState({scheduler:e.target.value}),
       setDim512: ()=>this.setState({width:512,height:512}),
       setDim768: ()=>this.setState({width:768,height:512}),
+      setDimPortrait: ()=>this.setState({width:512,height:768}),
       setDim1024: ()=>this.setState({width:1024,height:1024}),
       onGenerate: ()=>this.onGenerate(),
       generateLabel: isGenerating ? ('Generating… ' + progress + '%') : 'Generate Image',

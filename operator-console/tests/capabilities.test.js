@@ -31,7 +31,7 @@ test('evidence comes only from finished real jobs; validation failures do not ma
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ev-')), 'ev.json');
   const store = createEvidenceStore(file);
   assert.equal(store.record({ commandAction: 'controlled-generate', status: 'PASS', runId: 'a', completedAt: 1 }, 'mflux'), 'txt2img-mflux');
-  assert.equal(store.record({ commandAction: 'controlled-generate', status: 'PASS', runId: 'b', completedAt: 2 }, 'sdcpp'), 'txt2img-sdcpp');
+  assert.equal(store.record({ commandAction: 'controlled-generate', controlledTarget: 'sd15', status: 'PASS', runId: 'b', completedAt: 2 }, 'sdcpp'), 'txt2img-sdcpp');
   assert.equal(store.record({ commandAction: 'img2img', status: 'FAIL', firstFailedGate: 'args', completedAt: 3 }, 'sdcpp'), null);
   assert.equal(store.record({ commandAction: 'discover-assets', status: 'PASS', completedAt: 4 }), null);
   store.record({ commandAction: 'inpaint', status: 'FAIL', firstFailedGate: 'generator-exit', completedAt: 5 });
@@ -45,7 +45,7 @@ test('evidence comes only from finished real jobs; validation failures do not ma
 test('targets: missing model or runtime can never look ready; MFLUX stays primary', () => {
   const models = targetModelMap(path.join(BIN, 'sdcpp-controlled-generate.sh'), '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors');
   assert.equal(models.sd15, '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors');
-  assert.match(models['sdxl-base'], /^\/Volumes\/wc2tb\/ImageGen\/checkpoints\/sdxl\/sd_xl_base_1\.0\.safetensors$/);
+  assert.match(models['sdxl-base'], /^\$HOME\/sdcpp-staging\/models\/sd_xl_base_1\.0\.safetensors$/);
   const assets = { ...ALL, models: { [models.sd15]: true, [models['sdxl-base']]: false } };
   assert.equal(targetRuntime({ id: 'sd15' }, assets, models), 'available');
   assert.equal(targetRuntime({ id: 'sdxl-base' }, assets, models), 'model-missing');
@@ -92,4 +92,12 @@ test('lifecycle helper backgrounds only node with detached stdio (no lingering h
   const src = fs.readFileSync(path.join(ROOT, 'bin', 'dexdiffusion'), 'utf8');
   assert.match(src, /\( cd "\$CONSOLE_DIR" \|\| exit 1; nohup node server\.js <\/dev\/null >>"\$LOG" 2>&1 & echo \$! >"\$PIDFILE" \)/);
   assert.doesNotMatch(src, /cd "\$CONSOLE_DIR" && nohup/);
+});
+
+test('a custom SDCPP target failure is never recorded against SD1.5 txt2img', () => {
+  const { capabilityForJob } = require('../capabilities');
+  const custom = capabilityForJob({ commandAction: 'controlled-generate', controlledTarget: 'sd15-homofidelis' }, 'sdcpp');
+  assert.equal(custom, null);
+  assert.equal(capabilityForJob({ commandAction: 'controlled-generate', controlledTarget: 'sd15' }, 'sdcpp').id, 'txt2img-sdcpp');
+  assert.equal(capabilityForJob({ commandAction: 'controlled-generate', requestParams: { target: 'sdxl-photonic' } }, 'sdcpp').id, 'txt2img-sdxl-photonic');
 });

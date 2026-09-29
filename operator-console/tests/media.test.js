@@ -185,6 +185,8 @@ test('media store: roots, atomic finalize, sha256/bytes/mime, no overwrite, safe
   const a = store.finalize(src, { kind: 'voice', base: 'speech', job_id: 'j', worker: 'qwen3-tts', duration: 0.5 });
   const b = store.finalize(src, { kind: 'voice', base: 'speech' });
   assert.equal(a.artifact_id, 'speech.wav'); assert.equal(b.artifact_id, 'speech-2.wav');
+  assert.equal(a.safe_url, '/api/media/speech.wav');
+  assert.equal(a.download_url, '/api/media/speech.wav/download');
   assert.equal(a.mime, 'audio/wav'); assert.equal(a.bytes, fs.statSync(src).size);
   assert.equal(a.sha256, require('crypto').createHash('sha256').update(fs.readFileSync(src)).digest('hex'));
   assert.ok(fs.readdirSync(roots.voice).every(f => !f.startsWith('.incoming-')));
@@ -244,6 +246,9 @@ test('server wiring: leases for heavy jobs, generic job adapter, safe routes, do
   assert.match(src, /function runControlledSequential\(jobId, spec, params, quantity, opts = \{\}\) \{\n  withLease\(/);
   assert.match(src, /jobStore\.create\(\{\n      job_id: id, media_kind: 'image'/);
   assert.match(src, /app\.get\('\/api\/media\/:id'/);
+  assert.match(src, /app\.get\('\/api\/media\/:id\/download'/);
+  assert.match(src, /Content-Disposition[^\n]*attachment/);
+  assert.match(src, /X-Content-Type-Options[^\n]*nosniff/);
   assert.match(src, /app\.get\('\/api\/library'/);
   assert.match(src, /express\.raw\(\{ type: \(\) => true, limit: '41mb' \}\)/);
   // dormant generation fails before any lease is requested
@@ -254,4 +259,21 @@ test('server wiring: leases for heavy jobs, generic job adapter, safe routes, do
   // imports never land in images_made
   assert.match(src, /import-\$\{Date\.now\(\)\}-\$\{crypto\.randomBytes\(4\)\.toString\('hex'\)\}\.png`\);/);
   assert.match(src, /const out = path\.join\(MASK_UPLOADS_DIR, `import-/);
+});
+
+test('audio download controls use the durable same-origin attachment route', () => {
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'dexdiffusion', 'media-ui.js'), 'utf8');
+  assert.match(ui, /href: base \+ art\.download_url/);
+  assert.match(ui, /href: base \+ i\.download_url/);
+  assert.doesNotMatch(ui, /href: base \+ art\.url, download:/);
+  assert.doesNotMatch(ui, /href: base \+ i\.url, download:/);
+});
+
+test('native WebKit wrapper turns same-origin media attachment links into real downloads', () => {
+  const swift = fs.readFileSync(path.join(__dirname, '..', '..', 'native', 'macos', 'Image_Gen', 'ImageGenApp.swift'), 'utf8');
+  assert.match(swift, /WKDownloadDelegate/);
+  assert.match(swift, /isDexMediaDownload/);
+  assert.match(swift, /decisionHandler\(\.download\)/);
+  assert.match(swift, /decideDestinationUsing response: URLResponse/);
+  assert.match(swift, /\.downloadsDirectory/);
 });

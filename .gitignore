@@ -47,8 +47,13 @@ operator-console/.env
 operator-console/server.log
 operator-console/*.log
 
+# Python
+__pycache__/
+*.pyc
+
 # Playwright / QA artifacts
 .playwright-mcp/
+output/playwright/
 oc-dashboard.png
 oc-generate.png
 oc-gallery.png

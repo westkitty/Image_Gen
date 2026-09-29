@@ -192,7 +192,7 @@
       art && art.url ? h('div', { style: { display: 'grid', gap: 6 } }, this._mediaEl(base + art.url, 'audio', 'job'),
         h('div', { style: css.muted }, [art.artifact_id, fmtTime(art.duration), art.seed != null ? 'seed ' + art.seed : null, art.sha256 ? 'sha256 ' + art.sha256.slice(0, 12) + '…' : null].filter(Boolean).join(' · ')),
         h('div', { style: css.row }, btn('Open in Library', () => { this.setScreen('library'); this.loadMediaLibrary(kind); }, '#38bdf8'),
-          h('a', { href: base + art.url, download: art.artifact_id, style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 4px' } }, 'Download WAV'))) : null);
+          h('a', { href: base + art.download_url, style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 4px' } }, 'Download'))) : null);
   };
   P._resultArea = function (kind) {
     const items = ((this._mws().lib.items) || []).filter(i => i.kind === kind).slice(0, 4);
@@ -304,7 +304,7 @@
           i.created_at ? new Date(i.created_at).toLocaleString() : null, i.reference_used ? 'from reference audio' : null].filter(Boolean).join(' · '))),
       this._mediaEl(base + i.url, i.kind === 'video' ? 'video' : 'audio'),
       h('div', { style: css.row }, btn(i.keeper ? '★ Keeper' : '☆ Keeper', () => this.toggleMediaKeeper(i.artifact_id, !i.keeper), '#fbbf24'),
-        h('a', { href: base + i.url, download: i.artifact_id, style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 4px' } }, 'Download')));
+        h('a', { href: base + i.download_url, style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 4px' } }, 'Download')));
   };
   P.buildMediaLibraryPanel = function () {
     const m = this._mws(), lib = m.lib;

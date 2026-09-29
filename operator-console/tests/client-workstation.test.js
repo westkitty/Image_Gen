@@ -57,6 +57,19 @@ test('aspect presets are multiples of 64 within the target max', () => {
   assert.deepEqual(D.aspectDims('portrait', 512, 2048), { width: 384, height: 512 });
 });
 
+test('dimension policy is backend-aware and preserves width and height independently', () => {
+  const flux = { minWidth: 256, minHeight: 256, maxWidth: 2048, maxHeight: 2048, dimensionMultiple: 16, defaultWidth: 1024, defaultHeight: 1024 };
+  assert.equal(D.dimensionIssue(flux, 768, 512), null);
+  assert.match(D.dimensionIssue(flux, 520, 512), /Width must be a multiple of 16/);
+  assert.deepEqual(D.dimensionsForTarget(flux, { width: 768, height: 512 }), { width: 768, height: 512 });
+  assert.deepEqual(D.dimensionsForTarget({ ...flux, maxWidth: 512 }, { width: 768, height: 512 }), { width: 512, height: 512 });
+  assert.deepEqual(D.dimensionsForTarget({ ...flux, maxHeight: 512 }, { width: 512, height: 768 }), { width: 512, height: 512 });
+});
+
+test('dimension info reports aspect ratio and megapixels without changing values', () => {
+  assert.deepEqual(D.dimensionInfo(768, 512), { aspectRatio: '3:2', megapixels: '0.39' });
+});
+
 test('job results: structured list preferred, legacy single image still mapped', () => {
   const rs = [{ index: 0, status: 'DONE', imageId: 'a.png' }, { index: 1, status: 'DONE', imageId: 'b.png' }];
   assert.equal(D.jobResults({ results: rs }).length, 2);

@@ -54,6 +54,46 @@
     return base;
   }
 
+  function dimensionRules(target) {
+    const t = target || {};
+    const mflux = t.backend === 'mflux';
+    const num = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+    return {
+      minWidth: num(t.minWidth, mflux ? 256 : 64), minHeight: num(t.minHeight, mflux ? 256 : 64),
+      maxWidth: num(t.maxWidth, 2048), maxHeight: num(t.maxHeight, 2048),
+      dimensionMultiple: num(t.dimensionMultiple, mflux ? 16 : 8),
+    };
+  }
+  function dimensionIssue(target, width, height) {
+    const t = target || {}, r = dimensionRules(t), label = t.label || t.id || 'this target';
+    const w = Number(width), h = Number(height);
+    if (!Number.isInteger(w) || w < r.minWidth || w > r.maxWidth) return `Width must be between ${r.minWidth} and ${r.maxWidth} for ${label}.`;
+    if (w % r.dimensionMultiple) return `Width must be a multiple of ${r.dimensionMultiple} for ${label}.`;
+    if (!Number.isInteger(h) || h < r.minHeight || h > r.maxHeight) return `Height must be between ${r.minHeight} and ${r.maxHeight} for ${label}.`;
+    if (h % r.dimensionMultiple) return `Height must be a multiple of ${r.dimensionMultiple} for ${label}.`;
+    return null;
+  }
+  function dimensionsForTarget(target, current) {
+    const t = target || {}, r = dimensionRules(t), c = current || {};
+    const fit = (value, fallback, min, max) => {
+      const n = Number(value);
+      if (Number.isInteger(n) && n >= min && n <= max && n % r.dimensionMultiple === 0) return n;
+      const d = Math.max(min, Math.min(max, Number(fallback) || min));
+      return Math.max(min, Math.min(max, Math.floor(d / r.dimensionMultiple) * r.dimensionMultiple));
+    };
+    return {
+      width: fit(c.width, t.defaultWidth, r.minWidth, r.maxWidth),
+      height: fit(c.height, t.defaultHeight, r.minHeight, r.maxHeight),
+    };
+  }
+  function dimensionInfo(width, height) {
+    const w = Number(width), h = Number(height);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return { aspectRatio: '—', megapixels: '—' };
+    const gcd = (a, b) => b ? gcd(b, a % b) : a;
+    const d = gcd(Math.round(w), Math.round(h));
+    return { aspectRatio: `${Math.round(w / d)}:${Math.round(h / d)}`, megapixels: ((w * h) / 1000000).toFixed(2) };
+  }
+
   // Truth-status presentation for a derived capability status.
   const CAPABILITY_LABELS = {
     proven: ['Proven', 'ok'], available: ['Available · unproven', 'warn'], dormant: ['Dormant', 'off'],
@@ -189,6 +229,7 @@
 
   return {
     resolveBackendBase, jobProgressPercent, chooseInitialTarget, targetOptionLabel, capabilityBadge,
+    dimensionIssue, dimensionsForTarget, dimensionInfo,
     maskDilate, maskErode, maskBlur, maskFeather, maskInvert, maskCoverage, maskVerdict, FULL_MASK_COVERAGE,
     aspectDims, controlsFor, STRENGTH_PRESETS, jobResults, compareRows, sanitizeRecipe, RECIPE_FIELDS, persistableSession,
   };

@@ -38,7 +38,9 @@ test('system-info reports primary target, canonical storage, derived capabilitie
       tailscale: async () => ({ available: false, reason: 'offline' }),
       launcher: async () => ({ appPath: SYSTEM.launcher.appPath, installed: false, dockEntries: null }),
     },
-    getAssets: () => ({ reachable: true, mfluxRuntime: true, mfluxModel: true, sdCli: false, sd15Model: false, esrganModel: false }),
+    getAssets: () => ({ reachable: true, mfluxRuntime: true, mfluxModel: true, sdCli: false, sd15Model: false, esrganModel: false,
+      secondaryModelState: 'active', activeSecondaryModel: 'sd15', secondarySourcePath: '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors',
+      secondaryActivePath: '$HOME/Library/Caches/DexDiffusion/secondary-model/current/model.safetensors', secondaryLastSwitchResult: 'pass' }),
     getEvidence: () => ({ 'txt2img-mflux': { lastPass: { at: '2026-09-25T23:16:00Z', runId: 'r1' } } }),
   });
   const info = await getInfo({ targets: TARGETS, build: { sshTarget: 'westcat' } });
@@ -46,6 +48,9 @@ test('system-info reports primary target, canonical storage, derived capabilitie
   assert.equal(info.storage.canonicalImages, '/Users/andrew/images_made');
   assert.equal(info.generation.route, 'ssh westcat');
   assert.equal(info.generation.remoteRetention, 'ephemeral');
+  assert.equal(info.modelState.primaryModel.id, 'flux2-klein-4b');
+  assert.equal(info.modelState.activeSecondaryModel, 'sd15');
+  assert.equal(info.modelState.secondaryModelState, 'active');
   assert.equal(info.network.localBind, '127.0.0.1:31337');
   assert.equal(info.network.tailscale.available, false, 'degrades when Tailscale is down');
   assert.equal(info.launcher.bundleId, 'local.image-gen.wrapper');

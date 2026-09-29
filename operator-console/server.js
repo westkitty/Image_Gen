@@ -1,5 +1,5 @@
 const express = require('express');
-const { spawn, execFileSync } = require('child_process');
+const { spawn, execFile, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -10,6 +10,7 @@ const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
 const { createSystemInfo } = require('./system-info');
 const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime } = require('./capabilities');
+const { rulesForTarget, validateDimensions } = require('./dimension-policy');
 
 const app = express();
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
@@ -98,38 +99,40 @@ const CONTROLLED_TARGETS = [
   },
   {
     id: 'sdxl-base',
-    label: 'SDXL base',
-    status: 'proofed',
-    mode: 'proofed controlled generation',
+    label: 'SDXL base 1.0',
+    status: 'supported',
+    mode: 'controlled generation',
     route: '/api/actions/generate-controlled',
-    caveat: 'Supports a curated set of generation parameters — not all Automatic1111 options are available.',
-    proofDerived: true,
+    caveat: 'stabilityai/stable-diffusion-xl-base-1.0 (CreativeML OpenRAIL++-M) via stable-diffusion.cpp on Metal; embedded VAE. Native 1024x1024. Not full A1111 parity.',
+    proofDerived: false,
     fullParityClaim: false,
     modelFile: 'sd_xl_base_1.0.safetensors',
-    defaultWidth: 512,
-    defaultHeight: 512,
-    defaultSteps: 4,
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    defaultSteps: 20,
     defaultCfgScale: 7,
     defaultSampler: 'euler_a',
-    maxWidth: 1024,
-    maxHeight: 1024,
+    maxWidth: 1536,
+    maxHeight: 1536,
     minSteps: 1,
-    maxSteps: 8
+    maxSteps: 50
   },
   {
     id: 'sdxl-turbo',
     label: 'SDXL Turbo',
-    status: 'proofed',
-    mode: 'proofed controlled generation',
+    status: 'supported',
+    mode: 'controlled generation',
     route: '/api/actions/generate-controlled',
-    caveat: 'Supports a curated set of generation parameters — not all Automatic1111 options are available.',
-    proofDerived: true,
+    caveat: 'stabilityai/sdxl-turbo (non-commercial research licence) via stable-diffusion.cpp. Distilled: 1-4 steps, CFG fixed at 1 (no negative prompt), native 512x512.',
+    proofDerived: false,
     fullParityClaim: false,
     modelFile: 'sd_xl_turbo_1.0_fp16.safetensors',
     defaultWidth: 512,
     defaultHeight: 512,
     defaultSteps: 4,
-    defaultCfgScale: 0,
+    defaultCfgScale: 1,
+    fixedCfgScale: 1,
+    noNegativePrompt: true,
     defaultSampler: 'euler_a',
     maxWidth: 1024,
     maxHeight: 1024,
@@ -183,13 +186,14 @@ const CONTROLLED_TARGETS = [
     status: 'staged',
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
-    caveat: 'Migrated wc2tb SDXL checkpoint. Photonic has one direct smoke proof; not full A1111 parity.',
+    caveat: 'Civitai 683210 v1449179 (Finale, SDXL 1.0 fp16) on wc2tb; uses the checkpoint\'s embedded VAE. Author settings: 30-40 steps, CFG 5-6.5, Karras, 768x1024; clip-skip 2 (Pony merge; Pony score tags work). Not full A1111 parity.',
     modelFile: 'photonic_fusion_sdxl_finale_v1.safetensors',
-    defaultWidth: 1024,
+    defaultWidth: 768,
     defaultHeight: 1024,
-    defaultSteps: 10,
-    defaultCfgScale: 6.5,
+    defaultSteps: 30,
+    defaultCfgScale: 6,
     defaultSampler: 'dpm++2m',
+    defaultScheduler: 'karras',
     minSteps: 1,
     maxSteps: 150,
     maxWidth: 2048,
@@ -824,6 +828,18 @@ async function refreshAssets() {
   assetCache = { ...probed, checkedAt: new Date().toISOString() };
   return assetCache;
 }
+function modelStateView(assets = assetCache) {
+  const primary = CONTROLLED_TARGET_BY_ID['flux2-klein-4b'];
+  return {
+    primaryModel: { id: primary.id, role: 'protected-primary', backend: primary.backend },
+    activeSecondaryModel: assets && assets.activeSecondaryModel || null,
+    secondaryModelState: assets && assets.secondaryModelState || 'inactive',
+    sourcePath: assets && assets.secondarySourcePath || null,
+    activePath: assets && assets.secondaryActivePath || null,
+    modelIdentity: assets && assets.secondaryModelIdentity || null,
+    lastSwitchResult: assets && assets.secondaryLastSwitchResult || null,
+  };
+}
 refreshAssets().catch(() => {});
 setInterval(() => refreshAssets().catch(() => {}), 5 * 60 * 1000).unref();
 function recordJobEvidence(job) {
@@ -1359,14 +1375,16 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   const loraErr = validatePromptLoras(params.prompt);
   if (!loraErr.ok) return loraErr.error;
   if (!validateNegativePrompt(params.negative_prompt)) return 'Invalid negative prompt';
-  if (!validateSize(params.width)) return 'Invalid width: use multiples of 8 between 64 and target max';
-  if (!validateSize(params.height)) return 'Invalid height: use multiples of 8 between 64 and target max';
   if (!validateSeed(params.seed)) return 'Invalid seed';
   if (!validateScheduler(params.scheduler)) return 'Invalid scheduler';
   if (!validateVae(params.vae)) return 'Invalid VAE';
   if (!validateSavePrompts(params.save_prompts)) return 'Invalid save_prompts';
 
   const spec = allTargetById[params.target];
+  if (params.width === undefined || params.width === null || params.width === '') params.width = spec.defaultWidth;
+  if (params.height === undefined || params.height === null || params.height === '') params.height = spec.defaultHeight;
+  const dimensionError = validateDimensions(spec, params.width, params.height);
+  if (dimensionError) return dimensionError;
   const steps = params.steps === undefined || params.steps === null || params.steps === ''
     ? spec.defaultSteps
     : Number(params.steps);
@@ -1378,20 +1396,6 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   if (!Number.isFinite(cfgScale)) return `Invalid cfg_scale for ${spec.label}`;
   if (cfgScale < 0 || cfgScale > 30) return `Invalid cfg_scale for ${spec.label}`;
 
-  if (params.width !== undefined && params.width !== null && params.width !== '') {
-    const width = Number(params.width);
-    if (!Number.isInteger(width) || width < 64 || width > spec.maxWidth || width % 8 !== 0) {
-      return `Invalid width for ${spec.label}`;
-    }
-  }
-  if (params.height !== undefined && params.height !== null && params.height !== '') {
-    const height = Number(params.height);
-    if (!Number.isInteger(height) || height < 64 || height > spec.maxHeight || height % 8 !== 0) {
-      return `Invalid height for ${spec.label}`;
-    }
-  }
-
-  if (params.target === 'sdxl-turbo' && cfgScale !== 0) return 'SDXL Turbo requires cfg_scale 0';
   if (params.target === 'flux-fp8' && cfgScale !== 3.5) return 'Flux fp8 requires cfg_scale 3.5';
   if (params.quantity !== undefined && params.quantity !== null) {
     if (!Number.isInteger(params.quantity) || params.quantity < 1 || params.quantity > 100) {
@@ -1990,7 +1994,7 @@ function targetCapabilities(target) {
   const sd15 = target.id === 'sd15';
   return {
     backend: mflux ? 'mflux' : 'sdcpp',
-    negativePrompt: !mflux, cfg: !mflux, scheduler: !mflux, sampler: false, vae: !mflux, lora: !mflux,
+    negativePrompt: !mflux && !target.noNegativePrompt, cfg: !mflux && target.fixedCfgScale === undefined, scheduler: !mflux, sampler: false, vae: !mflux, lora: !mflux,
     img2img: sd15, inpaint: sd15, outpaint: sd15, controlNet: false, hiresRefine: !mflux,
     nativeBatch: !mflux, maxQuantity: 100,
   };
@@ -2120,8 +2124,10 @@ app.get('/api/capabilities', (req, res) => {
     defaultSteps: target.defaultSteps,
     defaultCfgScale: target.defaultCfgScale,
     defaultSampler: target.defaultSampler,
+    defaultScheduler: target.defaultScheduler,
     maxWidth: target.maxWidth,
     maxHeight: target.maxHeight,
+    ...rulesForTarget(target),
     minSteps: target.minSteps,
     maxSteps: target.maxSteps,
     capabilities: targetCapabilities(target)
@@ -2133,6 +2139,7 @@ app.get('/api/capabilities', (req, res) => {
     assetCache: { present: !!assets, cacheAgeMinutes, discoveredAt: assets ? assets.discovered_at_iso : null },
     modelStage,
     modelInventory,
+    modelState: modelStateView(),
     modelTargets,
     models,
     vaes,
@@ -2200,6 +2207,49 @@ app.post('/api/actions/verify', (req, res) => {
   runAction(jobId, 'bin/sdcpp-verify.sh', []);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
+function execWorkflow(file, args = [], timeout = 30000) {
+  return new Promise((resolve, reject) => execFile(file, args, { cwd: WORKFLOW_ROOT, timeout, encoding: 'utf8' },
+    (error, stdout, stderr) => error ? reject(Object.assign(error, { stdout, stderr })) : resolve({ stdout, stderr })));
+}
+
+app.get('/api/models/secondary', async (req, res) => {
+  try {
+    const assets = await refreshAssets();
+    res.json(modelStateView(assets));
+  } catch (error) {
+    res.status(503).json({ error: error.message });
+  }
+});
+
+app.post('/api/models/secondary/activate', async (req, res) => {
+  const targetId = String(req.body && req.body.target || '');
+  const spec = allControlledTargets()[targetId];
+  if (!spec) return res.status(400).json({ error: 'Unknown model target' });
+  if ((spec.backend || 'sdcpp') === 'mflux' || targetId === 'flux2-klein-4b') return res.status(400).json({ error: 'The protected FLUX primary is not a secondary model' });
+  const source = TARGET_MODELS[targetId] || spec.modelPath;
+  if (!source) return res.status(409).json({ error: 'No approved checkpoint path exists for this target' });
+  const lease = arbiter.state();
+  if (lease.owner || lease.waiting.length || lease.external.occupied) return res.status(409).json({ error: 'Model switch is busy while heavy compute is active', modelState: modelStateView() });
+  const switchId = `model-switch-${crypto.randomUUID()}`;
+  const granted = await arbiter.acquire(switchId, `model switch to ${targetId}`);
+  if (!granted.granted) return res.status(409).json({ error: 'Model switch is busy' });
+  try {
+    // Targeted only: this script closes the workflow control socket/tmux
+    // session and explicitly leaves unrelated services alone.
+    await execWorkflow(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-server-stop.sh'), [], 30000);
+    const result = await execWorkflow(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-secondary-slot.sh'), ['activate', targetId, source], 30000);
+    const state = JSON.parse(result.stdout.trim());
+    const assets = await refreshAssets();
+    res.json({ ok: true, ...state, modelState: modelStateView(assets) });
+  } catch (error) {
+    let state = null;
+    try { state = JSON.parse(String(error.stdout || '').trim()); } catch (_) {}
+    res.status(500).json({ error: (state && state.lastSwitchResult && state.lastSwitchResult.error) || error.message, modelState: state || modelStateView() });
+  } finally {
+    arbiter.release(switchId);
+  }
+});
+
 app.post('/api/actions/server-status', (req, res) => {
   const jobId = createJob('server-status', 'bin/sdcpp-server-status.sh');
   runAction(jobId, 'bin/sdcpp-server-status.sh', []);
@@ -3269,6 +3319,15 @@ app.get('/api/media/:id', (req, res) => {
   if (img) return res.type(img.contentType).sendFile(img.path);
   const rec = mediaStore.resolve(id);
   if (!rec) return res.status(404).json({ error: 'Not found' });
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.type(rec.mime).sendFile(rec.path);
+});
+app.get('/api/media/:id/download', (req, res) => {
+  const rec = mediaStore.resolve(req.params.id);
+  if (!rec) return res.status(404).json({ error: 'Not found' });
+  res.set('Cache-Control', 'no-store');
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('Content-Disposition', `attachment; filename="${rec.artifact_id}"`);
   res.type(rec.mime).sendFile(rec.path);
 });
 
@@ -3292,7 +3351,7 @@ app.get('/api/library', (req, res) => {
   if (kind !== 'image') {
     const recs = mediaStore.list(kind === 'all' || kind === 'keepers' ? null : kind).filter(r => kind !== 'keepers' || r.keeper);
     // Only operational metadata is exposed; no generation text is stored in media records.
-    items = items.concat(recs.map(r => ({ artifact_id: r.artifact_id, kind: r.kind, url: r.safe_url, mime: r.mime, duration: r.duration, keeper: r.keeper, model: r.model, seed: r.seed,
+    items = items.concat(recs.map(r => ({ artifact_id: r.artifact_id, kind: r.kind, url: r.safe_url, download_url: r.download_url, mime: r.mime, duration: r.duration, keeper: r.keeper, model: r.model, seed: r.seed,
       worker: r.worker, bytes: r.bytes, created_at: r.created_at, job_id: r.job_id, operation: r.meta && r.meta.operation, reference_used: !!(r.meta && r.meta.reference_used) })));
   }
   const counts = { image: imageSourceMap().size, voice: mediaStore.list('voice').length, music: mediaStore.list('music').length, video: mediaStore.list('video').length };

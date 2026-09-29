@@ -3,14 +3,14 @@
     "available": true,
     "branch": "main",
     "dirty": true,
-    "head": "d85b7519196e237349955e1ea615edc9fa97eba5",
-    "head_subject": "feat: automatically wire macOS wrapper app into Dock upon install",
+    "head": "5287abdfb800b3068624e9ba0188fd536e37cac3",
+    "head_subject": "Improve DexDiffusion UI serviceability",
     "is_repo": true,
     "remote_url": "git@github.com:westkitty/Image_Gen.git",
     "repo_root": "/Users/andrew/Image_Gen",
-    "staged_count": 0,
-    "tracked_modified_count": 0,
-    "untracked_count": 3
+    "staged_count": 1,
+    "tracked_modified_count": 6,
+    "untracked_count": 1
   },
   "identity": {
     "name": "Image_Gen",
@@ -29,33 +29,58 @@
     "Read the top-level README.md or AGENTS.md to establish project intent.",
     "Read `.resurrection/project_report.md` and make one bounded change at a time."
   ],
-  "scan_timestamp": "2026-06-28T13:33:58+00:00",
+  "scan_timestamp": "2026-07-14T19:41:25+00:00",
   "scanner_version": "1.1.0",
   "signature": {
     "git_dirty": {
       "dirty": true,
-      "staged_count": 0,
-      "tracked_modified_count": 0,
-      "untracked_count": 3
+      "staged_count": 1,
+      "tracked_modified_count": 6,
+      "untracked_count": 1
     },
-    "git_head": "d85b7519196e237349955e1ea615edc9fa97eba5",
+    "git_head": "5287abdfb800b3068624e9ba0188fd536e37cac3",
     "project_type": "unknown",
     "scanner_version": "1.1.0",
     "watched_files": {
+      ".claude/worktrees/painting-urgent-fix-54542b/operator-console/README.md": {
+        "mtime_ns": 1784054211118159859,
+        "sha256": "b7406ba9f10cf1a91aa1e3943e7e2443d4bd01122e8d2fc0a229da425023451f",
+        "size": 7621
+      },
+      ".claude/worktrees/painting-urgent-fix-54542b/operator-console/package.json": {
+        "mtime_ns": 1784054211120157232,
+        "sha256": "da2792e1fbb188a630781e1d74800fc218ba083e5001ff2d231f2ced8135f13d",
+        "size": 458
+      },
+      ".claude/worktrees/painting-urgent-fix-54542b/operator-console/public/dexdiffusion/index.html": {
+        "mtime_ns": 1784054211124126145,
+        "sha256": "daba6a0cb889a8abd6582bbc173e5a203c2c610e7aafc7ea2870d0b50ee0b148",
+        "size": 136567
+      },
+      ".claude/worktrees/painting-urgent-fix-54542b/operator-console/public/index.html": {
+        "mtime_ns": 1784054211167239174,
+        "sha256": "35efbb40a6949a1b70a3f595fd76265965e93602b079b5ba1fc2ea5c6a5e1d00",
+        "size": 49514
+      },
+      ".claude/worktrees/painting-urgent-fix-54542b/sdcpp-workflow/README.md": {
+        "mtime_ns": 1784054211241040348,
+        "sha256": "8c6ced3d95f01212fada25b7fa2f14d53047dc73cf6258893c33f1da5b374c96",
+        "size": 6760
+      },
       "operator-console/README.md": {
         "mtime_ns": 1782170523008343082,
         "sha256": "b7406ba9f10cf1a91aa1e3943e7e2443d4bd01122e8d2fc0a229da425023451f",
         "size": 7621
       },
       "operator-console/package.json": {
-        "mtime_ns": 1782560932307125095,
-        "sha256": "aa95506c04ad944dd36448040dfae41b22cda74390a1c7b266c8dc89b1dcc085",
-        "size": 397
+        "mtime_ns": 1783463563654525707,
+        "sha256": "da2792e1fbb188a630781e1d74800fc218ba083e5001ff2d231f2ced8135f13d",
+        "size": 458
       },
       "operator-console/public/dexdiffusion/index.html": {
-        "mtime_ns": 1782646807305402368,
-        "sha256": "6bc70e459c6214856054192913fbe065f5a3a24415c18229c986de34e6c12db5",
-        "size": 132916
+        "mtime_ns": 1783489156124194069,
+        "sha256": "daba6a0cb889a8abd6582bbc173e5a203c2c610e7aafc7ea2870d0b50ee0b148",
+        "size": 136567
       },
       "operator-console/public/index.html": {
         "mtime_ns": 1782649035069471051,

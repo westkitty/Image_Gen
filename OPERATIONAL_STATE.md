@@ -7,12 +7,12 @@
   "project_name": "Image_Gen / DexDiffusion",
   "project_root": "/Users/andrew/Image_Gen",
   "artifact_path": "operator-console + sdcpp-workflow",
-  "state_revision": 11,
-  "last_updated": "2026-09-26",
+  "state_revision": 12,
+  "last_updated": "2026-09-29",
   "current_baseline": {
-    "identity": "main@5287abd plus preserved local modifications",
+    "identity": "main@2cdfe21 plus preserved local modifications",
     "state": "current-baseline",
-    "last_verified": "2026-09-25"
+    "last_verified": "2026-09-29"
   },
   "scope_boundaries": [
     "DexDiffusion UI/API on MacBook and image-generation execution on Big Mac via ssh westcat"
@@ -21,13 +21,13 @@
 }
 -->
 
-## 0. Current Accepted Architecture (cold-start summary, revision 6)
+## 0. Current Accepted Architecture (cold-start summary, revision 12)
 
 Operator guide: `DEXDIFFUSION.md`. Live facts: `bin/dexdiffusion status`, `GET /api/system-info`.
 
 - **Verified primary path:** DexDiffusion (MacBook, `operator-console` on 127.0.0.1:31337) → `ssh westcat` → Big Mac MFLUX 0.20.0 → FLUX.2 Klein 4B 4-bit (`mlx-community/flux2-klein-4b-4bit`, model at `$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit`, runtime venv `$HOME/Library/Caches/DexDiffusion/mflux/venv` on the internal SSD; the wc2tb venv is a package-identical fallback) → PNG streamed back → `/Users/andrew/images_made`.
 - **Mac launcher:** `/Applications/DexDiffusion.app`, bundle id `local.image-gen.wrapper`, a native WebKit wrapper window. Icon `Contents/Resources/DexDiffusion.icns` is built from `operator-console/public/dexdiffusion/uploads/grok_image_1775521844329.jpg`. Exactly one Dock tile. Clicking it runs `bin/dexdiffusion start` (reuses or starts a detached console) and loads the local UI. Quitting the app leaves the console running. Install/repair: `scripts/install-macos-app.sh`.
-- **Secondary path (restored rev 6):** stable-diffusion.cpp `7f0e728` (Metal) at `$HOME/stable-diffusion.cpp/build/bin/sd-cli`, with SD1.5 (`$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors`, CreativeML OpenRAIL-M) and Real-ESRGAN x4plus (`/Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth`, BSD-3-Clause). SDXL/Flux-fp8/custom targets are not restored and report `model-missing`.
+- **Secondary path (restored rev 6, managed slot added 2026-09-29):** stable-diffusion.cpp `7f0e728` (Metal) at `$HOME/stable-diffusion.cpp/build/bin/sd-cli`, with available SD1.5, Photonic Fusion SDXL, SDXL base 1.0 and SDXL Turbo source checkpoints. One atomic managed slot at `$HOME/Library/Caches/DexDiffusion/secondary-model/current/model.safetensors` selects at most one secondary checkpoint; FLUX remains protected and primary. Real-ESRGAN x4plus remains at `/Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth` (BSD-3-Clause).
 - **Capability truth:** derived by `operator-console/capabilities.js` from real job evidence (`sdcpp-workflow/state/capability-evidence.json`) plus a Big Mac asset probe. It is shown in System → Truth status, `/api/system-info` and `bin/dexdiffusion status`.
 - **Remote exit codes:** Big Mac's Tailscale SSH always returns exit status 0, so remote results are read from output or in-band markers only.
 - **Web access:** local loopback only; Tailscale Serve HTTPS :8443 **tailnet-only** → http://127.0.0.1:31337. There is no Funnel for DexDiffusion (the DEX//REACH :443 Funnel is separate and untouched).
@@ -49,7 +49,7 @@ Operator guide: `DEXDIFFUSION.md`. Live facts: `bin/dexdiffusion status`, `GET /
 ## 2. Current Baseline
 
 - Repository branch: `main`.
-- Current HEAD before this change: `5287abd`.
+- Current HEAD before this change: `2cdfe21`.
 - Working tree already contains user/project modifications; they must be preserved.
 - Existing controlled targets execute through `stable-diffusion.cpp` scripts.
 - Big Mac identity was verified as `bigmac@bigmac`; `/Volumes/wc2tb` is mounted.
@@ -216,6 +216,11 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
   - **Regression:** MFLUX 512², seed 9261, PASS into `/Users/andrew/images_made`; lease free.
   - **Layout and tests:** 375/768/desktop show 0 overflow and no JS exceptions. npm test 0 failures.
   - **Installer:** persisted as `scripts/install-bigmac-media-model-stack.sh` (`--verify` read-only mode → VERIFY PASS).
+- **VER-031 (2026-09-29) — download, dimension and managed-secondary repair.**
+  - **Audio downloads:** Current Job and Library use a distinct same-origin `GET /api/media/:id/download` route with attachment headers. Local, repeated and tailnet requests returned the original WAV bytes; missing and traversal requests returned non-audio 404 responses. The native WebKit wrapper used `WKDownload` and saved a validated 30 s, 48 kHz stereo WAV to Downloads without navigating away.
+  - **Independent dimensions:** backend policies are explicit: MFLUX 256–2048 in multiples of 16; SDCPP 64 through each target's maximum in multiples of 8. Model changes preserve each valid axis independently. Real MFLUX jobs produced and recorded 768x512 (seed 290901) and 512x768 (seed 290902) PNGs at those exact measured dimensions.
+  - **Secondary slot:** FLUX was checksum-identical before and after. The Big Mac switched SD1.5 → SDXL Turbo through one atomic managed slot; API, System UI and filesystem agreed on SDXL Turbo with exactly one retained slot version. A competing switch during generation returned 409 and retained the active model. A real SDXL Turbo job (seed 290903) produced a measured 512x512 PNG. SDCPP remains per-job `sd-cli`; slot `active` means authoritative selection, not resident model memory.
+  - **Regression:** `npm test` passed 123/123; Node syntax, all workflow shell syntax, native Swift type-check and `git diff --check` passed.
 - **VER-014:** Image route security (live): traversal, encoded traversal, absolute path, NUL, `.incoming-*`, symlink and unknown names all return 404.
 
 ## 6. Known Not Working

@@ -4,6 +4,11 @@
     "sibling-near-duplicate: Image_Gen.backup-before-a1111-workbench-20260621-015246"
   ],
   "fragile_files": [
+    ".claude/worktrees/painting-urgent-fix-54542b/operator-console/package-lock.json",
+    ".claude/worktrees/painting-urgent-fix-54542b/operator-console/package.json",
+    ".claude/worktrees/painting-urgent-fix-54542b/operator-console/README.md",
+    ".claude/worktrees/painting-urgent-fix-54542b/sdcpp-workflow/CHANGELOG.md",
+    ".claude/worktrees/painting-urgent-fix-54542b/sdcpp-workflow/README.md",
     "operator-console/package-lock.json",
     "operator-console/package.json",
     "operator-console/README.md",
@@ -14,14 +19,14 @@
     "available": true,
     "branch": "main",
     "dirty": true,
-    "head": "d85b7519196e237349955e1ea615edc9fa97eba5",
-    "head_subject": "feat: automatically wire macOS wrapper app into Dock upon install",
+    "head": "5287abdfb800b3068624e9ba0188fd536e37cac3",
+    "head_subject": "Improve DexDiffusion UI serviceability",
     "is_repo": true,
     "remote_url": "git@github.com:westkitty/Image_Gen.git",
     "repo_root": "/Users/andrew/Image_Gen",
-    "staged_count": 0,
-    "tracked_modified_count": 0,
-    "untracked_count": 3
+    "staged_count": 1,
+    "tracked_modified_count": 6,
+    "untracked_count": 1
   },
   "identity": {
     "name": "Image_Gen",
@@ -40,7 +45,7 @@
     "Read the top-level README.md or AGENTS.md to establish project intent.",
     "Read `.resurrection/project_report.md` and make one bounded change at a time."
   ],
-  "scan_timestamp": "2026-06-28T13:33:58+00:00",
+  "scan_timestamp": "2026-07-14T19:41:25+00:00",
   "scanner_version": "1.1.0",
   "secret_risks": [
     {
@@ -50,8 +55,48 @@
     },
     {
       "category": "openai_sk_prefix",
+      "line": 45,
+      "path": ".claude/worktrees/painting-urgent-fix-54542b/Image_Gen_Bible.md"
+    },
+    {
+      "category": "openai_sk_prefix",
       "line": 1078,
+      "path": ".claude/worktrees/painting-urgent-fix-54542b/operator-console/server.js"
+    },
+    {
+      "category": "openai_sk_prefix",
+      "line": 1120,
       "path": "operator-console/server.js"
+    },
+    {
+      "category": "openai_sk_prefix",
+      "line": 7,
+      "path": "sdcpp-workflow/runs/20260708-031145-inpaint/run-metadata.json"
+    },
+    {
+      "category": "openai_sk_prefix",
+      "line": 5,
+      "path": "sdcpp-workflow/runs/20260708-031145-inpaint/inpaint-run-report.md"
+    },
+    {
+      "category": "openai_sk_prefix",
+      "line": 7,
+      "path": "sdcpp-workflow/runs/20260714-145317-inpaint/run-metadata.json"
+    },
+    {
+      "category": "openai_sk_prefix",
+      "line": 5,
+      "path": "sdcpp-workflow/runs/20260714-145317-inpaint/inpaint-run-report.md"
+    },
+    {
+      "category": "openai_sk_prefix",
+      "line": 7,
+      "path": "sdcpp-workflow/runs/20260714-144727-inpaint/run-metadata.json"
+    },
+    {
+      "category": "openai_sk_prefix",
+      "line": 5,
+      "path": "sdcpp-workflow/runs/20260714-144727-inpaint/inpaint-run-report.md"
     }
   ]
 }

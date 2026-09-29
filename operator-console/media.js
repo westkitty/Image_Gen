@@ -412,7 +412,8 @@ function createMediaStore({ roots = CANONICAL_ROOTS, registryFile, now = () => D
       for (let i = 1; i < 1000; i++) {
         const id = `${stem}${i > 1 ? '-' + i : ''}${ext}`;
         try { fs.linkSync(incoming, path.join(root, id)); } catch (e) { if (e.code === 'EEXIST') continue; throw e; }
-        const rec = { artifact_id: id, kind, canonical_path: path.join(root, id), safe_url: '/api/media/' + encodeURIComponent(id), mime: MIME[ext], sha256,
+        const safeUrl = '/api/media/' + encodeURIComponent(id);
+        const rec = { artifact_id: id, kind, canonical_path: path.join(root, id), safe_url: safeUrl, download_url: safeUrl + '/download', mime: MIME[ext], sha256,
           bytes: bytes.length, duration, created_at: now(), job_id, worker, model, seed, parent, keeper: false, meta };
         read().artifacts[id] = rec;
         atomicWriteJson(registryFile, registry);
@@ -426,9 +427,16 @@ function createMediaStore({ roots = CANONICAL_ROOTS, registryFile, now = () => D
     const rec = read().artifacts[id];
     if (!rec) return null;
     const full = contained(roots[rec.kind], id);
-    return full ? { ...rec, path: full } : null;
+    if (!full) return null;
+    const safeUrl = rec.safe_url || '/api/media/' + encodeURIComponent(id);
+    return { ...rec, safe_url: safeUrl, download_url: rec.download_url || safeUrl + '/download', path: full };
   }
-  function list(kind) { return Object.values(read().artifacts).filter(r => !kind || r.kind === kind).sort((a, b) => b.created_at - a.created_at); }
+  function list(kind) {
+    return Object.values(read().artifacts).filter(r => !kind || r.kind === kind).map(r => {
+      const safeUrl = r.safe_url || '/api/media/' + encodeURIComponent(r.artifact_id);
+      return { ...r, safe_url: safeUrl, download_url: r.download_url || safeUrl + '/download' };
+    }).sort((a, b) => b.created_at - a.created_at);
+  }
   function setKeeper(id, keeper) { const r = read().artifacts[id]; if (!r) return null; r.keeper = !!keeper; atomicWriteJson(registryFile, registry); return r.keeper; }
   return { roots, ensureRoots, finalize, resolve, list, setKeeper, _reset() { registry = null; } };
 }

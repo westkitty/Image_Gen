@@ -43,7 +43,7 @@ const SYSTEM = {
       { use: 'SD1.5 txt2img / img2img / inpaint / hires-fix', path: '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors', source: 'huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5', license: 'CreativeML OpenRAIL-M', sha256: '6ce0161689b3853acaa03779ec93eafe75a02f4ced659bee03f50797806fa2fa' },
       { use: 'Real-ESRGAN x4 upscale', path: '/Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth', source: 'github.com/xinntao/Real-ESRGAN releases v0.1.0', license: 'BSD-3-Clause', sha256: '4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1' },
     ],
-    otherTargets: 'SDXL / Flux-fp8 / custom checkpoints are not restored; those targets report model-missing.',
+    otherTargets: 'Available source checkpoints are reported by live capability probes. One validated SDCPP source is selected through the atomic managed secondary slot; FLUX is excluded.',
   },
   launcher: {
     platform: 'macOS',
@@ -138,6 +138,7 @@ function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale,
     }
     const primary = targets.find(t => t.id === SYSTEM.primaryTargetId) || null;
     const { network } = SYSTEM;
+    const assets = getAssets();
     return {
       app: { ...SYSTEM.app, version: build.version || null, gitHead: build.gitHead || null, pid: build.pid || null, startedAt: build.startedAt || null },
       primaryTarget: primary && { id: primary.id, label: primary.label, backend: primary.backend || 'sdcpp', status: primary.status },
@@ -150,8 +151,16 @@ function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale,
       },
       launcher: { ...SYSTEM.launcher, ...cache.launcher, dockInstalled: cache.launcher.dockEntries == null ? null : cache.launcher.dockEntries > 0 },
       sdcpp: SYSTEM.sdcpp,
-      capabilities: capabilitySummary(getAssets(), getEvidence()),
-      assets: getAssets(),
+      modelState: {
+        primaryModel: { id: SYSTEM.primaryTargetId, role: 'protected-primary', backend: 'mflux' },
+        activeSecondaryModel: assets && assets.activeSecondaryModel || null,
+        secondaryModelState: assets && assets.secondaryModelState || 'inactive',
+        sourcePath: assets && assets.secondarySourcePath || null,
+        activePath: assets && assets.secondaryActivePath || null,
+        lastSwitchResult: assets && assets.secondaryLastSwitchResult || null,
+      },
+      capabilities: capabilitySummary(assets, getEvidence()),
+      assets,
       checkedAt: new Date(cachedAt).toISOString(),
     };
   };

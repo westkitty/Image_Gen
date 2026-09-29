@@ -1,7 +1,7 @@
 import Cocoa
 import WebKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKDownloadDelegate {
     private var window: NSWindow!
     private var webView: WKWebView!
     private var statusLabel: NSTextField!
@@ -317,6 +317,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     @objc private func actualSize() {
         webView?.pageZoom = 1.0
+    }
+
+    // MARK: - Same-origin media downloads
+
+    private func isDexMediaDownload(_ url: URL?) -> Bool {
+        guard let url = url,
+              url.scheme == "http",
+              url.host == "127.0.0.1",
+              url.port == 31337 else { return false }
+        let parts = url.pathComponents.filter { $0 != "/" }
+        return parts.count == 4 && parts[0] == "api" && parts[1] == "media" && parts[3] == "download"
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if isDexMediaDownload(navigationAction.request.url) {
+            decisionHandler(.download)
+        } else {
+            decisionHandler(.allow)
+        }
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
+                  suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
+        let manager = FileManager.default
+        guard let directory = manager.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
+            completionHandler(nil)
+            return
+        }
+        let proposed = (suggestedFilename as NSString).lastPathComponent
+        guard !proposed.isEmpty, proposed != ".", proposed != ".." else {
+            completionHandler(nil)
+            return
+        }
+        let stem = (proposed as NSString).deletingPathExtension
+        let ext = (proposed as NSString).pathExtension
+        var destination = directory.appendingPathComponent(proposed)
+        var suffix = 2
+        while manager.fileExists(atPath: destination.path) {
+            let name = ext.isEmpty ? "\(stem)-\(suffix)" : "\(stem)-\(suffix).\(ext)"
+            destination = directory.appendingPathComponent(name)
+            suffix += 1
+        }
+        completionHandler(destination)
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        setStatus("Audio download finished in Downloads.")
+        appendLog("media-download: finished")
+    }
+
+    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+        setStatus("Audio download failed: \(error.localizedDescription)")
+        appendLog("media-download: failed: \(error.localizedDescription)")
     }
 
     @objc private func copyErrorReport() {

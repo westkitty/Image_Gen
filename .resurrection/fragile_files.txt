@@ -1,3 +1,8 @@
+.claude/worktrees/painting-urgent-fix-54542b/operator-console/package-lock.json
+.claude/worktrees/painting-urgent-fix-54542b/operator-console/package.json
+.claude/worktrees/painting-urgent-fix-54542b/operator-console/README.md
+.claude/worktrees/painting-urgent-fix-54542b/sdcpp-workflow/CHANGELOG.md
+.claude/worktrees/painting-urgent-fix-54542b/sdcpp-workflow/README.md
 operator-console/package-lock.json
 operator-console/package.json
 operator-console/README.md

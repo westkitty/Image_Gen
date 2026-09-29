@@ -20,11 +20,13 @@ function buildControlledArgs(spec, params, { seedValue, isDiscovered = false, re
   const mflux = spec.backend === 'mflux';
   const args = ['--target', params.target, '--prompt', params.prompt];
   if (spec.modelPath && isDiscovered) args.push('--model-path', spec.modelPath);
-  if (params.negative_prompt && !mflux) args.push('--negative-prompt', params.negative_prompt);
+  if (params.negative_prompt && !mflux && !spec.noNegativePrompt) args.push('--negative-prompt', params.negative_prompt);
   if (params.width) args.push('--width', String(params.width));
   if (params.height) args.push('--height', String(params.height));
   if (params.steps) args.push('--steps', String(params.steps));
-  if (!mflux && params.cfg_scale !== undefined && params.cfg_scale !== null && params.cfg_scale !== '') {
+  if (!mflux && spec.fixedCfgScale !== undefined) {
+    args.push('--cfg', String(spec.fixedCfgScale));
+  } else if (!mflux && params.cfg_scale !== undefined && params.cfg_scale !== null && params.cfg_scale !== '') {
     args.push('--cfg', String(params.cfg_scale));
   }
   if (seedValue !== undefined && seedValue !== null && seedValue !== '') args.push('--seed', String(seedValue));

@@ -11,6 +11,9 @@ load_config
 
 : "${MODEL_STAGE_ROOT:=/Volumes/wc2tb/ImageGen}"
 export MODEL_STAGE_ROOT
+# SDXL-class checkpoints live on Big Mac's internal SSD (expanded remotely). The wc2tb
+# USB drive streams at ~5-20 MB/s under load, which timed out SDXL loads (2026-09-26).
+SDXL_MODEL_ROOT='$HOME/sdcpp-staging/models'
 
 ARG_TARGET=""
 ARG_PROMPT="$PROMPT"
@@ -124,6 +127,8 @@ TARGET_CLIP_L_PATH=""
 TARGET_T5XXL_PATH=""
 TARGET_VAE_FORMAT=""
 TARGET_SAMPLER=""
+TARGET_SCHEDULER=""
+TARGET_CLIP_SKIP=""
 TARGET_PREDICTION=""
 TARGET_GUIDANCE=""
 TARGET_MAX_WIDTH=1024
@@ -156,7 +161,13 @@ case "$ARG_TARGET" in
     TARGET_MODE="proofed controlled generation"
     TARGET_STATUS="proofed"
     TARGET_CAVEAT="Controlled proofed path; not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/sd_xl_base_1.0.safetensors"
+    TARGET_MODEL_PATH="$SDXL_MODEL_ROOT/sd_xl_base_1.0.safetensors"
+    TARGET_DEFAULT_WIDTH=1024
+    TARGET_DEFAULT_HEIGHT=1024
+    TARGET_DEFAULT_STEPS=20
+    TARGET_MAX_STEPS=50
+    TARGET_MAX_WIDTH=1536
+    TARGET_MAX_HEIGHT=1536
     TARGET_DEFAULT_CFG="7"
     TARGET_REQUIRE_CFG_SCALE="true"
     ;;
@@ -164,15 +175,17 @@ case "$ARG_TARGET" in
     TARGET_LABEL="Photonic Fusion SDXL"
     TARGET_MODE="migrated controlled generation"
     TARGET_STATUS="staged"
-    TARGET_CAVEAT="Migrated wc2tb SDXL checkpoint. Photonic has one direct smoke proof; not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/photonic_fusion_sdxl_finale_v1.safetensors"
-    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
-    TARGET_DEFAULT_WIDTH=1024
+    TARGET_CAVEAT="Civitai 683210 v1449179 (Finale, SDXL 1.0 fp16); uses the checkpoint's embedded VAE. Not full A1111 parity."
+    TARGET_MODEL_PATH="$SDXL_MODEL_ROOT/photonic_fusion_sdxl_finale_v1.safetensors"
+    TARGET_DEFAULT_WIDTH=768
     TARGET_DEFAULT_HEIGHT=1024
-    TARGET_DEFAULT_STEPS=10
+    TARGET_DEFAULT_STEPS=30
     TARGET_MAX_STEPS=150
-    TARGET_DEFAULT_CFG="6.5"
+    TARGET_DEFAULT_CFG="6"
     TARGET_SAMPLER="dpm++2m"
+    # 10 steps + discrete scheduler gave mosaic artifacts; 30 steps + karras is clean (2026-09-26 A/B).
+    TARGET_SCHEDULER="karras"
+    TARGET_CLIP_SKIP=2
     TARGET_REQUIRE_CFG_SCALE="true"
     ;;
   sdxl-homochi)
@@ -329,12 +342,13 @@ case "$ARG_TARGET" in
     TARGET_MODE="proofed controlled generation"
     TARGET_STATUS="proofed"
     TARGET_CAVEAT="Controlled proofed path; not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors"
+    TARGET_MODEL_PATH="$SDXL_MODEL_ROOT/sd_xl_turbo_1.0_fp16.safetensors"
     TARGET_MAX_STEPS=4
     TARGET_DEFAULT_STEPS=4
-    TARGET_DEFAULT_CFG="0"
+    # sd.cpp 7f0e728: cfg 0 = unconditioned (ignores the prompt); distilled models use cfg 1.
+    TARGET_DEFAULT_CFG="1"
     TARGET_REQUIRE_CFG_SCALE="true"
-    TARGET_GUIDANCE="--guidance 0"
+    TARGET_GUIDANCE=""
     TARGET_PREDICTION="--prediction eps"
     ;;
   flux-fp8)
@@ -393,8 +407,8 @@ fi
 if ! validateIntRange "$ARG_STEPS" "$TARGET_MIN_STEPS" "$TARGET_MAX_STEPS" false; then
   fail "steps" "Invalid steps for $ARG_TARGET"
 fi
-if [ "$ARG_TARGET" = "sdxl-turbo" ] && [ "$(printf '%s' "$ARG_CFG")" != "0" ]; then
-  fail "cfg-scale" "SDXL Turbo requires cfg_scale 0"
+if [ "$ARG_TARGET" = "sdxl-turbo" ] && [ "$(printf '%s' "$ARG_CFG")" != "1" ]; then
+  fail "cfg-scale" "SDXL Turbo requires cfg_scale 1"
 fi
 if [ "$ARG_TARGET" = "flux-fp8" ] && [ "$(printf '%s' "$ARG_CFG")" != "3.5" ]; then
   fail "cfg-scale" "Flux fp8 requires cfg_scale 3.5"
@@ -646,6 +660,20 @@ SD15_TUNNEL_PORT="$LOCAL_TUNNEL_PORT"
 if [ -f "$SDCPP_STATE_DIR/current-ports.env" ]; then
   SD15_TUNNEL_PORT="$( . "$SDCPP_STATE_DIR/current-ports.env"; printf '%s' "${LOCAL_TUNNEL_PORT:-$SD15_TUNNEL_PORT}")"
 fi
+# The managed secondary slot is an sd-cli-per-job architecture. If this
+# workflow's optional warm server is present, stop only that owned session
+# before changing the active checkpoint so an old model cannot remain resident.
+if lsof -nP -iTCP:"$SD15_TUNNEL_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  "$HERE/sdcpp-server-stop.sh" >/dev/null 2>&1 || controlled_fail "model-slot-server-stop" "Could not stop the workflow-owned warm server before changing the secondary model."
+fi
+SLOT_SOURCE="${TARGET_MODEL_PATH:-$REMOTE_MODEL}"
+SLOT_RESULT=""
+if ! SLOT_RESULT="$(DEX_SSH_TARGET="$SSH_TARGET" "$HERE/sdcpp-secondary-slot.sh" activate "$ARG_TARGET" "$SLOT_SOURCE")"; then
+  controlled_fail "model-slot" "Secondary model activation failed: $SLOT_RESULT"
+fi
+SECONDARY_ACTIVE_MODEL='$HOME/Library/Caches/DexDiffusion/secondary-model/current/model.safetensors'
+log "Secondary model slot active for $ARG_TARGET: $SLOT_RESULT"
+
 SD15_USE_SERVER=false
 if [ "$ARG_TARGET" = "sd15" ] && [ "$ARG_BATCH_COUNT" = "1" ] && [ -z "$ARG_HIRES_SCALE" ] && ! printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
   if lsof -nP -iTCP:"$SD15_TUNNEL_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
@@ -739,6 +767,7 @@ Q_NEG="$(printf '%q' "$ARG_NEG")"
 TARGET_HELP_OUTPUT="$(ssh_remote "if [ -x \"$SDCLI\" ]; then \"$SDCLI\" --help 2>&1; fi" 2>&1 || true)"
 printf '%s\n' "$TARGET_HELP_OUTPUT" > "$RUN_DIR/sd-cli-help.log"
 
+[ -n "$ARG_SCHEDULER" ] || ARG_SCHEDULER="$TARGET_SCHEDULER"
 SCHEDULER_FLAG=""
 if [ -n "$ARG_SCHEDULER" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--scheduler'; then
   SCHEDULER_FLAG="--scheduler $ARG_SCHEDULER"
@@ -769,10 +798,10 @@ case "$ARG_TARGET" in
     if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--cfg-scale'; then
       CFG_FLAG="--cfg-scale $ARG_CFG"
     fi
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} --sampling-method ${TARGET_SAMPLER:-euler_a} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} --sampling-method ${TARGET_SAMPLER:-euler_a} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   sdxl-base)
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/sd_xl_base_1.0.safetensors"
+    TARGET_MODEL_PATH="$SDXL_MODEL_ROOT/sd_xl_base_1.0.safetensors"
     remote_test "test -s \"$TARGET_MODEL_PATH\"" || controlled_fail "model-present" "SDXL base checkpoint is missing or empty: $TARGET_MODEL_PATH"
     REMOTE_MODEL_BYTES="$(ssh_remote "stat -f %z \"$TARGET_MODEL_PATH\" 2>/dev/null || wc -c < \"$TARGET_MODEL_PATH\" 2>/dev/null || printf '0'" 2>&1 | tail -n 1 | tr -d '[:space:]')"
     case "$REMOTE_MODEL_BYTES" in ''|*[!0-9]*) controlled_fail "model-size" "Could not read a numeric size for $TARGET_MODEL_PATH." ;; esac
@@ -785,20 +814,20 @@ case "$ARG_TARGET" in
     if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--cfg-scale'; then
       CFG_FLAG="--cfg-scale $ARG_CFG"
     fi
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   sdxl-turbo)
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors"
+    TARGET_MODEL_PATH="$SDXL_MODEL_ROOT/sd_xl_turbo_1.0_fp16.safetensors"
     remote_test "test -s \"$TARGET_MODEL_PATH\"" || controlled_fail "model-present" "SDXL Turbo checkpoint is missing or empty: $TARGET_MODEL_PATH"
     REMOTE_MODEL_BYTES="$(ssh_remote "stat -f %z \"$TARGET_MODEL_PATH\" 2>/dev/null || wc -c < \"$TARGET_MODEL_PATH\" 2>/dev/null || printf '0'" 2>&1 | tail -n 1 | tr -d '[:space:]')"
     case "$REMOTE_MODEL_BYTES" in ''|*[!0-9]*) controlled_fail "model-size" "Could not read a numeric size for $TARGET_MODEL_PATH." ;; esac
     if [ "$REMOTE_MODEL_BYTES" -lt $((1024 * 1024 * 1024)) ]; then
       controlled_fail "model-size" "SDXL Turbo checkpoint is too small (${REMOTE_MODEL_BYTES} bytes; need at least 1073741824)."
     fi
-    for flag in '--model' '--prompt' '--output' '--width' '--height' '--steps' '--cfg-scale' '--guidance' '--prediction'; do
+    for flag in '--model' '--prompt' '--output' '--width' '--height' '--steps' '--cfg-scale' '--prediction'; do
       printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- "$flag" || controlled_fail "sd-cli-help" "sd-cli help does not show required flag $flag."
     done
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --cfg-scale 0 --guidance 0 --prediction eps $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --cfg-scale 1 --prediction eps $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   flux-fp8)
     TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/flux/flux1-schnell/flux1-schnell-fp8.safetensors"
@@ -837,7 +866,7 @@ case "$ARG_TARGET" in
     for flag in '--model' '--clip_l' '--t5xxl' '--vae' '--output' '--width' '--height' '--steps' '--guidance' '--prediction' '--vae-format'; do
       printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- "$flag" || controlled_fail "sd-cli-help" "sd-cli help does not show required flag $flag."
     done
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" --clip_l \"$TARGET_CLIP_L_PATH\" --t5xxl \"$TARGET_T5XXL_PATH\" --vae \"${ARG_VAE:-$TARGET_VAE_PATH}\" --vae-format flux -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --guidance 3.5 --prediction flux_flow --sampling-method euler $SEED_FRAG ${SCHEDULER_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" --clip_l \"$TARGET_CLIP_L_PATH\" --t5xxl \"$TARGET_T5XXL_PATH\" --vae \"${ARG_VAE:-$TARGET_VAE_PATH}\" --vae-format flux -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --guidance 3.5 --prediction flux_flow --sampling-method euler $SEED_FRAG ${SCHEDULER_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   *)
     # Generic handler for all staged models (TARGET_STATUS=staged).
@@ -867,6 +896,10 @@ case "$ARG_TARGET" in
     if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--cfg-scale'; then
       CFG_FLAG="--cfg-scale $ARG_CFG"
     fi
+    CLIP_SKIP_FRAG=""
+    if [ -n "$TARGET_CLIP_SKIP" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--clip-skip'; then
+      CLIP_SKIP_FRAG="--clip-skip $TARGET_CLIP_SKIP"
+    fi
     SAMPLER_FRAG=""
     if [ -n "$TARGET_SAMPLER" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--sampling-method'; then
       SAMPLER_FRAG="--sampling-method $TARGET_SAMPLER"
@@ -875,7 +908,7 @@ case "$ARG_TARGET" in
     if [ "$ARG_VAE" != "none" ] && [ -n "$TARGET_VAE_PATH" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--vae'; then
       BUILT_VAE_FLAG="--vae \"$TARGET_VAE_PATH\""
     fi
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$TARGET_MODEL_PATH\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} ${SAMPLER_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${BUILT_VAE_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} ${SAMPLER_FRAG:-} ${CLIP_SKIP_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${BUILT_VAE_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
 esac
 

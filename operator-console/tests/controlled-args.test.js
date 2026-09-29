@@ -47,6 +47,13 @@ test('MFLUX args never carry SDCPP-only flags', () => {
   ]);
 });
 
+test('custom portrait and landscape dimensions survive the controlled argument path unchanged', () => {
+  const landscape = buildControlledArgs(MFLUX, { ...FULL_PARAMS, width: 768, height: 512 }, { seedValue: 7 });
+  const portrait = buildControlledArgs(MFLUX, { ...FULL_PARAMS, width: 512, height: 768 }, { seedValue: 8 });
+  assert.deepEqual(landscape.slice(landscape.indexOf('--width'), landscape.indexOf('--steps')), ['--width', '768', '--height', '512']);
+  assert.deepEqual(portrait.slice(portrait.indexOf('--width'), portrait.indexOf('--steps')), ['--width', '512', '--height', '768']);
+});
+
 test('SDCPP args keep negative prompt, CFG, scheduler and VAE', () => {
   const args = buildControlledArgs({ id: 'sdxl-base' }, { ...FULL_PARAMS, target: 'sdxl-base' }, {
     seedValue: 1, resolveVaePath: () => '/x/vae',
@@ -54,4 +61,12 @@ test('SDCPP args keep negative prompt, CFG, scheduler and VAE', () => {
   for (const flag of ['--negative-prompt', '--cfg', '--scheduler', '--vae']) {
     assert.ok(args.includes(flag), `${flag} missing from SDCPP args`);
   }
+});
+
+test('SDXL Turbo always sends cfg 1 and never a negative prompt (sd.cpp cfg 0 = unconditioned)', () => {
+  const { buildControlledArgs } = require('../controlled-args');
+  const spec = { id: 'sdxl-turbo', backend: 'sdcpp', fixedCfgScale: 1, noNegativePrompt: true };
+  const args = buildControlledArgs(spec, { target: 'sdxl-turbo', prompt: 'p', negative_prompt: 'n', cfg_scale: 7, steps: 4 }, { seedValue: 1 });
+  assert.equal(args[args.indexOf('--cfg') + 1], '1');
+  assert.ok(!args.includes('--negative-prompt'));
 });
