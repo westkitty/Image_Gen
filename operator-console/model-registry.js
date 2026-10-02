@@ -82,13 +82,13 @@ const KNOWN_CURATED_CARDS = [
     ],
     native_resolution: '512x512',
     default_steps: 4,
-    default_cfg: 3.5,
+    default_cfg: 1,
     speed_class: 'Fast (4 steps)',
     supports_negative_prompt: false,
     supports_lora: false,
     supports_embeddings: false,
     prompt_profile: 'image.flux1',
-    caveat: 'Uses the fp8 runtime-proven Flux file with stable-diffusion.cpp.'
+    caveat: 'Uses the installed FLUX.1 Schnell FP8 full checkpoint through stable-diffusion.cpp.'
   },
   {
     id: 'sdxl-turbo',
@@ -483,7 +483,7 @@ const KNOWN_CURATED_CARDS = [
   },
   {
     id: 'sdxl-biglove',
-    display_name: 'Big Love Photo',
+    display_name: 'Big Love Photo 6',
     family: 'sdxl',
     backend: 'sdcpp',
     status: 'STAGED',
@@ -547,6 +547,9 @@ function createFallbackCard(target) {
     family,
     backend,
     status,
+    runtime: target.runtime || 'unknown',
+    verification: target.lastPass || null,
+    availability_reason: target.reason || null,
     primary: target.primary === true,
     preview_image: null,
     preview_provenance: 'placeholder',
@@ -590,7 +593,14 @@ function resolveAllModelCards(availableTargets = null) {
       // Overlay live runtime status if available
       cards.push({
         ...curated,
-        status: (target.status || curated.status).toUpperCase(),
+        display_name: target.label || curated.display_name,
+        default_steps: target.defaultSteps ?? curated.default_steps,
+        default_cfg: target.defaultCfgScale ?? curated.default_cfg,
+        supports_negative_prompt: target.noNegativePrompt !== true && curated.supports_negative_prompt,
+        status: (target.status || 'unknown').toUpperCase(),
+        runtime: target.runtime || 'unknown',
+        verification: target.lastPass || null,
+        availability_reason: target.reason || null,
         primary: target.primary === true || curated.primary === true,
         backend: target.backend || curated.backend
       });

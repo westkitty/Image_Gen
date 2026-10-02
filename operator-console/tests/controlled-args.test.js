@@ -70,3 +70,12 @@ test('SDXL Turbo always sends cfg 1 and never a negative prompt (sd.cpp cfg 0 = 
   assert.equal(args[args.indexOf('--cfg') + 1], '1');
   assert.ok(!args.includes('--negative-prompt'));
 });
+
+
+test('FLUX.1 Schnell fixes CFG at 1, drops negative prompts, and stays on SDCPP', () => {
+  const spec = { id: 'flux-fp8', backend: 'sdcpp', fixedCfgScale: 1, noNegativePrompt: true };
+  const args = buildControlledArgs(spec, { target: 'flux-fp8', prompt: 'p', negative_prompt: 'n', cfg_scale: 3.5, steps: 4 }, { seedValue: 1 });
+  assert.equal(controlledScriptFor(spec), 'bin/sdcpp-controlled-generate.sh');
+  assert.equal(args[args.indexOf('--cfg') + 1], '1');
+  assert.ok(!args.includes('--negative-prompt'));
+});

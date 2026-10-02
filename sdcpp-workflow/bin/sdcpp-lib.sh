@@ -423,9 +423,25 @@ cleanup_remote_ephemeral() {
   for p in "${SDCPP_REMOTE_EPHEMERAL[@]}"; do
     cmd="$cmd rm -f -- \"$p\";"
   done
-  ssh_remote "$cmd" >/dev/null 2>&1 || true
+  # Verify deletion in-band: ssh can report zero even if rm failed remotely.
+  for p in "${SDCPP_REMOTE_EPHEMERAL[@]}"; do
+    cmd="$cmd test ! -e \"$p\" || exit 1;"
+  done
+  cmd="$cmd printf '%s\\n' '__SDCPP_CLEANUP_OK__'"
+  local cleanup_result=""
+  cleanup_result="$(ssh_remote "$cmd" 2>/dev/null)" || true
   SDCPP_REMOTE_EPHEMERAL=()
-  return "$rc"
+  case "$cleanup_result" in
+    *__SDCPP_CLEANUP_OK__*) printf 'SDCPP_REMOTE_CLEANUP: OK\n' ;;
+    *)
+      printf 'SDCPP_REMOTE_CLEANUP: FAIL\n' >&2
+      if [ "$rc" -eq 0 ]; then
+        printf 'First failed gate: cleanup-failed\n' >&2
+        rc=1
+      fi
+      ;;
+  esac
+  exit "$rc"
 }
 
 remote_eval_path() {

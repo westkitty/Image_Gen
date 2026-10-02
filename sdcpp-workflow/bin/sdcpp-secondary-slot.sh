@@ -2,8 +2,25 @@
 set -euo pipefail
 
 if [ "${DEX_SECONDARY_SLOT_LOCAL:-0}" != "1" ] && [ "${DEX_SECONDARY_SLOT_REMOTE:-0}" != "1" ]; then
-  exec ssh -o BatchMode=yes -o ConnectTimeout=8 "${DEX_SSH_TARGET:-westcat}" \
-    "DEX_SECONDARY_SLOT_REMOTE=1 /bin/bash -s -- $(printf '%q ' "$@")" < "$0"
+  # Tailscale SSH can report zero for a failed remote activation. Validate
+  # the returned state on the MacBook before any caller may use the slot.
+  result="$(ssh -o BatchMode=yes -o ConnectTimeout=8 "${DEX_SSH_TARGET:-westcat}" \
+    "DEX_SECONDARY_SLOT_REMOTE=1 /bin/bash -s -- $(printf '%q ' "$@")" < "$0")" || exit 1
+  printf '%s\n' "$result"
+  /usr/bin/python3 -c '
+import json, sys
+try:
+    state = json.loads(sys.argv[1])
+    if sys.argv[2] == "activate":
+        assert state.get("lastSwitchResult", {}).get("status") == "pass"
+        assert state.get("secondaryModelState") == "active"
+        assert state.get("activeSecondaryModel") == sys.argv[3]
+    else:
+        assert state.get("primaryModel", {}).get("id") == "flux2-klein-4b"
+except Exception:
+    sys.exit(1)
+' "$result" "$1" "${2:-}"
+  exit $?
 fi
 
 /usr/bin/python3 - "$@" <<'PY'
@@ -65,7 +82,7 @@ try:
     if source.stat().st_size <= 1024 * 1024:
         fail('source checkpoint is too small to be valid', previous)
     if os.environ.get('DEX_SECONDARY_SLOT_LOCAL') != '1':
-        allowed = [pathlib.Path('/Users/bigmac/sdcpp-staging/models'), pathlib.Path('/Volumes/wc2tb/ImageGen/checkpoints'), pathlib.Path('/Volumes/wc2tb/ImageGen/flux')]
+        allowed = [pathlib.Path('/Users/bigmac/sdcpp-staging/models'), pathlib.Path('/Volumes/wc2tb/ImageGen/checkpoints'), pathlib.Path('/Volumes/wc2tb/ImageGen/flux'), pathlib.Path('/Volumes/wc2tb/dex-imagegen/models/checkpoints'), pathlib.Path('/Volumes/wc2tb/dex-imagegen/models/flux1/transformer')]
         if not any(source == p or p in source.parents for p in allowed):
             fail('source checkpoint is outside approved model roots', previous)
 

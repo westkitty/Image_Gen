@@ -40,7 +40,7 @@
     const NOT_READY = new Set(['dormant', 'model-missing']);
     const has = id => !!id && list.some(t => t && t.id === id && !NOT_READY.has(t.runtime));
     if (has(savedId)) return savedId;
-    const primary = list.find(t => t && t.primary === true && t.status === 'proofed');
+    const primary = list.find(t => t && t.primary === true && ['proofed', 'proven'].includes(t.status));
     if (primary) return primary.id;
     return currentId;
   }

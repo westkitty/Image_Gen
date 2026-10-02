@@ -19,7 +19,7 @@ function nativeBatchEligible(spec, quantity, env = process.env) {
 function buildControlledArgs(spec, params, { seedValue, isDiscovered = false, resolveVaePath = () => null, batchCount = 1 } = {}) {
   const mflux = spec.backend === 'mflux';
   const args = ['--target', params.target, '--prompt', params.prompt];
-  if (spec.modelPath && isDiscovered) args.push('--model-path', spec.modelPath);
+  if (spec.modelPath && (isDiscovered || spec.aliasOf)) args.push('--model-path', spec.modelPath);
   if (params.negative_prompt && !mflux && !spec.noNegativePrompt) args.push('--negative-prompt', params.negative_prompt);
   if (params.width) args.push('--width', String(params.width));
   if (params.height) args.push('--height', String(params.height));

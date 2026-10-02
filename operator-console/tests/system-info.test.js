@@ -66,7 +66,8 @@ test('system-info reports primary target, canonical storage, derived capabilitie
 test('exactly one primary target (MFLUX), and capabilities carry per-target runtime', () => {
   const src = fs.readFileSync(path.join(ROOT, 'operator-console', 'server.js'), 'utf8');
   assert.equal((src.match(/^\s*primary: true,$/gm) || []).length, 1, 'exactly one primary target');
-  assert.match(src, /primary: target\.primary === true,\n\s*runtime: targetRuntime\(target, assetCache, TARGET_MODELS\),/);
+  assert.match(src, /targetVerification\(target, assetCache, TARGET_MODELS, evidenceStore\.read\(\)\)/);
+  assert.match(src, /primary: target\.primary === true,/);
 });
 
 test('initial target: saved preference wins, else proofed primary, else current', () => {

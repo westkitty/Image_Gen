@@ -7,12 +7,12 @@
   "project_name": "Image_Gen / DexDiffusion",
   "project_root": "/Users/andrew/Image_Gen",
   "artifact_path": "operator-console + sdcpp-workflow",
-  "state_revision": 12,
-  "last_updated": "2026-09-29",
+  "state_revision": 15,
+  "last_updated": "2026-10-02",
   "current_baseline": {
-    "identity": "main@2cdfe21 plus preserved local modifications",
+    "identity": "main@10aaa2b plus local verification repairs (uncommitted)",
     "state": "current-baseline",
-    "last_verified": "2026-09-29"
+    "last_verified": "2026-10-02"
   },
   "scope_boundaries": [
     "DexDiffusion UI/API on MacBook and image-generation execution on Big Mac via ssh westcat"
@@ -21,7 +21,7 @@
 }
 -->
 
-## 0. Current Accepted Architecture (cold-start summary, revision 12)
+## 0. Historical Accepted Architecture (revision 12; current verification in revision 15)
 
 Operator guide: `DEXDIFFUSION.md`. Live facts: `bin/dexdiffusion status`, `GET /api/system-info`.
 
@@ -394,3 +394,43 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
   - Sibling 2: Seed `26719822`, Run `20260929-142044-controlled-flux2-klein-4b`, File `20260929-142044-controlled-flux2-klein-4b-s26719822-controlled-flux2-klein-4b.png` (1,471,988 bytes, SHA-256: `583180c57a4748a6f2f95ab0e11e6c9b69d9f768e4957cf2841467404200e745`).
   - Zero Big Mac retention: `ssh westcat 'find /tmp -maxdepth 1 -type d -name "dexdiffusion-mflux.*"'` confirmed strictly 0 directories.
 - **Regression Test Suite**: Expanded from 152 to 154 tests; all 154 passing (0 failures).
+
+### Revision 15 — 2026-10-02 (Exhaustive model-path live verification)
+
+- 19 intended/selectable generation targets reconciled: 5 initially working, 13 repaired and verified, 1 failed unresolved. This revision supersedes earlier unsupported model-readiness claims; old evidence remains historical.
+- Metadata previously remained at revision 12 while the history included revision 14; metadata and this new revision now agree.
+- Every passing target has a new quantity-1 normal-API generation, decoded non-solid image, matching canonical route bytes, exact managed-slot source and invocation evidence, and verified remote output absence.
+- The protected MFLUX 0.20.0 / MLX FLUX.2 Klein 4B 4-bit internal-SSD primary is unchanged. Secondary backend remains stable-diffusion.cpp 7f0e728 on Big Mac via ssh westcat.
+- Missing/stale checkpoint paths now point to exact installed files. Big Love Photo1, Photo4.5 and Photo6 have distinct explicit labels/targets. The SD1.5 alias shares the same canonical checkpoint without a weight copy.
+- SSH activation requires an in-band successful state for the requested target. Capability proof is individual to each target; family history and PARTIAL results cannot promote another model. Remote cleanup failures override an early PASS banner.
+- FLUX.1 Schnell FP8 remains BROKEN / FAILED_UNRESOLVED. Its exact verified full checkpoint loads and executes four steps, but produces a solid-white frame. CPU VAE and attention-off tests reproduced the invalid frame. A generated-frame decoder/content guard now rejects this failure. The exact numerical stage remains unisolated; this model is not certified as working.
+- FLUX source was staged on Big Mac internal SSD to remove proven external cold-loading timeouts. Original external 17,236,328,572-byte checkpoint retained; both SHA-256 ead426278b49030e9da5df862994f25ce94ab2ee4df38b556ddddb3db093bf72. No weight downloads, deletion, or substitution.
+- RealVisXL initially hit the 720-second external-load timeout with competing checksum reads; retry passed with competing reads paused.
+- Current regression proof: primary/SDCPP txt2img, img2img, inpaint, Lanczos, Real-ESRGAN and hires-fix PASS. Hires Custom preserves explicit arguments with a shell-compatible profile. Batch/sweep has no new live acceptance claim.
+- Console unit tests: 161/161, zero failures or skips. Node/shell syntax and git diff --check PASS.
+- Node 127.0.0.1:31337, Tailscale Serve :8443 tailnet-only, separate :443 service/Funnel unchanged. Canonical images only /Users/andrew/images_made; Big Mac completed image outputs absent.
+
+| Target | Final verdict | Job | Run | Canonical output |
+| --- | --- | --- | --- | --- |
+| sd15 | VERIFIED_WORKING | 2a3d17c4-b342-4b91-b3ab-670693858bf8 | 20261001-211553-controlled-sd15 | /Users/andrew/images_made/20261001-211553-controlled-sd15-s20261001-controlled-sd15.png |
+| sdxl-base | VERIFIED_WORKING | ff5845bf-2f7e-4f51-97d1-e6e282f942bc | 20261001-211723-controlled-sdxl-base | /Users/andrew/images_made/20261001-211723-controlled-sdxl-base-s20261001-controlled-sdxl-base.png |
+| sdxl-turbo | VERIFIED_WORKING | 8bda9f5a-4c9d-4a88-b291-aef9a8784896 | 20261001-211853-controlled-sdxl-turbo | /Users/andrew/images_made/20261001-211853-controlled-sdxl-turbo-s20261001-controlled-sdxl-turbo.png |
+| flux-fp8 | FAILED_UNRESOLVED | 227ac79d-bdcd-4c7f-8836-3cf230675dc2 | 20261002-040459-controlled-flux-fp8 | Rejected solid-white diagnostic; retained as evidence |
+| flux2-klein-4b | VERIFIED_WORKING | 524a7381-dfbf-405a-9c98-1fce010f7768 | 20261001-212403-controlled-flux2-klein-4b | /Users/andrew/images_made/20261001-212403-controlled-flux2-klein-4b-s20261001-controlled-flux2-klein-4b.png |
+| sdxl-photonic | VERIFIED_WORKING | 3fb5ba52-6657-44b5-8ae9-5fc9867075ba | 20261001-212432-controlled-sdxl-photonic | /Users/andrew/images_made/20261001-212432-controlled-sdxl-photonic-s20261001-controlled-sdxl-photonic.png |
+| sdxl-homochi | REPAIRED_AND_VERIFIED | 0f9b6b79-2105-4d92-8ea0-a6ae4c054a3e | 20261001-215657-controlled-sdxl-homochi | /Users/andrew/images_made/20261001-215657-controlled-sdxl-homochi-s20261001-controlled-sdxl-homochi.png |
+| sdxl-pony | REPAIRED_AND_VERIFIED | 87696110-e208-46b0-a4bc-7d3033d20516 | 20261001-220743-controlled-sdxl-pony | /Users/andrew/images_made/20261001-220743-controlled-sdxl-pony-s20261001-controlled-sdxl-pony.png |
+| sd15-homofidelis | REPAIRED_AND_VERIFIED | fea751be-e888-435b-9248-37561258093c | 20261001-221410-controlled-sd15-homofidelis | /Users/andrew/images_made/20261001-221410-controlled-sd15-homofidelis-s20261001-controlled-sd15-homofidelis.png |
+| sdxl-juggernaut | REPAIRED_AND_VERIFIED | b2b03c83-28b3-48ad-9a2c-61d49e2a3d7c | 20261001-221710-controlled-sdxl-juggernaut | /Users/andrew/images_made/20261001-221710-controlled-sdxl-juggernaut-s20261001-controlled-sdxl-juggernaut.png |
+| sdxl-realvisxl | REPAIRED_AND_VERIFIED | 6db769ed-ac11-41a4-a345-7d1191ed7e6e | 20261002-042311-controlled-sdxl-realvisxl | /Users/andrew/images_made/20261002-042311-controlled-sdxl-realvisxl-s20261001-controlled-sdxl-realvisxl.png |
+| sdxl-cyberrealistic | REPAIRED_AND_VERIFIED | d28eacd6-c2a1-4bef-ad8b-46507188b9ec | 20261002-041937-controlled-sdxl-cyberrealistic | /Users/andrew/images_made/20261002-041937-controlled-sdxl-cyberrealistic-s20261001-controlled-sdxl-cyberrealistic.png |
+| sdxl-epicrealism | REPAIRED_AND_VERIFIED | 31e0412b-613b-40a5-a5e6-d0b1fe22dfbd | 20261002-042830-controlled-sdxl-epicrealism | /Users/andrew/images_made/20261002-042830-controlled-sdxl-epicrealism-s20261001-controlled-sdxl-epicrealism.png |
+| sdxl-biglust | REPAIRED_AND_VERIFIED | ec1fd5b5-069e-4a29-9229-d8f3c4f1b12c | 20261002-043423-controlled-sdxl-biglust | /Users/andrew/images_made/20261002-043423-controlled-sdxl-biglust-s20261001-controlled-sdxl-biglust.png |
+| sdxl-lustify | REPAIRED_AND_VERIFIED | cafafab1-9324-4ac7-b53a-74692a3e11db | 20261002-044035-controlled-sdxl-lustify | /Users/andrew/images_made/20261002-044035-controlled-sdxl-lustify-s20261001-controlled-sdxl-lustify.png |
+| sdxl-biglove | REPAIRED_AND_VERIFIED | ad8e9ccf-e2db-4af9-af72-b7fc5c773cac | 20261002-044624-controlled-sdxl-biglove | /Users/andrew/images_made/20261002-044624-controlled-sdxl-biglove-s20261001-controlled-sdxl-biglove.png |
+| sdxl-biglove-photo1 | REPAIRED_AND_VERIFIED | 84622692-b0d6-47cc-8ba3-22e60f93c110 | 20261002-045254-controlled-sdxl-biglove-photo1 | /Users/andrew/images_made/20261002-045254-controlled-sdxl-biglove-photo1-s20261001-controlled-sdxl-biglove-photo1.png |
+| sdxl-biglove-photo45 | REPAIRED_AND_VERIFIED | 242d99fa-0a99-424d-aaf8-7f3a3291fbe3 | 20261002-045824-controlled-sdxl-biglove-photo45 | /Users/andrew/images_made/20261002-045824-controlled-sdxl-biglove-photo45-s20261001-controlled-sdxl-biglove-photo45.png |
+| sd15-auto-v1-5-pruned-emaonly | REPAIRED_AND_VERIFIED | 4afba9cc-b456-45a2-b33c-1d94324dec8d | 20261002-050354-controlled-sd15-auto-v1-5-pruned-emaonly | /Users/andrew/images_made/20261002-050354-controlled-sd15-auto-v1-5-pruned-emaonly-s20261001-controlled-sd15-auto-v1-5-pruned-emaonly.png |
+
+- Full matrix/report: /Users/andrew/Documents/Codex/2026-10-01/files-pasted-by-the-user-you/outputs/verification-report.md
+- Repository remains uncommitted; no push.

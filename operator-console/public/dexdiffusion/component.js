@@ -1453,6 +1453,7 @@ class Component extends DCLogic {
                     React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 } },
                       React.createElement('button', {
                         type: 'button',
+                        disabled: c.runtime === 'model-missing' || c.runtime === 'dormant' || c.runtime === 'unknown',
                         onClick: () => this.selectModelWithValidation(c.id),
                         style: {
                           flex: '1 1 auto',
@@ -2053,6 +2054,7 @@ class Component extends DCLogic {
       settingsDrawer, runInspector, truthStatusPanel, systemInfoPanel, keyboardHelp, validationPanel,
       libraryCards, runsCount: String(runs.length), jobLogDisplay,
       libraryFilters, libraryLoadMore, extraNetworksDisplay,
+      assetCountsDisplay: (assets.loras || []).length + ' LoRAs · ' + (assets.vaes || []).length + ' VAEs · ' + (assets.controlnets || []).length + ' ControlNets',
       onHiresSubmit: ()=>this.onHiresSubmit(),
       onXyzSubmit: ()=>this.onXyzSubmit(),
       // Batch

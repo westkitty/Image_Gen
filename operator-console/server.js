@@ -9,7 +9,7 @@ const M = require('./media');
 const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
 const { createSystemInfo } = require('./system-info');
-const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime } = require('./capabilities');
+const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime, targetVerification } = require('./capabilities');
 const { rulesForTarget, validateDimensions } = require('./dimension-policy');
 const { enhancePrompt: runPromptEnhance, extractProtectedLiterals } = require('./prompt-enhancement');
 const { PROFILES, resolvePromptProfile } = require('./prompt-profiles');
@@ -82,7 +82,7 @@ const ALLOWED_SAMPLERS = new Set([
   'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm'
 ]);
 const ALLOWED_SCHEDULERS = new Set(['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple']);
-const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'flux2-klein-4b', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis', 'sdxl-juggernaut', 'sdxl-realvisxl', 'sdxl-cyberrealistic', 'sdxl-epicrealism', 'sdxl-biglust', 'sdxl-lustify', 'sdxl-biglove']);
+const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'flux2-klein-4b', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis', 'sdxl-juggernaut', 'sdxl-realvisxl', 'sdxl-cyberrealistic', 'sdxl-epicrealism', 'sdxl-biglust', 'sdxl-lustify', 'sdxl-biglove', 'sdxl-biglove-photo1', 'sdxl-biglove-photo45']);
 const CONTROLLED_TARGETS = [
   {
     id: 'sd15',
@@ -147,18 +147,20 @@ const CONTROLLED_TARGETS = [
   },
   {
     id: 'flux-fp8',
-    label: 'Flux fp8',
+    label: 'FLUX.1 Schnell FP8 (Q8_0 runtime)',
     status: 'proofed',
     mode: 'proofed controlled generation',
     route: '/api/actions/generate-controlled',
-    caveat: 'Supports a curated set of generation parameters — not all Automatic1111 options are available. Uses the fp8 runtime-proven Flux file.',
+    caveat: 'Supports a curated set of generation parameters — not all Automatic1111 options are available. Uses the exact installed FLUX.1 Schnell FP8 full checkpoint; individual live proof is required. The backend uses Q8_0 runtime weights to fit the FP8 source on the 32 GB Big Mac.',
     proofDerived: true,
     fullParityClaim: false,
     modelFile: 'flux1-schnell-fp8.safetensors',
+    noNegativePrompt: true,
+    fixedCfgScale: 1,
     defaultWidth: 512,
     defaultHeight: 512,
     defaultSteps: 4,
-    defaultCfgScale: 3.5,
+    defaultCfgScale: 1,
     defaultSampler: 'euler',
     maxWidth: 1024,
     maxHeight: 1024,
@@ -211,8 +213,8 @@ const CONTROLLED_TARGETS = [
     status: 'staged',
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
-    caveat: 'Migrated wc2tb SDXL checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity.',
-    modelFile: 'homochi_xl_v2.safetensors',
+    caveat: 'Migrated wc2tb SDXL checkpoint; individual runtime status is derived from completed jobs. Not full A1111 parity.',
+    modelFile: 'homochiXLMaleFocused_20.safetensors',
     defaultWidth: 1024,
     defaultHeight: 1024,
     defaultSteps: 10,
@@ -229,8 +231,8 @@ const CONTROLLED_TARGETS = [
     status: 'staged',
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
-    caveat: 'Migrated wc2tb SDXL checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity.',
-    modelFile: 'pony_diffusion_v6_xl.safetensors',
+    caveat: 'Migrated wc2tb SDXL checkpoint; individual runtime status is derived from completed jobs. Not full A1111 parity.',
+    modelFile: 'ponyDiffusionV6XL_v6StartWithThisOne.safetensors',
     defaultWidth: 1024,
     defaultHeight: 1024,
     defaultSteps: 10,
@@ -247,8 +249,8 @@ const CONTROLLED_TARGETS = [
     status: 'staged',
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
-    caveat: 'Migrated wc2tb SD1.5 checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity.',
-    modelFile: 'homofidelis_v5.safetensors',
+    caveat: 'Migrated wc2tb SD1.5 checkpoint; individual runtime status is derived from completed jobs. Not full A1111 parity.',
+    modelFile: 'homofidelis_v50.safetensors',
     defaultWidth: 512,
     defaultHeight: 512,
     defaultSteps: 20,
@@ -261,12 +263,12 @@ const CONTROLLED_TARGETS = [
   },
   {
     id: 'sdxl-juggernaut',
-    label: 'Juggernaut XL (Ragnarok / latest photoreal)',
+    label: 'Juggernaut XL Ragnarok',
     status: 'staged',
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
     caveat: 'SDXL Checkpoint (~6-7GB fp16). Excellent photorealism with strong male anatomy, versatile for athletic/muscular men and NSFW; widely praised for realistic bodies in gay male workflows. (Civitai search Juggernaut XL). Not full A1111 parity.',
-    modelFile: 'juggernaut_xl_ragnarok.safetensors',
+    modelFile: 'juggernautXL_ragnarok.safetensors',
     defaultWidth: 832,
     defaultHeight: 1216,
     defaultSteps: 35,
@@ -279,12 +281,12 @@ const CONTROLLED_TARGETS = [
   },
   {
     id: 'sdxl-realvisxl',
-    label: 'RealVisXL V5.0 (Lightning or standard photoreal)',
+    label: 'RealVisXL V5.0 (BakedVAE, FP16)',
     status: 'staged',
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
     caveat: 'SDXL Checkpoint. High photoreal quality, detailed realistic male bodies/skin, good for intimate homoerotic scenes with natural lighting and anatomy. (Search Civitai RealVisXL V5). Not full A1111 parity.',
-    modelFile: 'realvisxl_v5_0.safetensors',
+    modelFile: 'realvisxlV50_v50Bakedvae_full_fp16.safetensors',
     defaultWidth: 1024,
     defaultHeight: 1024,
     defaultSteps: 30,
@@ -297,12 +299,12 @@ const CONTROLLED_TARGETS = [
   },
   {
     id: 'sdxl-cyberrealistic',
-    label: 'CyberRealistic XL (latest male-tuned photoreal)',
+    label: 'CyberRealistic XL V10',
     status: 'staged',
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
     caveat: 'SDXL Checkpoint. Strong photoreal skin textures, musculature, and realistic male forms; effective for detailed adult male NSFW. (Search Civitai CyberRealistic XL). Not full A1111 parity.',
-    modelFile: 'cyberrealistic_xl_v10.safetensors',
+    modelFile: 'cyberrealisticXL_v100_pruned_fp16.safetensors',
     defaultWidth: 832,
     defaultHeight: 1216,
     defaultSteps: 30,
@@ -315,12 +317,12 @@ const CONTROLLED_TARGETS = [
   },
   {
     id: 'sdxl-epicrealism',
-    label: 'epiCRealism XL (natural sin / photoreal male variants)',
+    label: 'epiCRealism XL Pure_fix',
     status: 'staged',
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
     caveat: 'SDXL Checkpoint (https://civitai.com/models/277058/epicrealism-xl or latest). Top photoreal benchmark with excellent anatomy adherence; pairs extremely well with male prompts/LoRAs for homoerotic realism. Not full A1111 parity.',
-    modelFile: 'epicrealism_xl_pure_fix.safetensors',
+    modelFile: 'epicrealismXL_pureFix.safetensors',
     defaultWidth: 832,
     defaultHeight: 1216,
     defaultSteps: 30,
@@ -338,7 +340,7 @@ const CONTROLLED_TARGETS = [
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
     caveat: 'SDXL Checkpoint. Photoreal NSFW-focused merge of bigASP and LUSTIFY with solid male anatomy; community notes good results for masculine/homoerotic content. Not full A1111 parity.',
-    modelFile: 'big_lust_v1_6.safetensors',
+    modelFile: 'bigLust_v16.safetensors',
     defaultWidth: 1024,
     defaultHeight: 1024,
     defaultSteps: 30,
@@ -351,12 +353,12 @@ const CONTROLLED_TARGETS = [
   },
   {
     id: 'sdxl-lustify',
-    label: 'LUSTIFY! (core photoreal NSFW)',
+    label: 'LUSTIFY! APEX V8',
     status: 'staged',
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
     caveat: 'SDXL Checkpoint. Photoreal NSFW merge with excellent male anatomy, skin details, and homoerotic capability (LUSTIFY series). Not full A1111 parity.',
-    modelFile: 'lustify_v8_apex.safetensors',
+    modelFile: 'lustifyNSFWCheckpoint_apexV8.safetensors',
     defaultWidth: 832,
     defaultHeight: 1216,
     defaultSteps: 30,
@@ -369,12 +371,12 @@ const CONTROLLED_TARGETS = [
   },
   {
     id: 'sdxl-biglove',
-    label: 'Big Love (photoreal male-leaning Lustify hybrid)',
+    label: 'Big Love Photo6',
     status: 'staged',
     mode: 'migrated controlled generation',
     route: '/api/actions/generate-controlled',
     caveat: 'SDXL Checkpoint. Photoreal male-leaning with NSFW focus (BigLove XL / Lustify hybrid). Not full A1111 parity.',
-    modelFile: 'big_love_photo.safetensors',
+    modelFile: 'bigLove_photo6.safetensors',
     defaultWidth: 1024,
     defaultHeight: 1024,
     defaultSteps: 10,
@@ -386,6 +388,20 @@ const CONTROLLED_TARGETS = [
     maxHeight: 2048
   }
 ];
+// These installed, pinned variants are distinct models, never aliases of Photo6.
+for (const [id, version, filename] of [
+  ['sdxl-biglove-photo1', 'Photo1', 'bigLove_photo1.safetensors'],
+  ['sdxl-biglove-photo45', 'Photo4.5', 'bigLove_photo45.safetensors'],
+]) {
+  CONTROLLED_TARGETS.push({ ...CONTROLLED_TARGETS.find(t => t.id === 'sdxl-biglove'),
+    id, label: 'Big Love ' + version, modelFile: filename,
+    caveat: 'Exact installed Big Love ' + version + ' checkpoint; embedded VAE. Individual runtime proof is required.' });
+}
+CONTROLLED_TARGETS.push({ ...CONTROLLED_TARGETS.find(t => t.id === 'sd15'),
+  id: 'sd15-auto-v1-5-pruned-emaonly', label: 'Stable Diffusion 1.5 (same-checkpoint alias)',
+  aliasOf: 'sd15', modelFile: 'v1-5-pruned-emaonly.safetensors',
+  modelPath: '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors',
+  caveat: 'Alias of sd15 using the exact same canonical checkpoint; no duplicate weights.' });
 const CONTROLLED_TARGET_BY_ID = CONTROLLED_TARGETS.reduce((acc, target) => {
   acc[target.id] = target;
   return acc;
@@ -424,7 +440,8 @@ function buildDiscoveredTargets(assets) {
       mode: 'auto-discovered generation',
       route: '/api/actions/generate-controlled',
       caveat: `Auto-discovered ${typePrefix.toUpperCase()} checkpoint. No individual proof run; experimental.`,
-      modelPath: fullPath,
+      modelPath: filename === 'v1-5-pruned-emaonly.safetensors' ? '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors' : fullPath,
+      aliasOf: filename === 'v1-5-pruned-emaonly.safetensors' ? 'sd15' : undefined,
       modelFile: filename,
       defaultWidth: isSDXL ? 1024 : 512,
       defaultHeight: isSDXL ? 1024 : 512,
@@ -831,7 +848,9 @@ const TARGET_MODELS = targetModelMap(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-cont
 const evidenceStore = createEvidenceStore(path.join(STATE_DIR, 'capability-evidence.json'));
 let assetCache = null;
 async function refreshAssets() {
-  const probed = await probeAssets({ sshTarget: SSH_TARGET_NAME, targetModels: TARGET_MODELS });
+  const targetModels = { ...TARGET_MODELS };
+  for (const target of Object.values(allControlledTargets())) if (target.modelPath) targetModels[target.id] = target.modelPath;
+  const probed = await probeAssets({ sshTarget: SSH_TARGET_NAME, targetModels });
   assetCache = { ...probed, checkedAt: new Date().toISOString() };
   return assetCache;
 }
@@ -1047,7 +1066,8 @@ function runActionNow(jobId, scriptPath, args, savePrompts = false) {
     const out = job.stdout;
     const errOut = job.stderr;
     const combined = out + errOut;
-    if (out.includes('==== PASS ====')) job.status = 'PASS';
+    if (code !== 0 || combined.includes('SDCPP_REMOTE_CLEANUP: FAIL')) job.status = 'FAIL';
+    else if (out.includes('==== PASS ====')) job.status = 'PASS';
     else if (out.includes('status: PARTIAL') || out.includes('==== PARTIAL ====')) job.status = 'PARTIAL';
     else if (combined.includes('==== FAIL ====')) job.status = 'FAIL';
     else job.status = code === 0 ? 'PASS' : 'FAIL';
@@ -1175,7 +1195,8 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
     job.activeChildPid = child.pid;
     let runStdout = '';
     let runStderr = '';
-    const runTimeoutMs = Math.min(JOB_TIMEOUT_MS, Math.max(3 * 60 * 1000, estimatedSeconds * 3000 + 60 * 1000));
+    // Cold checkpoint loading is not included in the warm generation estimate.
+    const runTimeoutMs = JOB_TIMEOUT_MS;
     const timeoutTimer = setTimeout(() => {
       clearInterval(progressTimer);
       markJobTimedOut(job, child, runTimeoutMs, `controlled generation run ${runNumber}`);
@@ -1211,7 +1232,8 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
       job.exitCode = code;
       const combined = runStdout + runStderr;
       let runPassed;
-      if (runStdout.includes('==== PASS ====')) runPassed = true;
+      if (code !== 0 || combined.includes('SDCPP_REMOTE_CLEANUP: FAIL')) runPassed = false;
+      else if (runStdout.includes('==== PASS ====')) runPassed = true;
       else if (runStdout.includes('status: PARTIAL') || runStdout.includes('==== PARTIAL ====')) runPassed = true;
       else if (combined.includes('==== FAIL ====')) runPassed = false;
       else runPassed = (code === 0);
@@ -1405,7 +1427,7 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   if (!Number.isFinite(cfgScale)) return `Invalid cfg_scale for ${spec.label}`;
   if (cfgScale < 0 || cfgScale > 30) return `Invalid cfg_scale for ${spec.label}`;
 
-  if (params.target === 'flux-fp8' && cfgScale !== 3.5) return 'Flux fp8 requires cfg_scale 3.5';
+  if (params.target === 'flux-fp8' && cfgScale !== 1) return 'FLUX.1 Schnell requires cfg_scale 1';
   if (params.quantity !== undefined && params.quantity !== null) {
     if (!Number.isInteger(params.quantity) || params.quantity < 1 || params.quantity > 100) {
       return 'Quantity must be an integer between 1 and 100';
@@ -1665,7 +1687,7 @@ function normalizeHiresFixBody(body) {
 
   const savePrompts = !!body.save_prompts;
   const params = { prompt, negative_prompt: negativePrompt, preset, mode, scale, resample, save_prompts: savePrompts };
-  const args = ['--preset', preset, '--prompt', prompt, '--scale', String(scale), '--resample', resample];
+  const args = ['--preset', preset === 'Custom' ? 'fast' : preset, '--prompt', prompt, '--scale', String(scale), '--resample', resample];
   if (negativePrompt) args.push('--negative', negativePrompt);
   if (body.steps) { params.steps = Number(body.steps); args.push('--steps', String(Number(body.steps))); }
   if (body.width) { params.width = Number(body.width); args.push('--width', String(Number(body.width))); }
@@ -2120,9 +2142,12 @@ app.get('/api/capabilities', (req, res) => {
     id: target.id,
     label: target.label,
     backend: target.backend || 'sdcpp',
-    status: target.status,
+    aliasOf: target.aliasOf || null,
+    modelPath: TARGET_MODELS[target.id] || target.modelPath || null,
+    modelFile: target.modelFile || null,
+    registrationStatus: target.status,
+    ...targetVerification(target, assetCache, TARGET_MODELS, evidenceStore.read()),
     primary: target.primary === true,
-    runtime: targetRuntime(target, assetCache, TARGET_MODELS),
     mode: target.mode,
     caveat: target.caveat,
     route: target.route,
@@ -2357,12 +2382,12 @@ app.post('/api/wildcards/expand', (req, res) => {
 });
 
 app.get('/api/models', (req, res) => {
-  const targets = Object.values(allControlledTargets());
+  const targets = liveModelTargets();
   res.json({ models: getModelCards(req.query, targets) });
 });
 
 app.get('/api/models/:id', (req, res) => {
-  const targets = Object.values(allControlledTargets());
+  const targets = liveModelTargets();
   const card = getModelCardById(req.params.id, targets);
   if (!card) return res.status(404).json({ error: 'Model not found' });
   res.json({ model: card });
@@ -2673,6 +2698,12 @@ app.post('/api/actions/generate-batch', (req, res) => {
   runAction(jobId, 'bin/sdcpp-batch-generate.sh', args, params.save_prompts);
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
+
+function liveModelTargets() {
+  const evidence = evidenceStore.read();
+  return Object.values(allControlledTargets()).map(target => ({ ...target,
+    registrationStatus: target.status, ...targetVerification(target, assetCache, TARGET_MODELS, evidence) }));
+}
 
 function allControlledTargets() {
   const discoveredTargets = buildDiscoveredTargets(readJsonCache(ASSETS_CACHE));
@@ -3732,7 +3763,7 @@ app.get('/api/doctor', async (req, res) => {
     add('Configured SDCPP targets', missing ? 'WARN' : 'PASS', missing ? `${missing} configured model file(s) absent (targets report model-missing)` : 'all present');
   }
   try {
-    const si = await getSystemInfo({ targets: CONTROLLED_TARGETS, build: { ...getBuildInfo(), sshTarget: SSH_TARGET_NAME } });
+    const si = await getSystemInfo({ targets: liveModelTargets(), build: { ...getBuildInfo(), sshTarget: SSH_TARGET_NAME } });
     const ts = si.network && si.network.tailscale;
     if (!ts || !ts.available) add('Tailscale Serve', 'WARN', (ts && ts.reason) || 'unknown');
     else if (!ts.serveConfigured) add('Tailscale Serve', 'WARN', ts.reason || 'not configured');
@@ -3870,7 +3901,7 @@ const getSystemInfo = createSystemInfo({ getAssets: () => assetCache, getEvidenc
 app.get('/api/system-info', async (req, res) => {
   try {
     if (req.query.refresh === '1') await refreshAssets();
-    res.json(await getSystemInfo({ targets: CONTROLLED_TARGETS, build: { ...getBuildInfo(), sshTarget: SSH_TARGET_NAME } }));
+    res.json(await getSystemInfo({ targets: liveModelTargets(), build: { ...getBuildInfo(), sshTarget: SSH_TARGET_NAME } }));
   } catch (err) {
     res.status(500).json({ error: 'system-info unavailable' });
   }

@@ -14,6 +14,7 @@ export MODEL_STAGE_ROOT
 # SDXL-class checkpoints live on Big Mac's internal SSD (expanded remotely). The wc2tb
 # USB drive streams at ~5-20 MB/s under load, which timed out SDXL loads (2026-09-26).
 SDXL_MODEL_ROOT='$HOME/sdcpp-staging/models'
+MODEL_LIBRARY_ROOT='/Volumes/wc2tb/dex-imagegen/models'
 
 ARG_TARGET=""
 ARG_PROMPT="$PROMPT"
@@ -91,13 +92,16 @@ if [ -n "$ARG_MODEL_PATH" ]; then
   # Auto-discovered model: validate path safety then allow any target id.
   _mp_rel="${ARG_MODEL_PATH#"$MODEL_STAGE_ROOT/"}"
   if [ "$_mp_rel" = "$ARG_MODEL_PATH" ]; then
-    fail "model-path" "Model path must be under MODEL_STAGE_ROOT ($MODEL_STAGE_ROOT)."
+    _mp_rel="${ARG_MODEL_PATH#'$HOME/sdcpp-staging/models/'}"
+    if [ "$_mp_rel" = "$ARG_MODEL_PATH" ]; then
+      fail "model-path" "Model path must be under MODEL_STAGE_ROOT or the approved remote staging models root."
+    fi
   fi
   case "$ARG_MODEL_PATH" in *.safetensors) : ;; *) fail "model-path" "Only .safetensors models are supported for auto-discovered targets." ;; esac
   case "$_mp_rel" in *../*|*/..*) fail "model-path" "Model path must not contain directory traversal." ;; esac
 else
   case "$ARG_TARGET" in
-    sd15|sdxl-base|sdxl-turbo|flux-fp8|sdxl-photonic|sdxl-homochi|sdxl-pony|sd15-homofidelis|sdxl-juggernaut|sdxl-realvisxl|sdxl-cyberrealistic|sdxl-epicrealism|sdxl-biglust|sdxl-lustify|sdxl-biglove|sdxl-lustify-lightning|sdxl-juggernaut-lightning) : ;;
+    sd15|sdxl-base|sdxl-turbo|flux-fp8|sdxl-photonic|sdxl-homochi|sdxl-pony|sd15-homofidelis|sdxl-juggernaut|sdxl-realvisxl|sdxl-cyberrealistic|sdxl-epicrealism|sdxl-biglust|sdxl-lustify|sdxl-biglove|sdxl-biglove-photo1|sdxl-biglove-photo45) : ;;
     *) fail "target" "Unknown target '$ARG_TARGET'. Pass --model-path to use an auto-discovered model." ;;
   esac
 fi
@@ -193,8 +197,8 @@ case "$ARG_TARGET" in
     TARGET_MODE="migrated controlled generation"
     TARGET_STATUS="staged"
     TARGET_CAVEAT="Migrated wc2tb SDXL checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/homochi_xl_v2.safetensors"
-    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_MODEL_PATH="$MODEL_LIBRARY_ROOT/checkpoints/homochiXLMaleFocused_20.safetensors"
+    # This exact checkpoint includes its own VAE.
     TARGET_DEFAULT_WIDTH=1024
     TARGET_DEFAULT_HEIGHT=1024
     TARGET_DEFAULT_STEPS=10
@@ -208,8 +212,8 @@ case "$ARG_TARGET" in
     TARGET_MODE="migrated controlled generation"
     TARGET_STATUS="staged"
     TARGET_CAVEAT="Migrated wc2tb SDXL checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/pony_diffusion_v6_xl.safetensors"
-    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_MODEL_PATH="$MODEL_LIBRARY_ROOT/checkpoints/ponyDiffusionV6XL_v6StartWithThisOne.safetensors"
+    # This exact checkpoint includes its own VAE.
     TARGET_DEFAULT_WIDTH=1024
     TARGET_DEFAULT_HEIGHT=1024
     TARGET_DEFAULT_STEPS=10
@@ -223,7 +227,7 @@ case "$ARG_TARGET" in
     TARGET_MODE="migrated controlled generation"
     TARGET_STATUS="staged"
     TARGET_CAVEAT="Migrated wc2tb SD1.5 checkpoint; staged/selectable without individual smoke proof. Not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sd15/homofidelis_v5.safetensors"
+    TARGET_MODEL_PATH="$MODEL_LIBRARY_ROOT/checkpoints/homofidelis_v50.safetensors"
     TARGET_MAX_WIDTH=2048
     TARGET_MAX_HEIGHT=2048
     TARGET_MAX_STEPS=150
@@ -237,8 +241,8 @@ case "$ARG_TARGET" in
     TARGET_MODE="migrated controlled generation"
     TARGET_STATUS="staged"
     TARGET_CAVEAT="SDXL Checkpoint (~6-7GB). Excellent photorealism with strong male anatomy; versatile for athletic/muscular men and NSFW. Widely praised for realistic bodies (incl. gay male workflows). Source: Civitai Juggernaut XL. Not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/juggernaut_xl_ragnarok.safetensors"
-    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_MODEL_PATH="$MODEL_LIBRARY_ROOT/checkpoints/juggernautXL_ragnarok.safetensors"
+    # This exact checkpoint includes its own VAE.
     TARGET_DEFAULT_WIDTH=832
     TARGET_DEFAULT_HEIGHT=1216
     TARGET_DEFAULT_STEPS=35
@@ -252,8 +256,8 @@ case "$ARG_TARGET" in
     TARGET_MODE="migrated controlled generation"
     TARGET_STATUS="staged"
     TARGET_CAVEAT="SDXL Checkpoint. High photoreal quality, detailed realistic male bodies/skin, good for intimate scenes with natural lighting and anatomy. Not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/realvisxl_v5_0.safetensors"
-    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_MODEL_PATH="$MODEL_LIBRARY_ROOT/checkpoints/realvisxlV50_v50Bakedvae_full_fp16.safetensors"
+    # This exact checkpoint includes its own VAE.
     TARGET_DEFAULT_WIDTH=1024
     TARGET_DEFAULT_HEIGHT=1024
     TARGET_DEFAULT_STEPS=30
@@ -267,8 +271,8 @@ case "$ARG_TARGET" in
     TARGET_MODE="migrated controlled generation"
     TARGET_STATUS="staged"
     TARGET_CAVEAT="SDXL Checkpoint. Strong photoreal skin textures, musculature, and realistic male forms; effective for detailed adult male NSFW. Not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/cyberrealistic_xl_v10.safetensors"
-    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_MODEL_PATH="$MODEL_LIBRARY_ROOT/checkpoints/cyberrealisticXL_v100_pruned_fp16.safetensors"
+    # This exact checkpoint includes its own VAE.
     TARGET_DEFAULT_WIDTH=832
     TARGET_DEFAULT_HEIGHT=1216
     TARGET_DEFAULT_STEPS=30
@@ -282,8 +286,8 @@ case "$ARG_TARGET" in
     TARGET_MODE="migrated controlled generation"
     TARGET_STATUS="staged"
     TARGET_CAVEAT="SDXL Checkpoint (top photoreal benchmark). Excellent anatomy adherence; pairs extremely well with male prompts/LoRAs for homoerotic realism. Not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/epicrealism_xl_pure_fix.safetensors"
-    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_MODEL_PATH="$MODEL_LIBRARY_ROOT/checkpoints/epicrealismXL_pureFix.safetensors"
+    # This exact checkpoint includes its own VAE.
     TARGET_DEFAULT_WIDTH=1024
     TARGET_DEFAULT_HEIGHT=1024
     TARGET_DEFAULT_STEPS=10
@@ -297,8 +301,8 @@ case "$ARG_TARGET" in
     TARGET_MODE="migrated controlled generation"
     TARGET_STATUS="staged"
     TARGET_CAVEAT="SDXL Checkpoint. Merge of bigASP and LUSTIFY; photoreal NSFW-focused with solid male anatomy performance. Community favorite for masculine/homoerotic content. Not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/big_lust_v1_6.safetensors"
-    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_MODEL_PATH="$MODEL_LIBRARY_ROOT/checkpoints/bigLust_v16.safetensors"
+    # This exact checkpoint includes its own VAE.
     TARGET_DEFAULT_WIDTH=832
     TARGET_DEFAULT_HEIGHT=1216
     TARGET_DEFAULT_STEPS=30
@@ -312,8 +316,8 @@ case "$ARG_TARGET" in
     TARGET_MODE="migrated controlled generation"
     TARGET_STATUS="staged"
     TARGET_CAVEAT="SDXL NSFW checkpoint. Photoreal NSFW merge with excellent male anatomy, skin details, and homoerotic capability. (LUSTIFY series; V8 Apex used here as representative). Not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/lustify_v8_apex.safetensors"
-    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_MODEL_PATH="$MODEL_LIBRARY_ROOT/checkpoints/lustifyNSFWCheckpoint_apexV8.safetensors"
+    # This exact checkpoint includes its own VAE.
     TARGET_DEFAULT_WIDTH=1024
     TARGET_DEFAULT_HEIGHT=1024
     TARGET_DEFAULT_STEPS=30
@@ -327,10 +331,38 @@ case "$ARG_TARGET" in
     TARGET_MODE="migrated controlled generation"
     TARGET_STATUS="staged"
     TARGET_CAVEAT="SDXL Checkpoint. Photoreal male-leaning merge with strong NSFW and anatomy performance (BigLove / Lustify hybrid family). Not full A1111 parity."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/big_love_photo.safetensors"
-    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/vaes/sdxl_vae.safetensors"
+    TARGET_MODEL_PATH="$MODEL_LIBRARY_ROOT/checkpoints/bigLove_photo6.safetensors"
+    # This exact checkpoint includes its own VAE.
     TARGET_DEFAULT_WIDTH=832
     TARGET_DEFAULT_HEIGHT=1216
+    TARGET_DEFAULT_STEPS=30
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_CFG="5"
+    TARGET_SAMPLER="dpm++2m"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
+  sdxl-biglove-photo1)
+    TARGET_LABEL="Big Love ${ARG_TARGET#sdxl-biglove-}"
+    TARGET_MODE="controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="Exact pinned installed Big Love variant; embedded VAE."
+    TARGET_MODEL_PATH="$MODEL_LIBRARY_ROOT/checkpoints/bigLove_photo1.safetensors"
+    TARGET_DEFAULT_WIDTH=1024
+    TARGET_DEFAULT_HEIGHT=1024
+    TARGET_DEFAULT_STEPS=30
+    TARGET_MAX_STEPS=150
+    TARGET_DEFAULT_CFG="5"
+    TARGET_SAMPLER="dpm++2m"
+    TARGET_REQUIRE_CFG_SCALE="true"
+    ;;
+  sdxl-biglove-photo45)
+    TARGET_LABEL="Big Love ${ARG_TARGET#sdxl-biglove-}"
+    TARGET_MODE="controlled generation"
+    TARGET_STATUS="staged"
+    TARGET_CAVEAT="Exact pinned installed Big Love variant; embedded VAE."
+    TARGET_MODEL_PATH="$MODEL_LIBRARY_ROOT/checkpoints/bigLove_photo45.safetensors"
+    TARGET_DEFAULT_WIDTH=1024
+    TARGET_DEFAULT_HEIGHT=1024
     TARGET_DEFAULT_STEPS=30
     TARGET_MAX_STEPS=150
     TARGET_DEFAULT_CFG="5"
@@ -355,16 +387,13 @@ case "$ARG_TARGET" in
     TARGET_LABEL="Flux fp8"
     TARGET_MODE="proofed controlled generation"
     TARGET_STATUS="proofed"
-    TARGET_CAVEAT="Controlled proofed path; not full A1111 parity. Uses the fp8 runtime-proven Flux file, not the full Flux file."
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/flux/flux1-schnell/flux1-schnell-fp8.safetensors"
-    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/flux/shared/ae.safetensors"
-    TARGET_CLIP_L_PATH="$MODEL_STAGE_ROOT/flux/shared/clip_l.safetensors"
-    TARGET_T5XXL_PATH="$MODEL_STAGE_ROOT/flux/shared/t5xxl_fp16.safetensors"
-    TARGET_DEFAULT_CFG="3.5"
+    TARGET_CAVEAT="Controlled proofed path; not full A1111 parity. Uses the installed FLUX.1 Schnell FP8 full checkpoint, including its encoders and VAE."
+    TARGET_MODEL_PATH="$SDXL_MODEL_ROOT/flux1-schnell-fp8.safetensors"
+    TARGET_DEFAULT_CFG="1"
     TARGET_MAX_STEPS=8
     TARGET_DEFAULT_STEPS=4
     TARGET_REQUIRE_CFG_SCALE="true"
-    TARGET_GUIDANCE="--guidance 3.5"
+    TARGET_GUIDANCE=""
     TARGET_PREDICTION="--prediction flux_flow"
     TARGET_VAE_FORMAT="--vae-format flux"
     TARGET_SAMPLER="--sampling-method euler"
@@ -374,6 +403,11 @@ esac
 # Auto-discovered model: --model-path overrides/fills TARGET_MODEL_PATH and infers missing defaults.
 if [ -n "$ARG_MODEL_PATH" ]; then
   TARGET_MODEL_PATH="$ARG_MODEL_PATH"
+  TARGET_MAX_STEPS=150
+  case "$ARG_TARGET" in
+    sd15-*) TARGET_DEFAULT_WIDTH=512; TARGET_DEFAULT_HEIGHT=512; TARGET_DEFAULT_STEPS=20; TARGET_DEFAULT_CFG="7" ;;
+    *) TARGET_DEFAULT_WIDTH=1024; TARGET_DEFAULT_HEIGHT=1024; TARGET_DEFAULT_STEPS=30; TARGET_DEFAULT_CFG="6" ;;
+  esac
   [ -n "$TARGET_STATUS" ]  || TARGET_STATUS="staged"
   [ -n "$TARGET_LABEL" ]   || TARGET_LABEL="$(basename "$ARG_MODEL_PATH" .safetensors | tr '_-' '  ')"
   [ -n "$TARGET_MODE" ]    || TARGET_MODE="auto-discovered generation"
@@ -410,8 +444,8 @@ fi
 if [ "$ARG_TARGET" = "sdxl-turbo" ] && [ "$(printf '%s' "$ARG_CFG")" != "1" ]; then
   fail "cfg-scale" "SDXL Turbo requires cfg_scale 1"
 fi
-if [ "$ARG_TARGET" = "flux-fp8" ] && [ "$(printf '%s' "$ARG_CFG")" != "3.5" ]; then
-  fail "cfg-scale" "Flux fp8 requires cfg_scale 3.5"
+if [ "$ARG_TARGET" = "flux-fp8" ] && [ "$(printf '%s' "$ARG_CFG")" != "1" ]; then
+  fail "cfg-scale" "Flux Schnell fp8 requires cfg_scale 1"
 fi
 if [ "$TARGET_REQUIRE_CFG_SCALE" = "true" ] && ! validateFloatRange "$ARG_CFG" 0 30 false; then
   fail "cfg-scale" "Invalid cfg_scale"
@@ -459,6 +493,12 @@ SEED_RESOLVED=""
 SEED_VALUE=""
 SEED_CONTROLLED=""
 SEED_LABEL=""
+
+controlled_verify_content() {
+  if ! python3 "$HERE/../../operator-console/bin/validate-generated-image.py" "$1"; then
+    controlled_fail "output-content" "Generated frame is undecodable or exactly solid-color; no valid generation proof."
+  fi
+}
 
 controlled_write_artifacts() {
   local status="$1"
@@ -672,6 +712,7 @@ if ! SLOT_RESULT="$(DEX_SSH_TARGET="$SSH_TARGET" "$HERE/sdcpp-secondary-slot.sh"
   controlled_fail "model-slot" "Secondary model activation failed: $SLOT_RESULT"
 fi
 SECONDARY_ACTIVE_MODEL='$HOME/Library/Caches/DexDiffusion/secondary-model/current/model.safetensors'
+printf '%s\n' "$SLOT_RESULT" > "$RUN_DIR/model-slot.json"
 log "Secondary model slot active for $ARG_TARGET: $SLOT_RESULT"
 
 SD15_USE_SERVER=false
@@ -739,6 +780,7 @@ if [ "$SD15_USE_SERVER" = "true" ]; then
     strip_png_metadata "$LOCAL_PNG" || controlled_fail "png-redact" "Could not strip PNG metadata from $LOCAL_PNG"
   fi
   verify_png "$LOCAL_PNG" "Controlled SD1.5 server PNG"
+  controlled_verify_content "$LOCAL_PNG"
   RUN_STATUS="PASS"
   RUNTIME_CONTROLLED_PROVEN="true"
   controlled_write_artifacts "PASS"
@@ -835,44 +877,14 @@ case "$ARG_TARGET" in
     REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --cfg-scale 1 --prediction eps $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   flux-fp8)
-    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/flux/flux1-schnell/flux1-schnell-fp8.safetensors"
-    TARGET_VAE_PATH="$MODEL_STAGE_ROOT/flux/shared/ae.safetensors"
-    TARGET_CLIP_L_PATH="$MODEL_STAGE_ROOT/flux/shared/clip_l.safetensors"
-    TARGET_T5XXL_PATH="$MODEL_STAGE_ROOT/flux/shared/t5xxl_fp16.safetensors"
-    remote_test "test -s \"$TARGET_MODEL_PATH\"" || controlled_fail "model-present" "Flux model is missing or empty: $TARGET_MODEL_PATH"
-    remote_test "test -s \"$TARGET_VAE_PATH\"" || controlled_fail "vae-present" "Flux VAE is missing or empty: $TARGET_VAE_PATH"
-    remote_test "test -s \"$TARGET_CLIP_L_PATH\"" || controlled_fail "clip-present" "Flux CLIP-L is missing or empty: $TARGET_CLIP_L_PATH"
-    remote_test "test -s \"$TARGET_T5XXL_PATH\"" || controlled_fail "t5-present" "Flux T5XXL is missing or empty: $TARGET_T5XXL_PATH"
-    REMOTE_MODEL_BYTES="$(ssh_remote "stat -f %z \"$TARGET_MODEL_PATH\" 2>/dev/null || wc -c < \"$TARGET_MODEL_PATH\" 2>/dev/null || printf '0'" 2>&1 | tail -n 1 | tr -d '[:space:]')"
-    REMOTE_VAE_BYTES="$(ssh_remote "stat -f %z \"$TARGET_VAE_PATH\" 2>/dev/null || wc -c < \"$TARGET_VAE_PATH\" 2>/dev/null || printf '0'" 2>&1 | tail -n 1 | tr -d '[:space:]')"
-    REMOTE_CLIP_BYTES="$(ssh_remote "stat -f %z \"$TARGET_CLIP_L_PATH\" 2>/dev/null || wc -c < \"$TARGET_CLIP_L_PATH\" 2>/dev/null || printf '0'" 2>&1 | tail -n 1 | tr -d '[:space:]')"
-    REMOTE_T5XXL_BYTES="$(ssh_remote "stat -f %z \"$TARGET_T5XXL_PATH\" 2>/dev/null || wc -c < \"$TARGET_T5XXL_PATH\" 2>/dev/null || printf '0'" 2>&1 | tail -n 1 | tr -d '[:space:]')"
-    for kind in model vae clip_l t5xxl; do
-      case "$kind" in
-        model) bytes="$REMOTE_MODEL_BYTES" ;;
-        vae) bytes="$REMOTE_VAE_BYTES" ;;
-        clip_l) bytes="$REMOTE_CLIP_BYTES" ;;
-        t5xxl) bytes="$REMOTE_T5XXL_BYTES" ;;
-      esac
-      case "$bytes" in ''|*[!0-9]*) controlled_fail "size-$kind" "Could not read a numeric size for $kind file." ;; esac
-    done
-    if [ "$REMOTE_MODEL_BYTES" -lt $((1024 * 1024 * 1024)) ]; then
-      controlled_fail "model-size" "Flux model is too small (${REMOTE_MODEL_BYTES} bytes; need at least 1073741824)."
-    fi
-    if [ "$REMOTE_VAE_BYTES" -lt $((1024 * 1024)) ]; then
-      controlled_fail "vae-size" "Flux VAE is too small (${REMOTE_VAE_BYTES} bytes; need at least 1048576)."
-    fi
-    if [ "$REMOTE_CLIP_BYTES" -lt $((1024 * 1024)) ]; then
-      controlled_fail "clip-size" "Flux CLIP-L is too small (${REMOTE_CLIP_BYTES} bytes; need at least 1048576)."
-    fi
-    if [ "$REMOTE_T5XXL_BYTES" -lt $((1024 * 1024 * 1024)) ]; then
-      controlled_fail "t5-size" "Flux T5XXL is too small (${REMOTE_T5XXL_BYTES} bytes; need at least 1073741824)."
-    fi
-    for flag in '--model' '--clip_l' '--t5xxl' '--vae' '--output' '--width' '--height' '--steps' '--guidance' '--prediction' '--vae-format'; do
+    remote_test "test -s \"$TARGET_MODEL_PATH\"" || controlled_fail "model-present" "Flux full checkpoint is missing: $TARGET_MODEL_PATH"
+    REMOTE_MODEL_BYTES="$(ssh_remote "stat -f %z \"$TARGET_MODEL_PATH\"" | tail -n 1 | tr -d '[:space:]')"
+    for flag in '--model' '--cfg-scale' '--sampling-method' '--prediction' '--clip-on-cpu'; do
       printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- "$flag" || controlled_fail "sd-cli-help" "sd-cli help does not show required flag $flag."
     done
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" --clip_l \"$TARGET_CLIP_L_PATH\" --t5xxl \"$TARGET_T5XXL_PATH\" --vae \"${ARG_VAE:-$TARGET_VAE_PATH}\" --vae-format flux -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --guidance 3.5 --prediction flux_flow --sampling-method euler $SEED_FRAG ${SCHEDULER_FLAG:-} ${LORA_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --cfg-scale 1 --prediction flux_flow --sampling-method euler --clip-on-cpu --type q8_0 $SEED_FRAG ${SCHEDULER_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
+
   *)
     # Generic handler for all staged models (TARGET_STATUS=staged).
     # Adding a new staged model only requires an entry in the first case block above
@@ -946,9 +958,12 @@ if [ -n "$NATIVE_EXTRA" ]; then
   log "Native sd-cli extras: $NATIVE_EXTRA"
 fi
 
+# Save the exact invocation with the shell-escaped private text removed.
+printf '%s\n' "$REMOTE_STDOUT_CMD" | python3 -c 'import sys; s=sys.stdin.read(); s=s.replace(sys.argv[1], "[REDACTED]") if sys.argv[1] else s; s=s.replace(sys.argv[2], "[REDACTED]") if sys.argv[2] else s; print(s,end="")' "$Q_PROMPT" "$Q_NEG" > "$RUN_DIR/backend-invocation.txt"
+REMOTE_EXEC_CMD="mkdir -p \"$REMOTE_RUN_DIR\"; /bin/bash -o pipefail -c $(printf '%q' "$REMOTE_STDOUT_CMD"); _dex_rc=\$?; printf '\nSDCPP_REMOTE_EXIT: %s\n' \"\$_dex_rc\""
 log "Running controlled generation on BigMac"
 if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
-  ssh_remote "mkdir -p \"$REMOTE_RUN_DIR\" && $REMOTE_STDOUT_CMD" 2>&1 | python3 -c "
+  ssh_remote "$REMOTE_EXEC_CMD" 2>&1 | python3 -c "
 import sys, re
 p = sys.argv[1] if len(sys.argv) > 1 else ''
 n = sys.argv[2] if len(sys.argv) > 2 else ''
@@ -964,9 +979,14 @@ for line in sys.stdin:
     sys.stdout.write(line)
 " "$ARG_PROMPT" "$ARG_NEG" > "$REMOTE_STDOUT_LOG" || true
 else
-  ssh_remote "mkdir -p \"$REMOTE_RUN_DIR\" && $REMOTE_STDOUT_CMD" > "$REMOTE_STDOUT_LOG" 2>&1 || true
+  ssh_remote "$REMOTE_EXEC_CMD" > "$REMOTE_STDOUT_LOG" 2>&1 || true
 fi
 
+REMOTE_EXIT="$(sed -n 's/^SDCPP_REMOTE_EXIT: //p' "$REMOTE_STDOUT_LOG" | tail -n 1)"
+if [ "$REMOTE_EXIT" != "0" ]; then
+  REMOTE_ERROR="$(grep -E 'ERROR|error:|failed|Killed|out of memory' "$REMOTE_STDOUT_LOG" | head -n 1 || true)"
+  controlled_fail "generator-exit" "Backend exit ${REMOTE_EXIT:-unknown}: ${REMOTE_ERROR:-missing in-band completion marker}. See $REMOTE_STDOUT_LOG"
+fi
 REMOTE_ELAPSED="$(extract_remote_elapsed "$REMOTE_LOG")"
 [ -n "$REMOTE_ELAPSED" ] || REMOTE_ELAPSED="n/a"
 
@@ -984,6 +1004,7 @@ if [ "$ARG_BATCH_COUNT" -gt 1 ]; then
       strip_png_metadata "$lp" || controlled_fail "png-redact" "Could not strip PNG metadata from $lp"
     fi
     verify_png "$lp" "Native batch PNG $((bi + 1))"
+    controlled_verify_content "$lp"
     LOCAL_BATCH_PNGS+=("$lp")
     [ "$bi" -gt 0 ] && OUTPUT_SEEDS_JSON="$OUTPUT_SEEDS_JSON,"
     OUTPUT_SEEDS_JSON="$OUTPUT_SEEDS_JSON\"$(basename "$lp")\":$((SEED_VALUE + bi))"
@@ -1014,6 +1035,7 @@ if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
   strip_png_metadata "$LOCAL_PNG" || controlled_fail "png-redact" "Could not strip PNG metadata from $LOCAL_PNG"
 fi
 verify_png "$LOCAL_PNG" "Controlled PNG"
+controlled_verify_content "$LOCAL_PNG"
 RUN_STATUS="PASS"
 
 controlled_write_artifacts "PASS"

@@ -101,3 +101,23 @@ test('a custom SDCPP target failure is never recorded against SD1.5 txt2img', ()
   assert.equal(capabilityForJob({ commandAction: 'controlled-generate', controlledTarget: 'sd15' }, 'sdcpp').id, 'txt2img-sdcpp');
   assert.equal(capabilityForJob({ commandAction: 'controlled-generate', requestParams: { target: 'sdxl-photonic' } }, 'sdcpp').id, 'txt2img-sdxl-photonic');
 });
+
+test('each model requires its own canonical real-job result; partial results never prove it', () => {
+  const { targetVerification } = require('../capabilities');
+  const store = createEvidenceStore(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-model-ev-')), 'evidence.json'));
+  const target = { id: 'sdxl-pony' };
+  const models = { 'sdxl-pony': '/models/pony.safetensors' };
+  const assets = { ...ALL, models: { [models['sdxl-pony']]: true } };
+  const job = { commandAction: 'controlled-generate', requestParams: { target: target.id }, status: 'PASS', runId: 'real-run', id: 'job', completedAt: 1 };
+  store.record(job, 'sdcpp');
+  assert.equal(targetVerification(target, assets, models, store.read()).status, 'available');
+  store.record({ ...job, status: 'PARTIAL', controlledOutputImageUrl: '/api/images/result.png' }, 'sdcpp');
+  assert.equal(targetVerification(target, assets, models, store.read()).status, 'available');
+  store.record({ ...job, controlledOutputImageUrl: '/api/images/result.png' }, 'sdcpp');
+  assert.equal(targetVerification(target, assets, models, store.read()).status, 'proven');
+  assert.equal(targetVerification({ id: 'sdxl-homochi' }, assets, {}, store.read()).status, 'available');
+  assert.equal(targetVerification(target, { ...assets, models: { [models['sdxl-pony']]: false } }, models, store.read()).status, 'dormant');
+  assert.equal(targetVerification(target, { reachable: false }, models, store.read()).status, 'unknown');
+  store.record({ ...job, status: 'FAIL', completedAt: 2, firstFailedGate: 'generator-exit' }, 'sdcpp');
+  assert.equal(targetVerification(target, assets, models, store.read()).status, 'broken');
+});

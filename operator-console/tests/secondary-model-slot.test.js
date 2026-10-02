@@ -66,3 +66,22 @@ test('generation and API wiring use the managed slot and existing heavy lease', 
   assert.match(server, /arbiter\.acquire\(switchId/);
   assert.match(server, /return res\.status\(409\).*model switch.*busy/i);
 });
+
+
+test('remote zero exit cannot turn failed or wrong-target activation into success', () => {
+  const h = fixture();
+  const shim = path.join(h.base, 'ssh');
+  fs.writeFileSync(shim, '#!/bin/sh\ncat >/dev/null\nprintf \'%s\\n\' "$DEX_TEST_REMOTE_STATE"\nexit 0\n', { mode: 0o755 });
+  for (const state of [
+    { activeSecondaryModel: 'sd15', secondaryModelState: 'active', lastSwitchResult: { status: 'fail', error: 'missing checkpoint' } },
+    { activeSecondaryModel: 'sd15', secondaryModelState: 'active', lastSwitchResult: { status: 'pass' } },
+  ]) {
+    const env = { ...process.env, PATH: h.base + path.delimiter + process.env.PATH,
+      DEX_SECONDARY_SLOT_LOCAL: '0', DEX_SECONDARY_SLOT_REMOTE: '0', DEX_TEST_REMOTE_STATE: JSON.stringify(state) };
+    assert.throws(() => execFileSync('bash', [SCRIPT, 'activate', 'sdxl-base', h.b], { env, stdio: 'pipe' }));
+  }
+  const state = { activeSecondaryModel: 'sdxl-base', secondaryModelState: 'active', lastSwitchResult: { status: 'pass' } };
+  const env = { ...process.env, PATH: h.base + path.delimiter + process.env.PATH,
+    DEX_SECONDARY_SLOT_LOCAL: '0', DEX_SECONDARY_SLOT_REMOTE: '0', DEX_TEST_REMOTE_STATE: JSON.stringify(state) };
+  assert.equal(JSON.parse(execFileSync('bash', [SCRIPT, 'activate', 'sdxl-base', h.b], { env, encoding: 'utf8' })).activeSecondaryModel, 'sdxl-base');
+});

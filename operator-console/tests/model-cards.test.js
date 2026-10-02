@@ -110,3 +110,11 @@ test('model-cards: structured warnings serialize to JSON with required schema', 
   assert.equal(serialized[0].resource_id, 'epi_noise_offset');
   assert.equal(serialized[0].severity, 'warning');
 });
+
+test('live missing assets override historical model-card proof and carry availability', () => {
+  const { getModelCards } = require('../model-registry');
+  const card = getModelCards({}, [{ id: 'flux-fp8', status: 'dormant', runtime: 'model-missing', reason: 'model-missing' }]).find(c => c.id === 'flux-fp8');
+  assert.equal(card.status, 'DORMANT');
+  assert.equal(card.runtime, 'model-missing');
+  assert.equal(card.availability_reason, 'model-missing');
+});

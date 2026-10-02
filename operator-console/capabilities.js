@@ -78,18 +78,32 @@ function createEvidenceStore(file) {
   // Record a finished real job. Returns the capability id or null.
   function record(job, targetBackend) {
     const cap = capabilityForJob(job, targetBackend);
-    if (!cap) return null;
+    const targetId = job.commandAction === 'controlled-generate' && (job.requestParams && job.requestParams.target || job.controlledTarget);
+    if (!cap && !targetId) return null;
     const terminal = job.status === 'PASS' || job.status === 'PARTIAL' ? 'pass' : job.status === 'FAIL' ? 'fail' : null;
     if (!terminal) return null;
     if (terminal === 'fail' && NON_RUNTIME_GATES.has(String(job.firstFailedGate || ''))) return null;
     const data = read();
-    const entry = data[cap.id] || {};
     const rec = { at: new Date(job.completedAt || Date.now()).toISOString(), runId: job.runId || null, jobId: job.id || null };
-    if (terminal === 'pass') entry.lastPass = rec;
-    else entry.lastFail = { ...rec, gate: job.firstFailedGate || null };
-    data[cap.id] = entry;
+    if (cap) {
+      const entry = data[cap.id] || {};
+      if (terminal === 'pass') entry.lastPass = rec;
+      else entry.lastFail = { ...rec, gate: job.firstFailedGate || null };
+      data[cap.id] = entry;
+    }
+    // Each checkpoint needs its own normal-path proof. PARTIAL and jobs with
+    // no canonical result cannot promote a model, even if a family is proven.
+    if (targetId) {
+      const key = 'model:' + targetId;
+      const entry = data[key] || {};
+      if (terminal === 'fail') entry.lastFail = { ...rec, gate: job.firstFailedGate || null };
+      else if (job.status === 'PASS' && job.runId && /^\/api\/images\//.test(job.controlledOutputImageUrl || '')) {
+        entry.lastPass = { ...rec, backend: targetBackend, imageUrl: job.controlledOutputImageUrl };
+      }
+      data[key] = entry;
+    }
     write(data);
-    return cap.id;
+    return cap ? cap.id : null;
   }
   return { read, record, file };
 }
@@ -105,7 +119,7 @@ function targetModelMap(controlledScript, remoteModel, stageRoot = '/Volumes/wc2
   while ((m = re.exec(body))) {
     if (map[m[1]]) continue;
     const p = /TARGET_MODEL_PATH="([^"]+)"/.exec(m[2]);
-    map[m[1]] = p ? p[1].replace('$MODEL_STAGE_ROOT', stageRoot).replace('$SDXL_MODEL_ROOT', '$HOME/sdcpp-staging/models') : remoteModel;
+    map[m[1]] = p ? p[1].replace('$MODEL_STAGE_ROOT', stageRoot).replace('$SDXL_MODEL_ROOT', '$HOME/sdcpp-staging/models').replace('$MODEL_LIBRARY_ROOT', '/Volumes/wc2tb/dex-imagegen/models') : remoteModel;
   }
   return map;
 }
@@ -165,18 +179,25 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
 
 // Runtime state for one model target, for the target list.
 function targetRuntime(target, assets, targetModels) {
+  if (!assets || !assets.reachable) return 'unknown';
   if ((target.backend || 'sdcpp') === 'mflux') {
     if (assets && (assets.mfluxRuntime === false || assets.mfluxModel === false)) return 'dormant';
     return 'available';
   }
-  if (!assets || !assets.reachable) return 'unknown';
   if (assets.sdCli === false) return 'dormant';
   const model = targetModels[target.id] || target.modelPath;
   if (model && assets.models && assets.models[model] === false) return 'model-missing';
   return 'available';
 }
 
+function targetVerification(target, assets, targetModels, evidence) {
+  const runtime = targetRuntime(target, assets, targetModels);
+  if (runtime === 'unknown') return { status: 'unknown', runtime, reason: 'Big Mac assets could not be verified' };
+  if (runtime !== 'available') return { status: STATUS.DORMANT, runtime, reason: runtime };
+  return { ...deriveStatus({ id: 'model:' + target.id, needs: [] }, assets, evidence), runtime };
+}
+
 module.exports = {
   STATUS, CAPABILITIES, NON_RUNTIME_GATES,
-  deriveStatus, capabilityForJob, createEvidenceStore, targetModelMap, probeAssets, targetRuntime,
+  deriveStatus, capabilityForJob, createEvidenceStore, targetModelMap, probeAssets, targetRuntime, targetVerification,
 };
