@@ -1,3 +1,5 @@
+> **Superseded for Edit (2026-10-02):** the Edit screen, mask editor, Send-to-Edit flow and Resources UI described below were rebuilt; see `edit-workbench-20261002.md`.
+
 # A1111-Style Workbench Implementation Notes
 
 Last updated: 2026-06-22

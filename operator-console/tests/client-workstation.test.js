@@ -98,7 +98,9 @@ test('privacy: persisted edit session never holds prompt text unless prompt savi
 
 test('recipes are stored through the privacy-aware sanitizer in the UI', () => {
   const comp = fs.readFileSync(path.join(__dirname, '..', 'public', 'dexdiffusion', 'component.js'), 'utf8');
-  assert.match(comp, /DexClient\.sanitizeRecipe\(\{ id: String\(Date\.now\(\)\)/);
+  // Presets are versioned (v2) and written through one privacy-aware migrate/sanitize function.
+  assert.match(comp, /DexEdit\.migrateRecipe\(/);
+  assert.match(comp, /this\.saveRecipe\('create'/);
   assert.match(comp, /renameFavoritePreset/);
   assert.doesNotMatch(comp, /params: this\.currentParams\(\)/, 'old preset format persisted prompts unconditionally');
 });

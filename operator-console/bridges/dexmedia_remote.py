@@ -29,6 +29,7 @@ import traceback
 import wave
 
 PRIVATE_KEYS = ("text", "ref_text", "instruct", "prompt", "caption", "lyrics")
+MAX_SEED = 2147483647
 
 
 def marker(key, value=None):
@@ -38,8 +39,9 @@ def marker(key, value=None):
 def scrub(msg, req):
     """Remove any private request text from an error message."""
     out = str(msg)
-    for k in PRIVATE_KEYS:
-        v = req.get(k)
+    secrets = [req.get(k) for k in PRIVATE_KEYS]
+    secrets += [it.get("text") for it in (req.get("items") or []) if isinstance(it, dict)]
+    for v in secrets:
         if isinstance(v, str) and len(v) >= 3:
             out = out.replace(v, "[REDACTED]")
     return out.replace("\n", " ")[:300]
@@ -84,6 +86,95 @@ def gen_tts(req, out_dir):
     run_cli(tts.main, argv)
     files = sorted(glob.glob(os.path.join(out_dir, "out*.wav")))
     return files[0] if files else None
+
+
+def write_wav(path, audio, rate):
+    """16-bit PCM mono WAV from float32 samples in [-1, 1] (stdlib only)."""
+    import numpy as np
+
+    pcm = (np.clip(audio, -1.0, 1.0) * 32767.0).astype("<i2")
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(int(rate))
+        w.writeframes(pcm.tobytes())
+
+
+def item_info(path):
+    """Validated facts about one produced WAV; raises when it is unusable."""
+    size = os.path.getsize(path)
+    if size < 1024:
+        raise RuntimeError(f"output WAV too small ({size} bytes)")
+    with wave.open(path, "rb") as w:
+        frames, rate, ch = w.getnframes(), w.getframerate(), w.getnchannels()
+        raw = w.readframes(min(frames, rate * 600))
+    if frames <= 0 or rate <= 0:
+        raise RuntimeError("output WAV has no audio frames")
+    import numpy as np
+
+    peak = int(np.abs(np.frombuffer(raw, dtype="<i2")).max()) if raw else 0
+    if peak < 8:
+        raise RuntimeError("output WAV is silent")
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return {"path": path, "sha": h.hexdigest(), "bytes": size, "duration": round(frames / float(rate), 3), "rate": rate, "ch": ch}
+
+
+def gen_tts_items(req, out_dir):
+    """One model load, N items (long-form chunks or a single line), one WAV per item.
+
+    Progress and per-item results are reported in-band as they happen so the console can
+    show 'chunk X/N' and attribute a failure to the exact chunk."""
+    import mlx.core as mx
+    import numpy as np
+    from mlx_audio.tts.utils import load_model
+
+    items = req["items"]
+    w = req["worker"]
+    marker("MODEL_LOADING")
+    model = load_model(req["model"])
+    rate = int(getattr(model, "sample_rate", 24000))
+    ref_audio = ref_text = None
+    if w == "qwen3-tts-base":
+        from mlx_audio.utils import load_audio
+
+        ref_text = (req.get("ref_text") or "").strip()
+        if not ref_text:
+            raise RuntimeError("the reference sample needs its exact transcript")
+        ref_audio = load_audio(req["ref_audio"], sample_rate=rate)
+    marker("MODEL_READY")
+    marker("ITEMS_TOTAL", len(items))
+    for i, it in enumerate(items):
+        marker("ITEM_START", i)
+        try:
+            if it.get("seed") is not None:
+                mx.random.seed(int(it["seed"]) % MAX_SEED)
+            kw = dict(text=it["text"], temperature=0.7, max_tokens=1200, verbose=False)
+            if w == "kokoro":
+                kw.update(voice=req["voice_path"], speed=float(req.get("speed", 1.0)), lang_code=req["lang_code"])
+            elif w == "qwen3-tts-base":
+                kw.update(ref_audio=ref_audio, ref_text=ref_text, lang_code=req["lang_code"])
+            elif w == "qwen3-tts-voice-design":
+                kw.update(instruct=req["instruct"], lang_code=req["lang_code"])
+            else:
+                raise ValueError("unknown tts worker")
+            parts = [np.array(r.audio, dtype=np.float32).reshape(-1) for r in model.generate(**kw)]
+            if not parts:
+                raise RuntimeError("engine produced no audio")
+            path = os.path.join(out_dir, f"item-{i:03d}.wav")
+            write_wav(path, np.concatenate(parts), rate)
+            info = item_info(path)
+        except BaseException as e:  # noqa: BLE001 - attribute the failure to this item
+            marker("FAIL_ITEM", i)
+            raise
+        marker("ITEM", f"{i}|{info['path']}|{info['sha']}|{info['bytes']}|{info['duration']}|{info['rate']}|{info['ch']}")
+        try:
+            mx.clear_cache()
+        except Exception:  # noqa: BLE001 - older MLX
+            pass
+    return os.path.join(out_dir, "item-000.wav")
 
 
 def gen_magenta(req, out_dir):
@@ -181,7 +272,7 @@ def main():
     try:
         w = req["worker"]
         if w in ("kokoro", "qwen3-tts-base", "qwen3-tts-voice-design"):
-            path = gen_tts(req, out_dir)
+            path = gen_tts_items(req, out_dir) if req.get("items") else gen_tts(req, out_dir)
         elif w == "magenta-rt":
             path = gen_magenta(req, out_dir)
         elif w == "ace-step":

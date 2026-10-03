@@ -40,6 +40,8 @@
   function numInput(value, onChange, attrs) {
     return h('input', Object.assign({ type: 'number', inputMode: 'numeric', value: String(value), onChange: e => onChange(e.target.value), style: Object.assign({}, css.input, { width: 90 }) }, attrs || {}));
   }
+  window.DexUI = { css, tone, btn: (...a) => btn(...a), chip: (...a) => chip(...a) };
+  const openFull = (self, id, url) => window.DexLightbox.open({ src: url, caption: id, actions: self.lightboxActions ? self.lightboxActions(id) : [] });
   function thumb(url, active, onClick, caption, badge) {
     return h('button', { type: 'button', onClick, title: caption,
       style: { position: 'relative', padding: 0, border: '2px solid ' + (active ? '#38bdf8' : 'rgba(148,163,184,.16)'), borderRadius: 8, overflow: 'hidden', cursor: 'pointer', background: '#0a0e14', width: '100%', aspectRatio: '1 / 1' } },
@@ -65,7 +67,7 @@
       lib: { filter: 'all', items: [], total: 0, selectedId: null, selected: null, loading: false },
       compareIds: Array.isArray(saved.compareIds) ? saved.compareIds.slice(0, 4) : [], compareItems: [], compareZoom: 1,
       doctor: null, doctorBusy: false, activeJobId: saved.activeJobId || null, recovered: false,
-      detailer: saved.detailer || { open: false, imageId: null, mode: 'face', threshold: 0.3, padding: 0.2, feather: 8.0, strength: 0.45, prompt: '', maskPreview: null, loading: false },
+      detailer: saved.detailer || { open: false, imageId: null, mode: 'face', threshold: 0.3, padding: 0.2, feather: 8.0, strength: 0.45, prompt: '', maskPreview: null, loading: false, targetSelection: 'largest', dilate: 0, note: '' },
     };
     return this.ws;
   };
@@ -205,7 +207,7 @@
     const add = (label, fn, color) => out.push(btn(label, fn, color));
     // Variations and seed exploration only make sense for text-to-image outputs.
     const generated = !img.operation || ['txt2img', 'variation', 'seed-lab', 'prompt-ab', 'batch'].includes(img.operation);
-    add('Open', () => window.open(base + '/api/images/' + encodeURIComponent(id), '_blank'), '#94a3b8');
+    add('Fullscreen', () => openFull(this, id, base + '/api/images/' + encodeURIComponent(id)), '#94a3b8');
     if (generated && !o.noVariation) add('Variation', () => this.generateVariation(img), '#65d66e');
     if (generated && img.seed != null && img.target) add('Explore Seeds', () => this.openSeedLab(img), '#65d66e');
     if (this._gate('img2img')) add('Img2Img', () => this.sendToEdit(id, 'img2img'), '#a78bfa');
@@ -323,333 +325,8 @@
     this.selectLibraryImage(id);
   };
 
-  // ── Edit: image-first img2img / inpaint / outpaint ──────────────
-  P.sendToEdit = async function (id, focus) {
-    const m = await this._imageMeta(id);
-    if (!m) { this.toast('Image not found', '#ef4444'); return; }
-    const ws = this._ws();
-    this.wsSet({ editSourceId: id, editSource: m, editOriginalId: ws.editOriginalId && ws.editFocusChain ? ws.editOriginalId : id, editFocusChain: true, editFocus: focus || 'img2img' });
-    this._resetMaskFor(m);
-    this.setScreen('edit');
-  };
-  P.useAsNewSource = async function (id) {
-    const m = await this._imageMeta(id);
-    if (!m) return;
-    this.wsSet({ editSourceId: id, editSource: m });
-    this._resetMaskFor(m);
-    this.toast('New source selected', '#a78bfa');
-  };
-  P.returnToOriginal = function () {
-    const ws = this._ws();
-    if (ws.editOriginalId) this.useAsNewSource(ws.editOriginalId);
-  };
-  P._ensureEditSource = async function () {
-    const ws = this._ws();
-    if (ws.editSourceId && String(ws.editSourceId).startsWith('staged:') && !ws.editSource) this.wsSet({ editSourceId: null, editOriginalId: null });
-    else if (ws.editSourceId && (!ws.editSource || ws.editSource.id !== ws.editSourceId)) {
-      const m = await this._imageMeta(ws.editSourceId);
-      if (m) { this.wsSet({ editSource: m }); this._resetMaskFor(m); } else this.wsSet({ editSourceId: null, editSource: null });
-    }
-    if (ws.enhSourceId && (!ws.enhSource || ws.enhSource.id !== ws.enhSourceId)) {
-      const m = await this._imageMeta(ws.enhSourceId);
-      this.wsSet(m ? { enhSource: m } : { enhSourceId: null, enhSource: null });
-    }
-  };
-
-  P._randomSeedIfUnset = function (v) {
-    const n = parseInt(v, 10);
-    return Number.isInteger(n) && n >= 0 ? n : Math.floor(Math.random() * 2000000000) + 1;
-  };
-  // Edit source reference: canonical image id, or a staged (imported) temporary source.
-  P._srcRef = function () {
-    const ws = this._ws();
-    return ws.editSource && ws.editSource.staged ? { staged_id: ws.editSource.stagedId } : { image_id: ws.editSourceId };
-  };
-  // Import an image file as a temporary edit source (secure staging; never canonical).
-  P.importEditSource = async function (file) {
-    if (!file) return;
-    if (file.size > 25 * 1024 * 1024) { this.toast('Image too large (25 MB max)', '#ef4444'); return; }
-    const r = await fetch(this.state.backendUrl + '/api/staging?accept=image', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
-    const d = await r.json().catch(() => ({ error: r.statusText }));
-    if (!r.ok) { this.toast(d.error || 'Import rejected', '#ef4444'); return; }
-    const src = { id: d.id, stagedId: d.id, staged: true, url: d.url, width: d.width, height: d.height, meta: { operation: 'imported (temporary)' }, keeper: false, parent: null };
-    this.wsSet({ editSourceId: 'staged:' + d.id, editSource: src, editOriginalId: 'staged:' + d.id });
-    this._resetMaskFor(src);
-    this.setScreen('edit');
-    this.toast('Imported ' + d.width + '×' + d.height + ' as a temporary source', '#a78bfa');
-  };
-  P._editCommon = function () {
-    const s = this.state;
-    return { prompt: String(s.i2iPrompt || s.prompt || '').trim(), negative_prompt: s.i2iNeg || s.negPrompt || '',
-      steps: +s.i2iSteps || 20, cfg_scale: +s.i2iCfg || 7, seed: this._randomSeedIfUnset(s.i2iSeed), save_prompts: !!s.savePrompts };
-  };
-  P._runEditJob = async function (route, body, kind) {
-    const ws = this._ws();
-    if (!body.prompt) { this.toast('Enter a prompt (Edit prompt or the Create prompt)', '#fbbf24'); return null; }
-    this.wsSet({ editStatus: 'running', editKind: kind, editProgress: 0 });
-    const r = await this._api(route, body);
-    if (!r.ok) {
-      this.wsSet({ editStatus: 'error', editError: r.data.error || 'rejected' });
-      return r;
-    }
-    this.wsSet({ editJobId: r.data.job_id });
-    const job = await this._waitJob(r.data.job_id);
-    const results = D.jobResults(job);
-    if (this._jobOk(job.status) && results.length) {
-      const res = results.map(x => Object.assign({ kind, sourceId: ws.editSourceId, seed: body.seed }, x));
-      this.wsSet({ editStatus: 'done', editResults: res.concat(this._ws().editResults).slice(0, 24), editLastBody: { route, body, kind } });
-      this.toast(kind + ' complete', '#65d66e');
-      setTimeout(() => this.loadRuns(), 1200);
-    } else {
-      this.wsSet({ editStatus: 'error', editError: this._failText(job) });
-      this.toast(kind + ' failed · ' + (job.firstFailedGate || job.status), '#ef4444');
-    }
-    return r;
-  };
-
-  const _origImg2img = P.onImg2imgSubmit;
-  P.onImg2imgSubmit = async function () {
-    const ws = this._ws();
-    if (!ws.editSourceId) return _origImg2img.call(this);
-    const body = Object.assign(this._srcRef(), { strength: +this.state.i2iDenoise }, this._editCommon());
-    if (ws.prep && ws.prep !== 'none') body.source_prep = ws.prep;
-    const r = await this._runEditJob('/api/actions/img2img', body, 'img2img');
-    if (r && !r.ok) this.toast(r.data.error || 'img2img rejected', '#ef4444');
-  };
-  P.anotherVariation = function () {
-    const ws = this._ws(), last = ws.editLastBody;
-    if (!last) return;
-    const body = Object.assign({}, last.body, { seed: Math.floor(Math.random() * 2000000000) + 1 });
-    if (last.kind === 'inpaint') body.mask_data = this._maskDataUrl();
-    this._runEditJob(last.route, body, last.kind);
-  };
-
-  // ── Mask editor (canvas at source resolution; alpha = painted) ──
-  P._resetMaskFor = function (m) {
-    if (!m || !m.width || !m.height) return;
-    if (this._mask && this._mask.w === m.width && this._mask.h === m.height && this._mask.for === m.id) return;
-    const keep = this._mask && this._mask.w === m.width && this._mask.h === m.height; // same geometry: keep painted mask
-    if (keep) { this._mask.for = m.id; return; }
-    const c = document.createElement('canvas');
-    c.width = m.width; c.height = m.height;
-    c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none;opacity:.55;';
-    c.setAttribute('aria-label', 'Inpaint mask — paint the area to change');
-    const ctx = c.getContext('2d', { willReadFrequently: true });
-    this._mask = { canvas: c, ctx, w: m.width, h: m.height, for: m.id, undo: [], redo: [] };
-    let drawing = false, lx = 0, ly = 0;
-    const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * (c.width / r.width), (e.clientY - r.top) * (c.height / r.height)]; };
-    const setup = () => {
-      const b = this._ws().brush;
-      ctx.globalCompositeOperation = b.mode === 'erase' ? 'destination-out' : 'source-over';
-      ctx.strokeStyle = ctx.fillStyle = '#ffffff';
-      ctx.lineWidth = b.size; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    };
-    c.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      this._maskSnapshot();
-      drawing = true; setup(); [lx, ly] = pos(e);
-      ctx.beginPath(); ctx.arc(lx, ly, this._ws().brush.size / 2, 0, Math.PI * 2); ctx.fill();
-      try { c.setPointerCapture(e.pointerId); } catch (_) {}
-    });
-    c.addEventListener('pointermove', e => { if (!drawing) return; const [x, y] = pos(e); ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(x, y); ctx.stroke(); lx = x; ly = y; });
-    const end = () => { if (!drawing) return; drawing = false; ctx.globalCompositeOperation = 'source-over'; this._maskChanged(); };
-    c.addEventListener('pointerup', end);
-    c.addEventListener('pointercancel', end);
-    this._maskChanged();
-  };
-  P._maskAlpha = function () {
-    const m = this._mask; if (!m) return null;
-    const d = m.ctx.getImageData(0, 0, m.w, m.h).data, a = new Uint8ClampedArray(m.w * m.h);
-    for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
-    return a;
-  };
-  P._maskPut = function (a) {
-    const m = this._mask; if (!m) return;
-    const img = m.ctx.createImageData(m.w, m.h);
-    for (let i = 0; i < a.length; i++) { const j = i * 4; img.data[j] = img.data[j + 1] = img.data[j + 2] = 255; img.data[j + 3] = a[i]; }
-    m.ctx.putImageData(img, 0, 0);
-  };
-  P._maskSnapshot = function () {
-    const m = this._mask; if (!m) return;
-    m.undo.push(this._maskAlpha()); if (m.undo.length > 30) m.undo.shift();
-    m.redo = [];
-  };
-  P._maskChanged = function () {
-    const a = this._maskAlpha();
-    this.wsSet({ maskInfo: a ? { coverage: D.maskCoverage(a), w: this._mask.w, h: this._mask.h, undo: this._mask.undo.length, redo: this._mask.redo.length } : null });
-  };
-  P.maskOp = function (op) {
-    const m = this._mask; if (!m) return;
-    if (op === 'undo' || op === 'redo') {
-      const from = op === 'undo' ? m.undo : m.redo, to = op === 'undo' ? m.redo : m.undo;
-      if (!from.length) return;
-      to.push(this._maskAlpha()); this._maskPut(from.pop()); this._maskChanged(); return;
-    }
-    this._maskSnapshot();
-    const a = this._maskAlpha(), r = Math.max(2, Math.round(Math.min(m.w, m.h) / 64));
-    const next = op === 'grow' ? D.maskDilate(a, m.w, m.h, r) : op === 'shrink' ? D.maskErode(a, m.w, m.h, r)
-      : op === 'feather' ? D.maskFeather(a, m.w, m.h, r * 2) : op === 'blur' ? D.maskBlur(a, m.w, m.h, r) : op === 'invert' ? D.maskInvert(a)
-      : op === 'clear' ? new Uint8ClampedArray(a.length) : a;
-    this._maskPut(next); this._maskChanged();
-  };
-  P._maskDataUrl = function () { return this._mask ? this._mask.canvas.toDataURL('image/png') : null; };
-
-  P.onInpaintSubmit = async function (confirmed) {
-    const ws = this._ws();
-    if (!ws.editSourceId || !this._mask) { this.toast('Choose a source image (Library → Inpaint, or a result → Inpaint)', '#fbbf24'); return; }
-    const v = D.maskVerdict(this._maskAlpha());
-    if (v.kind === 'blank') { this.toast(v.message, '#fbbf24'); return; }
-    if (v.kind === 'full' && !confirmed && !window.confirm(v.message + '\n\nContinue anyway?')) return;
-    const body = Object.assign(this._srcRef(), { mask_data: this._maskDataUrl(), strength: +this.state.inpStrength, confirm_full_mask: v.kind === 'full' }, this._editCommon());
-    const r = await this._runEditJob('/api/actions/inpaint', body, 'inpaint');
-    if (r && !r.ok) {
-      if (r.data.needs_confirmation && window.confirm(r.data.error + '\n\nContinue anyway?')) return this.onInpaintSubmit(true);
-      this.toast(r.data.error || 'Inpaint rejected', '#ef4444');
-    }
-  };
-  P.onOutpaintSubmit = async function () {
-    const ws = this._ws();
-    if (!ws.editSourceId) { this.toast('Choose a source image first', '#fbbf24'); return; }
-    const o = ws.out;
-    const body = Object.assign(this._srcRef(), { left: +o.left || 0, right: +o.right || 0, top: +o.top || 0, bottom: +o.bottom || 0, strength: +o.strength }, this._editCommon());
-    // Extension Prompt: in memory only; sent per request, never stored in the session.
-    if (String(this._extPrompt || '').trim()) body.extension_prompt = String(this._extPrompt).trim();
-    const r = await this._runEditJob('/api/actions/outpaint', body, 'outpaint');
-    if (r && !r.ok) this.toast(r.data.error || 'Outpaint rejected', '#ef4444');
-  };
-
-  P.buildInpaintTools = function () {
-    const ws = this._ws(), s = this.state, src = ws.editSource;
-    const base = s.backendUrl;
-    const panelFor = (title, body) => h('div', { style: css.panel }, h('div', { style: Object.assign({}, css.title, { marginBottom: 8 }) }, title), body);
-    if (!src) return null;
-    const mi = ws.maskInfo || {};
-    const b = ws.brush;
-    const zoomW = ws.maskZoom === 1 ? '100%' : Math.round(src.width * (ws.maskZoom === 2 ? 1 : 2)) + 'px';
-    const strength = +s.i2iDenoise;
-    return this._editBody(src, base, s, ws, mi, b, zoomW, strength, panelFor);
-  };
-  P.buildEditSourceCard = function () {
-    const ws = this._ws(), src = ws.editSource, base = this.state.backendUrl;
-    const panel = (...body) => h('div', { style: Object.assign({}, css.panel, { maxWidth: 760 }) }, h('div', { style: Object.assign({}, css.title, { marginBottom: 8 }) }, 'Source image'), ...body);
-    const importer = h('div', { style: Object.assign({}, css.row, { marginTop: 8 }) },
-      h('label', { style: { border: '1px dashed rgba(167,139,250,.5)', color: '#c4b5fd', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', fontSize: 12, fontWeight: 700 },
-        onDragover: e => e.preventDefault(), onDrop: e => { e.preventDefault(); this.importEditSource(e.dataTransfer.files[0]); } },
-        'Import image (PNG/JPEG/WebP) — click, drop or paste',
-        h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', style: { display: 'none' }, onChange: e => this.importEditSource(e.target.files[0]) })),
-      h('span', { style: css.muted }, 'Imports are temporary source material (24 h) and never enter images_made.'));
-    if (!this._pasteBound) {
-      this._pasteBound = true;
-      window.addEventListener('paste', e => {
-        if (this.state.screens[this.state.version] !== 'edit') return;
-        const f = [...((e.clipboardData && e.clipboardData.files) || [])].find(x => /^image\//.test(x.type));
-        if (f) { e.preventDefault(); this.importEditSource(f); }
-      });
-    }
-    if (!src) return panel(h('div', null, h('div', { style: css.muted }, 'Choose Img2Img, Inpaint or Outpaint on any result or Library image; it appears here as the source. Legacy runs can still be picked under Advanced Source Selection below.'), importer));
-    return panel(h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(90px,140px) minmax(0,1fr)', gap: 10, alignItems: 'start' } },
-      h('img', { src: base + src.url, alt: 'edit source', style: { width: '100%', borderRadius: 7, border: '1px solid rgba(148,163,184,.2)' } }),
-      h('div', { style: { display: 'grid', gap: 6 } },
-        h('div', { style: css.mono }, src.id),
-        h('div', { style: css.muted }, src.width + '×' + src.height + ' · ' + ((src.meta && src.meta.operation) || 'image') + (src.meta && src.meta.seed != null ? ' · seed ' + src.meta.seed : '') + (src.keeper ? ' · ★ Keeper' : '')),
-        h('div', { style: css.row },
-          ws.editOriginalId && ws.editOriginalId !== src.id ? btn('Return to Original', () => this.returnToOriginal(), '#94a3b8') : null,
-          src.parent ? btn('View Parent', () => this.useAsNewSource(src.parent), '#94a3b8') : null,
-          btn('Open', () => window.open(base + src.url, '_blank'), '#94a3b8'),
-          btn('Clear source', () => { if (src.staged) fetch(base + '/api/staging/' + src.stagedId, { method: 'DELETE' }); this.wsSet({ editSourceId: null, editSource: null, editOriginalId: null }); }, '#94a3b8'))),
-      ), importer);
-  };
-  P._editBody = function (src, base, s, ws, mi, b, zoomW, strength, panelFor) {
-
-    const i2i = h('div', { style: { display: 'grid', gap: 8 } },
-      h('div', { style: css.label }, 'Img2Img strength · ' + strength.toFixed(2)),
-      h('div', { style: css.row },
-        h('input', { type: 'range', min: '0.05', max: '0.95', step: '0.01', value: String(strength), onChange: e => this.setState({ i2iDenoise: e.target.value }), style: { flex: '1 1 160px', minHeight: 30 } }),
-        numInput(strength, v => this.setState({ i2iDenoise: v }), { min: '0.05', max: '0.95', step: '0.05' }),
-        ...D.STRENGTH_PRESETS.map(([n, v]) => btn(n + ' ' + v.toFixed(2), () => this.setState({ i2iDenoise: v }), Math.abs(strength - v) < 0.001 ? '#a78bfa' : '#94a3b8'))),
-      h('div', { style: css.muted }, 'Higher strength changes more. Effects vary by model; the numeric value is what is sent.'),
-      h('div', { style: css.row },
-        h('div', { style: css.label }, 'Source prep'),
-        h('select', { value: ws.prep, onChange: e => this.wsSet({ prep: e.target.value }), style: Object.assign({}, css.input, { width: 'auto' }) },
-          h('option', { value: 'none' }, 'As is (' + src.width + '×' + src.height + ')'),
-          h('option', { value: 'crop-square' }, 'Center crop · square'),
-          h('option', { value: 'crop-portrait' }, 'Center crop · portrait 3:4'),
-          h('option', { value: 'crop-landscape' }, 'Center crop · landscape 4:3'),
-          h('option', { value: 'fit-square' }, 'Fit/contain · square'),
-          h('option', { value: 'resize-512' }, 'Resize · longest side 512')),
-        h('span', { style: css.muted }, 'Temporary working copy; the canonical source is never modified.')),
-      h('div', { style: css.row }, btn(ws.editStatus === 'running' && ws.editKind === 'img2img' ? 'Img2Img running…' : 'Run Img2Img', () => this.onImg2imgSubmit(), '#a78bfa')));
-
-    const toolBtn = (label, active, fn) => btn(label, fn, active ? '#38bdf8' : '#94a3b8');
-    const maskEditor = h('div', { style: { display: 'grid', gap: 8 } },
-      h('div', { style: css.row },
-        toolBtn('Brush', b.mode === 'paint', () => this.wsSet({ brush: Object.assign({}, b, { mode: 'paint' }) })),
-        toolBtn('Eraser', b.mode === 'erase', () => this.wsSet({ brush: Object.assign({}, b, { mode: 'erase' }) })),
-        h('label', { style: css.muted }, 'Size ' + b.size),
-        h('input', { type: 'range', min: '4', max: String(Math.max(64, Math.round(Math.min(src.width, src.height) / 3))), step: '2', value: String(b.size), onChange: e => this.wsSet({ brush: Object.assign({}, b, { size: +e.target.value }) }), style: { flex: '1 1 120px', minHeight: 30 } })),
-      h('div', { style: css.row },
-        btn('Undo', () => this.maskOp('undo'), '#94a3b8', { disabled: !mi.undo }), btn('Redo', () => this.maskOp('redo'), '#94a3b8', { disabled: !mi.redo }),
-        btn('Grow', () => this.maskOp('grow'), '#94a3b8'), btn('Shrink', () => this.maskOp('shrink'), '#94a3b8'),
-        btn('Feather', () => this.maskOp('feather'), '#94a3b8'), btn('Blur', () => this.maskOp('blur'), '#94a3b8'),
-        btn('Invert', () => this.maskOp('invert'), '#94a3b8'), btn('Clear', () => this.maskOp('clear'), '#f87171'),
-        btn(ws.maskZoom === 1 ? 'Fit' : ws.maskZoom === 2 ? '100%' : '200%', () => this.wsSet({ maskZoom: ws.maskZoom === 3 ? 1 : ws.maskZoom + 1 }), '#94a3b8')),
-      h('div', { style: { overflow: 'auto', maxHeight: '70vh', border: '1px solid rgba(148,163,184,.16)', borderRadius: 8, background: '#05080d' } },
-        h('div', { style: { position: 'relative', width: zoomW, maxWidth: ws.maskZoom === 1 ? '100%' : 'none', aspectRatio: src.width + ' / ' + src.height, background: 'center/100% 100% no-repeat url("' + base + src.url + '")' } },
-          this._mask ? this._mask.canvas : null)),
-      h('div', { style: css.muted }, 'Mask ' + (mi.w || src.width) + '×' + (mi.h || src.height) + ' · painted ' + Math.round((mi.coverage || 0) * 1000) / 10 + '%' +
-        ((mi.coverage || 0) >= D.FULL_MASK_COVERAGE ? ' — the entire image is masked; this regenerates nearly everything' : '') + '. Painted area is regenerated; the rest is kept. Mask survives parameter changes and retries.'),
-      h('div', { style: css.row },
-        h('label', { style: css.muted }, 'Inpaint strength'),
-        numInput(s.inpStrength, v => this.setState({ inpStrength: v }), { min: '0.05', max: '0.99', step: '0.05' }),
-        btn(ws.editStatus === 'running' && ws.editKind === 'inpaint' ? 'Inpainting…' : 'Run Inpaint', () => this.onInpaintSubmit(), '#a78bfa')));
-
-    const o = ws.out;
-    const side = (k, lbl) => h('label', { style: Object.assign({}, css.muted, { display: 'grid', gap: 3 }) }, lbl,
-      numInput(o[k], v => this.wsSet({ out: Object.assign({}, o, { [k]: v }) }), { min: '0', max: '512', step: '64' }));
-    const outW = src.width + (+o.left || 0) + (+o.right || 0), outH = src.height + (+o.top || 0) + (+o.bottom || 0);
-    const outpaint = h('div', { style: { display: 'grid', gap: 8 } },
-      h('label', { style: Object.assign({}, css.label, { marginBottom: 0 }) }, 'Extension Prompt'),
-      h('textarea', { rows: 2, value: this._extPrompt || '', onChange: e => { this._extPrompt = e.target.value; }, placeholder: 'e.g. empty wooden desk and plain gray wall',
-        style: Object.assign({}, css.input, { resize: 'vertical' }) }),
-      h('div', { style: css.muted }, 'Describe what should appear in the NEW area rather than restating the existing subject. Leave empty to use the edit prompt.'),
-      h('div', { style: css.row }, side('left', 'Left px'), side('right', 'Right px'), side('top', 'Top px'), side('bottom', 'Bottom px')),
-      h('div', { style: css.row },
-        btn('+25% right', () => this.wsSet({ out: Object.assign({}, o, { left: 0, right: Math.round(src.width / 4 / 64) * 64 || 64, top: 0, bottom: 0 }) }), '#94a3b8'),
-        btn('+25% left & right', () => this.wsSet({ out: Object.assign({}, o, { left: Math.round(src.width / 8 / 64) * 64 || 64, right: Math.round(src.width / 8 / 64) * 64 || 64, top: 0, bottom: 0 }) }), '#94a3b8'),
-        btn('+25% bottom', () => this.wsSet({ out: Object.assign({}, o, { left: 0, right: 0, top: 0, bottom: Math.round(src.height / 4 / 64) * 64 || 64 }) }), '#94a3b8'),
-        h('label', { style: css.muted }, 'Strength'), numInput(o.strength, v => this.wsSet({ out: Object.assign({}, o, { strength: v }) }), { min: '0.5', max: '0.99', step: '0.01' })),
-      h('div', { style: css.muted }, 'New canvas ≈ ' + outW + '×' + outH + ' (rounded up to multiples of 64). The original is kept exactly and blended over a 48 px overlap. Tip: describe what should appear in the new area (e.g. "empty desk and wall"); naming the main subject can duplicate it.'),
-      h('div', { style: css.row }, btn(ws.editStatus === 'running' && ws.editKind === 'outpaint' ? 'Outpainting…' : 'Run Outpaint', () => this.onOutpaintSubmit(), '#a78bfa')));
-
-    const results = ws.editResults;
-    const resultsPanel = results.length ? h('div', { style: { display: 'grid', gap: 8 } },
-      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(110px,1fr))', gap: 8 } },
-        ...results.map((r, i) => h('div', { key: r.imageId || i, style: { display: 'grid', gap: 4 } },
-          thumb(r.imageUrl ? base + r.imageUrl : null, i === (ws.editActive || 0), () => this.wsSet({ editActive: i }), r.imageId, r.kind + (r.seed != null ? ' · ' + r.seed : ''))))),
-      (() => {
-        const r = results[ws.editActive || 0];
-        if (!r || !r.imageId) return null;
-        return h('div', { style: css.row },
-          btn('Use as New Source', () => this.useAsNewSource(r.imageId), '#a78bfa'),
-          btn('Compare to Source', () => { this.wsSet({ compareIds: [r.sourceId || ws.editSourceId, r.imageId].filter(Boolean) }); this.loadCompare(); this.setScreen('library'); }, '#38bdf8'),
-          ws.editLastBody ? btn('Generate Another Variation', () => this.anotherVariation(), '#65d66e') : null,
-          btn('Inpaint this', () => this.useAsNewSource(r.imageId), '#a78bfa'),
-          btn('Enhance', () => this.sendToEnhance(r.imageId), '#f59e0b'),
-          btn('Open Full Size', () => window.open(base + r.imageUrl, '_blank'), '#94a3b8'),
-          btn('☆/★ Keeper', () => this.toggleKeeper(r.imageId, !r.keeper, r), '#fbbf24'),
-          ws.editOriginalId ? btn('Return to Original', () => this.returnToOriginal(), '#94a3b8') : null);
-      })()) : null;
-
-    const status = ws.editStatus === 'running' ? h('div', { style: { color: tone.info, fontSize: 12 } }, (ws.editKind || 'edit') + ' running on Big Mac… (results appear below when the job finishes)')
-      : ws.editStatus === 'error' ? h('div', { style: { color: tone.bad, fontSize: 12 } }, ws.editError || 'failed') : null;
-
-    return h('div', { style: { marginTop: 12 } },
-      this._gate('img2img') ? panelFor('Img2Img', i2i) : null,
-      this._gate('inpaint') ? panelFor('Inpaint mask', maskEditor) : null,
-      this._gate('outpaint') ? panelFor('Outpaint · extend canvas', outpaint) : null,
-      status,
-      results.length ? panelFor('Edit results', resultsPanel) : null);
-  };
+  // Edit (img2img / inpaint / outpaint) lives in edit-ui.js: one authoritative openImageInEdit,
+  // one operation state, one Run control.
 
   // ── Enhance ─────────────────────────────────────────────────────
   P.sendToEnhance = async function (id) {
@@ -681,7 +358,7 @@
     return h('div', { style: css.panel },
       h('div', { style: Object.assign({}, css.title, { marginBottom: 8 }) }, 'Enhance source'),
       h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(90px,140px) 1fr', gap: 10, marginBottom: 10 } },
-        h('img', { src: base + src.url, alt: 'enhance source', style: { width: '100%', borderRadius: 7 } }),
+        h('img', { src: base + src.url, alt: 'enhance source', 'data-fullscreen': 'only', 'data-fullscreen-image-id': src.id, 'data-fullscreen-caption': src.id, style: { width: '100%', borderRadius: 7, cursor: 'zoom-in' } }),
         h('div', { style: css.mono }, src.id + '\n' + src.width + '×' + src.height)),
       h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 8 } },
         card('Resize · Lanczos', 'deterministic resampling (not AI)', 'Pixel resampling on the MacBook. Adds no detail.', (src.width * sc) + '×' + (src.height * sc),
@@ -695,13 +372,13 @@
       ws.enhStatus === 'error' ? h('div', { style: { color: tone.bad, fontSize: 12, marginTop: 8 } }, ws.enhError || 'failed') : null,
       ws.enhResults.length ? h('div', { style: { marginTop: 10, display: 'grid', gap: 8 } },
         ...ws.enhResults.slice(0, 4).map(r => h('div', { key: r.imageId, style: { display: 'grid', gridTemplateColumns: 'minmax(90px,140px) 1fr', gap: 10 } },
-          thumb(base + r.imageUrl, false, () => window.open(base + r.imageUrl, '_blank'), r.imageId, r.method + ' · ' + r.width + '×' + r.height),
+          thumb(base + r.imageUrl, false, () => openFull(this, r.imageId, base + r.imageUrl), r.imageId, r.method + ' · ' + r.width + '×' + r.height),
           h('div', { style: css.row },
             btn('Compare', () => { this.wsSet({ compareIds: [src.id, r.imageId] }); this.loadCompare(); this.setScreen('library'); }, '#38bdf8'),
             this._gate('img2img') ? btn('Img2Img', () => this.sendToEdit(r.imageId, 'img2img'), '#a78bfa') : null,
             this._gate('inpaint') ? btn('Inpaint', () => this.sendToEdit(r.imageId, 'inpaint'), '#a78bfa') : null,
             btn('Use as Source', () => this.sendToEnhance(r.imageId), '#f59e0b'),
-            btn('Open', () => window.open(base + r.imageUrl, '_blank'), '#94a3b8'))))) : null);
+            btn('Fullscreen', () => openFull(this, r.imageId, base + r.imageUrl), '#94a3b8'))))) : null);
   };
 
   // ── Library: images, lineage, keepers, compare ──────────────────
@@ -716,6 +393,16 @@
     const m = await this._imageMeta(id);
     this.wsSet({ lib: Object.assign({}, this._ws().lib, { selectedId: id, selected: m }) });
   };
+  // Library thumbnail: click = fullscreen (with Edit actions in the viewer); the corner "ⓘ" selects it for details/lineage.
+  P._libThumb = function (it, selected) {
+    const base = this.state.backendUrl, id = it.id || it.artifact_id, url = base + it.url;
+    return h('div', { key: id, 'data-lib-thumb': id, style: { position: 'relative', border: '2px solid ' + (selected ? '#38bdf8' : 'rgba(148,163,184,.16)'), borderRadius: 8, overflow: 'hidden', background: '#0a0e14', aspectRatio: '1 / 1' } },
+      h('img', { src: url, alt: id, loading: 'lazy', 'data-fullscreen': 'only', 'data-fullscreen-image-id': id, 'data-fullscreen-caption': id, style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'zoom-in' } }),
+      h('button', { type: 'button', 'aria-label': 'Select ' + id + ' for details', title: 'Details, lineage and actions', onClick: () => this.selectLibraryImage(id),
+        style: { position: 'absolute', top: 4, right: 4, minWidth: 30, minHeight: 30, borderRadius: 15, border: '1px solid rgba(148,163,184,.5)', background: 'rgba(4,8,14,.85)', color: '#e2e8f0', cursor: 'pointer', fontSize: 14 } }, 'ⓘ'),
+      h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, background: 'rgba(4,8,14,.78)', color: '#dbe4ee', fontSize: 10, padding: '3px 5px', pointerEvents: 'none', fontFamily: "'IBM Plex Mono',monospace" } },
+        (it.keeper ? '★ ' : '') + ((it.meta && it.meta.operation) || it.operation || '') + (it.meta && it.meta.seed != null ? ' ' + it.meta.seed : '')));
+  };
   P.buildLibraryWorkbench = function () {
     const ws = this._ws(), lib = ws.lib, base = this.state.backendUrl;
     if (!lib.loadedOnce) { lib.loadedOnce = true; setTimeout(() => this.loadLibraryImages(), 0); }
@@ -726,7 +413,7 @@
     const lineageChip = (id, label) => h('button', { key: label + id, type: 'button', onClick: () => this.selectLibraryImage(id), title: id,
       style: { border: '1px solid rgba(148,163,184,.2)', background: 'rgba(5,10,18,.6)', color: '#cbd5e1', borderRadius: 6, padding: '4px 7px', fontSize: 11, cursor: 'pointer', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, label);
     const detail = sel ? h('div', { style: { borderTop: '1px solid rgba(148,163,184,.12)', marginTop: 10, paddingTop: 10, display: 'grid', gridTemplateColumns: 'minmax(120px,220px) 1fr', gap: 10 } },
-      h('img', { src: base + sel.url, alt: sel.id, style: { width: '100%', borderRadius: 7 } }),
+      h('img', { src: base + sel.url, alt: sel.id, 'data-fullscreen': 'only', 'data-fullscreen-image-id': sel.id, 'data-fullscreen-caption': sel.id, style: { width: '100%', borderRadius: 7, cursor: 'zoom-in' } }),
       h('div', { style: { display: 'grid', gap: 6, alignContent: 'start' } },
         h('div', { style: css.mono }, sel.id),
         h('div', { style: css.muted }, [sel.width + '×' + sel.height, sel.meta.operation, sel.meta.target, sel.meta.seed != null ? 'seed ' + sel.meta.seed : null, sel.meta.steps ? sel.meta.steps + ' steps' : null, sel.meta.strength ? 'strength ' + sel.meta.strength : null, sel.keeper ? '★ Keeper' : null].filter(Boolean).join(' · ') || 'legacy image (no lineage recorded)'),
@@ -741,8 +428,7 @@
         h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Images'), h('span', { style: css.muted }, lib.loading ? 'loading…' : lib.total + ' images'), h('div', { style: { flex: 1 } }), btn('Refresh', () => this.loadLibraryImages(), '#94a3b8')),
         h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, ...filters.map(([k, l]) => btn(l, () => this.loadLibraryImages(k), lib.filter === k ? '#38bdf8' : '#94a3b8'))),
         lib.items.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(96px,1fr))', gap: 6, maxHeight: 420, overflowY: 'auto' } },
-          ...lib.items.map(it => h('div', { key: it.id }, thumb(base + it.url, lib.selectedId === it.id, () => this.selectLibraryImage(it.id), it.id,
-            (it.keeper ? '★ ' : '') + ((it.meta && it.meta.operation) || '') + (it.meta && it.meta.seed != null ? ' ' + it.meta.seed : '')))))
+          ...lib.items.map(it => this._libThumb(it, lib.selectedId === it.id)))
           : h('div', { style: css.muted }, lib.loading ? '' : 'No images for this filter.'),
         detail),
       this.buildCompareWorkspace(),
@@ -763,9 +449,9 @@
       h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 8 } },
         ...items.map(it => h('div', { key: it.id, style: { display: 'grid', gap: 4 } },
           h('div', { 'data-compare-pane': '1', onScroll: sync, style: { overflow: 'auto', maxHeight: '60vh', border: '1px solid rgba(148,163,184,.16)', borderRadius: 7, background: '#05080d' } },
-            h('img', { src: base + it.url, alt: it.id, style: { width: z === 1 ? '100%' : (it.width * z / 2) + 'px', display: 'block', imageRendering: z > 2 ? 'pixelated' : 'auto' } })),
+            h('img', { src: base + it.url, alt: it.id, 'data-fullscreen': 'only', 'data-fullscreen-image-id': it.id, 'data-fullscreen-caption': it.id, style: { width: z === 1 ? '100%' : (it.width * z / 2) + 'px', display: 'block', imageRendering: z > 2 ? 'pixelated' : 'auto', cursor: 'zoom-in' } })),
           h('div', { style: css.mono }, it.id),
-          h('div', { style: css.row }, btn('Remove', () => this.toggleCompare(it.id), '#94a3b8'), btn('Open', () => window.open(base + it.url, '_blank'), '#94a3b8'))))),
+          h('div', { style: css.row }, btn('Remove', () => this.toggleCompare(it.id), '#94a3b8'), btn('Fullscreen', () => openFull(this, it.id, base + it.url), '#94a3b8'))))),
       rows.length ? h('table', { style: { width: '100%', marginTop: 8, borderCollapse: 'collapse', fontSize: 11 } },
         h('tbody', null, ...rows.map(r => h('tr', { key: r.key, style: { color: r.differs ? '#fde68a' : '#94a3b8' } },
           h('td', { style: { padding: '3px 6px', fontWeight: 700 } }, r.key + (r.differs ? ' ≠' : '')),
@@ -863,7 +549,7 @@
             it.status === 'QUEUED' ? btn('Remove', () => this.queueAction('remove', it.queueIndex), '#f87171') : null),
           it.error ? h('div', { style: { color: tone.bad, fontSize: 11 } }, it.error) : null,
           it.results && it.results.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(72px,96px))', gap: 5 } },
-            ...it.results.filter(r => r.imageUrl).map(r => h('div', { key: r.imageId }, thumb(base + r.imageUrl, false, () => this.showInLibrary(r.imageId), r.imageId, String(r.seed))))) : null)))) : null;
+            ...it.results.filter(r => r.imageUrl).map(r => h('div', { key: r.imageId }, thumb(base + r.imageUrl, false, () => openFull(this, r.imageId, base + r.imageUrl), r.imageId, String(r.seed))))) : null)))) : null;
     return h('div', { style: css.panel },
       h('div', { style: Object.assign({}, css.title, { marginBottom: 4 }) }, 'Numbered prompt batch'),
       h('div', { style: Object.assign({}, css.muted, { marginBottom: 8 }) }, 'Uses the Create settings: ' + ((spec && spec.label) || s.target) + ' · ' + s.width + '×' + s.height + ' · ' + s.steps + ' steps · seed ' + (Number(s.seed) >= 0 ? s.seed : 'random') + '. Titles and numbers are not sent as prompt text.'),
@@ -976,7 +662,10 @@
         prompt: 'preserve identity, pose and expression; improve facial anatomy, eyes, mouth and skin detail',
         maskPreview: null,
         loading: false,
-        detections: []
+        detections: [],
+        targetSelection: 'largest',
+        dilate: 0,
+        note: ''
       }
     });
   };
@@ -986,27 +675,35 @@
     this.wsSet({ detailer: Object.assign({}, ws.detailer, { open: false, maskPreview: null }) });
   };
 
+  P.detailerPayload = function (d) {
+    return {
+      image_id: d.imageId, mode: d.mode, threshold: d.threshold, padding: d.padding, feather: d.feather,
+      targetSelection: d.targetSelection || 'largest', dilate: d.dilate || 0
+    };
+  };
+
   P.previewDetailerMask = async function () {
     const ws = this._ws(), d = ws.detailer;
     if (!d || !d.imageId) return;
-    this.wsSet({ detailer: Object.assign({}, d, { loading: true }) });
+    this.wsSet({ detailer: Object.assign({}, d, { loading: true, note: 'Detecting with Apple Vision…' }) });
     try {
-      const res = await this._api('/api/detailer/mask-preview', {
-        image_id: d.imageId,
-        mode: d.mode,
-        threshold: d.threshold,
-        padding: d.padding,
-        feather: d.feather
-      });
-      if (res.ok && res.data.mask_preview) {
-        this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { loading: false, maskPreview: res.data.mask_preview, detections: res.data.detections || [] }) });
-        this.toast('Mask generated · ' + (res.data.detections || []).length + ' target(s)', '#38bdf8');
+      const res = await this._api('/api/detailer/mask-preview', this.detailerPayload(d));
+      const cur = this._ws().detailer;
+      if (res.ok && res.data.empty) {
+        this.wsSet({ detailer: Object.assign({}, cur, { loading: false, maskPreview: null, detections: [], note: res.data.message }) });
+        this.toast(res.data.message, '#fbbf24');
+      } else if (res.ok && res.data.mask_preview) {
+        const n = (res.data.detections || []).length;
+        const cov = res.data.mask && res.data.mask.coverage != null ? ' · ' + (res.data.mask.coverage * 100).toFixed(1) + '% of the image' : '';
+        this.wsSet({ detailer: Object.assign({}, cur, { loading: false, maskPreview: res.data.mask_preview, detections: res.data.detections || [], note: n + ' target(s) selected' + cov }) });
+        this.toast('Mask generated · ' + n + ' target(s)', '#38bdf8');
       } else {
-        this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { loading: false }) });
-        this.toast(res.data.error || 'Mask preview failed', '#ef4444');
+        const msg = (res.data && res.data.error) || 'Mask preview failed';
+        this.wsSet({ detailer: Object.assign({}, cur, { loading: false, note: msg }) });
+        this.toast(msg, '#ef4444');
       }
     } catch (e) {
-      this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { loading: false }) });
+      this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { loading: false, note: 'Error generating mask: ' + e.message }) });
       this.toast('Error generating mask: ' + e.message, '#ef4444');
     }
   };
@@ -1014,20 +711,13 @@
   P.runDetailer = async function () {
     const ws = this._ws(), d = ws.detailer;
     if (!d || !d.imageId) return;
-    this.wsSet({ detailer: Object.assign({}, d, { loading: true }) });
+    this.wsSet({ detailer: Object.assign({}, d, { loading: true, note: 'Detecting with Apple Vision…' }) });
     try {
       let maskData = d.maskPreview;
       if (!maskData) {
-        const pRes = await this._api('/api/detailer/mask-preview', {
-          image_id: d.imageId,
-          mode: d.mode,
-          threshold: d.threshold,
-          padding: d.padding,
-          feather: d.feather
-        });
-        if (!pRes.ok || !pRes.data.mask_preview) {
-          throw new Error(pRes.data.error || 'Failed to detect targets for detailer mask');
-        }
+        const pRes = await this._api('/api/detailer/mask-preview', this.detailerPayload(d));
+        if (pRes.ok && pRes.data.empty) throw new Error(pRes.data.message);
+        if (!pRes.ok || !pRes.data.mask_preview) throw new Error((pRes.data && pRes.data.error) || 'Failed to detect targets for detailer mask');
         maskData = pRes.data.mask_preview;
       }
 
@@ -1052,7 +742,7 @@
       const job = await this._waitJob(inpaintRes.data.job_id);
       this._onCreateDone(job, null);
     } catch (e) {
-      this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { loading: false }) });
+      this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { loading: false, note: 'Detailer failed: ' + e.message }) });
       this.toast('Detailer failed: ' + e.message, '#ef4444');
     }
   };
@@ -1080,9 +770,14 @@
         ),
         h('div', { style: css.muted }, 'Targeted inpaint refinement using Apple Vision detection on MacBook Air. Reuses existing inpaint pipeline and preserves source image.'),
         h('div', { style: css.row },
-          btn('Face', () => this.wsSet({ detailer: Object.assign({}, d, { mode: 'face', prompt: 'preserve identity, pose and expression; improve facial anatomy, eyes, mouth and skin detail' }) }), d.mode === 'face' ? '#a855f7' : '#94a3b8'),
-          btn('Hand (Derived ROI)', () => this.wsSet({ detailer: Object.assign({}, d, { mode: 'hand', prompt: 'preserve hand pose and interaction; correct hand anatomy and finger structure' }) }), d.mode === 'hand' ? '#a855f7' : '#94a3b8'),
-          btn('Person', () => this.wsSet({ detailer: Object.assign({}, d, { mode: 'person', prompt: 'preserve pose and scene composition; improve anatomy and clothing detail' }) }), d.mode === 'person' ? '#a855f7' : '#94a3b8')
+          btn('Face', () => this.wsSet({ detailer: Object.assign({}, d, { mode: 'face', maskPreview: null, note: '', prompt: 'preserve identity, pose and expression; improve facial anatomy, eyes, mouth and skin detail' }) }), d.mode === 'face' ? '#a855f7' : '#94a3b8'),
+          btn('Hand (Derived ROI)', () => this.wsSet({ detailer: Object.assign({}, d, { mode: 'hand', maskPreview: null, note: '', prompt: 'preserve hand pose and interaction; correct hand anatomy and finger structure' }) }), d.mode === 'hand' ? '#a855f7' : '#94a3b8'),
+          btn('Person', () => this.wsSet({ detailer: Object.assign({}, d, { mode: 'person', maskPreview: null, note: '', prompt: 'preserve pose and scene composition; improve anatomy and clothing detail' }) }), d.mode === 'person' ? '#a855f7' : '#94a3b8')
+        ),
+        h('div', { style: css.row },
+          h('span', { style: css.muted }, 'Targets'),
+          btn('Largest only', () => this.wsSet({ detailer: Object.assign({}, d, { targetSelection: 'largest', maskPreview: null }) }), (d.targetSelection || 'largest') === 'largest' ? '#a855f7' : '#94a3b8'),
+          btn('All (up to 5)', () => this.wsSet({ detailer: Object.assign({}, d, { targetSelection: 'all', maskPreview: null }) }), d.targetSelection === 'all' ? '#a855f7' : '#94a3b8')
         ),
         h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
           h('div', null,
@@ -1093,19 +788,25 @@
           h('div', null,
             h('div', { style: css.label }, 'Detection threshold: ' + (d.threshold || 0.3)),
             h('input', { type: 'range', min: '0.10', max: '0.90', step: '0.05', value: String(d.threshold || 0.3),
-              onChange: e => this.wsSet({ detailer: Object.assign({}, d, { threshold: +e.target.value }) }), style: { width: '100%' } })
+              onChange: e => this.wsSet({ detailer: Object.assign({}, d, { threshold: +e.target.value, maskPreview: null, note: '' }) }), style: { width: '100%' } })
           ),
           h('div', null,
             h('div', { style: css.label }, 'ROI Padding: ' + (d.padding || 0.2)),
             h('input', { type: 'range', min: '0.00', max: '0.60', step: '0.05', value: String(d.padding || 0.2),
-              onChange: e => this.wsSet({ detailer: Object.assign({}, d, { padding: +e.target.value }) }), style: { width: '100%' } })
+              onChange: e => this.wsSet({ detailer: Object.assign({}, d, { padding: +e.target.value, maskPreview: null, note: '' }) }), style: { width: '100%' } })
           ),
           h('div', null,
             h('div', { style: css.label }, 'Feather radius: ' + (d.feather || 8) + 'px'),
             h('input', { type: 'range', min: '0', max: '20', step: '1', value: String(d.feather || 8),
-              onChange: e => this.wsSet({ detailer: Object.assign({}, d, { feather: +e.target.value }) }), style: { width: '100%' } })
+              onChange: e => this.wsSet({ detailer: Object.assign({}, d, { feather: +e.target.value, maskPreview: null, note: '' }) }), style: { width: '100%' } })
+          ),
+          h('div', null,
+            h('div', { style: css.label }, 'Grow / shrink mask: ' + (d.dilate || 0) + 'px'),
+            h('input', { type: 'range', min: '-30', max: '30', step: '1', value: String(d.dilate || 0),
+              onChange: e => this.wsSet({ detailer: Object.assign({}, d, { dilate: +e.target.value, maskPreview: null, note: '' }) }), style: { width: '100%' } })
           )
         ),
+        d.note ? h('div', { role: 'status', 'data-detailer-note': '1', style: { fontSize: 12, color: /failed|No |Error|did not/.test(d.note) ? '#fca5a5' : '#cbd5e1' } }, d.note) : null,
         h('div', null,
           h('div', { style: css.label }, 'Repair prompt override'),
           h('textarea', {
@@ -1117,7 +818,7 @@
         ),
         d.maskPreview ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
           h('div', { style: css.label }, 'Mask Preview (White = inpaint region, ' + (d.detections ? d.detections.length : 0) + ' target(s))'),
-          h('img', { src: d.maskPreview, alt: 'Mask preview', style: { maxHeight: 180, objectFit: 'contain', borderRadius: 6, border: '1px solid rgba(168,85,247,.4)' } })
+          h('img', { src: d.maskPreview, alt: 'Mask preview', 'data-fullscreen': 'only', style: { maxHeight: 180, objectFit: 'contain', borderRadius: 6, border: '1px solid rgba(168,85,247,.4)' } })
         ) : null,
         h('div', { style: { borderTop: '1px solid rgba(148,163,184,.14)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
           h('span', { style: { fontSize: 11, color: '#f87171', fontStyle: 'italic' } }, 'Face Swap: UNAVAILABLE (No proven license-safe local model)'),
@@ -1146,7 +847,8 @@
 
       return h('div', {
         key: r.imageId || i,
-        onClick: () => this.selectResult(i),
+        // Selector strip: first click selects, clicking the already-active thumbnail opens it fullscreen.
+        onClick: () => (i === activeIdx && r.imageUrl ? openFull(this, r.imageId, base + r.imageUrl) : this.selectResult(i)),
         style: {
           cursor: 'pointer',
           borderRadius: 8,
@@ -1202,9 +904,9 @@
       ? h('div', { style: { position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' } },
           h('img', {
             src: base + active.imageUrl,
-            alt: 'Hero result',
+            alt: 'Hero result', 'data-fullscreen': 'only', 'data-fullscreen-image-id': active.imageId || '', 'data-fullscreen-caption': active.imageId || '',
             style: {
-              width: '100%', maxHeight: '680px', objectFit: 'contain',
+              width: '100%', maxHeight: '680px', objectFit: 'contain', cursor: 'zoom-in',
               borderRadius: 8, background: '#030710', border: '1px solid rgba(148,163,184,.14)'
             }
           }),
@@ -1266,7 +968,7 @@
           this._gate('inpaint') ? btn('Send to Inpaint', () => this.sendToEdit(active.imageId, 'inpaint'), '#a78bfa') : null,
           btn('Upscale', () => this.sendToEnhance(active.imageId), '#f59e0b'),
           btn('Detailer', () => this.openDetailer(active.imageId), '#a855f7'),
-          btn('Open', () => window.open(base + '/api/images/' + encodeURIComponent(active.imageId), '_blank'), '#94a3b8'),
+          btn('Fullscreen', () => openFull(this, active.imageId, base + '/api/images/' + encodeURIComponent(active.imageId)), '#94a3b8'),
           btn('Lineage', () => this.showInLibrary(active.imageId), '#94a3b8')
         ) : null
       ),
@@ -1321,7 +1023,7 @@
         h('div', { style: css.row }, btn(ab.status === 'running' ? 'Running A then B…' : 'Run A/B', () => this.runPromptAB(), '#65d66e', { disabled: ab.status === 'running' })),
         ab.pair.length ? h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 } },
           ...ab.pair.map(p => h('div', { key: p.label, style: { display: 'grid', gap: 4 } },
-            p.imageUrl ? thumb(base + p.imageUrl, false, () => window.open(base + p.imageUrl, '_blank'), p.imageId, 'Prompt ' + p.label + ' · s' + p.seed) : h('div', { style: { color: tone.bad } }, p.label + ': failed'),
+            p.imageUrl ? thumb(base + p.imageUrl, false, () => openFull(this, p.imageId, base + p.imageUrl), p.imageId, 'Prompt ' + p.label + ' · s' + p.seed) : h('div', { style: { color: tone.bad } }, p.label + ': failed'),
             p.imageId ? h('div', { style: css.row }, btn('Compare', () => this.toggleCompare(p.imageId), '#38bdf8'), btn('Keeper', () => this.toggleKeeper(p.imageId, !p.keeper, p), '#fbbf24')) : null))) : null,
         ab.held ? h('div', { style: css.mono }, 'Held constant: ' + Object.entries(ab.held).map(([k, v]) => k + '=' + v).join(' · ') + ' · Changed: prompt only') : null) : null);
 
@@ -1415,8 +1117,6 @@
     vals.createWorkbench = this.buildCreateWorkbench(vals.modelsListDisplay);
     vals.resultStaging = this.buildResultStaging();
     vals.batchWorkspace = this.buildBatchWorkspace();
-    vals.inpaintTools = this.buildInpaintTools();
-    vals.editSourceCard = this.buildEditSourceCard();
     vals.enhanceWorkbench = this.buildEnhanceWorkbench();
     vals.libraryWorkbench = this.buildLibraryWorkbench();
     vals.doctorPanel = this.buildDoctorPanel();

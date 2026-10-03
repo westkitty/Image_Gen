@@ -19,6 +19,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const { WORKER_PATHS } = require('./media');
+const A = require('./voice-audio');
 
 const DRIVER_PATH = path.join(__dirname, 'bridges', 'dexmedia_remote.py');
 const REMOTE_TMP_BASE = '$HOME/Library/Caches/DexDiffusion/tmp';
@@ -138,12 +139,13 @@ function parseMarkers(text) {
 
 function sha256File(file) { return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); }
 
-function sshRun(target, script, timeoutMs) {
+// onData(chunkText) streams stdout as it arrives (used for per-chunk progress); the full text is still returned.
+function sshRun(target, script, timeoutMs, onData) {
   return new Promise(resolve => {
     const child = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', target, 'bash -s'], { stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '';
     const t = setTimeout(() => { try { child.kill('SIGTERM'); } catch (_) {} }, timeoutMs);
-    child.stdout.on('data', d => { out += d; if (out.length > 8e6) out = out.slice(-4e6); });
+    child.stdout.on('data', d => { out += d; if (out.length > 8e6) out = out.slice(-4e6); if (onData) { try { onData(String(d)); } catch (_) {} } });
     child.stderr.on('data', () => {});
     child.on('close', () => { clearTimeout(t); resolve(out); });
     child.on('error', () => { clearTimeout(t); resolve(out); });
@@ -160,6 +162,56 @@ async function referenceToWav(staged) {
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dexref-')), 'ref.wav');
   const r = await execP('ffmpeg', ['-v', 'error', '-y', '-i', staged.path, '-ac', '1', '-ar', '24000', '-c:a', 'pcm_s16le', out]);
   if (!r.ok || !fs.existsSync(out) || fs.statSync(out).size < 1024) return null;
+  return out;
+}
+
+// ---- multi-item TTS (long-form chunks / drama lines) ----------------------------------
+const TTS_WORKERS = ['kokoro', 'qwen3-tts-base', 'qwen3-tts-voice-design'];
+const MAX_ITEMS = 400, MAX_ITEM_CHARS = 1500;
+// Validate a render plan built server-side by voice-engines.buildRenderPlan (never taken from HTTP bodies).
+function validateBatchPlan(worker, plan) {
+  const bad = (m, gate = 'invalid-request') => ({ error: m, gate });
+  if (!TTS_WORKERS.includes(worker)) return bad('worker has no multi-item execution', 'worker-unavailable');
+  const b = plan || {};
+  if (!Array.isArray(b.items) || !b.items.length || b.items.length > MAX_ITEMS) return bad(`1-${MAX_ITEMS} text chunks are required`);
+  const items = [];
+  for (const it of b.items) {
+    const text = str(it && it.text);
+    if (!text) return bad('empty text chunk');
+    if (text.length > MAX_ITEM_CHARS) return bad(`a chunk exceeds ${MAX_ITEM_CHARS} characters`);
+    const seed = intOrNull(it.seed, 0, 2147483647);
+    if (Number.isNaN(seed)) return bad('seed must be an integer 0-2147483647');
+    items.push({ text, seed });
+  }
+  const lang = str(b.language) || 'en';
+  if (!LANGS.includes(lang)) return bad('unsupported language');
+  const req = { worker, items, lang_code: lang };
+  const safe = { items: items.length, language: lang };
+  if (worker === 'kokoro') {
+    const voice = str(b.voice) || 'af_heart';
+    if (!KOKORO_VOICES.includes(voice)) return bad('unknown Kokoro voice');
+    const speed = b.speed === undefined || b.speed === '' ? 1 : Number(b.speed);
+    if (!(speed >= 0.5 && speed <= 2)) return bad('speed must be 0.5-2');
+    Object.assign(req, { voice, lang_code: voice[0], speed }); Object.assign(safe, { voice, speed, language: voice[0] });
+  } else if (worker === 'qwen3-tts-base') {
+    if (!str(b.ref_text)) return bad('the reference sample needs its exact transcript', 'reference-invalid');
+    if (!str(b.ref_path)) return bad('Voice Clone needs a reference sample', 'reference-invalid');
+    req.ref_text = str(b.ref_text); safe.reference = 'profile'; safe.has_transcript = true;
+  } else {
+    const instruct = str(b.instruct);
+    if (!instruct) return bad('Voice Design needs a voice description');
+    if (instruct.length > 1500) return bad('Voice description too long');
+    req.instruct = instruct;
+  }
+  return { req, safe, refPath: worker === 'qwen3-tts-base' ? str(b.ref_path) : null };
+}
+// DEXMEDIA_ITEM=<i>|<path>|<sha>|<bytes>|<duration>|<rate>|<channels>
+function parseItemMarkers(text) {
+  const out = [];
+  for (const line of String(text || '').split('\n')) {
+    const m = /^DEXMEDIA_ITEM=(\d+)\|([^|]+)\|([a-f0-9]{64})\|(\d+)\|([\d.]+)\|(\d+)\|(\d+)$/.exec(line.trim());
+    if (m) out.push({ i: Number(m[1]), path: m[2], sha: m[3], bytes: Number(m[4]), duration: Number(m[5]), rate: Number(m[6]), channels: Number(m[7]) });
+  }
   return out;
 }
 
@@ -273,6 +325,116 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
     run(job.job_id, worker, spec, v, v.req).catch(() => {});
     return { job_id: job.job_id, status: 'QUEUED' };
   }
+  // One Big Mac invocation for N text chunks (model loaded once). Chunk WAVs are transferred and
+  // checksum-verified individually, stitched on the MacBook (one canonical artifact), and the chunk
+  // lineage (counts, durations, sha256) is recorded WITHOUT any text. Failures name the chunk.
+  async function runBatch(jobId, worker, spec, v, ctx) {
+    const total = v.req.items.length, long = total > 1;
+    const fail = (gate, error) => { jobStore.transition(jobId, 'FAILED', { first_failed_gate: gate, error }); return { ok: false, gate, error }; };
+    let remoteDir = null, localRef = null, localDir = null;
+    const progress = patch => { const g = jobStore.get(jobId); if (g && !['COMPLETE', 'FAILED', 'INTERRUPTED', 'CANCELLED'].includes(g.status)) jobStore.transition(jobId, g.status, { progress: Object.assign({}, g.progress || {}, patch, { total }) }); };
+    try {
+      const lease = await arbiter.acquire(jobId, `${worker} ${ctx.operation || 'render'}`);
+      if (!lease.granted) return fail('resource', 'heavy-compute lease was not granted');
+      const g0 = jobStore.get(jobId);
+      if (!g0 || g0.status !== 'QUEUED') return { ok: false, gate: 'interrupted' };
+      jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group, progress: { phase: 'preparing', chunk: 0, total } });
+      const mk = await exec('ssh', ['-o', 'BatchMode=yes', sshTarget,
+        `mkdir -p "$HOME/Library/Caches/DexDiffusion/tmp" && d=$(mktemp -d "$HOME/Library/Caches/DexDiffusion/tmp/dexmedia.XXXXXX") && chmod 700 "$d" && echo "DEXMEDIA_DIR=$d"`]);
+      remoteDir = parseMarkers(mk.stdout).DIR;
+      if (!remoteDir) return fail('worker-unavailable', 'could not create a Big Mac job directory');
+      const request = { ...v.req, out_dir: `${remoteDir}/out`, model: spec.model };
+      if (worker === 'kokoro') request.voice_path = `${spec.model}/voices/${v.req.voice}.safetensors`;
+      if (v.refPath) {
+        if (!fs.existsSync(v.refPath)) return fail('reference-invalid', 'the profile reference sample file is missing');
+        localRef = await toWav({ path: v.refPath });
+        if (!localRef) return fail('reference-invalid', 'reference audio could not be converted to WAV');
+        const up = await exec('scp', ['-q', localRef, `${sshTarget}:${remoteDir}/ref.wav`]);
+        const chk = await exec('ssh', ['-o', 'BatchMode=yes', sshTarget, `test -s "${remoteDir}/ref.wav" && echo DEXMEDIA_REF_OK`]);
+        if (!parseMarkers(chk.stdout).REF_OK) return fail('transfer', up.ok ? 'reference upload missing on Big Mac' : 'reference upload failed');
+        request.ref_audio = `${remoteDir}/ref.wav`;
+      }
+      const payload = buildPayload({ dir: remoteDir, request, driverSource: fs.readFileSync(DRIVER_PATH, 'utf8'), python: spec.python });
+      let seen = '';
+      const out = await sshRunFn(sshTarget, payload, Math.max(TIMEOUT_MS.tts, total * 90 * 1000), chunk => {
+        seen += chunk;
+        const starts = [...seen.matchAll(/DEXMEDIA_ITEM_START=(\d+)/g)], done = parseItemMarkers(seen);
+        if (starts.length) progress({ phase: 'generating', chunk: Number(starts[starts.length - 1][1]) + 1, done: done.length });
+        else if (/DEXMEDIA_MODEL_LOADING/.test(seen) && !/DEXMEDIA_MODEL_READY/.test(seen)) progress({ phase: 'loading-model', chunk: 0 });
+        if (seen.length > 200000) seen = seen.slice(-100000);
+      });
+      if (onRemoteOutput) onRemoteOutput(out);
+      const mk2 = parseMarkers(out), items = parseItemMarkers(out);
+      if (mk2.FAIL) {
+        const at = mk2.FAIL_ITEM !== undefined ? Number(mk2.FAIL_ITEM) + 1 : null;
+        return fail(String(mk2.FAIL), (long && at ? `Long-form render failed at chunk ${at}/${total}: ` : at ? `chunk ${at}/${total}: ` : '') + `${worker}: ${mk2.ERROR || 'generation failed'}`);
+      }
+      if (!mk2.DONE && !mk2.PASS) return fail('generation', 'Big Mac generation did not report completion (timeout or connection loss)');
+      if (items.length !== total || items.some((it, k) => it.i !== k)) return fail('output-missing', `expected ${total} chunk outputs, Big Mac reported ${items.length}`);
+      if (items.some(it => !it.path.startsWith(remoteDir + '/'))) return fail('output-invalid', 'output outside the job directory');
+      jobStore.transition(jobId, 'TRANSFERRING', { progress: { phase: 'transferring', chunk: total, total } });
+      localDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dexmedia-'));
+      const parts = [], lineage = [];
+      for (const it of items) {
+        const dest = path.join(localDir, `item-${String(it.i).padStart(3, '0')}.wav`);
+        await exec('scp', ['-q', `${sshTarget}:${it.path}`, dest], 300000);
+        if (!fs.existsSync(dest) || fs.statSync(dest).size === 0) return fail('transfer', `chunk ${it.i + 1}/${total}: WAV transfer from Big Mac failed`);
+        if (sha256File(dest) !== it.sha) return fail('checksum', `chunk ${it.i + 1}/${total}: transferred WAV checksum does not match Big Mac`);
+        let wavAudio; try { wavAudio = A.parseWav(fs.readFileSync(dest)); } catch (e) { return fail('output-invalid', `chunk ${it.i + 1}/${total}: ${e.message}`); }
+        parts.push({ file: dest, audio: wavAudio });
+        lineage.push({ index: it.i, duration: it.duration, sha256: it.sha, sample_rate: it.rate, chars: v.req.items[it.i].text.length, boundary: (ctx.boundaries || [])[it.i] || null });
+      }
+      let finalFile = parts[0].file;
+      if (long) {
+        try {
+          const stitched = A.stitch(parts.map(p => p.audio), { gapsMs: ctx.gapsMs || [], crossfadeMs: 25 });
+          finalFile = path.join(localDir, 'final.wav'); fs.writeFileSync(finalFile, A.encodeWav(stitched));
+        } catch (e) { return fail('canonicalization', 'stitching failed: ' + String(e.message).slice(0, 160)); }
+      }
+      const fa = A.parseWav(fs.readFileSync(finalFile));
+      let rec;
+      try {
+        const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+        rec = mediaStore.finalize(finalFile, {
+          kind: spec.media_kind, base: `${stamp}-${worker}-${ctx.operation || spec.operation}`, job_id: jobId, worker, model: worker,
+          seed: (v.req.items[0].seed != null ? v.req.items[0].seed : null), duration: A.duration(fa),
+          meta: Object.assign({ operation: ctx.operation || spec.operation, sample_rate: fa.sampleRate, channels: fa.channels.length, reference_used: !!v.refPath, ...v.safe,
+            long_form: long ? { chunks: total, lineage } : null }, ctx.meta || {}),
+        });
+      } catch (e) { return fail('canonicalization', String(e.message).slice(0, 200)); }
+      jobStore.transition(jobId, 'COMPLETE', { artifacts: [rec.artifact_id], progress: { phase: 'complete', chunk: total, total } });
+      evidence.pass(worker, { at: new Date().toISOString(), job_id: jobId, artifact_id: rec.artifact_id, sha256: rec.sha256, chunks: total });
+      return { ok: true, artifact: rec, lineage };
+    } catch (e) {
+      const g = jobStore.get(jobId);
+      if (g && !['COMPLETE', 'FAILED', 'INTERRUPTED', 'CANCELLED'].includes(g.status)) return fail('generation', String(e.message).slice(0, 200));
+      return { ok: false };
+    } finally {
+      for (const f of [localRef]) if (f) try { fs.rmSync(path.dirname(f), { recursive: true, force: true }); } catch (_) {}
+      if (localDir) try { fs.rmSync(localDir, { recursive: true, force: true }); } catch (_) {}
+      if (remoteDir) {
+        const rm = await exec('ssh', ['-o', 'BatchMode=yes', sshTarget, `case "${remoteDir}" in "$HOME/Library/Caches/DexDiffusion/tmp/dexmedia."*) rm -rf "${remoteDir}"; test -e "${remoteDir}" && echo DEXMEDIA_STILL_THERE || echo DEXMEDIA_CLEANED ;; esac`]);
+        if (!parseMarkers(rm.stdout).CLEANED) { const g = jobStore.get(jobId); if (g) { g.cleanup_error = 'Big Mac job directory could not be verified removed'; jobStore.transition(jobId, g.status, {}); } log(`media-bridge: cleanup of ${remoteDir} not verified`); }
+      }
+      arbiter.release(jobId);
+    }
+  }
+  // plan: voice-engines.buildRenderPlan(...).body + { worker }. ctx: { probe, saveText, operation, gapsMs, boundaries, meta }.
+  // Resolves immediately with the job id; use jobStore (or waitJob) for the outcome.
+  function startBatch(worker, plan, ctx) {
+    const spec = BRIDGES[worker];
+    if (!spec) return { error: 'worker has no execution bridge', gate: 'worker-unavailable', status: 409 };
+    const probe = ctx.probe;
+    if (!probe.runtime_available) return { error: 'Runtime not installed', gate: 'runtime-missing', status: 409 };
+    if (!probe.model_available) return { error: 'Model not installed', gate: 'model-missing', status: 409 };
+    const v = validateBatchPlan(worker, plan);
+    if (v.error) return { error: v.error, gate: v.gate, status: 400 };
+    const priv = privateOnly(Object.assign({}, v.req, { text: v.req.items.map(i => i.text).join('\n') }));
+    const job = jobStore.create({ media_kind: spec.media_kind, operation: ctx.operation || spec.operation, worker_id: worker, model_id: worker, resource_class: 'heavy',
+      params: Object.assign({}, v.safe, ctx.safeParams || {}, priv), persist_text: !!ctx.saveText });
+    runBatch(job.job_id, worker, spec, v, ctx).catch(() => {});
+    return { job_id: job.job_id, status: 'QUEUED' };
+  }
   // Remove DexDiffusion-owned remote job dirs left behind by an interrupted
   // run (e.g. console restart). Only $HOME/Library/Caches/DexDiffusion/tmp/
   // dexmedia.* older than maxAgeMin is touched; never models or runtimes.
@@ -285,7 +447,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
     const m = parseMarkers(r.stdout);
     return { swept: m.SWEPT === undefined ? null : Number(m.SWEPT), remaining: m.REMAINING === undefined ? null : Number(m.REMAINING) };
   }
-  return { start, evidence, sweepRemoteOrphans, BRIDGES };
+  return { start, startBatch, evidence, sweepRemoteOrphans, BRIDGES };
 }
 
 // Private text keys, passed to jobStore.create so its PRIVATE_KEYS policy
@@ -297,4 +459,4 @@ function privateOnly(req) {
   return out;
 }
 
-module.exports = { createMediaBridge, validateRequest, buildPayload, parseMarkers, BRIDGES, KOKORO_VOICES, LANGS, DRIVER_PATH, privateOnly };
+module.exports = { createMediaBridge, validateRequest, validateBatchPlan, parseItemMarkers, buildPayload, parseMarkers, BRIDGES, KOKORO_VOICES, LANGS, DRIVER_PATH, privateOnly, MAX_ITEMS, MAX_ITEM_CHARS };

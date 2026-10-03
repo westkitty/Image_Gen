@@ -5,6 +5,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { controlledScriptFor, buildControlledArgs, nativeBatchEligible } = require('./controlled-args');
 const W = require('./workstation');
+const EC = require('./public/dexdiffusion/edit-core.js');
 const M = require('./media');
 const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
@@ -16,7 +17,7 @@ const { PROFILES, resolvePromptProfile } = require('./prompt-profiles');
 const { getWildcardCatalog, expandWildcards: expandWildcardsUtil } = require('./wildcards');
 const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily } = require('./extra-networks');
 const { MODEL_CARDS, getModelCards, getModelCardById, checkModelSwitchWarnings } = require('./model-registry');
-const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt } = require('./detailer');
+const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt, ATTEMPT_TIMEOUT_MS } = require('./detailer');
 
 const app = express();
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
@@ -551,6 +552,47 @@ function validatePromptLoras(prompt) {
   }
   return { ok: true };
 }
+// Structured resources (LoRAs) are the source of truth in requests; they are
+// serialized to <lora:name:weight> prompt tags only here at the backend boundary.
+function validateStructuredLoras(loras) {
+  if (loras === undefined || loras === null) return null;
+  if (!Array.isArray(loras) || loras.length > 8) return 'loras must be an array of at most 8 entries';
+  for (const l of loras) {
+    if (!l || typeof l.name !== 'string' || !/^[A-Za-z0-9._ -]{1,120}$/.test(l.name)) return 'Invalid LoRA name';
+    if (l.weight !== undefined && l.weight !== null && !Number.isFinite(Number(l.weight))) return 'Invalid LoRA weight';
+  }
+  return null;
+}
+// Edit routes: rewrite body.prompt to include serialized LoRA tags and keep the
+// structured list on body.__loras (server-owned; any client value is overwritten).
+function resolveEditResources(body) {
+  const err = validateStructuredLoras(body.loras);
+  if (err) return err;
+  const rr = EC.resolveResources({ prompt: typeof body.prompt === 'string' ? body.prompt : '', loras: body.loras });
+  if (typeof body.prompt === 'string') body.prompt = rr.backendPrompt;
+  body.__loras = rr.loras;
+  delete body.loras;
+  return null;
+}
+// Effective generation record kept per canonical output (privacy-gated text).
+function editGenRecord(body, params, extra = {}) {
+  const save = !!params.save_prompts;
+  const active = assetCache && assetCache.activeSecondaryModel || null;
+  return {
+    gen_schema: 1,
+    loras: body.__loras || [],
+    sampler: EC.canonicalSampler(params.sampler),
+    vae: params.vae || 'auto',
+    scheduler: params.scheduler,
+    cfg: params.cfg_scale !== '' && params.cfg_scale != null ? Number(params.cfg_scale) : undefined,
+    steps: params.steps !== '' && params.steps != null ? Number(params.steps) : undefined,
+    edit_target: active,
+    prompt_saved: save,
+    prompt: save ? EC.stripLoraTags(params.prompt) : undefined,
+    negative_prompt: save ? params.negative_prompt : undefined,
+    ...extra,
+  };
+}
 function validateNegativePrompt(text) {
   return text === undefined || text === null || text === '' || (typeof text === 'string' && text.length <= 2000);
 }
@@ -740,20 +782,23 @@ function recordEditResults(job, stdoutText) {
       const dims = pngSize(img.path) || {};
       const rp = job.requestParams || {};
       const seed = /^\d+$/.test(String(rp.seed || '')) ? Number(rp.seed) : null;
-      job.results.push({ index: job.results.length, status: 'DONE', imageId: e.image_id, imageUrl: imageStore.imageUrl(e.image_id), runId, seed, target: 'sd15', width: dims.width, height: dims.height, operation: job.lineageOp });
+      const gr = job.genRecord || {};
+      const editTarget = gr.edit_target || 'sd15';
+      job.results.push({ index: job.results.length, status: 'DONE', imageId: e.image_id, imageUrl: imageStore.imageUrl(e.image_id), runId, seed, target: editTarget, width: dims.width, height: dims.height, operation: job.lineageOp });
       try {
         imageMeta.record(e.image_id, {
           operation: job.lineageOp,
           parent: job.sourceImageId,
           detailed_from: rp.detailed_from || (job.lineageOp === 'detailer' ? job.sourceImageId : undefined),
           runId,
-          target: 'sd15',
+          target: editTarget,
           seed,
           width: dims.width,
           height: dims.height,
           steps: rp.steps,
           cfg: rp.cfg_scale,
-          strength: rp.strength
+          strength: rp.strength,
+          ...gr,
         });
       } catch (err) { job.stderr += `\nimage-meta: ${err.message}`; }
     }
@@ -1038,6 +1083,7 @@ function runAction(jobId, scriptPath, args, savePrompts = false) {
 function runActionNow(jobId, scriptPath, args, savePrompts = false) {
   const job = jobs[jobId];
   job.status = 'running';
+  job.startedRunningAt = Date.now();
   if (jobStore.get(jobId) && jobStore.get(jobId).status === 'QUEUED') jobStore.transition(jobId, 'RUNNING');
   const env = { ...process.env, SDCPP_REDACT_PROMPTS: savePrompts ? '0' : '1' };
   const child = spawn(scriptPath, args, { cwd: WORKFLOW_ROOT, shell: false, env, detached: true });
@@ -1174,6 +1220,15 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
             width: item.width, height: item.height, steps: params.steps || spec.defaultSteps,
             cfg: spec.backend === 'mflux' ? undefined : params.cfg_scale, scheduler: spec.backend === 'mflux' ? undefined : params.scheduler,
             queueId: opts.queueId, batchNumber: opts.batchNumber,
+            // Effective per-image generation record (exact recall source).
+            gen_schema: 1,
+            sampler: spec.backend === 'mflux' ? undefined : EC.canonicalSampler(params.sampler || spec.defaultSampler),
+            vae: spec.backend === 'mflux' ? undefined : (params.vae || 'auto'),
+            preset: params.preset || undefined,
+            loras: spec.backend === 'mflux' ? [] : (params.loras || []),
+            prompt_saved: !!params.save_prompts,
+            prompt: params.save_prompts ? EC.stripLoraTags(params.prompt) : undefined,
+            negative_prompt: params.save_prompts && !(spec.backend === 'mflux' || spec.noNegativePrompt) ? params.negative_prompt : undefined,
           });
         } catch (err) { job.stderr += `\nimage-meta: ${err.message}`; }
       }
@@ -1339,7 +1394,8 @@ function normalizeControlledGenerationBody(body) {
     'hires_denoise',
     'hires_upscaler',
     'parent_image_id',
-    'operation'
+    'operation',
+    'loras'
   ]);
   for (const key of Object.keys(body || {})) {
     if (!allowedKeys.has(key)) {
@@ -1373,7 +1429,9 @@ function normalizeControlledGenerationBody(body) {
     hires_denoise: body.hires_denoise !== undefined && body.hires_denoise !== null && body.hires_denoise !== '' ? Number(body.hires_denoise) : 0.5,
     hires_upscaler: body.hires_upscaler ? String(body.hires_upscaler) : 'Latent',
     parent_image_id: typeof body.parent_image_id === 'string' && body.parent_image_id ? body.parent_image_id : null,
-    operation: body.operation ? String(body.operation) : 'txt2img'
+    operation: body.operation ? String(body.operation) : 'txt2img',
+    preset: typeof body.preset === 'string' && /^[A-Za-z0-9_-]{1,24}$/.test(body.preset) ? body.preset : '',
+    loras: body.loras
   };
   return params;
 }
@@ -2453,6 +2511,7 @@ app.get('/api/detailer/status', (req, res) => {
     available: isVisionDetailerAvailable(),
     backend: 'apple-vision',
     supported_modes: ['face', 'hand', 'person'],
+    timeout_ms: ATTEMPT_TIMEOUT_MS,
     default_prompts: {
       face: getDefaultDetailerPrompt('face'),
       hand: getDefaultDetailerPrompt('hand'),
@@ -2461,79 +2520,71 @@ app.get('/api/detailer/status', (req, res) => {
   });
 });
 
+// Detail-target options accepted from the client (all optional; the native detector applies its own defaults).
+function detailerOptionsFrom(body) {
+  const o = {};
+  const b = body || {};
+  for (const k of ['threshold', 'padding', 'feather', 'maxTargets', 'targetSelection', 'minArea', 'maxArea', 'offsetX', 'offsetY', 'dilate', 'personQuality']) {
+    if (b[k] !== undefined && b[k] !== null && b[k] !== '') o[k] = b[k];
+  }
+  // snake_case aliases
+  const alias = { max_targets: 'maxTargets', target_selection: 'targetSelection', min_area: 'minArea', max_area: 'maxArea', offset_x: 'offsetX', offset_y: 'offsetY', person_quality: 'personQuality' };
+  for (const [from, to] of Object.entries(alias)) if (o[to] === undefined && b[from] !== undefined && b[from] !== null && b[from] !== '') o[to] = b[from];
+  o.mode = b.mode || 'face';
+  return o;
+}
+function detailerFail(res, err) {
+  const status = (err && err.status) || 500;
+  return res.status(status).json({ error: err.message, code: err.code || 'detailer_failed', stage: err.stage || undefined });
+}
+function detailerSummary(result) {
+  return { backend: result.backend, mode: result.mode, selection: result.selection, candidates: result.candidates, filtered: result.filtered, detections: result.detections, detections_count: result.detections_count, mask: result.mask ? { coverage: result.mask.coverage, width: result.mask.width, height: result.mask.height, format: result.mask.format } : undefined, timings_ms: result.timings_ms, attempts: result.attempts };
+}
+function noDetailerTargetsMessage(mode, result) {
+  const what = { face: 'face', hand: 'hand', person: 'person' }[mode] || mode;
+  if (result && result.candidates > 0 && result.filtered === 0) return `${result.candidates} ${what} candidate(s) were found but all were excluded by the size limits. Widen the minimum/maximum size and try again.`;
+  return `No ${what} was found in this image (nothing met the detection threshold and size limits). Lower the confidence threshold, widen the size limits, or try another target type.`;
+}
+
 app.post('/api/detailer/detect', async (req, res) => {
-  const { image_id, mode, threshold, padding, feather, maxTargets, targetSelection } = req.body || {};
+  const { image_id } = req.body || {};
   if (!image_id) return res.status(400).json({ error: 'image_id is required' });
   const resolved = imageStore.resolveImage(image_id);
   if (!resolved || !fs.existsSync(resolved.path)) {
     return res.status(404).json({ error: 'Source image not found' });
   }
-
   try {
-    const result = await detectRegions(resolved.path, {
-      mode: mode || 'face',
-      threshold,
-      padding,
-      feather,
-      maxTargets,
-      targetSelection
-    });
-    res.json(result);
+    const result = await detectRegions(resolved.path, detailerOptionsFrom(req.body));
+    res.json({ status: 'ok', ...detailerSummary(result), image_width: result.image_width, image_height: result.image_height });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    detailerFail(res, err);
   }
 });
 
 app.post('/api/detailer/mask-preview', async (req, res) => {
-  const { image_id, mode, threshold, padding, feather, maxTargets, targetSelection } = req.body || {};
+  const { image_id } = req.body || {};
   if (!image_id) return res.status(400).json({ error: 'image_id is required' });
   const resolved = imageStore.resolveImage(image_id);
   if (!resolved || !fs.existsSync(resolved.path)) {
     return res.status(404).json({ error: 'Source image not found' });
   }
-
   const maskName = `mask-preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
   const maskPath = path.join(RUNS_DIR, maskName);
   try {
-    const result = await detectRegions(resolved.path, {
-      mode: mode || 'face',
-      threshold,
-      padding,
-      feather,
-      maxTargets,
-      targetSelection,
-      outputMask: maskPath
-    });
-    const maskData = fs.readFileSync(maskPath);
-    const maskBase64 = `data:image/png;base64,${maskData.toString('base64')}`;
-    try { fs.unlinkSync(maskPath); } catch (_) {}
-    res.json({ status: 'ok', mask_preview: maskBase64, detections: result.detections });
+    const result = await detectRegions(resolved.path, { ...detailerOptionsFrom(req.body), outputMask: maskPath });
+    const empty = !result.detections || result.detections.length === 0;
+    const maskBase64 = !empty && fs.existsSync(maskPath) ? `data:image/png;base64,${fs.readFileSync(maskPath).toString('base64')}` : null;
+    res.json({ status: 'ok', mask_preview: maskBase64, empty, message: empty ? noDetailerTargetsMessage(result.mode, result) : undefined, image_width: result.image_width, image_height: result.image_height, ...detailerSummary(result) });
   } catch (err) {
+    detailerFail(res, err);
+  } finally {
     try { if (fs.existsSync(maskPath)) fs.unlinkSync(maskPath); } catch (_) {}
-    res.status(500).json({ error: err.message });
   }
 });
 
 app.post('/api/detailer/run', async (req, res) => {
-  const {
-    image_id,
-    imageId,
-    mode,
-    threshold,
-    padding,
-    feather,
-    maxTargets,
-    targetSelection,
-    prompt,
-    negative_prompt,
-    strength,
-    steps,
-    cfg_scale,
-    seed,
-    sampler,
-    scheduler
-  } = req.body || {};
-
+  const body = req.body || {};
+  const { image_id, imageId, mode, strength } = body;
   const targetImageId = image_id || imageId;
   if (!targetImageId) return res.status(400).json({ error: 'image_id is required' });
   const resolved = imageStore.resolveImage(targetImageId);
@@ -2543,48 +2594,38 @@ app.post('/api/detailer/run', async (req, res) => {
 
   const maskName = `mask-detailer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
   const maskPath = path.join(MASK_UPLOADS_DIR, maskName);
-
+  const opts = detailerOptionsFrom(body);
+  if (opts.padding === undefined) opts.padding = 0.25;
+  if (opts.feather === undefined) opts.feather = 16;
   try {
-    const result = await detectRegions(resolved.path, {
-      mode: mode || 'face',
-      threshold,
-      padding: padding !== undefined ? padding : 0.25,
-      feather: feather !== undefined ? feather : 16,
-      maxTargets,
-      targetSelection,
-      outputMask: maskPath
-    });
-
+    const result = await detectRegions(resolved.path, { ...opts, outputMask: maskPath });
     if (!result.detections || result.detections.length === 0) {
-      try { if (fs.existsSync(maskPath)) fs.unlinkSync(maskPath); } catch (_) {}
-      return res.status(422).json({
-        error: `No target regions detected for mode '${mode || 'face'}'. Try adjusting detection threshold or padding.`,
-        detections: []
-      });
+      return res.status(422).json({ error: noDetailerTargetsMessage(opts.mode, result), code: 'no_targets', detections: [] });
     }
+    const maskBase64 = `data:image/png;base64,${fs.readFileSync(maskPath).toString('base64')}`;
 
-    const maskData = fs.readFileSync(maskPath);
-    const maskBase64 = `data:image/png;base64,${maskData.toString('base64')}`;
-    try { fs.unlinkSync(maskPath); } catch (_) {}
-
-    // Prepare inpaint request body
+    // Inpaint request: the mask is alpha-painted over ONLY the selected target(s); everything else is kept.
+    // No `confirm_full_mask` — a mask that covers ~the whole image must still hit the normal 409 gate.
     req.body = {
-      ...(req.body || {}),
+      ...body,
       image_id: resolved.id,
       mask_data: maskBase64,
       operation: 'detailer',
       detailed_from: resolved.id,
       parent_image_id: resolved.id,
       mode: 'cli',
-      detailer_mode: mode || 'face',
-      strength: strength !== undefined ? Number(strength) : 0.4,
-      confirm_full_mask: true
+      detailer_mode: opts.mode,
+      prompt: (typeof body.prompt === 'string' && body.prompt.trim()) ? body.prompt : getDefaultDetailerPrompt(opts.mode),
+      strength: strength !== undefined ? Number(strength) : 0.4
     };
-
+    delete req.body.confirm_full_mask;
+    if (body.confirm_full_mask === true) req.body.confirm_full_mask = true;   // only if the user explicitly confirmed it
     return handleInpaint(req, res);
   } catch (err) {
-    try { if (fs.existsSync(maskPath)) fs.unlinkSync(maskPath); } catch (_) {}
+    if (err && err.code) return detailerFail(res, err);
     return res.status(500).json({ error: 'Detailer failed: ' + err.message });
+  } finally {
+    try { if (fs.existsSync(maskPath)) fs.unlinkSync(maskPath); } catch (_) {}
   }
 });
 
@@ -2733,7 +2774,14 @@ function startControlledJob(params, allTargetById, opts = {}) {
 app.post('/api/actions/generate-controlled', (req, res) => {
   const allTargetById = allControlledTargets();
   const params = normalizeControlledGenerationBody(req.body || {});
-  params.prompt = expandWildcards(params.prompt);
+  const loraShapeErr = params.invalidKey ? null : validateStructuredLoras(params.loras);
+  if (loraShapeErr) return res.status(400).json({ error: loraShapeErr });
+  if (!params.invalidKey) {
+    params.prompt = expandWildcards(params.prompt);
+    const rr = EC.resolveResources({ prompt: params.prompt, loras: params.loras });
+    params.prompt = rr.backendPrompt;
+    params.loras = rr.loras;
+  }
   const err = validateControlledGenerationParams(params, allTargetById);
   if (err) return res.status(400).json({ error: err });
 
@@ -2976,6 +3024,8 @@ app.post('/api/actions/img2img', (req, res) => {
   }
 
   const body = { ...(req.body || {}) };
+  const resErr = resolveEditResources(body);
+  if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
   const srcInfo = resolveImageSource(body);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
   if (srcInfo.staged) { body.run_id = '20000101-000000-import'; body.init_image_file = 'import.png'; }
@@ -3047,6 +3097,7 @@ app.post('/api/actions/img2img', (req, res) => {
   ));
   jobSensitives[jobId] = sensitives;
   jobs[jobId].sourceImageId = srcInfo.imageId || null;
+  jobs[jobId].genRecord = editGenRecord(body, params, { strength });
   jobs[jobId].lineageOp = 'img2img';
   jobs[jobId].tempFiles = [prepPath, srcInfo.temp].filter(Boolean);
   runAction(jobId, 'bin/sdcpp-img2img.sh', args, params.save_prompts);
@@ -3067,6 +3118,8 @@ function handleInpaint(req, res) {
   }
 
   const body = { ...(req.body || {}) };
+  const resErr = resolveEditResources(body);
+  if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
   const srcInfo = resolveImageSource(body);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
   if (srcInfo.staged) { body.run_id = '20000101-000000-import'; body.init_image_file = 'import.png'; }
@@ -3191,6 +3244,7 @@ function handleInpaint(req, res) {
   ));
   jobSensitives[jobId] = sensitives;
   jobs[jobId].sourceImageId = srcInfo.imageId || null;
+  jobs[jobId].genRecord = editGenRecord(body, params, { strength });
   jobs[jobId].lineageOp = (body.operation === 'detailer' || body.detailed_from) ? 'detailer' : 'inpaint';
   jobs[jobId].tempFiles = [maskPath, srcInfo.temp].filter(Boolean);
   jobs[jobId].outpaintComposite = { src: initImgPath, mask: maskPath, left: 0, top: 0, blur: 4, fit: true };
@@ -3382,7 +3436,10 @@ app.post('/api/actions/outpaint', (req, res) => {
   if (!body.image_id && !body.staged_id) return res.status(400).json({ error: 'image_id or staged_id is required' });
   const src = resolveImageSource(body.staged_id ? { staged_id: body.staged_id } : { image_id: body.image_id });
   // Extension Prompt: describes only the NEW area; used instead of the main prompt when given.
-  if (typeof body.extension_prompt === 'string' && body.extension_prompt.trim()) body.prompt = body.extension_prompt.trim();
+  const usedExtensionPrompt = typeof body.extension_prompt === 'string' && !!body.extension_prompt.trim();
+  if (usedExtensionPrompt) body.prompt = body.extension_prompt.trim();
+  const resErr = resolveEditResources(body);
+  if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
   if (src.error) return res.status(404).json({ error: src.error, gate: 'source' });
   if (!src.dims) return res.status(400).json({ error: 'Outpaint source must be a PNG image.' });
   const plan = planOutpaint(src.dims, body);
@@ -3414,7 +3471,7 @@ app.post('/api/actions/outpaint', (req, res) => {
   const summary = getRedactedCommandSummary('bin/sdcpp-inpaint.sh', args, sensitives) + ` (outpaint L${plan.left} R${plan.right} T${plan.top} B${plan.bottom})`;
   const jobId = createJob('outpaint', summary, sanitizeRequestParams({ ...params, image_id: body.image_id, strength, extend: { left: plan.left, right: plan.right, top: plan.top, bottom: plan.bottom } }, params.save_prompts));
   jobSensitives[jobId] = sensitives;
-  Object.assign(jobs[jobId], { sourceImageId: body.image_id || null, lineageOp: 'outpaint', tempFiles: [prepPath, maskPath, src.temp].filter(Boolean), outpaintComposite: { src: src.path, mask: maskPath, left: plan.left, top: plan.top } });
+  Object.assign(jobs[jobId], { sourceImageId: body.image_id || null, lineageOp: 'outpaint', genRecord: editGenRecord(body, params, { strength, prompt_scope: usedExtensionPrompt ? 'extension' : undefined }), tempFiles: [prepPath, maskPath, src.temp].filter(Boolean), outpaintComposite: { src: src.path, mask: maskPath, left: plan.left, top: plan.top } });
   runAction(jobId, 'bin/sdcpp-inpaint.sh', args, params.save_prompts);
   res.json({ job_id: jobId, status: jobs[jobId].status, canvas: { width: plan.width, height: plan.height }, extend: { left: plan.left, right: plan.right, top: plan.top, bottom: plan.bottom } });
 });
@@ -3437,7 +3494,7 @@ function imageView(id) {
 app.get('/api/images/:id/meta', (req, res) => {
   const v = imageView(req.params.id);
   if (!v) return res.status(404).json({ error: 'Image not found' });
-  res.json(v);
+  res.json({ ...v, recall: EC.buildRecall(v) });
 });
 app.post('/api/images/:id/keeper', (req, res) => {
   if (!imageStore.resolveImage(req.params.id)) return res.status(404).json({ error: 'Image not found' });
@@ -3667,6 +3724,19 @@ const mediaBridge = createMediaBridge({ jobStore, arbiter, mediaStore, staging, 
 // has finished writing. Runs at startup and hourly.
 setTimeout(() => mediaBridge.sweepRemoteOrphans(60).catch(() => {}), 15000).unref();
 setInterval(() => mediaBridge.sweepRemoteOrphans(60).catch(() => {}), 60 * 60 * 1000).unref();
+// Persistent voice profiles, long-form speech and audio-drama production (voice-routes.js).
+const voiceModule = require('./voice-routes').registerVoiceRoutes(app, {
+  stateDir: STATE_DIR, jobStore, mediaStore, staging, mediaBridge, log: m => console.log(m),
+  probeFor: id => workerRegistry.get(id).probe(workerAssets()),
+  // Optional local intelligent parse: strict-schema JSON from the managed Ollama tunnel (never rewrites dialogue; see drama.js).
+  llmChat: async messages => {
+    const { model, error } = await resolveOllamaModel();
+    if (error) throw new Error(error);
+    const r = await ollamaRequest('/api/chat', { model, stream: false, format: 'json', keep_alive: 0, options: { temperature: 0 }, messages }, 180000);
+    if (!r.ok) throw new Error(r.error || 'ollama request failed');
+    return r.json && r.json.message && r.json.message.content || '';
+  },
+});
 app.get('/api/workers', (req, res) => res.json({ workers: workerRegistry.describe(workerAssets()), options: { kokoro_voices: KOKORO_VOICES, languages: require('./media-bridge').LANGS } }));
 app.get('/api/resources', (req, res) => res.json(arbiter.state()));
 app.get('/api/generic-jobs/:id', (req, res) => {
@@ -3796,6 +3866,25 @@ app.get('/api/doctor', async (req, res) => {
   res.json({ overall: worst, checkedAt: new Date().toISOString(), rows });
 });
 
+// Tail of the sd-cli log of a RUNNING edit job (real sampling steps live here).
+// The run dir is the newest -img2img/-inpaint dir created since the job started.
+function sdLogTailForJob(job) {
+  if (!job || job.status !== 'running' || !['img2img', 'inpaint', 'outpaint'].includes(job.commandAction)) return '';
+  try {
+    if (!job._runDir) {
+      const suffix = job.commandAction === 'img2img' ? '-img2img' : '-inpaint';
+      const since = (job.startedRunningAt || job.createdAt) - 3000;
+      const hit = fs.readdirSync(RUNS_DIR).filter(n => n.endsWith(suffix) && /^20\d{6}-\d{6}-/.test(n))
+        .map(n => ({ n, t: fs.statSync(path.join(RUNS_DIR, n)).birthtimeMs })).filter(x => x.t >= since).sort((a, b) => b.t - a.t)[0];
+      if (hit) job._runDir = path.join(RUNS_DIR, hit.n);
+    }
+    if (!job._runDir) return '';
+    const f = path.join(job._runDir, 'remote-stdout.log');
+    const st = fs.statSync(f), n = Math.min(st.size, 24000);
+    const fd = fs.openSync(f, 'r');
+    try { const b = Buffer.alloc(n); fs.readSync(fd, b, 0, n, st.size - n); return b.toString('utf8'); } finally { fs.closeSync(fd); }
+  } catch (_) { return ''; }
+}
 app.get('/api/jobs/:jobId', (req, res) => {
   const job = jobs[req.params.jobId];
   if (!job) {
@@ -3882,7 +3971,10 @@ app.get('/api/jobs/:jobId', (req, res) => {
     sourceImageId: job.sourceImageId || null,
     progressEstimated: job.commandAction === 'controlled-generate',
     resource: job.status === 'queued' && job.waitingForLease ? { waiting: true, position: arbiter.position(job.id), blocked_reason: arbiter.state().blocked_reason } : null,
-    generic: jobStore.get(job.id)
+    generic: jobStore.get(job.id),
+    // Truthful stage: step N/M only when sd-cli actually reported it; otherwise stage text without a percentage.
+    stage: EC.deriveStage({ status: job.status, firstFailedGate: job.firstFailedGate, stdout: job.stdout, stderr: job.stderr,
+      resource: job.status === 'queued' && job.waitingForLease ? { waiting: true, position: arbiter.position(job.id), blocked_reason: arbiter.state().blocked_reason } : null }, sdLogTailForJob(job))
   });
 });
 app.get('/api/jobs/:jobId/log', (req, res) => {

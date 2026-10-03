@@ -963,21 +963,7 @@ printf '%s\n' "$REMOTE_STDOUT_CMD" | python3 -c 'import sys; s=sys.stdin.read();
 REMOTE_EXEC_CMD="mkdir -p \"$REMOTE_RUN_DIR\"; /bin/bash -o pipefail -c $(printf '%q' "$REMOTE_STDOUT_CMD"); _dex_rc=\$?; printf '\nSDCPP_REMOTE_EXIT: %s\n' \"\$_dex_rc\""
 log "Running controlled generation on BigMac"
 if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
-  ssh_remote "$REMOTE_EXEC_CMD" 2>&1 | python3 -c "
-import sys, re
-p = sys.argv[1] if len(sys.argv) > 1 else ''
-n = sys.argv[2] if len(sys.argv) > 2 else ''
-# sd-cli strips <lora:...> tags before logging; also search for the stripped form.
-p_stripped = re.sub(r'<lora:[^>]*>', '', p).rstrip()
-tok_re = re.compile(r'(to tokens\s*)\[.*\]')
-for line in sys.stdin:
-    if p and p in line: line = line.replace(p, '[REDACTED]')
-    if p_stripped and p_stripped != p and p_stripped in line: line = line.replace(p_stripped, '[REDACTED]')
-    if n and n in line: line = line.replace(n, '[REDACTED]')
-    if 'to tokens' in line or 'bpe_tokenizer' in line:
-        line = tok_re.sub(r'\1[REDACTED]', line)
-    sys.stdout.write(line)
-" "$ARG_PROMPT" "$ARG_NEG" > "$REMOTE_STDOUT_LOG" || true
+  ssh_remote "$REMOTE_EXEC_CMD" 2>&1 | python3 "$HERE/redact_stream.py" "$ARG_PROMPT" "$ARG_NEG" > "$REMOTE_STDOUT_LOG" || true
 else
   ssh_remote "$REMOTE_EXEC_CMD" > "$REMOTE_STDOUT_LOG" 2>&1 || true
 fi

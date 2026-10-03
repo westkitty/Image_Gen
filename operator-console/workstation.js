@@ -118,9 +118,13 @@ function neighborSeeds(seed, radius = 2) {
 const { sanitizeRecipe, RECIPE_FIELDS } = require('./public/dexdiffusion/client-helpers.js');
 
 // ---- Image metadata: lineage + keepers --------------------------------------
-// One compact JSON document keyed by canonical image id. Never holds prompts or
-// image bytes. Written atomically (tmp + rename).
-const META_FIELDS = ['operation', 'parent', 'detailed_from', 'runId', 'target', 'seed', 'width', 'height', 'steps', 'cfg', 'scheduler', 'strength', 'queueId', 'batchNumber', 'test_artifact', 'note'];
+// One compact JSON document keyed by canonical image id. Holds no image bytes; prompt text
+// appears only for images generated with prompt saving on. Written atomically (tmp + rename).
+// Per-image generation record (gen_schema 1): sampler/vae/preset/loras/edit_target are
+// non-sensitive structured settings; prompt text is written ONLY when prompt saving was on
+// (prompt_saved says which), so recall can state "prompt saving was off" truthfully.
+const META_FIELDS = ['operation', 'parent', 'detailed_from', 'runId', 'target', 'seed', 'width', 'height', 'steps', 'cfg', 'scheduler', 'strength', 'queueId', 'batchNumber', 'test_artifact', 'note',
+  'gen_schema', 'sampler', 'vae', 'preset', 'loras', 'edit_target', 'prompt_saved', 'prompt', 'negative_prompt', 'prompt_scope'];
 
 function createImageMetaStore(file) {
   let cache = null;
@@ -141,7 +145,12 @@ function createImageMetaStore(file) {
     const data = read();
     const prev = data.images[imageId] || {};
     const next = { ...prev };
-    for (const k of META_FIELDS) if (meta && meta[k] !== undefined && meta[k] !== null && meta[k] !== '') next[k] = meta[k];
+    // Defence in depth: prompt text is accepted ONLY when the caller states prompt saving was on.
+    const textAllowed = !!(meta && meta.prompt_saved === true);
+    for (const k of META_FIELDS) {
+      if ((k === 'prompt' || k === 'negative_prompt') && !textAllowed) continue;
+      if (meta && meta[k] !== undefined && meta[k] !== null && meta[k] !== '') next[k] = meta[k];
+    }
     if (next.parent === imageId) delete next.parent;
     next.at = prev.at || new Date().toISOString();
     data.images[imageId] = next;

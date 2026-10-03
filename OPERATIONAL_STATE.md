@@ -7,10 +7,10 @@
   "project_name": "Image_Gen / DexDiffusion",
   "project_root": "/Users/andrew/Image_Gen",
   "artifact_path": "operator-console + sdcpp-workflow",
-  "state_revision": 15,
+  "state_revision": 17,
   "last_updated": "2026-10-02",
   "current_baseline": {
-    "identity": "main@10aaa2b plus local verification repairs (uncommitted)",
+    "identity": "main@d713080 plus rev 16/17 Edit/Voice/Drama/Detailer work (committed in the rev-17 handoff commit)",
     "state": "current-baseline",
     "last_verified": "2026-10-02"
   },
@@ -372,7 +372,7 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 - **Extra Networks & Active Resource Chips**: LoRA catalog with family compatibility badges, weight sliders, and trigger words. Honest empty state for embeddings. Active resource chips in Create with weight steppers and remove buttons.
 - **Visual Model Browser**: 9 comprehensive model cards answering 5 questions, honest provenance badges (`exact-model` vs `placeholder`), and live switch check warnings (`/api/models/check-switch`) flagging negative prompt and LoRA incompatibilities.
 - **Multi-Output Hero Workspace**: Dominant hero display with vertical filmstrip rail (desktop/tablet), horizontal rail (mobile), sibling promotion, and keyboard navigation. Live multi-output proofed via job `66d288bc-3cc7-4dcb-a6b4-eda8e0c463fe` (SD1.5, quantity: 3, seeds 1001-1003).
-- **Native Apple Vision Detailer**: MacBook-native Swift binary (`vision-detailer`) for face, person, and derived hands detection with Gaussian feathering and mask preview (`/api/detailer/mask-preview`). Inpainting pipeline tracks `detailed_from` in canonical image metadata. Live proofed via job `22359b32-fd7e-4f60-bad1-d834e6ba244d`.
+- **Native Apple Vision Detailer**: MacBook-native Swift binary (`vision-detailer`) for face, person, and derived hands detection with Gaussian feathering and mask preview (`/api/detailer/mask-preview`). Inpainting pipeline tracks `detailed_from` in canonical image metadata. **CORRECTION (rev 17):** the earlier 'live proof' of this feature was wrong — the old mask used the opaque-gray convention while the inpaint backend reads the ALPHA channel, so the whole image was regenerated (98.6% of outside pixels changed). Rewritten in rev 17; see Revision 17.
 - **Capability Truth**: Face swap kept explicitly `UNAVAILABLE` due to licensing and safety constraints.
 - **Test Suite**: 152/152 passing unit tests in `operator-console`. Zero Big Mac retention verified across all runs.
 
@@ -434,3 +434,51 @@ DexDiffusion remains the everyday UI/API. Add FLUX.2 Klein 4B as an additional c
 
 - Full matrix/report: /Users/andrew/Documents/Codex/2026-10-01/files-pasted-by-the-user-you/outputs/verification-report.md
 - Repository remains uncommitted; no push.
+
+### Revision 16 — 2026-10-02 (Edit workbench repair, exact image recall, voice profiles, long-form, Drama)
+
+Verified on the working tree (uncommitted, no push). Detail: `operator-console/docs/edit-workbench-20261002.md`, `operator-console/docs/voice-drama-20261002.md`.
+
+**Image workflow**
+- **Reproduced before editing:** a Library image sent to Edit carried Create-form/default values (steps 20, cfg 7, empty prompt) and **Run with no prompt sent nothing** (only a 3 s toast); with a typed prompt a real click did submit (job `6b9d4ee5…`, flagged test artifact). Old mask canvas fixed at 384×384 existed only as dead code behind the workstation override and has been removed.
+- **Exact recall:** every canonical output now records an effective generation record (sampler, vae, preset, structured loras, edit_target, prompt only when prompt saving was on). Proof image `20261002-180047-controlled-sd15-s7777-controlled-sd15.png` (job `8c96755c-a816-4da3-b55c-679654e97bb6`: sd15, seed 7777, 512×384, 13 steps, cfg 5.5, karras, preset fast). With Create changed to steps 99 / cfg 21 / seed 424242 / other prompt, `openImageInEdit` loaded seed 7777 / 13 / 5.5 / karras / 512×384 and "Source prompt unavailable — prompt saving was off". Privacy ON (`20261002-184656-…-s4321…`, job `d189a68d…`): prompt recalled. Edit results record their true model (`edit_target`), not the old hard-coded `sd15`.
+- **Real img2img through the UI path** (typed prompt, real mouse click on Run): request left the UI, job `43b868c2-33a2-4b23-abeb-c416912d1a29`, stages visible (Checking Big Mac → Uploading → Generating → Encoding → Decoding), canonical output `20261002-180240-img2img-img2img_20261002-180240.png`, lineage parent recorded.
+- **Real inpaint on a non-square (512×384) source:** mask painted with real mouse drags (corner, and after 4× zoom + pan; stroke bbox matched the predicted image coordinates), job `78f48021-3888-41dd-949a-a6efca2db8d8` → `20261002-180437-inpaint-…`; changed pixels lay inside the mask bbox (+4 px soften), mean diff outside 0.0056.
+- **Real outpaint (+128 right, 512→640):** job `748de17f-7d41-442c-b4bf-c9e9a7ed3bcf` → `20261002-184536-inpaint-…`; interior mean diff 0.00, 48 px overlap band blended.
+- **Progress:** `GET /api/jobs/:id` exposes `stage`; percent only from real sd-cli `N/M - s/it` sampling lines. Live runs showed real stages; the sampling window of these short runs was shorter than the 900 ms poll, so a live "Sampling step N/M" display was **not captured on a real job** — it is proven by the unit tests on real sd-cli log text and by the browser test with a mocked job.
+- **Fullscreen viewer, Resources, model picker, presets v2, two Edit layouts, accordions:** implemented and browser-tested (`npm run test:browser`, 18 + 6 checks, real Chrome) at 375 / 768 / 1280 px with no horizontal overflow; all 11 screens in all 3 shell layouts render without script errors.
+- **Not proven live:** a real LoRA render (no LoRA files exist on Big Mac; LIM-008 unchanged). Structured LoRA serialization and the new `--lora-model-dir` handling in the edit scripts are covered by tests only.
+
+**Voice / long-form / Drama (real Big Mac proofs through DexDiffusion, prompt saving off)**
+- Kokoro preset profile render via the new multi-item driver: job `5a9202e0-70bd-47bd-90a8-cba028c87f96` → `20261002-222256-kokoro-speech.wav` (6.58 s).
+- Cloned profile from a **synthetic** reference (the Kokoro output + its transcript; no real person) saved as a persistent profile (sample 6.58 s, RMS −26.2 dB, validation valid); Qwen3 Base clone line: job `8adf6604-a46f-4c98-a176-df511af03296` → `20261002-222545-qwen3-tts-base-speech.wav` (4.96 s, RMS 0.048). The requested direction "whispering" was reported **not applied** (Base cannot honor it).
+- Long-form: Qwen clone 5 chunks / 1,908 chars (job `2df946a7-db08-4a95-b91f-545df58c6276`, 111.67 s stitched, `…223011-qwen3-tts-base-long-form.wav`); **>2,000 chars:** Kokoro 2,290 chars / 3 chunks (job `fe0e4d4d-4d34-4578-868e-22a82416df9c`, 135.37 s, `…223144-kokoro-long-form.wav`), per-chunk lineage (duration/sha256/boundary) recorded; one Big Mac invocation per render.
+- VoiceDesign delivery A/B, same text/seed: plain job `8208101d-bf1a-41e0-9668-d2fa3d2a1f03` RMS −20.7 dBFS, 2.96 s; "whispering very quietly, almost out of breath" job `61c773cf-0113-49ee-87f7-0f7b0f86d4f2` RMS −25.4 dBFS, 4.56 s — an audible/measurable change; this does not prove a true whisper timbre.
+- **Mini drama (dp-3fde1dfb, driven through the UI):** 3 speakers / 4 lines, two distinct Kokoro voices + narrator, all lines generated, line 2 re-rendered as **Take 2** (Take 1 kept), Take 2 selected, project assembled: `20261002-223526-drama-int-harbor-night.wav` (11.1 s, mono 24 kHz, RMS −22.0 dBFS, peak −1.0, per-line RMS −20…−25 dB, silent gaps). Saving the project, restarting the console and reloading preserved all takes, the active take and the export history.
+- **Residue / lease / privacy:** after every proof Big Mac `~/Library/Caches/DexDiffusion/tmp` was empty and the heavy-compute lease free. A sweep of `sdcpp-workflow/state`, `server.log` and `runs/` for the spoken/dialogue/image-prompt text of the privacy-off runs found no matches (reference transcripts exist only inside the profile the user created). Prompt caching is **not implemented**: the installed runtime has no precomputed-prompt API (probe, 2026-10-02).
+- **Bug found by the real run and fixed:** profile samples were first written as JSON-serialized Buffers; caught by the clone render (`reference-invalid`), fixed with a byte-exact regression assertion.
+- **Pre-existing issue found, not changed:** `sdcpp-workflow/runs/<id>/remote-stdout.log` contains prompt fragments from sd-cli tokenizer debug lines even when prompt saving is off (e.g. `split prompt "…"`). The redaction filter only masks the exact prompt string. Out of scope for this pass; flagged for a separate fix.
+
+**Tests:** `npm run check` PASS; `npm test` 236/236 (was 161); `npm run test:browser` 18/18 + 6/6; shell `bash -n` on all workflow scripts; `git diff --check` clean. New modules: `edit-core.js`, `edit-ui.js`, `lightbox.js`, `voice-ui.js`, `drama-ui.js`, `voice-audio.js`, `long-form.js`, `voice-engines.js`, `voice-profiles.js`, `voice-service.js`, `drama.js`, `drama-service.js`, `voice-routes.js`.
+Proof artifacts (images flagged `test_artifact`, hidden from default Library views; audio proofs remain in the Library): see the identifiers above. Proof voices/project were removed afterwards.
+
+### Revision 17 — 2026-10-02 (adversarial verification pass; Detailer rewrite, browser lifecycle, privacy fix) — IN PROGRESS, handed off
+
+Evidence states: VERIFIED = observed in this pass with command/UI output; UNKNOWN = not tested.
+
+**Defects found and fixed (all VERIFIED by tests and/or live runs):**
+- **D-001 critical — Detailer repainted the whole image.** Root cause: mask PNG was opaque grayscale; `handleInpaint` converts via alpha, so alpha>0 everywhere. Fix: `bin/vision-detailer.swift` now writes white+alpha masks (alpha = painted), `confirm_full_mask:true` removed from `/api/detailer/run`. Live UI runs (face/hand/person, real Big Mac): 0 pixels changed >8 beyond 8 px of the mask; face/hand ≤0.52% of outside pixels differ (VAE latent bleed ≤6 px), person 6.5% all within the 8 px band.
+- **D-002 — Detailer/Vision stalls (the "hand test" 30 s failure).** Root cause (OBSERVED via `sample` of the hung process): Vision's first use of a network on the Apple Neural Engine blocks in `_ANEClient doLoadModel` (sync XPC to `aned`) while a runaway `ANECompilerService` (≈100% CPU for >1 h) wedges it. Fix: Vision pinned to CPU by default (`--compute cpu|gpu|auto`), per-attempt 20 s timeout + 1 retry in `detailer.js`, `DEXDETAIL_STAGE=` stage markers, timings in JSON, and a timeout message that names a hot ANECompilerService. Face/person verified CPU-pinned while the ANE was wedged; **hand under a wedged ANE is UNKNOWN** (one 37 s hand run occurred during the wedge, so the pin may not cover the hand-pose request). Cold/warm timings 0.2–0.5 s.
+- **D-003 — browser suite hang/orphan.** The suite was not stuck; it takes ~55 s and a killed run left its `node server.js` child. Fix: `tests/browser/server-supervisor.js` (child dies when the parent does, even on SIGKILL), signal/exception cleanup, per-test (120 s) and global (300 s) watchdogs, phase trace. Verified SIGKILL, SIGTERM and watchdog paths leave no server/Chrome; chained `npm run test:browser` = 19 + 7 checks, no orphans.
+- **D-004/D-005 — Detailer modal:** stale mask preview after option change; empty detection gave a generic toast. Now preview is dropped on any option change and an explanatory note is shown; 422 `no_targets` from `/api/detailer/run`.
+- **D-006 — Voice render state leaked across profiles** (a finished/running render of voice A showed on voice B; observed live). Render state now carries `profile_id`; other voices show "Waiting: <name> is rendering".
+- **D-008 — privacy: multi-line prompts leaked into `remote-command.log`/`remote-stdout.log`** (params dump, `parse '…'`, `split prompt "…"`). Cause: line-based whole-string redaction can never match a prompt containing newlines. Fix: shared `sdcpp-workflow/bin/redact_stream.py` (whitespace-insensitive, per-line pieces, token array) wired into controlled/img2img/inpaint/cli-generate scripts. Verified with fresh live canaries (Create + img2img, multi-line, prompt saving off): no canary token anywhere on the MacBook or Big Mac. Historical logs from 2026-07-07/08 (5 runs) still contain unredacted prompts — left untouched (user data). Not yet migrated to the helper: `sdcpp-server-generate.sh`, `sdcpp-xyz-plot.sh`, `mflux-controlled-generate.sh` (same bug class). A separate follow-up session (task_84f411c2) was started by the user for this and may overlap.
+- Accessibility: `public/dexdiffusion/a11y.js` names sibling-labelled form controls (23 unlabeled controls in Create/Batch/Enhance before; 0 after). Tap targets of 23 px height on dense legacy controls remain.
+
+**Verified journeys (real UI, real Big Mac):** provenance recall; img2img (768×1024, mean abs diff 40); non-square inpaint (changes confined to stroke ±30 px); outpaint (+128 right → 896×1024, 97% of the original region unchanged); Detailer face/hand/person; voice clone from a user-approved sample + cloned render (17 s); 2,024-char long-form with Qwen3 clone (4 chunks, 1:45 audio, truthful per-chunk progress, 297 s incl. cold model load); Drama (5 lines, mixed Kokoro + clone, second take, ambience track, 14.9 s stereo export, project not on disk unsaved). Privacy scans of state/runs/logs/Big Mac found no dialogue; exported file names/registry contain the scene title (now disclosed in the Drama banner).
+
+**Responsive/a11y matrix:** 5 viewports × 3 shell layouts × 11 screens = 165 cells, no horizontal overflow/clipping/script errors.
+
+**Gates at handoff:** `npm run check` OK; `npm test` 246/246; `git diff --check` clean; `bash -n` on the four edited scripts OK; Python `py_compile` OK; browser suites 19/19 + 7/7.
+
+**NOT done / UNKNOWN:** second independent bug sweep; Library/Enhance/Batch/Create cross-surface audit beyond the matrix; fullscreen on every surface re-verified live (covered only by the hermetic suite); state-contamination tests beyond voice render (e.g. deleting a voice referenced by a saved Drama project); Big Mac failure-path lifecycle (kill mid-render, lease timeout); ASR check that cloned speech says the requested words (local `whisper` is broken: numba/numpy mismatch); loudness inconsistency (long-form peak-normalised to −1 dBFS, single-chunk raw); Detailer `feather` is binarised by the inpaint backend's alpha>0 conversion (acts as growth, not a soft edge); hand-pose under wedged ANE.

@@ -293,11 +293,7 @@
   };
   P._mediaCard = function (i) {
     const base = this.state.backendUrl;
-    if (i.kind === 'image') return h('button', { type: 'button', onClick: () => this.selectLibraryImage(i.artifact_id), title: i.artifact_id,
-      style: { padding: 0, border: '1px solid rgba(148,163,184,.16)', borderRadius: 8, overflow: 'hidden', background: '#0a0e14', cursor: 'pointer', aspectRatio: '1 / 1', position: 'relative' } },
-      h('img', { src: base + i.url, alt: i.artifact_id, loading: 'lazy', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } }),
-      h('span', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, background: 'rgba(4,8,14,.78)', color: '#dbe4ee', fontSize: 10, padding: '3px 5px', textAlign: 'left' } },
-        (i.keeper ? '★ ' : '') + (i.test_artifact ? '[test] ' : '') + (i.operation || 'image')));
+    if (i.kind === 'image') return this._libThumb(Object.assign({}, i, { id: i.artifact_id, operation: (i.test_artifact ? '[test] ' : '') + (i.operation || 'image') }), false);
     return h('div', { style: { gridColumn: '1 / -1', border: '1px solid rgba(148,163,184,.16)', borderRadius: 8, padding: 8, display: 'grid', gap: 6, minWidth: 0 } },
       h('div', { style: css.row }, chip(i.kind, i.kind === 'voice' ? '#a78bfa' : i.kind === 'music' ? '#22d3ee' : '#f59e0b'), h('span', { style: css.mono }, i.artifact_id),
         h('span', { style: css.muted }, [fmtTime(i.duration), i.worker || i.model, i.operation, i.seed != null ? 'seed ' + i.seed : null,

@@ -213,25 +213,21 @@ SCHEDULER_FRAG=""
 [ -n "$ARG_SCHEDULER" ] && SCHEDULER_FRAG="--scheduler $ARG_SCHEDULER"
 VAE_FRAG=""
 [ -n "$ARG_VAE" ] && [ "$ARG_VAE" != "none" ] && VAE_FRAG="--vae $ARG_VAE"
+# Structured LoRAs reach sd-cli as <lora:name:weight> prompt tags (serialized by the console).
+# Only add the LoRA directory flags when tags are present, and fail with a named gate if the
+# directory is missing instead of letting sd-cli mis-handle the tags.
+LORA_FRAG=""
+if printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
+  remote_test "test -d /Volumes/wc2tb/ImageGen/loras" \
+    || fail "lora-dir" "LoRA requested but /Volumes/wc2tb/ImageGen/loras does not exist on Big Mac"
+  LORA_FRAG="--lora-model-dir /Volumes/wc2tb/ImageGen/loras --lora-apply-mode immediately"
+fi
 
 START_EPOCH="$(now_epoch)"
 if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
-  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -i \"$REMOTE_INIT_IMG\" --mask \"$REMOTE_MASK_IMG\" --strength $ARG_STRENGTH -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG ${SCHEDULER_FRAG:-} ${VAE_FRAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" 2>&1 | python3 -c "
-import sys, re
-p = sys.argv[1] if len(sys.argv) > 1 else ''
-n = sys.argv[2] if len(sys.argv) > 2 else ''
-p_stripped = re.sub(r'<lora:[^>]*>', '', p).rstrip()
-tok_re = re.compile(r'(to tokens\s*)\[.*\]')
-for line in sys.stdin:
-    if p and p in line: line = line.replace(p, '[REDACTED]')
-    if p_stripped and p_stripped != p and p_stripped in line: line = line.replace(p_stripped, '[REDACTED]')
-    if n and n in line: line = line.replace(n, '[REDACTED]')
-    if 'to tokens' in line or 'bpe_tokenizer' in line:
-        line = tok_re.sub(r'\1[REDACTED]', line)
-    sys.stdout.write(line)
-" "$ARG_PROMPT" "$ARG_NEG" > "$RUN_DIR/remote-stdout.log" || true
+  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -i \"$REMOTE_INIT_IMG\" --mask \"$REMOTE_MASK_IMG\" --strength $ARG_STRENGTH -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG ${SCHEDULER_FRAG:-} ${VAE_FRAG:-} ${LORA_FRAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" 2>&1 | python3 "$HERE/redact_stream.py" "$ARG_PROMPT" "$ARG_NEG" > "$RUN_DIR/remote-stdout.log" || true
 else
-  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -i \"$REMOTE_INIT_IMG\" --mask \"$REMOTE_MASK_IMG\" --strength $ARG_STRENGTH -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG ${SCHEDULER_FRAG:-} ${VAE_FRAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" > "$RUN_DIR/remote-stdout.log" 2>&1 || true
+  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -i \"$REMOTE_INIT_IMG\" --mask \"$REMOTE_MASK_IMG\" --strength $ARG_STRENGTH -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG ${SCHEDULER_FRAG:-} ${VAE_FRAG:-} ${LORA_FRAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" > "$RUN_DIR/remote-stdout.log" 2>&1 || true
 fi
 END_EPOCH="$(now_epoch)"
 ELAPSED="$(elapsed_seconds "$START_EPOCH" "$END_EPOCH")"

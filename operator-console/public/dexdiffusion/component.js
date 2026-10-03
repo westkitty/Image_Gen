@@ -19,7 +19,8 @@ class Component extends DCLogic {
       try {
         const save = localStorage.getItem('dex_save_prompts') === 'true';
         const raw = JSON.parse(localStorage.getItem('dex_favorite_presets') || '[]');
-        const clean = raw.map(p => DexClient.sanitizeRecipe(p.params ? { id: p.id, name: p.name, target: p.params.target, width: p.params.width, height: p.params.height, steps: p.params.steps, cfg: p.params.cfg_scale, sampler: p.params.sampler, scheduler: p.params.scheduler, vae: p.params.selectedVae, preset: p.params.preset, prompt: p.params.prompt, negPrompt: p.params.negative_prompt } : p, save));
+        // Versioned recipes (v2: mode + resources). Legacy v0/v1 entries migrate in place as Create presets.
+        const clean = raw.map(p => DexEdit.migrateRecipe(p.params ? { id: p.id, name: p.name, target: p.params.target, width: p.params.width, height: p.params.height, steps: p.params.steps, cfg: p.params.cfg_scale, sampler: p.params.sampler, scheduler: p.params.scheduler, vae: p.params.selectedVae, preset: p.params.preset, prompt: p.params.prompt, negPrompt: p.params.negative_prompt } : p, save));
         localStorage.setItem('dex_favorite_presets', JSON.stringify(clean));
         return clean;
       } catch { return []; }
@@ -32,10 +33,8 @@ class Component extends DCLogic {
     batchPrompt: '', batchNeg: '', batchSteps: 20, batchCfg: 7, batchW: 512, batchH: 512,
     batchQueue: [], batchRunning: false, batchDone: 0, batchTotal: 0,
     batchStatus: 'idle',
-    // img2img
-    i2iPrompt: '', i2iNeg: '', i2iDenoise: 0.75,
-    i2iSteps: 20, i2iCfg: 7, i2iSeed: -1, i2iSrcRunId: 'last',
-    i2iStatus: 'idle', i2iProgress: 0, i2iResult: null,
+    // Edit (img2img/inpaint/outpaint) state lives in edit-ui.js (this.ed); only legacy source pickers remain here.
+    i2iSrcRunId: 'last',
     // Enhance
     enhSrcRunId: 'last', enhScale: 2, enhMethod: 'pillow',
     enhStatus: 'idle', enhResult: null,
@@ -57,9 +56,7 @@ class Component extends DCLogic {
     // Extra networks / LoRA
     assets: { loras: [], vaes: [], embeddings: { count: 0, items: [], empty_state_message: 'No Textual Inversion embeddings discovered' } },
     loadingAssets: false, extraNetworksTab: 'loras',
-    loraWeights: {},
-    // Inpaint (extends the Edit screen)
-    inpStatus: 'idle', inpResult: null, inpMaskData: null, inpStrength: 0.75,
+    loraWeights: {}, createLoras: [],
     // Global
     backendUrl: (() => { try { return DexClient.resolveBackendBase(localStorage.getItem('dex_backend_url')); } catch { return ''; } })(),
     backendOnline: false,
@@ -140,6 +137,7 @@ class Component extends DCLogic {
       thumb: thumbUrl
         ? 'center/cover no-repeat url("' + thumbUrl + '")'
         : 'linear-gradient(135deg,#0e2a1a,#1a0e2a)',
+      fullUrl: thumbUrl || '',
     };
   }
 
@@ -212,12 +210,12 @@ class Component extends DCLogic {
       this.toast('Asset discovery failed: ' + e.message, '#ef4444');
     }
   }
+  // LoRAs are structured resources (state.createLoras); they are serialized to <lora:…> tags
+  // only at the backend boundary. Tags typed into the prompt still work (merged on submit).
   insertLora(filename, weight = 0.8) {
     const base = String(filename || '').replace(/\.[^.]+$/, '');
-    const w = Number(weight || 0.8).toFixed(2).replace(/\.?0+$/, '');
-    const tag = '<lora:' + base + ':' + w + '>';
-    this.setState(s => ({ prompt: (s.prompt ? s.prompt + ' ' : '') + tag }));
-    this.toast('Inserted ' + tag, '#38bdf8');
+    this.setCreateLoras(a => a.filter(x => x.name !== base).concat([{ name: base, weight: Number(weight) || 0.8 }]));
+    this.toast('Added LoRA ' + base + ' · ' + DexEdit.formatWeight(weight), '#38bdf8');
   }
   getActiveLoras() {
     const prompt = this.state.prompt || '';
@@ -225,8 +223,11 @@ class Component extends DCLogic {
     const loras = [];
     const knownLoras = Array.isArray(this.state.loras) ? this.state.loras : [];
     let m;
+    // structured resources first, then any tags typed into the prompt that are not already structured
+    for (const l of (this.state.createLoras || [])) loras.push({ name: l.name, weight: l.weight, family: 'unknown', token: '<lora:' + l.name + ':' + DexEdit.formatWeight(l.weight) + '>' });
     while ((m = re.exec(prompt)) !== null) {
       const name = m[1];
+      if (loras.some(x => x.name === name)) continue;
       const weight = m[2] != null ? parseFloat(m[2]) : 1.0;
       const found = knownLoras.find(k => k.name === name || (k.filename && k.filename.replace(/\.[^.]+$/, '') === name));
       let family = found && found.family ? found.family : null;
@@ -254,6 +255,7 @@ class Component extends DCLogic {
     return wcs;
   }
   setLoraWeight(name, weight) {
+    if ((this.state.createLoras || []).some(x => x.name === name)) { this.setCreateLoras(a => a.map(x => x.name === name ? { ...x, weight: DexEdit.clampWeight(weight) } : x)); return; }
     const prompt = this.state.prompt || '';
     const w = Number(weight).toFixed(2).replace(/\.?0+$/, '');
     const re = new RegExp('<lora:' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?::[0-9.]+)?\\>', 'g');
@@ -266,6 +268,8 @@ class Component extends DCLogic {
     }
   }
   removeLora(token) {
+    const named = /^<lora:([^:>]+)/.exec(String(token || ''));
+    if (named && (this.state.createLoras || []).some(x => x.name === named[1])) this.setCreateLoras(a => a.filter(x => x.name !== named[1]));
     const prompt = this.state.prompt || '';
     const next = prompt.replace(token, '').replace(/\s{2,}/g, ' ').trim();
     this.setState({ prompt: next });
@@ -683,13 +687,8 @@ class Component extends DCLogic {
 
   saveFavoritePreset() {
     const name = (this.state.favoriteName || '').trim() || ('Recipe ' + new Date().toLocaleTimeString());
-    const s = this.state;
-    const preset = DexClient.sanitizeRecipe({ id: String(Date.now()), name, target: s.target, width: +s.width, height: +s.height, steps: +s.steps, cfg: +s.cfg,
-      sampler: s.sampler, scheduler: s.scheduler, vae: s.selectedVae, preset: s.preset, quantity: this.ws ? this.ws.quantity : 1, prompt: s.prompt, negPrompt: s.negPrompt }, s.savePrompts);
-    const favoritePresets = [preset, ...this.state.favoritePresets.filter(p => p.name !== name)].slice(0, 20);
-    localStorage.setItem('dex_favorite_presets', JSON.stringify(favoritePresets));
-    this.setState({ favoritePresets, favoriteName: '' });
-    this.toast('Saved recipe: ' + name + (this.state.savePrompts ? '' : ' (settings only — prompt saving is off)'), '#38bdf8');
+    this.saveRecipe('create', this.createPresetSettings(), name);
+    this.setState({ favoriteName: '' });
   }
 
   applyFavoritePreset(id) {
@@ -707,6 +706,7 @@ class Component extends DCLogic {
       sampler: p.sampler || this.state.sampler,
       scheduler: p.scheduler || this.state.scheduler,
       selectedVae: p.vae || 'default',
+      createLoras: DexEdit.normalizeLoras(p.loras),
       promptOpen: true
     });
     if (this.ws && p.quantity) this.ws.quantity = p.quantity;
@@ -929,50 +929,6 @@ class Component extends DCLogic {
   onI2iRunChange(runId) { this.setState({ i2iSrcRunId: runId, i2iSrcFile: '' }); this.loadRunFiles(runId); }
   onEnhRunChange(runId) { this.setState({ enhSrcRunId: runId, enhSrcFile: '' }); this.loadRunFiles(runId); }
 
-  // ── img2img ───────────────────────────────────────────────────
-  async onImg2imgSubmit() {
-    const { i2iPrompt, i2iNeg, i2iDenoise, i2iSteps, i2iCfg, i2iSeed, i2iSrcRunId, i2iSrcFile, backendUrl, prompt, negPrompt } = this.state;
-    const src = this._resolveSource(i2iSrcRunId, i2iSrcFile);
-    if (src.error) { this.toast(src.error, '#fbbf24'); return; }
-    this.setState({ i2iStatus: 'generating', i2iProgress: 0, i2iResult: null });
-    const body = {
-      run_id: src.run.id,
-      init_image_file: src.imageFile,
-      strength: +i2iDenoise,
-      prompt: i2iPrompt || prompt,
-      negative_prompt: i2iNeg || negPrompt,
-      steps: +i2iSteps, cfg_scale: +i2iCfg, seed: +i2iSeed,
-    };
-    try {
-      const r = await fetch(backendUrl + '/api/actions/img2img', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ error: r.statusText }));
-        this.setState({ i2iStatus: 'error' });
-        this.toast(err.error || 'img2img failed', '#ef4444'); return;
-      }
-      const { job_id } = await r.json();
-      const poll = setInterval(async () => {
-        try {
-          const jr = await fetch(backendUrl + '/api/jobs/' + job_id, { signal: AbortSignal.timeout(3000) });
-          if (!jr.ok) return;
-          const job = await jr.json();
-          if (job.progress != null) this.setState({ i2iProgress: Math.min(99, Math.round(job.progress)) });
-          if (this._jobTerminal(job.status)) {
-            clearInterval(poll);
-            if (this._jobOk(job.status)) {
-              const imgSrc = await this._resolveOutputImage(job);
-              this.setState({ i2iStatus: 'done', i2iProgress: 100, i2iResult: imgSrc });
-              this.toast('img2img complete', '#65d66e');
-              setTimeout(() => this.loadRuns(), 1500);
-            } else { this.setState({ i2iStatus: 'error' }); this.toast('img2img failed', '#ef4444'); }
-          }
-        } catch {}
-      }, 900);
-    } catch(e) { this.setState({ i2iStatus: 'error' }); this.toast(e.message, '#ef4444'); }
-  }
-
   // ── Enhance ───────────────────────────────────────────────────
   async onEnhanceSubmit() {
     const { enhSrcRunId, enhSrcFile, enhScale, enhMethod, backendUrl } = this.state;
@@ -1070,91 +1026,6 @@ class Component extends DCLogic {
     } catch (e) { this.setState({ batchRunning: false, batchStatus: 'idle' }); this.toast(e.message, '#ef4444'); }
   }
 
-  // ── Inpaint (extends Edit) ────────────────────────────────────
-  onInpaintMask(dataUrl) { this.setState({ inpMaskData: dataUrl }); }
-  async onInpaintSubmit() {
-    const { i2iSrcRunId, i2iSrcFile, i2iPrompt, prompt, i2iNeg, negPrompt, inpStrength, i2iSteps, i2iCfg, i2iSeed, inpMaskData, backendUrl } = this.state;
-    const src = this._resolveSource(i2iSrcRunId, i2iSrcFile);
-    if (src.error) { this.toast(src.error, '#fbbf24'); return; }
-    if (!inpMaskData) { this.toast('Paint a mask over the area to change', '#fbbf24'); return; }
-    this.setState({ inpStatus: 'generating', inpResult: null });
-    this.toast('Inpaint started', '#38bdf8');
-    const body = {
-      run_id: src.run.id, init_image_file: src.imageFile, mask_data: inpMaskData,
-      strength: +inpStrength, prompt: i2iPrompt || prompt, negative_prompt: i2iNeg || negPrompt,
-      steps: +i2iSteps, cfg_scale: +i2iCfg, seed: +i2iSeed,
-    };
-    try {
-      const r = await fetch(backendUrl + '/api/actions/inpaint', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-      });
-      if (!r.ok) { const e = await r.json().catch(() => ({})); this.setState({ inpStatus: 'error' }); this.toast(e.error || 'Inpaint failed', '#ef4444'); return; }
-      const { job_id } = await r.json();
-      const poll = setInterval(async () => {
-        try {
-          const jr = await fetch(backendUrl + '/api/jobs/' + job_id, { signal: AbortSignal.timeout(3000) });
-          if (!jr.ok) return;
-          const job = await jr.json();
-          if (this._jobTerminal(job.status)) {
-            clearInterval(poll);
-            if (this._jobOk(job.status)) {
-              const imgSrc = await this._resolveOutputImage(job);
-              this.setState({ inpStatus: 'done', inpResult: imgSrc });
-              this.toast('Inpaint complete', '#65d66e'); setTimeout(() => this.loadRuns(), 1500);
-            } else { this.setState({ inpStatus: 'error' }); this.toast('Inpaint failed', '#ef4444'); }
-          }
-        } catch {}
-      }, 900);
-    } catch (e) { this.setState({ inpStatus: 'error' }); this.toast(e.message, '#ef4444'); }
-  }
-
-  // A single cached <canvas> reused across renders so the painted mask bitmap
-  // survives re-render (the dc-runtime re-parents the same Node rather than
-  // rebuilding it). Strokes are opaque white; the backend reads the alpha channel.
-  _getInpCanvas() {
-    if (this._inpCanvas) return this._inpCanvas;
-    const c = document.createElement('canvas');
-    c.width = 384; c.height = 384;
-    c.style.cssText = 'width:100%;height:100%;display:block;cursor:crosshair;touch-action:none;';
-    c.setAttribute('aria-label', 'Inpaint mask canvas — drag to paint');
-    const ctx = c.getContext('2d');
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 30;
-    let drawing = false, lx = 0, ly = 0;
-    const pos = (e) => { const r = c.getBoundingClientRect(); return [ (e.clientX - r.left) * (c.width / r.width), (e.clientY - r.top) * (c.height / r.height) ]; };
-    c.addEventListener('pointerdown', (e) => { drawing = true; [lx, ly] = pos(e); ctx.beginPath(); ctx.arc(lx, ly, 15, 0, 6.2832); ctx.fillStyle = '#ffffff'; ctx.fill(); try { c.setPointerCapture(e.pointerId); } catch {} });
-    c.addEventListener('pointermove', (e) => { if (!drawing) return; const [x, y] = pos(e); ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(x, y); ctx.stroke(); [lx, ly] = [x, y]; });
-    const end = () => { if (!drawing) return; drawing = false; this.onInpaintMask(c.toDataURL('image/png')); };
-    c.addEventListener('pointerup', end);
-    c.addEventListener('pointercancel', end);
-    this._inpCanvas = c;
-    return c;
-  }
-  clearInpMask() {
-    if (this._inpCanvas) { const ctx = this._inpCanvas.getContext('2d'); ctx.clearRect(0, 0, this._inpCanvas.width, this._inpCanvas.height); }
-    this.setState({ inpMaskData: null });
-  }
-  buildInpaintTools(srcRunId, srcFile, inpStatus, inpResult, inpStrength, accent) {
-    const src = this._resolveSource(srcRunId, srcFile);
-    const srcUrl = src.run ? this._imgUrl(src.run.id, src.imageFile) : null;
-    const h = React.createElement;
-    return h('div', { style: { marginTop: 14, borderTop: '1px solid rgba(148,163,184,.12)', paddingTop: 12 } },
-      h('div', { style: { fontSize: 11, fontWeight: 600, color: '#92a4b8', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 7 } }, 'Inpaint — paint the area to change'),
-      h('div', { style: { position: 'relative', width: '100%', maxWidth: 384, margin: '0 auto', aspectRatio: '1 / 1', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(148,163,184,.16)', background: srcUrl ? ('center/contain no-repeat url("' + srcUrl + '") #0a0e14') : '#0a0e14' } },
-        srcUrl ? null : h('div', { style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#5a6678' } }, 'Pick a source image above'),
-        h('div', { style: { position: 'absolute', inset: 0, opacity: .5 } }, this._getInpCanvas())),
-      h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', marginTop: 9 } },
-        h('label', { style: { fontSize: 11, color: '#92a4b8' } }, 'Strength'),
-        h('input', { type: 'number', min: '0.01', max: '0.99', step: '0.05', value: String(inpStrength), onChange: e => this.setState({ inpStrength: e.target.value }),
-          style: { width: 70, border: '1px solid rgba(148,163,184,.16)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: '6px', outline: 'none', fontSize: 12 } }),
-        h('button', { onClick: () => this.clearInpMask(),
-          style: { border: '1px solid rgba(148,163,184,.18)', background: 'transparent', color: '#b8c7d6', borderRadius: 7, padding: '6px 12px', fontSize: 12, cursor: 'pointer' } }, 'Clear mask'),
-        h('button', { onClick: () => this.onInpaintSubmit(),
-          style: { flex: 1, background: accent, color: '#06121a', border: 0, fontWeight: 800, borderRadius: 8, padding: '8px', cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif" } },
-          inpStatus === 'generating' ? 'Inpainting…' : 'Run Inpaint')),
-      inpStatus === 'done' && inpResult ? h('img', { src: inpResult, alt: 'inpaint result', style: { marginTop: 9, maxWidth: '100%', borderRadius: 6 } }) :
-      inpStatus === 'error' ? h('div', { style: { marginTop: 9, fontSize: 12, color: '#ef4444' } }, '✗ Inpaint failed') : null);
-  }
-
   buildGenerationMeta(params) {
     if (!params) return null;
     const h = React.createElement;
@@ -1227,12 +1098,12 @@ class Component extends DCLogic {
             target, backendOnline, backendUrl, runs, savePrompts, toasts,
             batchAxisX, batchValuesX, batchPrompt, batchNeg, batchSteps, batchCfg, batchW, batchH,
             batchRunning, batchDone, batchTotal, batchStatus,
-            i2iPrompt, i2iNeg, i2iDenoise, i2iSteps, i2iCfg, i2iSeed, i2iSrcRunId, i2iSrcFile, i2iStatus, i2iProgress, i2iResult,
+            i2iSrcRunId, i2iSrcFile,
             enhSrcRunId, enhSrcFile, enhScale, enhMethod, enhStatus, enhResult,
             checkpoints, loadingCheckpoints, loadingModelCards, activeCheckpoint,
             preset, runFiles, libFilter, libHasMore, libTotal, libLoadingMore,
             ollamaOnline, ollamaModel, enhancingPrompt, wildcards, showWildcards, wildcardFilter, assets, loadingAssets,
-            inpStatus, inpResult, inpStrength } = s;
+          } = s;
     const screen = screens[version];
     const isGenerating = jobStatus === 'generating';
     const accent = version === 2 ? '#f59e0b' : version === 3 ? '#a78bfa' : '#38bdf8';
@@ -1261,19 +1132,6 @@ class Component extends DCLogic {
           React.createElement('div', { style: { height: '100%', width: Math.round((batchDone/Math.max(batchTotal,1))*100) + '%', background: 'linear-gradient(90deg,#38bdf8,#65d66e)', borderRadius: 3, transition: 'width .3s ease' } })),
         React.createElement('div', { style: { fontSize: 11, color: '#6060a0', fontFamily: "'IBM Plex Mono',monospace" } }, batchDone + ' / ' + batchTotal + ' complete')) :
       batchStatus === 'done' ? React.createElement('div', { style: { fontSize: 12, color: '#65d66e' } }, '✓ Batch complete · ' + batchTotal + ' images added to Library') :
-      null
-    );
-
-    // ── img2img status display ────────────────────────────────
-    const i2iStatusDisplay = React.createElement('div', { style: { marginTop: 8 } },
-      i2iStatus === 'idle' ? null :
-      i2iStatus === 'generating' ? React.createElement('div', null,
-        React.createElement('div', { style: { fontSize: 12, color: '#a78bfa', marginBottom: 6 } }, 'img2img · ' + i2iProgress + '%'),
-        React.createElement('div', { style: { height: 4, background: 'rgba(255,255,255,.08)', borderRadius: 2, overflow: 'hidden' } },
-          React.createElement('div', { style: { height: '100%', width: i2iProgress + '%', background: 'linear-gradient(90deg,#8b5cf6,#38bdf8)', borderRadius: 2, transition: 'width .15s linear' } }))) :
-      i2iStatus === 'done' && i2iResult ? React.createElement('img', { src: i2iResult, alt: 'img2img result', style: { maxWidth: '100%', maxHeight: 200, borderRadius: 6, objectFit: 'contain' } }) :
-      i2iStatus === 'done' ? React.createElement('div', { style: { fontSize: 12, color: '#65d66e' } }, '✓ Done (sim · no image data)') :
-      i2iStatus === 'error' ? React.createElement('div', { style: { fontSize: 12, color: '#ef4444' } }, '✗ img2img failed') :
       null
     );
 
@@ -1503,8 +1361,6 @@ class Component extends DCLogic {
       ? files.map(f => React.createElement('option', { key: f, value: f }, f))
       : [React.createElement('option', { value: '' }, runs[0] ? 'Primary image' : '— no images —')];
 
-    const srcRunOptions = React.createElement('select', { value: i2iSrcRunId, onChange: e => this.onI2iRunChange(e.target.value), style: selStyle }, ...runOpts());
-    const srcImageOptions = React.createElement('select', { value: i2iSrcFile, onChange: e => this.setState({ i2iSrcFile: e.target.value }), style: selStyle }, ...imageOpts(filesFor(i2iSrcRunId), i2iSrcFile));
     const enhSrcOptions = React.createElement('select', { value: enhSrcRunId, onChange: e => this.onEnhRunChange(e.target.value), style: selStyle }, ...runOpts());
     const enhImageOptions = React.createElement('select', { value: enhSrcFile, onChange: e => this.setState({ enhSrcFile: e.target.value }), style: selStyle }, ...imageOpts(filesFor(enhSrcRunId), enhSrcFile));
 
@@ -1845,9 +1701,10 @@ class Component extends DCLogic {
           background: kind === 'error' ? 'rgba(239,68,68,.07)' : kind === 'warn' ? 'rgba(251,191,36,.07)' : kind === 'info' ? 'rgba(56,189,248,.06)' : 'rgba(101,214,110,.06)',
           color: kind === 'error' ? '#fca5a5' : kind === 'warn' ? '#fde68a' : kind === 'info' ? '#7dd3fc' : '#86efac',
           borderRadius: 7, padding: '6px 8px', fontSize: 11, lineHeight: 1.35 } }, msg)));
-    const favoritePresetRows = s.favoritePresets.length
+    const createRecipes = s.favoritePresets.filter(p => (p.mode || 'create') === 'create');
+    const favoritePresetRows = createRecipes.length
       ? h('div', { style: { display: 'grid', gap: 5, maxHeight: 160, overflowY: 'auto' } },
-          ...s.favoritePresets.map(p => h('div', { key: p.id, style: { display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(148,163,184,.12)', borderRadius: 7, padding: 6, background: 'rgba(5,10,18,.46)' } },
+          ...createRecipes.map(p => h('div', { key: p.id, style: { display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(148,163,184,.12)', borderRadius: 7, padding: 6, background: 'rgba(5,10,18,.46)' } },
             h('button', { onClick: () => this.applyFavoritePreset(p.id), style: { flex: 1, border: 0, background: 'transparent', color: '#cbd5e1', textAlign: 'left', cursor: 'pointer', fontSize: 12, fontFamily: "'DM Sans',sans-serif" } }, p.name),
             h('button', { onClick: () => this.renameFavoritePreset(p.id), title: 'Rename recipe', style: { border: '1px solid rgba(148,163,184,.16)', background: 'transparent', color: '#94a3b8', borderRadius: 6, cursor: 'pointer', padding: '3px 7px' } }, 'Rename'),
             h('button', { onClick: () => this.deleteFavoritePreset(p.id), title: 'Delete recipe', style: { border: '1px solid rgba(148,163,184,.16)', background: 'transparent', color: '#94a3b8', borderRadius: 6, cursor: 'pointer', padding: '3px 7px' } }, 'x'))))
@@ -1872,7 +1729,7 @@ class Component extends DCLogic {
         h('div', null, h('div', { style: fieldLabel }, 'Compact mode'), compactToggle)),
       h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 } },
         actionButton('Copy prompt + settings', () => this.copyText('Prompt and settings', JSON.stringify(this.currentParams(), null, 2))),
-        actionButton('Send result to img2img', () => this.setScreen('edit'), '#a78bfa')),
+        actionButton('Send result to img2img', () => this.sendActiveResultToEdit('img2img'), '#a78bfa')),
       favoritePresetPanel);
     const settingsDrawer = h('div', { style: { border: '1px solid rgba(148,163,184,.16)', background: 'rgba(6,10,16,.64)', borderRadius: 9, marginBottom: 10, overflow: 'hidden' } },
       h('button', { onClick: () => this.setState(x => ({ settingsOpen: !x.settingsOpen })),
@@ -1969,9 +1826,6 @@ class Component extends DCLogic {
 
     const keyboardHelp = h('div', { style: { border: '1px solid rgba(148,163,184,.12)', borderRadius: 8, padding: 9, color: '#94a3b8', fontSize: 11, lineHeight: 1.6, marginBottom: 10, background: 'rgba(5,10,18,.38)' } },
       'Keyboard shortcuts: Command+Enter generate · / focus prompt · P collapse prompt · S settings · L library');
-
-    // ── Inpaint tools (canvas mask editor) inside Edit ────────
-    const inpaintTools = this.buildInpaintTools(i2iSrcRunId, i2iSrcFile, inpStatus, inpResult, inpStrength, accent);
 
     // ── Toast overlay ─────────────────────────────────────────
     const toastOverlay = React.createElement('div', {
@@ -2073,18 +1927,6 @@ class Component extends DCLogic {
       onBatchSubmit: ()=>this.onBatchSubmit(),
       batchSubmitLabel: batchRunning ? ('Running ' + batchDone + '/' + batchTotal + '…') : batchStatus==='done' ? 'Run Again' : 'Submit Batch',
       batchProgressDisplay,
-      // img2img
-      i2iPrompt, i2iNeg, i2iDenoise: String(i2iDenoise), i2iSteps: String(i2iSteps),
-      i2iCfg: String(i2iCfg), i2iSeed: String(i2iSeed), i2iSrcRunId, i2iStatus, i2iProgress: String(i2iProgress),
-      onI2iPromptChange: e=>this.setState({i2iPrompt:e.target.value}),
-      onI2iNegChange: e=>this.setState({i2iNeg:e.target.value}),
-      onI2iDenoiseChange: e=>this.setState({i2iDenoise:e.target.value}),
-      onI2iStepsChange: e=>this.setState({i2iSteps:e.target.value}),
-      onI2iCfgChange: e=>this.setState({i2iCfg:e.target.value}),
-      onI2iSeedChange: e=>this.setState({i2iSeed:e.target.value}),
-      onImg2imgSubmit: ()=>this.onImg2imgSubmit(),
-      i2iSubmitLabel: i2iStatus==='generating' ? ('img2img · ' + i2iProgress + '%') : 'Run img2img',
-      i2iStatusDisplay, srcRunOptions, srcImageOptions, inpaintTools,
       // Enhance
       enhSrcRunId, enhScale: String(enhScale), enhMethod, enhStatus,
       onEnhScaleChange: e=>this.setState({enhScale:e.target.value}),

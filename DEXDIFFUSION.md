@@ -318,6 +318,24 @@ Shown in **System → Truth status**, `GET /api/system-info` (`capabilities`), a
 - **Browser Visual Verification**: Real Chromium verification captures stored in `output/playwright/`: desktop 1440×900 (`browser-qa-desktop-1440.png`), mobile 390×844 (`browser-qa-mobile-390.png`), models tab (`browser-qa-models-tab.png`), hero workspace with siblings (`browser-qa-hero-workspace-siblings.png`), and live vision face mask preview (`browser-qa-detailer-face.png`).
 
 
+## Edit workbench (rev 16)
+
+- **Send to Edit** (from Create results, the Library, the fullscreen viewer, Enhance) always goes through `openImageInEdit(imageId, mode)`: it loads that image's own recorded generation record (`/api/images/:id/meta` → `recall`) and fills Edit from it — never from the Create form. A banner shows what was restored; with prompt saving off the prompt reads "Source prompt unavailable — prompt saving was off" and you type the one you want.
+- **One Run control** for img2img / Inpaint / Outpaint with live stage + progress (waiting for Big Mac, upload, sampling step N/M only when sd-cli really reports it, transfer, failure stage + message, safe retry). A blocked Run explains why.
+- **Inpaint** edits in source-image coordinates: Fit by default (whole image), 100%, zoom to 16×, pan (tool / Space / pinch), brush ring, undo/redo, grow/shrink/feather/blur/invert. The mask sent to the backend has the source's pixel size.
+- **Fullscreen**: click any primary input/output image (Create hero, Edit source/result, Library thumbnails, compare, Enhance); selector strips select first and open fullscreen on the active thumbnail. Never inside the inpaint canvas. The viewer has "→ img2img / Inpaint / Outpaint" for that exact image.
+- **Resources** (LoRA weights, trigger words, compatibility, VAE) are visible in Create and Edit; LoRAs are structured state serialized to `<lora:…>` by the server. The model picker is a searchable, family-grouped popover; the card browser is unchanged.
+- **Layouts**: `A · Compact` / `B · Studio` over the same state (persisted in `localStorage.dex_edit_layout`). **Presets** are per operation, versioned (`v: 2`) and never store a source image; prompt text only when prompt saving is on.
+- Per-image records live in `sdcpp-workflow/state/image-meta.json`. Details: `operator-console/docs/edit-workbench-20261002.md`.
+
+## Voice profiles, long-form speech and Drama (rev 16)
+
+- **Voice → Voices & long-form**: persistent profiles (cloned with several reference samples + transcripts, designed from a description, or a Kokoro preset), sample diagnostics, per-engine validation, an honest capability matrix, a per-render performance direction (only where the engine can honor it: VoiceDesign yes, Kokoro/Qwen Base no), and long-form text with no 2,000-character limit (paragraph/sentence/clause chunking, tags kept whole, crossfade + boundary pauses, one stitched canonical WAV with chunk lineage, failures read "failed at chunk 7/14: …").
+- **Drama** (new nav item): paste a script → deterministic parse (or optional local-model parse that cannot rewrite dialogue) → review/correct lines → bind speakers to saved voices → render line / scene / project (every re-render is a new Take; you choose the active one) → assemble a scene or the whole drama into one WAV (optional music/ambience/SFX tracks). An **unsaved** script lives only in server memory; **Save project** is the explicit act that writes it to disk. Dialogue is never copied into job logs.
+- **Where things live:** voice profiles `sdcpp-workflow/state/voice-profiles/<vp-id>/profile.json`, samples `…/samples/<sm-id>.wav` (MacBook only); Drama projects `sdcpp-workflow/state/drama/<dp-id>.json` (only when saved); generated speech and drama exports `/Users/andrew/audio_made/voice/` (id-served via `/api/media/:id`).
+- Big Mac stays compute only; every render is a normal job under the heavy-compute lease. Prompt/voice-prompt caching is not implemented (the installed Qwen runtime has no such API). Details: `operator-console/docs/voice-drama-20261002.md`.
+- Tests: `cd operator-console && npm test` (unit/server), `npm run test:browser` (real Chrome, hermetic fixtures; the voice/drama suite uses your running state directory and cleans up after itself).
+
 ## Protected invariants (do not change)
 
 - The node backend stays bound to **127.0.0.1:31337**. Never `0.0.0.0`, never LAN.
@@ -350,7 +368,9 @@ the HF cache on wc2tb, `OPERATIONAL_STATE.md`, run metadata.
 | Shared shell lib | `sdcpp-workflow/bin/sdcpp-lib.sh` |
 | Lifecycle / status | `bin/dexdiffusion` |
 | Mac app | `native/macos/Image_Gen/ImageGenApp.swift`, `scripts/install-macos-app.sh` |
-| Tests | `operator-console/tests/*.test.js` (`npm test`) |
+| Edit workbench | `operator-console/public/dexdiffusion/{edit-core.js,edit-ui.js,lightbox.js}` |
+| Voice / Drama | `operator-console/{voice-engines,voice-profiles,voice-service,voice-audio,long-form,drama,drama-service,voice-routes}.js`, `public/dexdiffusion/{voice-ui.js,drama-ui.js}` |
+| Tests | `operator-console/tests/*.test.js` (`npm test`), `operator-console/tests/browser/` (`npm run test:browser`) |
 
 ## Recovering state (for a successor AI)
 

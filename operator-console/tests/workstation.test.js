@@ -131,6 +131,16 @@ test('lineage: parent reference, child lookup, ancestors, legacy image', () => {
   assert.deepEqual(fs.readdirSync(dir), ['image-meta.json']);
 });
 
+test('generation record: prompt text is stored only when prompt_saved is true; structured settings always', () => {
+  const { store } = tmpStore();
+  store.record('p.png', { operation: 'txt2img', target: 'sd15', sampler: 'euler_a', vae: 'auto', loras: [{ name: 'a', weight: 0.5 }], gen_schema: 1, prompt_saved: false, prompt: 'SECRET-OFF', negative_prompt: 'NEG-OFF' });
+  const off = store.get('p.png');
+  assert.equal(off.prompt, undefined); assert.equal(off.negative_prompt, undefined);
+  assert.deepEqual([off.sampler, off.vae, off.loras, off.prompt_saved], ['euler_a', 'auto', [{ name: 'a', weight: 0.5 }], false]);
+  store.record('q.png', { operation: 'txt2img', prompt_saved: true, prompt: 'visible', negative_prompt: 'n' });
+  assert.deepEqual([store.get('q.png').prompt, store.get('q.png').negative_prompt], ['visible', 'n']);
+});
+
 test('keepers: add/remove is metadata only', () => {
   const { dir, store } = tmpStore();
   assert.equal(store.setKeeper('x.png', true), true);
