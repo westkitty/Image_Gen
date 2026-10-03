@@ -131,10 +131,18 @@ test('browser resize changes the screen scale but not the image coordinate of a 
   assert.deepEqual([E.screenToImage(a, sa.x, sa.y), E.screenToImage(b, sb.x, sb.y)].map(p => [Math.round(p.x), Math.round(p.y)]), [[100, 50], [100, 50]]);
 });
 
-test('100% zoom is one image pixel per CSS pixel; zoom never goes below fit', () => {
+test('100% zoom is one image pixel per CSS pixel; large images stay bounded by fit', () => {
   const v = { imgW: 2048, imgH: 1024, boxW: 512, boxH: 512, zoom: 1, panX: 0, panY: 0 };
   assert.ok(Math.abs(E.viewScale(E.zoomTo100(v)) - 1) < 1e-9);
   assert.equal(E.zoomAt(v, 0.01, 10, 10).zoom, 1);
+});
+
+test('100% zoom shows actual pixels when Fit enlarges a small source', () => {
+  const v = { imgW: 512, imgH: 384, boxW: 836, boxH: 504, zoom: 1, panX: 0, panY: 0 };
+  assert.ok(E.viewScale(v) > 1);
+  const actual = E.zoomTo100(v);
+  assert.ok(Math.abs(E.viewScale(actual) - 1) < 1e-9);
+  assert.ok(Math.abs(E.viewScale(E.zoomAt(actual, 0.01, 418, 252)) - 1) < 1e-9);
 });
 
 // ── stage / progress ────────────────────────────────────────────────────
@@ -195,4 +203,14 @@ test('edit-mode recipes carry resources and outpaint settings but never a source
   assert.deepEqual(r.outpaint, { right: 128, left: 0 });
   assert.equal(r.imageId, undefined); assert.equal(r.sourceId, undefined);
   assert.equal(E.recipesForMode([r, { mode: 'inpaint' }, { name: 'legacy' }], 'create').length, 1);
+});
+
+
+test('decode completion remains decoding until the workflow advances to validation', () => {
+  const j = { status: 'running', stdout: '=== Generating inpaint on BigMac ===' };
+  for (const log of ['sampling completed', 'sampling completed\ndecode_first_stage completed', 'generate_image completed']) {
+    assert.equal(E.deriveStage(j, log).key, 'decoding');
+  }
+  j.stdout += '\n=== Verifying remote PNG ===';
+  assert.equal(E.deriveStage(j, 'generate_image completed').key, 'validating');
 });

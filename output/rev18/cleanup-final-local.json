@@ -1,0 +1,26 @@
+{
+  "/api/resources": {
+    "group": "bigmac-heavy-inference",
+    "capacity": 1,
+    "owner": null,
+    "waiting": [],
+    "external": {
+      "occupied": false,
+      "detail": null,
+      "checkedAt": 1791050110587
+    },
+    "blocked_reason": null
+  },
+  "/api/jobs": {
+    "jobs": []
+  },
+  "local_staging_files": [],
+  "canonical_images_now": [
+    "Rev18-owned-zoom-fixture.png"
+  ],
+  "browser_test_processes": [
+    "  241  8206       02:30 /bin/zsh -lc npm run check > /tmp/dex-rev18-final-v9-check.log 2>&1 && npm test > /tmp/dex-rev18-final-v9-unit.log 2>&1 && node tests/browser/edit-workbench.browser.js > /tmp/dex-rev18-final-v9-edit.log 2>&1 && node tests/browser/voice-drama.browser.js > /tmp/dex-rev18-final-v9-voice.log 2>&1 && npm run test:browser > /tmp/dex-rev18-final-v9-chain.log 2>&1",
+    " 1406   241       01:03 node tests/browser/edit-workbench.browser.js",
+    " 1411  1406       00:59 /opt/homebrew/Cellar/node/26.9.0/bin/node /Users/andrew/Image_Gen/operator-console/tests/browser/server-supervisor.js 1406 /Users/andrew/Image_Gen/operator-console"
+  ]
+}

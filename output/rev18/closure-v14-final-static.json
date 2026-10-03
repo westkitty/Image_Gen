@@ -1,0 +1,62 @@
+[
+  {
+    "command": "bash -n sdcpp-workflow/bin/mflux-controlled-generate.sh",
+    "exit": 0,
+    "diagnostic": ""
+  },
+  {
+    "command": "bash -n sdcpp-workflow/bin/sdcpp-cli-generate.sh",
+    "exit": 0,
+    "diagnostic": ""
+  },
+  {
+    "command": "bash -n sdcpp-workflow/bin/sdcpp-controlled-generate.sh",
+    "exit": 0,
+    "diagnostic": ""
+  },
+  {
+    "command": "bash -n sdcpp-workflow/bin/sdcpp-img2img.sh",
+    "exit": 0,
+    "diagnostic": ""
+  },
+  {
+    "command": "bash -n sdcpp-workflow/bin/sdcpp-inpaint.sh",
+    "exit": 0,
+    "diagnostic": ""
+  },
+  {
+    "command": "bash -n sdcpp-workflow/bin/sdcpp-server-generate.sh",
+    "exit": 0,
+    "diagnostic": ""
+  },
+  {
+    "command": "bash -n sdcpp-workflow/bin/sdcpp-xyz-plot.sh",
+    "exit": 0,
+    "diagnostic": ""
+  },
+  {
+    "command": "python3 -m py_compile operator-console/bridges/dexmedia_remote.py",
+    "exit": 0,
+    "diagnostic": ""
+  },
+  {
+    "command": "python3 -m py_compile sdcpp-workflow/bin/redact_stream.py",
+    "exit": 0,
+    "diagnostic": ""
+  },
+  {
+    "command": "node --check operator-console/tests/browser/edit-workbench.browser.js",
+    "exit": 0,
+    "diagnostic": ""
+  },
+  {
+    "command": "node --check operator-console/tests/browser/voice-drama.browser.js",
+    "exit": 0,
+    "diagnostic": ""
+  },
+  {
+    "command": "git diff --check",
+    "exit": 0,
+    "diagnostic": ""
+  }
+]

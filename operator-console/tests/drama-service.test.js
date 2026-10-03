@@ -32,7 +32,7 @@ function setup({ failTexts = [] } = {}) {
     },
   };
   const svc = createDramaService({ store, voice, profiles, mediaStore });
-  return { base, store, svc, calls, mediaStore };
+  return { base, store, svc, calls, mediaStore, profiles };
 }
 const waitRun = async (svc, id) => { for (let i = 0; i < 400; i++) { const r = svc.runView(id); if (r.status !== 'running') return r; await new Promise(r2 => setTimeout(r2, 5)); } throw new Error('run did not finish'); };
 const bindAll = (svc, p) => p.actors.forEach(a => D.bindActor(p, a.id, 'vp-' + a.speaker_key.toLowerCase()));
@@ -116,4 +116,32 @@ test('LLM parse path is wired and cannot rewrite dialogue', async () => {
   assert.equal(r.ok, false); assert.match(r.errors.join(' '), /not verbatim/);
   const none = await createDramaService({ store, voice: {}, profiles: {}, mediaStore: {} }).createProject({ title: 'x', script: 'a: b', mode: 'llm' });
   assert.match(none.errors[0], /no local model/);
+});
+
+
+test('saved Drama re-resolves removed/invalid profiles and blocks before a render job', async () => {
+  const { store, svc, profiles, calls } = setup();
+  const p = svc.need((await svc.createProject({ title: 'Profile lifecycle', script: 'TIGER: Hello.' })).project.id);
+  bindAll(svc, p); store.save(p.id);
+  assert.equal(svc.view(p).unresolved.length, 0);
+  profiles.get = () => null;
+  assert.equal(svc.view(p).actors[0].profile, null);
+  assert.equal(svc.view(p).unresolved[0].reason, 'profile-missing');
+  assert.throws(() => svc.startRun(p.id), e => e.gate === 'unresolved-speaker');
+  profiles.get = id => ({ id, validation: { state: 'invalid' } });
+  assert.equal(svc.view(p).unresolved[0].reason, 'profile-invalid');
+  assert.throws(() => svc.startRun(p.id), e => e.gate === 'unresolved-speaker');
+  assert.equal(calls.length, 0);
+});
+
+test('line render checks that exact line override, not another line by the same speaker', async () => {
+  const { svc, profiles } = setup();
+  const p = svc.need((await svc.createProject({ title: 'Overrides', script: 'ALICE: First.\nALICE: Second.' })).project.id);
+  D.bindActor(p, p.actors[0].id, 'vp-good');
+  const lines = D.renderableLines(p).map(x => x.line);
+  lines[1].profile_override = 'vp-missing';
+  const get = profiles.get; profiles.get = id => id === 'vp-missing' ? null : get(id);
+  assert.throws(() => svc.startRun(p.id, { scope: 'project' }), e => e.gate === 'unresolved-speaker');
+  const run = svc.startRun(p.id, { scope: 'line', lineId: lines[0].id });
+  assert.equal((await waitRun(svc, run.id)).status, 'complete');
 });

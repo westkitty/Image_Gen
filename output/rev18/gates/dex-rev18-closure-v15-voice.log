@@ -1,0 +1,26 @@
+
+> operator-console@1.0.0 test:browser:voice
+> node tests/browser/voice-drama.browser.js
+
+[voice-drama +4.2s] START Voice profiles: designed + preset voices, validation, capability truth, direction gating, long-form estimate
+[voice-drama +10.1s] PASS Voice profiles: designed + preset voices, validation, capability truth, direction gating, long-form estimate (5873 ms)
+[voice-drama +10.1s] START Cloned voice: invalid until a sample WITH transcript is approved; multiple samples; active sample; remove
+[voice-drama +15.5s] PASS Cloned voice: invalid until a sample WITH transcript is approved; multiple samples; active sample; remove (5399 ms)
+[voice-drama +15.5s] START real reference uploads: malformed, short and silent rejected; clipped sample shows warnings
+[voice-drama +21.5s] PASS real reference uploads: malformed, short and silent rejected; clipped sample shows warnings (5989 ms)
+[voice-drama +21.5s] START Voice render state belongs to the voice that started it (no progress/result/error leaks onto another voice)
+[voice-drama +32.9s] PASS Voice render state belongs to the voice that started it (no progress/result/error leaks onto another voice) (11359 ms)
+[voice-drama +32.9s] START Drama: paste → parse → review/edit → cast → privacy banner → save/unsave → blocked render → assemble refuses without takes
+[voice-drama +36.0s] PASS Drama: paste → parse → review/edit → cast → privacy banner → save/unsave → blocked render → assemble refuses without takes (3105 ms)
+[voice-drama +36.0s] START Drama LLM parse mode reports rejection/failure visibly (never silently falls back)
+[voice-drama +37.8s] PASS Drama LLM parse mode reports rejection/failure visibly (never silently falls back) (1878 ms)
+[voice-drama +37.8s] START responsive @375px: Voice profiles + Drama have no horizontal overflow
+[voice-drama +40.7s] PASS responsive @375px: Voice profiles + Drama have no horizontal overflow (2877 ms)
+[voice-drama +40.7s] START responsive @768px: Voice profiles + Drama have no horizontal overflow
+[voice-drama +44.5s] PASS responsive @768px: Voice profiles + Drama have no horizontal overflow (3775 ms)
+[voice-drama +44.5s] PHASE cleanup owned projects
+[voice-drama +44.5s] PHASE cleanup owned profiles
+[voice-drama +44.6s] PHASE close browser
+[voice-drama +45.4s] PHASE stop test server
+
+8/8 voice/drama browser checks passed

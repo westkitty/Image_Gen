@@ -1,0 +1,83 @@
+{
+  "schema": "dexdiffusion.voice_profile.v1",
+  "id": "vp-d2d923eb30",
+  "name": "Rev18 Cloned Evidence",
+  "type": "cloned",
+  "language": "en",
+  "preferred_engine": "qwen3-tts-base",
+  "description": "",
+  "preset_voice": null,
+  "default_direction": "",
+  "default_speed": null,
+  "notes": "",
+  "samples": [
+    {
+      "id": "sm-07c1de362d",
+      "name": "20261003-033539-qwen3-tts-voice-design-speech",
+      "file": "sm-07c1de362d.wav",
+      "bytes": 345678,
+      "sha256": "fdb1e4c8ef974b4ad507c17630b125f933e039e8a732911f0c18bd44d68e9cbc",
+      "transcript": "rev18designalpha. The room is quiet.\nrev18designbeta. Speak clearly.",
+      "active": true,
+      "validation": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "diagnostics": {
+        "duration": 7.2,
+        "sample_rate": 24000,
+        "channels": 1,
+        "rms_db": -24.1,
+        "peak_db": -4.6,
+        "clip_ratio": 0,
+        "silence_ratio": 0.35
+      },
+      "created_at": 1790998771317,
+      "audio_url": "/api/voice/profiles/vp-d2d923eb30/samples/sm-07c1de362d/audio"
+    },
+    {
+      "id": "sm-5dc5eceac9",
+      "name": "20261003-033539-qwen3-tts-voice-design-speech",
+      "file": "sm-5dc5eceac9.wav",
+      "bytes": 345678,
+      "sha256": "fdb1e4c8ef974b4ad507c17630b125f933e039e8a732911f0c18bd44d68e9cbc",
+      "transcript": "rev18designalpha. The room is quiet.\nrev18designbeta. Speak clearly.",
+      "active": false,
+      "validation": {
+        "ok": true,
+        "errors": [],
+        "warnings": []
+      },
+      "diagnostics": {
+        "duration": 7.2,
+        "sample_rate": 24000,
+        "channels": 1,
+        "rms_db": -24.1,
+        "peak_db": -4.6,
+        "clip_ratio": 0,
+        "silence_ratio": 0.35
+      },
+      "created_at": 1790999058748,
+      "audio_url": "/api/voice/profiles/vp-d2d923eb30/samples/sm-5dc5eceac9/audio"
+    }
+  ],
+  "created_at": 1790998704341,
+  "updated_at": 1790999058748,
+  "compatible_engines": [
+    "qwen3-tts-base"
+  ],
+  "validation": {
+    "engines": {
+      "qwen3-tts-base": {
+        "ok": true,
+        "errors": [],
+        "warnings": [
+          "Qwen3-TTS Base (voice clone) uses one reference per render (the active sample); other samples are kept for selection"
+        ]
+      }
+    },
+    "state": "warnings"
+  },
+  "fingerprint": "baf3d92d1d134a87"
+}

@@ -7,9 +7,9 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright-core');
-const { decodePng, startServer, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
+const { makePng, decodePng, startServer, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
 
-const OUT = path.join(__dirname, '..', '..', '..', 'output', 'playwright');
+const OUT = process.env.DEX_BROWSER_OUTPUT_DIR || path.join(__dirname, '..', '..', '..', 'output', 'playwright');
 fs.mkdirSync(OUT, { recursive: true });
 
 const FX = {
@@ -96,13 +96,18 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
     await test('img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result', async () => {
       const { page, ctx, mock, posts } = await newPage(browser, srv.base);
       await openEdit(page, 'fx-landscape.png', 'img2img');
+      await page.evaluate(() => {
+        window.__editProgressSeen = [];
+        window.__editProgressObserver = new MutationObserver(() => {
+          const node = document.querySelector('[data-edit-progress]');
+          if (node) window.__editProgressSeen.push(node.innerText.split('\n')[0]);
+        });
+        window.__editProgressObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+      });
       await clickRun(page);
-      await page.waitForSelector('[data-edit-progress]');
-      const texts = new Set();
-      for (let i = 0; i < 40 && !(await page.$('[data-edit-results]')); i++) { const t = await page.$eval('[data-edit-progress]', e => e.innerText).catch(() => null); if (t) texts.add(t.split('\n')[0]); await page.waitForTimeout(250); }
-      const all = [...texts].join(' || ');
-      assert.match(all, /Waiting for Big Mac/); assert.match(all, /Uploading source image/); assert.match(all, /Sampling step 3\/10/);
       await page.waitForSelector('[data-edit-results] img[data-fullscreen]');
+      const all = await page.evaluate(() => { window.__editProgressObserver.disconnect(); return [...new Set(window.__editProgressSeen)].join(' || '); });
+      assert.match(all, /Waiting for Big Mac/); assert.match(all, /Uploading source image/); assert.match(all, /Sampling step 3\/10/);
       const req = posts.find(p => p.url === '/api/actions/img2img').body;
       assert.equal(posts[0].url, 'activate', 'edit model switched before submit'); assert.equal(posts[0].body.target, 'sdxl-base');
       assert.deepEqual([req.image_id, req.prompt, req.steps, req.cfg_scale, req.seed, req.sampler, req.scheduler, req.strength], ['fx-landscape.png', 'a test prompt', 31, 5.5, 1111, 'dpmpp2m', 'karras', 0.75]);
@@ -149,6 +154,10 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
         let g = await geo();
         assert.ok(g.im.x >= g.vp.x - 1 && g.im.y >= g.vp.y - 1 && g.im.x + g.im.w <= g.vp.x + g.vp.w + 1 && g.im.y + g.im.h <= g.vp.y + g.vp.h + 1, 'whole image visible at Fit (nothing cropped)');
         assert.ok(Math.abs(g.im.w / g.im.h - w / h) < 0.01, 'image keeps its own aspect ratio');
+        await page.getByRole('button', { name: '100%', exact: true }).click();
+        g = await geo();
+        assert.ok(Math.abs(g.im.w - w) < 1 && Math.abs(g.im.h - h) < 1, '100% uses actual pixels even when Fit enlarges a small source');
+        await page.getByRole('button', { name: 'Fit', exact: true }).click();
         const paint = async (ix, iy) => { // drag a short stroke starting at image pixel (ix,iy)
           const gg = await geo(); const s = gg.im.w / w;
           const sx = gg.im.x + ix * s, sy = gg.im.y + iy * s;
@@ -220,7 +229,9 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       });
       await page.evaluate(() => { __dex.setScreen('create'); __dex.wsSet({ results: [{ index: 0, status: 'DONE', imageId: 'fx-landscape.png', imageUrl: '/api/images/fx-landscape.png', seed: 1111, target: 'sdxl-base', width: 800, height: 500 }], activeIndex: 0 }); __dex.setState({ jobStatus: 'complete', currentImageSrc: '/api/images/fx-landscape.png' }); });
       await page.waitForSelector('img[alt="Hero result"]');
-      await page.evaluate(() => __dex.openDetailer('fx-landscape.png'));
+      await page.evaluate(() => __dex.setScreen('library'));
+      await page.getByRole('button', { name: 'Select fx-landscape.png for details', exact: true }).first().click();
+      await page.getByRole('button', { name: 'Detailer', exact: true }).click();
       await page.waitForSelector('text=Native Vision Detailer');
       // 1. empty detection is explained in the modal, never silent
       await page.click('button:has-text("Hand")'); emptyNext = true;
@@ -323,6 +334,73 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       const mine = list.find(r => r.name === 'My i2i'); assert.ok(mine);
       assert.deepEqual([mine.v, mine.mode, mine.steps, mine.prompt, mine.promptSaved, mine.imageId, mine.sourceId], [2, 'img2img', 17, undefined, false, undefined, undefined]);
       assert.ok(!JSON.stringify(list).includes('a saved prompt'), 'privacy off: no prompt text in any preset');
+      for (const mode of ['inpaint', 'outpaint']) {
+        await openEdit(page, 'fx-portrait.png', mode);
+        await page.getByRole('spinbutton', { name: 'Steps', exact: true }).fill('23');
+        if (await page.locator('[data-section="presets"]').getAttribute('open') === null) await page.click('[data-section="presets"] summary');
+        await page.fill(`[data-presets="${mode}"] input[aria-label="New preset name"]`, 'Closure ' + mode);
+        await page.click(`[data-presets="${mode}"] button:has-text("Save preset")`);
+        const saved = await page.evaluate(m => JSON.parse(localStorage.getItem('dex_favorite_presets')).find(r => r.name === 'Closure ' + m), mode);
+        assert.equal(saved.mode, mode); assert.equal(saved.steps, '23');
+        assert.equal(saved.prompt, undefined); assert.equal(saved.promptSaved, false);
+        await page.getByRole('spinbutton', { name: 'Steps', exact: true }).fill('9');
+        await page.selectOption(`[data-presets="${mode}"] select[aria-label="Saved presets"]`, saved.id);
+        await page.waitForFunction(() => __dex.ed.state.params.steps === '23' && Array.from(document.querySelectorAll('[data-edit-workbench] label')).find(el => el.querySelector('span')?.textContent === 'Steps')?.querySelector('input')?.value === '23');
+        assert.equal(await page.getByRole('spinbutton', { name: 'Steps', exact: true }).inputValue(), '23', mode + ' round trip');
+      }
+      await ctx.close();
+    });
+
+    await test('saving off: both browser storage areas exclude current edit prompt and negative after preset save and reload', async () => {
+      const { page, ctx } = await newPage(browser, srv.base);
+      const canaries = ['REV18-STORAGE-PROMPT-718', 'REV18-STORAGE-NEGATIVE-719'];
+      await openEdit(page, 'fx-square.png', 'inpaint');
+      await page.fill('[data-edit-prompt]', canaries[0]);
+      await page.fill('[data-edit-negative]', canaries[1]);
+      await page.click('[data-section="presets"] summary');
+      await page.fill('[data-presets="inpaint"] input[aria-label="New preset name"]', 'Closure storage fixture');
+      await page.click('[data-presets="inpaint"] button:has-text("Save preset")');
+      const inspect = () => page.evaluate(() => ({
+        local: Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)])),
+        session: Object.fromEntries(Object.keys(sessionStorage).map(k => [k, sessionStorage.getItem(k)])),
+      }));
+      for (const phase of ['before reload', 'after reload']) {
+        if (phase === 'after reload') { await page.reload(); await page.waitForFunction(() => window.__dex && __dex.ed); }
+        const storage = await inspect();
+        for (const text of canaries) assert.ok(!JSON.stringify(storage).includes(text), phase + ': no private text in either storage area');
+        assert.ok(storage.local.dex_favorite_presets.includes('Closure storage fixture'), 'positive storage control: preset persisted');
+      }
+      await ctx.close();
+    });
+
+    await test('Detailer dialog traps focus, closes with Escape, and restores the opener', async () => {
+      const { page, ctx } = await newPage(browser, srv.base);
+      await page.evaluate(() => __dex.setScreen('library'));
+      await page.getByRole('button', { name: 'Select fx-landscape.png for details', exact: true }).first().click();
+      await page.getByRole('button', { name: 'Detailer', exact: true }).click();
+      await page.waitForSelector('[data-detailer-dialog]');
+      await page.waitForFunction(() => document.querySelector('[data-detailer-dialog]').contains(document.activeElement));
+      await page.getByRole('button', { name: 'Close', exact: true }).press('Shift+Tab');
+      assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Run Detailer');
+      await page.getByRole('button', { name: 'Run Detailer', exact: true }).press('Tab');
+      assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Close');
+      await page.getByRole('button', { name: 'Close', exact: true }).press('Escape');
+      await page.waitForSelector('[data-detailer-dialog]', { state: 'detached' });
+      assert.equal(await page.locator('[data-detailer-dialog]').count(), 0);
+      await ctx.close();
+    });
+
+    await test('Detailer keeps truthful job progress visible until the canonical result is ready', async () => {
+      const { page, ctx } = await newPage(browser, srv.base);
+      await page.route('**/api/detailer/mask-preview', r => r.fulfill({ json: { mask_preview: 'data:image/png;base64,' + makePng(800,500).toString('base64'), detections: [{ class: 'face' }] } }));
+      await page.evaluate(() => __dex.setScreen('library'));
+      await page.getByRole('button', { name: 'Select fx-landscape.png for details', exact: true }).first().click();
+      await page.getByRole('button', { name: 'Detailer', exact: true }).click();
+      await page.getByRole('button', { name: 'Run Detailer', exact: true }).click();
+      await page.waitForFunction(() => /Sampling step 3\/10/.test(document.querySelector('[data-detailer-note]')?.textContent || ''));
+      assert.equal(await page.locator('[data-detailer-dialog]').count(), 1);
+      await page.waitForFunction(() => !document.querySelector('[data-detailer-dialog]'));
+      await page.waitForSelector('img[alt="Hero result"]');
       await ctx.close();
     });
 

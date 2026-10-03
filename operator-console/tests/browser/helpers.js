@@ -114,7 +114,8 @@ async function startServer(preferred) {
 
 // Launches Chrome through playwright and guarantees it is closed on any exit path.
 async function launchBrowser(chromium) {
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch(Object.assign({ headless: true }, process.env.DEX_BROWSER_PATH
+    ? { executablePath: process.env.DEX_BROWSER_PATH } : { channel: 'chrome' }));
   onCleanup(() => browser.close());
   return browser;
 }

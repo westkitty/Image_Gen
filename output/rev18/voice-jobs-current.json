@@ -1,0 +1,1536 @@
+{
+  "jobs": [
+    {
+      "job_id": "03815130-c2a2-4223-9716-bf713108dfac",
+      "media_kind": "voice",
+      "operation": "long-form",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 4,
+        "total": 4
+      },
+      "created_at": 1791000156504,
+      "started_at": 1791000156506,
+      "completed_at": 1791000221967,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 4,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-685d408378",
+        "engine": "kokoro",
+        "chars": 2960,
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-040341-kokoro-long-form.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "9f4a5105-213d-4ed9-95fe-2fbc4089c415",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "qwen3-tts-base",
+      "model_id": "qwen3-tts-base",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790998818595,
+      "started_at": 1790998818596,
+      "completed_at": 1790998962674,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "en",
+        "reference": "profile",
+        "has_transcript": true,
+        "profile_id": "vp-d2d923eb30",
+        "engine": "qwen3-tts-base",
+        "chars": 86,
+        "text": "[REDACTED]",
+        "reference_transcript": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-034242-qwen3-tts-base-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "33df97ff-6bbe-49e1-8a80-593e630d24eb",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "qwen3-tts-voice-design",
+      "model_id": "qwen3-tts-voice-design",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790998436333,
+      "started_at": 1790998436333,
+      "completed_at": 1790998539462,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "en",
+        "profile_id": "vp-b681083e10",
+        "engine": "qwen3-tts-voice-design",
+        "chars": 68,
+        "text": "[REDACTED]",
+        "voice_description": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-033539-qwen3-tts-voice-design-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "d128a8ab-6c4f-4d02-9f94-960cce63ae7c",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790998369245,
+      "started_at": 1790998369257,
+      "completed_at": 1790998379628,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-685d408378",
+        "engine": "kokoro",
+        "chars": 18,
+        "project_id": "dp-ac1d5a10",
+        "line_id": "ln-001",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-033259-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "f3f0f0ee-e729-4cc6-b500-787087c4cd39",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790998308029,
+      "started_at": 1790998308600,
+      "completed_at": 1790998318985,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-685d408378",
+        "engine": "kokoro",
+        "chars": 22,
+        "project_id": "dp-ac1d5a10",
+        "line_id": "ln-004",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-033158-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "92dfd9be-6924-4868-89f3-5726882286b6",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790998296009,
+      "started_at": 1790998296439,
+      "completed_at": 1790998307267,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-685d408378",
+        "engine": "kokoro",
+        "chars": 35,
+        "project_id": "dp-ac1d5a10",
+        "line_id": "ln-003",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-033147-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "97c648d2-f909-4ffd-9097-10621ad25edf",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790998249124,
+      "started_at": 1790998285978,
+      "completed_at": 1790998295735,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-685d408378",
+        "engine": "kokoro",
+        "chars": 33,
+        "project_id": "dp-ac1d5a10",
+        "line_id": "ln-002",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-033135-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "fb75d957-0622-4ce9-8f0d-7e5c427a3093",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790998222090,
+      "started_at": 1790998222095,
+      "completed_at": 1790998241523,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-685d408378",
+        "engine": "kokoro",
+        "chars": 18,
+        "project_id": "dp-ac1d5a10",
+        "line_id": "ln-001",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-033041-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "6494ff90-75ef-40cc-a2b5-b03e644f94d3",
+      "media_kind": "voice",
+      "operation": "long-form",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 4,
+        "total": 4
+      },
+      "created_at": 1790996665878,
+      "started_at": 1790996665879,
+      "completed_at": 1790996703369,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 4,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-685d408378",
+        "engine": "kokoro",
+        "chars": 2808,
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-030503-kokoro-long-form.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "22def5bd-a4ec-4f93-84cc-a6d108a6346e",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790996575317,
+      "started_at": 1790996575328,
+      "completed_at": 1790996593512,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-685d408378",
+        "engine": "kokoro",
+        "chars": 87,
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-030313-kokoro-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "132233d2-5ad8-49f0-9c66-dfc0910f3f6d",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790993501331,
+      "started_at": 1790993501333,
+      "completed_at": 1790993509131,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-ec6944f21f",
+        "engine": "kokoro",
+        "chars": 35,
+        "project_id": "dp-4dc2f872",
+        "line_id": "ln-001",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-021149-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "a8249abf-4ff8-438c-83c8-dc5bdd2b1e7d",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790993489180,
+      "started_at": 1790993489536,
+      "completed_at": 1790993498784,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-ec6944f21f",
+        "engine": "kokoro",
+        "chars": 33,
+        "project_id": "dp-4dc2f872",
+        "line_id": "ln-005",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-021138-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "1a7a815f-3bf0-433e-8cf6-ac9ea8ea7914",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790993469952,
+      "started_at": 1790993470203,
+      "completed_at": 1790993488592,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-ec6944f21f",
+        "engine": "kokoro",
+        "chars": 32,
+        "project_id": "dp-4dc2f872",
+        "line_id": "ln-004",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-021128-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "09f5c4e4-ab75-45df-9f5d-713e73bfb3ad",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790993459115,
+      "started_at": 1790993459868,
+      "completed_at": 1790993469538,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-ec6944f21f",
+        "engine": "kokoro",
+        "chars": 33,
+        "project_id": "dp-4dc2f872",
+        "line_id": "ln-003",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-021109-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "aa7401c1-06b0-4f00-9cd1-6ee21f35a7af",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "qwen3-tts-base",
+      "model_id": "qwen3-tts-base",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790993327787,
+      "started_at": 1790993328772,
+      "completed_at": 1790993458815,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "en",
+        "reference": "profile",
+        "has_transcript": true,
+        "profile_id": "vp-839263adbf",
+        "engine": "qwen3-tts-base",
+        "chars": 26,
+        "project_id": "dp-4dc2f872",
+        "line_id": "ln-002",
+        "text": "[REDACTED]",
+        "reference_transcript": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-021058-qwen3-tts-base-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "fac04081-5349-4c73-b5a4-47f6192120f7",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790993308568,
+      "started_at": 1790993308569,
+      "completed_at": 1790993327717,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-ec6944f21f",
+        "engine": "kokoro",
+        "chars": 35,
+        "project_id": "dp-4dc2f872",
+        "line_id": "ln-001",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-020847-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "61aa04e3-f5f8-42cf-9fc2-5424283d819f",
+      "media_kind": "voice",
+      "operation": "long-form",
+      "worker_id": "qwen3-tts-base",
+      "model_id": "qwen3-tts-base",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 4,
+        "total": 4
+      },
+      "created_at": 1790992958103,
+      "started_at": 1790992958103,
+      "completed_at": 1790993255066,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 4,
+        "language": "en",
+        "reference": "profile",
+        "has_transcript": true,
+        "profile_id": "vp-839263adbf",
+        "engine": "qwen3-tts-base",
+        "chars": 2024,
+        "text": "[REDACTED]",
+        "reference_transcript": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-020735-qwen3-tts-base-long-form.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "bc4addcf-1e3c-4877-8494-c8b3c8025a7b",
+      "media_kind": "voice",
+      "operation": "long-form",
+      "worker_id": "qwen3-tts-base",
+      "model_id": "qwen3-tts-base",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 4,
+        "total": 4
+      },
+      "created_at": 1790992812332,
+      "started_at": 1790992812332,
+      "completed_at": 1790992939184,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 4,
+        "language": "en",
+        "reference": "profile",
+        "has_transcript": true,
+        "profile_id": "vp-839263adbf",
+        "engine": "qwen3-tts-base",
+        "chars": 2024,
+        "text": "[REDACTED]",
+        "reference_transcript": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-020219-qwen3-tts-base-long-form.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "5334fd46-abb1-4bb4-a47a-d03c95b81203",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "qwen3-tts-base",
+      "model_id": "qwen3-tts-base",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790992792732,
+      "started_at": 1790992792732,
+      "completed_at": 1790992808060,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "en",
+        "reference": "profile",
+        "has_transcript": true,
+        "profile_id": "vp-839263adbf",
+        "engine": "qwen3-tts-base",
+        "chars": 57,
+        "text": "[REDACTED]",
+        "reference_transcript": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-020008-qwen3-tts-base-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "16d03a99-1cd5-441a-bd71-8ae582d9a44f",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790992781684,
+      "started_at": 1790992781685,
+      "completed_at": 1790992790480,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-ec6944f21f",
+        "engine": "kokoro",
+        "chars": 70,
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-015950-kokoro-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "16f1eaf8-aa37-4a4c-ac55-2ab5f8e0c859",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "qwen3-tts-base",
+      "model_id": "qwen3-tts-base",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790992624027,
+      "started_at": 1790992624027,
+      "completed_at": 1790992769784,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "en",
+        "reference": "profile",
+        "has_transcript": true,
+        "profile_id": "vp-4db3cb8738",
+        "engine": "qwen3-tts-base",
+        "chars": 57,
+        "text": "[REDACTED]",
+        "reference_transcript": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-015929-qwen3-tts-base-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "98e3ef6a-49e0-4927-87ef-8035beef20ce",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790992600606,
+      "started_at": 1790992600607,
+      "completed_at": 1790992620726,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-76fd0b294e",
+        "engine": "kokoro",
+        "chars": 70,
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261003-015700-kokoro-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "49da829e-a6cb-400a-ba93-3b6ba759ee32",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790980503671,
+      "started_at": 1790980503672,
+      "completed_at": 1790980511465,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "am_adam",
+        "speed": 1,
+        "profile_id": "vp-b816c0a805",
+        "engine": "kokoro",
+        "chars": 34,
+        "project_id": "dp-3fde1dfb",
+        "line_id": "ln-002",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261002-223511-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "e23f98ea-4287-4157-a46e-450dd167371c",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790980486587,
+      "started_at": 1790980487428,
+      "completed_at": 1790980495824,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "am_adam",
+        "speed": 1,
+        "profile_id": "vp-b816c0a805",
+        "engine": "kokoro",
+        "chars": 20,
+        "project_id": "dp-3fde1dfb",
+        "line_id": "ln-004",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261002-223455-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "18632e5b-99d8-47d0-8c23-c293f1ccc361",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790980476969,
+      "started_at": 1790980477309,
+      "completed_at": 1790980486472,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "b",
+        "voice": "bf_emma",
+        "speed": 1,
+        "profile_id": "vp-7ee62aeaf9",
+        "engine": "kokoro",
+        "chars": 27,
+        "project_id": "dp-3fde1dfb",
+        "line_id": "ln-003",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261002-223446-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "6b1de7c8-62ea-4259-aafd-68f02559f167",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790980467353,
+      "started_at": 1790980467861,
+      "completed_at": 1790980476407,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "am_adam",
+        "speed": 1,
+        "profile_id": "vp-b816c0a805",
+        "engine": "kokoro",
+        "chars": 34,
+        "project_id": "dp-3fde1dfb",
+        "line_id": "ln-002",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261002-223436-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "26a0979b-376c-4f91-b113-ab895712e86b",
+      "media_kind": "voice",
+      "operation": "drama-line",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790980457739,
+      "started_at": 1790980457740,
+      "completed_at": 1790980466463,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-6d94c28166",
+        "engine": "kokoro",
+        "chars": 38,
+        "project_id": "dp-3fde1dfb",
+        "line_id": "ln-001",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261002-223426-kokoro-drama-line.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "61c773cf-0113-49ee-87f7-0f7b0f86d4f2",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "qwen3-tts-voice-design",
+      "model_id": "qwen3-tts-voice-design",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790980411037,
+      "started_at": 1790980411038,
+      "completed_at": 1790980421559,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "en",
+        "profile_id": "vp-ece4561572",
+        "engine": "qwen3-tts-voice-design",
+        "chars": 49,
+        "text": "[REDACTED]",
+        "voice_description": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261002-223341-qwen3-tts-voice-design-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "8208101d-bf1a-41e0-9668-d2fa3d2a1f03",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "qwen3-tts-voice-design",
+      "model_id": "qwen3-tts-voice-design",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790980311673,
+      "started_at": 1790980311674,
+      "completed_at": 1790980408794,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "en",
+        "profile_id": "vp-ece4561572",
+        "engine": "qwen3-tts-voice-design",
+        "chars": 49,
+        "text": "[REDACTED]",
+        "voice_description": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261002-223328-qwen3-tts-voice-design-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "fe0e4d4d-4d34-4578-868e-22a82416df9c",
+      "media_kind": "voice",
+      "operation": "long-form",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 3,
+        "total": 3
+      },
+      "created_at": 1790980240701,
+      "started_at": 1790980240701,
+      "completed_at": 1790980304680,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 3,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-6d94c28166",
+        "engine": "kokoro",
+        "chars": 2290,
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261002-223144-kokoro-long-form.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "2df946a7-db08-4a95-b91f-545df58c6276",
+      "media_kind": "voice",
+      "operation": "long-form",
+      "worker_id": "qwen3-tts-base",
+      "model_id": "qwen3-tts-base",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 5,
+        "total": 5
+      },
+      "created_at": 1790979954444,
+      "started_at": 1790979954444,
+      "completed_at": 1790980211645,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 5,
+        "language": "en",
+        "reference": "profile",
+        "has_transcript": true,
+        "profile_id": "vp-12ae082a17",
+        "engine": "qwen3-tts-base",
+        "chars": 1908,
+        "text": "[REDACTED]",
+        "reference_transcript": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261002-223011-qwen3-tts-base-long-form.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "8adf6604-a46f-4c98-a176-df511af03296",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "qwen3-tts-base",
+      "model_id": "qwen3-tts-base",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790979801276,
+      "started_at": 1790979801277,
+      "completed_at": 1790979945957,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "en",
+        "reference": "profile",
+        "has_transcript": true,
+        "profile_id": "vp-12ae082a17",
+        "engine": "qwen3-tts-base",
+        "chars": 81,
+        "text": "[REDACTED]",
+        "reference_transcript": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261002-222545-qwen3-tts-base-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "a130c4b3-8ab5-4b31-8988-b689f6e2b9c6",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "qwen3-tts-base",
+      "model_id": "qwen3-tts-base",
+      "status": "FAILED",
+      "progress": {
+        "phase": "preparing",
+        "chunk": 0,
+        "total": 1
+      },
+      "created_at": 1790979780926,
+      "started_at": 1790979780927,
+      "completed_at": 1790979781982,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "en",
+        "reference": "profile",
+        "has_transcript": true,
+        "profile_id": "vp-afd08b4ce6",
+        "engine": "qwen3-tts-base",
+        "chars": 81,
+        "text": "[REDACTED]",
+        "reference_transcript": "[REDACTED]"
+      },
+      "artifacts": [],
+      "first_failed_gate": "reference-invalid",
+      "error": "reference audio could not be converted to WAV",
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "5a9202e0-70bd-47bd-90a8-cba028c87f96",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": {
+        "phase": "complete",
+        "chunk": 1,
+        "total": 1
+      },
+      "created_at": 1790979747713,
+      "started_at": 1790979747714,
+      "completed_at": 1790979776189,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "items": 1,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "profile_id": "vp-6d94c28166",
+        "engine": "kokoro",
+        "chars": 101,
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20261002-222256-kokoro-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "a66a6ff7-07ff-45c2-9f55-3b7d2a491074",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": null,
+      "created_at": 1790455590075,
+      "started_at": 1790455590076,
+      "completed_at": 1790455598331,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "voice": "bm_george",
+        "speed": 1,
+        "language": "b",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20260926-204638-kokoro-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "7bd9bc31-c20a-4bf9-8fef-9fe8ed817d04",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": null,
+      "created_at": 1790455509332,
+      "started_at": 1790455509332,
+      "completed_at": 1790455527383,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "voice": "af_sky",
+        "speed": 1,
+        "language": "a",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20260926-204527-kokoro-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "4188248b-5f5f-40ee-9387-191ac7c4fe0d",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": null,
+      "created_at": 1790452930663,
+      "started_at": 1790452930665,
+      "completed_at": 1790452948782,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "voice": "bf_emma",
+        "speed": 1,
+        "language": "b",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20260926-200228-kokoro-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "682642ae-5922-4846-881e-bb52d17f4ec2",
+      "media_kind": "voice",
+      "operation": "design",
+      "worker_id": "qwen3-tts-voice-design",
+      "model_id": "qwen3-tts-voice-design",
+      "status": "COMPLETE",
+      "progress": null,
+      "created_at": 1790452047509,
+      "started_at": 1790452047509,
+      "completed_at": 1790452139061,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "language": "en",
+        "seed": 42,
+        "text": "[REDACTED]",
+        "voice_description": "[REDACTED]"
+      },
+      "artifacts": [
+        "20260926-194859-qwen3-tts-voice-design-design.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "16044fdf-0733-4183-82c4-067c52656b69",
+      "media_kind": "voice",
+      "operation": "clone",
+      "worker_id": "qwen3-tts-base",
+      "model_id": "qwen3-tts-base",
+      "status": "COMPLETE",
+      "progress": null,
+      "created_at": 1790452019757,
+      "started_at": 1790452019757,
+      "completed_at": 1790452034291,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "language": "en",
+        "seed": 1234,
+        "reference": "staged",
+        "has_transcript": true,
+        "text": "[REDACTED]",
+        "reference_transcript": "[REDACTED]"
+      },
+      "artifacts": [
+        "20260926-194714-qwen3-tts-base-clone.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "716be371-d518-40d0-bddf-6c21f62651fb",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "COMPLETE",
+      "progress": null,
+      "created_at": 1790452001095,
+      "started_at": 1790452001097,
+      "completed_at": 1790452008357,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "voice": "af_heart",
+        "speed": 1,
+        "language": "a",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [
+        "20260926-194648-kokoro-speech.wav"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "4e7ca304-989e-43f6-8ec9-f04fbe28ac19",
+      "media_kind": "voice",
+      "operation": "speech",
+      "worker_id": "kokoro",
+      "model_id": "kokoro",
+      "status": "FAILED",
+      "progress": null,
+      "created_at": 1790451907300,
+      "started_at": 1790451907301,
+      "completed_at": 1790451912572,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "voice": "af_heart",
+        "speed": 1,
+        "language": "a",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [],
+      "first_failed_gate": "output-missing",
+      "error": "no validated output reported",
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "96f880f1-4af1-4c1e-adc5-23b567042690",
+      "media_kind": "voice",
+      "operation": "generate",
+      "worker_id": "qwen3-tts",
+      "model_id": null,
+      "status": "FAILED",
+      "progress": null,
+      "created_at": 1790450704619,
+      "started_at": null,
+      "completed_at": 1790450704619,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "media_kind": "voice",
+        "worker": "qwen3-tts"
+      },
+      "artifacts": [],
+      "first_failed_gate": "worker-unavailable",
+      "error": "Qwen3-TTS (Base + VoiceDesign): Installed but execution bridge not enabled/proven",
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "caf8c901-ed21-491c-9867-b2f90496e712",
+      "media_kind": "voice",
+      "operation": "generate",
+      "worker_id": "qwen3-tts",
+      "model_id": null,
+      "status": "FAILED",
+      "progress": null,
+      "created_at": 1790442207368,
+      "started_at": null,
+      "completed_at": 1790442207368,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "media_kind": "voice",
+        "worker": "qwen3-tts",
+        "text": "[REDACTED]",
+        "lyrics": "[REDACTED]",
+        "description": "[REDACTED]"
+      },
+      "artifacts": [],
+      "first_failed_gate": "runtime-missing",
+      "error": "Qwen3-TTS: runtime/model not installed",
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    {
+      "job_id": "7e014ba6-a334-4d69-abd6-837d826985e9",
+      "media_kind": "voice",
+      "operation": "generate",
+      "worker_id": "qwen3-tts",
+      "model_id": null,
+      "status": "FAILED",
+      "progress": null,
+      "created_at": 1790441496533,
+      "started_at": null,
+      "completed_at": 1790441496533,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "media_kind": "voice",
+        "worker": "qwen3-tts",
+        "text": "[REDACTED]"
+      },
+      "artifacts": [],
+      "first_failed_gate": "runtime-missing",
+      "error": "Qwen3-TTS: runtime/model not installed",
+      "privacy": {
+        "persist_text": false
+      }
+    }
+  ]
+}

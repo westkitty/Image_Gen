@@ -1,0 +1,57 @@
+{
+  "screens": [
+    "Create",
+    "Library",
+    "Batch",
+    "Edit Compact",
+    "Edit Studio",
+    "Enhance",
+    "Voice",
+    "Drama",
+    "Music",
+    "Video",
+    "Models",
+    "System"
+  ],
+  "viewports": [
+    [
+      375,
+      812
+    ],
+    [
+      390,
+      844
+    ],
+    [
+      768,
+      1024
+    ],
+    [
+      1280,
+      800
+    ],
+    [
+      1440,
+      900
+    ]
+  ],
+  "shells": [
+    "V1 Console",
+    "V2 Studio",
+    "V3 Focus"
+  ],
+  "cells": 180,
+  "observed_document_overflow_cells": 0,
+  "observed_small_enabled_buttons": 0,
+  "measurement_limit": "Edit Studio cells recorded document overflow only; remaining 165 cells also checked pane overflow and enabled button bounds. Main surfaces only, not every modal/popover.",
+  "pane_exception": {
+    "shell": "V3 Focus",
+    "screen": "Models",
+    "viewport": [
+      375,
+      812
+    ],
+    "metric": "scrollWidth 319 vs clientWidth 311, stable 8px gutter; child width 283, contained"
+  },
+  "repaired_failures": "Create 11, Models 16, V2 Library 164 enabled buttons below 24px before D-015; desktop min32/phone min44 afterward."
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "id": "030e096f-60d3-49d7-997c-377df1558998",
+    "status": "COMPLETE",
+    "progress": {
+      "phase": "complete",
+      "chunk": 3,
+      "total": 3
+    },
+    "error": null,
+    "artifacts": [
+      "20261003-194200-kokoro-long-form.wav"
+    ]
+  },
+  {
+    "id": "74ea55fa-a7a3-478f-9208-05850836880a",
+    "status": "FAILED",
+    "progress": {
+      "phase": "generating",
+      "chunk": 2,
+      "total": 3,
+      "done": 1
+    },
+    "error": "Long-form render failed at chunk 2/3: kokoro: RuntimeError: Rev18 controlled second-chunk fault | RuntimeError: Rev18 controlled second-chunk fault",
+    "artifacts": []
+  },
+  {
+    "id": "4ae2de69-58e6-4751-91fc-95a2dfe51b12",
+    "status": "FAILED",
+    "progress": {
+      "phase": "preparing",
+      "chunk": 0,
+      "total": 3
+    },
+    "error": "Big Mac generation did not report completion (timeout or connection loss)",
+    "artifacts": []
+  }
+]

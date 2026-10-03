@@ -1,0 +1,21 @@
+{
+  "jobs": {
+    "jobs": []
+  },
+  "resources": {
+    "group": "bigmac-heavy-inference",
+    "capacity": 1,
+    "owner": null,
+    "waiting": [],
+    "external": {
+      "occupied": false,
+      "detail": null,
+      "checkedAt": null
+    },
+    "blocked_reason": null
+  },
+  "events": "transport\n",
+  "dirs": [
+    "/Users/bigmac/Library/Caches/DexDiffusion/tmp/dexmedia.ej5hqm"
+  ]
+}

@@ -1,0 +1,76 @@
+[
+  {
+    "case": "created-owned-profile",
+    "status": 201,
+    "id": "vp-19fe41d7ad"
+  },
+  {
+    "case": "invalid",
+    "stage": {
+      "status": 400,
+      "body": {
+        "error": "reference-invalid: empty or truncated file",
+        "gate": "reference-invalid"
+      }
+    }
+  },
+  {
+    "case": "short",
+    "stage_status": 200,
+    "sample_status": 400,
+    "error": "sample rejected: shorter than 0.5 s"
+  },
+  {
+    "case": "silent",
+    "stage_status": 200,
+    "sample_status": 400,
+    "error": "sample rejected: contains no usable speech (all silence)"
+  },
+  {
+    "case": "clipped",
+    "stage_status": 200,
+    "sample_status": 201,
+    "diagnostics": {
+      "duration": 5,
+      "sample_rate": 24000,
+      "channels": 1,
+      "rms_db": 0,
+      "peak_db": 0,
+      "clip_ratio": 1,
+      "silence_ratio": 0
+    },
+    "warnings": [
+      "clipping in 100.0% of samples"
+    ]
+  },
+  {
+    "case": "render-invalid-profile",
+    "status": 200,
+    "body": {
+      "job_id": "90316e4f-f521-4264-9a15-11f5cde60ffe",
+      "engine": "qwen3-tts-base",
+      "worker": "qwen3-tts-base",
+      "chunks": 1,
+      "chars": 33,
+      "seed": 343357969,
+      "delivery": {
+        "requested": null,
+        "applied": false,
+        "note": null
+      },
+      "notes": [],
+      "warnings": [
+        "sample \"closure-clipped\": clipping in 100.0% of samples"
+      ],
+      "long_form": false,
+      "chunk_plan": [
+        {
+          "index": 0,
+          "chars": 33,
+          "boundary": "end",
+          "gap_ms": 0
+        }
+      ]
+    }
+  }
+]

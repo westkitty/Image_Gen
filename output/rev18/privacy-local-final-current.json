@@ -1,0 +1,21 @@
+{
+  "files_scanned": 2413,
+  "matches": [
+    {
+      "path": "sdcpp-workflow/state/drama/dp-ac1d5a10.json",
+      "matches": [
+        "rev18dramaalpha",
+        "rev18dramabeta"
+      ]
+    },
+    {
+      "path": "sdcpp-workflow/state/voice-profiles/vp-d2d923eb30/profile.json",
+      "matches": [
+        "rev18designalpha",
+        "rev18designbeta"
+      ]
+    }
+  ],
+  "browser_storage": "BLOCKED: read-only browser API did not expose localStorage/sessionStorage",
+  "canonical_pngs": "Earlier 13 PNG metadata scans had no canaries; original canonical images now absent for unknown external reason."
+}

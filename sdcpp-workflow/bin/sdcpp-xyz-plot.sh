@@ -171,7 +171,7 @@ gen_cell_openai() {
   payload="$(jq -n --arg p "$full_prompt" --arg s "${w}x${h}" '{prompt:$p,n:1,size:$s,output_format:"png"}')"
   if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
     curl -s "$BASE/v1/images/generations" -H 'Content-Type: application/json' -d "$payload" \
-      | python3 -c "import sys; p=sys.argv[1]; [sys.stdout.write(l.replace(p,'[REDACTED]')) for l in sys.stdin]" "$ARG_PROMPT" \
+      | python3 "$HERE/redact_stream.py" --json "$ARG_PROMPT" "$ARG_NEG" \
       > "$tmpresp" 2>/dev/null || { rm -f "$tmpb64" "$tmpresp"; return 1; }
   else
     curl -s "$BASE/v1/images/generations" -H 'Content-Type: application/json' -d "$payload" \
@@ -199,12 +199,7 @@ gen_cell_sdapi() {
     '{prompt:$p,negative_prompt:$n,width:$w,height:$h,steps:$st,cfg_scale:$cfg,sampler_name:$sm,scheduler:"discrete",batch_size:1,seed:$sd}')"
   if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
     curl -s "$BASE/sdapi/v1/txt2img" -H 'Content-Type: application/json' -d "$payload" \
-      | python3 -c "
-import sys; p,n=sys.argv[1],sys.argv[2]
-for l in sys.stdin:
-  if p: l=l.replace(p,'[REDACTED]')
-  if n: l=l.replace(n,'[REDACTED]')
-  sys.stdout.write(l)" "$ARG_PROMPT" "$ARG_NEG" \
+      | python3 "$HERE/redact_stream.py" --json "$ARG_PROMPT" "$ARG_NEG" \
       > "$tmpresp" 2>/dev/null || { rm -f "$tmpb64" "$tmpresp"; return 1; }
   else
     curl -s "$BASE/sdapi/v1/txt2img" -H 'Content-Type: application/json' -d "$payload" \

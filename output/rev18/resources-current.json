@@ -1,0 +1,12 @@
+{
+  "group": "bigmac-heavy-inference",
+  "capacity": 1,
+  "owner": null,
+  "waiting": [],
+  "external": {
+    "occupied": false,
+    "detail": null,
+    "checkedAt": 1791000212524
+  },
+  "blocked_reason": null
+}

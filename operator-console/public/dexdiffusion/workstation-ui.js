@@ -87,19 +87,28 @@
     return { ok: r.ok, status: r.status, data };
   };
   // Poll one job to a terminal state (independent of the Create poller).
-  P._waitJob = function (jobId, onTick) {
-    return new Promise(resolve => {
-      const t = setInterval(async () => {
+  P._waitJob = async function (jobId, onTick) {
+    const controller = new AbortController();
+    this._jobWaitControllers = this._jobWaitControllers || new Set();
+    this._jobWaitControllers.add(controller);
+    let failures = 0;
+    const deadline = Date.now() + 30 * 60 * 1000;
+    try {
+      while (!controller.signal.aborted && Date.now() < deadline) {
         try {
-          const r = await fetch(this.state.backendUrl + '/api/jobs/' + jobId, { signal: AbortSignal.timeout(4000) });
-          if (r.status === 404) { clearInterval(t); resolve({ id: jobId, status: 'LOST', firstFailedGate: 'job-lost (console restarted?)' }); return; }
-          if (!r.ok) return;
-          const job = await r.json();
+          const r = await fetch(this.state.backendUrl + '/api/jobs/' + jobId, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(4000)]) });
+          if (r.status === 404) return { id: jobId, status: 'LOST', firstFailedGate: 'job-lost', error: 'Job not found (console restarted?)' };
+          if (!r.ok) throw new Error('Job status request failed: HTTP ' + r.status);
+          const job = await r.json(); failures = 0;
           if (onTick) onTick(job);
-          if (this._jobTerminal(job.status)) { clearInterval(t); resolve(job); }
-        } catch (_) {}
-      }, 1000);
-    });
+          if (this._jobTerminal(job.status)) return job;
+        } catch (e) {
+          if (++failures >= 5) return { id: jobId, status: 'LOST', firstFailedGate: 'polling', error: e.message };
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      return { id: jobId, status: 'LOST', firstFailedGate: controller.signal.aborted ? 'polling-cancelled' : 'polling-timeout' };
+    } finally { this._jobWaitControllers.delete(controller); }
   };
   P._imageMeta = async function (id) {
     if (!id) return null;
@@ -150,7 +159,7 @@
       if (pf.ok && pf.data.needsConfirmation && !window.confirm('Generate ' + pf.data.summary + '?')) return;
     }
     this.wsSet({ lastBody: body, results: [], activeIndex: 0 });
-    this.setState({ jobStatus: 'generating', progress: 0, currentImageSrc: null, errorMsg: '', lastGenerationParams: Object.assign({}, body, { preset: this.state.preset }) });
+    this.setState({ jobStatus: 'generating', progress: null, jobStage: null, currentImageSrc: null, errorMsg: '', lastGenerationParams: Object.assign({}, body, { preset: this.state.preset }) });
     const r = await this._api('/api/actions/generate-controlled', body);
     if (!r.ok) {
       this.setState({ jobStatus: 'error', errorMsg: r.data.error || 'rejected' });
@@ -204,7 +213,7 @@
     const o = opts || {};
     const id = img.imageId, base = this.state.backendUrl;
     const out = [];
-    const add = (label, fn, color) => out.push(btn(label, fn, color));
+    const add = (label, fn, color, attrs) => out.push(btn(label, fn, color, attrs));
     // Variations and seed exploration only make sense for text-to-image outputs.
     const generated = !img.operation || ['txt2img', 'variation', 'seed-lab', 'prompt-ab', 'batch'].includes(img.operation);
     add('Fullscreen', () => openFull(this, id, base + '/api/images/' + encodeURIComponent(id)), '#94a3b8');
@@ -214,7 +223,7 @@
     if (this._gate('inpaint')) add('Inpaint', () => this.sendToEdit(id, 'inpaint'), '#a78bfa');
     if (this._gate('outpaint')) add('Outpaint', () => this.sendToEdit(id, 'outpaint'), '#a78bfa');
     add('Enhance', () => this.sendToEnhance(id), '#f59e0b');
-    add('Detailer', () => this.openDetailer(id), '#a855f7');
+    add('Detailer', () => this.openDetailer(id), '#a855f7', { 'data-detailer-open': id });
     add(this._ws().compareIds.includes(id) ? 'In compare ✓' : 'Compare', () => this.toggleCompare(id), '#38bdf8');
     if (generated && img.seed != null) add('Reuse Seed', () => { this.setState({ seed: String(img.seed) }); this.toast('Seed ' + img.seed + ' set', '#38bdf8'); }, '#94a3b8');
     add('Reuse Settings', () => this.reuseSettings(id), '#94a3b8');
@@ -535,14 +544,14 @@
         btn('Dismiss', () => this.wsSet({ queueId: null, queue: null }), '#94a3b8')),
       q.restored ? h('div', { style: { color: tone.warn, fontSize: 12 } }, 'Restarted queue detected. ' + q.complete + ' completed · ' + q.queued + ' queued · ' + q.interrupted + ' interrupted.' +
         (q.promptsMissing ? ' Prompt text was not saved (prompt saving off): paste the same numbered batch above to resume.' : '')) : null,
-      h('div', { style: css.muted }, 'Percentages are time-estimated per running item; the count above is exact.'),
+      h('div', { style: css.muted }, 'Completed-item counts are exact; sampling percentages appear only when reported by the backend.'),
       h('div', { style: { maxHeight: 420, overflowY: 'auto', display: 'grid', gap: 5 } },
         ...q.items.map(it => h('div', { key: it.queueIndex, style: { border: '1px solid rgba(148,163,184,.1)', borderRadius: 7, padding: 7, display: 'grid', gap: 5 } },
           h('div', { style: css.row },
             chip(it.status, stateTone(it.status)),
             h('span', { style: { color: '#dbe4ee', fontSize: 12 } }, '#' + (it.queueIndex + 1) + ' · ' + it.number + ' — ' + it.title),
             it.seeds && it.seeds.length ? h('span', { style: css.mono }, 'seed ' + it.seeds.join(',')) : null,
-            it.progress && it.status === 'RUNNING' ? h('span', { style: css.muted }, '~' + it.progress.percent + '% (est.)') : null,
+            it.progress && it.status === 'RUNNING' ? h('span', { style: css.muted }, it.progress.label + (it.progress.percent == null ? '' : ' · ' + it.progress.percent + '%')) : null,
             h('div', { style: { flex: 1 } }),
             it.status === 'QUEUED' ? btn('↑', () => this.queueAction('up', it.queueIndex), '#94a3b8') : null,
             it.status === 'QUEUED' ? btn('↓', () => this.queueAction('down', it.queueIndex), '#94a3b8') : null,
@@ -646,6 +655,8 @@
 
   // ── Detailer (Apple Vision Face / Hand / Person) ──────────────
   P.openDetailer = function (imageId) {
+    this._detailerPreviewToken = this._detailerRunToken = null;
+    this._detailerOpener = document.activeElement;
     const ws = this._ws();
     const active = this._activeResult();
     const targetId = imageId || (active && active.imageId) || (ws.lib && ws.lib.selectedId) || null;
@@ -671,8 +682,10 @@
   };
 
   P.closeDetailer = function () {
+    this._detailerPreviewToken = this._detailerRunToken = null;
     const ws = this._ws();
     this.wsSet({ detailer: Object.assign({}, ws.detailer, { open: false, maskPreview: null }) });
+    requestAnimationFrame(() => { const opener = this._detailerOpener; const fallback = document.querySelector('[data-detailer-open="' + CSS.escape(ws.detailer.imageId || '') + '"]'); (opener && opener.isConnected ? opener : fallback)?.focus(); });
   };
 
   P.detailerPayload = function (d) {
@@ -685,10 +698,17 @@
   P.previewDetailerMask = async function () {
     const ws = this._ws(), d = ws.detailer;
     if (!d || !d.imageId) return;
+    const requestKey = JSON.stringify(this.detailerPayload(d));
+    const previewToken = this._detailerPreviewToken = {};
     this.wsSet({ detailer: Object.assign({}, d, { loading: true, note: 'Detecting with Apple Vision…' }) });
     try {
       const res = await this._api('/api/detailer/mask-preview', this.detailerPayload(d));
+      if (this._detailerPreviewToken !== previewToken) return;
       const cur = this._ws().detailer;
+      if (!cur.open || JSON.stringify(this.detailerPayload(cur)) !== requestKey) {
+        this.wsSet({ detailer: Object.assign({}, cur, { loading: false, maskPreview: null, note: 'Options changed — preview again.' }) });
+        return;
+      }
       if (res.ok && res.data.empty) {
         this.wsSet({ detailer: Object.assign({}, cur, { loading: false, maskPreview: null, detections: [], note: res.data.message }) });
         this.toast(res.data.message, '#fbbf24');
@@ -703,6 +723,7 @@
         this.toast(msg, '#ef4444');
       }
     } catch (e) {
+      if (this._detailerPreviewToken !== previewToken) return;
       this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { loading: false, note: 'Error generating mask: ' + e.message }) });
       this.toast('Error generating mask: ' + e.message, '#ef4444');
     }
@@ -711,6 +732,8 @@
   P.runDetailer = async function () {
     const ws = this._ws(), d = ws.detailer;
     if (!d || !d.imageId) return;
+    const runKey = JSON.stringify(this.detailerPayload(d));
+    const runToken = this._detailerRunToken = {};
     this.wsSet({ detailer: Object.assign({}, d, { loading: true, note: 'Detecting with Apple Vision…' }) });
     try {
       let maskData = d.maskPreview;
@@ -727,6 +750,9 @@
         ? 'preserve pose and scene composition; improve anatomy and clothing detail'
         : 'preserve identity, pose and expression; improve facial anatomy, eyes, mouth and skin detail');
 
+      if (this._detailerRunToken !== runToken) return;
+      const currentOptions = this._ws().detailer;
+      if (!currentOptions.open || JSON.stringify(this.detailerPayload(currentOptions)) !== runKey) throw new Error('Options changed — preview again before running.');
       const inpaintRes = await this._api('/api/actions/inpaint', {
         image_id: d.imageId,
         mask_data: maskData,
@@ -736,12 +762,24 @@
         detailed_from: d.imageId,
         operation: 'detailer'
       });
+      const submittedOptions = this._ws().detailer;
+      if (this._detailerRunToken !== runToken || !submittedOptions.open || JSON.stringify(this.detailerPayload(submittedOptions)) !== runKey) { this.loadRuns(); return; }
       if (!inpaintRes.ok) throw new Error(inpaintRes.data.error || 'Inpaint submission failed');
       this.toast('Detailer inpaint submitted to Big Mac…', '#a855f7');
-      this.closeDetailer();
-      const job = await this._waitJob(inpaintRes.data.job_id);
+      this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { jobId: inpaintRes.data.job_id, note: 'Waiting for Big Mac' }) });
+      const job = await this._waitJob(inpaintRes.data.job_id, tick => {
+        const cur = this._ws().detailer;
+        if (this._detailerRunToken !== runToken || !cur.open || cur.imageId !== d.imageId || cur.jobId !== inpaintRes.data.job_id) return;
+        const stage = tick.stage || { label: 'Running' };
+        this.wsSet({ detailer: Object.assign({}, cur, { note: 'Detailer · ' + stage.label + (stage.determinate ? ' · ' + stage.percent + '%' : '') }) });
+      });
+      if (this._detailerRunToken !== runToken || this._ws().detailer.jobId !== inpaintRes.data.job_id) { this.loadRuns(); return; }
+      if (!this._jobOk(job.status)) throw new Error(this._failText(job) + (job.error ? ' ' + job.error : ''));
       this._onCreateDone(job, null);
+      this.closeDetailer();
+      this.setScreen('create');
     } catch (e) {
+      if (this._detailerRunToken !== runToken) return;
       this.wsSet({ detailer: Object.assign({}, this._ws().detailer, { loading: false, note: 'Detailer failed: ' + e.message }) });
       this.toast('Detailer failed: ' + e.message, '#ef4444');
     }
@@ -751,6 +789,7 @@
     const ws = this._ws(), d = ws.detailer || {};
     if (!d || !d.open) return null;
     return h('div', {
+      role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Native Vision Detailer', 'data-detailer-dialog': '1', tabIndex: -1,
       style: {
         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
         background: 'rgba(2,4,8,.85)', backdropFilter: 'blur(8px)',
@@ -1048,7 +1087,7 @@
       fetch(this.state.backendUrl + '/api/jobs/' + ws.activeJobId).then(r => (r.ok ? r.json() : null)).then(job => {
         if (!job) { this.wsSet({ activeJobId: null }); return; }
         if (!this._jobTerminal(job.status)) {
-          this.setState({ jobStatus: 'generating', progress: D.jobProgressPercent(job.progress) || 0 });
+          this.setState({ jobStatus: 'generating', progress: job.stage && job.stage.determinate ? job.stage.percent : null, jobStage: job.stage || null });
           this.toast('Reattached to the running generation', '#38bdf8');
           this._followCreateJob(job.id, null);
         } else this._onCreateDone(job, null);
@@ -1120,7 +1159,7 @@
     vals.enhanceWorkbench = this.buildEnhanceWorkbench();
     vals.libraryWorkbench = this.buildLibraryWorkbench();
     vals.doctorPanel = this.buildDoctorPanel();
-    vals.generateLabel = generating ? 'Generating' + (q > 1 ? ' ' + q + ' images' : '') + '… ~' + s.progress + '% (est.)' : q > 1 ? 'Generate ' + q + ' Images' : 'Generate Image';
+    vals.generateLabel = generating ? 'Generating' + (q > 1 ? ' ' + q + ' images' : '') + '… ' + ((s.jobStage || {}).label || 'Waiting for backend') + ((s.jobStage || {}).determinate ? ' · ' + s.jobStage.percent + '%' : '') : q > 1 ? 'Generate ' + q + ' Images' : 'Generate Image';
     return vals;
   };
 })();

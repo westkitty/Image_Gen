@@ -1,0 +1,32 @@
+[
+  {
+    "gate": "check",
+    "command": "npm run check",
+    "exit": 0,
+    "log": "output/rev18/gates/dex-rev18-closure-v15-check.log"
+  },
+  {
+    "gate": "unit",
+    "command": "npm test",
+    "exit": 0,
+    "log": "output/rev18/gates/dex-rev18-closure-v15-unit.log"
+  },
+  {
+    "gate": "edit",
+    "command": "npm run test:browser:edit",
+    "exit": 1,
+    "log": "output/rev18/gates/dex-rev18-closure-v15-edit.log"
+  },
+  {
+    "gate": "voice",
+    "command": "npm run test:browser:voice",
+    "exit": 0,
+    "log": "output/rev18/gates/dex-rev18-closure-v15-voice.log"
+  },
+  {
+    "gate": "chain",
+    "command": "npm run test:browser",
+    "exit": 1,
+    "log": "output/rev18/gates/dex-rev18-closure-v15-chain.log"
+  }
+]

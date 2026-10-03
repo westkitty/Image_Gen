@@ -100,6 +100,8 @@ ensure_remote_dirs
 REMOTE_PNG="$REMOTE_OUTPUT_DIR/$NAME.png"
 register_remote_ephemeral "$REMOTE_PNG"
 REMOTE_LOG="$REMOTE_LOG_DIR/$NAME.log"
+# Privacy-off runs must not retain the raw sd-cli prompt on Big Mac.
+[ "${SDCPP_REDACT_PROMPTS:-0}" != "1" ] || REMOTE_LOG="/dev/null"
 
 # Resolve seed (N|random|fixed|omitted). Only pass --seed when controlled.
 SEED_RESOLVED="$(resolve_seed "$ARG_SEED")"

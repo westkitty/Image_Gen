@@ -462,6 +462,8 @@ REMOTE_RUN_DIR="$REMOTE_OUTPUT_DIR/$(basename "$RUN_DIR")"
 REMOTE_PNG="$REMOTE_RUN_DIR/controlled-$ARG_TARGET.png"
 register_remote_ephemeral "$REMOTE_PNG"
 REMOTE_LOG="$REMOTE_RUN_DIR/controlled-$ARG_TARGET.log"
+# Local stdout is redacted; avoid retaining the raw prompt remotely.
+[ "${SDCPP_REDACT_PROMPTS:-0}" != "1" ] || REMOTE_LOG="/dev/null"
 REMOTE_STDOUT_LOG="$RUN_DIR/remote-command.log"
 CREATED_AT="$(iso_now)"
 START_EPOCH="$(now_epoch)"

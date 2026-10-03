@@ -25,6 +25,22 @@ function createDramaService({ store, voice, profiles, mediaStore, llmChat = null
     const takes = (l.takes || []).map(t => { const a = t.artifact_id && mediaStore.resolve(t.artifact_id); return Object.assign({}, t, { url: a ? a.safe_url : null, download_url: a ? a.download_url : null, active: t.id === l.active_take_id }); });
     return Object.assign({}, l, { takes, status: D.lineStatus(l) });
   }
+  // Re-resolve durable profile IDs on every view/render; profiles can be removed or invalidated.
+  function unresolvedProfiles(p, sceneId, lineId) {
+    const out = new Map();
+    for (const { line } of D.renderableLines(p, sceneId)) {
+      if (lineId && line.id !== lineId) continue;
+      const actor = D.actorFor(p, line.speaker_key);
+      const id = line.profile_override || (actor && actor.voice_profile_id);
+      const profile = id && profiles.get(id);
+      if (!profile || (profile.validation && profile.validation.state === 'invalid')) {
+        const item = out.get(line.speaker_key) || { speaker: line.speaker, key: line.speaker_key, lines: 0,
+          reason: !id ? 'unassigned' : !profile ? 'profile-missing' : 'profile-invalid' };
+        item.lines++; out.set(line.speaker_key, item);
+      }
+    }
+    return [...out.values()];
+  }
   function view(p) {
     const lineJobs = {};
     for (const r of runs.values()) if (r.project_id === p.id && r.status === 'running') lineJobs.active_run = r.id;
@@ -32,7 +48,7 @@ function createDramaService({ store, voice, profiles, mediaStore, llmChat = null
       id: p.id, title: p.title, saved: !!p.saved, schema: p.schema, settings: p.settings, parse_warnings: p.parse_warnings || [], source_script: p.source_script,
       scenes: p.scenes.map(s => ({ id: s.id, title: s.title, lines: s.lines.map(lineView) })),
       actors: p.actors.map(a => Object.assign({}, a, { profile: profileBrief(a.voice_profile_id), lines: D.allLines(p).filter(x => x.line.speaker_key === a.speaker_key && x.line.kind !== 'direction').length })),
-      unresolved: D.unresolvedSpeakers(p), tracks: p.tracks, exports: p.exports.map(e => Object.assign({}, e, { url: (mediaStore.resolve(e.artifact_id) || {}).safe_url || null, download_url: (mediaStore.resolve(e.artifact_id) || {}).download_url || null })),
+      unresolved: unresolvedProfiles(p), tracks: p.tracks, exports: p.exports.map(e => Object.assign({}, e, { url: (mediaStore.resolve(e.artifact_id) || {}).safe_url || null, download_url: (mediaStore.resolve(e.artifact_id) || {}).download_url || null })),
       active_run: lineJobs.active_run || null, created_at: p.created_at, updated_at: p.updated_at,
     };
   }
@@ -89,7 +105,7 @@ function createDramaService({ store, voice, profiles, mediaStore, llmChat = null
   // alternate:true / force:true always adds NEW takes (never replaces).
   function startRun(projectId, { scope = 'project', sceneId, lineId, resume = true, alternate = false } = {}) {
     const p = need(projectId);
-    const blocked = D.unresolvedSpeakers(p, scope === 'scene' ? sceneId : undefined).filter(u => scope !== 'line' || (D.findLine(p, lineId) && D.findLine(p, lineId).line.speaker_key === u.key));
+    const blocked = unresolvedProfiles(p, scope === 'scene' ? sceneId : undefined, scope === 'line' ? lineId : undefined);
     if (blocked.length) throw Object.assign(new Error('assign voices to: ' + blocked.map(b => `${b.speaker} (${b.lines} line${b.lines > 1 ? 's' : ''})`).join(', ')), { status: 400, gate: 'unresolved-speaker', unresolved: blocked });
     let lines;
     if (scope === 'line') { const f = D.findLine(p, lineId); if (!f) throw Object.assign(new Error('line not found'), { status: 404 }); lines = [f]; }

@@ -1,0 +1,8 @@
+{
+  "local_ane_processes": [
+    "  592     1   0.0 02-06:33:07 /usr/libexec/aned",
+    "96669     1   0.0       23:45 /System/Library/PrivateFrameworks/AppleNeuralEngine.framework/XPCServices/ANECompilerService.xpc/Contents/MacOS/ANECompilerService"
+  ],
+  "no_wedge_forced": true,
+  "reason": "A wedged Apple Neural Engine cannot be safely forced under the user boundary; normal CPU-pinned detection matrix completed."
+}

@@ -1,0 +1,18 @@
+{
+  "ssh_exit": 0,
+  "markers": [
+    "DEX_REV18_REMOVED=/Users/bigmac/Library/Caches/DexDiffusion/tmp/dexmedia.ej5hqm",
+    "DEX_REV18_REMOVED=/Users/bigmac/Library/Caches/DexDiffusion/tmp/dexmedia.hAqgkk",
+    "DEX_REV18_REMOVED=/Users/bigmac/Library/Caches/DexDiffusion/tmp/dexmedia.luoocq",
+    "DEX_REV18_REMOVED=/Users/bigmac/Library/Caches/DexDiffusion/tmp/dexmedia.uhI0YT",
+    "DEX_REV18_REMOVED=/Users/bigmac/Library/Caches/DexDiffusion/tmp/dexmedia.X5wmrl",
+    "DEX_REV18_REMOVED=/Users/bigmac/Library/Caches/DexDiffusion/tmp/dexmedia.YTrbnW",
+    "DEX_REV18_HISTORICAL_LOG_PRESERVED=1",
+    "DEX_REV18_HISTORICAL_LOG_PRESERVED=2",
+    "DEX_REV18_HISTORICAL_LOG_PRESERVED=3",
+    "DEX_REV18_HISTORICAL_LOG_PRESERVED=4"
+  ],
+  "expected_owned_dirs": 6,
+  "verified_removed": 6,
+  "historical_logs_preserved": 4
+}

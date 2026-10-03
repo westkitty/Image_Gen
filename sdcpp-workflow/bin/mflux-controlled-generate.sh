@@ -129,12 +129,11 @@ ssh -o ConnectTimeout=15 "$SSH_TARGET" "bash -c $(printf '%q' "$REMOTE_SCRIPT") 
   > "$INCOMING" 2> "$RAW_STDERR"
 SSH_RC=$?   # transport-level only (255 = ssh failed); remote status is in-band
 set -e
-python3 -c '
-import sys
-prompt, redact = sys.argv[1], sys.argv[2] == "1"
-for line in sys.stdin.buffer.read().decode("utf-8", "replace").replace("\r", "\n").splitlines(True):
-    sys.stdout.write(line.replace(prompt, "[REDACTED]") if redact and prompt else line)
-' "$ARG_PROMPT" "${SDCPP_REDACT_PROMPTS:-0}" < "$RAW_STDERR" > "$REMOTE_STDOUT_LOG" || true
+if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
+  python3 "$HERE/redact_stream.py" "$ARG_PROMPT" "" < "$RAW_STDERR" > "$REMOTE_STDOUT_LOG"
+else
+  cat "$RAW_STDERR" > "$REMOTE_STDOUT_LOG"
+fi
 rm -f -- "$RAW_STDERR"
 
 REMOTE_TMP="$(sed -n 's/^MFLUX_REMOTE_TMP: //p' "$REMOTE_STDOUT_LOG" | head -1)"

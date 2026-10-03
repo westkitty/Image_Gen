@@ -180,13 +180,7 @@ gen_openai() {
     '{prompt:$p, n:1, size:$s, output_format:"png"}')"
   t0="$(now_epoch)"
   if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
-    curl -s "$BASE/v1/images/generations" -H 'Content-Type: application/json' -d "$payload" | python3 -c "
-import sys
-p = sys.argv[1] if len(sys.argv) > 1 else ''
-for line in sys.stdin:
-    if p and p in line: line = line.replace(p, '[REDACTED]')
-    sys.stdout.write(line)
-" "$ARG_PROMPT" > "$resp" \
+    curl -s "$BASE/v1/images/generations" -H 'Content-Type: application/json' -d "$payload" | python3 "$HERE/redact_stream.py" --json "$ARG_PROMPT" "$ARG_NEG" > "$resp" \
       || { log "openai curl failed"; emit_server_metric "server-openai" "$png" "n/a" "n/a" "FAIL"; return 1; }
   else
     curl -s "$BASE/v1/images/generations" -H 'Content-Type: application/json' -d "$payload" -o "$resp" \
@@ -223,15 +217,7 @@ gen_sdapi() {
     '{prompt:$p, negative_prompt:$n, width:$w, height:$h, steps:$st, cfg_scale:$cfg, sampler_name:$sm, scheduler:$sc, batch_size:1, seed:$sd}')"
   t0="$(now_epoch)"
   if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
-    curl -s "$BASE/sdapi/v1/txt2img" -H 'Content-Type: application/json' -d "$payload" | python3 -c "
-import sys
-p = sys.argv[1] if len(sys.argv) > 1 else ''
-n = sys.argv[2] if len(sys.argv) > 2 else ''
-for line in sys.stdin:
-    if p and p in line: line = line.replace(p, '[REDACTED]')
-    if n and n in line: line = line.replace(n, '[REDACTED]')
-    sys.stdout.write(line)
-" "$ARG_PROMPT" "$ARG_NEG" > "$resp" \
+    curl -s "$BASE/sdapi/v1/txt2img" -H 'Content-Type: application/json' -d "$payload" | python3 "$HERE/redact_stream.py" --json "$ARG_PROMPT" "$ARG_NEG" > "$resp" \
       || { log "sdapi curl failed"; emit_server_metric "server-sdapi" "$png" "n/a" "n/a" "FAIL"; return 1; }
   else
     curl -s "$BASE/sdapi/v1/txt2img" -H 'Content-Type: application/json' -d "$payload" -o "$resp" \
@@ -270,15 +256,7 @@ gen_native() {
       sample_params:{scheduler:$sc, sample_method:$sm, sample_steps:$st, guidance:{txt_cfg:$cfg}},
       output_format:"png"}')"
   if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
-    curl -s -i "$BASE/sdcpp/v1/img_gen" -H 'Content-Type: application/json' -d "$payload" | python3 -c "
-import sys
-p = sys.argv[1] if len(sys.argv) > 1 else ''
-n = sys.argv[2] if len(sys.argv) > 2 else ''
-for line in sys.stdin:
-    if p and p in line: line = line.replace(p, '[REDACTED]')
-    if n and n in line: line = line.replace(n, '[REDACTED]')
-    sys.stdout.write(line)
-" "$ARG_PROMPT" "$ARG_NEG" > "$submit" \
+    curl -s -i "$BASE/sdcpp/v1/img_gen" -H 'Content-Type: application/json' -d "$payload" | python3 "$HERE/redact_stream.py" --json "$ARG_PROMPT" "$ARG_NEG" > "$submit" \
       || { log "native submit curl failed"; return 1; }
   else
     curl -s -i "$BASE/sdcpp/v1/img_gen" -H 'Content-Type: application/json' -d "$payload" -o "$submit" \
@@ -291,15 +269,7 @@ for line in sys.stdin:
   local i status=""
   for i in $(seq 1 30); do
     if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
-      curl -s "$BASE/sdcpp/v1/jobs/$job" | python3 -c "
-import sys
-p = sys.argv[1] if len(sys.argv) > 1 else ''
-n = sys.argv[2] if len(sys.argv) > 2 else ''
-for line in sys.stdin:
-    if p and p in line: line = line.replace(p, '[REDACTED]')
-    if n and n in line: line = line.replace(n, '[REDACTED]')
-    sys.stdout.write(line)
-" "$ARG_PROMPT" "$ARG_NEG" > "$jresp" || true
+      curl -s "$BASE/sdcpp/v1/jobs/$job" | python3 "$HERE/redact_stream.py" --json "$ARG_PROMPT" "$ARG_NEG" > "$jresp" || true
     else
       curl -s "$BASE/sdcpp/v1/jobs/$job" -o "$jresp" || true
     fi

@@ -1,0 +1,26 @@
+[
+  {
+    "route": "inpaint",
+    "status": 400,
+    "error": {
+      "error": "mask_data appears to be empty or invalid"
+    }
+  },
+  {
+    "route": "img2img",
+    "status": 400,
+    "error": {
+      "error": "strength must be a number between 0.01 and 0.99"
+    }
+  },
+  {
+    "route": "outpaint",
+    "status": 400,
+    "error": {
+      "error": "strength must be between 0.5 and 0.99 for outpaint"
+    }
+  },
+  {
+    "new_working_copies": []
+  }
+]

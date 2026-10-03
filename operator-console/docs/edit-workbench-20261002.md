@@ -68,3 +68,7 @@ No source code was copied; only UX/mechanism ideas.
 `tests/edit-core.test.js`, `tests/edit-resources-server.test.js`, plus additions in `workstation.test.js`/`client-workstation.test.js`.
 Browser acceptance (real Chrome, hermetic fixtures): `npm run test:browser`
 (`tests/browser/edit-workbench.browser.js`, `voice-drama.browser.js`).
+
+## Rev 18 repairs
+
+Mask alpha is preserved as L grayscale through backend conversion, including feather falloff; conversion errors fail closed. 100% permits a small source below its enlarged Fit scale so one source pixel equals one CSS pixel. Decoded backend markers retain Decoding until the actual next stage. Create/Batch percentages now require backend sampling counts; polling has bounded failures and stale-response ownership checks. Rejected staged img2img/Inpaint/Outpaint requests remove working PNG copies while successful jobs retain cleanup ownership. Final automated results: 259 unit tests, Edit browser 21 checks, Voice/Drama 7, chained 21+7, installed Brave override; see OPERATIONAL_STATE Revision 18 for live-evidence limits.

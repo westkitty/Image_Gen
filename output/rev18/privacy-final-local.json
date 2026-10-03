@@ -1,0 +1,40 @@
+{
+  "files_scanned": 3506,
+  "matches": [
+    {
+      "path": "sdcpp-workflow/state/drama/dp-ac1d5a10.json",
+      "matches": [
+        "rev18dramaalpha",
+        "rev18dramabeta"
+      ]
+    },
+    {
+      "path": "sdcpp-workflow/state/voice-profiles/vp-d2d923eb30/profile.json",
+      "matches": [
+        "rev18designalpha",
+        "rev18designbeta"
+      ]
+    }
+  ],
+  "canonical_pngs_scanned": 13,
+  "canonical_png_metadata_matches": [],
+  "classification": "Explicit saved Drama script and approved voice sample transcripts are intended persistence; generic jobs/runs/logs must have no matches.",
+  "rescan_files": 3544,
+  "rescan_matches": [
+    {
+      "path": "sdcpp-workflow/state/drama/dp-ac1d5a10.json",
+      "matches": [
+        "rev18dramaalpha",
+        "rev18dramabeta"
+      ]
+    },
+    {
+      "path": "sdcpp-workflow/state/voice-profiles/vp-d2d923eb30/profile.json",
+      "matches": [
+        "rev18designalpha",
+        "rev18designbeta"
+      ]
+    }
+  ],
+  "later_canonical_image_loss": "2026-10-03 continuation found canonical image folder empty except .DS_Store; earlier 13 PNG metadata checks remain time-specific evidence, not current file availability."
+}

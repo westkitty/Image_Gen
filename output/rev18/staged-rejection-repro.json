@@ -1,0 +1,10 @@
+{
+  "status": 400,
+  "error": {
+    "error": "mask_data appears to be empty or invalid"
+  },
+  "new_working_copies": [
+    "sdcpp-workflow/mask-uploads/import-1791051677515-5a3d2510.png"
+  ],
+  "staged_id": "stg-d134eb3c229de9453538eddd"
+}

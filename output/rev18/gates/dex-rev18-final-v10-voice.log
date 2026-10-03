@@ -1,0 +1,56 @@
+[voice-drama +4.2s] START Voice profiles: designed + preset voices, validation, capability truth, direction gating, long-form estimate
+Profile creation UI: VOICE PROFILES
+5 saved
+＋ New voice
+Rev18 Cloned Evidence
+cloned
+valid
+1 sample
+Rev18 Designed Evidence
+designed
+valid
+Rev18 Evidence Preset
+preset
+valid
+ZZ-J-Clone
+cloned
+valid
+1 sample
+ZZ-J-Kokoro
+preset
+valid
+NEW VOICE
+Cloned (reference samples · Qwen Base)
+Designed (description · Qwen VoiceDesign)
+Preset (Kokoro voice)
+NAME
+VOICE DESCRIPTION
+Create voice
+Cancel
+[voice-drama +40.9s] FAIL Voice profiles: designed + preset voices, validation, capability truth, direction gating, long-form estimate 
+    page.waitForSelector: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('[data-profile-editor]') to be visible[22m
+    
+[voice-drama +40.9s] START Cloned voice: invalid until a sample WITH transcript is approved; multiple samples; active sample; remove
+[voice-drama +75.8s] FAIL Cloned voice: invalid until a sample WITH transcript is approved; multiple samples; active sample; remove 
+    page.waitForSelector: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('[data-profile-editor]:has-text("ZZ-UI-Clone")') to be visible[22m
+    
+[voice-drama +75.8s] START Voice render state belongs to the voice that started it (no progress/result/error leaks onto another voice)
+[voice-drama +92.3s] PASS Voice render state belongs to the voice that started it (no progress/result/error leaks onto another voice) (16499 ms)
+[voice-drama +92.3s] START Drama: paste → parse → review/edit → cast → privacy banner → save/unsave → blocked render → assemble refuses without takes
+[voice-drama +102.8s] PASS Drama: paste → parse → review/edit → cast → privacy banner → save/unsave → blocked render → assemble refuses without takes (10492 ms)
+[voice-drama +102.8s] START Drama LLM parse mode reports rejection/failure visibly (never silently falls back)
+[voice-drama +108.6s] PASS Drama LLM parse mode reports rejection/failure visibly (never silently falls back) (5748 ms)
+[voice-drama +108.6s] START responsive @375px: Voice profiles + Drama have no horizontal overflow
+[voice-drama +113.0s] PASS responsive @375px: Voice profiles + Drama have no horizontal overflow (4423 ms)
+[voice-drama +113.0s] START responsive @768px: Voice profiles + Drama have no horizontal overflow
+[voice-drama +116.2s] PASS responsive @768px: Voice profiles + Drama have no horizontal overflow (3183 ms)
+[voice-drama +116.2s] PHASE cleanup owned projects
+[voice-drama +116.2s] PHASE cleanup owned profiles
+[voice-drama +116.2s] PHASE close browser
+[voice-drama +117.3s] PHASE stop test server
+
+5/7 voice/drama browser checks passed

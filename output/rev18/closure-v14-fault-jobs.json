@@ -1,0 +1,59 @@
+[
+  {
+    "id": "74ea55fa-a7a3-478f-9208-05850836880a",
+    "status": "FAILED",
+    "operation": "long-form",
+    "error": "Long-form render failed at chunk 2/3: kokoro: RuntimeError: Rev18 controlled second-chunk fault | RuntimeError: Rev18 controlled second-chunk fault",
+    "gate": "generation",
+    "artifacts": [],
+    "progress": {
+      "phase": "generating",
+      "chunk": 2,
+      "total": 3,
+      "done": 1
+    }
+  },
+  {
+    "id": "4ae2de69-58e6-4751-91fc-95a2dfe51b12",
+    "status": "FAILED",
+    "operation": "long-form",
+    "error": "Big Mac generation did not report completion (timeout or connection loss)",
+    "gate": "generation",
+    "artifacts": [],
+    "progress": {
+      "phase": "preparing",
+      "chunk": 0,
+      "total": 3
+    }
+  },
+  {
+    "id": "3be0ee0f-a0a1-4f70-9db5-f832acadc5d7",
+    "status": "COMPLETE",
+    "operation": "drama-line",
+    "error": null,
+    "gate": null,
+    "artifacts": [
+      "20261003-193847-kokoro-drama-line.wav"
+    ],
+    "progress": {
+      "phase": "complete",
+      "chunk": 1,
+      "total": 1
+    }
+  },
+  {
+    "id": "2d194383-2fa9-4fa9-803f-54cb1471f951",
+    "status": "COMPLETE",
+    "operation": "drama-line",
+    "error": null,
+    "gate": null,
+    "artifacts": [
+      "20261003-193840-kokoro-drama-line.wav"
+    ],
+    "progress": {
+      "phase": "complete",
+      "chunk": 1,
+      "total": 1
+    }
+  }
+]

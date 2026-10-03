@@ -1,0 +1,17 @@
+{
+  "source_size": [
+    512,
+    384
+  ],
+  "output_size": [
+    640,
+    384
+  ],
+  "interior_changed": 0,
+  "extension_bbox": [
+    0,
+    0,
+    128,
+    384
+  ]
+}

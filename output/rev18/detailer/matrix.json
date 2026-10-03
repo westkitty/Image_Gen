@@ -1,0 +1,1188 @@
+[
+  {
+    "fixture": "portrait",
+    "mode": "face",
+    "exit": 0,
+    "seconds": 0.37,
+    "source": [
+      768,
+      1024
+    ],
+    "mask": [
+      768,
+      1024
+    ],
+    "bbox": [
+      170,
+      92,
+      471,
+      398
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.0286102294921875,
+        "bounds_normalized": [
+          0.3658854166666667,
+          0.12890625,
+          0.1953125,
+          0.146484375
+        ],
+        "bounds_pixels": [
+          281,
+          132,
+          150,
+          150
+        ],
+        "class": "face",
+        "confidence": 0.7787675857543945,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": false,
+        "mode": "face",
+        "padded_pixels": [
+          266,
+          117,
+          180,
+          180
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.016816457112630207,
+        "bounds_normalized": [
+          0.2682291666666667,
+          0.240234375,
+          0.14973958333333334,
+          0.1123046875
+        ],
+        "bounds_pixels": [
+          206,
+          246,
+          115,
+          115
+        ],
+        "class": "face",
+        "confidence": 0.7573736310005188,
+        "confidence_available": true,
+        "index": 1,
+        "is_derived_roi": false,
+        "mode": "face",
+        "padded_pixels": [
+          195,
+          235,
+          138,
+          138
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 2,
+    "compute": null
+  },
+  {
+    "fixture": "portrait",
+    "mode": "person",
+    "exit": 0,
+    "seconds": 0.41,
+    "source": [
+      768,
+      1024
+    ],
+    "mask": [
+      768,
+      1024
+    ],
+    "bbox": [
+      0,
+      0,
+      768,
+      1024
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.6375389099121094,
+        "bounds_normalized": [
+          0.3515625,
+          0.0068359375,
+          0.6419270833333334,
+          0.9931640625
+        ],
+        "bounds_pixels": [
+          270,
+          7,
+          493,
+          1017
+        ],
+        "class": "person",
+        "confidence": 0.6445257663726807,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": false,
+        "mode": "person",
+        "padded_pixels": [
+          221,
+          0,
+          547,
+          1024
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.3603833516438802,
+        "bounds_normalized": [
+          0.00390625,
+          0.1787109375,
+          0.4388020833333333,
+          0.8212890625
+        ],
+        "bounds_pixels": [
+          3,
+          183,
+          337,
+          841
+        ],
+        "class": "person",
+        "confidence": 0.5979746580123901,
+        "confidence_available": true,
+        "index": 1,
+        "is_derived_roi": false,
+        "mode": "person",
+        "padded_pixels": [
+          0,
+          99,
+          373,
+          925
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 2,
+    "compute": null
+  },
+  {
+    "fixture": "portrait",
+    "mode": "hand",
+    "exit": 0,
+    "seconds": 0.32,
+    "source": [
+      768,
+      1024
+    ],
+    "mask": [
+      768,
+      1024
+    ],
+    "bbox": [
+      0,
+      531,
+      682,
+      838
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.012668609619140625,
+        "bounds_normalized": [
+          0.05078125,
+          0.5732421875,
+          0.10546875,
+          0.1201171875
+        ],
+        "bounds_pixels": [
+          39,
+          587,
+          81,
+          123
+        ],
+        "class": "hand",
+        "confidence": 0.7179129719734192,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": true,
+        "mode": "hand_derived_roi",
+        "padded_pixels": [
+          19,
+          556,
+          122,
+          185
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.012653350830078125,
+        "bounds_normalized": [
+          0.6809895833333334,
+          0.6796875,
+          0.13932291666666666,
+          0.0908203125
+        ],
+        "bounds_pixels": [
+          523,
+          696,
+          107,
+          93
+        ],
+        "class": "hand",
+        "confidence": 0.6948358416557312,
+        "confidence_available": true,
+        "index": 1,
+        "is_derived_roi": true,
+        "mode": "hand_derived_roi",
+        "padded_pixels": [
+          496,
+          673,
+          161,
+          140
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 2,
+    "compute": null
+  },
+  {
+    "fixture": "none",
+    "mode": "face",
+    "exit": 0,
+    "seconds": 0.14,
+    "source": [
+      640,
+      384
+    ],
+    "mask": [
+      640,
+      384
+    ],
+    "bbox": null,
+    "detections": [],
+    "count": 0,
+    "compute": null
+  },
+  {
+    "fixture": "none",
+    "mode": "person",
+    "exit": 0,
+    "seconds": 0.3,
+    "source": [
+      640,
+      384
+    ],
+    "mask": [
+      640,
+      384
+    ],
+    "bbox": null,
+    "detections": [],
+    "count": 0,
+    "compute": null
+  },
+  {
+    "fixture": "none",
+    "mode": "hand",
+    "exit": 0,
+    "seconds": 0.2,
+    "source": [
+      640,
+      384
+    ],
+    "mask": [
+      640,
+      384
+    ],
+    "bbox": null,
+    "detections": [],
+    "count": 0,
+    "compute": null
+  },
+  {
+    "fixture": "multiple-landscape",
+    "mode": "face",
+    "exit": 0,
+    "seconds": 0.18,
+    "source": [
+      1024,
+      512
+    ],
+    "mask": [
+      1024,
+      512
+    ],
+    "bbox": [
+      69,
+      33,
+      892,
+      225
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.01160430908203125,
+        "bounds_normalized": [
+          0.1396484375,
+          0.12890625,
+          0.076171875,
+          0.15234375
+        ],
+        "bounds_pixels": [
+          143,
+          66,
+          78,
+          78
+        ],
+        "class": "face",
+        "confidence": 0.8179401159286499,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": false,
+        "mode": "face",
+        "padded_pixels": [
+          135,
+          58,
+          94,
+          94
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.011308670043945312,
+        "bounds_normalized": [
+          0.7646484375,
+          0.12890625,
+          0.0751953125,
+          0.150390625
+        ],
+        "bounds_pixels": [
+          783,
+          66,
+          77,
+          77
+        ],
+        "class": "face",
+        "confidence": 0.7580907940864563,
+        "confidence_available": true,
+        "index": 1,
+        "is_derived_roi": false,
+        "mode": "face",
+        "padded_pixels": [
+          775,
+          58,
+          92,
+          92
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.010728836059570312,
+        "bounds_normalized": [
+          0.7158203125,
+          0.228515625,
+          0.0732421875,
+          0.146484375
+        ],
+        "bounds_pixels": [
+          733,
+          117,
+          75,
+          75
+        ],
+        "class": "face",
+        "confidence": 0.703935980796814,
+        "confidence_available": true,
+        "index": 2,
+        "is_derived_roi": false,
+        "mode": "face",
+        "padded_pixels": [
+          726,
+          110,
+          90,
+          90
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.0075702667236328125,
+        "bounds_normalized": [
+          0.09765625,
+          0.240234375,
+          0.0615234375,
+          0.123046875
+        ],
+        "bounds_pixels": [
+          100,
+          123,
+          63,
+          63
+        ],
+        "class": "face",
+        "confidence": 0.7066797018051147,
+        "confidence_available": true,
+        "index": 3,
+        "is_derived_roi": false,
+        "mode": "face",
+        "padded_pixels": [
+          94,
+          117,
+          76,
+          76
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 4,
+    "compute": null
+  },
+  {
+    "fixture": "multiple-landscape",
+    "mode": "person",
+    "exit": 0,
+    "seconds": 0.34,
+    "source": [
+      1024,
+      512
+    ],
+    "mask": [
+      1024,
+      512
+    ],
+    "bbox": [
+      0,
+      0,
+      1024,
+      512
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.2638263702392578,
+        "bounds_normalized": [
+          0.623046875,
+          0.173828125,
+          0.3193359375,
+          0.826171875
+        ],
+        "bounds_pixels": [
+          638,
+          89,
+          327,
+          423
+        ],
+        "class": "person",
+        "confidence": 0.5703162550926208,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": false,
+        "mode": "person",
+        "padded_pixels": [
+          605,
+          47,
+          392,
+          465
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.24224472045898438,
+        "bounds_normalized": [
+          0.1318359375,
+          0.01171875,
+          0.2451171875,
+          0.98828125
+        ],
+        "bounds_pixels": [
+          135,
+          6,
+          251,
+          506
+        ],
+        "class": "person",
+        "confidence": 0.6856709718704224,
+        "confidence_available": true,
+        "index": 1,
+        "is_derived_roi": false,
+        "mode": "person",
+        "padded_pixels": [
+          110,
+          0,
+          301,
+          512
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.240325927734375,
+        "bounds_normalized": [
+          0.755859375,
+          0.015625,
+          0.244140625,
+          0.984375
+        ],
+        "bounds_pixels": [
+          774,
+          8,
+          250,
+          504
+        ],
+        "class": "person",
+        "confidence": 0.7249352335929871,
+        "confidence_available": true,
+        "index": 2,
+        "is_derived_roi": false,
+        "mode": "person",
+        "padded_pixels": [
+          749,
+          0,
+          275,
+          512
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.23905563354492188,
+        "bounds_normalized": [
+          0.0078125,
+          0.17578125,
+          0.2900390625,
+          0.82421875
+        ],
+        "bounds_pixels": [
+          8,
+          90,
+          297,
+          422
+        ],
+        "class": "person",
+        "confidence": 0.5539336800575256,
+        "confidence_available": true,
+        "index": 3,
+        "is_derived_roi": false,
+        "mode": "person",
+        "padded_pixels": [
+          0,
+          48,
+          334,
+          464
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 4,
+    "compute": null
+  },
+  {
+    "fixture": "multiple-landscape",
+    "mode": "hand",
+    "exit": 0,
+    "seconds": 0.25,
+    "source": [
+      1024,
+      512
+    ],
+    "mask": [
+      1024,
+      512
+    ],
+    "bbox": [
+      0,
+      251,
+      996,
+      432
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.0052490234375,
+        "bounds_normalized": [
+          0.017578125,
+          0.5703125,
+          0.0419921875,
+          0.125
+        ],
+        "bounds_pixels": [
+          18,
+          292,
+          43,
+          64
+        ],
+        "class": "hand",
+        "confidence": 0.7445824146270752,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": true,
+        "mode": "hand_derived_roi",
+        "padded_pixels": [
+          6,
+          276,
+          67,
+          96
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.00508880615234375,
+        "bounds_normalized": [
+          0.876953125,
+          0.681640625,
+          0.056640625,
+          0.08984375
+        ],
+        "bounds_pixels": [
+          898,
+          349,
+          58,
+          46
+        ],
+        "class": "hand",
+        "confidence": 0.7014973759651184,
+        "confidence_available": true,
+        "index": 1,
+        "is_derived_roi": true,
+        "mode": "hand_derived_roi",
+        "padded_pixels": [
+          884,
+          337,
+          87,
+          70
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.0050029754638671875,
+        "bounds_normalized": [
+          0.642578125,
+          0.572265625,
+          0.0419921875,
+          0.119140625
+        ],
+        "bounds_pixels": [
+          658,
+          293,
+          43,
+          61
+        ],
+        "class": "hand",
+        "confidence": 0.7353515625,
+        "confidence_available": true,
+        "index": 2,
+        "is_derived_roi": true,
+        "mode": "hand_derived_roi",
+        "padded_pixels": [
+          646,
+          278,
+          67,
+          92
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.004978179931640625,
+        "bounds_normalized": [
+          0.251953125,
+          0.681640625,
+          0.056640625,
+          0.087890625
+        ],
+        "bounds_pixels": [
+          258,
+          349,
+          58,
+          45
+        ],
+        "class": "hand",
+        "confidence": 0.7014973759651184,
+        "confidence_available": true,
+        "index": 3,
+        "is_derived_roi": true,
+        "mode": "hand_derived_roi",
+        "padded_pixels": [
+          244,
+          337,
+          87,
+          69
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 4,
+    "compute": null
+  },
+  {
+    "fixture": "square",
+    "mode": "face",
+    "exit": 0,
+    "seconds": 0.18,
+    "source": [
+      768,
+      768
+    ],
+    "mask": [
+      768,
+      768
+    ],
+    "bbox": [
+      205,
+      64,
+      458,
+      323
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.021267361111111112,
+        "bounds_normalized": [
+          0.4036458333333333,
+          0.13020833333333334,
+          0.14583333333333334,
+          0.14583333333333334
+        ],
+        "bounds_pixels": [
+          310,
+          100,
+          112,
+          112
+        ],
+        "class": "face",
+        "confidence": 0.7856132388114929,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": false,
+        "mode": "face",
+        "padded_pixels": [
+          299,
+          89,
+          134,
+          134
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.020514594184027776,
+        "bounds_normalized": [
+          0.3138020833333333,
+          0.23046875,
+          0.14322916666666666,
+          0.14322916666666666
+        ],
+        "bounds_pixels": [
+          241,
+          177,
+          110,
+          110
+        ],
+        "class": "face",
+        "confidence": 0.7649615406990051,
+        "confidence_available": true,
+        "index": 1,
+        "is_derived_roi": false,
+        "mode": "face",
+        "padded_pixels": [
+          230,
+          166,
+          132,
+          132
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 2,
+    "compute": null
+  },
+  {
+    "fixture": "square",
+    "mode": "person",
+    "exit": 0,
+    "seconds": 0.34,
+    "source": [
+      768,
+      768
+    ],
+    "mask": [
+      768,
+      768
+    ],
+    "bbox": [
+      70,
+      0,
+      698,
+      768
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.4908379448784722,
+        "bounds_normalized": [
+          0.125,
+          0.18229166666666666,
+          0.6002604166666666,
+          0.8177083333333334
+        ],
+        "bounds_pixels": [
+          96,
+          140,
+          461,
+          628
+        ],
+        "class": "person",
+        "confidence": 0.6708313822746277,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": false,
+        "mode": "person",
+        "padded_pixels": [
+          50,
+          77,
+          553,
+          691
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.4786699083116319,
+        "bounds_normalized": [
+          0.39453125,
+          0.0078125,
+          0.4830729166666667,
+          0.9908854166666666
+        ],
+        "bounds_pixels": [
+          303,
+          6,
+          371,
+          761
+        ],
+        "class": "person",
+        "confidence": 0.6816917061805725,
+        "confidence_available": true,
+        "index": 1,
+        "is_derived_roi": false,
+        "mode": "person",
+        "padded_pixels": [
+          266,
+          0,
+          445,
+          768
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 2,
+    "compute": null
+  },
+  {
+    "fixture": "square",
+    "mode": "hand",
+    "exit": 0,
+    "seconds": 0.25,
+    "source": [
+      768,
+      768
+    ],
+    "mask": [
+      768,
+      768
+    ],
+    "bbox": [
+      82,
+      386,
+      619,
+      635
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.011393229166666666,
+        "bounds_normalized": [
+          0.16015625,
+          0.5690104166666666,
+          0.08333333333333333,
+          0.13671875
+        ],
+        "bounds_pixels": [
+          123,
+          437,
+          64,
+          105
+        ],
+        "class": "hand",
+        "confidence": 0.7660202980041504,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": true,
+        "mode": "hand_derived_roi",
+        "padded_pixels": [
+          107,
+          411,
+          96,
+          158
+        ],
+        "source": "apple-vision"
+      },
+      {
+        "area_ratio": 0.010562472873263888,
+        "bounds_normalized": [
+          0.6276041666666666,
+          0.6796875,
+          0.11588541666666667,
+          0.09114583333333333
+        ],
+        "bounds_pixels": [
+          482,
+          522,
+          89,
+          70
+        ],
+        "class": "hand",
+        "confidence": 0.6263020634651184,
+        "confidence_available": true,
+        "index": 1,
+        "is_derived_roi": true,
+        "mode": "hand_derived_roi",
+        "padded_pixels": [
+          460,
+          505,
+          134,
+          105
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 2,
+    "compute": null
+  },
+  {
+    "fixture": "edge",
+    "mode": "face",
+    "exit": 0,
+    "seconds": 0.19,
+    "source": [
+      498,
+      740
+    ],
+    "mask": [
+      498,
+      740
+    ],
+    "bbox": [
+      0,
+      0,
+      192,
+      204
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.052428633452729835,
+        "bounds_normalized": [
+          0.028112449799196786,
+          0.03513513513513514,
+          0.2791164658634538,
+          0.18783783783783783
+        ],
+        "bounds_pixels": [
+          14,
+          26,
+          139,
+          139
+        ],
+        "class": "face",
+        "confidence": 0.7254130244255066,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": false,
+        "mode": "face",
+        "padded_pixels": [
+          0,
+          12,
+          167,
+          167
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 1,
+    "compute": null
+  },
+  {
+    "fixture": "edge",
+    "mode": "person",
+    "exit": 0,
+    "seconds": 0.38,
+    "source": [
+      498,
+      740
+    ],
+    "mask": [
+      498,
+      740
+    ],
+    "bbox": [
+      0,
+      0,
+      498,
+      740
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.9752849234776946,
+        "bounds_normalized": [
+          0.012048192771084338,
+          0,
+          0.9859437751004017,
+          0.9891891891891892
+        ],
+        "bounds_pixels": [
+          6,
+          0,
+          491,
+          732
+        ],
+        "class": "person",
+        "confidence": 0.7037450671195984,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": false,
+        "mode": "person",
+        "padded_pixels": [
+          0,
+          0,
+          498,
+          740
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 1,
+    "compute": null
+  },
+  {
+    "fixture": "edge",
+    "mode": "hand",
+    "exit": 0,
+    "seconds": 0.27,
+    "source": [
+      498,
+      740
+    ],
+    "mask": [
+      498,
+      740
+    ],
+    "bbox": [
+      190,
+      538,
+      418,
+      723
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.028573754477368936,
+        "bounds_normalized": [
+          0.4919678714859438,
+          0.7905405405405406,
+          0.23493975903614459,
+          0.12162162162162163
+        ],
+        "bounds_pixels": [
+          245,
+          585,
+          117,
+          90
+        ],
+        "class": "hand",
+        "confidence": 0.712344229221344,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": true,
+        "mode": "hand_derived_roi",
+        "padded_pixels": [
+          216,
+          563,
+          176,
+          135
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 1,
+    "compute": null
+  },
+  {
+    "fixture": "small",
+    "mode": "face",
+    "exit": 0,
+    "seconds": 0.16,
+    "source": [
+      768,
+      512
+    ],
+    "mask": [
+      768,
+      512
+    ],
+    "bbox": null,
+    "detections": [],
+    "count": 0,
+    "compute": null
+  },
+  {
+    "fixture": "small",
+    "mode": "person",
+    "exit": 0,
+    "seconds": 0.33,
+    "source": [
+      768,
+      512
+    ],
+    "mask": [
+      768,
+      512
+    ],
+    "bbox": [
+      313,
+      177,
+      457,
+      354
+    ],
+    "detections": [
+      {
+        "area_ratio": 0.029296875,
+        "bounds_normalized": [
+          0.4518229166666667,
+          0.40625,
+          0.1171875,
+          0.25
+        ],
+        "bounds_pixels": [
+          347,
+          208,
+          90,
+          128
+        ],
+        "class": "person",
+        "confidence": 0.6444244980812073,
+        "confidence_available": true,
+        "index": 0,
+        "is_derived_roi": false,
+        "mode": "person",
+        "padded_pixels": [
+          338,
+          195,
+          108,
+          154
+        ],
+        "source": "apple-vision"
+      }
+    ],
+    "count": 1,
+    "compute": null
+  },
+  {
+    "fixture": "small",
+    "mode": "hand",
+    "exit": 0,
+    "seconds": 0.2,
+    "source": [
+      768,
+      512
+    ],
+    "mask": [
+      768,
+      512
+    ],
+    "bbox": null,
+    "detections": [],
+    "count": 0,
+    "compute": null
+  }
+]

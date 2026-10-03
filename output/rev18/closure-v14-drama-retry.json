@@ -1,0 +1,184 @@
+{
+  "preserved_first_take": true,
+  "project": {
+    "id": "dp-8117d458",
+    "title": "Rev18 closure partial retry fixture",
+    "saved": false,
+    "schema": "dexdiffusion.drama_project.v1",
+    "settings": {
+      "line_gap_s": 0.35,
+      "scene_gap_s": 1,
+      "narrator_name": "NARRATOR",
+      "default_language": "en"
+    },
+    "parse_warnings": [],
+    "source_script": "ALICE: Hello.\nBOB: Goodbye.",
+    "scenes": [
+      {
+        "id": "sc-01",
+        "title": "Scene 1",
+        "lines": [
+          {
+            "id": "ln-001",
+            "speaker": "ALICE",
+            "speaker_key": "ALICE",
+            "kind": "dialogue",
+            "text": "Hello.",
+            "direction": "",
+            "pause_before_s": null,
+            "pause_after_s": null,
+            "render": true,
+            "src": {
+              "start": 7,
+              "end": 13
+            },
+            "takes": [
+              {
+                "id": "tk-27895ebc",
+                "line_id": "ln-001",
+                "status": "complete",
+                "created_at": 1791056598020,
+                "artifact_id": "20261003-194324-kokoro-drama-line.wav",
+                "duration": 1.35,
+                "error": null,
+                "profile_id": "vp-685d408378",
+                "engine": "kokoro",
+                "seed": 1699272461,
+                "job_id": "3b468217-4420-4870-b752-2fbf969157a9",
+                "settings": {
+                  "direction": "",
+                  "delivery": {
+                    "requested": null,
+                    "applied": false,
+                    "note": null
+                  },
+                  "chunks": 1,
+                  "seeded": false
+                },
+                "chunks": 1,
+                "sha256": "e2ae743a2f8f7813a728bec399432d33b10352c61e7aad45045cdc379de46b33",
+                "url": "/api/media/20261003-194324-kokoro-drama-line.wav",
+                "download_url": "/api/media/20261003-194324-kokoro-drama-line.wav/download",
+                "active": true
+              }
+            ],
+            "active_take_id": "tk-27895ebc",
+            "status": "generated"
+          },
+          {
+            "id": "ln-002",
+            "speaker": "BOB",
+            "speaker_key": "BOB",
+            "kind": "dialogue",
+            "text": "Goodbye.",
+            "direction": "",
+            "pause_before_s": null,
+            "pause_after_s": null,
+            "render": true,
+            "src": {
+              "start": 19,
+              "end": 27
+            },
+            "takes": [
+              {
+                "id": "tk-7400c929",
+                "line_id": "ln-002",
+                "status": "failed",
+                "created_at": 1791056605234,
+                "artifact_id": null,
+                "duration": null,
+                "error": "Big Mac generation did not report completion (timeout or connection loss)",
+                "profile_id": "vp-685d408378",
+                "engine": "kokoro",
+                "seed": 1741065578,
+                "job_id": "30f1e3e3-b243-45be-a6d9-db158204a9b4",
+                "settings": {
+                  "direction": "",
+                  "delivery": {
+                    "requested": null,
+                    "applied": false,
+                    "note": null
+                  },
+                  "chunks": 1,
+                  "seeded": false
+                },
+                "gate": "generation",
+                "url": null,
+                "download_url": null,
+                "active": false
+              },
+              {
+                "id": "tk-965b35ad",
+                "line_id": "ln-002",
+                "status": "complete",
+                "created_at": 1791056654496,
+                "artifact_id": "20261003-194423-kokoro-drama-line.wav",
+                "duration": 1.525,
+                "error": null,
+                "profile_id": "vp-685d408378",
+                "engine": "kokoro",
+                "seed": 1388390217,
+                "job_id": "194ec6c2-2a64-47f4-8d25-124dacf5673a",
+                "settings": {
+                  "direction": "",
+                  "delivery": {
+                    "requested": null,
+                    "applied": false,
+                    "note": null
+                  },
+                  "chunks": 1,
+                  "seeded": false
+                },
+                "chunks": 1,
+                "sha256": "e89e50a23a1c1d2c67030d39f290f91411a53efc9cd5bf7078333ea5c8616cf3",
+                "url": "/api/media/20261003-194423-kokoro-drama-line.wav",
+                "download_url": "/api/media/20261003-194423-kokoro-drama-line.wav/download",
+                "active": true
+              }
+            ],
+            "active_take_id": "tk-965b35ad",
+            "status": "generated"
+          }
+        ]
+      }
+    ],
+    "actors": [
+      {
+        "id": "ac-172f849e",
+        "speaker": "ALICE",
+        "speaker_key": "ALICE",
+        "voice_profile_id": "vp-685d408378",
+        "default_direction": "",
+        "profile": {
+          "id": "vp-685d408378",
+          "name": "Rev18 Evidence Preset",
+          "type": "preset",
+          "validation": "valid",
+          "preferred_engine": "kokoro"
+        },
+        "lines": 1
+      },
+      {
+        "id": "ac-8830b219",
+        "speaker": "BOB",
+        "speaker_key": "BOB",
+        "voice_profile_id": "vp-685d408378",
+        "default_direction": "",
+        "profile": {
+          "id": "vp-685d408378",
+          "name": "Rev18 Evidence Preset",
+          "type": "preset",
+          "validation": "valid",
+          "preferred_engine": "kokoro"
+        },
+        "lines": 1
+      }
+    ],
+    "unresolved": [],
+    "tracks": [],
+    "exports": [],
+    "active_run": null,
+    "created_at": 1791056582786,
+    "updated_at": 1791056663897
+  }
+}

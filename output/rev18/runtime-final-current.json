@@ -1,0 +1,504 @@
+{
+  "/api/resources": {
+    "group": "bigmac-heavy-inference",
+    "capacity": 1,
+    "owner": null,
+    "waiting": [],
+    "external": {
+      "occupied": false,
+      "detail": null,
+      "checkedAt": 1791051945438
+    },
+    "blocked_reason": null
+  },
+  "/api/jobs": {
+    "jobs": []
+  },
+  "/api/drama/projects/dp-ac1d5a10": {
+    "project": {
+      "id": "dp-ac1d5a10",
+      "title": "Rev18 Runtime Evidence",
+      "saved": true,
+      "schema": "dexdiffusion.drama_project.v1",
+      "settings": {
+        "line_gap_s": 0.35,
+        "scene_gap_s": 1,
+        "narrator_name": "NARRATOR",
+        "default_language": "en"
+      },
+      "parse_warnings": [],
+      "source_script": "SCENE 1: Quiet room\nNARRATOR: The room is quiet.\nALICE: [calmly] rev18dramaalpha. The test begins.\nBOB: rev18dramabeta. The test continues.\n[PAUSE 0.5]\nSCENE 2: Doorway\nALICE: The door is open.",
+      "scenes": [
+        {
+          "id": "sc-01",
+          "title": "SCENE 1: Quiet room",
+          "lines": [
+            {
+              "id": "ln-001",
+              "speaker": "NARRATOR",
+              "speaker_key": "NARRATOR",
+              "kind": "dialogue",
+              "text": "The room is quiet.",
+              "direction": "",
+              "pause_before_s": null,
+              "pause_after_s": null,
+              "render": true,
+              "src": {
+                "start": 30,
+                "end": 48
+              },
+              "takes": [
+                {
+                  "id": "tk-7630fcd1",
+                  "line_id": "ln-001",
+                  "status": "complete",
+                  "created_at": 1790998222091,
+                  "artifact_id": "20261003-033041-kokoro-drama-line.wav",
+                  "duration": 1.775,
+                  "error": null,
+                  "profile_id": "vp-685d408378",
+                  "engine": "kokoro",
+                  "seed": 297471478,
+                  "job_id": "fb75d957-0622-4ce9-8f0d-7e5c427a3093",
+                  "settings": {
+                    "direction": "",
+                    "delivery": {
+                      "requested": null,
+                      "applied": false,
+                      "note": null
+                    },
+                    "chunks": 1,
+                    "seeded": false
+                  },
+                  "chunks": 1,
+                  "sha256": "7c68b6f6f8f8645d963ee34fb739fdbdb705b3563b797f829346cebe5c0b5348",
+                  "url": "/api/media/20261003-033041-kokoro-drama-line.wav",
+                  "download_url": "/api/media/20261003-033041-kokoro-drama-line.wav/download",
+                  "active": false
+                },
+                {
+                  "id": "tk-913f5dc3",
+                  "line_id": "ln-001",
+                  "status": "complete",
+                  "created_at": 1790998369245,
+                  "artifact_id": "20261003-033259-kokoro-drama-line.wav",
+                  "duration": 1.775,
+                  "error": null,
+                  "profile_id": "vp-685d408378",
+                  "engine": "kokoro",
+                  "seed": 1998483462,
+                  "job_id": "d128a8ab-6c4f-4d02-9f94-960cce63ae7c",
+                  "settings": {
+                    "direction": "",
+                    "delivery": {
+                      "requested": null,
+                      "applied": false,
+                      "note": null
+                    },
+                    "chunks": 1,
+                    "seeded": false
+                  },
+                  "chunks": 1,
+                  "sha256": "13ca3f87523955a78d0da313cb4f2842e749a02375c227193076d8a654bbfc9c",
+                  "url": "/api/media/20261003-033259-kokoro-drama-line.wav",
+                  "download_url": "/api/media/20261003-033259-kokoro-drama-line.wav/download",
+                  "active": true
+                }
+              ],
+              "active_take_id": "tk-913f5dc3",
+              "status": "generated"
+            },
+            {
+              "id": "ln-002",
+              "speaker": "ALICE",
+              "speaker_key": "ALICE",
+              "kind": "dialogue",
+              "text": "rev18dramaalpha. The test begins.",
+              "direction": "calmly",
+              "pause_before_s": null,
+              "pause_after_s": null,
+              "render": true,
+              "src": {
+                "start": 56,
+                "end": 98
+              },
+              "takes": [
+                {
+                  "id": "tk-3b85ad80",
+                  "line_id": "ln-002",
+                  "status": "complete",
+                  "created_at": 1790998249125,
+                  "artifact_id": "20261003-033135-kokoro-drama-line.wav",
+                  "duration": 3.35,
+                  "error": null,
+                  "profile_id": "vp-685d408378",
+                  "engine": "kokoro",
+                  "seed": 2145607948,
+                  "job_id": "97c648d2-f909-4ffd-9097-10621ad25edf",
+                  "settings": {
+                    "direction": "calmly",
+                    "delivery": {
+                      "requested": "calmly",
+                      "applied": false,
+                      "note": "Kokoro 82M cannot honor delivery directions (\"calmly\" was NOT applied)"
+                    },
+                    "chunks": 1,
+                    "seeded": false
+                  },
+                  "chunks": 1,
+                  "sha256": "9af7a568b95cf5598c34b8c300d873874f799924fcbd89fe52d41ef5cbb5ba60",
+                  "url": "/api/media/20261003-033135-kokoro-drama-line.wav",
+                  "download_url": "/api/media/20261003-033135-kokoro-drama-line.wav/download",
+                  "active": true
+                }
+              ],
+              "active_take_id": "tk-3b85ad80",
+              "status": "generated"
+            },
+            {
+              "id": "ln-003",
+              "speaker": "BOB",
+              "speaker_key": "BOB",
+              "kind": "dialogue",
+              "text": "rev18dramabeta. The test continues.",
+              "direction": "",
+              "pause_before_s": null,
+              "pause_after_s": null,
+              "render": true,
+              "src": {
+                "start": 104,
+                "end": 139
+              },
+              "takes": [
+                {
+                  "id": "tk-33d5be64",
+                  "line_id": "ln-003",
+                  "status": "complete",
+                  "created_at": 1790998296009,
+                  "artifact_id": "20261003-033147-kokoro-drama-line.wav",
+                  "duration": 3.65,
+                  "error": null,
+                  "profile_id": "vp-685d408378",
+                  "engine": "kokoro",
+                  "seed": 1637076525,
+                  "job_id": "92dfd9be-6924-4868-89f3-5726882286b6",
+                  "settings": {
+                    "direction": "",
+                    "delivery": {
+                      "requested": null,
+                      "applied": false,
+                      "note": null
+                    },
+                    "chunks": 1,
+                    "seeded": false
+                  },
+                  "chunks": 1,
+                  "sha256": "371ea361907268edd78803f274e8452cbfae8176dcd2ec60df5a3dcd5ded213c",
+                  "url": "/api/media/20261003-033147-kokoro-drama-line.wav",
+                  "download_url": "/api/media/20261003-033147-kokoro-drama-line.wav/download",
+                  "active": true
+                }
+              ],
+              "active_take_id": "tk-33d5be64",
+              "status": "generated"
+            }
+          ]
+        },
+        {
+          "id": "sc-02",
+          "title": "SCENE 2: Doorway",
+          "lines": [
+            {
+              "id": "ln-004",
+              "speaker": "ALICE",
+              "speaker_key": "ALICE",
+              "kind": "dialogue",
+              "text": "The door remains open.",
+              "direction": "",
+              "pause_before_s": 0.5,
+              "pause_after_s": null,
+              "render": true,
+              "src": {
+                "start": 176,
+                "end": 193
+              },
+              "takes": [
+                {
+                  "id": "tk-59067043",
+                  "line_id": "ln-004",
+                  "status": "complete",
+                  "created_at": 1790998308029,
+                  "artifact_id": "20261003-033158-kokoro-drama-line.wav",
+                  "duration": 1.925,
+                  "error": null,
+                  "profile_id": "vp-685d408378",
+                  "engine": "kokoro",
+                  "seed": 33371327,
+                  "job_id": "f3f0f0ee-e729-4cc6-b500-787087c4cd39",
+                  "settings": {
+                    "direction": "",
+                    "delivery": {
+                      "requested": null,
+                      "applied": false,
+                      "note": null
+                    },
+                    "chunks": 1,
+                    "seeded": false
+                  },
+                  "chunks": 1,
+                  "sha256": "5b5afe472d61cc07870a0fba235d38670d3dc30ecd2f05fab54d6c6ff3e0ecd2",
+                  "url": "/api/media/20261003-033158-kokoro-drama-line.wav",
+                  "download_url": "/api/media/20261003-033158-kokoro-drama-line.wav/download",
+                  "active": true
+                }
+              ],
+              "active_take_id": "tk-59067043",
+              "edited": true,
+              "status": "generated"
+            }
+          ]
+        }
+      ],
+      "actors": [
+        {
+          "id": "ac-89b58708",
+          "speaker": "NARRATOR",
+          "speaker_key": "NARRATOR",
+          "voice_profile_id": "vp-685d408378",
+          "default_direction": "",
+          "profile": {
+            "id": "vp-685d408378",
+            "name": "Rev18 Evidence Preset",
+            "type": "preset",
+            "validation": "valid",
+            "preferred_engine": "kokoro"
+          },
+          "lines": 1
+        },
+        {
+          "id": "ac-e04eb086",
+          "speaker": "ALICE",
+          "speaker_key": "ALICE",
+          "voice_profile_id": "vp-685d408378",
+          "default_direction": "",
+          "profile": {
+            "id": "vp-685d408378",
+            "name": "Rev18 Evidence Preset",
+            "type": "preset",
+            "validation": "valid",
+            "preferred_engine": "kokoro"
+          },
+          "lines": 2
+        },
+        {
+          "id": "ac-befeb4cc",
+          "speaker": "BOB",
+          "speaker_key": "BOB",
+          "voice_profile_id": "vp-685d408378",
+          "default_direction": "",
+          "profile": {
+            "id": "vp-685d408378",
+            "name": "Rev18 Evidence Preset",
+            "type": "preset",
+            "validation": "valid",
+            "preferred_engine": "kokoro"
+          },
+          "lines": 1
+        }
+      ],
+      "unresolved": [],
+      "tracks": [
+        {
+          "id": "tr-25c214",
+          "role": "ambience",
+          "artifact_id": "20261003-030313-kokoro-speech.wav",
+          "scene_id": null,
+          "start_s": 0,
+          "trim_start_s": 0,
+          "trim_end_s": null,
+          "gain": 0.3,
+          "fade_in_s": 0,
+          "fade_out_s": 0
+        }
+      ],
+      "exports": [
+        {
+          "id": "ex-5ba7e3",
+          "artifact_id": "20261003-033801-drama-rev18-runtime-evidence.wav",
+          "scope": "project",
+          "scene_id": null,
+          "at": 1790998681052,
+          "duration_s": 13.25,
+          "manifest": {
+            "schema": "dexdiffusion.drama_manifest.v1",
+            "project_id": "dp-ac1d5a10",
+            "title": "Rev18 Runtime Evidence",
+            "scope": "project",
+            "scene_id": null,
+            "generated_at": "2026-10-03T03:38:01.012Z",
+            "sample_rate": 48000,
+            "channels": 2,
+            "duration_s": 13.25,
+            "settings": {
+              "line_gap_s": 0.35,
+              "scene_gap_s": 1
+            },
+            "scenes": [
+              {
+                "id": "sc-01",
+                "title": "SCENE 1: Quiet room",
+                "start_s": 0,
+                "end_s": 9.475
+              },
+              {
+                "id": "sc-02",
+                "title": "SCENE 2: Doorway",
+                "start_s": 10.825,
+                "end_s": 13.25
+              }
+            ],
+            "items": [
+              {
+                "scene_id": "sc-01",
+                "line_id": "ln-001",
+                "take_id": "tk-913f5dc3",
+                "artifact_id": "20261003-033259-kokoro-drama-line.wav",
+                "speaker": "NARRATOR",
+                "start_s": 0,
+                "duration_s": 1.775
+              },
+              {
+                "scene_id": "sc-01",
+                "line_id": "ln-002",
+                "take_id": "tk-3b85ad80",
+                "artifact_id": "20261003-033135-kokoro-drama-line.wav",
+                "speaker": "ALICE",
+                "start_s": 2.125,
+                "duration_s": 3.35
+              },
+              {
+                "scene_id": "sc-01",
+                "line_id": "ln-003",
+                "take_id": "tk-33d5be64",
+                "artifact_id": "20261003-033147-kokoro-drama-line.wav",
+                "speaker": "BOB",
+                "start_s": 5.824999999999999,
+                "duration_s": 3.65
+              },
+              {
+                "scene_id": "sc-02",
+                "line_id": "ln-004",
+                "take_id": "tk-59067043",
+                "artifact_id": "20261003-033158-kokoro-drama-line.wav",
+                "speaker": "ALICE",
+                "start_s": 11.325,
+                "duration_s": 1.925
+              }
+            ],
+            "tracks": [
+              {
+                "id": "tr-25c214",
+                "role": "ambience",
+                "artifact_id": "20261003-030313-kokoro-speech.wav",
+                "start_s": 0,
+                "gain": 0.3
+              }
+            ],
+            "artifact_id": "20261003-033801-drama-rev18-runtime-evidence.wav",
+            "sha256": "0be903cceb26bb886d9c7460c24f51dcfd6984eda63c414ff3fc9c8713d691bb"
+          },
+          "url": "/api/media/20261003-033801-drama-rev18-runtime-evidence.wav",
+          "download_url": "/api/media/20261003-033801-drama-rev18-runtime-evidence.wav/download"
+        },
+        {
+          "id": "ex-96fd6d",
+          "artifact_id": "20261003-033222-drama-rev18-runtime-evidence.wav",
+          "scope": "project",
+          "scene_id": null,
+          "at": 1790998342222,
+          "duration_s": 13.25,
+          "manifest": {
+            "schema": "dexdiffusion.drama_manifest.v1",
+            "project_id": "dp-ac1d5a10",
+            "title": "Rev18 Runtime Evidence",
+            "scope": "project",
+            "scene_id": null,
+            "generated_at": "2026-10-03T03:32:22.179Z",
+            "sample_rate": 24000,
+            "channels": 1,
+            "duration_s": 13.25,
+            "settings": {
+              "line_gap_s": 0.35,
+              "scene_gap_s": 1
+            },
+            "scenes": [
+              {
+                "id": "sc-01",
+                "title": "SCENE 1: Quiet room",
+                "start_s": 0,
+                "end_s": 9.475
+              },
+              {
+                "id": "sc-02",
+                "title": "SCENE 2: Doorway",
+                "start_s": 10.825,
+                "end_s": 13.25
+              }
+            ],
+            "items": [
+              {
+                "scene_id": "sc-01",
+                "line_id": "ln-001",
+                "take_id": "tk-7630fcd1",
+                "artifact_id": "20261003-033041-kokoro-drama-line.wav",
+                "speaker": "NARRATOR",
+                "start_s": 0,
+                "duration_s": 1.775
+              },
+              {
+                "scene_id": "sc-01",
+                "line_id": "ln-002",
+                "take_id": "tk-3b85ad80",
+                "artifact_id": "20261003-033135-kokoro-drama-line.wav",
+                "speaker": "ALICE",
+                "start_s": 2.125,
+                "duration_s": 3.35
+              },
+              {
+                "scene_id": "sc-01",
+                "line_id": "ln-003",
+                "take_id": "tk-33d5be64",
+                "artifact_id": "20261003-033147-kokoro-drama-line.wav",
+                "speaker": "BOB",
+                "start_s": 5.824999999999999,
+                "duration_s": 3.65
+              },
+              {
+                "scene_id": "sc-02",
+                "line_id": "ln-004",
+                "take_id": "tk-59067043",
+                "artifact_id": "20261003-033158-kokoro-drama-line.wav",
+                "speaker": "ALICE",
+                "start_s": 11.325,
+                "duration_s": 1.925
+              }
+            ],
+            "tracks": [],
+            "artifact_id": "20261003-033222-drama-rev18-runtime-evidence.wav",
+            "sha256": "aee84b2ecd24d7f01a6304537f62e5e6723a0820f3d79e578a5532151e5cb358"
+          },
+          "url": "/api/media/20261003-033222-drama-rev18-runtime-evidence.wav",
+          "download_url": "/api/media/20261003-033222-drama-rev18-runtime-evidence.wav/download"
+        }
+      ],
+      "active_run": null,
+      "created_at": 1790998194985,
+      "updated_at": 1790999016285
+    }
+  },
+  "staged_working_copies": [],
+  "canonical_images_now": [
+    "Rev18-owned-zoom-fixture.png"
+  ],
+  "listener": "COMMAND   PID   USER   FD   TYPE            DEVICE SIZE/OFF NODE NAME\nnode    19407 andrew   13u  IPv4 0x10eb6758265570f      0t0  TCP 127.0.0.1:31337 (LISTEN)\n"
+}

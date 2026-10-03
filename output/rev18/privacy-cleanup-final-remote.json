@@ -1,0 +1,65 @@
+{
+  "files_scanned": 146,
+  "matches": [
+    {
+      "path": "/Users/bigmac/sdcpp-staging/logs/img2img_20261002-224850.log",
+      "matches": [
+        "rev18editbluealpha",
+        "rev18editbluebeta"
+      ]
+    },
+    {
+      "path": "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-225501.log",
+      "matches": [
+        "rev18inpaintalpha",
+        "rev18inpaintbeta"
+      ]
+    },
+    {
+      "path": "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-225724.log",
+      "matches": [
+        "rev18outpaintalpha",
+        "rev18outpaintbeta"
+      ]
+    },
+    {
+      "path": "/Users/bigmac/sdcpp-staging/outputs/20261002-224336-controlled-sd15/controlled-sd15.log",
+      "matches": [
+        "rev18createheronalpha",
+        "rev18createheronbeta"
+      ]
+    }
+  ],
+  "dexmedia_temp": [],
+  "owned_process_candidates": [],
+  "new_staged_output_contents": {
+    "/Users/bigmac/sdcpp-staging/outputs/20261002-224336-controlled-sd15": [
+      "controlled-sd15.log"
+    ],
+    "/Users/bigmac/sdcpp-staging/outputs/20261002-235211-controlled-sd15": [],
+    "/Users/bigmac/sdcpp-staging/outputs/20261002-234719-controlled-sd15": []
+  },
+  "recent_input_candidates": [
+    "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-213957.log",
+    "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-173607.log",
+    "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-212733.log",
+    "/Users/bigmac/sdcpp-staging/logs/img2img_20261002-173352.log",
+    "/Users/bigmac/sdcpp-staging/logs/img2img_20261002-224850.log",
+    "/Users/bigmac/sdcpp-staging/logs/img2img_20261002-180240.log",
+    "/Users/bigmac/sdcpp-staging/logs/img2img_20261002-175235.log",
+    "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-222043.log",
+    "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-225501.log",
+    "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-225724.log",
+    "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-222856.log",
+    "/Users/bigmac/sdcpp-staging/logs/img2img_20261002-222444.log",
+    "/Users/bigmac/sdcpp-staging/logs/img2img_20261002-221820.log",
+    "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-222649.log",
+    "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-222259.log",
+    "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-184536.log",
+    "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-222200.log",
+    "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-180437.log",
+    "/Users/bigmac/sdcpp-staging/outputs/20261002-224336-controlled-sd15",
+    "/Users/bigmac/sdcpp-staging/outputs/20261002-235211-controlled-sd15",
+    "/Users/bigmac/sdcpp-staging/outputs/20261002-234719-controlled-sd15"
+  ]
+}

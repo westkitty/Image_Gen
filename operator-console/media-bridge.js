@@ -387,11 +387,15 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       let finalFile = parts[0].file;
       if (long) {
         try {
-          const stitched = A.stitch(parts.map(p => p.audio), { gapsMs: ctx.gapsMs || [], crossfadeMs: 25 });
+          const stitched = A.stitch(parts.map(p => p.audio), { gapsMs: ctx.gapsMs || [], crossfadeMs: 25, normalizeOutput: false });
           finalFile = path.join(localDir, 'final.wav'); fs.writeFileSync(finalFile, A.encodeWav(stitched));
         } catch (e) { return fail('canonicalization', 'stitching failed: ' + String(e.message).slice(0, 160)); }
       }
-      const fa = A.parseWav(fs.readFileSync(finalFile));
+      // Speech preserves engine/delivery levels. Attenuate peaks above -1 dBFS;
+      // never boost quiet delivery merely because a render spans several chunks.
+      const fa = A.normalize(A.parseWav(fs.readFileSync(finalFile)), { targetPeakDb: -1, maxGainDb: 0 });
+      finalFile = path.join(localDir, 'speech-final.wav');
+      fs.writeFileSync(finalFile, A.encodeWav(fa));
       let rec;
       try {
         const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);

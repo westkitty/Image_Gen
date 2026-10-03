@@ -41,7 +41,7 @@ Model-load amortisation is real: all chunks of a line/long text share one load.
 Text ≤ the engine's chunk limit is one chunk. Longer text splits paragraph → sentence → clause → whitespace → hard cut (flagged),
 never inside `[tag]`, `<tag>`, `{tag}`, `(cue)`. Each chunk records the boundary that follows; the stitcher trims edge silence, inserts a
 deliberate pause only at paragraph (520 ms) / sentence (260 ms) / clause (110 ms) boundaries, otherwise an equal-power 25 ms crossfade,
-then peak-normalises to −1 dBFS. The result is ONE canonical artifact; `meta.long_form.lineage` holds per-chunk chars/duration/sha256/boundary
+then applies the same speech policy as single-shot renders: attenuate peaks above −1 dBFS, never boost quiet delivery. The result is ONE canonical artifact; `meta.long_form.lineage` holds per-chunk chars/duration/sha256/boundary
 (no text). A failure reads `Long-form render failed at chunk 7/14: <reason>`.
 
 ## Drama (`drama.js`, `drama-service.js`, `voice-routes.js`, `drama-ui.js`)
@@ -54,7 +54,7 @@ then peak-normalises to −1 dBFS. The result is ONE canonical artifact; `meta.l
 * **Model:** project → scenes → lines (speaker, kind, direction, pause before/after, `render`, takes[], active_take) · actors (speaker → profile,
   default direction) · tracks (music/ambience/sfx) · exports. Re-render **adds** a take; the active take is chosen by the user (the first good take
   becomes active automatically; later ones do not steal it).
-* **Cast:** rendering is blocked only for speakers that have renderable lines and no voice.
+* **Cast:** resolve profile IDs on every view/render. Missing or invalid profiles block the requested project/scene/line scope; a different invalid override cannot block an otherwise valid single-line render.
 * **Runs:** line / scene / project, sequential, resume skips generated lines, per-line failures are reported and retried selectively. Each line is a normal
   voice job (lease, "waiting for Big Mac", chunk X/N). After a restart an in-flight take becomes `failed (interrupted)`, never `complete`.
 * **Assembly:** active takes in scene/line order; gaps = previous `pause_after` (default `line_gap_s` 0.35) + next `pause_before`; scene gap 1.0 s;
@@ -75,3 +75,7 @@ then peak-normalises to −1 dBFS. The result is ONE canonical artifact; `meta.l
 
 `tests/long-form.test.js`, `voice-audio.test.js`, `voice-production.test.js` (profiles, capability gating, long-form through the real bridge with fake ssh,
 chunk-failure attribution, privacy, cleanup), `drama.test.js`, `drama-service.test.js`; browser: `tests/browser/voice-drama.browser.js`.
+
+## Rev 18 evidence boundary
+
+Delivery metadata stores requested/applied booleans; full delivery text stays in the ephemeral response when text saving is off. Drama assembly retains its separate −1 dBFS peak policy. Current live evidence and unexercised cases are recorded in OPERATIONAL_STATE Revision 18; unit tests do not establish those missing runtime paths.

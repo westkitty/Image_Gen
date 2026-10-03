@@ -1,0 +1,43 @@
+{
+  "jobs": {
+    "status": "reachable",
+    "keys": [
+      "jobs"
+    ]
+  },
+  "listener": "COMMAND   PID   USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\nnode    24747 andrew   13u  IPv4 0xf3dcbb2b7751e59f      0t0  TCP 127.0.0.1:31337 (LISTEN)\n",
+  "canonical_inpaint": {
+    "path": "/Users/andrew/images_made/20261003-153007-inpaint-inpaint_20261003-153007.png",
+    "exists": true,
+    "bytes": 2578
+  },
+  "git": {
+    "branch": "rev17-verification-handoff",
+    "head": "efd9cdc3785fc73652f7fc7d816c5b3496858db4",
+    "status": "M DEXDIFFUSION.md\n M OPERATIONAL_STATE.md\n M operator-console/docs/detailer-and-identity.md\n M operator-console/docs/edit-workbench-20261002.md\n M operator-console/docs/voice-drama-20261002.md\n M operator-console/drama-service.js\n M operator-console/media-bridge.js\n M operator-console/public/dexdiffusion/a11y.js\n M operator-console/public/dexdiffusion/component.js\n M operator-console/public/dexdiffusion/edit-core.js\n M operator-console/public/dexdiffusion/edit-ui.js\n M operator-console/public/dexdiffusion/workstation-ui.js\n M operator-console/server.js\n M operator-console/tests/browser/edit-workbench.browser.js\n M operator-console/tests/browser/helpers.js\n M operator-console/tests/browser/voice-drama.browser.js\n M operator-console/tests/drama-service.test.js\n M operator-console/tests/edit-core.test.js\n M operator-console/tests/redact-stream.test.js\n M operator-console/tests/voice-production.test.js\n M operator-console/voice-service.js\n M sdcpp-workflow/bin/mflux-controlled-generate.sh\n M sdcpp-workflow/bin/redact_stream.py\n M sdcpp-workflow/bin/sdcpp-cli-generate.sh\n M sdcpp-workflow/bin/sdcpp-controlled-generate.sh\n M sdcpp-workflow/bin/sdcpp-img2img.sh\n M sdcpp-workflow/bin/sdcpp-inpaint.sh\n M sdcpp-workflow/bin/sdcpp-server-generate.sh\n M sdcpp-workflow/bin/sdcpp-xyz-plot.sh\n?? operator-console/tests/detailer-ui-state.test.js\n?? operator-console/tests/job-poll-state.test.js\n?? operator-console/tests/mask-alpha.test.js\n?? output/rev18/"
+  },
+  "initial_endpoint_probe_errors": {
+    "resources": {
+      "error": "HTTP Error 404: Not Found"
+    },
+    "generic": {
+      "error": "HTTP Error 404: Not Found"
+    }
+  },
+  "resources": {
+    "group": "bigmac-heavy-inference",
+    "capacity": 1,
+    "owner": null,
+    "waiting": [],
+    "external": {
+      "occupied": false,
+      "detail": null,
+      "checkedAt": 1791058078843
+    },
+    "blocked_reason": null
+  },
+  "generic": {
+    "job_count": 100,
+    "active_jobs": []
+  }
+}

@@ -201,10 +201,11 @@
     const lim = (img, box, pan) => (img <= box ? 0 : Math.max(-(img - box) / 2, Math.min((img - box) / 2, pan)));
     return { ...v, panX: lim(w, v.boxW, v.panX || 0), panY: lim(h, v.boxH, v.panY || 0) };
   }
-  // Zoom keeping the image point under (sx, sy) fixed. zoom is clamped to [1, maxZoom].
+  // Allow actual pixels below Fit when Fit enlarges a small source.
   function zoomAt(v, factor, sx, sy, maxZoom = 16) {
     const before = screenToImage(v, sx, sy);
-    const zoom = Math.max(1, Math.min(maxZoom, (v.zoom || 1) * factor));
+    const minZoom = Math.min(1, 1 / fitScale(v.imgW, v.imgH, v.boxW, v.boxH));
+    const zoom = Math.max(minZoom, Math.min(maxZoom, (v.zoom || 1) * factor));
     let next = { ...v, zoom };
     const o = viewOrigin(next);
     // shift pan so `before` maps back onto (sx, sy)
@@ -214,7 +215,7 @@
   }
   function zoomTo100(v, sx, sy) { // actual pixels (1 image px = 1 CSS px)
     const fit = fitScale(v.imgW, v.imgH, v.boxW, v.boxH);
-    const target = Math.max(1, 1 / fit);
+    const target = 1 / fit;
     return zoomAt({ ...v, zoom: 1, panX: 0, panY: 0 }, target, sx == null ? v.boxW / 2 : sx, sy == null ? v.boxH / 2 : sy);
   }
   // Clamp a brush stroke point into the image; null if wholly outside by more than the radius.
@@ -266,7 +267,7 @@
     const sd = parseSdProgress(sdLog);
     if (key === 'generating' || key === 'running') {
       if (sd.phase === 'sampling' && sd.total) return { key: 'sampling', label: `Sampling step ${sd.step}/${sd.total}`, percent: sd.percent, determinate: true, step: sd.step, total: sd.total };
-      if (sd.phase === 'decoding') return { key: 'decoding', label: 'Decoding image', percent: null, determinate: false };
+      if (sd.phase === 'decoding' || sd.phase === 'decoded') return { key: 'decoding', label: 'Decoding image', percent: null, determinate: false };
       if (sd.phase === 'encoding' || sd.phase === 'preparing') return { key: 'preparing', label: 'Encoding source and loading model', percent: null, determinate: false };
     }
     return { key, label, percent: null, determinate: false };

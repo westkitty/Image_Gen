@@ -1,0 +1,26 @@
+[
+  {
+    "gate": "check",
+    "command": "npm run check",
+    "exit": 0,
+    "log": "output/rev18/gates/dex-rev18-closure-v17-check.log"
+  },
+  {
+    "gate": "unit",
+    "command": "npm test",
+    "exit": 0,
+    "log": "output/rev18/gates/dex-rev18-closure-v17-unit.log"
+  },
+  {
+    "gate": "edit-syntax",
+    "command": "node --check operator-console/tests/browser/edit-workbench.browser.js",
+    "exit": 0,
+    "log": "output/rev18/gates/dex-rev18-closure-v17-edit-syntax.log"
+  },
+  {
+    "gate": "voice-syntax",
+    "command": "node --check operator-console/tests/browser/voice-drama.browser.js",
+    "exit": 0,
+    "log": "output/rev18/gates/dex-rev18-closure-v17-voice-syntax.log"
+  }
+]

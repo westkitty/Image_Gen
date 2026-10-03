@@ -4,6 +4,17 @@
 // (or its parent's), and re-runs when the template runtime rebuilds the DOM.
 (function () {
   'use strict';
+  const targetStyle = document.createElement('style');
+  targetStyle.textContent = `
+    button, [role="button"], select, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]) { min-height: 32px !important; }
+    button, [role="button"] { min-width: 32px !important; }
+    @media (pointer: coarse), (max-width: 600px) {
+      button, [role="button"], select, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]) { min-height: 44px !important; }
+      button, [role="button"] { min-width: 44px !important; }
+      label:has(input[type="checkbox"]), label:has(input[type="radio"]) { min-height: 44px; }
+    }
+  `;
+  document.head.appendChild(targetStyle);
   const NAMELESS = 'input:not([type=hidden]):not([type=button]):not([type=submit]):not([type=file]), select, textarea';
   const hasName = el => el.hasAttribute('aria-label') || el.hasAttribute('aria-labelledby') || el.hasAttribute('title') || el.placeholder
     || (el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]')) || el.closest('label');
@@ -25,7 +36,7 @@
     if (t) el.setAttribute('aria-label', t.replace(/\s*[:：]$/, ''));
   }
   let queued = false;
-  function sweep() { queued = false; document.querySelectorAll(NAMELESS).forEach(label); }
+  function sweep() { queued = false; document.querySelectorAll(NAMELESS).forEach(label); const dialog = document.querySelector('[data-detailer-dialog]'); if (dialog && !dialog.contains(document.activeElement)) dialog.querySelector('button')?.focus(); }
   function schedule() { if (!queued) { queued = true; (window.requestAnimationFrame || setTimeout)(sweep); setTimeout(() => { if (queued) sweep(); }, 250); } }
   new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
   schedule();

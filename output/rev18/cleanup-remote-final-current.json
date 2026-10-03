@@ -1,0 +1,36 @@
+{
+  "files_scanned": 146,
+  "matches": [
+    {
+      "path": "/Users/bigmac/sdcpp-staging/logs/img2img_20261002-224850.log",
+      "matches": [
+        "rev18editbluealpha",
+        "rev18editbluebeta"
+      ]
+    },
+    {
+      "path": "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-225501.log",
+      "matches": [
+        "rev18inpaintalpha",
+        "rev18inpaintbeta"
+      ]
+    },
+    {
+      "path": "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-225724.log",
+      "matches": [
+        "rev18outpaintalpha",
+        "rev18outpaintbeta"
+      ]
+    },
+    {
+      "path": "/Users/bigmac/sdcpp-staging/outputs/20261002-224336-controlled-sd15/controlled-sd15.log",
+      "matches": [
+        "rev18createheronalpha",
+        "rev18createheronbeta"
+      ]
+    }
+  ],
+  "dexmedia_temp": [],
+  "owned_process_candidates": [],
+  "recent_staged_pngs": []
+}

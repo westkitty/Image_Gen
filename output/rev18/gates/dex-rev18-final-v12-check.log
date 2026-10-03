@@ -1,0 +1,4 @@
+
+> operator-console@1.0.0 check
+> node --check server.js
+

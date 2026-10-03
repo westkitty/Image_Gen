@@ -1,0 +1,15 @@
+[edit-workbench +42.6s] START provenance: Edit carries the SELECTED image's parameters, not the Create form
+[edit-workbench +136.1s] FAIL provenance: Edit carries the SELECTED image's parameters, not the Create form 
+    page.goto: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:51225/dexdiffusion/", waiting until "load"[22m
+    
+[edit-workbench +136.1s] START privacy on: stored prompt is recalled; different image → its own values
+[edit-workbench +164.4s] PASS privacy on: stored prompt is recalled; different image → its own values (28304 ms)
+[edit-workbench +164.6s] START img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result
+[edit-workbench +244.4s] FAIL img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result 
+    page.waitForFunction: Timeout 30000ms exceeded.
+[edit-workbench +244.4s] START failures are visible with stage + actual error; polling loss offers a safe retry
+[edit-workbench +298.2s] PASS failures are visible with stage + actual error; polling loss offers a safe retry (53748 ms)
+[edit-workbench +298.2s] START Run never fails silently: blocked state explains itself and click surfaces the reason
+[edit-workbench +300.2s] WATCHDOG: suite exceeded 300 s; stuck in 'Run never fails silently: blocked state explains itself and click surfaces the reason'. Aborting.

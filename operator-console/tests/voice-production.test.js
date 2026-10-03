@@ -143,7 +143,9 @@ test('long-form: >2000 characters renders as ONE canonical artifact with chunk l
   const h = harness(); const p = h.profiles.create({ name: 'N', type: 'preset', preset_voice: 'af_heart' });
   const short = h.svc.renderText({ profileId: p.id, text: 'Hello there.' });
   assert.equal(short.chunks, 1); assert.equal(short.long_form, false);
-  assert.equal((await settle(h.svc, short.job_id)).status, 'COMPLETE');
+  const shortDone = await settle(h.svc, short.job_id);
+  assert.equal(shortDone.status, 'COMPLETE');
+  const shortAudio = A.parseWav(fs.readFileSync(h.mediaStore.resolve(shortDone.artifact.artifact_id).path));
   const txt = longText(60); assert.ok(txt.length > 5000);
   const r = h.svc.renderText({ profileId: p.id, text: txt, saveText: false });
   assert.ok(r.chunks > 5 && r.long_form && r.chunk_plan.every(c => c.chars <= 900));
@@ -155,6 +157,7 @@ test('long-form: >2000 characters renders as ONE canonical artifact with chunk l
   assert.ok(art.meta.long_form.lineage.every(c => /^[a-f0-9]{64}$/.test(c.sha256) && c.duration > 0));
   const rec = h.mediaStore.resolve(art.artifact_id); assert.ok(rec.path.startsWith(h.roots.voice));
   const parsed = A.parseWav(fs.readFileSync(rec.path)); assert.ok(A.analyze(parsed).rms > 0.01, 'non-silent final audio');
+  assert.ok(Math.abs(A.analyze(parsed).peakDb - A.analyze(shortAudio).peakDb) < 0.05, 'chunk count must not boost the engine level');
   assert.deepEqual(h.mediaStore.list('voice').length, 2, 'only the final artifacts are canonical; chunk WAVs are internal');
   assert.ok(h.calls.some(([c, a]) => c === 'ssh' && a.includes('rm -rf')), 'remote dir removed'); assert.equal(h.arbiter.state().owner, null);
   assert.equal(h.req().items.length, r.chunks, 'one Big Mac invocation covers every chunk');
@@ -199,4 +202,17 @@ test('existing single-shot Kokoro/Qwen request validation is unchanged (compatib
   assert.match(B.validateBatchPlan('ace-step', { items: [{ text: 'a' }] }).error, /no multi-item/);
   assert.match(B.validateBatchPlan('qwen3-tts-base', { items: [{ text: 'a' }], ref_path: '/x' }).error, /transcript/);
   assert.match(B.validateBatchPlan('kokoro', { items: [] }).error, /1-400/);
+});
+
+
+test('privacy-off VoiceDesign direction stays out of durable jobs and canonical media metadata', async () => {
+  const h = harness();
+  const p = h.profiles.create({ name: 'Direction privacy', type: 'designed', description: 'a calm low voice' });
+  const direction = 'rev18directionalpha\nrev18directionbeta';
+  const r = h.svc.renderText({ profileId: p.id, text: 'Hello.', direction, saveText: false });
+  assert.ok(r.job_id, JSON.stringify(r));
+  const done = await settle(h.svc, r.job_id); assert.equal(done.status, 'COMPLETE');
+  assert.deepEqual(done.artifact.meta.delivery, { requested: true, applied: true });
+  h.jobStore.flush();
+  for (const file of ['jobs.json', 'media.json']) assert.ok(!fs.readFileSync(path.join(h.base, file), 'utf8').includes('rev18direction'), file);
 });

@@ -1,0 +1,24 @@
+{
+  "id": "1ed89251-b2cb-4792-9da9-3738355df223",
+  "status": "FAIL",
+  "firstFailedGate": "inpaint-remote-png",
+  "completedAt": 1790998285975,
+  "controlledOutputImage": null,
+  "runId": null,
+  "lease": {
+    "group": "bigmac-heavy-inference",
+    "capacity": 1,
+    "owner": {
+      "job_id": "92dfd9be-6924-4868-89f3-5726882286b6",
+      "label": "kokoro drama-line",
+      "since": 1790998296439
+    },
+    "waiting": [],
+    "external": {
+      "occupied": false,
+      "detail": null,
+      "checkedAt": 1790998249238
+    },
+    "blocked_reason": "Waiting for Big Mac \u2014 kokoro drama-line currently owns heavy compute"
+  }
+}

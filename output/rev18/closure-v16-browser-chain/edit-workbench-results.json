@@ -1,0 +1,112 @@
+[
+ [
+  "PASS",
+  "provenance: Edit carries the SELECTED image's parameters, not the Create form",
+  3672
+ ],
+ [
+  "PASS",
+  "privacy on: stored prompt is recalled; different image → its own values",
+  1584
+ ],
+ [
+  "PASS",
+  "img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result",
+  7360
+ ],
+ [
+  "PASS",
+  "failures are visible with stage + actual error; polling loss offers a safe retry",
+  11115
+ ],
+ [
+  "PASS",
+  "Run never fails silently: blocked state explains itself and click surfaces the reason",
+  1738
+ ],
+ [
+  "PASS",
+  "inpaint alignment (fx-square.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches",
+  2224
+ ],
+ [
+  "PASS",
+  "inpaint alignment (fx-landscape.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches",
+  2487
+ ],
+ [
+  "PASS",
+  "inpaint alignment (fx-portrait.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches",
+  2517
+ ],
+ [
+  "PASS",
+  "fullscreen: sources/results/library open the viewer; Esc closes; inpaint canvas never does",
+  4145
+ ],
+ [
+  "PASS",
+  "Create output hero image opens fullscreen",
+  1643
+ ],
+ [
+  "PASS",
+  "Detailer: preview/run use the selected targets, empty result is explained, stale preview is dropped, mask goes to inpaint untouched",
+  3125
+ ],
+ [
+  "PASS",
+  "every screen renders in all three shell layouts without script errors (incl. Drama/Voice/Edit)",
+  6197
+ ],
+ [
+  "PASS",
+  "both Edit layouts render the SAME state; preference persists",
+  2163
+ ],
+ [
+  "PASS",
+  "resources: LoRAs visible in Create and Edit, weight changes are structured, incompatible ones excluded",
+  2023
+ ],
+ [
+  "PASS",
+  "model picker: concise, grouped, searchable",
+  1424
+ ],
+ [
+  "FAIL",
+  "presets: per-operation, versioned, privacy-aware, legacy migrated",
+  "page.waitForFunction: TypeError: Cannot read properties of null (reading 'value')\n    at eval (eval at predicate (eval at evaluate (:303:30)), <anonymous>:1:120)\n    at predicate (eval at evaluate (:303:30), <anonymous>:7:27)\n    at next (eval at evaluate (:303:30), <anonymous>:29:33)\n    at eval (eval at evaluate (:303:30), <anonymous>:42:13)\n    at UtilityScript.evaluate (<anonymous>:305:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)"
+ ],
+ [
+  "PASS",
+  "saving off: both browser storage areas exclude current edit prompt and negative after preset save and reload",
+  2107
+ ],
+ [
+  "PASS",
+  "Detailer dialog traps focus, closes with Escape, and restores the opener",
+  2727
+ ],
+ [
+  "PASS",
+  "Detailer keeps truthful job progress visible until the canonical result is ready",
+  7094
+ ],
+ [
+  "PASS",
+  "responsive @375px: no horizontal overflow on Create/Edit/Library",
+  1993
+ ],
+ [
+  "PASS",
+  "responsive @768px: no horizontal overflow on Create/Edit/Library",
+  4469
+ ],
+ [
+  "PASS",
+  "responsive @1280px: no horizontal overflow on Create/Edit/Library",
+  2461
+ ]
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "name": "check",
+    "command": "npm run check",
+    "exit": 0,
+    "log": "/tmp/dex-rev18-final-v13-check.log"
+  },
+  {
+    "name": "unit",
+    "command": "npm test",
+    "exit": 0,
+    "log": "/tmp/dex-rev18-final-v13-unit.log"
+  },
+  {
+    "name": "edit",
+    "command": "node tests/browser/edit-workbench.browser.js",
+    "exit": 0,
+    "log": "/tmp/dex-rev18-final-v13-edit.log"
+  },
+  {
+    "name": "voice",
+    "command": "node tests/browser/voice-drama.browser.js",
+    "exit": 0,
+    "log": "/tmp/dex-rev18-final-v13-voice.log"
+  },
+  {
+    "name": "chain",
+    "command": "npm run test:browser",
+    "exit": 0,
+    "log": "/tmp/dex-rev18-final-v13-chain.log"
+  }
+]

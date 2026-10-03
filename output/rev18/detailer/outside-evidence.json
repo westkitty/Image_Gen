@@ -1,0 +1,29 @@
+[
+  {
+    "mode": "face",
+    "mask_reconstructed": true,
+    "deterministic_selection": true,
+    "deterministic_mask": true,
+    "outside_pixels": 736226,
+    "outside_changed_pixels": 0,
+    "outside_max_diff": 0
+  },
+  {
+    "mode": "person",
+    "mask_reconstructed": true,
+    "deterministic_selection": true,
+    "deterministic_mask": true,
+    "outside_pixels": 259726,
+    "outside_changed_pixels": 0,
+    "outside_max_diff": 0
+  },
+  {
+    "mode": "hand",
+    "mask_reconstructed": true,
+    "deterministic_selection": true,
+    "deterministic_mask": true,
+    "outside_pixels": 748496,
+    "outside_changed_pixels": 0,
+    "outside_max_diff": 0
+  }
+]

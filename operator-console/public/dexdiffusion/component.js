@@ -84,10 +84,23 @@ class Component extends DCLogic {
   }
   componentWillUnmount() {
     clearInterval(this._pingTimer); clearInterval(this._pollTimer);
+    this._pollGeneration = (this._pollGeneration || 0) + 1;
+    for (const controller of this._jobWaitControllers || []) controller.abort();
     window.removeEventListener('keydown', this._keyHandler);
   }
 
   onKeydown(e) {
+    const dialog = document.querySelector('[data-detailer-dialog]');
+    if (dialog) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.closeDetailer(); return; }
+      if (e.key === 'Tab') {
+        const controls = [...dialog.querySelectorAll('button,input,select,textarea,[tabindex="0"]')].filter(n => !n.disabled && n.getBoundingClientRect().width);
+        const first = controls[0], last = controls[controls.length - 1];
+        if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { e.preventDefault(); first?.focus(); }
+      }
+      return;
+    }
     const tag = (e.target && e.target.tagName || '').toLowerCase();
     const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); this.onGenerate(); return; }
@@ -450,21 +463,30 @@ class Component extends DCLogic {
   // ── Job poller ────────────────────────────────────────────────
   _startPoll(jobId, onComplete) {
     clearInterval(this._pollTimer);
+    const generation = this._pollGeneration = (this._pollGeneration || 0) + 1;
+    let busy = false, failures = 0;
     this._pollTimer = setInterval(async () => {
+      if (busy) return;
+      busy = true;
       try {
         const r = await fetch(this.state.backendUrl + '/api/jobs/' + jobId, { signal: AbortSignal.timeout(3000) });
-        if (!r.ok) return;
+        if (!r.ok) throw new Error(r.status === 404 ? 'Job not found (console restarted?)' : 'Job status request failed: HTTP ' + r.status);
         const job = await r.json();
-        const pct = DexClient.jobProgressPercent(job.progress);
-        if (pct != null) {
-          const nextProgress = Math.min(99, pct);
-          if (nextProgress !== this.state.progress) this.setState({ progress: nextProgress });
-        }
+        if (this._pollGeneration !== generation) return;
+        failures = 0;
+        const stage = job.stage || { label: 'Running', percent: null, determinate: false };
+        this.setState({ jobStage: stage, progress: stage.determinate ? stage.percent : null });
         if (this._jobTerminal(job.status)) {
           clearInterval(this._pollTimer);
           onComplete(job);
         }
-      } catch {}
+      } catch (e) {
+        if (this._pollGeneration !== generation) return;
+        if (++failures >= 5) {
+          clearInterval(this._pollTimer);
+          onComplete({ id: jobId, status: 'FAIL', firstFailedGate: 'polling', error: e.message });
+        }
+      } finally { busy = false; }
     }, 900);
   }
 
@@ -1880,7 +1902,7 @@ class Component extends DCLogic {
       showJobResult: jobStatus !== 'idle',
       jobIdle: jobStatus === 'idle',
       imageDisplay: this.buildImageDisplay(jobStatus, progress, currentImageSrc, lastSeed, errorMsg),
-      actionStatus: isGenerating ? ('generating · ' + progress + '%') : jobStatus==='complete' ? ('done · seed ' + lastSeed) : jobStatus==='error' ? 'error · check backend' : 'idle · no job',
+      actionStatus: isGenerating ? ('generating · ' + ((this.state.jobStage || {}).label || 'Waiting for backend')) : jobStatus==='complete' ? ('done · seed ' + lastSeed) : jobStatus==='error' ? 'error · check backend' : 'idle · no job',
       // Status chips
       backendDot, backendLabel: backendOnline ? 'Backend' : 'Offline',
       backendChipBg: backendOnline ? 'rgba(101,214,110,.08)' : 'rgba(239,68,68,.08)',

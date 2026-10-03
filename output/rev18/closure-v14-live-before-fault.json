@@ -1,0 +1,278 @@
+{
+  "/api/drama/projects/dp-8991c8ff": {
+    "project": {
+      "id": "dp-8991c8ff",
+      "title": "Rev18 closure scene fixture",
+      "saved": true,
+      "schema": "dexdiffusion.drama_project.v1",
+      "settings": {
+        "line_gap_s": 0.35,
+        "scene_gap_s": 1,
+        "narrator_name": "NARRATOR",
+        "default_language": "en"
+      },
+      "parse_warnings": [],
+      "source_script": "INT. ROOM - DAY\n\nThe rain falls softly.\n\nALICE: The door is open.\n\nEXT. GATE - DAY\n\nBOB: The gate is shut.",
+      "scenes": [
+        {
+          "id": "sc-01",
+          "title": "INT. ROOM - DAY",
+          "lines": [
+            {
+              "id": "ln-001",
+              "speaker": "NARRATOR",
+              "speaker_key": "NARRATOR",
+              "kind": "narration",
+              "text": "The rain falls softly.",
+              "direction": "",
+              "pause_before_s": null,
+              "pause_after_s": null,
+              "render": true,
+              "src": {
+                "start": 17,
+                "end": 39
+              },
+              "takes": [
+                {
+                  "id": "tk-33ae208c",
+                  "line_id": "ln-001",
+                  "status": "complete",
+                  "created_at": 1791056314097,
+                  "artifact_id": "20261003-193840-kokoro-drama-line.wav",
+                  "duration": 1.9,
+                  "error": null,
+                  "profile_id": "vp-685d408378",
+                  "engine": "kokoro",
+                  "seed": 327468790,
+                  "job_id": "2d194383-2fa9-4fa9-803f-54cb1471f951",
+                  "settings": {
+                    "direction": "",
+                    "delivery": {
+                      "requested": null,
+                      "applied": false,
+                      "note": null
+                    },
+                    "chunks": 1,
+                    "seeded": false
+                  },
+                  "chunks": 1,
+                  "sha256": "0f1b876ff1b671834a8ea7a4ca62b387fb45dcb2d5e0f3a48dc7228240078e71",
+                  "url": "/api/media/20261003-193840-kokoro-drama-line.wav",
+                  "download_url": "/api/media/20261003-193840-kokoro-drama-line.wav/download",
+                  "active": true
+                }
+              ],
+              "active_take_id": "tk-33ae208c",
+              "status": "generated"
+            },
+            {
+              "id": "ln-002",
+              "speaker": "REX",
+              "speaker_key": "REX",
+              "kind": "dialogue",
+              "text": "The door is open.",
+              "direction": "",
+              "pause_before_s": null,
+              "pause_after_s": null,
+              "render": true,
+              "src": {
+                "start": 48,
+                "end": 65
+              },
+              "takes": [
+                {
+                  "id": "tk-c207965d",
+                  "line_id": "ln-002",
+                  "status": "complete",
+                  "created_at": 1791056321313,
+                  "artifact_id": "20261003-193847-kokoro-drama-line.wav",
+                  "duration": 1.8,
+                  "error": null,
+                  "profile_id": "vp-685d408378",
+                  "engine": "kokoro",
+                  "seed": 2120556828,
+                  "job_id": "3be0ee0f-a0a1-4f70-9db5-f832acadc5d7",
+                  "settings": {
+                    "direction": "",
+                    "delivery": {
+                      "requested": null,
+                      "applied": false,
+                      "note": null
+                    },
+                    "chunks": 1,
+                    "seeded": false
+                  },
+                  "chunks": 1,
+                  "sha256": "5366fbaebe6b244339fcd47ae3aa2ec4df4576a35e409c12869649719ba1ad0b",
+                  "url": "/api/media/20261003-193847-kokoro-drama-line.wav",
+                  "download_url": "/api/media/20261003-193847-kokoro-drama-line.wav/download",
+                  "active": true
+                }
+              ],
+              "active_take_id": "tk-c207965d",
+              "status": "generated"
+            }
+          ]
+        },
+        {
+          "id": "sc-02",
+          "title": "EXT. GATE - DAY",
+          "lines": [
+            {
+              "id": "ln-003",
+              "speaker": "BOB",
+              "speaker_key": "BOB",
+              "kind": "dialogue",
+              "text": "The gate is shut.",
+              "direction": "",
+              "pause_before_s": null,
+              "pause_after_s": null,
+              "render": true,
+              "src": {
+                "start": 89,
+                "end": 106
+              },
+              "takes": [],
+              "active_take_id": null,
+              "status": "empty"
+            }
+          ]
+        }
+      ],
+      "actors": [
+        {
+          "id": "ac-5bec1053",
+          "speaker": "NARRATOR",
+          "speaker_key": "NARRATOR",
+          "voice_profile_id": "vp-685d408378",
+          "default_direction": "",
+          "profile": {
+            "id": "vp-685d408378",
+            "name": "Rev18 Evidence Preset",
+            "type": "preset",
+            "validation": "valid",
+            "preferred_engine": "kokoro"
+          },
+          "lines": 1
+        },
+        {
+          "id": "ac-bc5610d5",
+          "speaker": "ALICE",
+          "speaker_key": "ALICE",
+          "voice_profile_id": null,
+          "default_direction": "",
+          "profile": null,
+          "lines": 0
+        },
+        {
+          "id": "ac-ac68b23f",
+          "speaker": "BOB",
+          "speaker_key": "BOB",
+          "voice_profile_id": "vp-685d408378",
+          "default_direction": "",
+          "profile": {
+            "id": "vp-685d408378",
+            "name": "Rev18 Evidence Preset",
+            "type": "preset",
+            "validation": "valid",
+            "preferred_engine": "kokoro"
+          },
+          "lines": 1
+        },
+        {
+          "id": "ac-142c0ee7",
+          "speaker": "REX",
+          "speaker_key": "REX",
+          "voice_profile_id": "vp-685d408378",
+          "default_direction": "",
+          "profile": {
+            "id": "vp-685d408378",
+            "name": "Rev18 Evidence Preset",
+            "type": "preset",
+            "validation": "valid",
+            "preferred_engine": "kokoro"
+          },
+          "lines": 1
+        }
+      ],
+      "unresolved": [],
+      "tracks": [],
+      "exports": [
+        {
+          "id": "ex-b3a17d",
+          "artifact_id": "20261003-193912-drama-rev18-closure-scene-fixture-sc-01.wav",
+          "scope": "scene",
+          "scene_id": "sc-01",
+          "at": 1791056352400,
+          "duration_s": 4.05,
+          "manifest": {
+            "schema": "dexdiffusion.drama_manifest.v1",
+            "project_id": "dp-8991c8ff",
+            "title": "Rev18 closure scene fixture",
+            "scope": "scene",
+            "scene_id": "sc-01",
+            "generated_at": "2026-10-03T19:39:12.335Z",
+            "sample_rate": 24000,
+            "channels": 1,
+            "duration_s": 4.05,
+            "settings": {
+              "line_gap_s": 0.35,
+              "scene_gap_s": 1
+            },
+            "scenes": [
+              {
+                "id": "sc-01",
+                "title": "INT. ROOM - DAY",
+                "start_s": 0,
+                "end_s": 4.05
+              }
+            ],
+            "items": [
+              {
+                "scene_id": "sc-01",
+                "line_id": "ln-001",
+                "take_id": "tk-33ae208c",
+                "artifact_id": "20261003-193840-kokoro-drama-line.wav",
+                "speaker": "NARRATOR",
+                "start_s": 0,
+                "duration_s": 1.9
+              },
+              {
+                "scene_id": "sc-01",
+                "line_id": "ln-002",
+                "take_id": "tk-c207965d",
+                "artifact_id": "20261003-193847-kokoro-drama-line.wav",
+                "speaker": "REX",
+                "start_s": 2.25,
+                "duration_s": 1.8
+              }
+            ],
+            "tracks": [],
+            "artifact_id": "20261003-193912-drama-rev18-closure-scene-fixture-sc-01.wav",
+            "sha256": "a02d43f5ca882a7ef6307b862ffd670a0ab6371bfc2d56851d38315d394cb413"
+          },
+          "url": "/api/media/20261003-193912-drama-rev18-closure-scene-fixture-sc-01.wav",
+          "download_url": "/api/media/20261003-193912-drama-rev18-closure-scene-fixture-sc-01.wav/download"
+        }
+      ],
+      "active_run": null,
+      "created_at": 1791056200505,
+      "updated_at": 1791056352906
+    }
+  },
+  "/api/resources": {
+    "group": "bigmac-heavy-inference",
+    "capacity": 1,
+    "owner": null,
+    "waiting": [],
+    "external": {
+      "occupied": false,
+      "detail": null,
+      "checkedAt": 1791056369122
+    },
+    "blocked_reason": null
+  },
+  "/api/jobs": {
+    "jobs": []
+  }
+}

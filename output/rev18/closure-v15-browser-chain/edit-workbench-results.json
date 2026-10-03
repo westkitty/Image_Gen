@@ -1,0 +1,112 @@
+[
+ [
+  "PASS",
+  "provenance: Edit carries the SELECTED image's parameters, not the Create form",
+  2939
+ ],
+ [
+  "PASS",
+  "privacy on: stored prompt is recalled; different image → its own values",
+  1661
+ ],
+ [
+  "PASS",
+  "img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result",
+  6557
+ ],
+ [
+  "PASS",
+  "failures are visible with stage + actual error; polling loss offers a safe retry",
+  11542
+ ],
+ [
+  "PASS",
+  "Run never fails silently: blocked state explains itself and click surfaces the reason",
+  1906
+ ],
+ [
+  "PASS",
+  "inpaint alignment (fx-square.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches",
+  2533
+ ],
+ [
+  "PASS",
+  "inpaint alignment (fx-landscape.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches",
+  2505
+ ],
+ [
+  "PASS",
+  "inpaint alignment (fx-portrait.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches",
+  3445
+ ],
+ [
+  "PASS",
+  "fullscreen: sources/results/library open the viewer; Esc closes; inpaint canvas never does",
+  2837
+ ],
+ [
+  "PASS",
+  "Create output hero image opens fullscreen",
+  1473
+ ],
+ [
+  "PASS",
+  "Detailer: preview/run use the selected targets, empty result is explained, stale preview is dropped, mask goes to inpaint untouched",
+  4803
+ ],
+ [
+  "PASS",
+  "every screen renders in all three shell layouts without script errors (incl. Drama/Voice/Edit)",
+  7298
+ ],
+ [
+  "PASS",
+  "both Edit layouts render the SAME state; preference persists",
+  4059
+ ],
+ [
+  "PASS",
+  "resources: LoRAs visible in Create and Edit, weight changes are structured, incompatible ones excluded",
+  1787
+ ],
+ [
+  "PASS",
+  "model picker: concise, grouped, searchable",
+  1499
+ ],
+ [
+  "FAIL",
+  "presets: per-operation, versioned, privacy-aware, legacy migrated",
+  "inpaint round trip\n\n'9' !== '23'\n"
+ ],
+ [
+  "PASS",
+  "saving off: both browser storage areas exclude current edit prompt and negative after preset save and reload",
+  4454
+ ],
+ [
+  "PASS",
+  "Detailer dialog traps focus, closes with Escape, and restores the opener",
+  2392
+ ],
+ [
+  "PASS",
+  "Detailer keeps truthful job progress visible until the canonical result is ready",
+  6323
+ ],
+ [
+  "PASS",
+  "responsive @375px: no horizontal overflow on Create/Edit/Library",
+  2464
+ ],
+ [
+  "PASS",
+  "responsive @768px: no horizontal overflow on Create/Edit/Library",
+  4102
+ ],
+ [
+  "PASS",
+  "responsive @1280px: no horizontal overflow on Create/Edit/Library",
+  2765
+ ]
+]

@@ -10,6 +10,7 @@ whole prompt string in one line never matches. This filter therefore redacts, pe
 token array. It reads in raw chunks and splits on \\r as well as \\n so sd-cli progress updates still arrive live.
 """
 import os
+import json
 import re
 import sys
 
@@ -27,6 +28,10 @@ def forms(secret):
                 piece = piece.strip()
                 if len(piece) >= MIN_PIECE:
                     out.add(piece)
+    # HTTP responses escape quotes, newlines and sometimes non-ASCII text.
+    for f in list(out):
+        out.add(json.dumps(f, ensure_ascii=True)[1:-1])
+        out.add(json.dumps(f, ensure_ascii=False)[1:-1])
     pats = []
     for f in sorted((x for x in out if x.strip()), key=len, reverse=True):
         words = f.split()
@@ -53,14 +58,49 @@ def segments(fd=0):
 
 
 def main(argv):
+    json_mode = len(argv) > 1 and argv[1] == '--json'
+    if json_mode:
+        argv = [argv[0]] + argv[2:]
     secrets = forms(argv[1] if len(argv) > 1 else '') + forms(argv[2] if len(argv) > 2 else '')
     tok_re = re.compile(r'(to tokens\s*)\[.*\]')
-    for line in segments():
+
+    def redact(line):
         for pat in secrets:
             line = pat.sub('[REDACTED]', line)
         if 'to tokens' in line or 'bpe_tokenizer' in line:
             line = tok_re.sub(r'\1[REDACTED]', line)
-        sys.stdout.write(line)
+        return line
+
+    if json_mode:
+        raw = sys.stdin.read()
+        # curl -i may prefix the JSON with HTTP headers. Keep those separate.
+        start = raw.find('{')
+        if start < 0:
+            sys.stdout.write(redact(raw))
+            return
+        try:
+            data = json.loads(raw[start:])
+        except ValueError:
+            sys.stdout.write(redact(raw))
+            return
+
+        def clean(value, key=None):
+            if isinstance(value, dict):
+                return {k: clean(v, k) for k, v in value.items()}
+            if isinstance(value, list):
+                return [clean(v, key) for v in value]
+            if isinstance(value, str):
+                # Prompt substitution in encoded image bytes corrupts valid PNGs.
+                if key in ('b64_json', 'images'):
+                    return value
+                return redact(value)
+            return value
+
+        sys.stdout.write(redact(raw[:start]) + json.dumps(clean(data)))
+        return
+
+    for line in segments():
+        sys.stdout.write(redact(line))
         sys.stdout.flush()
 
 

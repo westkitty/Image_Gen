@@ -1,0 +1,92 @@
+[
+  {
+    "artifact": "20261003-030313-kokoro-speech.wav",
+    "peak_db": -8.79,
+    "rms_db": -26.63,
+    "duration": 7.15,
+    "meta": {
+      "operation": "speech",
+      "sample_rate": 24000,
+      "channels": 1,
+      "reference_used": false,
+      "items": 1,
+      "language": "a",
+      "voice": "af_heart",
+      "speed": 1,
+      "long_form": null,
+      "profile_id": "vp-685d408378",
+      "profile_name": "Rev18 Evidence Preset",
+      "engine": "kokoro",
+      "profile_fingerprint": "a32011858a9f0e14",
+      "seed": 1990894832,
+      "delivery": {
+        "requested": null,
+        "applied": false
+      },
+      "source_chars": 87
+    }
+  },
+  {
+    "artifact": "20261003-030503-kokoro-long-form.wav",
+    "peak_db": -8.12,
+    "rms_db": -26.16,
+    "duration": 185.819625,
+    "meta": {
+      "operation": "long-form",
+      "sample_rate": 24000,
+      "channels": 1,
+      "reference_used": false,
+      "items": 4,
+      "language": "a",
+      "voice": "af_heart",
+      "speed": 1,
+      "long_form": {
+        "chunks": 4,
+        "lineage": [
+          {
+            "index": 0,
+            "duration": 54.825,
+            "sha256": "47913453473ca07cf9bc9f89fa53f3fa71949308ca30f0b9d93fc2c5d4d27932",
+            "sample_rate": 24000,
+            "chars": 846,
+            "boundary": "paragraph"
+          },
+          {
+            "index": 1,
+            "duration": 56.2,
+            "sha256": "65b523df765876a85835fa189d5e8dc5f8983dd952b09cd80af180aa9ba3a393",
+            "sample_rate": 24000,
+            "chars": 853,
+            "boundary": "paragraph"
+          },
+          {
+            "index": 2,
+            "duration": 57.2,
+            "sha256": "0a6ae8b7890da4367b2b2659711216887ce9b7e9baae08a05b5ff7e8de33ca8b",
+            "sample_rate": 24000,
+            "chars": 854,
+            "boundary": "paragraph"
+          },
+          {
+            "index": 3,
+            "duration": 19,
+            "sha256": "8263680146b14877a6a9aca9dc0f20c416bc0126bf189fe6b19396cd973f208b",
+            "sample_rate": 24000,
+            "chars": 249,
+            "boundary": "end"
+          }
+        ]
+      },
+      "profile_id": "vp-685d408378",
+      "profile_name": "Rev18 Evidence Preset",
+      "engine": "kokoro",
+      "profile_fingerprint": "a32011858a9f0e14",
+      "seed": 115750477,
+      "delivery": {
+        "requested": null,
+        "applied": false
+      },
+      "source_chars": 2808
+    }
+  }
+]

@@ -44,7 +44,7 @@ function createVoiceService({ bridge, jobStore, mediaStore, profiles, probeFor, 
       probe, saveText, operation: chunks.length > 1 ? 'long-form' : operation, gapsMs, boundaries: chunks.map(c => c.boundary),
       safeParams: Object.assign({ profile_id: profile.id, engine: engineId, chars: t.length }, safeParams),
       meta: Object.assign({ profile_id: profile.id, profile_name: profile.name, engine: engineId, profile_fingerprint: profile.fingerprint, seed: useSeed,
-        delivery: { requested: plan.delivery.requested || null, applied: !!plan.delivery.applied }, source_chars: t.length }, meta),
+        delivery: { requested: !!plan.delivery.requested, applied: !!plan.delivery.applied }, source_chars: t.length }, meta),
     });
     if (r.error) return r;
     return { job_id: r.job_id, engine: engineId, worker: eng.worker, chunks: chunks.length, chars: t.length, seed: useSeed, delivery: { requested: plan.delivery.requested || null, applied: !!plan.delivery.applied, note: plan.delivery.note },

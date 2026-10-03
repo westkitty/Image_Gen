@@ -310,6 +310,8 @@
       stage.style.transform = `translate(${o.x}px,${o.y}px) scale(${o.s})`;
       const pct = Math.round(o.s * 100);
       zoomLabel.textContent = (m.view.zoom === 1 ? 'Fit · ' : '') + pct + '%';
+      const minZoom = Math.min(1, 1 / E.fitScale(m.w, m.h, m.view.boxW, m.view.boxH));
+      zoomSlider.min = String(Math.floor(Math.log(minZoom) / Math.log(maxZoom) * 100));
       zoomSlider.value = String(Math.round(Math.log(m.view.zoom) / Math.log(maxZoom) * 100));
     };
     m.fit = () => { m.view = Object.assign({}, m.view, { zoom: 1, panX: 0, panY: 0 }); m.apply(); };

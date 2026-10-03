@@ -1,0 +1,72 @@
+
+> operator-console@1.0.0 test:browser
+> node tests/browser/edit-workbench.browser.js && node tests/browser/voice-drama.browser.js
+
+[edit-workbench +3.2s] START provenance: Edit carries the SELECTED image's parameters, not the Create form
+[edit-workbench +5.9s] PASS provenance: Edit carries the SELECTED image's parameters, not the Create form (2754 ms)
+[edit-workbench +5.9s] START privacy on: stored prompt is recalled; different image → its own values
+[edit-workbench +7.5s] PASS privacy on: stored prompt is recalled; different image → its own values (1596 ms)
+[edit-workbench +7.5s] START img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result
+[edit-workbench +15.2s] PASS img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result (7649 ms)
+[edit-workbench +15.2s] START failures are visible with stage + actual error; polling loss offers a safe retry
+[edit-workbench +25.6s] PASS failures are visible with stage + actual error; polling loss offers a safe retry (10384 ms)
+[edit-workbench +25.6s] START Run never fails silently: blocked state explains itself and click surfaces the reason
+[edit-workbench +27.1s] PASS Run never fails silently: blocked state explains itself and click surfaces the reason (1549 ms)
+[edit-workbench +27.1s] START inpaint alignment (fx-square.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches
+[edit-workbench +29.0s] PASS inpaint alignment (fx-square.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches (1875 ms)
+[edit-workbench +29.0s] START inpaint alignment (fx-landscape.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches
+[edit-workbench +30.7s] PASS inpaint alignment (fx-landscape.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches (1694 ms)
+[edit-workbench +30.7s] START inpaint alignment (fx-portrait.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches
+[edit-workbench +32.6s] PASS inpaint alignment (fx-portrait.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches (1890 ms)
+[edit-workbench +32.6s] START fullscreen: sources/results/library open the viewer; Esc closes; inpaint canvas never does
+[edit-workbench +34.6s] PASS fullscreen: sources/results/library open the viewer; Esc closes; inpaint canvas never does (2006 ms)
+[edit-workbench +34.6s] START Create output hero image opens fullscreen
+[edit-workbench +36.1s] PASS Create output hero image opens fullscreen (1478 ms)
+[edit-workbench +36.1s] START Detailer: preview/run use the selected targets, empty result is explained, stale preview is dropped, mask goes to inpaint untouched
+[edit-workbench +39.4s] PASS Detailer: preview/run use the selected targets, empty result is explained, stale preview is dropped, mask goes to inpaint untouched (3300 ms)
+[edit-workbench +39.4s] START every screen renders in all three shell layouts without script errors (incl. Drama/Voice/Edit)
+[edit-workbench +48.3s] PASS every screen renders in all three shell layouts without script errors (incl. Drama/Voice/Edit) (8991 ms)
+[edit-workbench +48.3s] START both Edit layouts render the SAME state; preference persists
+[edit-workbench +50.8s] PASS both Edit layouts render the SAME state; preference persists (2486 ms)
+[edit-workbench +50.8s] START resources: LoRAs visible in Create and Edit, weight changes are structured, incompatible ones excluded
+[edit-workbench +52.2s] PASS resources: LoRAs visible in Create and Edit, weight changes are structured, incompatible ones excluded (1401 ms)
+[edit-workbench +52.2s] START model picker: concise, grouped, searchable
+[edit-workbench +53.9s] PASS model picker: concise, grouped, searchable (1636 ms)
+[edit-workbench +53.9s] START presets: per-operation, versioned, privacy-aware, legacy migrated
+[edit-workbench +55.5s] PASS presets: per-operation, versioned, privacy-aware, legacy migrated (1576 ms)
+[edit-workbench +55.5s] START Detailer dialog traps focus, closes with Escape, and restores the opener
+[edit-workbench +57.6s] PASS Detailer dialog traps focus, closes with Escape, and restores the opener (2139 ms)
+[edit-workbench +57.6s] START Detailer keeps truthful job progress visible until the canonical result is ready
+[edit-workbench +64.0s] PASS Detailer keeps truthful job progress visible until the canonical result is ready (6432 ms)
+[edit-workbench +64.0s] START responsive @375px: no horizontal overflow on Create/Edit/Library
+[edit-workbench +65.8s] PASS responsive @375px: no horizontal overflow on Create/Edit/Library (1737 ms)
+[edit-workbench +65.8s] START responsive @768px: no horizontal overflow on Create/Edit/Library
+[edit-workbench +68.2s] PASS responsive @768px: no horizontal overflow on Create/Edit/Library (2390 ms)
+[edit-workbench +68.2s] START responsive @1280px: no horizontal overflow on Create/Edit/Library
+[edit-workbench +70.0s] PASS responsive @1280px: no horizontal overflow on Create/Edit/Library (1834 ms)
+
+21/21 browser checks passed
+[voice-drama +2.8s] START Voice profiles: designed + preset voices, validation, capability truth, direction gating, long-form estimate
+[voice-drama +9.4s] PASS Voice profiles: designed + preset voices, validation, capability truth, direction gating, long-form estimate (6551 ms)
+[voice-drama +9.4s] START Cloned voice: invalid until a sample WITH transcript is approved; multiple samples; active sample; remove
+[voice-drama +12.6s] PASS Cloned voice: invalid until a sample WITH transcript is approved; multiple samples; active sample; remove (3228 ms)
+[voice-drama +12.6s] START Voice render state belongs to the voice that started it (no progress/result/error leaks onto another voice)
+[voice-drama +24.0s] PASS Voice render state belongs to the voice that started it (no progress/result/error leaks onto another voice) (11443 ms)
+[voice-drama +24.0s] START Drama: paste → parse → review/edit → cast → privacy banner → save/unsave → blocked render → assemble refuses without takes
+[voice-drama +26.4s] PASS Drama: paste → parse → review/edit → cast → privacy banner → save/unsave → blocked render → assemble refuses without takes (2329 ms)
+[voice-drama +26.4s] START Drama LLM parse mode reports rejection/failure visibly (never silently falls back)
+[voice-drama +58.3s] FAIL Drama LLM parse mode reports rejection/failure visibly (never silently falls back) 
+    page.waitForSelector: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('[data-parse-error]') to be visible[22m
+    
+[voice-drama +58.3s] START responsive @375px: Voice profiles + Drama have no horizontal overflow
+[voice-drama +63.6s] PASS responsive @375px: Voice profiles + Drama have no horizontal overflow (5337 ms)
+[voice-drama +63.6s] START responsive @768px: Voice profiles + Drama have no horizontal overflow
+[voice-drama +66.7s] PASS responsive @768px: Voice profiles + Drama have no horizontal overflow (3138 ms)
+[voice-drama +66.7s] PHASE cleanup owned projects
+[voice-drama +66.8s] PHASE cleanup owned profiles
+[voice-drama +66.8s] PHASE close browser
+[voice-drama +67.4s] PHASE stop test server
+
+6/7 voice/drama browser checks passed

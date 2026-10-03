@@ -735,6 +735,13 @@ function stagedToWorkingPng(stagedId) {
   return { path: out, dims: pngSize(out) };
 }
 
+function cleanupRejectedSource(res, source) {
+  if (!source.temp) return;
+  res.once('finish', () => {
+    if (res.statusCode >= 400) { try { fs.unlinkSync(source.temp); } catch (_) {} }
+  });
+}
+
 function resolveImageSource(body) {
   if (typeof body.staged_id === 'string' && body.staged_id) {
     const w = stagedToWorkingPng(body.staged_id);
@@ -1004,15 +1011,6 @@ function syncGenericTerminal(job) {
   arbiter.release(job.id);
 }
 
-function estimateControlledRunSeconds(params) {
-  const steps = Number(params.steps || 20);
-  const width = Number(params.width || 512);
-  const height = Number(params.height || 512);
-  const pixelFactor = Math.max(1, (width * height) / (512 * 512));
-  const stepFactor = Number.isFinite(steps) && steps > 0 ? steps : 20;
-  return Math.max(20, Math.min(240, Math.round(stepFactor * pixelFactor * 5)));
-}
-
 function updateSequentialProgress(job, patch = {}) {
   job.progress = {
     totalRuns: 1,
@@ -1032,23 +1030,13 @@ function updateSequentialProgress(job, patch = {}) {
   job.progress.totalPercent = Math.max(0, Math.min(100, Math.round(((completedRuns + currentRunPercent / 100) / totalRuns) * 100)));
 }
 
-function startEstimatedRunProgress(job, runIndex, quantity, estimatedSeconds) {
-  const startedAt = Date.now();
+function startRunProgress(job, runIndex, quantity) {
   updateSequentialProgress(job, {
-    totalRuns: quantity,
-    completedRuns: runIndex,
-    currentRun: runIndex + 1,
-    currentRunPercent: 0,
-    currentRunStartedAt: startedAt,
-    estimatedSeconds
+    totalRuns: quantity, completedRuns: runIndex, currentRun: runIndex + 1,
+    currentRunPercent: 0, currentRunStartedAt: Date.now()
   });
-  return setInterval(() => {
-    if (!job || job.status !== 'running') return;
-    const elapsedSeconds = (Date.now() - startedAt) / 1000;
-    const estimate = Math.max(1, estimatedSeconds || 60);
-    const pct = Math.min(95, Math.round((elapsedSeconds / estimate) * 100));
-    updateSequentialProgress(job, { currentRunPercent: pct });
-  }, 1200);
+  // No time-derived percentages. Sampling progress comes from the backend log.
+  return null;
 }
 
 function terminateChildTree(child) {
@@ -1184,8 +1172,6 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
   if (native) job.capabilityId = 'quantity-native-batch';
   else if (params.hires_scale) job.capabilityId = 'hires-refine';
   const runsTotal = native ? 1 : quantity;
-  const perImage = estimateControlledRunSeconds(params);
-  const estimatedSeconds = native ? Math.round(perImage * (1 + 0.45 * (quantity - 1))) : perImage;
   const controlledScript = controlledScriptFor(spec);
   const finish = () => {
     job.completedAt = Date.now();
@@ -1238,7 +1224,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
   function runNext(runIndex) {
     const runNumber = runIndex + 1;
     job.stdout += native ? `\n--- Native batch run: ${quantity} images, seeds ${seeds[0]}..${seeds[quantity - 1]} ---\n` : `\n--- Sequential Run ${runNumber} of ${quantity} ---\n`;
-    const progressTimer = startEstimatedRunProgress(job, runIndex, runsTotal, estimatedSeconds);
+    const progressTimer = startRunProgress(job, runIndex, runsTotal);
     const args = buildControlledArgs(spec, params, {
       seedValue: native ? seeds[0] : seeds[runIndex],
       isDiscovered: !CONTROLLED_TARGET_BY_ID[params.target],
@@ -3027,6 +3013,7 @@ app.post('/api/actions/img2img', (req, res) => {
   const resErr = resolveEditResources(body);
   if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
   const srcInfo = resolveImageSource(body);
+  cleanupRejectedSource(res, srcInfo);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
   if (srcInfo.staged) { body.run_id = '20000101-000000-import'; body.init_image_file = 'import.png'; }
 
@@ -3121,6 +3108,7 @@ function handleInpaint(req, res) {
   const resErr = resolveEditResources(body);
   if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
   const srcInfo = resolveImageSource(body);
+  cleanupRejectedSource(res, srcInfo);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
   if (srcInfo.staged) { body.run_id = '20000101-000000-import'; body.init_image_file = 'import.png'; }
 
@@ -3187,10 +3175,10 @@ function handleInpaint(req, res) {
     'from PIL import Image',
     'img = Image.open(sys.argv[1]).convert("RGBA")',
     '_, _, _, a = img.split()',
-    'mask = a.point([0] + [255]*255)',  // 0→black(keep), 1..255→white(inpaint)
+    'mask = a',  // Preserve feathered alpha as grayscale; 0=keep, 255=inpaint.
     'if mask.getbbox():',
     '    mask.save(sys.argv[2])',
-    '    print("ok %.5f %d %d" % (mask.histogram()[255] / float(mask.size[0] * mask.size[1]), mask.size[0], mask.size[1]))',
+    '    print("ok %.5f %d %d" % ((sum(mask.histogram()) - mask.histogram()[0]) / float(mask.size[0] * mask.size[1]), mask.size[0], mask.size[1]))',
     'else:',
     '    print("blank")',
   ].join('\n');
@@ -3200,9 +3188,10 @@ function handleInpaint(req, res) {
     maskConvResult = execFileSync('python3', ['-c', MASK_PY, maskRawPath, maskPath],
       { timeout: 15000 }).toString().trim();
     try { fs.unlinkSync(maskRawPath); } catch (_) {}
-  } catch (_) {
-    // PIL unavailable or image unreadable — fall back to raw RGBA PNG (sd-cli handles RGBA)
-    try { fs.renameSync(maskRawPath, maskPath); } catch (_) {}
+  } catch (e) {
+    // Never let a failed conversion silently turn erased RGB pixels into a full mask.
+    for (const f of [maskRawPath, maskPath, srcInfo.temp].filter(Boolean)) { try { fs.unlinkSync(f); } catch (_) {} }
+    return res.status(400).json({ error: 'Could not convert mask alpha channel: ' + e.message, gate: 'mask-conversion' });
   }
 
   if (maskConvResult === 'blank') {
@@ -3435,6 +3424,7 @@ app.post('/api/actions/outpaint', (req, res) => {
   const body = { ...(req.body || {}) };
   if (!body.image_id && !body.staged_id) return res.status(400).json({ error: 'image_id or staged_id is required' });
   const src = resolveImageSource(body.staged_id ? { staged_id: body.staged_id } : { image_id: body.image_id });
+  cleanupRejectedSource(res, src);
   // Extension Prompt: describes only the NEW area; used instead of the main prompt when given.
   const usedExtensionPrompt = typeof body.extension_prompt === 'string' && !!body.extension_prompt.trim();
   if (usedExtensionPrompt) body.prompt = body.extension_prompt.trim();
@@ -3589,8 +3579,8 @@ function queueWithProgress(v) {
   return v;
 }
 function DexProgress(job) {
-  const p = job.progress;
-  return p && typeof p === 'object' ? { percent: p.totalPercent, estimated: true } : null;
+  const stage = EC.deriveStage(job, sdLogTailForJob(job));
+  return { percent: stage.percent, estimated: false, label: stage.label };
 }
 app.get('/api/queues/:id', (req, res) => {
   const v = queueWithProgress(queueRunner.get(req.params.id));
@@ -3866,20 +3856,21 @@ app.get('/api/doctor', async (req, res) => {
   res.json({ overall: worst, checkedAt: new Date().toISOString(), rows });
 });
 
-// Tail of the sd-cli log of a RUNNING edit job (real sampling steps live here).
-// The run dir is the newest -img2img/-inpaint dir created since the job started.
+// Tail of the actual sd-cli log for Create and Edit sampling progress.
+// Create refreshes its run directory for each sequential image.
 function sdLogTailForJob(job) {
-  if (!job || job.status !== 'running' || !['img2img', 'inpaint', 'outpaint'].includes(job.commandAction)) return '';
+  if (!job || job.status !== 'running' || !['img2img', 'inpaint', 'outpaint', 'controlled-generate'].includes(job.commandAction)) return '';
+  const controlled = job.commandAction === 'controlled-generate';
   try {
-    if (!job._runDir) {
-      const suffix = job.commandAction === 'img2img' ? '-img2img' : '-inpaint';
-      const since = (job.startedRunningAt || job.createdAt) - 3000;
+    if (controlled || !job._runDir) {
+      const suffix = controlled ? '-controlled-' + job.requestParams.target : job.commandAction === 'img2img' ? '-img2img' : '-inpaint';
+      const since = (controlled && job.progress && job.progress.currentRunStartedAt || job.startedRunningAt || job.createdAt) - 3000;
       const hit = fs.readdirSync(RUNS_DIR).filter(n => n.endsWith(suffix) && /^20\d{6}-\d{6}-/.test(n))
         .map(n => ({ n, t: fs.statSync(path.join(RUNS_DIR, n)).birthtimeMs })).filter(x => x.t >= since).sort((a, b) => b.t - a.t)[0];
       if (hit) job._runDir = path.join(RUNS_DIR, hit.n);
     }
     if (!job._runDir) return '';
-    const f = path.join(job._runDir, 'remote-stdout.log');
+    const f = path.join(job._runDir, controlled ? 'remote-command.log' : 'remote-stdout.log');
     const st = fs.statSync(f), n = Math.min(st.size, 24000);
     const fd = fs.openSync(f, 'r');
     try { const b = Buffer.alloc(n); fs.readSync(fd, b, 0, n, st.size - n); return b.toString('utf8'); } finally { fs.closeSync(fd); }
@@ -3969,7 +3960,7 @@ app.get('/api/jobs/:jobId', (req, res) => {
     nativeBatch: !!job.nativeBatch,
     nativeFallback: !!job.nativeFallback,
     sourceImageId: job.sourceImageId || null,
-    progressEstimated: job.commandAction === 'controlled-generate',
+    progressEstimated: false,
     resource: job.status === 'queued' && job.waitingForLease ? { waiting: true, position: arbiter.position(job.id), blocked_reason: arbiter.state().blocked_reason } : null,
     generic: jobStore.get(job.id),
     // Truthful stage: step N/M only when sd-cli actually reported it; otherwise stage text without a percentage.

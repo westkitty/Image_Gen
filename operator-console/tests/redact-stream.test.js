@@ -44,3 +44,25 @@ test('redact_stream: carriage-return progress updates pass through unchanged and
 test('redact_stream: empty prompt arguments change nothing', () => {
   assert.equal(run('hello world\n', '', ''), 'hello world\n');
 });
+
+
+test('redact_stream: escaped JSON multiline quotes and Unicode are redacted without corrupting the response', () => {
+  const prompt = 'canary-rev18-quoted "heron"\ncanary-rev18-snow 雪';
+  const negative = 'canary-rev18-negative "cat"';
+  const input = JSON.stringify({ prompt, negative_prompt: negative, images: ['aGVsbG8='], seed: 123 });
+  const out = run(input, prompt, negative);
+  assert.ok(!/canary-rev18|heron|cat|雪/.test(out), out);
+  const parsed = JSON.parse(out);
+  assert.deepEqual(parsed.images, ['aGVsbG8=']); assert.equal(parsed.seed, 123);
+});
+
+
+test('JSON mode preserves binary image strings even when they contain a short prompt', () => {
+  const payload = { prompt: 'cat', negative_prompt: 'dog', images: ['AAcatAA='], data: [{ b64_json: 'AAdogAA=' }], info: 'cat in a room' };
+  const r = spawnSync('python3', [SCRIPT, '--json', 'cat', 'dog'], { input: 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n' + JSON.stringify(payload), encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const parsed = JSON.parse(r.stdout.slice(r.stdout.indexOf('{')));
+  assert.deepEqual(parsed.images, payload.images); assert.deepEqual(parsed.data, payload.data);
+  assert.equal(parsed.prompt, '[REDACTED]'); assert.equal(parsed.negative_prompt, '[REDACTED]');
+  assert.equal(parsed.info, '[REDACTED] in a room');
+});

@@ -314,7 +314,7 @@ Shown in **System → Truth status**, `GET /api/system-info` (`capabilities`), a
 - **Wildcard Banks**: 15 banks vendored from `westkitty/He-Maker` with SHA-256 provenance in `HE_MAKER_PROVENANCE.json` plus 6 native banks (21 total). Supports `__bank__` syntax with generation-time expansion, recursion limits, and live prompt autocomplete.
 - **Extra Networks & Active Resource Chips**: Tabbed browser for LoRAs with family compatibility badges, trigger words, and weight sliders. Honest empty state for embeddings without local weights. Interactive Active Resource Chips beneath the prompt input show token counts, weight adjustments, and one-click removal.
 - **Multi-Output Hero Workspace**: Dominant hero display paired with a vertical filmstrip rail on desktop/tablet (horizontal on mobile), keyboard arrow navigation, and sibling promotion. Fully verified with SD1.5 quantity 3 and fresh MFLUX quantity 2 generations.
-- **Native Apple Vision Detailer**: MacBook-native Swift binary (`vision-detailer`) detects face, person, or derived hands ROI locally using macOS Vision. Inpaint pipeline runs on Big Mac with zero retention, while `image-meta.json` records `detailed_from` and `operation: detailer` in canonical lineage.
+- **Native Apple Vision Detailer**: MacBook-native Swift binary (`vision-detailer`) detects face, person, or hand landmark regions locally using macOS Vision. Inpaint runs on Big Mac with ephemeral input/output cleanup and saving-off raw generation logging disabled, while `image-meta.json` records `detailed_from` and `operation: detailer` in canonical lineage.
 - **Browser Visual Verification**: Real Chromium verification captures stored in `output/playwright/`: desktop 1440×900 (`browser-qa-desktop-1440.png`), mobile 390×844 (`browser-qa-mobile-390.png`), models tab (`browser-qa-models-tab.png`), hero workspace with siblings (`browser-qa-hero-workspace-siblings.png`), and live vision face mask preview (`browser-qa-detailer-face.png`).
 
 
@@ -381,3 +381,7 @@ the HF cache on wc2tb, `OPERATIONAL_STATE.md`, run metadata.
 4. `curl -s http://127.0.0.1:31337/api/system-info` and `/api/capabilities`.
 5. Trust live evidence over prose. Record drift in `OPERATIONAL_STATE.md` rather
    than rewriting its history.
+
+## Revision 18 verification handoff
+
+Current uncommitted repairs preserve feather alpha, show only backend progress, guard async image/job ownership, reject stale Drama profiles, remove rejected staged-image working copies, and apply attenuation-only speech levels consistently. The Detailer modal keeps progress/errors visible and contains keyboard focus. Final gates: 259/259 unit, Edit 21/21, Voice/Drama 7/7, chained 21+7; installed Brave override, natural exits, no test-owned process candidates. Acceptance remains VERIFIED WITH EXPLICIT BLOCKERS. See OPERATIONAL_STATE Revision 18 and output/rev18/BUGS.md for current evidence, preserved failures/exposures and unexercised live paths.

@@ -1,0 +1,20 @@
+[
+  {
+    "gate": "edit",
+    "command": "npm run test:browser:edit",
+    "exit": 1,
+    "log": "output/rev18/gates/dex-rev18-closure-v16-edit.log"
+  },
+  {
+    "gate": "voice",
+    "command": "npm run test:browser:voice",
+    "exit": 0,
+    "log": "output/rev18/gates/dex-rev18-closure-v16-voice.log"
+  },
+  {
+    "gate": "chain",
+    "command": "npm run test:browser",
+    "exit": 1,
+    "log": "output/rev18/gates/dex-rev18-closure-v16-chain.log"
+  }
+]

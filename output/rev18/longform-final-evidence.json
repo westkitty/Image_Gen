@@ -1,0 +1,91 @@
+{
+  "ui_observed": [
+    "2960 characters",
+    "Generating chunk 3/4",
+    "Transferring and stitching 4 chunks",
+    "212.873s canonical WAV",
+    "playback paused=false, readyState=3",
+    "4 chunk lineage expanded",
+    "Library entry observed"
+  ],
+  "download": "/Users/andrew/Downloads/20261003-040341-kokoro-long-form.wav",
+  "response": {
+    "job_id": "03815130-c2a2-4223-9716-bf713108dfac",
+    "status": "COMPLETE",
+    "operation": "long-form",
+    "worker": "kokoro",
+    "gate": null,
+    "error": null,
+    "progress": {
+      "phase": "complete",
+      "chunk": 4,
+      "total": 4
+    },
+    "label": "Complete",
+    "artifact": {
+      "artifact_id": "20261003-040341-kokoro-long-form.wav",
+      "url": "/api/media/20261003-040341-kokoro-long-form.wav",
+      "download_url": "/api/media/20261003-040341-kokoro-long-form.wav/download",
+      "duration": 212.873,
+      "sha256": "fa8a94becaede3c6587357a9420b495335abdede1f0ca4a6e72da28c798431b3",
+      "bytes": 10217948,
+      "meta": {
+        "operation": "long-form",
+        "sample_rate": 24000,
+        "channels": 1,
+        "reference_used": false,
+        "items": 4,
+        "language": "a",
+        "voice": "af_heart",
+        "speed": 1,
+        "long_form": {
+          "chunks": 4,
+          "lineage": [
+            {
+              "index": 0,
+              "duration": 57.2,
+              "sha256": "850dc93bc884301bacdea5c7398c7edfa6fd815d1a3e4757634e523b1354ba20",
+              "sample_rate": 24000,
+              "chars": 799,
+              "boundary": "paragraph"
+            },
+            {
+              "index": 1,
+              "duration": 64.325,
+              "sha256": "99e3472e373297f5855f928ee17e0c6122e85188703ae31ef6bc232e8e055f85",
+              "sample_rate": 24000,
+              "chars": 900,
+              "boundary": "paragraph"
+            },
+            {
+              "index": 2,
+              "duration": 57.5,
+              "sha256": "c6e983a9538dffe156ecc362a15b78aa90df04765f16276e97523ee9c12a8dce",
+              "sample_rate": 24000,
+              "chars": 789,
+              "boundary": "paragraph"
+            },
+            {
+              "index": 3,
+              "duration": 35.05,
+              "sha256": "f0afb4aa9971a9bd4d68316bcbf9eea59b7cefa12d3effcd610e40195cfaf76f",
+              "sample_rate": 24000,
+              "chars": 466,
+              "boundary": "end"
+            }
+          ]
+        },
+        "profile_id": "vp-685d408378",
+        "profile_name": "Rev18 Evidence Preset",
+        "engine": "kokoro",
+        "profile_fingerprint": "a32011858a9f0e14",
+        "seed": 1599242399,
+        "delivery": {
+          "requested": false,
+          "applied": false
+        },
+        "source_chars": 2960
+      }
+    }
+  }
+}

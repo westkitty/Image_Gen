@@ -1,0 +1,16 @@
+{
+  "source": "20261002-224336-controlled-sd15-s311784387-controlled-sd15.png",
+  "output": "20261002-225501-inpaint-inpaint_20261002-225501.png",
+  "mask_size": [
+    512,
+    384
+  ],
+  "mask_levels": 256,
+  "outside_pixels": 188518,
+  "outside_changed": 0,
+  "outside_max_diff": 0,
+  "dimensions": [
+    512,
+    384
+  ]
+}

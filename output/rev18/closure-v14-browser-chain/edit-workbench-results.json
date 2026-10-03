@@ -1,0 +1,112 @@
+[
+ [
+  "PASS",
+  "provenance: Edit carries the SELECTED image's parameters, not the Create form",
+  3198
+ ],
+ [
+  "PASS",
+  "privacy on: stored prompt is recalled; different image → its own values",
+  1606
+ ],
+ [
+  "PASS",
+  "img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result",
+  6597
+ ],
+ [
+  "FAIL",
+  "failures are visible with stage + actual error; polling loss offers a safe retry",
+  "page.waitForSelector: Target page, context or browser has been closed\nCall log:\n\u001b[2m  - waiting for locator('[data-edit-results]') to be visible\u001b[22m\n"
+ ],
+ [
+  "FAIL",
+  "Run never fails silently: blocked state explains itself and click surfaces the reason",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "inpaint alignment (fx-square.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "inpaint alignment (fx-landscape.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "inpaint alignment (fx-portrait.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "fullscreen: sources/results/library open the viewer; Esc closes; inpaint canvas never does",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "Create output hero image opens fullscreen",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "Detailer: preview/run use the selected targets, empty result is explained, stale preview is dropped, mask goes to inpaint untouched",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "every screen renders in all three shell layouts without script errors (incl. Drama/Voice/Edit)",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "both Edit layouts render the SAME state; preference persists",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "resources: LoRAs visible in Create and Edit, weight changes are structured, incompatible ones excluded",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "model picker: concise, grouped, searchable",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "presets: per-operation, versioned, privacy-aware, legacy migrated",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "saving off: both browser storage areas exclude current edit prompt and negative after preset save and reload",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "Detailer dialog traps focus, closes with Escape, and restores the opener",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "Detailer keeps truthful job progress visible until the canonical result is ready",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "responsive @375px: no horizontal overflow on Create/Edit/Library",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "responsive @768px: no horizontal overflow on Create/Edit/Library",
+  "browser.newContext: Target page, context or browser has been closed"
+ ],
+ [
+  "FAIL",
+  "responsive @1280px: no horizontal overflow on Create/Edit/Library",
+  "browser.newContext: Target page, context or browser has been closed"
+ ]
+]

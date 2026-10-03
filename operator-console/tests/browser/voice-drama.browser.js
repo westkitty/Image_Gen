@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs'); const path = require('path');
 const { chromium } = require('playwright-core');
 const { startServer, makeWav, runner, launchBrowser, runCleanups } = require('./helpers');
-const OUT = path.join(__dirname, '..', '..', '..', 'output', 'playwright'); fs.mkdirSync(OUT, { recursive: true });
+const OUT = process.env.DEX_BROWSER_OUTPUT_DIR || path.join(__dirname, '..', '..', '..', 'output', 'playwright'); fs.mkdirSync(OUT, { recursive: true });
 const SCRIPT = 'INT. WAREHOUSE - NIGHT\n\nTIGER: I warned you.\nCODEC: [quietly] I know.\n\nThe rain hammers the roof.\n\n[pause 2s]\nTIGER (angry): Then why come back?\n\nEXT. ROOFTOP - DAWN\n\nNARRATOR: And so it ended.';
 const { results, test, phase, exitCode } = runner('voice-drama');
 
@@ -14,7 +14,7 @@ const { results, test, phase, exitCode } = runner('voice-drama');
   const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer(31931);
   const browser = await launchBrowser(chromium);
   const made = { profiles: [], projects: [] };
-  const api = async (m, r, b) => { const x = await fetch(srv.base + r, { method: m, headers: { 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); return x.json(); };
+  const api = async (m, r, b) => { const x = await fetch(srv.base + r, { method: m, signal: AbortSignal.timeout(5000), headers: { 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); return x.json(); };
   const open = async (opts = {}) => {
     const ctx = await browser.newContext({ viewport: { width: opts.width || 1280, height: opts.height || 900 } }), page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(String(e)));
@@ -22,26 +22,25 @@ const { results, test, phase, exitCode } = runner('voice-drama');
     return { ctx, page, errors };
   };
   try {
-    // leftovers from an interrupted earlier run
-    for (const p of (await api('GET', '/api/voice/profiles')).profiles) if (p.name.startsWith('ZZ-UI-')) await api('DELETE', '/api/voice/profiles/' + p.id);
-    for (const p of (await api('GET', '/api/drama/projects')).projects) if (p.title.startsWith('ZZ-UI-') || p.title === 'Untitled drama') await api('DELETE', '/api/drama/projects/' + p.id);
+    const existingProfiles = new Set((await api('GET', '/api/voice/profiles')).profiles.map(p => p.id));
     await test('Voice profiles: designed + preset voices, validation, capability truth, direction gating, long-form estimate', async () => {
       const { ctx, page, errors } = await open();
       await page.evaluate(() => __dex.setScreen('voice')); await page.waitForSelector('[data-voice-profiles]'); await page.waitForFunction(() => __dex.vp && __dex.vp.profiles);
       await page.click('[data-new-voice-button]');
-      await page.click('[data-new-type="designed"]'); await page.fill('[data-new-name]', 'ZZ-UI-Designed');
+      await page.click('[data-new-type="designed"]'); await page.waitForSelector('[data-new-voice] textarea'); await page.fill('[data-new-name]', 'ZZ-UI-Designed');
       await page.fill('[data-new-voice] textarea', 'a calm older woman with a warm slow voice and a slight rasp');
-      await page.click('[data-create-voice]'); await page.waitForSelector('[data-profile-editor]');
+      await page.waitForFunction(() => __dex.vp.newForm.name === 'ZZ-UI-Designed' && __dex.vp.newForm.description.length > 0);
+      await page.click('[data-create-voice]'); await page.waitForSelector('[data-profile-editor]').catch(async e => { console.error('Profile creation UI:', await page.locator('[data-voice-profiles]').innerText()); throw e; });
       let ed = await page.innerText('[data-profile-editor]'); assert.match(ed, /ready to render/); assert.match(ed, /VALID/i);
       assert.equal(await page.isEnabled('[data-profile-render] input[placeholder*="whispering"]'), true, 'VoiceDesign honors delivery directions');
       assert.match(await page.$eval('[data-engine-caps]', e => e.textContent), /Delivery \/ performance direction/);
       await page.fill('[data-profile-render] textarea', 'word '.repeat(1200));
       await page.waitForFunction(() => /long-form/.test(document.querySelector('[data-profile-render]').innerText));
-      await page.click('[data-new-voice-button]'); await page.click('[data-new-type="preset"]'); await page.fill('[data-new-name]', 'ZZ-UI-Preset'); await page.click('[data-create-voice]');
+      await page.click('[data-new-voice-button]'); await page.click('[data-new-type="preset"]'); await page.waitForSelector('[data-new-voice] select'); await page.fill('[data-new-name]', 'ZZ-UI-Preset'); await page.waitForFunction(() => __dex.vp.newForm.name === 'ZZ-UI-Preset'); await page.click('[data-create-voice]');
       await page.waitForSelector('[data-profile-editor]:has-text("ZZ-UI-Preset")');
       assert.equal(await page.isEnabled('[data-profile-render] input[placeholder*="unavailable"]'), false, 'Kokoro cannot honor direction → disabled, with explanation');
       assert.match(await page.innerText('[data-profile-render]'), /not supported by Kokoro/i);
-      const profs = (await api('GET', '/api/voice/profiles')).profiles; profs.filter(p => p.name.startsWith('ZZ-UI-')).forEach(p => made.profiles.push(p.id));
+      const profs = (await api('GET', '/api/voice/profiles')).profiles; profs.filter(p => !existingProfiles.has(p.id) && p.name.startsWith('ZZ-UI-')).forEach(p => made.profiles.push(p.id));
       assert.equal(made.profiles.length, 2, JSON.stringify(profs.map(p => p.name))); assert.deepEqual(errors, []);
       await page.screenshot({ path: path.join(OUT, 'voice-profiles.png') }); await ctx.close();
     });
@@ -49,9 +48,9 @@ const { results, test, phase, exitCode } = runner('voice-drama');
     await test('Cloned voice: invalid until a sample WITH transcript is approved; multiple samples; active sample; remove', async () => {
       const { ctx, page } = await open();
       await page.evaluate(() => { __dex.setScreen('voice'); });
-      await page.waitForSelector('[data-voice-profiles]'); await page.click('[data-new-voice-button]'); await page.click('[data-new-type="cloned"]'); await page.fill('[data-new-name]', 'ZZ-UI-Clone'); await page.click('[data-create-voice]');
+      await page.waitForSelector('[data-voice-profiles]'); await page.click('[data-new-voice-button]'); await page.click('[data-new-type="cloned"]'); await page.waitForFunction(() => __dex.vp.newForm.type === 'cloned'); await page.waitForSelector('[data-new-voice] textarea, [data-new-voice] select', { state: 'detached' }); await page.fill('[data-new-name]', 'ZZ-UI-Clone'); await page.waitForFunction(() => __dex.vp.newForm.name === 'ZZ-UI-Clone'); await page.click('[data-create-voice]');
       await page.waitForSelector('[data-profile-editor]:has-text("ZZ-UI-Clone")');
-      const pid = (await api('GET', '/api/voice/profiles')).profiles.find(p => p.name === 'ZZ-UI-Clone').id; made.profiles.push(pid);
+      const pid = (await api('GET', '/api/voice/profiles')).profiles.find(p => !existingProfiles.has(p.id) && p.name === 'ZZ-UI-Clone').id; made.profiles.push(pid);
       assert.match(await page.innerText('[data-profile-validation]'), /add at least one reference sample/);
       for (const [i, hz] of [[1, 220], [2, 330]]) {
         await page.setInputFiles('[data-profile-editor] input[type=file]', { name: `s${i}.wav`, mimeType: 'audio/wav', buffer: makeWav(5, hz) });
@@ -72,6 +71,44 @@ const { results, test, phase, exitCode } = runner('voice-drama');
       await ctx.close();
     });
 
+    await test('real reference uploads: malformed, short and silent rejected; clipped sample shows warnings', async () => {
+      const { ctx, page, errors } = await open();
+      const p = (await api('POST', '/api/voice/profiles', { name: 'ZZ-UI-Reference-Edges', type: 'cloned' })).profile;
+      made.profiles.push(p.id);
+      await page.evaluate(() => __dex.setScreen('voice'));
+      await page.waitForSelector('[data-profile="' + p.id + '"]');
+      await page.click('[data-profile="' + p.id + '"]');
+      await page.waitForSelector('[data-profile-editor]');
+      const input = '[data-profile-editor] input[type=file]';
+      const junkResponse = page.waitForResponse(r => r.url().includes('/api/staging?') && r.request().method() === 'POST');
+      await page.setInputFiles(input, { name: 'malformed.wav', mimeType: 'audio/wav', buffer: Buffer.from('not audio') });
+      assert.equal((await junkResponse).status(), 400);
+      await page.waitForFunction(() => /empty or truncated/.test(document.body.innerText));
+      for (const [name, buffer, message] of [['short', makeWav(0.2), 'shorter than 0.5 s'], ['silent', makeWav(5, 220, 24000, 0), 'all silence']]) {
+        await page.setInputFiles(input, { name: name + '.wav', mimeType: 'audio/wav', buffer });
+        await page.waitForSelector('[data-pending-sample]');
+        await page.fill('[data-pending-sample] textarea', 'Synthetic sample fixture.');
+        const response = page.waitForResponse(r => r.url().endsWith('/samples') && r.request().method() === 'POST');
+        await page.click('[data-pending-sample] button:has-text("Approve")');
+        assert.equal((await response).status(), 400);
+        await page.waitForFunction(m => document.body.innerText.includes(m), message);
+        assert.equal((await api('GET', '/api/voice/profiles/' + p.id)).profile.samples.length, 0);
+        await page.click('[data-pending-sample] button:has-text("Discard")');
+        await page.waitForSelector('[data-pending-sample]', { state: 'detached' });
+      }
+      const clipped = makeWav(5);
+      for (let i = 44; i < clipped.length; i += 2) clipped.writeInt16LE(i % 4 ? 32767 : -32768, i);
+      await page.setInputFiles(input, { name: 'clipped.wav', mimeType: 'audio/wav', buffer: clipped });
+      await page.waitForSelector('[data-pending-sample]');
+      await page.fill('[data-pending-sample] textarea', 'Synthetic clipping fixture.');
+      await page.click('[data-pending-sample] button:has-text("Approve")');
+      await page.waitForSelector('[data-sample]');
+      assert.match(await page.innerText('[data-profile-editor]'), /clipping in 100.0%/);
+      const sample = (await api('GET', '/api/voice/profiles/' + p.id)).profile.samples[0];
+      assert.equal(sample.diagnostics.clip_ratio, 1);
+      assert.deepEqual(errors, []); await ctx.close();
+    });
+
     await test('Voice render state belongs to the voice that started it (no progress/result/error leaks onto another voice)', async () => {
       const { ctx, page, errors } = await open();
       let polls = 0;
@@ -82,9 +119,9 @@ const { results, test, phase, exitCode } = runner('voice-drama');
         r.fulfill({ json: { status: 'COMPLETE', label: 'Done', artifact: { artifact_id: 'art-own-1', url: '/api/media/none.wav', download_url: '/api/media/none.wav', duration: 1.5, sha256: 'ab'.repeat(32), meta: {} } } });
       });
       await page.evaluate(() => __dex.setScreen('voice')); await page.waitForSelector('[data-voice-profiles]'); await page.waitForFunction(() => __dex.vp && __dex.vp.profiles);
-      const mk = async name => { await page.click('[data-new-voice-button]'); await page.click('[data-new-type="preset"]'); await page.fill('[data-new-name]', name); await page.click('[data-create-voice]'); await page.waitForSelector(`[data-profile-editor]:has-text("${name}")`); };
+      const mk = async name => { await page.click('[data-new-voice-button]'); await page.click('[data-new-type="preset"]'); await page.waitForSelector('[data-new-voice] select'); await page.fill('[data-new-name]', name); await page.waitForFunction(n => __dex.vp.newForm.name === n, name); await page.click('[data-create-voice]'); await page.waitForSelector(`[data-profile-editor]:has-text("${name}")`); };
       await mk('ZZ-UI-Own-A'); await mk('ZZ-UI-Own-B');
-      (await api('GET', '/api/voice/profiles')).profiles.filter(x => x.name.startsWith('ZZ-UI-Own-')).forEach(x => made.profiles.push(x.id));
+      (await api('GET', '/api/voice/profiles')).profiles.filter(x => !existingProfiles.has(x.id) && x.name.startsWith('ZZ-UI-Own-')).forEach(x => made.profiles.push(x.id));
       // start on B (the profile created last is selected), then look at A while it runs
       await page.fill('[data-profile-render] textarea', 'Hello there.');
       await page.click('[data-render-speech]'); await page.waitForSelector('[data-render-progress]');
@@ -105,7 +142,7 @@ const { results, test, phase, exitCode } = runner('voice-drama');
       const { ctx, page, errors } = await open();
       await page.evaluate(() => __dex.setScreen('drama')); await page.waitForSelector('[data-drama-script-input]');
       await page.fill('[data-drama-script-input]', SCRIPT);
-      await page.click('[data-parse]'); await page.waitForSelector('[data-drama-cast]');
+      await page.click('[data-parse]'); await page.waitForSelector('[data-drama-cast]').catch(async e => { console.error('Drama parse UI:', await page.locator('[data-drama]').innerText()); throw e; });
       const pid = await page.evaluate(() => __dex.dm.current.id); made.projects.push(pid);
       assert.equal(await page.$$eval('[data-scene]', e => e.length), 2); assert.equal(await page.$$eval('[data-line]', e => e.length), 5);
       assert.match(await page.innerText('[data-drama-unresolved]'), /TIGER.*CODEC|CODEC.*TIGER/s);
@@ -146,7 +183,10 @@ const { results, test, phase, exitCode } = runner('voice-drama');
       // The model call itself is covered by unit tests with a fake chat; here we assert how the UI shows a refusal.
       await page.route('**/api/drama/projects', r => r.request().method() === 'POST' ? r.fulfill({ status: 422, json: { ok: false, mode: 'llm', errors: ['1 line(s) were not verbatim text from your script and were rejected: the model may not rewrite dialogue'], rejected: [{ index: 0, speaker: 'TIGER', text: 'I TOLD you so.' }] } }) : r.fallback());
       await page.evaluate(() => __dex.setScreen('drama')); await page.waitForSelector('[data-drama-script-input]');
-      await page.click('[data-parse-mode="llm"]'); await page.fill('[data-drama-script-input]', 'TIGER: I warned you.');
+      await page.click('[data-parse-mode="llm"]');
+      await page.waitForFunction(() => __dex.dm.mode === 'llm' && document.querySelector('[data-drama-script]').textContent.includes('The local model proposes'));
+      await page.fill('[data-drama-script-input]', 'TIGER: I warned you.');
+      await page.waitForFunction(() => __dex._dmText.script === 'TIGER: I warned you.');
       await page.click('[data-parse]'); await page.waitForSelector('[data-parse-error]');
       const txt = await page.innerText('[data-parse-error]');
       assert.match(txt, /not verbatim/); assert.match(txt, /rejected: TIGER: I TOLD you so\./);
@@ -161,7 +201,7 @@ const { results, test, phase, exitCode } = runner('voice-drama');
         for (const screen of ['voice', 'drama']) {
           await page.evaluate(([s, id]) => { if (s === 'drama') { __dex._dm(); __dex.dm.currentId = id; } __dex.setScreen(s); }, [screen, pid]);
           await page.waitForTimeout(700);
-          if (screen === 'voice') { await page.waitForSelector('[data-voice-profiles]'); const first = await page.$('[data-profile]'); if (first) await first.click(); await page.waitForTimeout(300); }
+          if (screen === 'voice') { await page.waitForSelector('[data-voice-profiles]'); const first = page.locator('[data-profile]').first(); if (await first.count()) await first.click(); await page.waitForTimeout(300); }
           else await page.waitForSelector('[data-drama]');
           const o = await page.evaluate(() => { const bad = []; document.querySelectorAll('[data-scroll-pane]').forEach(p => { if (p.scrollWidth > p.clientWidth + 1) bad.push(p.scrollWidth + '>' + p.clientWidth); }); return { doc: document.documentElement.scrollWidth - innerWidth, bad }; });
           assert.ok(o.doc <= 1 && !o.bad.length, `${screen}: ${JSON.stringify(o)}`);
@@ -171,9 +211,14 @@ const { results, test, phase, exitCode } = runner('voice-drama');
       });
     }
   } finally {
+    phase('cleanup owned projects');
     for (const id of made.projects) { try { await api('DELETE', '/api/drama/projects/' + id); } catch (_) {} }
+    phase('cleanup owned profiles');
     for (const id of made.profiles) { try { await api('DELETE', '/api/voice/profiles/' + id); } catch (_) {} }
-    await browser.close(); await srv.stop();
+    phase('close browser');
+    await browser.close();
+    phase('stop test server');
+    await srv.stop();
   }
   const failed = results.filter(r => r[0] === 'FAIL');
   console.log(`\n${results.length - failed.length}/${results.length} voice/drama browser checks passed`);

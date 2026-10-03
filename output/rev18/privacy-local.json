@@ -1,0 +1,9 @@
+[
+  {
+    "path": "sdcpp-workflow/state/drama/dp-ac1d5a10.json",
+    "canaries": [
+      "rev18dramaalpha",
+      "rev18dramabeta"
+    ]
+  }
+]
