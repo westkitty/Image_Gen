@@ -779,3 +779,210 @@ Create, Library, Batch, Edit Compact, Edit Studio, Enhance, Voice, Drama, Music,
 ## G. Git state
 
 Branch rev17-verification-handoff; HEAD efd9cdc3785fc73652f7fc7d816c5b3496858db4. Working tree dirty with uncommitted repairs and evidence. Remote checkpoint still matches HEAD. Local and remote main remain d713080bf7a220e15aa29d2d38979ce4acfaf959. No commit, push, merge, rebase, deploy or main mutation occurred.
+
+
+## Appendix B. Twenty suggested improvements for the overall project
+
+These are proposals, not completed work or newly confirmed defects. They are based on the recorded rev18 behavior, limitations and verification costs. Priority reflects reliability, privacy and reproducibility first. Effort is a relative planning estimate: Small means a bounded change; Medium means coordinated work across several paths. None authorizes model installation, historical-data deletion, system-service resets or deployment.
+
+A practical first sequence is 1–7 and 10, followed by 8–9 and 13–17. Measure performance before implementing 12. Items 18–20 make future acceptance and release work easier to review.
+
+### Improvement 01. Make native detector failures bounded and recoverable
+
+**Priority:** High. **Estimated effort:** Medium.
+
+**Reason:** The Apple Neural Engine wedge is still an acceptance gap. An ordinary successful hand detection does not prove recovery from a stalled native service.
+
+**Suggested change:** Run detection through a narrowly owned worker with a deadline, cancellation and a specific timeout result. Offer an explicit retry and retain the selected image/options. Do not reset unrelated native services or silently switch detectors.
+
+**Acceptance:** A controlled stalled worker terminates within the documented bound, leaves no owned child process or inference lease, and a subsequent ordinary detection succeeds.
+
+### Improvement 02. Turn the remaining interaction matrix into an executable specification
+
+**Priority:** High. **Estimated effort:** Medium.
+
+**Reason:** Representative responsive and keyboard tests pass, but the complete modal/popover/shell matrix remains unverified.
+
+**Suggested change:** Define the required surfaces, three shells, five viewports, keyboard paths, overlap rules and text-size checks in one versioned matrix. Automate measurable geometry/focus rules; reserve a finite checklist for visual judgments.
+
+**Acceptance:** Every required cell has a recorded result and evidence reference. Missing cells remain visibly unverified rather than being inferred from neighboring passes.
+
+### Improvement 03. Reconcile canonical storage without rewriting history
+
+**Priority:** High. **Estimated effort:** Medium.
+
+**Reason:** The unexplained disappearance of earlier canonical PNG files is unresolved and weakens replay and lineage confidence.
+
+**Suggested change:** Maintain a metadata-to-file consistency inventory with last-seen time and content digest. Distinguish missing files, broken references and intentionally deleted records. Offer diagnosis or an explicitly approved recovery path; do not recreate output as if it were the original.
+
+**Acceptance:** A removed owned fixture is reported as missing with its original identity preserved; existing images remain unchanged, and the diagnostic identifies the affected references.
+
+### Improvement 04. Make artifact publication atomic
+
+**Priority:** High. **Estimated effort:** Medium.
+
+**Reason:** Canonical output should become visible only after successful local transfer, decoding and metadata validation. The failure tests provide a starting point for strengthening this boundary.
+
+**Suggested change:** Transfer into an owned local temporary location, validate the artifact and its digest, then publish bytes and metadata through a recoverable transaction. Expose intermediate work as pending rather than complete.
+
+**Acceptance:** Interruption at each publication boundary leaves either a valid canonical artifact or an explicit recoverable pending/failure record, never a broken completed result.
+
+### Improvement 05. Expand privacy verification across all persistence boundaries
+
+**Priority:** High. **Estimated effort:** Medium.
+
+**Reason:** Current privacy closure is scoped to designated fresh files and an isolated browser; it is not a blanket certification.
+
+**Suggested change:** Use synthetic canaries across saving-on/off flows and inspect presets, both browser storage areas, durable media metadata, saved projects and owned local/remote logs. Encode intentional retention exceptions explicitly.
+
+**Acceptance:** Each supported saving policy has a measured retention contract. Unexpected canary persistence fails the relevant check, while intentionally saved content is recorded as an allowed exception.
+
+### Improvement 06. Give users an explicit historical-log retention policy
+
+**Priority:** High. **Estimated effort:** Small.
+
+**Reason:** Four historical raw remote prompt logs remain preserved; fixing new logging does not resolve retention of earlier exposures.
+
+**Suggested change:** Document which logs contain historical exposure, who owns them, why they are retained and how the user can choose archival, redaction or deletion. Any destructive cleanup must be separately authorized and leave a receipt without copying sensitive contents.
+
+**Acceptance:** The user can identify the affected logs and make an informed retention decision; no historical evidence is silently deleted or uploaded.
+
+### Improvement 07. Standardize job state and result contracts
+
+**Priority:** High. **Estimated effort:** Medium.
+
+**Reason:** Different UI and service paths must agree about queued, running, interrupted, failed and completed work, including what makes an artifact canonical.
+
+**Suggested change:** Define shared status and stage schemas with monotonic terminal transitions, stable failure codes, nullable percentages and explicit artifact validation state. Apply them at service boundaries before consolidating consumers.
+
+**Acceptance:** Contract checks reject invalid transitions or invented percentages; each UI path renders the same terminal result and failure reason for the same job.
+
+### Improvement 08. Make retries idempotent at submission and publication
+
+**Priority:** High. **Estimated effort:** Medium.
+
+**Reason:** The Drama retry case preserved its first take, but retries after ambiguous transport loss need a wider duplicate-prevention contract.
+
+**Suggested change:** Give a user submission an idempotency key and bind retries to that logical operation. Distinguish retrying a failed attempt from intentionally generating another take. Reconcile uncertain outcomes before creating a second canonical result.
+
+**Acceptance:** Repeated identical submissions after a simulated lost response resolve to one logical operation; deliberate new-take actions still produce distinct lineage.
+
+### Improvement 09. Preserve long-form work at safe resumable checkpoints
+
+**Priority:** Medium. **Estimated effort:** Medium.
+
+**Reason:** The controlled chunk-2 failure correctly produced no final artifact, but rerendering successful chunks can waste compute on longer scripts.
+
+**Suggested change:** Record validated chunk identities, text digests, engine/profile/settings identity and assembly state. Retain resumable intermediates under a bounded, explicit policy on the control/storage host. Resume only when those inputs match.
+
+**Acceptance:** A failed middle chunk can resume without regenerating matching completed chunks; changed text/settings invalidate only the affected checkpoints, and final assembly preserves order.
+
+### Improvement 10. Expose cleanup ownership and reconciliation in the Doctor view
+
+**Priority:** High. **Estimated effort:** Medium.
+
+**Reason:** Six owned remote directories were proved absent manually. Repeating that process should not require bespoke inspection.
+
+**Suggested change:** Record allocated temporary resources by job and host. Add a read-only view of cleanup pending/succeeded/failed states, with an exact-path reconciliation action restricted to owned resources after terminal jobs.
+
+**Acceptance:** An injected cleanup failure stays visible with its job/resource identity; safe reconciliation removes only the owned temporary resource and records in-band proof.
+
+### Improvement 11. Measure performance before choosing optimizations
+
+**Priority:** Medium. **Estimated effort:** Small.
+
+**Reason:** Correctness evidence is strong, but it does not quantify time spent queueing, transferring, loading models, sampling or assembling audio.
+
+**Suggested change:** Collect stage durations and bytes transferred using a small fixed set of local counters. Compare repeated matched fixtures on the same model/settings and report median plus variation. Exclude raw prompts from telemetry.
+
+**Acceptance:** Each proposed optimization has a baseline and a matched measurement; reported gains identify hardware, workload and uncertainty rather than relying on impressions.
+
+### Improvement 12. Reduce redraw work during editing
+
+**Priority:** Medium. **Estimated effort:** Medium.
+
+**Reason:** The repaired mask tools and preset application deserve smooth behavior on larger sources and compact layouts; no performance defect is asserted here.
+
+**Suggested change:** Profile mask strokes, pan/zoom and state-driven redraws with representative image sizes. Coalesce pointer-driven rendering to animation frames and redraw only affected layers when measurements justify it.
+
+**Acceptance:** Measured frame time and input latency improve on the same fixtures while brush coordinates, mask alpha, undo/redo and actual-pixel zoom remain identical.
+
+### Improvement 13. Make resource compatibility explainable and reproducible
+
+**Priority:** Medium. **Estimated effort:** Medium.
+
+**Reason:** Structured resource controls are tested, but no installed LoRA was available for actual compute acceptance.
+
+**Suggested change:** Show why a resource is compatible or excluded and capture its exact file digest, weight and backend capability in job lineage. Add a separately authorized fixture-based real render once an appropriate resource is available.
+
+**Acceptance:** A compatible resource is proved in an actual backend invocation and canonical result; incompatible resources produce a specific preflight reason, and replay identifies the same resource bytes.
+
+### Improvement 14. Promote provenance to a first-class replay contract
+
+**Priority:** High. **Estimated effort:** Medium.
+
+**Reason:** Current canonical recall/details and preset round trips pass. Reproducibility still needs an explicit distinction between available settings, ephemeral prompt text and missing inputs.
+
+**Suggested change:** Version the lineage schema and record backend/model/resource identities, seed, dimensions and parent/operation relationships. Label whether a recipe is replayable, settings-only or incomplete. Keep prompt-saving policy intact.
+
+**Acceptance:** The UI accurately explains what can be replayed, refuses unsupported exact-replay claims, and carries selected-output settings rather than unrelated Create-form values.
+
+### Improvement 15. Make capability truth consistent across all controls
+
+**Priority:** Medium. **Estimated effort:** Small.
+
+**Reason:** Kokoro renders tags but does not establish expressive direction support. Users need the same honest capability information wherever they select engines or profiles.
+
+**Suggested change:** Drive controls, help text and preflight checks from a shared capability descriptor covering direction support, references, seed behavior, chunk limits and supported operations. Avoid silently dropping requested features.
+
+**Acceptance:** Unsupported options are explained before submission; the result records what was requested and applied without retaining private direction text when saving is off.
+
+### Improvement 16. Clarify voice-reference quality decisions before approval
+
+**Priority:** Medium. **Estimated effort:** Small.
+
+**Reason:** Malformed, short and silent inputs reject correctly, while fully clipped input is accepted with a warning. The distinction should be understandable before use.
+
+**Suggested change:** Present measured duration, silence/clipping diagnostics and the engine-specific minimum requirements beside the pending sample. Separate hard rejection from quality warning, and allow preview/replacement without mutating the active sample.
+
+**Acceptance:** Users can distinguish invalid input from accepted poor-quality input; the selected active sample and transcript remain explicit throughout replace/remove flows.
+
+### Improvement 17. Strengthen Drama save, selection and retry feedback
+
+**Priority:** Medium. **Estimated effort:** Medium.
+
+**Reason:** Scene-only rendering and partial retry are verified, and the unsaved retry fixture disappearing on restart illustrates the importance of clear save-state feedback.
+
+**Suggested change:** Show saved/unsaved state, render scope, active take per line and which failed lines a retry will schedule. Offer explicit project saving and a policy-controlled draft recovery path without secretly persisting saving-off scripts.
+
+**Acceptance:** Before render/retry, the UI names the affected scene/lines; successful takes stay selected unless explicitly changed, and restart behavior matches the displayed saving policy.
+
+### Improvement 18. Give test diagnostics a stable browser-independent shape
+
+**Priority:** Medium. **Estimated effort:** Small.
+
+**Reason:** The in-app browser and Brave behaved differently under the available control tools, and earlier harness failures consumed acceptance time.
+
+**Suggested change:** Record browser/version, fixture identity, selector/accessibility snapshot, console errors and stage history in a bounded failure packet. Prefer semantic locators and event observation to timing polls; keep tool limitations distinct from product failures.
+
+**Acceptance:** A failed browser check produces enough bounded evidence to classify the failure without repeatedly regenerating output or changing production behavior to satisfy a broken harness.
+
+### Improvement 19. Separate immutable raw evidence from current summaries
+
+**Priority:** Medium. **Estimated effort:** Small.
+
+**Reason:** The publication-stage whitespace warnings came from preserved raw transcripts, while current summaries and manifests are snapshots with different scopes.
+
+**Suggested change:** Keep raw receipts immutable, with a manifest of their capture version and digests. Generate current summaries from receipts and record check exclusions explicitly. Distinguish raw-log formatting exceptions from authored-source validation.
+
+**Acceptance:** A reviewer can trace each summary claim to the exact receipt; raw evidence is unchanged, and a full staged check cannot be misrepresented as passing when exceptions exist.
+
+### Improvement 20. Create a release gate that preserves acceptance boundaries
+
+**Priority:** High. **Estimated effort:** Medium.
+
+**Reason:** The repair set is published, but two original acceptance blockers remain unverified. Commit success must not be confused with release completion.
+
+**Suggested change:** Define a release manifest listing required automated gates, live cases, known limitations, artifact identity and rollback target. Permit a documented preview release only under an explicit policy; reserve complete acceptance for satisfied required cases.
+
+**Acceptance:** A release can be evaluated from one manifest, unresolved required cases prevent a complete-acceptance claim, and rollback identifies a previously validated build rather than an arbitrary branch state.
