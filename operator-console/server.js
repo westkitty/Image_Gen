@@ -11,6 +11,8 @@ const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
 const { validateImage } = require('./image-validation');
 const { artifactReceipt, TERMINAL } = require('./job-contract');
+const { createWorldStore } = require('./world-project');
+const { createWorldBridge } = require('./world-bridge');
 const { createSystemInfo } = require('./system-info');
 const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime, targetVerification } = require('./capabilities');
 const { rulesForTarget, validateDimensions } = require('./dimension-policy');
@@ -40,6 +42,7 @@ const imageMeta = W.createImageMetaStore(path.join(STATE_DIR, 'image-meta.json')
 const jobStore = M.createJobStore(path.join(STATE_DIR, 'jobs.json'));
 const mediaStore = M.createMediaStore({ registryFile: path.join(STATE_DIR, 'media-artifacts.json') });
 try { mediaStore.ensureRoots(); } catch (_) {}
+const worldStore = createWorldStore({ root: path.join(STATE_DIR, 'world-projects') });
 const staging = M.createStaging({ root: path.join(STATE_DIR, 'staging') });
 setInterval(() => { try { staging.sweep(); } catch (_) {} }, 30 * 60 * 1000).unref();
 const HEAVY_ACTIONS = new Set(['controlled-generate', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test']);
@@ -3777,6 +3780,45 @@ app.get('/api/generic-jobs/:id', (req, res) => {
   res.json({ ...g, artifacts_detail: artifacts, waiting: g.status === 'QUEUED' ? { position: arbiter.position(g.job_id), blocked_reason: rs.blocked_reason } : null });
 });
 app.get('/api/generic-jobs', (req, res) => res.json({ jobs: jobStore.list({ media_kind: req.query.kind || undefined, status: req.query.status || undefined, limit: 100 }) }));
+
+// ---- Local WorldGen ----------------------------------------------------------
+// World projects keep durable lineage/stage truth; the bridge owns only the
+// heavy remote execution and never promotes SSH exit status to success.
+const worldBridge = createWorldBridge({ jobStore, arbiter, staging, mediaStore, worldStore, imageStore, stateDir: STATE_DIR, sshTarget: SSH_TARGET_NAME, log: m => console.log(m) });
+app.get('/api/world/workers', async (req, res) => {
+  try { res.json(await worldBridge.workers()); } catch (error) { res.status(503).json({ error: 'world worker probe failed', detail: String(error.message).slice(0, 180) }); }
+});
+app.get('/api/world/projects', (req, res) => res.json({ projects: worldStore.list() }));
+app.get('/api/world/projects/:id', (req, res) => {
+  const p = worldStore.get(req.params.id);
+  if (!p) return res.status(404).json({ error: 'World project not found' });
+  const artifacts = {};
+  for (const [slot, value] of Object.entries(p.artifacts || {})) {
+    const ids = Array.isArray(value) ? value : value ? [value] : [];
+    artifacts[slot] = ids.map(id => { const r = mediaStore.resolve(typeof id === 'string' ? id : id.artifact_id); return r ? { artifact_id: r.artifact_id, url: r.safe_url, mime: r.mime, bytes: r.bytes, sha256: r.sha256 } : id; });
+  }
+  res.json({ ...p, artifacts });
+});
+app.patch('/api/world/projects/:id', (req, res) => {
+  const p = worldStore.get(req.params.id);
+  if (!p) return res.status(404).json({ error: 'World project not found' });
+  if (req.body && req.body.viewerState && typeof req.body.viewerState === 'object') worldStore.setViewer(p.id, req.body.viewerState);
+  res.json(worldStore.get(p.id));
+});
+app.post('/api/world/projects', (req, res) => {
+  const body = req.body || {};
+  const result = worldBridge.start(String(body.mode || 'quick3d'), { sourceArtifactId: body.sourceArtifactId || body.imageId || body.image, parameters: body.parameters || {}, saveText: body.save_prompts === true });
+  if (result.error) return res.status(result.status || 400).json(result);
+  res.status(202).json(result);
+});
+app.post('/api/world/projects/:id/retry', (req, res) => {
+  const p = worldStore.get(req.params.id);
+  if (!p) return res.status(404).json({ error: 'World project not found' });
+  if (p.mode !== 'quick3d') return res.status(409).json({ error: 'Complete 360 retry is not yet integrated', gate: 'worker-unavailable' });
+  const result = worldBridge.start('quick3d', { sourceArtifactId: p.sourceArtifactId, parameters: p.parameters });
+  if (result.error) return res.status(result.status || 400).json(result);
+  res.status(202).json({ ...result, retriedFrom: p.id });
+});
 
 // Voice / Music / Video generation: capability-gated BEFORE any lease is taken.
 // Dormant workers fail immediately and truthfully; nothing is installed or downloaded.

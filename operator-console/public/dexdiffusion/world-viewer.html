@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DexDiffusion World Focus</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #05070b; }
+    #world-canvas { width: 100%; height: 100%; display: block; }
+    #world-hud { position: fixed; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 16px; }
+    #world-hud > * { pointer-events: auto; }
+    .panel { max-width: 460px; background: rgba(5,10,18,.86); border: 1px solid rgba(148,163,184,.25); border-radius: 10px; padding: 12px 14px; box-shadow: 0 12px 32px rgba(0,0,0,.32); }
+    .title { color: #e6edf5; font-weight: 750; font-size: 15px; }
+    .meta { color: #91a4b8; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; margin-top: 5px; line-height: 1.5; }
+    .error { color: #fca5a5; white-space: pre-wrap; }
+    button { border: 1px solid rgba(148,163,184,.3); background: rgba(15,23,42,.8); color: #dbeafe; border-radius: 6px; padding: 7px 10px; cursor: pointer; margin-right: 6px; }
+    button:hover { border-color: #38bdf8; }
+    #world-help { align-self: flex-start; color: #94a3b8; font-size: 11px; }
+  </style>
+  <script type="importmap">
+    {"imports":{"three":"./vendor/three.module.js","three/addons/":"./vendor/three-addons/","@sparkjsdev/spark":"./vendor/spark.module.js"}}
+  </script>
+</head>
+<body>
+  <canvas id="world-canvas" aria-label="DexDiffusion 3D world viewer"></canvas>
+  <div id="world-hud">
+    <div class="panel" id="world-status"><div class="title">Loading World Focus…</div><div class="meta">Resolving durable project and final PLY artifact.</div></div>
+    <div class="panel" id="world-help">WASD move · drag to look · R reset · F fullscreen · Esc releases pointer lock<br /><br /><button id="world-reset">Reset camera</button><button id="world-fullscreen">Fullscreen</button></div>
+  </div>
+  <script>
+    function showWorldViewerError(detail) {
+      const node = document.querySelector('#world-status');
+      if (node) node.innerHTML = '<div class="title">World Focus unavailable</div><div class="meta error">' + String(detail || 'module load failed').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])) + '</div>';
+    }
+    window.addEventListener('error', event => showWorldViewerError(event.error?.message || event.message));
+    window.addEventListener('unhandledrejection', event => showWorldViewerError(event.reason?.message || event.reason));
+  </script>
+  <script src="./world-viewer-legacy.js"></script>
+</body>
+</html>

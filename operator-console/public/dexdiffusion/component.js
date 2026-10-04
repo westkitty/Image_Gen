@@ -62,6 +62,7 @@ class Component extends DCLogic {
     backendOnline: false,
     runs: (() => { try { return JSON.parse(localStorage.getItem('dex_runs') || '[]'); } catch { return []; } })(),
     selectedRunId: '', selectedRunDetail: null, loadingRunDetail: false, runSearch: '',
+    worldProjects: [], worldLoading: false, worldSourceArtifact: '', worldWorkerStatus: null,
     assetQuery: '', serverStatusSummary: '', lastValidation: '',
     savePrompts: localStorage.getItem('dex_save_prompts') === 'true',
     toasts: [],
@@ -76,6 +77,7 @@ class Component extends DCLogic {
     this.pingBackend();
     this._pingTimer = setInterval(() => this.pingBackend(), 20000);
     this.loadRuns();
+    this.loadWorldProjects();
     this.loadModels();
     this.loadAssets();
     this.loadWildcards();
@@ -83,7 +85,7 @@ class Component extends DCLogic {
     this.loadSystemInfo();
   }
   componentWillUnmount() {
-    clearInterval(this._pingTimer); clearInterval(this._pollTimer);
+    clearInterval(this._pingTimer); clearInterval(this._pollTimer); clearInterval(this._worldPollTimer);
     this._pollGeneration = (this._pollGeneration || 0) + 1;
     for (const controller of this._jobWaitControllers || []) controller.abort();
     this._detailerDetectController?.abort();
@@ -186,12 +188,91 @@ class Component extends DCLogic {
   refreshAll() {
     this.pingBackend();
     this.loadRuns();
+    this.loadWorldProjects();
     this.loadModels();
     this.loadAssets();
     this.loadWildcards();
     this.checkOllama();
     this.loadSystemInfo();
     this.toast('Refreshed visible data', '#38bdf8');
+  }
+
+  async loadWorldProjects() {
+    this.setState({ worldLoading: true });
+    try {
+      const [projects, workers] = await Promise.all([
+        fetch(this.state.backendUrl + '/api/world/projects', { signal: AbortSignal.timeout(7000) }),
+        fetch(this.state.backendUrl + '/api/world/workers', { signal: AbortSignal.timeout(12000) }),
+      ]);
+      const p = projects.ok ? await projects.json() : { projects: [] };
+      const w = workers.ok ? await workers.json() : null;
+      this.setState({ worldProjects: p.projects || [], worldWorkerStatus: w, worldLoading: false });
+    } catch (_) { this.setState({ worldLoading: false }); }
+  }
+
+  async startWorld(mode, sourceArtifactId) {
+    const source = sourceArtifactId || this.state.worldSourceArtifact || (this.state.runs[0] && this.state.runs[0].imageFile);
+    if (!source) { this.toast('Select a canonical library image first', '#fbbf24'); return; }
+    this.setState({ worldLoading: true });
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/world/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, sourceArtifactId: source, parameters: { seed: 42 } }) });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { this.toast(body.error || 'World request rejected', '#ef4444'); this.setState({ worldLoading: false }); return; }
+      this.setScreen('world');
+      this.toast(mode === 'quick3d' ? 'Quick 3D queued' : 'Complete 360 recorded as blocked', mode === 'quick3d' ? '#38bdf8' : '#fbbf24');
+      await this.loadWorldProjects();
+      if (body.job_id) this.pollWorldJob(body.job_id);
+    } catch (e) { this.setState({ worldLoading: false }); this.toast('World request failed: ' + e.message, '#ef4444'); }
+  }
+
+  pollWorldJob(jobId) {
+    clearInterval(this._worldPollTimer);
+    let failures = 0;
+    this._worldPollTimer = setInterval(async () => {
+      try {
+        const r = await fetch(this.state.backendUrl + '/api/generic-jobs/' + encodeURIComponent(jobId), { signal: AbortSignal.timeout(6000) });
+        if (!r.ok) throw new Error('job ' + r.status);
+        const j = await r.json();
+        if (['COMPLETE', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(j.status)) {
+          clearInterval(this._worldPollTimer); await this.loadWorldProjects();
+          this.toast(j.status === 'COMPLETE' ? 'World artifact ready' : 'World job ' + j.status.toLowerCase(), j.status === 'COMPLETE' ? '#65d66e' : '#ef4444');
+        }
+      } catch (_) { if (++failures >= 5) clearInterval(this._worldPollTimer); }
+    }, 1200);
+  }
+
+  openWorldViewer(projectId) { window.open('/dexdiffusion/world-viewer.html?project=' + encodeURIComponent(projectId), '_blank', 'noopener'); }
+
+  buildWorldWorkspace() {
+    const h = React.createElement;
+    const s = this.state;
+    const runs = (s.runs || []).filter(r => r.imageFile);
+    const opts = runs.length ? runs.map(r => h('option', { key: r.imageFile, value: r.imageFile }, r.id + ' · ' + r.model)) : [h('option', { value: '' }, 'No canonical images loaded')];
+    const status = s.worldWorkerStatus;
+    const workerLine = status && status.workers ? status.workers.map(w => `${w.label}: ${w.status}`).join(' · ') : 'Worker status loading…';
+    return h('div', { style: { display: 'grid', gap: 14 } },
+      h('div', { style: { background: '#060a10', border: '1px solid rgba(148,163,184,.14)', borderRadius: 12, padding: 16 } },
+        h('div', { style: { fontSize: 18, color: '#f0f4f8', fontWeight: 750, marginBottom: 4 } }, 'World Projects'),
+        h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, marginBottom: 12 } }, 'Local WorldGen uses the shared heavy-inference lease. Quick 3D reconstructs the selected image; Complete 360 remains stage-truthful until alignment is integrated.'),
+        h('select', { value: s.worldSourceArtifact || (runs[0] && runs[0].imageFile) || '', onChange: e => this.setState({ worldSourceArtifact: e.target.value }), style: { width: '100%', maxWidth: 520, marginBottom: 10, border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
+        h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+          h('button', { onClick: () => this.startWorld('quick3d'), style: { border: '1px solid #38bdf866', background: '#38bdf616', color: '#38bdf8', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make 3D'),
+          h('button', { onClick: () => this.startWorld('complete360'), style: { border: '1px solid #f59e0b66', background: '#f59e0b16', color: '#fbbf24', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make World'),
+          h('button', { onClick: () => this.loadWorldProjects(), style: { border: '1px solid rgba(148,163,184,.2)', background: 'transparent', color: '#b8c7d6', borderRadius: 7, padding: '8px 12px', cursor: 'pointer' } }, 'Reload')
+        ),
+        h('div', { style: { marginTop: 12, color: '#70849a', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace" } }, workerLine)
+      ),
+      ...(s.worldProjects || []).map(p => {
+        const finalPly = p.artifacts && p.artifacts.finalPly;
+        const canOpen = Array.isArray(finalPly) ? finalPly.length > 0 : !!finalPly;
+        return h('div', { key: p.id, style: { background: '#060a10', border: '1px solid rgba(148,163,184,.12)', borderRadius: 10, padding: 13 } },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' } }, h('div', { style: { color: '#e2e8f0', fontWeight: 700 } }, p.mode + ' · ' + p.id), h('div', { style: { color: p.status === 'COMPLETE' ? '#65d66e' : p.status === 'FAILED' ? '#fca5a5' : '#fbbf24', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace" } }, p.status)),
+          h('div', { style: { color: '#8da0b4', fontSize: 11, marginTop: 7 } }, 'stage: ' + p.currentStage + ' · source: ' + (p.sourceArtifactId || 'none')),
+          p.failure ? h('div', { style: { color: '#fca5a5', fontSize: 11, marginTop: 6 } }, p.failure.stage + ': ' + (p.failure.error || 'failed')) : null,
+          h('div', { style: { display: 'flex', gap: 7, marginTop: 10 } }, canOpen ? h('button', { onClick: () => this.openWorldViewer(p.id), style: { border: '1px solid #a78bfa66', background: '#a78bfa16', color: '#c4b5fd', borderRadius: 7, padding: '6px 9px', cursor: 'pointer' } }, 'Open Focus') : null, p.status === 'FAILED' ? h('button', { onClick: () => this.startWorld(p.mode, p.sourceArtifactId), style: { border: '1px solid #f59e0b66', background: 'transparent', color: '#fbbf24', borderRadius: 7, padding: '6px 9px', cursor: 'pointer' } }, 'Retry') : null)
+        );
+      })
+    );
   }
 
   // ── Assets / LoRA (Extra Networks) ────────────────────────────
@@ -1132,7 +1213,10 @@ class Component extends DCLogic {
     const accent = version === 2 ? '#f59e0b' : version === 3 ? '#a78bfa' : '#38bdf8';
 
     // ── Library cards ──────────────────────────────────────────
-    const libraryCards = runs.length > 0 ? runs : [{ id: 'no runs yet', badge: '—', badgeColor: '#6060a0', badgeBg: 'rgba(80,80,160,.08)', model: 'run generate to start', size: '—', thumb: 'linear-gradient(135deg,#0a0a18,#141428)' }];
+    const libraryCards = runs.length > 0 ? runs.map(card => ({ ...card,
+      make3d: () => this.startWorld('quick3d', card.imageFile),
+      makeWorld: () => this.startWorld('complete360', card.imageFile),
+    })) : [{ id: 'no runs yet', badge: '—', badgeColor: '#6060a0', badgeBg: 'rgba(80,80,160,.08)', model: 'run generate to start', size: '—', thumb: 'linear-gradient(135deg,#0a0a18,#141428)' }];
 
     // ── Status chips ──────────────────────────────────────────
     const backendDot = backendOnline ? '#65d66e' : '#ef4444';
@@ -1864,13 +1948,13 @@ class Component extends DCLogic {
       isV1Str: String(version===1), isV2Str: String(version===2), isV3Str: String(version===3),
       setV1: ()=>this.setVersion(1), setV2: ()=>this.setVersion(2), setV3: ()=>this.setVersion(3),
       isCreate: screen==='create', isBatch: screen==='batch', isEdit: screen==='edit',
-      isEnhance: screen==='enhance', isLibrary: screen==='library', isModels: screen==='models', isSystem: screen==='system',
+      isEnhance: screen==='enhance', isLibrary: screen==='library', isWorld: screen==='world', isModels: screen==='models', isSystem: screen==='system',
       isCreateStr: String(screen==='create'), isBatchStr: String(screen==='batch'),
       isEditStr: String(screen==='edit'), isEnhanceStr: String(screen==='enhance'),
-      isLibraryStr: String(screen==='library'), isModelsStr: String(screen==='models'), isSystemStr: String(screen==='system'),
+      isLibraryStr: String(screen==='library'), isWorldStr: String(screen==='world'), isModelsStr: String(screen==='models'), isSystemStr: String(screen==='system'),
       navCreate: ()=>this.setScreen('create'), navBatch: ()=>this.setScreen('batch'),
       navEdit: ()=>this.setScreen('edit'), navEnhance: ()=>this.setScreen('enhance'),
-      navLibrary: ()=>this.setScreen('library'), navModels: ()=>this.setScreen('models'), navSystem: ()=>this.setScreen('system'),
+      navLibrary: ()=>this.setScreen('library'), navWorld: ()=>this.setScreen('world'), navModels: ()=>this.setScreen('models'), navSystem: ()=>this.setScreen('system'),
       // Create form
       prompt, negPrompt, steps: String(steps), cfg: String(cfg), seed: String(seed),
       width: String(width), height: String(height), promptLen: String(prompt.length),
@@ -1929,7 +2013,7 @@ class Component extends DCLogic {
       savePrompts, onSavePrompts: e=>{ const v=e.target.checked; this.setState({savePrompts:v}); localStorage.setItem('dex_save_prompts',String(v)); },
       onRefreshRuns: ()=>this.loadRuns(), onRefreshAll: ()=>this.refreshAll(), onDiscoverAssets: ()=>this.discoverAssets(),
       settingsDrawer, runInspector, truthStatusPanel, systemInfoPanel, keyboardHelp, validationPanel,
-      libraryCards, runsCount: String(runs.length), jobLogDisplay,
+      libraryCards, runsCount: String(runs.length), jobLogDisplay, worldWorkspace: this.buildWorldWorkspace(),
       libraryFilters, libraryLoadMore, extraNetworksDisplay,
       assetCountsDisplay: (assets.loras || []).length + ' LoRAs · ' + (assets.vaes || []).length + ' VAEs · ' + (assets.controlnets || []).length + ' ControlNets',
       onHiresSubmit: ()=>this.onHiresSubmit(),
