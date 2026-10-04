@@ -199,6 +199,86 @@ def views(args: argparse.Namespace) -> dict:
     return result
 
 
+def read_binary_ply(path: Path) -> list[tuple[float, float, float, int, int, int]]:
+    data = path.read_bytes()
+    marker = b"end_header\n"
+    end = data.find(marker)
+    if end < 0:
+        raise ValueError(f"PLY header missing: {path}")
+    header = data[:end + len(marker)].decode("ascii", errors="strict")
+    if "format binary_little_endian 1.0" not in header:
+        raise ValueError(f"PLY is not binary little endian: {path}")
+    count_match = next((line.split()[-1] for line in header.splitlines() if line.startswith("element vertex ")), None)
+    if not count_match:
+        raise ValueError(f"PLY vertex count missing: {path}")
+    count = int(count_match)
+    props = []
+    in_vertex = False
+    sizes = {"float": 4, "float32": 4, "uchar": 1, "uint8": 1}
+    for line in header.splitlines():
+        fields = line.split()
+        if fields[:2] == ["element", "vertex"]:
+            in_vertex = True
+        elif fields[:1] == ["element"]:
+            in_vertex = False
+        elif in_vertex and fields[:1] == ["property"] and len(fields) >= 3 and fields[1] in sizes:
+            props.append((fields[2], fields[1]))
+    offsets = {}
+    stride = 0
+    for name, typ in props:
+        offsets[name] = (stride, typ)
+        stride += sizes[typ]
+    required = ["x", "y", "z"]
+    if any(name not in offsets for name in required) or stride <= 0:
+        raise ValueError(f"PLY position properties incomplete: {path}")
+    out = []
+    for i in range(count):
+        base = end + len(marker) + i * stride
+        if base + stride > len(data):
+            break
+        xyz = [struct.unpack_from("<f", data, base + offsets[name][0])[0] for name in required]
+        rgb = [data[base + offsets[name][0]] if name in offsets else 180 for name in ("red", "green", "blue")]
+        if all(math.isfinite(v) for v in xyz):
+            out.append((*xyz, *rgb))
+    return out
+
+
+def fuse(args: argparse.Namespace) -> dict:
+    inputs = json.loads(Path(args.inputs).read_text())
+    voxel = max(float(args.voxel_size), 0.0001)
+    buckets: dict[tuple[int, int, int], list[float]] = {}
+    total = 0
+    for item in inputs:
+        yaw = math.radians(float(item.get("yaw", 0)))
+        pitch = math.radians(float(item.get("pitch", 0)))
+        cy, sy, cp, sp = math.cos(yaw), math.sin(yaw), math.cos(pitch), math.sin(pitch)
+        for x, y, z, r, g, b in read_binary_ply(Path(item["path"])):
+            # Camera-local proposals are rotated into the declared ERP frame.
+            yp = cp * y - sp * z
+            zp = sp * y + cp * z
+            xp = x
+            xf = cy * xp + sy * zp
+            zf = -sy * xp + cy * zp
+            key = (round(xf / voxel), round(yp / voxel), round(zf / voxel))
+            acc = buckets.setdefault(key, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            acc[0] += xf; acc[1] += yp; acc[2] += zf; acc[3] += r; acc[4] += g; acc[5] += b; acc[6] += 1
+            total += 1
+    rows = [(v[0] / v[6], v[1] / v[6], v[2] / v[6], int(v[3] / v[6]), int(v[4] / v[6]), int(v[5] / v[6])) for v in buckets.values()]
+    if len(rows) > args.max_points:
+        step = int(math.ceil(len(rows) / args.max_points))
+        rows = rows[::step]
+    out = Path(args.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("wb") as f:
+        f.write(b"ply\nformat binary_little_endian 1.0\n")
+        f.write(f"element vertex {len(rows)}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n".encode("ascii"))
+        for row in rows:
+            f.write(struct.pack("<fffBBB", *row))
+    result = {"schema": "dexdiffusion.world.fusion.v1", "method": "aligned-voxel-dedup", "inputs": len(inputs), "inputPoints": total, "outputPoints": len(rows), "voxelSize": voxel, "finite": True, "sha256": sha256(out)}
+    write_json(Path(args.manifest), result)
+    return result
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="command", required=True)
@@ -208,6 +288,7 @@ def main() -> None:
     g = sub.add_parser("scaffold"); g.add_argument("--panorama", required=True); g.add_argument("--depth", required=True); g.add_argument("--output", required=True); g.add_argument("--collision", required=True); g.add_argument("--manifest", required=True); g.add_argument("--max-points", type=int, default=250000); g.set_defaults(fn=point_cloud)
     r = sub.add_parser("rig"); r.add_argument("--output", required=True); r.set_defaults(fn=rig)
     v = sub.add_parser("views"); v.add_argument("--panorama", required=True); v.add_argument("--output-dir", required=True); v.add_argument("--manifest", required=True); v.set_defaults(fn=views)
+    f = sub.add_parser("fuse"); f.add_argument("--inputs", required=True); f.add_argument("--output", required=True); f.add_argument("--manifest", required=True); f.add_argument("--voxel-size", type=float, default=0.02); f.add_argument("--max-points", type=int, default=250000); f.set_defaults(fn=fuse)
     args = p.parse_args(); result = args.fn(args)
     if args.command != "score": print(json.dumps(result, sort_keys=True))
 

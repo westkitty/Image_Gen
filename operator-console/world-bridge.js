@@ -80,7 +80,7 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
   }
 
   async function runDerivedPipeline(jobId, project, panoRec, sourcePath, localRoot) {
-    const derived = { depth: [], views: [], coarse: null, collision: null, rig: null, quality: null };
+    const derived = { depth: [], views: [], proposals: [], coarse: null, collision: null, rig: null, fusion: null, quality: null };
     const depthPath = path.join(localRoot, 'depth-360.pgm');
     const depthManifestPath = path.join(localRoot, 'depth-360.json');
     const scaffoldPath = path.join(localRoot, 'coarse.ply');
@@ -128,6 +128,13 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
       worldStore.updateStage(project.id, 'rig', { status: 'READY', worker, model, artifacts: [rigRec.artifact_id, ...viewRecs.map(rec => rec.artifact_id)] });
       derived.rig = rigRec; derived.views.push(...viewRecs);
 
+      const fusionResult = await runSharpFusion(jobId, project, viewRecs, localRoot);
+      if (fusionResult.ok) {
+        derived.proposals.push(...fusionResult.proposals);
+        derived.fusion = fusionResult.fusion;
+      }
+      const visualArtifact = derived.fusion || coarseRec;
+
       const quality = {
         schema: 'dexdiffusion.world.quality-report.v1',
         status: 'PARTIAL',
@@ -139,19 +146,20 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
           depth360: { status: 'WARN', method: depthMetrics.method, confidence: depthMetrics.confidence, validPixelRatio: depthMetrics.validPixelRatio, nanCount: depthMetrics.nanCount, infCount: depthMetrics.infCount },
           coarseGeometry: { status: 'PASS', points: scaffoldMetrics.points, finite: scaffoldMetrics.finite, bounds: scaffoldMetrics.bounds },
           cameraRig: { status: 'PASS', cameras: rigMetrics.cameras.length, overlapDegrees: 15 },
-          sharpPerView: { status: 'NOT_STARTED', reason: 'Per-view SHARP fitting requires a bounded remote compute pass.' },
-          fusion: { status: 'NOT_STARTED', reason: 'Fusion awaits learned per-view proposals.' },
-          runtime: { status: 'PASS', collision: true, progressiveArtifact: true },
-          viewer: { status: 'READY', artifact: coarseRec.artifact_id },
+          sharpPerView: fusionResult.ok ? { status: 'PASS', proposals: fusionResult.proposals.length, worker: SHARP_MODEL, device: 'mps' } : { status: 'BLOCKED', reason: fusionResult.error || 'Per-view SHARP fitting requires a bounded remote compute pass.' },
+          fusion: fusionResult.ok ? { status: 'PASS', method: 'aligned-voxel-dedup', artifact: fusionResult.fusion.artifact_id, metrics: fusionResult.metrics } : { status: 'BLOCKED', reason: fusionResult.error || 'Fusion awaits learned per-view proposals.' },
+          runtime: { status: 'PASS', collision: true, progressiveArtifact: true, artifact: visualArtifact.artifact_id },
+          viewer: { status: 'READY', artifact: visualArtifact.artifact_id },
         },
-        blockers: ['learned global depth unavailable in this local runtime', 'SHARP per-view fitting and fusion not yet executed'],
+        blockers: ['learned global depth unavailable in this local runtime', ...(fusionResult.ok ? [] : [fusionResult.error || 'SHARP per-view fitting and fusion not completed'])],
       };
       writeJson(qualityPath, quality);
       const qualityRec = finalizeWorld(qualityPath, `${project.id}-quality-report`, jobId, worker, model, coarseRec.artifact_id, { classification: 'WARN' });
       worldStore.attachArtifact(project.id, 'qualityReport', qualityRec, { stage: 'quality' });
       worldStore.setQualityReport(project.id, quality);
-      worldStore.updateStage(project.id, 'runtime', { status: 'READY', worker, model, artifacts: [coarseRec.artifact_id, collisionRec.artifact_id] });
-      worldStore.updateStage(project.id, 'viewer', { status: 'READY', worker: 'spark-three', model: 'three@0.186.1 + @sparkjsdev/spark@2.3.1', artifacts: [coarseRec.artifact_id] });
+      if (fusionResult.ok) worldStore.attachArtifact(project.id, 'runtimeSplat', visualArtifact, { stage: 'runtime' });
+      worldStore.updateStage(project.id, 'runtime', { status: 'READY', worker, model, artifacts: [visualArtifact.artifact_id, collisionRec.artifact_id] });
+      worldStore.updateStage(project.id, 'viewer', { status: 'READY', worker: 'spark-three', model: 'three@0.186.1 + @sparkjsdev/spark@2.3.1', artifacts: [visualArtifact.artifact_id] });
       worldStore.updateStage(project.id, 'quality', { status: 'READY', worker, model, artifacts: [qualityRec.artifact_id] });
       project.status = 'PARTIAL'; project.currentStage = 'quality'; worldStore.touch(project);
       derived.quality = qualityRec;
@@ -162,6 +170,85 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
       try { worldStore.updateStage(project.id, stage, { status: 'FAILED', error: message, failure: { gate: 'derived-stage', error: message } }); } catch (_) {}
       log(`world derived pipeline ${jobId} failed at ${stage}: ${message}`);
       return { ok: false, error: message, derived, stage };
+    }
+  }
+
+  async function runSharpFusion(jobId, project, viewRecs, localRoot) {
+    const remoteDir = `${WORLD_WORK}/${jobId}/sharp-views`;
+    const inputDir = `${remoteDir}/input`;
+    const outputDir = `${remoteDir}/output`;
+    const localDir = path.join(localRoot, 'sharp');
+    fs.mkdirSync(localDir, { recursive: true, mode: 0o700 });
+    let lease = null;
+    try {
+      lease = await arbiter.acquire(jobId, 'sharp per-view proposals and fusion');
+      if (!lease.granted) return { ok: false, error: 'heavy-compute lease was not granted for SHARP per-view proposals', proposals: [] };
+      jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+      worldStore.updateStage(project.id, 'reconstruct', { status: 'RUNNING', worker: 'sharp-reconstruct', model: SHARP_MODEL });
+      worldStore.updateStage(project.id, 'align', { status: 'RUNNING', worker: 'world-compiler', model: 'erp-frame-align-v1' });
+      const prepared = await ssh(`set -e; mkdir -p ${q(inputDir)} ${q(outputDir)}; printf 'WORLD_SHARP_VIEWS_PREPARED\\n'`);
+      if (!/WORLD_SHARP_VIEWS_PREPARED/.test(`${prepared.stdout}\n${prepared.stderr}`)) throw new Error('remote SHARP views preparation missing in-band marker');
+      for (let i = 0; i < viewRecs.length; i++) {
+        const local = mediaStore.resolve(viewRecs[i].artifact_id)?.path;
+        if (!local) throw new Error(`projected view ${viewRecs[i].artifact_id} could not be reopened`);
+        await runFile('scp', ['-O', '-q', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', local, `${sshTarget}:${inputDir}/view-${i + 1}.png`], 300000);
+      }
+      const command = [
+        'set -uo pipefail',
+        `ROOT=${q(SHARP_ROOT)}; D=${q(remoteDir)}`,
+        `"$ROOT/venv/bin/sharp" predict --input-path "$D/input" --output-path "$D/output" --checkpoint-path ${q(SHARP_CHECKPOINT)} --device mps --no-render`,
+        'RC=$?',
+        `if [ "$RC" -ne 0 ]; then printf 'WORLD_SHARP_VIEWS_FAIL\\trc=%s\\n' "$RC"; exit 0; fi`,
+        'COUNT=0',
+        'while IFS= read -r PLY; do',
+        '  BYTES=$(stat -f %z "$PLY")',
+        `  VERTICES=$("$ROOT/venv/bin/python" -c "from plyfile import PlyData; import sys; p=PlyData.read(sys.argv[1]); print(len(p['vertex'].data))" "$PLY" 2>/dev/null)`,
+        '  SHA=$(shasum -a 256 "$PLY" | awk \'{print $1}\')',
+        `  printf 'WORLD_SHARP_VIEW_PASS\\tply=%s\\tbytes=%s\\tvertices=%s\\tsha256=%s\\n' "$PLY" "$BYTES" "$VERTICES" "$SHA"`,
+        '  COUNT=$((COUNT + 1))',
+        'done < <(find "$D/output" -type f -name \'*.ply\' | sort)',
+        `if [ "$COUNT" -ne ${viewRecs.length} ]; then printf 'WORLD_SHARP_VIEWS_FAIL\\tcount=%s\\texpected=${viewRecs.length}\\n' "$COUNT"; fi`,
+      ].join('\n');
+      const remote = await ssh(command, 1200000);
+      const combined = `${remote.stdout}\n${remote.stderr}`;
+      try { fs.writeFileSync(path.join(stateDir, `world-${jobId}-sharp-views.remote.log`), combined, { mode: 0o600 }); } catch (_) {}
+      const markers = [...combined.matchAll(/WORLD_SHARP_VIEW_PASS\s+ply=(\S+)\s+bytes=(\d+)\s+vertices=(\d+)\s+sha256=([a-f0-9]{64})/g)];
+      if (markers.length !== viewRecs.length) throw new Error(/WORLD_SHARP_VIEWS_FAIL[^\n]*/.exec(combined)?.[0] || `SHARP per-view marker count ${markers.length}/${viewRecs.length}`);
+      const proposals = [];
+      const fuseInputs = [];
+      for (let i = 0; i < markers.length; i++) {
+        const marker = markers[i];
+        if (!marker[1].startsWith(`${remoteDir}/`)) throw new Error('SHARP per-view path escaped job directory');
+        const localPly = path.join(localDir, `view-${i + 1}.ply`);
+        await scpRemote(marker[1], localPly, 300000);
+        const localSha = sha256File(localPly);
+        if (localSha !== marker[4]) throw new Error(`SHARP per-view checksum mismatch for view ${i + 1}`);
+        const rec = finalizeWorld(localPly, `${project.id}-sharp-view-${i + 1}`, jobId, 'sharp-reconstruct', SHARP_MODEL, project.sourceArtifactId, { mode: 'per-view', device: 'mps', vertices: Number(marker[3]), remotePath: marker[1], remoteSha256: marker[4], localSha256: localSha });
+        proposals.push(rec);
+        fuseInputs.push({ path: localPly, yaw: viewRecs[i].meta?.metrics?.yaw || 0, pitch: viewRecs[i].meta?.metrics?.pitch || 0, artifactId: rec.artifact_id });
+      }
+      const inputManifest = path.join(localDir, 'fusion-inputs.json');
+      const fusedPath = path.join(localDir, 'fused.ply');
+      const fusionManifestPath = path.join(localDir, 'fusion.json');
+      writeJson(inputManifest, fuseInputs);
+      await runCompiler(['fuse', '--inputs', inputManifest, '--output', fusedPath, '--manifest', fusionManifestPath], 300000);
+      const metrics = JSON.parse(fs.readFileSync(fusionManifestPath, 'utf8'));
+      const fused = finalizeWorld(fusedPath, `${project.id}-final-fused`, jobId, 'world-compiler', 'aligned-voxel-dedup-v1', proposals[0].artifact_id, { metrics, coordinateFrame: 'erp-spherical', proposals: proposals.map(rec => rec.artifact_id) });
+      for (const rec of proposals) worldStore.attachArtifact(project.id, 'perViewSplats', rec, { stage: 'reconstruct' });
+      worldStore.attachArtifact(project.id, 'finalPly', fused, { stage: 'fusion' });
+      worldStore.updateStage(project.id, 'reconstruct', { status: 'READY', worker: 'sharp-reconstruct', model: SHARP_MODEL, artifacts: proposals.map(rec => rec.artifact_id) });
+      worldStore.updateStage(project.id, 'align', { status: 'READY', worker: 'world-compiler', model: 'erp-frame-align-v1', artifacts: proposals.map(rec => rec.artifact_id) });
+      worldStore.updateStage(project.id, 'fusion', { status: 'READY', worker: 'world-compiler', model: 'aligned-voxel-dedup-v1', artifacts: [fused.artifact_id] });
+      worldStore.updateStage(project.id, 'finalize', { status: 'READY', worker: 'artifact-store', model: 'aligned-voxel-dedup-v1', artifacts: [fused.artifact_id] });
+      return { ok: true, proposals, fusion: fused, metrics };
+    } catch (error) {
+      const message = String(error.message || error).slice(0, 280);
+      try { worldStore.updateStage(project.id, 'reconstruct', { status: 'BLOCKED', error: message, failure: { gate: 'sharp-per-view', error: message } }); } catch (_) {}
+      try { worldStore.updateStage(project.id, 'align', { status: 'BLOCKED', error: message, failure: { gate: 'sharp-per-view', error: message } }); } catch (_) {}
+      log(`world SHARP per-view ${jobId} blocked: ${message}`);
+      return { ok: false, error: message, proposals: [] };
+    } finally {
+      if (lease && arbiter.holds(jobId)) arbiter.release(jobId);
     }
   }
 
