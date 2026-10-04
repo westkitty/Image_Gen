@@ -252,8 +252,8 @@ class Component extends DCLogic {
     const workerLine = status && status.workers ? status.workers.map(w => `${w.label}: ${w.status}`).join(' · ') : 'Worker status loading…';
     return h('div', { style: { display: 'grid', gap: 14 } },
       h('div', { style: { background: '#060a10', border: '1px solid rgba(148,163,184,.14)', borderRadius: 12, padding: 16 } },
-        h('div', { style: { fontSize: 18, color: '#f0f4f8', fontWeight: 750, marginBottom: 4 } }, 'World Projects'),
-        h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, marginBottom: 12 } }, 'Local WorldGen uses the shared heavy-inference lease. Quick 3D reconstructs the selected image; Complete 360 remains stage-truthful until alignment is integrated.'),
+        h('div', { style: { fontSize: 18, color: '#f0f4f8', fontWeight: 750, marginBottom: 4 } }, 'World'),
+        h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, marginBottom: 12 } }, 'Dedicated local 3D workspace. Quick 3D reconstructs one image; Complete 360 builds panorama, depth/scaffold, aligned SHARP proposals, fusion and viewer artifacts. Learned global depth is not installed, so Complete 360 may report WARN while using the bounded fallback.'),
         h('select', { value: s.worldSourceArtifact || (runs[0] && runs[0].imageFile) || '', onChange: e => this.setState({ worldSourceArtifact: e.target.value }), style: { width: '100%', maxWidth: 520, marginBottom: 10, border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
         h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
           h('button', { onClick: () => this.startWorld('quick3d'), style: { border: '1px solid #38bdf866', background: '#38bdf616', color: '#38bdf8', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make 3D'),
@@ -1213,10 +1213,7 @@ class Component extends DCLogic {
     const accent = version === 2 ? '#f59e0b' : version === 3 ? '#a78bfa' : '#38bdf8';
 
     // ── Library cards ──────────────────────────────────────────
-    const libraryCards = runs.length > 0 ? runs.map(card => ({ ...card,
-      make3d: () => this.startWorld('quick3d', card.imageFile),
-      makeWorld: () => this.startWorld('complete360', card.imageFile),
-    })) : [{ id: 'no runs yet', badge: '—', badgeColor: '#6060a0', badgeBg: 'rgba(80,80,160,.08)', model: 'run generate to start', size: '—', thumb: 'linear-gradient(135deg,#0a0a18,#141428)' }];
+    const libraryCards = runs.length > 0 ? runs.map(card => ({ ...card })) : [{ id: 'no runs yet', badge: '—', badgeColor: '#6060a0', badgeBg: 'rgba(80,80,160,.08)', model: 'run generate to start', size: '—', thumb: 'linear-gradient(135deg,#0a0a18,#141428)' }];
 
     // ── Status chips ──────────────────────────────────────────
     const backendDot = backendOnline ? '#65d66e' : '#ef4444';
