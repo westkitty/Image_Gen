@@ -190,7 +190,7 @@
     const root = document.createElement('div'); root.style.cssText = 'position:relative;min-width:0;'; root.setAttribute('data-model-picker', ctx);
     const trigger = document.createElement('button'); trigger.type = 'button'; trigger.setAttribute('aria-haspopup', 'listbox');
     trigger.style.cssText = 'width:100%;text-align:left;border:1px solid rgba(148,163,184,.25);background:#0b1420;color:#e8f0f7;border-radius:8px;padding:8px 10px;min-height:42px;cursor:pointer;display:flex;gap:8px;align-items:center;font:600 13px DM Sans,system-ui,sans-serif;';
-    const panel = document.createElement('div'); panel.setAttribute('role', 'listbox');
+    const panel = document.createElement('div'); panel.setAttribute('role', 'listbox'); panel.setAttribute('aria-label', 'Model choices');
     panel.style.cssText = 'display:none;position:absolute;z-index:60;left:0;right:0;top:calc(100% + 4px);min-width:min(100%,320px);max-height:min(60vh,460px);overflow:auto;border:1px solid rgba(148,163,184,.3);background:#0a111c;border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.6);padding:8px;';
     const search = document.createElement('input'); search.type = 'search'; search.placeholder = 'Search models…'; search.setAttribute('aria-label', 'Search models');
     search.style.cssText = 'width:100%;border:1px solid rgba(148,163,184,.25);background:#05080d;color:#e2e8f0;border-radius:7px;padding:8px;min-height:36px;margin-bottom:6px;font:13px DM Sans,system-ui,sans-serif;';
@@ -205,11 +205,11 @@
       chips.replaceChildren(chipEl('All', q.family === 'all', () => { q.family = 'all'; draw(); }), ...g.families.map(f => chipEl(f.label, q.family === f.family, () => { q.family = f.family; draw(); })), chipEl('Ready only', q.readyOnly, () => { q.readyOnly = !q.readyOnly; draw(); }));
       list.replaceChildren(...(g.groups.length ? g.groups.flatMap(gr => [mk('div', 'font:800 10px DM Sans,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#7f8ca8;padding:8px 4px 3px;', gr.label + ' · ' + gr.items.length),
         ...gr.items.map(it => { const row = mk('button', `display:grid;gap:2px;width:100%;text-align:left;border:1px solid ${it.active ? '#65d66e' : 'transparent'};background:${it.active ? 'rgba(101,214,110,.08)' : 'transparent'};color:#e2e8f0;border-radius:7px;padding:7px 8px;min-height:44px;cursor:pointer;font:13px DM Sans,sans-serif;`);
-          row.type = 'button'; row.setAttribute('role', 'option'); row.setAttribute('aria-selected', String(it.active));
+          row.type = 'button'; row.setAttribute('role', 'option'); row.setAttribute('aria-selected', String(it.active)); row.setAttribute('data-model-id', it.id);
           const top = mk('div', 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;'); top.append(mk('b', 'font-weight:700;', it.label), ...(it.primary ? [mk('span', 'font-size:10px;color:#fbbf24;', '★ primary')] : []),
             mk('span', `font-size:10px;font-weight:700;border:1px solid ${it.readiness.ok ? '#65d66e55' : '#f8717155'};color:${it.readiness.ok ? '#86efac' : '#fca5a5'};border-radius:5px;padding:1px 6px;`, it.readiness.label), mk('span', 'font-size:10px;color:#7f8ca8;', it.backend.toUpperCase()));
           row.append(top, mk('div', 'font-size:11px;color:#8193a8;line-height:1.35;', it.blurb)); row.disabled = !it.readiness.ok && it.readiness.key !== 'available';
-          row.addEventListener('click', () => { close(); props.onPick(it.id); }); return row; })]) : [mk('div', 'color:#8193a8;font-size:12px;padding:10px;', 'No models match.')]));
+          row.addEventListener('click', () => { close(); props.onPick(it.id); requestAnimationFrame(() => trigger.focus()); }); return row; })]) : [mk('div', 'color:#8193a8;font-size:12px;padding:10px;', 'No models match.')]));
       foot.textContent = g.shown + ' of ' + g.total + ' models';
       const a = props.targets.find(t => t.id === props.activeId), c = props.cards.find(x => x.id === props.activeId), fam = a ? E.familyOf(c && c.family ? { family: c.family, id: a.id } : a) : '';
       const rd = E.readinessOf(a);
@@ -221,7 +221,17 @@
     function open() { q.open = true; panel.style.display = 'block'; draw(); setTimeout(() => search.focus(), 0); }
     trigger.addEventListener('click', () => (q.open ? close() : open()));
     search.addEventListener('input', () => { q.query = search.value; draw(); });
-    search.addEventListener('keydown', e => { if (e.key === 'Escape') { close(); trigger.focus(); } });
+    panel.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); trigger.focus(); return; }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+      const options = [...list.querySelectorAll('[role="option"]:not(:disabled)')];
+      if (!options.length) return;
+      e.preventDefault();
+      const current = options.indexOf(document.activeElement);
+      const next = e.key === 'Home' ? 0 : e.key === 'End' ? options.length - 1
+        : e.key === 'ArrowDown' ? (current + 1) % options.length : (current <= 0 ? options.length - 1 : current - 1);
+      options[next].focus();
+    });
     document.addEventListener('click', e => { if (q.open && !root.contains(e.target)) close(); }, true);
     const shell = document.createElement('div');
     if (ctx === 'create') { const lb = document.createElement('div'); lb.textContent = 'Model'; lb.style.cssText = 'font-size:10px;color:#6090a8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;'; shell.append(lb, root); } else shell.append(root);

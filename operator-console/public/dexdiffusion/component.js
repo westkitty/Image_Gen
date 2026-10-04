@@ -86,6 +86,7 @@ class Component extends DCLogic {
     clearInterval(this._pingTimer); clearInterval(this._pollTimer);
     this._pollGeneration = (this._pollGeneration || 0) + 1;
     for (const controller of this._jobWaitControllers || []) controller.abort();
+    this._detailerDetectController?.abort();
     window.removeEventListener('keydown', this._keyHandler);
   }
 

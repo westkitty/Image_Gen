@@ -1,0 +1,49 @@
+{
+  "detector": {
+    "baseline": {
+      "baseline": "8f6d711",
+      "aborted": true,
+      "worker_alive_after_abort": true,
+      "terminal_after_abort": false,
+      "eventual_code": "timeout",
+      "elapsed_ms": 960
+    },
+    "focused_in_final_reliability": {
+      "tests": 6,
+      "covered": "owned real worker timeout/cancellation/reap, partial-mask cleanup, healthy retry and late completion protection"
+    },
+    "actual_physically_wedged_ane": "UNVERIFIED"
+  },
+  "focused": {
+    "tests": 37,
+    "pass": 37,
+    "fail": 0
+  },
+  "job_cleanup": {
+    "final_bridge_focused": {
+      "tests": 19,
+      "pass": 19,
+      "fail": 0
+    },
+    "server_receipt_integration": {
+      "tests": 30,
+      "pass": 30,
+      "fail": 0
+    },
+    "cleanup": "isolated local owned fixture; fake SSH transport with actual exact cleanup shell command"
+  },
+  "privacy": {
+    "contract": "privacy-contract.json",
+    "current_remote_log_scope": "actual scrub function in deterministic local fixture; real media generation not repeated",
+    "historical_policy": "../../operator-console/docs/historical-log-policy.md"
+  },
+  "unit": {
+    "tests": 295,
+    "pass": 295,
+    "fail": 0
+  },
+  "late_integration": {
+    "D040": "preset-readiness-focused1/1 and connected-node reproduction; full Edit24/24 after fix",
+    "D041": "executed final-field/run-only server boundary2/2; same full-unit295/295"
+  }
+}

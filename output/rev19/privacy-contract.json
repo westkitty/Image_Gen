@@ -1,0 +1,130 @@
+{
+  "schema": "dexdiffusion.privacy-contract.v1",
+  "scope": "deterministic owned fixtures; remote log functions simulated without remote generation; browser storage measured separately",
+  "records": [
+    {
+      "boundary": "durable run/job metadata",
+      "policy": false,
+      "expected": "EXPECTED REDACTION/NON-RETENTION",
+      "canary_found": false,
+      "status": "PASS"
+    },
+    {
+      "boundary": "durable canonical media metadata",
+      "policy": false,
+      "expected": "EXPECTED REDACTION/NON-RETENTION",
+      "canary_found": false,
+      "status": "PASS"
+    },
+    {
+      "boundary": "settings presets",
+      "policy": false,
+      "expected": "EXPECTED REDACTION/NON-RETENTION",
+      "canary_found": false,
+      "status": "PASS"
+    },
+    {
+      "boundary": "browser session serializer",
+      "policy": false,
+      "expected": "EXPECTED REDACTION/NON-RETENTION",
+      "canary_found": false,
+      "status": "PASS"
+    },
+    {
+      "boundary": "unsaved project filesystem",
+      "policy": false,
+      "expected": "EXPECTED REDACTION/NON-RETENTION",
+      "canary_found": false,
+      "status": "PASS"
+    },
+    {
+      "boundary": "explicitly saved project (intentional independent retention)",
+      "policy": false,
+      "expected": "EXPECTED RETENTION",
+      "canary_found": true,
+      "status": "PASS"
+    },
+    {
+      "boundary": "owned remote worker log fixture (actual scrub function)",
+      "policy": false,
+      "expected": "EXPECTED REDACTION/NON-RETENTION",
+      "canary_found": false,
+      "status": "PASS"
+    },
+    {
+      "boundary": "owned local streamed log fixture (actual redactor)",
+      "policy": false,
+      "expected": "EXPECTED REDACTION/NON-RETENTION",
+      "canary_found": false,
+      "status": "PASS"
+    },
+    {
+      "boundary": "durable run/job metadata",
+      "policy": true,
+      "expected": "EXPECTED RETENTION",
+      "canary_found": true,
+      "status": "PASS"
+    },
+    {
+      "boundary": "durable canonical media metadata",
+      "policy": true,
+      "expected": "EXPECTED REDACTION/NON-RETENTION",
+      "canary_found": false,
+      "status": "PASS"
+    },
+    {
+      "boundary": "settings presets",
+      "policy": true,
+      "expected": "EXPECTED RETENTION",
+      "canary_found": true,
+      "status": "PASS"
+    },
+    {
+      "boundary": "browser session serializer",
+      "policy": true,
+      "expected": "EXPECTED RETENTION",
+      "canary_found": true,
+      "status": "PASS"
+    },
+    {
+      "boundary": "unsaved project filesystem",
+      "policy": true,
+      "expected": "EXPECTED REDACTION/NON-RETENTION",
+      "canary_found": false,
+      "status": "PASS"
+    },
+    {
+      "boundary": "explicitly saved project (intentional independent retention)",
+      "policy": true,
+      "expected": "EXPECTED RETENTION",
+      "canary_found": true,
+      "status": "PASS"
+    },
+    {
+      "boundary": "owned remote worker log fixture (actual scrub function)",
+      "policy": true,
+      "expected": "EXPECTED REDACTION/NON-RETENTION",
+      "canary_found": false,
+      "status": "PASS"
+    },
+    {
+      "boundary": "owned local streamed log fixture (actual redactor)",
+      "policy": true,
+      "expected": "EXPECTED REDACTION/NON-RETENTION",
+      "canary_found": false,
+      "status": "PASS"
+    },
+    {
+      "boundary": "historical pre-repair remote logs",
+      "expected": "HISTORICAL EXCEPTION",
+      "paths": [
+        "/Users/bigmac/sdcpp-staging/logs/img2img_20261002-224850.log",
+        "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-225501.log",
+        "/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-225724.log",
+        "/Users/bigmac/sdcpp-staging/outputs/20261002-224336-controlled-sd15/controlled-sd15.log"
+      ],
+      "action": "none",
+      "status": "PRESERVED"
+    }
+  ]
+}

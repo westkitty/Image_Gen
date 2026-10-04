@@ -16,6 +16,9 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
+const JobContract = require('./job-contract');
+const CleanupOwner = require('./cleanup-owner');
+
 const MEDIA_KINDS = ['image', 'voice', 'music', 'video'];
 const CANONICAL_ROOTS = {
   image: '/Users/andrew/images_made',
@@ -33,13 +36,8 @@ function atomicWriteJson(file, data) {
 }
 
 // ---- Generic jobs ----------------------------------------------------------
-const JOB_STATES = ['QUEUED', 'RUNNING', 'TRANSFERRING', 'COMPLETE', 'FAILED', 'INTERRUPTED', 'CANCELLED'];
-const TERMINAL = new Set(['COMPLETE', 'FAILED', 'INTERRUPTED', 'CANCELLED']);
-const TRANSITIONS = {
-  QUEUED: ['RUNNING', 'FAILED', 'CANCELLED', 'INTERRUPTED'],
-  RUNNING: ['TRANSFERRING', 'COMPLETE', 'FAILED', 'CANCELLED', 'INTERRUPTED'],
-  TRANSFERRING: ['COMPLETE', 'FAILED', 'INTERRUPTED'],
-};
+const JOB_STATES = JobContract.STATES;
+const TERMINAL = JobContract.TERMINAL;
 const FAILURE_GATES = ['worker-unavailable', 'runtime-missing', 'model-missing', 'resource-wait', 'resource-interrupted',
   'reference-invalid', 'generation-failed', 'output-missing', 'output-invalid', 'transfer-failed', 'checksum-mismatch',
   'canonicalization-failed', 'cleanup-failed', 'server-restart'];
@@ -71,23 +69,24 @@ function createJobStore(file, { now = () => Date.now() } = {}) {
     try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return; }
     for (const j of (data && data.jobs) || []) {
       if (!TERMINAL.has(j.status)) {
-        j.status = 'INTERRUPTED';
+        j.status = 'INTERRUPTED'; j.stage_id = 'interrupted';
         j.first_failed_gate = j.first_failed_gate || 'server-restart';
         j.error = 'console restarted before this job finished; it was not re-run';
         j.completed_at = now();
         j.resource_lease = null;
         j.retry_requires_input = !j.privacy || !j.privacy.persist_text;
       }
+      for (const r of j.owned_resources || []) if (r.state === 'pending') r.state = 'unknown';
       jobs.set(j.job_id, j);
     }
     persist();
   }
 
-  function create({ job_id, media_kind, operation, worker_id, model_id = null, resource_class = 'light', params = {}, persist_text = false }) {
+  function create({ job_id, media_kind, operation, worker_id, model_id = null, resource_class = 'light', params = {}, persist_text = false, artifact_required = true }) {
     if (!MEDIA_KINDS.includes(media_kind)) throw new Error('unknown media kind ' + media_kind);
     const id = job_id || crypto.randomUUID();
     const j = {
-      job_id: id, media_kind, operation, worker_id, model_id, status: 'QUEUED', progress: null,
+      job_id: id, media_kind, operation, worker_id, model_id, status: 'QUEUED', stage_id: 'queued', progress: null, artifact_required: !!artifact_required, artifact_validation: null, owned_resources: [],
       created_at: now(), started_at: null, completed_at: null, resource_class, resource_lease: null,
       params: safeParams(params, persist_text), artifacts: [], first_failed_gate: null, error: null,
       privacy: { persist_text: !!persist_text },
@@ -99,15 +98,34 @@ function createJobStore(file, { now = () => Date.now() } = {}) {
   function transition(id, status, patch = {}) {
     const j = jobs.get(id);
     if (!j) return { error: 'unknown job' };
-    if (!JOB_STATES.includes(status)) return { error: 'unknown state ' + status };
-    if (j.status !== status && !(TRANSITIONS[j.status] || []).includes(status)) return { error: `illegal transition ${j.status} -> ${status}` };
-    j.status = status;
+    const invalid = JobContract.validateTransition(j, status, patch);
+    if (invalid) return { error: invalid };
+    j.status = status; j.stage_id = JobContract.STAGES[status];
     if (status === 'RUNNING' && !j.started_at) j.started_at = now();
-    if (TERMINAL.has(status)) { j.completed_at = now(); j.resource_lease = null; }
-    for (const k of ['progress', 'artifacts', 'first_failed_gate', 'error', 'resource_lease', 'model_id']) if (patch[k] !== undefined) j[k] = patch[k];
+    if (TERMINAL.has(status)) { if (!j.completed_at) j.completed_at = now(); j.resource_lease = null; }
+    for (const k of ['progress', 'artifacts', 'artifact_validation', 'first_failed_gate', 'error', 'resource_lease', 'model_id']) if (patch[k] !== undefined) j[k] = patch[k];
     if (patch.error) j.error = String(patch.error).slice(0, 300);
     schedule();
     return j;
+  }
+  function ownResource(id, host, resourcePath) {
+    const j = jobs.get(id); if (!j) throw new Error('unknown job');
+    const r = CleanupOwner.ownedRemoteResource(id, host, resourcePath);
+    if (!j.owned_resources) j.owned_resources = [];
+    const existing = j.owned_resources.find(x => x.resource_id === r.resource_id);
+    if (existing) return existing;
+    j.owned_resources.push(r); flush(); return r;
+  }
+  function resourceReceipt(id, resourceId, receipt) {
+    const j = jobs.get(id), r = j && (j.owned_resources || []).find(x => x.resource_id === resourceId);
+    if (!r) throw new Error('unknown owned resource');
+    if (!['pending', 'succeeded', 'failed', 'unknown'].includes(receipt.state)) throw new Error('invalid cleanup state');
+    if (receipt.state === 'succeeded' && receipt.in_band_verified !== true) throw new Error('cleanup success requires in-band verification');
+    r.state = receipt.state; r.attempts += 1;
+    r.receipt = { at: now(), in_band_verified: receipt.in_band_verified === true, reason: String(receipt.reason || '').slice(0, 200) };
+    if (r.state === 'failed') j.cleanup_error = 'Big Mac job directory could not be verified removed';
+    else if ((j.owned_resources || []).every(x => x.state === 'succeeded')) delete j.cleanup_error;
+    flush(); return r;
   }
   function get(id) { return jobs.get(id) || null; }
   function list({ media_kind, status, limit = 100 } = {}) {
@@ -115,7 +133,7 @@ function createJobStore(file, { now = () => Date.now() } = {}) {
       .sort((a, b) => b.created_at - a.created_at).slice(0, limit);
   }
   load();
-  return { create, transition, get, list, flush, file, _jobs: jobs };
+  return { create, transition, get, list, flush, ownResource, resourceReceipt, file, _jobs: jobs };
 }
 
 // ---- Resource arbiter --------------------------------------------------------
@@ -398,7 +416,12 @@ function createMediaStore({ roots = CANONICAL_ROOTS, registryFile, now = () => D
     if (!KIND_EXT[kind]) throw new Error('unknown media kind');
     const ext = path.extname(src).toLowerCase();
     if (!KIND_EXT[kind].includes(ext)) throw new Error('output-invalid: extension not allowed for ' + kind);
-    const head = fs.readFileSync(src).slice(0, 64);
+    const sourceBytes = fs.readFileSync(src);
+    if (ext === '.wav') {
+      try { require('./voice-audio').parseWav(sourceBytes); }
+      catch (e) { throw new Error('output-invalid: ' + e.message); }
+    }
+    const head = sourceBytes.slice(0, 64);
     const s = sniff(head);
     if (!s || s.kind !== 'audio' || s.ext !== (ext === '.jpeg' ? '.jpg' : ext)) throw new Error('output-invalid: content does not match ' + ext);
     const root = path.resolve(roots[kind]);
@@ -415,9 +438,15 @@ function createMediaStore({ roots = CANONICAL_ROOTS, registryFile, now = () => D
         const safeUrl = '/api/media/' + encodeURIComponent(id);
         const rec = { artifact_id: id, kind, canonical_path: path.join(root, id), safe_url: safeUrl, download_url: safeUrl + '/download', mime: MIME[ext], sha256,
           bytes: bytes.length, duration, created_at: now(), job_id, worker, model, seed, parent, keeper: false, meta };
-        read().artifacts[id] = rec;
-        atomicWriteJson(registryFile, registry);
-        return rec;
+        const next = { ...read(), artifacts: { ...read().artifacts, [id]: rec } };
+        try { atomicWriteJson(registryFile, next); }
+        catch (e) {
+          // This path belongs to this attempt; never unlink another canonical file.
+          try { fs.unlinkSync(path.join(root, id)); } catch (_) {}
+          throw e;
+        }
+        registry = next;
+        return { ...rec, canonical: true, validated: true };
       }
       throw new Error('canonicalization-failed: no free name');
     } finally { try { fs.unlinkSync(incoming); } catch (_) {} }

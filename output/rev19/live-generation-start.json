@@ -1,0 +1,32 @@
+{
+  "jobs": {
+    "jobs": [
+      {
+        "id": "13e2fdf3-521f-4e63-8aeb-fb1badfdcfb5",
+        "commandAction": "controlled-generate",
+        "status": "running",
+        "createdAt": 1791071243008,
+        "progress": {
+          "totalRuns": 1,
+          "completedRuns": 0,
+          "currentRun": 1,
+          "currentRunPercent": 0,
+          "totalPercent": 0,
+          "runsLeft": 1,
+          "currentRunStartedAt": 1791071243009
+        }
+      }
+    ]
+  },
+  "pre_inventory_counts": {
+    "valid": 2,
+    "missing": 502,
+    "orphan": 0,
+    "digest-mismatch": 0,
+    "broken": 0,
+    "duplicate": 0,
+    "pending": 0,
+    "unknown": 0
+  },
+  "cleanup_counts": 0
+}

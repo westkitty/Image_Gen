@@ -9,6 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { validateImage, inspectImageFiles } = require('./image-validation');
 
 const CANONICAL_IMAGE_ROOT = '/Users/andrew/images_made';
 const RUN_IMAGE_INDEX = 'canonical-images.json';
@@ -49,7 +50,7 @@ function safeComponent(value, fallback) {
   return s || fallback;
 }
 
-function createImageStore({ root = CANONICAL_IMAGE_ROOT } = {}) {
+function createImageStore({ root = CANONICAL_IMAGE_ROOT, fault } = {}) {
   const rootDir = path.resolve(root);
 
   function ensureRoot() {
@@ -65,7 +66,7 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT } = {}) {
     if (path.dirname(full) !== rootDir) return null;
     let st;
     try { st = fs.lstatSync(full); } catch (_) { return null; }
-    if (!st.isFile()) return null;
+    if (!st.isFile() || pendingImageIds().has(id)) return null;
     return { id, path: full, contentType: IMAGE_CONTENT_TYPES[path.extname(id).toLowerCase()] };
   }
 
@@ -80,33 +81,125 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT } = {}) {
     return `${run}${seedPart}-${src}`;
   }
 
-  // Move `src` into the root atomically without ever overwriting an existing
-  // image: stage as .incoming-*, then hard-link to a free final name.
-  function adoptFile(src, { runId, seed, runFile }) {
-    ensureRoot();
-    const ext = path.extname(src).toLowerCase();
-    const incoming = path.join(rootDir, `.incoming-${safeComponent(runId, 'run')}-${crypto.randomBytes(4).toString('hex')}${ext}`);
-    try {
-      fs.renameSync(src, incoming);
-    } catch (err) {
-      if (err.code !== 'EXDEV') throw err;
-      fs.copyFileSync(src, incoming, fs.constants.COPYFILE_EXCL);
-      fs.unlinkSync(src);
-    }
-    try {
-      const base = canonicalBaseName({ runId, seed, runFile });
-      for (let i = 1; i < 1000; i++) {
-        const id = `${base}${i > 1 ? '-' + i : ''}${ext}`;
-        try {
-          fs.linkSync(incoming, path.join(rootDir, id));
-          return { run_file: runFile, image_id: id, image_path: path.join(rootDir, id), image_url: imageUrl(id) };
-        } catch (err) {
-          if (err.code !== 'EEXIST') throw err;
+  function at(point) { if (fault) fault(point); }
+  function pendingImageIds() {
+    const ids = new Set();
+    let names; try { names = fs.readdirSync(rootDir); } catch (_) { return ids; }
+    for (const name of names.filter(n => /^\.pending-.*\.json$/.test(n))) {
+      try {
+        const journal = JSON.parse(fs.readFileSync(path.join(rootDir, name), 'utf8'));
+        for (const id of journal.image_ids || []) {
+          const ownership = (journal.image_records || []).find(r => r.image_id === id);
+          let st; try { st = fs.lstatSync(path.join(rootDir, id)); } catch (_) {}
+          // A name collision must never hide an unrelated pre-existing inode.
+          if (!st || !ownership || (st.dev === ownership.device && st.ino === ownership.inode)) ids.add(id);
         }
+      } catch (_) {}
+    }
+    return ids;
+  }
+  function writeJsonAtomic(file, data) {
+    const tmp = file + '.' + crypto.randomBytes(8).toString('hex') + '.tmp';
+    try { fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n', { flag: 'wx' }); fs.renameSync(tmp, file); }
+    finally { try { fs.unlinkSync(tmp); } catch (_) {} }
+  }
+  function publishFiles(files, runDir) {
+    ensureRoot();
+    const token = crypto.randomBytes(12).toString('hex');
+    const journal = path.join(rootDir, '.pending-' + token + '.json');
+    const staged = [], linked = [];
+    let committed = false, rollbackComplete = true;
+    try {
+      at('before-transfer');
+      for (const item of files) {
+        const incoming = path.join(rootDir, '.incoming-' + token + '-' + staged.length + path.extname(item.src).toLowerCase());
+        const row = { ...item, incoming }; staged.push(row);
+        fs.copyFileSync(item.src, incoming, fs.constants.COPYFILE_EXCL);
+        at('after-transfer');
+        row.validation = validateImage(incoming);
+        at('after-validation');
       }
-      throw new Error('no free canonical filename for ' + base);
+      const indexFile = path.join(runDir, RUN_IMAGE_INDEX);
+      if (fs.existsSync(indexFile)) {
+        const previous = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
+        if (!Array.isArray(previous.images)) throw new Error('canonical index invalid; historical metadata preserved');
+      }
+      const images = readRunIndex(runDir);
+      const entries = [];
+      for (const row of staged) {
+        const base = canonicalBaseName(row);
+        for (let i = 1; i < 1000; i++) {
+          const id = base + (i > 1 ? '-' + i : '') + path.extname(row.src).toLowerCase();
+          if (fs.existsSync(path.join(rootDir, id))) continue;
+          const inode = fs.statSync(row.incoming);
+          writeJsonAtomic(journal, { schema: 'dexdiffusion.image_publication.pending.v1', run_dir: runDir, host: 'local', cleanup_state: 'pending', incoming_paths: staged.map(r => r.incoming), source_paths: staged.map(r => r.src), inspected_at: new Date().toISOString(), image_ids: [...linked.map(e => e.image_id), id], image_records: [...linked.map(e => { const st = fs.statSync(e.image_path); return { image_id: e.image_id, device: st.dev, inode: st.ino }; }), { image_id: id, device: inode.dev, inode: inode.ino }] });
+          at('before-publication');
+          try { fs.linkSync(row.incoming, path.join(rootDir, id)); }
+          catch (err) { if (err.code === 'EEXIST') continue; throw err; }
+          const entry = { run_file: row.runFile, image_id: id, image_path: path.join(rootDir, id), image_url: imageUrl(id), ...row.validation, published_at: new Date().toISOString() };
+          if (row.seed !== undefined) entry.seed = String(row.seed);
+          linked.push(entry); entries.push(entry); at('after-publication'); break;
+        }
+        if (entries.length < staged.indexOf(row) + 1) throw new Error('no free canonical filename');
+      }
+      at('before-metadata');
+      writeRunIndex(runDir, [...images, ...entries]);
+      committed = true;
+      at('after-metadata');
+      // Once metadata commits, cleanup must never roll back canonical bytes.
+      const remainingSources = [];
+      for (const row of staged) { try { fs.unlinkSync(row.src); } catch (_) { remainingSources.push(row.src); } }
+      if (remainingSources.length) {
+        const pending = JSON.parse(fs.readFileSync(journal, 'utf8'));
+        writeJsonAtomic(journal, { ...pending, cleanup_state: 'failed', source_paths: remainingSources });
+        throw new Error('canonical-source-cleanup-failed');
+      }
+      fs.unlinkSync(journal);
+      return entries;
+    } catch (err) {
+      if (!committed) { for (const e of linked) { try { fs.unlinkSync(e.image_path); } catch (_) { rollbackComplete = false; } } }
+      throw err;
     } finally {
-      try { fs.unlinkSync(incoming); } catch (_) {}
+      for (const row of staged) { try { fs.unlinkSync(row.incoming); } catch (_) {} }
+      if (!committed && rollbackComplete) { try { fs.unlinkSync(journal); } catch (_) {} }
+    }
+  }
+  function publishFile(src, { runDir, runId = path.basename(runDir), seed, runFile = path.basename(src) }) {
+    return publishFiles([{ src, runId, seed, runFile }], runDir)[0];
+  }
+  function adoptFile(src, options) {
+    if (!options.runDir) throw new Error('canonical metadata runDir required');
+    return publishFile(src, options);
+  }
+  function replacePublishedImage(runDir, imageId, transform) {
+    const original = resolveImage(imageId);
+    const images = readRunIndex(runDir);
+    const entry = images.find(e => e.image_id === imageId);
+    if (!original || !entry) throw new Error('canonical reference missing');
+    const token = crypto.randomBytes(12).toString('hex');
+    const staged = path.join(rootDir, '.incoming-' + token + path.extname(imageId));
+    const backup = path.join(rootDir, '.backup-' + token + path.extname(imageId));
+    const journal = path.join(rootDir, '.pending-' + token + '.json');
+    let replaced = false, committed = false, restored = false;
+    try {
+      fs.copyFileSync(original.path, staged, fs.constants.COPYFILE_EXCL);
+      transform(staged);
+      const validation = validateImage(staged);
+      fs.linkSync(original.path, backup);
+      writeJsonAtomic(journal, { schema: 'dexdiffusion.image_publication.pending.v1', run_dir: runDir, host: 'local', cleanup_state: 'pending', incoming_paths: [staged], image_ids: [imageId], image_records: [{ image_id: imageId, device: fs.statSync(staged).dev, inode: fs.statSync(staged).ino }], backup_path: backup, inspected_at: new Date().toISOString() });
+      fs.renameSync(staged, original.path); replaced = true;
+      at('before-metadata');
+      const updated = { ...entry, ...validation, transformed_at: new Date().toISOString() };
+      writeRunIndex(runDir, images.map(e => e === entry ? updated : e)); committed = true;
+      fs.unlinkSync(journal);
+      return updated;
+    } catch (err) { if (replaced && !committed) { fs.renameSync(backup, original.path); restored = true; } throw err; }
+    finally {
+      try { fs.unlinkSync(staged); } catch (_) {}
+      if (committed || restored || !replaced) {
+        try { fs.unlinkSync(backup); } catch (_) {}
+        if (!committed) { try { fs.unlinkSync(journal); } catch (_) {} }
+      }
     }
   }
 
@@ -120,10 +213,7 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT } = {}) {
   }
 
   function writeRunIndex(runDir, images) {
-    const file = path.join(runDir, RUN_IMAGE_INDEX);
-    const tmp = file + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify({ schema: 'dexdiffusion.canonical_images.v1', root: rootDir, images }, null, 2) + '\n');
-    fs.renameSync(tmp, file);
+    writeJsonAtomic(path.join(runDir, RUN_IMAGE_INDEX), { schema: 'dexdiffusion.canonical_images.v1', root: rootDir, images });
   }
 
   function findRunImageFiles(runDir) {
@@ -144,19 +234,82 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT } = {}) {
   // Move every real generated image out of a run dir into the canonical root.
   function adoptRunImages(runDir, { seed, seedFor } = {}) {
     const runId = path.basename(runDir);
-    const images = readRunIndex(runDir);
-    const adopted = [];
-    for (const file of findRunImageFiles(runDir)) {
-      if (!hasImageSignature(file)) continue;
+    const files = findRunImageFiles(runDir).map(file => {
       const runFile = path.relative(runDir, file);
       const fileSeed = seedFor ? seedFor(runFile) : undefined;
-      const entry = adoptFile(file, { runId, seed: fileSeed !== undefined ? fileSeed : seed, runFile });
-      if (fileSeed !== undefined) entry.seed = fileSeed;
-      images.push(entry);
-      adopted.push(entry);
+      return { src: file, runId, runFile, seed: fileSeed !== undefined ? fileSeed : seed };
+    });
+    return files.length ? publishFiles(files, runDir) : [];
+  }
+
+  // Read-only reconciliation: absence stays absence; no images or indices mutate.
+  function inspectIntegrity({ runsRoot, references = [] } = {}) {
+    const inspected_at = new Date().toISOString();
+    const refs = references.map(r => ({ ...r })), metadata_errors = [];
+    if (runsRoot) {
+      let dirs = []; try { dirs = fs.readdirSync(runsRoot, { withFileTypes: true }).filter(d => d.isDirectory()); } catch (_) {}
+      for (const dir of dirs) {
+        const index = path.join(runsRoot, dir.name, RUN_IMAGE_INDEX);
+        if (!fs.existsSync(index)) continue;
+        try {
+          const data = JSON.parse(fs.readFileSync(index, 'utf8'));
+          if (!Array.isArray(data.images)) throw new Error('invalid images index');
+          refs.push(...data.images.map(e => ({ ...e, run_id: dir.name, metadata_path: index })));
+        } catch (_) { metadata_errors.push({ state: 'broken', run_id: dir.name, metadata_path: index, reason: 'invalid-index', inspected_at }); }
+      }
     }
-    if (adopted.length) writeRunIndex(runDir, images);
-    return adopted;
+    const logicalCounts = new Map();
+    for (const ref of refs) {
+      const key = [ref.run_id || ref.job_id || ref.metadata_path || '', ref.run_file || ref.image_id].join(':');
+      logicalCounts.set(key, (logicalCounts.get(key) || 0) + 1);
+    }
+    const grouped = new Map();
+    for (const ref of refs) {
+      const id = ref.image_id;
+      if (!grouped.has(id)) grouped.set(id, []);
+      grouped.get(id).push(ref);
+    }
+    let names = []; try { names = fs.readdirSync(rootDir).filter(isImageName).filter(n => !n.startsWith('.')); } catch (_) {}
+    const pending = pendingImageIds();
+    const ids = [...new Set([...names, ...grouped.keys(), ...pending])];
+    const rows = ids.map(image_id => {
+      const owners = grouped.get(image_id) || [];
+      const safe = typeof image_id === 'string' && SAFE_IMAGE_ID.test(image_id) && isImageName(image_id);
+      const file = safe ? path.join(rootDir, image_id) : null;
+      let st; try { if (file) st = fs.lstatSync(file); } catch (_) {}
+      const row = { image_id, path: file, inspected_at, owners, reference_state: owners.length ? 'referenced' : 'unreferenced', known_digests: [...new Set(owners.map(r => r.sha256).filter(Boolean))], state: safe ? (st ? 'valid' : 'missing') : 'broken', sha256: null, bytes: null };
+      if (st && !st.isFile()) { row.state = 'broken'; row.reason = 'not-regular-file'; }
+      if (st && st.isFile()) { row.bytes = st.size; row.sha256 = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); row.decode = true; }
+      return row;
+    });
+    const toDecode = rows.filter(r => r.decode);
+    const decoded = inspectImageFiles(toDecode.map(r => r.path));
+    toDecode.forEach((row, i) => {
+      delete row.decode;
+      const d = decoded[i];
+      if (!d.valid) { row.state = d.error === 'image-validation-unavailable' ? 'unknown' : 'broken'; row.reason = d.error; }
+      else {
+        row.format = d.format; row.dimensions = d.dimensions;
+        if (row.owners.some(r => r.sha256 && r.sha256 !== row.sha256)) row.state = 'digest-mismatch';
+        else if (!row.owners.length) row.state = 'orphan';
+        const logical = row.owners.map(r => [r.run_id || r.job_id || r.metadata_path || '', r.run_file || r.image_id].join(':'));
+        if (logical.some(key => logicalCounts.get(key) > 1)) row.duplicate_logical_reference = true;
+      }
+    });
+    for (const row of rows) {
+      if (row.owners.some(r => r.image_path && path.resolve(r.image_path) !== row.path)) { row.state = 'broken'; row.reason = 'reference-path-mismatch'; }
+      if (pending.has(row.image_id)) row.state = 'pending';
+    }
+    const counts = { valid: 0, missing: 0, orphan: 0, 'digest-mismatch': 0, broken: metadata_errors.length, duplicate: 0, pending: 0, unknown: 0 };
+    for (const row of rows) { counts[row.state]++; if (row.duplicate_logical_reference) counts.duplicate++; }
+    const pending_publications = [];
+    let journalNames = []; try { journalNames = fs.readdirSync(rootDir).filter(n => /^\.pending-.*\.json$/.test(n)); } catch (_) {}
+    for (const name of journalNames) {
+      const journal_path = path.join(rootDir, name);
+      try { pending_publications.push({ ...JSON.parse(fs.readFileSync(journal_path, 'utf8')), journal_path }); }
+      catch (_) { pending_publications.push({ journal_path, cleanup_state: 'unknown', reason: 'invalid-publication-journal' }); }
+    }
+    return { schema: 'dexdiffusion.image_integrity.v1', root: rootDir, inspected_at, counts, records: rows, metadata_errors, pending_publications };
   }
 
   function runSeedLabel(runDir) {
@@ -212,6 +365,9 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT } = {}) {
     resolveImage,
     imageUrl,
     adoptFile,
+    publishFile,
+    replacePublishedImage,
+    inspectIntegrity,
     adoptRunImages,
     finalizeRun,
     readRunIndex,

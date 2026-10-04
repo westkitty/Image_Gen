@@ -1,0 +1,4 @@
+[edit-workbench +5.8s] START safe owned detector stall shows terminal timeout, no mask/job, and healthy retry retains image/options
+[edit-workbench +11.9s] PASS safe owned detector stall shows terminal timeout, no mask/job, and healthy retry retains image/options (6170 ms)
+
+1/1 browser checks passed

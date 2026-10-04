@@ -1,0 +1,307 @@
+{
+  "specVersion": 1,
+  "started": "2026-10-03T23:11:19.986Z",
+  "requiredBaseCells": 180,
+  "partial": true,
+  "cells": [
+    {
+      "id": "V1/375x812/Create",
+      "screen": "Create",
+      "shell": 1,
+      "viewport": [
+        375,
+        812
+      ],
+      "status": "BLOCKED",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 374,
+                "height": 398.71875,
+                "left": 0,
+                "right": 374,
+                "overflow": 0
+              }
+            ]
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 58,
+            "disabled": 5
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "FAIL",
+          "failures": [
+            "Tab unreachable: Dismiss",
+            "Tab unreachable: Quantity",
+            "Tab unreachable: Square",
+            "Tab unreachable: Landscape",
+            "Tab unreachable: Portrait",
+            "Tab unreachable: Swap W↔H",
+            "Tab unreachable: Random seed",
+            "Tab unreachable: Clear prompt",
+            "Tab unreachable: Settings drawershow · model · VAE · output",
+            "Tab unreachable: ⊞ Wildcards (21)",
+            "Tab unreachable: Saved presets",
+            "Tab unreachable: New preset name",
+            "Tab unreachable: Save preset",
+            "Tab unreachable: Tiling",
+            "Tab unreachable: Mode",
+            "Tab unreachable: API",
+            "Focus uninspectable: Preset",
+            "Focus uninspectable: Describe the image. A1111 syntax supported.",
+            "Focus uninspectable: low quality, blurry…",
+            "Focus uninspectable: Steps",
+            "Focus uninspectable: CFG",
+            "Focus uninspectable: -1",
+            "Focus uninspectable: Sampler",
+            "Focus uninspectable: Scheduler",
+            "Focus uninspectable: Width",
+            "Focus uninspectable: Height"
+          ],
+          "measures": {
+            "expected": 53,
+            "reached": 37,
+            "focusSamples": 50
+          }
+        },
+        {
+          "contract": "execution",
+          "status": "BLOCKED",
+          "failures": [
+            "locator.isChecked: Timeout 5000ms exceeded."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V1/375x812/Edit Compact",
+      "screen": "Edit Compact",
+      "shell": 1,
+      "viewport": [
+        375,
+        812
+      ],
+      "status": "FAIL",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 375,
+                "height": 721,
+                "left": 0,
+                "right": 375,
+                "overflow": 0
+              },
+              {
+                "width": 339,
+                "height": 1963.5,
+                "left": 14,
+                "right": 353,
+                "overflow": 0
+              }
+            ]
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 54,
+            "disabled": 3
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "FAIL",
+          "failures": [
+            "Tab unreachable: Clear",
+            "Tab unreachable: img2img",
+            "Tab unreachable: Inpaint",
+            "Tab unreachable: Outpaint",
+            "Tab unreachable: Prompt",
+            "Tab unreachable: Negative prompt",
+            "Tab unreachable: Steps",
+            "Tab unreachable: CFG",
+            "Tab unreachable: Seed (−1 = random)",
+            "Tab unreachable: Samplereuler_aeulerheundpm2dpm2_almsdpmpp2s_adpmpp2mdpmpp2mv2ipndmipndm_vlcm",
+            "Tab unreachable: Schedulerdiscretekarrasexponentialayssgm_uniformsimple",
+            "Tab unreachable: Strength",
+            "Tab unreachable: VAEDefault / backend-selectedNone",
+            "Tab unreachable: Brush",
+            "Tab unreachable: Eraser",
+            "Tab unreachable: Pan",
+            "Tab unreachable: Brush size in image pixels",
+            "Tab unreachable: Fit",
+            "Tab unreachable: 100%",
+            "Tab unreachable: Zoom out",
+            "Tab unreachable: Zoom in",
+            "Tab unreachable: Grow",
+            "Tab unreachable: Shrink",
+            "Tab unreachable: Feather",
+            "Tab unreachable: Blur",
+            "Tab unreachable: Invert",
+            "Tab unreachable: ▸ Presets",
+            "Tab unreachable: Saved presets",
+            "Tab unreachable: New preset name",
+            "Tab unreachable: Save preset",
+            "Tab unreachable: ▸ Recalled record (raw)"
+          ],
+          "measures": {
+            "expected": 51,
+            "reached": 19,
+            "focusSamples": 20
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 13,
+            "toggles": 0,
+            "validation": 2,
+            "selects": 3,
+            "details": 2
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "FAIL",
+          "failures": [
+            "Focus did not return"
+          ],
+          "measures": {
+            "exercised": 1
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "FAIL",
+          "failures": [
+            "Escape from option did not close model picker"
+          ],
+          "measures": {
+            "exercised": 1,
+            "options": 17
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 44,
+            "minObservedHeight": 44,
+            "controls": 49
+          }
+        }
+      ]
+    },
+    {
+      "id": "V1/1280x800/Voice",
+      "screen": "Voice",
+      "shell": 1,
+      "viewport": [
+        1280,
+        800
+      ],
+      "status": "PASS",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 1022,
+                "height": 760,
+                "left": 258,
+                "right": 1280,
+                "overflow": 0
+              }
+            ]
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 23,
+            "disabled": 0
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 23,
+            "reached": 23,
+            "focusSamples": 30
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 1,
+            "toggles": 1,
+            "validation": 0,
+            "selects": 0,
+            "details": 0
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "N/A",
+          "failures": [],
+          "measures": {
+            "exercised": 0
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "N/A",
+          "failures": [],
+          "measures": {
+            "exercised": 0,
+            "options": 0
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 32,
+            "minObservedHeight": 32,
+            "controls": 22
+          }
+        }
+      ]
+    }
+  ]
+}

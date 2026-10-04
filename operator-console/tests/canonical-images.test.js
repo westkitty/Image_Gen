@@ -11,7 +11,7 @@ const { resolveBackendBase, jobProgressPercent } = require('../public/dexdiffusi
 
 const ROOT = path.join(__dirname, '..');
 const WORKFLOW_BIN = path.join(ROOT, '..', 'sdcpp-workflow', 'bin');
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 1)]);
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGMU0QhgYGBgYgADAAZ+AJD85S7OAAAAAElFTkSuQmCC', 'base64');
 
 function sandbox() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-images-'));
@@ -65,7 +65,9 @@ test('adoption never overwrites an existing canonical image', () => {
 test('non-image and non-signature files are not adopted', () => {
   const { store, runDir } = sandbox();
   fs.writeFileSync(path.join(runDir, 'broken.png'), 'not a png');
-  assert.deepEqual(store.adoptRunImages(runDir), []);
+  assert.throws(() => store.adoptRunImages(runDir), /image-format-invalid/);
+  assert.ok(fs.existsSync(path.join(runDir, 'broken.png')));
+  assert.equal(store.readRunIndex(runDir).length, 0);
 });
 
 test('image lookup cannot escape the canonical root', () => {

@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright-core');
-const { makePng, decodePng, startServer, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
+const { makePng, decodePng, startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
 
 const OUT = process.env.DEX_BROWSER_OUTPUT_DIR || path.join(__dirname, '..', '..', '..', 'output', 'playwright');
 fs.mkdirSync(OUT, { recursive: true });
@@ -27,6 +27,7 @@ const CATALOG = [
 async function newPage(browser, base, { width = 1280, height = 900, legacyRecipes } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height } });
   const page = await ctx.newPage();
+  await installModelSnapshots(page, base);
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   if (legacyRecipes) await page.addInitScript(r => { localStorage.setItem('dex_favorite_presets', JSON.stringify(r)); }, legacyRecipes);
@@ -57,7 +58,17 @@ async function newPage(browser, base, { width = 1280, height = 900, legacyRecipe
   await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
   return { page, ctx, errors, mock, posts };
 }
-const openEdit = (page, id, op) => page.evaluate(([i, o]) => __dex.openImageInEdit(i, o), [id, op]).then(ok => { assert.ok(ok, 'openImageInEdit returned false'); return page.waitForSelector('[data-edit-workbench]'); });
+const openEdit = async (page, id, op) => {
+  const ok = await page.evaluate(([i, o]) => __dex.openImageInEdit(i, o), [id, op]);
+  assert.ok(ok, 'openImageInEdit returned false');
+  // The owner promise finishes before the queued DOM commit. An existing
+  // workbench can still contain handlers bound to the prior operation state.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.waitForFunction(([i,o]) => __dex.ed && !__dex.ed.loading && __dex.ed.op === o && __dex.ed.source?.imageId === i
+    && document.querySelector('[data-edit-workbench] [data-op="' + o + '"][aria-selected="true"]')
+    && document.querySelector('[data-edit-workbench] [data-presets="' + o + '"]')
+    && document.querySelector('[data-edit-source] img[data-fullscreen-image-id="' + i + '"]'), [id,op]);
+};
 const clickRun = async (page, text = 'a test prompt') => { await page.click('[data-edit-prompt]'); await page.fill('[data-edit-prompt]', text); await page.click('[data-run-edit]'); };
 
 const { results, test, phase, exitCode } = runner('edit-workbench');
@@ -337,6 +348,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       for (const mode of ['inpaint', 'outpaint']) {
         await openEdit(page, 'fx-portrait.png', mode);
         await page.getByRole('spinbutton', { name: 'Steps', exact: true }).fill('23');
+        await page.waitForFunction(() => __dex.ed.state.params.steps === '23');
         if (await page.locator('[data-section="presets"]').getAttribute('open') === null) await page.click('[data-section="presets"] summary');
         await page.fill(`[data-presets="${mode}"] input[aria-label="New preset name"]`, 'Closure ' + mode);
         await page.click(`[data-presets="${mode}"] button:has-text("Save preset")`);
@@ -373,6 +385,25 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       await ctx.close();
     });
 
+    await test('saving ON: actual browser storage retains explicitly saved preset text after reload, sessionStorage remains unused', async () => {
+      const { page, ctx } = await newPage(browser, srv.base);
+      const canary = 'REV19-STORAGE-ON-92641';
+      try {
+        await page.evaluate(() => { __dex.setState({savePrompts:true}); localStorage.setItem('dex_save_prompts','true'); });
+        await openEdit(page,'fx-square.png','inpaint');
+        await page.fill('[data-edit-prompt]',canary); await page.fill('[data-edit-negative]',canary);
+        await page.click('[data-section="presets"] summary');
+        await page.fill('[data-presets="inpaint"] input[aria-label="New preset name"]','Rev19 retained preset');
+        await page.click('[data-presets="inpaint"] button:has-text("Save preset")');
+        for(const reload of [false,true]) {
+          if(reload){await page.reload();await page.waitForFunction(()=>window.__dex && __dex.ed);}
+          const storage=await page.evaluate(()=>({local:Object.fromEntries(Object.keys(localStorage).map(k=>[k,localStorage.getItem(k)])),session:Object.fromEntries(Object.keys(sessionStorage).map(k=>[k,sessionStorage.getItem(k)]))}));
+          assert.ok(storage.local.dex_favorite_presets.includes(canary),'expected retention only in saved preset');
+          assert.ok(!JSON.stringify(storage.session).includes(canary),'sessionStorage unused for private text');
+        }
+      } finally { await ctx.close(); }
+    });
+
     await test('Detailer dialog traps focus, closes with Escape, and restores the opener', async () => {
       const { page, ctx } = await newPage(browser, srv.base);
       await page.evaluate(() => __dex.setScreen('library'));
@@ -388,6 +419,42 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       await page.waitForSelector('[data-detailer-dialog]', { state: 'detached' });
       assert.equal(await page.locator('[data-detailer-dialog]').count(), 0);
       await ctx.close();
+    });
+
+    await test('safe owned detector stall shows terminal timeout, no mask/job, and healthy retry retains image/options', async () => {
+      const { createDetector } = require('../../detailer');
+      const { spawn } = require('node:child_process');
+      const os = require('node:os');
+      const owned = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-detector-browser-'));
+      const input = path.join(owned, 'source.png'); fs.writeFileSync(input, makePng(8, 8));
+      const { page, ctx, posts } = await newPage(browser, srv.base);
+      const workers = []; let healthy = false;
+      const detect = createDetector({ binary: '/bin/sh', attempts: 1, defaultTimeoutMs: 1000,
+        spawnWorker: () => {
+          const code = healthy ? `printf '%s\\n' '{"status":"ok","detections":[{"class":"hand"}]}'` : `echo DEXDETAIL_STAGE=vision-begin >&2; read held;`;
+          const c = spawn('/bin/sh', ['-c', code]); workers.push(c); return c;
+        } });
+      try {
+        await page.route('**/api/detailer/mask-preview', async r => {
+          try { const result = await detect(input, { mode: 'hand' }); await r.fulfill({ json: { ...result, mask_preview: 'data:image/png;base64,' + makePng(8,8).toString('base64') } }); }
+          catch(e) { await r.fulfill({ status: e.status, json: { code:e.code,error:e.message } }); }
+        });
+        await page.evaluate(() => __dex.setScreen('library'));
+        await page.getByRole('button',{name:'Select fx-landscape.png for details',exact:true}).first().click();
+        await page.getByRole('button',{name:'Detailer',exact:true}).click();
+        await page.getByRole('button',{name:'Hand (Derived ROI)',exact:true}).click();
+        await page.getByRole('button',{name:'Preview Mask',exact:true}).click();
+        await page.waitForFunction(() => !__dex.ws.detailer.loading && /did not finish/.test(__dex.ws.detailer.note));
+        assert.match(await page.locator('[data-detailer-dialog]').innerText(),/did not finish/);
+        assert.equal(await page.evaluate(() => __dex.ws.detailer.maskPreview), null);
+        assert.equal(posts.filter(p=>p.url==='/api/actions/inpaint').length,0);
+        for(const c of workers) assert.throws(()=>process.kill(c.pid,0),/ESRCH/);
+        const before = await page.evaluate(() => __dex.detailerPayload(__dex.ws.detailer));
+        healthy = true;
+        await page.getByRole('button',{name:'Preview Mask',exact:true}).click();
+        await page.waitForFunction(() => !__dex.ws.detailer.loading && !!__dex.ws.detailer.maskPreview);
+        assert.deepEqual(await page.evaluate(() => __dex.detailerPayload(__dex.ws.detailer)), before);
+      } finally { await ctx.close(); fs.rmSync(owned,{recursive:true,force:true}); }
     });
 
     await test('Detailer keeps truthful job progress visible until the canonical result is ready', async () => {

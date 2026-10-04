@@ -108,10 +108,13 @@ test('6, 7, 8: bridge canonicalization contract and incoming cleanup', () => {
   assert.match(BRIDGE, /trap 'rm -f -- "\$INCOMING" "\$RAW_STDERR"' EXIT/);
   // 6. canonicalization only happens AFTER all gates pass
   const cleanGatePos = BRIDGE.indexOf('Remote cleanup unverified');
-  const canonPos = BRIDGE.indexOf('IMAGE_BASE="$RUN_ID-s$SEED_VALUE-controlled-$ARG_TARGET"');
+  const canonPos = BRIDGE.indexOf('CANONICAL_RECORD=');
   assert.ok(cleanGatePos !== -1 && canonPos !== -1 && cleanGatePos < canonPos, 'cleanup check precedes canonicalization');
-  // 8. valid successful PNG links into canonical root
-  assert.match(BRIDGE, /ln "\$INCOMING" "\$candidate"/);
+  // 8. The shared transaction validates, safely links, and commits metadata.
+  assert.match(BRIDGE, /node "\$DEX_CANONICALIZE_JS"/);
+  assert.match(BRIDGE, /--source "\$INCOMING" --run-dir "\$RUN_DIR" --run-file/);
+  assert.ok(BRIDGE.indexOf('verify_png "$INCOMING"') < canonPos);
+  assert.doesNotMatch(BRIDGE, /ln "\$INCOMING" "\$candidate"/);
 });
 
 test('9: remote temp path is restricted to the Dex MFLUX namespace', () => {

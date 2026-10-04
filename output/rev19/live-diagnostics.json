@@ -1,0 +1,191 @@
+{
+  "doctor": {
+    "overall": "WARN",
+    "checkedAt": "2026-10-03T23:49:14.584Z",
+    "rows": [
+      {
+        "check": "Operator console",
+        "state": "PASS",
+        "detail": "responding (pid 4482)"
+      },
+      {
+        "check": "Loopback bind",
+        "state": "PASS",
+        "detail": "127.0.0.1:31337"
+      },
+      {
+        "check": "Owned temporary cleanup",
+        "state": "PASS",
+        "detail": "0 tracked resources · read-only /api/cleanup/ownership"
+      },
+      {
+        "check": "Canonical storage integrity",
+        "state": "WARN",
+        "detail": "{\"valid\":3,\"missing\":502,\"orphan\":0,\"digest-mismatch\":0,\"broken\":0,\"duplicate\":0,\"pending\":0,\"unknown\":0} · read-only /api/storage/integrity"
+      },
+      {
+        "check": "Canonical image root",
+        "state": "PASS",
+        "detail": "/Users/andrew/images_made readable/writable"
+      },
+      {
+        "check": "Big Mac",
+        "state": "PASS",
+        "detail": "reachable via ssh westcat"
+      },
+      {
+        "check": "Big Mac identity",
+        "state": "PASS",
+        "detail": "bigmac@bigmac"
+      },
+      {
+        "check": "wc2tb mounted",
+        "state": "PASS",
+        "detail": "/Volumes/wc2tb"
+      },
+      {
+        "check": "MFLUX runtime",
+        "state": "PASS",
+        "detail": "internal venv"
+      },
+      {
+        "check": "MFLUX model (FLUX.2 Klein 4B 4-bit)",
+        "state": "PASS",
+        "detail": "$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit"
+      },
+      {
+        "check": "SDCPP sd-cli",
+        "state": "PASS",
+        "detail": "stable-diffusion.cpp 7f0e728"
+      },
+      {
+        "check": "SD1.5 model",
+        "state": "PASS",
+        "detail": "$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors"
+      },
+      {
+        "check": "Real-ESRGAN model",
+        "state": "PASS",
+        "detail": "RealESRGAN_x4plus.pth"
+      },
+      {
+        "check": "Configured SDCPP targets",
+        "state": "PASS",
+        "detail": "all present"
+      },
+      {
+        "check": "Tailscale Serve",
+        "state": "PASS",
+        "detail": "https://macbook-air.tailafb7e8.ts.net:8443/dexdiffusion/ (tailnet-only)"
+      },
+      {
+        "check": "DexDiffusion Funnel absent",
+        "state": "PASS",
+        "detail": "tailnet-only"
+      },
+      {
+        "check": "Generic job store",
+        "state": "PASS",
+        "detail": "315 durable job records (jobs.json)"
+      },
+      {
+        "check": "Media root · image",
+        "state": "PASS",
+        "detail": "/Users/andrew/images_made"
+      },
+      {
+        "check": "Media root · voice",
+        "state": "PASS",
+        "detail": "/Users/andrew/audio_made/voice"
+      },
+      {
+        "check": "Media root · music",
+        "state": "PASS",
+        "detail": "/Users/andrew/audio_made/music"
+      },
+      {
+        "check": "Media root · video",
+        "state": "PASS",
+        "detail": "/Users/andrew/video_made"
+      },
+      {
+        "check": "Reference staging",
+        "state": "PASS",
+        "detail": "0 staged file(s), 24 h expiry"
+      },
+      {
+        "check": "Heavy-compute lease",
+        "state": "PASS",
+        "detail": "bigmac-heavy-inference capacity 1; owner none; waiting 0"
+      },
+      {
+        "check": "External heavy load (Big Mac)",
+        "state": "PASS",
+        "detail": "none detected (ollama ps)"
+      },
+      {
+        "check": "Worker · MFLUX (FLUX.2 Klein 4B)",
+        "state": "PASS",
+        "detail": "PROVEN"
+      },
+      {
+        "check": "Worker · stable-diffusion.cpp 7f0e728",
+        "state": "PASS",
+        "detail": "PROVEN"
+      },
+      {
+        "check": "Worker · Kokoro 82M (speech)",
+        "state": "PASS",
+        "detail": "PROVEN"
+      },
+      {
+        "check": "Worker · Qwen3-TTS Base (voice clone)",
+        "state": "PASS",
+        "detail": "PROVEN"
+      },
+      {
+        "check": "Worker · Qwen3-TTS VoiceDesign",
+        "state": "PASS",
+        "detail": "PROVEN"
+      },
+      {
+        "check": "Worker · ACE-Step 1.5 (Turbo + 0.6B LM)",
+        "state": "PASS",
+        "detail": "PROVEN"
+      },
+      {
+        "check": "Worker · Magenta RealTime 2 (small)",
+        "state": "PASS",
+        "detail": "PROVEN"
+      },
+      {
+        "check": "Worker · LTX Video (video)",
+        "state": "WARN",
+        "detail": "RUNTIME MISSING; enabled false; proven false — not installed"
+      },
+      {
+        "check": "Unified Media Library",
+        "state": "PASS",
+        "detail": "images 504, voice 50, music 3, video 0"
+      }
+    ]
+  },
+  "inventory": {
+    "counts": {
+      "valid": 3,
+      "missing": 502,
+      "orphan": 0,
+      "digest-mismatch": 0,
+      "broken": 0,
+      "duplicate": 0,
+      "pending": 0,
+      "unknown": 0
+    },
+    "pending_publications": []
+  },
+  "cleanup": {
+    "resources": [],
+    "pending_publications": [],
+    "scope": "exact-project-owned-resources"
+  }
+}

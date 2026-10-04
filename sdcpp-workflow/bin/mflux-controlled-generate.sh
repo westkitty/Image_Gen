@@ -171,26 +171,14 @@ if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
 fi
 verify_png "$INCOMING" "MFLUX FLUX.2 Klein PNG"
 
-IMAGE_BASE="$RUN_ID-s$SEED_VALUE-controlled-$ARG_TARGET"
-LOCAL_PNG=""
-for n in 1 2 3 4 5 6 7 8 9; do
-  candidate="$DEX_IMAGES_ROOT/$IMAGE_BASE$([ "$n" = 1 ] || printf -- '-%s' "$n").png"
-  if ln "$INCOMING" "$candidate" 2>/dev/null; then LOCAL_PNG="$candidate"; break; fi
-done
-[ -n "$LOCAL_PNG" ] || fail "canonicalization-failed" "No free canonical filename for $IMAGE_BASE"
-rm -f -- "$INCOMING"
+# Publish through the same validated transaction as the server and SDCPP.
+CANONICAL_RECORD="$(DEX_IMAGES_ROOT_OVERRIDE="$DEX_IMAGES_ROOT" node "$DEX_CANONICALIZE_JS" \
+  --source "$INCOMING" --run-dir "$RUN_DIR" --run-file "controlled-$ARG_TARGET.png" --seed "$SEED_VALUE")" \
+  || fail "canonicalization-failed" "Validated canonical publication failed"
+LOCAL_PNG="$(printf '%s\n' "$CANONICAL_RECORD" | python3 -c 'import json,sys; line=next(x for x in sys.stdin if x.startswith("CANONICAL_RECORD: ")); print(json.loads(line.split(": ",1)[1])["image_path"])')" \
+  || fail "canonicalization-failed" "No canonical publication receipt"
 IMAGE_ID="$(basename "$LOCAL_PNG")"
 IMAGE_URL="/api/images/$IMAGE_ID"
-
-python3 - "$RUN_DIR" "$DEX_IMAGES_ROOT" "controlled-$ARG_TARGET.png" "$IMAGE_ID" "$LOCAL_PNG" "$IMAGE_URL" <<'PYINDEX'
-import json, os, sys
-run_dir, root, run_file, image_id, image_path, image_url = sys.argv[1:]
-with open(os.path.join(run_dir, "canonical-images.json"), "w", encoding="utf-8") as f:
-    json.dump({"schema": "dexdiffusion.canonical_images.v1", "root": root,
-               "images": [{"run_file": run_file, "image_id": image_id,
-                           "image_path": image_path, "image_url": image_url}]}, f, indent=2)
-    f.write("\n")
-PYINDEX
 REMOTE_PNG="ephemeral:$REMOTE_TMP (deleted, verified absent)"
 
 FINISHED_AT="$(iso_now)"

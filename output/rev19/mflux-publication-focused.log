@@ -1,0 +1,20 @@
+✔ 1, 2, 15: success emits cleanup marker, exit follows cleanup proof, stdout is uncontaminated PNG (305.595375ms)
+✔ failure "crash" is classified as generator-exit, streams nothing and still cleans up with cleanup OK (72.77325ms)
+✔ failure "none" is classified as output-missing, streams nothing and still cleans up with cleanup OK (90.26075ms)
+✔ failure "empty" is classified as output-empty, streams nothing and still cleans up with cleanup OK (85.853708ms)
+✔ failure "junk" is classified as output-invalid, streams nothing and still cleans up with cleanup OK (192.69325ms)
+✔ 3, 4, 5: Mac bridge requires MFLUX_REMOTE_CLEANUP: OK and fails closed if missing or FAIL (1.040208ms)
+✔ 6, 7, 8: bridge canonicalization contract and incoming cleanup (0.597959ms)
+✔ 9: remote temp path is restricted to the Dex MFLUX namespace (0.611625ms)
+✔ 10: cleanup is idempotent and safe when called repeatedly (32.702208ms)
+✔ 11, 12: stale recovery cleans only abandoned MFLUX dirs older than 60m, preserves fresh and unrelated dirs (71.521042ms)
+✔ 13: prompt redaction remains intact under privacy mode (172.644958ms)
+✔ 14: SHA-256 validation compares remote vs local streamed file (0.25475ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1351.855667

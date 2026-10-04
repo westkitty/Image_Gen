@@ -12,7 +12,8 @@
     "test": "node --test tests/*.test.js",
     "test:browser": "node tests/browser/edit-workbench.browser.js && node tests/browser/voice-drama.browser.js",
     "test:browser:edit": "node tests/browser/edit-workbench.browser.js",
-    "test:browser:voice": "node tests/browser/voice-drama.browser.js"
+    "test:browser:voice": "node tests/browser/voice-drama.browser.js",
+    "test:browser:matrix": "node tests/browser/interaction-matrix.browser.js"
   },
   "keywords": [],
   "author": "",

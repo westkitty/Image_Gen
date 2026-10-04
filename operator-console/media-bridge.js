@@ -20,6 +20,8 @@ const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const { WORKER_PATHS } = require('./media');
 const A = require('./voice-audio');
+const { artifactReceipt, TERMINAL } = require('./job-contract');
+const { cleanupCommand } = require('./cleanup-owner');
 
 const DRIVER_PATH = path.join(__dirname, 'bridges', 'dexmedia_remote.py');
 const REMOTE_TMP_BASE = '$HOME/Library/Caches/DexDiffusion/tmp';
@@ -228,7 +230,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
 
   async function run(jobId, worker, spec, v, private_) {
     const fail = (gate, error) => { jobStore.transition(jobId, 'FAILED', { first_failed_gate: gate, error }); return { ok: false, gate }; };
-    let remoteDir = null, localRef = null, localOut = null;
+    let remoteDir = null, remoteResource = null, localRef = null, localOut = null;
     try {
       // 1. lease (capacity 1, shared with image jobs)
       const lease = await arbiter.acquire(jobId, `${worker} ${spec.operation}`);
@@ -242,6 +244,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
         `mkdir -p "$HOME/Library/Caches/DexDiffusion/tmp" && d=$(mktemp -d "$HOME/Library/Caches/DexDiffusion/tmp/dexmedia.XXXXXX") && chmod 700 "$d" && echo "DEXMEDIA_DIR=$d"`]);
       remoteDir = parseMarkers(mk.stdout).DIR;
       if (!remoteDir) return fail('worker-unavailable', 'could not create a Big Mac job directory');
+      remoteResource = jobStore.ownResource(jobId, sshTarget, remoteDir);
 
       // 3. reference audio (server-resolved staged file only)
       const request = { ...private_, out_dir: `${remoteDir}/out`, model: spec.model, ace_src: spec.aceSrc };
@@ -287,7 +290,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
         });
       } catch (e) { return fail('canonicalization', String(e.message).slice(0, 200)); }
       if (rec.sha256 !== sha) return fail('checksum', 'canonical file checksum mismatch');
-      jobStore.transition(jobId, 'COMPLETE', { artifacts: [rec.artifact_id] });
+      jobStore.transition(jobId, 'COMPLETE', { artifacts: [rec.artifact_id], artifact_validation: artifactReceipt([rec]) });
       evidence.pass(worker, { at: new Date().toISOString(), job_id: jobId, artifact_id: rec.artifact_id, sha256: sha });
       return { ok: true, artifact: rec };
     } catch (e) {
@@ -296,17 +299,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       return { ok: false };
     } finally {
       for (const f of [localRef, localOut]) if (f) try { fs.rmSync(path.dirname(f), { recursive: true, force: true }); } catch (_) {}
-      if (remoteDir) {
-        const rm = await exec('ssh', ['-o', 'BatchMode=yes', sshTarget, `case "${remoteDir}" in "$HOME/Library/Caches/DexDiffusion/tmp/dexmedia."*) rm -rf "${remoteDir}"; test -e "${remoteDir}" && echo DEXMEDIA_STILL_THERE || echo DEXMEDIA_CLEANED ;; esac`]);
-        const cm = parseMarkers(rm.stdout);
-        if (!cm.CLEANED) {
-          // Canonical output (if any) is kept; the cleanup problem is recorded truthfully.
-          const g = jobStore.get(jobId);
-          if (g) { g.cleanup_error = 'Big Mac job directory could not be verified removed'; jobStore.transition(jobId, g.status, {}); }
-          log(`media-bridge: cleanup of ${remoteDir} not verified`);
-        }
-      }
-      arbiter.release(jobId);
+      try { if (remoteResource) await cleanupResource(jobId, remoteResource); } finally { arbiter.release(jobId); }
     }
   }
 
@@ -331,7 +324,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
   async function runBatch(jobId, worker, spec, v, ctx) {
     const total = v.req.items.length, long = total > 1;
     const fail = (gate, error) => { jobStore.transition(jobId, 'FAILED', { first_failed_gate: gate, error }); return { ok: false, gate, error }; };
-    let remoteDir = null, localRef = null, localDir = null;
+    let remoteDir = null, remoteResource = null, localRef = null, localDir = null;
     const progress = patch => { const g = jobStore.get(jobId); if (g && !['COMPLETE', 'FAILED', 'INTERRUPTED', 'CANCELLED'].includes(g.status)) jobStore.transition(jobId, g.status, { progress: Object.assign({}, g.progress || {}, patch, { total }) }); };
     try {
       const lease = await arbiter.acquire(jobId, `${worker} ${ctx.operation || 'render'}`);
@@ -343,6 +336,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
         `mkdir -p "$HOME/Library/Caches/DexDiffusion/tmp" && d=$(mktemp -d "$HOME/Library/Caches/DexDiffusion/tmp/dexmedia.XXXXXX") && chmod 700 "$d" && echo "DEXMEDIA_DIR=$d"`]);
       remoteDir = parseMarkers(mk.stdout).DIR;
       if (!remoteDir) return fail('worker-unavailable', 'could not create a Big Mac job directory');
+      remoteResource = jobStore.ownResource(jobId, sshTarget, remoteDir);
       const request = { ...v.req, out_dir: `${remoteDir}/out`, model: spec.model };
       if (worker === 'kokoro') request.voice_path = `${spec.model}/voices/${v.req.voice}.safetensors`;
       if (v.refPath) {
@@ -406,7 +400,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
             long_form: long ? { chunks: total, lineage } : null }, ctx.meta || {}),
         });
       } catch (e) { return fail('canonicalization', String(e.message).slice(0, 200)); }
-      jobStore.transition(jobId, 'COMPLETE', { artifacts: [rec.artifact_id], progress: { phase: 'complete', chunk: total, total } });
+      jobStore.transition(jobId, 'COMPLETE', { artifacts: [rec.artifact_id], artifact_validation: artifactReceipt([rec]), progress: { phase: 'complete', chunk: total, total } });
       evidence.pass(worker, { at: new Date().toISOString(), job_id: jobId, artifact_id: rec.artifact_id, sha256: rec.sha256, chunks: total });
       return { ok: true, artifact: rec, lineage };
     } catch (e) {
@@ -416,11 +410,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
     } finally {
       for (const f of [localRef]) if (f) try { fs.rmSync(path.dirname(f), { recursive: true, force: true }); } catch (_) {}
       if (localDir) try { fs.rmSync(localDir, { recursive: true, force: true }); } catch (_) {}
-      if (remoteDir) {
-        const rm = await exec('ssh', ['-o', 'BatchMode=yes', sshTarget, `case "${remoteDir}" in "$HOME/Library/Caches/DexDiffusion/tmp/dexmedia."*) rm -rf "${remoteDir}"; test -e "${remoteDir}" && echo DEXMEDIA_STILL_THERE || echo DEXMEDIA_CLEANED ;; esac`]);
-        if (!parseMarkers(rm.stdout).CLEANED) { const g = jobStore.get(jobId); if (g) { g.cleanup_error = 'Big Mac job directory could not be verified removed'; jobStore.transition(jobId, g.status, {}); } log(`media-bridge: cleanup of ${remoteDir} not verified`); }
-      }
-      arbiter.release(jobId);
+      try { if (remoteResource) await cleanupResource(jobId, remoteResource); } finally { arbiter.release(jobId); }
     }
   }
   // plan: voice-engines.buildRenderPlan(...).body + { worker }. ctx: { probe, saveText, operation, gapsMs, boundaries, meta }.
@@ -439,19 +429,39 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
     runBatch(job.job_id, worker, spec, v, ctx).catch(() => {});
     return { job_id: job.job_id, status: 'QUEUED' };
   }
-  // Remove DexDiffusion-owned remote job dirs left behind by an interrupted
-  // run (e.g. console restart). Only $HOME/Library/Caches/DexDiffusion/tmp/
-  // dexmedia.* older than maxAgeMin is touched; never models or runtimes.
-  async function sweepRemoteOrphans(maxAgeMin = 60) {
-    const n = Math.max(0, Math.floor(Number(maxAgeMin) || 0));
-    const r = await exec('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', sshTarget,
-      `T="$HOME/Library/Caches/DexDiffusion/tmp"; [ -d "$T" ] || { echo DEXMEDIA_SWEPT=0; exit 0; }; ` +
-      `c=0; for d in $(find "$T" -maxdepth 1 -type d -name 'dexmedia.*' -mmin +${n}); do rm -rf "$d"; c=$((c+1)); done; echo DEXMEDIA_SWEPT=$c; ` +
-      `echo DEXMEDIA_REMAINING=$(find "$T" -maxdepth 1 -type d -name 'dexmedia.*' | wc -l | tr -d ' ')`]);
-    const m = parseMarkers(r.stdout);
-    return { swept: m.SWEPT === undefined ? null : Number(m.SWEPT), remaining: m.REMAINING === undefined ? null : Number(m.REMAINING) };
+  async function cleanupResource(jobId, resource) {
+    let verified = false, reason = '';
+    try {
+      const result = await exec('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', resource.host, cleanupCommand(resource)], 30000);
+      verified = parseMarkers(result.stdout).CLEANED === resource.resource_id;
+      if (!verified) reason = 'exact owned directory removal lacks in-band verification';
+    } catch (_) { reason = 'cleanup transport failed'; }
+    try { jobStore.resourceReceipt(jobId, resource.resource_id, { state: verified ? 'succeeded' : 'failed', in_band_verified: verified, reason }); }
+    catch (_) { log('media-bridge: cleanup receipt persistence failed'); return { ok: false, error: 'cleanup receipt persistence failed' }; }
+    return { ok: verified, resource_id: resource.resource_id };
   }
-  return { start, startBatch, evidence, sweepRemoteOrphans, BRIDGES };
+  function inspectCleanup() {
+    return jobStore.list({ limit: Number.MAX_SAFE_INTEGER }).flatMap(j => (j.owned_resources || []).map(r => ({ ...r, receipt: r.receipt && { ...r.receipt }, job_status: j.status })));
+  }
+  async function reconcileCleanup(jobId, resourceId) {
+    const j = jobStore.get(jobId);
+    if (!j || !TERMINAL.has(j.status)) return { ok: false, error: 'cleanup requires a terminal owned job' };
+    const r = (j.owned_resources || []).find(x => x.resource_id === resourceId);
+    if (!r) return { ok: false, error: 'unknown owned resource' };
+    if (r.state === 'succeeded') return { ok: true, resource_id: resourceId, already_cleaned: true };
+    return cleanupResource(jobId, r);
+  }
+  // Legacy startup entry point now reconciles exact durable ownership only.
+  // Untracked historical directories are never inferred safe from age/name.
+  async function sweepRemoteOrphans() {
+    let swept = 0;
+    for (const r of inspectCleanup()) if (TERMINAL.has(r.job_status) && r.state !== 'succeeded') {
+      if ((await reconcileCleanup(r.job_id, r.resource_id)).ok) swept++;
+    }
+    return { swept, remaining: inspectCleanup().filter(r => r.state !== 'succeeded').length, scope: 'tracked-terminal-resources' };
+  }
+
+  return { start, startBatch, evidence, sweepRemoteOrphans, inspectCleanup, reconcileCleanup, BRIDGES };
 }
 
 // Private text keys, passed to jobStore.create so its PRIVATE_KEYS policy

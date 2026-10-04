@@ -1,0 +1,27 @@
+✔ exact ownership rejects traversal, arbitrary roots, descendants and command injection (4.570625ms)
+✔ cleanup transport failure visible; terminal exact retry preserves canonical and unrelated fixture (85.074083ms)
+✔ startup reconciliation touches only tracked terminal resources, not untracked directory patterns (0.849125ms)
+✔ pending cleanup survives restart as unknown and unverified success is rejected (15.063458ms)
+✔ shared contract rejects terminal reversal, conflicting outcome and unvalidated completion (7.216542ms)
+✔ unknown percentage allowed; invented percentages rejected; measured counts accepted (0.573583ms)
+✔ explicit non-artifact operation permits completion but cannot smuggle unvalidated output (0.275791ms)
+✔ validateRequest: per-worker required fields, limits, private vs safe split (7.654917ms)
+✔ buildPayload: private text only inside base64 stdin payload, job dir confined, magenta home private (8.666708ms)
+✔ parseMarkers reads digits (SHA256) and flags (0.837958ms)
+✔ remote driver: redacts private text in errors, validates WAV, never touches protected stores (1.075042ms)
+✔ run: success -> transfer, checksum, canonical voice artifact, evidence, cleanup, lease released, no private text (94.058709ms)
+✔ run: failure gates are specific and never produce a canonical artifact (74.601583ms)
+✔ run: cleanup failure after canonicalization keeps the verified output and records the problem (52.806125ms)
+✔ start: gating and reference validation happen before any lease; clone uploads only a server-resolved staged file (40.035ms)
+✔ run: second heavy job waits for the lease held by the first (capacity 1) (64.244458ms)
+✔ restart: an in-flight media job reconciles to INTERRUPTED with no stranded lease; private text not stored (24.44425ms)
+✔ server wiring: bridged generate path, lease sweep respects durable media jobs, orphan sweep scoped to DexDiffusion tmp (2.956833ms)
+✔ cleanup transport throws: completed output survives, exact cleanup failure persists, lease released (50.984125ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 819.8105

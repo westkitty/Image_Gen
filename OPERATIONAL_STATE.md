@@ -521,3 +521,21 @@ D-027 is a browser progress-test sampling defect, repaired with a DOM MutationOb
 Actual server fault hook forwarded ssh westcat, failing after real owned directory allocation. Terminal jobs produced no canonical failure artifacts, lease released; exact in-band markers prove six worker directories removed, four historical logs preserved. Normal console restored (PID 24747, loopback 31337), idle lease/no active jobs. Hook source/evidence retained; temporary hook removed. Current canonical Inpaint stored under /Users/andrew/images_made. Saved owned scene evidence project and two browser-local presets retained; unsaved retry project lost on restart with captured evidence preserved.
 
 Current handoff: output/rev18/FINAL_REPORT.md, acceptance-blockers.md, closure-v17-live-acceptance.md, closure-v17-* receipts and checksum manifest. READY FOR REVIEW, not VERIFIED COMPLETE.
+
+
+## 2026-10-04 — Rev19 reliability consolidation closeout
+
+Authoritative report: output/rev19/FINAL_REPORT.md; commands/exits: final-gates.json; fresh runtime: final-runtime-closeout.json. Twelve product defects and one test/harness defect repaired (D-028–D-041; D-036 not issued). Final gates: unit295/295, focused37/37, Edit24/24, Voice8/8, chain24+8, matrix180/180 (1,027 PASS checks,268 N/A),31 JavaScript syntax checks plus shell syntax and diff check; all exits0.
+
+Owned detector cancellation/reaping and staged-mask isolation are bounded; actual physical Neural Engine wedge remains unverified. Read-only storage inventory detects historical missing/broken references without rewriting history. Atomic canonical publication validates full decode/digest, records exact pending ownership and rolls back tested precommit failures. OFF/ON privacy persistence is executable; four historical remote logs remain preserved. Shared job-state and durable media cleanup owners are implemented to feasible scope; remaining legacy image progress/list and broader temporary-resource migration are partial.
+
+One permitted live Klein4B generation completed: job13e2fdf3-521f-4e63-8aeb-fb1badfdcfb5,512×512,4steps,seed946273,one canonical validated PNG with digest0dcb69a08c44cc0a730e968e70500e0810410a170c413b0ade402db2203dd5b3; durable COMPLETE survived restart. Exact remote temporary directory cleanup proven; four historical logs freshly confirmed present. Current full-reference inventory:3valid,502missing,0orphan; missing-history cause unknown.
+
+Normal console PID33767 binds127.0.0.1:31337; lease idle, no queued jobs, owned cleanup resources or pending publication journals. Owned matrix listener31999 stopped. Browser suites use actual current read-only model/capability snapshots; production bootstrap latency under heavy host pressure remains uncertified. Other services and worktrees preserved.
+
+Branch rev17-verification-handoff; unchanged HEAD8f6d711f7d2e9ed0e76c08cffacafe73679efcac. Dirty new task changes remain unstaged/uncommitted per this pass’s instruction. READY FOR REVIEW: YES; not blanket VERIFIED COMPLETE.
+
+
+## 2026-10-04 — Rev19 publication gate
+
+Explicit user authorization supersedes the implementation pass’s no-commit default. Scope review identifies only intended Rev19 source/tests/docs and additive evidence, no unrelated paths or publication-blocking defects. Fresh gates: unit295/295, focused37/37, Edit24/24, Voice8/8, chain24+8, matrix180/180 with1,027 PASS/268 N/A; all exits0. Syntax checks pass. Immutable raw-log whitespace is preserved under the existing exception policy. See output/rev19/publication-gate.json and publication-whitespace-exceptions.json. One cohesive feature-branch commit and normal push are authorized; Git itself records final identity. Bounded Rev19 limitations remain unchanged.

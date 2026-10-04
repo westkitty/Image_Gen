@@ -9,6 +9,8 @@ const EC = require('./public/dexdiffusion/edit-core.js');
 const M = require('./media');
 const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
+const { validateImage } = require('./image-validation');
+const { artifactReceipt, TERMINAL } = require('./job-contract');
 const { createSystemInfo } = require('./system-info');
 const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime, targetVerification } = require('./capabilities');
 const { rulesForTarget, validateDimensions } = require('./dimension-policy');
@@ -848,7 +850,7 @@ function prepareSource(srcPath, mode) {
 
 // Outpaint: blend the untouched source back over this job's own new output.
 // Runs after canonicalization (the script adopts its PNG itself), editing the
-// single canonical copy in place before lineage is recorded.
+// single canonical copy through an owned atomic transform before lineage is recorded.
 function compositeOutpaint(job, stdoutText) {
   const c = job.outpaintComposite;
   const m = String(stdoutText || '').match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
@@ -856,8 +858,8 @@ function compositeOutpaint(job, stdoutText) {
   const runDir = path.join(RUNS_DIR, m[1]);
   const files = imageStore.readRunIndex(runDir).map(e => imageStore.resolveImage(e.image_id)).filter(Boolean).map(i => i.path);
   for (const f of files) {
-    try { execFileSync('python3', ['-c', OUTPAINT_COMPOSITE_PY, f, c.src, c.mask, String(c.left), String(c.top), String(c.blur || 0), c.fit ? 'fit' : 'offset'], { timeout: 30000 }); job.stdout += `\n${job.lineageOp}: source composited outside the mask\n`; }
-    catch (err) { job.stderr += `\nmask-composite: ${err.message}`; }
+    try { imageStore.replacePublishedImage(runDir, path.basename(f), staged => execFileSync('python3', ['-c', OUTPAINT_COMPOSITE_PY, staged, c.src, c.mask, String(c.left), String(c.top), String(c.blur || 0), c.fit ? 'fit' : 'offset'], { timeout: 30000 })); job.stdout += `\n${job.lineageOp}: source composited outside the mask\n`; }
+    catch (err) { job.stderr += `\nmask-composite: ${err.message}`; job.status = 'FAIL'; job.firstFailedGate = 'canonicalization-failed'; }
   }
 }
 
@@ -874,6 +876,7 @@ function finalizeJobImages(job, stdoutText) {
       imageStore.finalizeRun(runDir);
     } catch (err) {
       job.stderr += `\nimage-store: ${err.message}`;
+      job.status = 'FAIL'; job.firstFailedGate = 'canonicalization-failed';
     }
   }
   for (const field of JOB_IMAGE_FIELDS) {
@@ -881,6 +884,7 @@ function finalizeJobImages(job, stdoutText) {
     if (!value) continue;
     const canonical = canonicalForReportedPath(value);
     if (canonical) {
+      try { validateImage(canonical.path); } catch (err) { job.status = 'FAIL'; job.firstFailedGate = 'output-invalid'; job.stderr += '\n' + err.message; continue; }
       job[field] = canonical.path;
       job[field + 'Url'] = imageStore.imageUrl(canonical.id);
     }
@@ -955,6 +959,7 @@ function createJob(action, summary, requestParams = {}) {
       job_id: id, media_kind: 'image', operation: action,
       worker_id: action === 'upscale' ? 'local' : (spec && spec.backend === 'mflux') ? 'mflux' : 'sdcpp',
       model_id: tid || null, resource_class: HEAVY_ACTIONS.has(action) ? 'heavy' : 'light',
+      artifact_required: HEAVY_ACTIONS.has(action) || action === 'upscale',
       params: requestParams, persist_text: !!(requestParams && requestParams.save_prompts),
     });
   } catch (_) {}
@@ -1000,14 +1005,43 @@ function withLease(jobId, start) {
 }
 function syncGenericTerminal(job) {
   const map = { PASS: 'COMPLETE', PARTIAL: 'COMPLETE', FAIL: 'FAILED', CANCELLED: 'CANCELLED' };
-  const st = map[job.status];
+  let st = map[job.status];
   if (!st) return;
   const g = jobStore.get(job.id);
-  if (g && g.status === 'QUEUED') jobStore.transition(job.id, 'RUNNING');
-  jobStore.transition(job.id, st, {
-    artifacts: (job.results || []).filter(r => r.imageId).map(r => r.imageId).concat(job.controlledOutputImageUrl && !(job.results || []).length ? [decodeURIComponent(job.controlledOutputImageUrl.split('/').pop())] : []),
+  if (!g || TERMINAL.has(g.status)) { arbiter.release(job.id); return; }
+  const fromResults = (job.results || []).filter(r => r.imageId).map(r => r.imageId);
+  const fromFields = JOB_IMAGE_FIELDS.map(field => job[field + 'Url']).filter(Boolean).map(url => decodeURIComponent(url.split('/').pop()));
+  // Legacy Hi-Res/CLI/plot callers need receipts too; their images may be
+  // reported through final-output fields or this job's canonical run index.
+  let fromRuns = [];
+  if (!fromResults.length && !fromFields.length && g.artifact_required) {
+    const runs = [...new Set([job.runId, ...[...String(job.stdout || '').matchAll(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/g)].map(m => m[1])].filter(Boolean))];
+    fromRuns = runs.flatMap(run => imageStore.readRunIndex(path.join(RUNS_DIR, run)).map(entry => entry.image_id));
+  }
+  const ids = [...new Set([...fromResults, ...fromFields, ...fromRuns])];
+  let receipt = null;
+  if (st === 'COMPLETE') {
+    try {
+      if (g.artifact_required && !ids.length) throw new Error('completed generation has no canonical artifact');
+      if (ids.length) receipt = artifactReceipt(ids.map(artifact_id => {
+        const image = imageStore.resolveImage(artifact_id);
+        if (!image) throw new Error('canonical artifact missing: ' + artifact_id);
+        return { artifact_id, ...validateImage(image.path), canonical: true, validated: true };
+      }));
+    } catch (e) {
+      job.status = 'FAIL'; job.firstFailedGate = job.firstFailedGate || 'output-invalid';
+      job.stderr = (job.stderr || '') + '\n' + e.message; st = 'FAILED';
+    }
+  }
+  if (g.status === 'QUEUED') jobStore.transition(job.id, 'RUNNING');
+  const result = jobStore.transition(job.id, st, {
+    artifacts: st === 'COMPLETE' ? ids : [], artifact_validation: receipt,
     first_failed_gate: job.firstFailedGate || null, error: st === 'FAILED' ? `failed at gate ${job.firstFailedGate || 'unknown'}` : null,
   });
+  if (result && result.error && !TERMINAL.has(result.status)) {
+    job.status = 'FAIL'; job.firstFailedGate = job.firstFailedGate || 'job-contract-rejected';
+    jobStore.transition(job.id, 'FAILED', { first_failed_gate: job.firstFailedGate, error: result.error });
+  }
   arbiter.release(job.id);
 }
 
@@ -1291,7 +1325,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
           return;
         }
         job.status = 'FAIL';
-        job.firstFailedGate = gate;
+        job.firstFailedGate = job.firstFailedGate || gate;
         const failed = native ? seeds.length : 1;
         for (let k = 0; k < failed; k++) job.results.push({ index: job.results.length, status: 'FAILED', seed: native ? seeds[k] : seeds[runIndex], target: spec.id, error: gate || 'failed' });
         updateSequentialProgress(job, { currentRunPercent: 100 });
@@ -1308,6 +1342,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
       const controlledManifestMatch = runStdout.match(/CONTROLLED_MANIFEST:\s*(\S+)/);
       if (controlledManifestMatch) job.controlledManifest = controlledManifestMatch[1];
       finalizeJobImages(job, runStdout);
+      if (job.status === 'FAIL') { finish(); return; }
       pushResults(runStdout, runIndex);
       updateSequentialProgress(job, { completedRuns: runNumber, currentRunPercent: 100 });
 
@@ -2519,6 +2554,11 @@ function detailerOptionsFrom(body) {
   o.mode = b.mode || 'face';
   return o;
 }
+function detectorRequestSignal(res) {
+  const controller = new AbortController();
+  res.once('close', () => { if (!res.writableEnded) controller.abort(); });
+  return controller.signal;
+}
 function detailerFail(res, err) {
   const status = (err && err.status) || 500;
   return res.status(status).json({ error: err.message, code: err.code || 'detailer_failed', stage: err.stage || undefined });
@@ -2540,7 +2580,7 @@ app.post('/api/detailer/detect', async (req, res) => {
     return res.status(404).json({ error: 'Source image not found' });
   }
   try {
-    const result = await detectRegions(resolved.path, detailerOptionsFrom(req.body));
+    const result = await detectRegions(resolved.path, { ...detailerOptionsFrom(req.body), signal: detectorRequestSignal(res) });
     res.json({ status: 'ok', ...detailerSummary(result), image_width: result.image_width, image_height: result.image_height });
   } catch (err) {
     detailerFail(res, err);
@@ -2557,7 +2597,7 @@ app.post('/api/detailer/mask-preview', async (req, res) => {
   const maskName = `mask-preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
   const maskPath = path.join(RUNS_DIR, maskName);
   try {
-    const result = await detectRegions(resolved.path, { ...detailerOptionsFrom(req.body), outputMask: maskPath });
+    const result = await detectRegions(resolved.path, { ...detailerOptionsFrom(req.body), outputMask: maskPath, signal: detectorRequestSignal(res) });
     const empty = !result.detections || result.detections.length === 0;
     const maskBase64 = !empty && fs.existsSync(maskPath) ? `data:image/png;base64,${fs.readFileSync(maskPath).toString('base64')}` : null;
     res.json({ status: 'ok', mask_preview: maskBase64, empty, message: empty ? noDetailerTargetsMessage(result.mode, result) : undefined, image_width: result.image_width, image_height: result.image_height, ...detailerSummary(result) });
@@ -2584,7 +2624,7 @@ app.post('/api/detailer/run', async (req, res) => {
   if (opts.padding === undefined) opts.padding = 0.25;
   if (opts.feather === undefined) opts.feather = 16;
   try {
-    const result = await detectRegions(resolved.path, { ...opts, outputMask: maskPath });
+    const result = await detectRegions(resolved.path, { ...opts, outputMask: maskPath, signal: detectorRequestSignal(res) });
     if (!result.detections || result.detections.length === 0) {
       return res.status(422).json({ error: noDetailerTargetsMessage(opts.mode, result), code: 'no_targets', detections: [] });
     }
@@ -3800,12 +3840,34 @@ app.post('/api/preflight', async (req, res) => {
   res.json({ ok, prompts, quantity, total, needsConfirmation: total > LARGE_REQUEST_IMAGES, summary: `${prompts} prompt${prompts > 1 ? 's' : ''} × ${quantity} = ${total} image${total > 1 ? 's' : ''}`, rows });
 });
 
+// Read-only diagnosis: missing history stays missing; no automatic reconciliation writes.
+function canonicalIntegrity() {
+  let refs = [];
+  try { const data = JSON.parse(fs.readFileSync(path.join(STATE_DIR, 'image-meta.json'), 'utf8')); refs = Object.keys(data.images || {}).map(image_id => ({image_id, metadata_path:'image-meta.json'})); } catch (_) {}
+  return imageStore.inspectIntegrity({ runsRoot: RUNS_DIR, references: refs });
+}
+app.get('/api/storage/integrity', (req, res) => {
+  try { res.json(canonicalIntegrity()); } catch (e) { res.status(500).json({error:e.message,code:'storage-inspection-failed'}); }
+});
+app.get('/api/cleanup/ownership', (req, res) => {
+  res.json({ resources: mediaBridge.inspectCleanup(), pending_publications: canonicalIntegrity().pending_publications || [], scope: 'exact-project-owned-resources' });
+});
+app.post('/api/cleanup/reconcile', async (req, res) => {
+  try {
+    const { job_id, resource_id } = req.body || {};
+    if (typeof job_id !== 'string' || typeof resource_id !== 'string') return res.status(400).json({error:'job_id and resource_id required'});
+    res.json(await mediaBridge.reconcileCleanup(job_id, resource_id));
+  } catch (e) { res.status(409).json({ error:e.message, code:'cleanup-reconcile-rejected' }); }
+});
 // ---- Doctor: read-only health check (never generates) ------------------------
 app.get('/api/doctor', async (req, res) => {
   const rows = [];
   const add = (check, state, detail) => rows.push({ check, state, detail });
   add('Operator console', 'PASS', `responding (pid ${process.pid})`);
   add('Loopback bind', HOST === '127.0.0.1' ? 'PASS' : 'FAIL', `${HOST}:${PORT}`);
+  const cleanup = mediaBridge.inspectCleanup();
+  add('Owned temporary cleanup', cleanup.some(r => r.state !== 'succeeded') ? 'WARN' : 'PASS', `${cleanup.length} tracked resources · read-only /api/cleanup/ownership`);
+  try { const inventory = canonicalIntegrity(); const bad = ['missing','broken','digest-mismatch','pending'].reduce((n,k)=>n+(inventory.counts[k]||0),0); add('Canonical storage integrity', bad ? 'WARN' : 'PASS', JSON.stringify(inventory.counts) + ' · read-only /api/storage/integrity'); } catch(e) { add('Canonical storage integrity','WARN',e.message); }
   try { fs.accessSync(imageStore.root, fs.constants.R_OK | fs.constants.W_OK); add('Canonical image root', 'PASS', imageStore.root + ' readable/writable'); }
   catch (_) { add('Canonical image root', 'FAIL', imageStore.root + ' not accessible'); }
   const a = await refreshAssets();

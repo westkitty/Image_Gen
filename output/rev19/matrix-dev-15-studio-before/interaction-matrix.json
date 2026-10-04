@@ -1,0 +1,349 @@
+{
+  "specVersion": 1,
+  "started": "2026-10-03T23:56:45.305Z",
+  "requiredBaseCells": 180,
+  "partial": true,
+  "cells": [
+    {
+      "id": "V2/1280x800/Edit Compact",
+      "screen": "Edit Compact",
+      "shell": 2,
+      "viewport": [
+        1280,
+        800
+      ],
+      "status": "PASS",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 1280,
+                "height": 708,
+                "left": 0,
+                "right": 1280,
+                "overflow": 0
+              },
+              {
+                "width": 860,
+                "height": 2072.34375,
+                "left": 14,
+                "right": 874,
+                "overflow": 0
+              }
+            ],
+            "zeroSized": 0
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 55,
+            "disabled": 3
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 52,
+            "reached": 53,
+            "focusSamples": 60,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 13,
+            "toggles": 0,
+            "validation": 2,
+            "selects": 3,
+            "details": 2
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "fields": 0,
+            "focusSamples": 16
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "options": 17
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 32,
+            "minObservedHeight": 32,
+            "minObservedButtonWidth": 32,
+            "controls": 49
+          }
+        }
+      ]
+    },
+    {
+      "id": "V2/1280x800/Edit Studio",
+      "screen": "Edit Studio",
+      "shell": 2,
+      "viewport": [
+        1280,
+        800
+      ],
+      "status": "FAIL",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "FAIL",
+          "failures": [
+            "Control intersection [\"SD1.5 standardSD 1.5Proven▾\",\"Run Inpaint\",468,11]"
+          ],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 1280,
+                "height": 708,
+                "left": 0,
+                "right": 1280,
+                "overflow": 0
+              },
+              {
+                "width": 1244,
+                "height": 1444.75,
+                "left": 14,
+                "right": 1258,
+                "overflow": 0
+              }
+            ],
+            "zeroSized": 0
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 55,
+            "disabled": 3
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 52,
+            "reached": 53,
+            "focusSamples": 61,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 13,
+            "toggles": 0,
+            "validation": 2,
+            "selects": 3,
+            "details": 2
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "fields": 0,
+            "focusSamples": 16
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "options": 17
+          }
+        },
+        {
+          "contract": "studio-rail-geometry",
+          "status": "FAIL",
+          "failures": [
+            "Strength/Run overlap 422x13"
+          ],
+          "measures": {
+            "strength": {
+              "x": 780,
+              "y": 629,
+              "width": 422,
+              "height": 30
+            },
+            "run": {
+              "x": 778,
+              "y": 646,
+              "width": 468,
+              "height": 32
+            },
+            "position": "sticky",
+            "overlap": {
+              "width": 422,
+              "height": 13
+            },
+            "staticProbe": {
+              "strength": {
+                "x": 780,
+                "y": 629,
+                "width": 422,
+                "height": 30
+              },
+              "run": {
+                "x": 778,
+                "y": 863.875,
+                "width": 468,
+                "height": 32
+              },
+              "position": "static"
+            }
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 32,
+            "minObservedHeight": 32,
+            "minObservedButtonWidth": 32,
+            "controls": 49
+          }
+        }
+      ]
+    }
+  ]
+}

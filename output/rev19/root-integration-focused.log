@@ -1,0 +1,24 @@
+✔ shared contract rejects terminal reversal, conflicting outcome and unvalidated completion (4.920542ms)
+✔ unknown percentage allowed; invented percentages rejected; measured counts accepted (0.582958ms)
+✔ explicit non-artifact operation permits completion but cannot smuggle unvalidated output (0.404458ms)
+✔ canonical media metadata write failure leaves no public registry record or new canonical bytes (43.969666ms)
+✔ canonical media rejects truncated wave content before any publication (7.984ms)
+✔ canonical media collision preserves old bytes and returns validated digest receipt (16.247917ms)
+✔ generic jobs: lifecycle, invalid transitions, privacy, restart reconciliation (40.887625ms)
+✔ arbiter: capacity 1, FIFO waiting, release on success/failure, external load blocks without killing (12.084125ms)
+✔ external-load detection parses ollama ps conservatively (3.078125ms)
+✔ workers: bridged voice/music workers promote only on live probe + real DexDiffusion evidence; LTX stays dormant (3.934458ms)
+✔ worker paths: single authoritative table matches the model-stack install layout (6.152792ms)
+✔ media store: roots, atomic finalize, sha256/bytes/mime, no overwrite, safe resolve (32.639458ms)
+✔ staging: valid PNG/JPEG/WebP/WAV (+M4A via ffprobe) stage; bad input rejected; expiry sweep (1308.64075ms)
+✔ server wiring: leases for heavy jobs, generic job adapter, safe routes, dormant gating before lease (1.511292ms)
+✔ audio download controls use the durable same-origin attachment route (0.3885ms)
+✔ native WebKit wrapper turns same-origin media attachment links into real downloads (0.754834ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1719.515625

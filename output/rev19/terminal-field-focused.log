@@ -1,0 +1,10 @@
+✔ executed server finalization rejects metadata failure before success reaches consumers (1.650084ms)
+✔ generic server completion requires a fresh canonical receipt and releases lease on rejection (2.328209ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 143.640875

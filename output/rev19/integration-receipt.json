@@ -1,0 +1,42 @@
+{
+  "schema": "dexdiffusion.rev19.integration_receipt.v1",
+  "api": {
+    "storage_integrity": "GET /api/storage/integrity (read-only)",
+    "cleanup_ownership": "GET /api/cleanup/ownership (read-only)",
+    "cleanup_reconcile": "POST /api/cleanup/reconcile {job_id,resource_id}; no caller-supplied path"
+  },
+  "publication_live": {
+    "job_id": "13e2fdf3-521f-4e63-8aeb-fb1badfdcfb5",
+    "target": "flux2-klein-4b",
+    "seed": 946273,
+    "quantity": 1,
+    "dimensions": [
+      512,
+      512
+    ],
+    "steps": 4,
+    "status": "PASS",
+    "canonical_digest": "0dcb69a08c44cc0a730e968e70500e0810410a170c413b0ade402db2203dd5b3",
+    "remote_in_band_absent": true,
+    "lease_idle": true,
+    "receipt": "live-generation-current.json"
+  },
+  "migration_limits": {
+    "job_state": "Generic store and new image/media terminal boundaries migrated. Legacy image list/progress views retain their existing owner; historical terminal records are preserved, not retroactively certified.",
+    "cleanup": "Durable media-owned remote directories inspectable/reconcilable. Image publication crash journals inspectable, not automatically reconciled. MFLUX inline cleanup retains its proven exact-path in-band contract rather than sharing durable media ownership."
+  },
+  "historical_logs": {
+    "count": 4,
+    "live_presence_verified": true,
+    "contents_read": false,
+    "destructive_action": "none",
+    "receipt": "live-remote-owned-receipt.txt"
+  },
+  "storage_counts_note": "Runs-only inventory: 1 valid, 502 missing, 1 orphan. API additionally includes image-meta references; after one new generation: 3 valid, 502 missing, 0 orphan. Different reference scopes explain owned geometry fixture classification; missing causes unknown.",
+  "after_owned_server_restart": {
+    "durable_job_status": "COMPLETE",
+    "canonical_validation_receipt_retained": true,
+    "lease_idle": true,
+    "evidence": "live-after-restart.json"
+  }
+}

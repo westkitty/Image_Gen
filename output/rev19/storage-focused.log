@@ -1,0 +1,45 @@
+✔ canonical image root is exactly /Users/andrew/images_made and the server uses it (4.238333ms)
+✔ completed run keeps metadata only; image bytes move to the canonical root (789.27725ms)
+✔ adoption never overwrites an existing canonical image (293.189583ms)
+✔ non-image and non-signature files are not adopted (725.003959ms)
+✔ image lookup cannot escape the canonical root (3.394416ms)
+✔ frontend API calls are same-origin (no hardcoded loopback backend) (5.841416ms)
+✔ progress formatting never yields NaN and stays within 0-100 (0.3895ms)
+✔ MFLUX bridge streams into the canonical root and keeps Big Mac images ephemeral (1.155583ms)
+✔ SDCPP scripts register their Big Mac images for exit cleanup (2.703875ms)
+✔ direct (hand-run) SDCPP completion leaves no image in the run dir (569.605ms)
+✔ nested scripts defer finalization to the top-level entrypoint (776.227125ms)
+✔ publication interruption: before-transfer (14.606084ms)
+✔ publication interruption: after-transfer (10.278584ms)
+✔ publication interruption: after-validation (414.280875ms)
+✔ publication interruption: before-publication (356.77675ms)
+✔ publication interruption: after-publication (301.363583ms)
+✔ publication interruption: before-metadata (574.363708ms)
+✔ truncated/signature-only PNG cannot become canonical (275.491ms)
+✔ real metadata rename failure rolls back new links, preserves source and old index (199.418917ms)
+✔ collision, successful digest and pending visibility do not overwrite unrelated image (635.228458ms)
+✔ owned transformed canonical copy preserves original on metadata failure (543.059875ms)
+✔ read-only inventory identifies exactly owned missing/orphan/digest/duplicate/broken references without repair (649.028667ms)
+✔ process death after link leaves explicit hidden pending publication, never completed metadata (936.389625ms)
+✔ interruption after metadata commit preserves canonical bytes and explicit pending visibility (410.277375ms)
+✔ pending identity never hides a collision belonging to another inode (4.503459ms)
+✔ direct source CLI uses the same validated publication boundary (790.829708ms)
+✔ successful owned transform atomically updates canonical digest and cleans its backup (2214.180666ms)
+✔ native batch: SDCPP 2-16 only; MFLUX always sequential; env kill-switch (3.144375ms)
+✔ native batch command construction: --batch-count with the base seed; never for MFLUX (2.384834ms)
+✔ High-Res Refine args are SDCPP-only and distinct from resize/ESRGAN (0.643458ms)
+✔ script: native batch enumerates every output, registers each for Big Mac cleanup, records per-output seeds (0.354834ms)
+✔ native batch outputs canonicalize independently with their own seeds (no collision/overwrite) (1085.209459ms)
+✔ server falls back to sequential when the native command cannot be built (0.349ms)
+✔ explicit capability ids (native batch, High-Res Refine) never swallow ordinary txt2img evidence (1.204333ms)
+✔ full-mask guard and blank-mask rejection are both enforced server-side (0.404792ms)
+✔ outpaint/inpaint composite restores the source; outpaint never stretches it (0.457958ms)
+✔ durable queue state lives in the gitignored runtime state dir (0.596958ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8690.363125

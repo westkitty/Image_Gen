@@ -1,0 +1,42 @@
+[
+ [
+  "PASS",
+  "Voice profiles: designed + preset voices, validation, capability truth, direction gating, long-form estimate",
+  5317
+ ],
+ [
+  "PASS",
+  "Cloned voice: invalid until a sample WITH transcript is approved; multiple samples; active sample; remove",
+  4548
+ ],
+ [
+  "PASS",
+  "real reference uploads: malformed, short and silent rejected; clipped sample shows warnings",
+  5402
+ ],
+ [
+  "PASS",
+  "Voice render state belongs to the voice that started it (no progress/result/error leaks onto another voice)",
+  12089
+ ],
+ [
+  "PASS",
+  "Drama: paste → parse → review/edit → cast → privacy banner → save/unsave → blocked render → assemble refuses without takes",
+  6320
+ ],
+ [
+  "PASS",
+  "Drama LLM parse mode reports rejection/failure visibly (never silently falls back)",
+  1760
+ ],
+ [
+  "PASS",
+  "responsive @375px: Voice profiles + Drama have no horizontal overflow",
+  2881
+ ],
+ [
+  "PASS",
+  "responsive @768px: Voice profiles + Drama have no horizontal overflow",
+  3952
+ ]
+]

@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const fs = require('fs'); const path = require('path');
 const { chromium } = require('playwright-core');
-const { startServer, makeWav, runner, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, installModelSnapshots, makeWav, runner, launchBrowser, runCleanups } = require('./helpers');
 const OUT = process.env.DEX_BROWSER_OUTPUT_DIR || path.join(__dirname, '..', '..', '..', 'output', 'playwright'); fs.mkdirSync(OUT, { recursive: true });
 const SCRIPT = 'INT. WAREHOUSE - NIGHT\n\nTIGER: I warned you.\nCODEC: [quietly] I know.\n\nThe rain hammers the roof.\n\n[pause 2s]\nTIGER (angry): Then why come back?\n\nEXT. ROOFTOP - DAWN\n\nNARRATOR: And so it ended.';
 const { results, test, phase, exitCode } = runner('voice-drama');
@@ -17,6 +17,7 @@ const { results, test, phase, exitCode } = runner('voice-drama');
   const api = async (m, r, b) => { const x = await fetch(srv.base + r, { method: m, signal: AbortSignal.timeout(5000), headers: { 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); return x.json(); };
   const open = async (opts = {}) => {
     const ctx = await browser.newContext({ viewport: { width: opts.width || 1280, height: opts.height || 900 } }), page = await ctx.newPage();
+    await installModelSnapshots(page, srv.base);
     const errors = []; page.on('pageerror', e => errors.push(String(e)));
     await page.goto(srv.base + '/dexdiffusion/'); await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
     return { ctx, page, errors };

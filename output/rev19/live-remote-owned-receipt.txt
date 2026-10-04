@@ -1,0 +1,5 @@
+REV19_OWNED_MFLUX_ABSENT=1
+REV19_HISTORICAL_PRESENT=/Users/bigmac/sdcpp-staging/logs/img2img_20261002-224850.log
+REV19_HISTORICAL_PRESENT=/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-225501.log
+REV19_HISTORICAL_PRESENT=/Users/bigmac/sdcpp-staging/logs/inpaint_20261002-225724.log
+REV19_HISTORICAL_PRESENT=/Users/bigmac/sdcpp-staging/outputs/20261002-224336-controlled-sd15/controlled-sd15.log

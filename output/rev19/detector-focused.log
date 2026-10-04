@@ -1,0 +1,41 @@
+✔ a delayed Detailer mask cannot attach to changed options, image or a closed dialog (67.629792ms)
+✔ a delayed inpaint submission cannot attach to a replacement Detailer dialog (14.61475ms)
+✔ Detailer timeout is terminal, preserves selection/options, and late failed preview cannot overwrite retry (7.094542ms)
+✔ detailer: binary is compiled and available (11.031458ms)
+✔ detailer: provides delta-oriented default prompts (3.983667ms)
+✔ detailer: executes face detection and generates valid mask PNG (18.561583ms)
+✔ detailer: executes hand detection and marks is_derived_roi: true (0.542416ms)
+✔ detailer: fails cleanly when image is missing (5.548875ms)
+✔ detailer: options are validated before the native binary runs (14.7935ms)
+✔ detailer: no target is a valid empty result and an all-transparent alpha mask (13751.68675ms)
+✔ detailer: mask is source-sized, alpha-painted, bounded by the padded target and leaves the rest untouched (0.964334ms)
+✔ detailer: selection is deterministic (same detections, same mask bytes) (0.659125ms)
+✔ detailer: a stalled detector is killed within the budget and the error names the stage (0.522375ms)
+✔ detailer: unreadable image fails with an actionable message, not a hang (48.381833ms)
+✖ safe detector stall is bounded, reaps only owned worker, produces no mask, then healthy retry succeeds (5243.294708ms)
+✔ cancelled detector reaps its owned child and never auto-retries (97.079667ms)
+✔ detector unavailable and unreadable output use stable failure codes (1032.333167ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 16
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15411.145583
+
+✖ failing tests:
+
+test at tests/detector-recovery.test.js:19:1
+✖ safe detector stall is bounded, reaps only owned worker, produces no mask, then healthy retry succeeds (5243.294708ms)
+  Error [DetailerError]: Apple Vision detector did not finish within 1000 ms (stopped in stage 'spawn'). Retry when the detector is available. (tried 1 times)
+      at terminate (/Users/andrew/Image_Gen/operator-console/detailer.js:95:19)
+      at Timeout.<anonymous> (/Users/andrew/Image_Gen/operator-console/detailer.js:106:32)
+      at listOnTimeout (node:internal/timers:685:17)
+      at process.processTimers (node:internal/timers:618:7) {
+    code: 'timeout',
+    status: 504,
+    stage: 'spawn',
+    elapsed_ms: 1723,
+    worker_cleanup: 'succeeded'
+  }

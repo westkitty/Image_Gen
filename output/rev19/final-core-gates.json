@@ -1,0 +1,12 @@
+[
+  {
+    "gate": "check",
+    "command": "npm run check",
+    "exit": 0
+  },
+  {
+    "gate": "unit",
+    "command": "npm test",
+    "exit": 0
+  }
+]

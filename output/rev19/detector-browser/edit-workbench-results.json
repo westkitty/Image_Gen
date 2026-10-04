@@ -1,0 +1,7 @@
+[
+ [
+  "FAIL",
+  "safe owned detector stall shows terminal timeout, no mask/job, and healthy retry retains image/options",
+  "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Hand', exact: true })\u001b[22m\n"
+ ]
+]

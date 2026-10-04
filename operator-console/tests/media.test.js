@@ -35,7 +35,7 @@ test('generic jobs: lifecycle, invalid transitions, privacy, restart reconciliat
   assert.equal(img.params.prompt, '[REDACTED]');
   assert.equal(img.params.width, 512);
   assert.match(s.transition('img1', 'TRANSFERRING').error, /illegal transition QUEUED -> TRANSFERRING/);
-  s.transition('img1', 'RUNNING'); s.transition('img1', 'TRANSFERRING'); s.transition('img1', 'COMPLETE', { artifacts: ['a.png'] });
+  s.transition('img1', 'RUNNING'); s.transition('img1', 'TRANSFERRING'); s.transition('img1', 'COMPLETE', { artifacts: ['a.png'], artifact_validation: { canonical: true, validated: true, artifacts: [{ artifact_id: 'a.png', sha256: 'a'.repeat(64) }] } });
   assert.match(s.transition('img1', 'RUNNING').error, /illegal/);
   s.create({ job_id: 'fail1', media_kind: 'image', operation: 'img2img', worker_id: 'sdcpp' }); s.transition('fail1', 'RUNNING'); s.transition('fail1', 'FAILED', { first_failed_gate: 'output-missing', error: 'x' });
   s.create({ job_id: 'run1', media_kind: 'image', operation: 'inpaint', worker_id: 'sdcpp', params: { prompt: CANARY } }); s.transition('run1', 'RUNNING', { resource_lease: 'bigmac-heavy-inference' });

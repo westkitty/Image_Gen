@@ -69,7 +69,7 @@ test('remote driver: redacts private text in errors, validates WAV, never touche
 });
 
 // ---- full run() with fake ssh/scp ------------------------------------------------------
-function harness({ remoteOut, scpBytes, cleaned = true, refOk = true } = {}) {
+function harness({ remoteOut, scpBytes, cleaned = true, refOk = true, cleanupThrows = false } = {}) {
   const base = tmp('run');
   const roots = { image: base + '/img', voice: base + '/voice', music: base + '/music', video: base + '/video' };
   const mediaStore = M.createMediaStore({ roots, registryFile: base + '/media.json' }); mediaStore.ensureRoots();
@@ -83,7 +83,8 @@ function harness({ remoteOut, scpBytes, cleaned = true, refOk = true } = {}) {
     const a = args.join(' ');
     if (cmd === 'ssh' && a.includes('mktemp -d')) return { ok: true, stdout: `DEXMEDIA_DIR=${dir}\n` };
     if (cmd === 'ssh' && a.includes('ref.wav')) return { ok: true, stdout: refOk ? 'DEXMEDIA_REF_OK\n' : '' };
-    if (cmd === 'ssh' && a.includes('rm -rf')) return { ok: true, stdout: cleaned ? 'DEXMEDIA_CLEANED\n' : 'DEXMEDIA_STILL_THERE\n' };
+    if (cmd === 'ssh' && a.includes('rm -rf') && cleanupThrows) throw new Error('owned cleanup transport fixture');
+    if (cmd === 'ssh' && a.includes('rm -rf')) return { ok: true, stdout: cleaned ? 'DEXMEDIA_CLEANED=' + /DEXMEDIA_CLEANED=([a-f0-9]{64})/.exec(a)[1] + '\n' : 'DEXMEDIA_STILL_THERE\n' };
     if (cmd === 'scp' && a.includes(`${dir}/out`)) { if (scpBytes) fs.writeFileSync(args[args.length - 1], scpBytes); return { ok: !!scpBytes, stdout: '' }; }
     return { ok: true, stdout: '' };
   };
@@ -203,5 +204,17 @@ test('server wiring: bridged generate path, lease sweep respects durable media j
   assert.match(src, /const mediaActive = !img && gen && \['QUEUED', 'RUNNING', 'TRANSFERRING'\]\.includes\(gen\.status\);/);
   assert.match(src, /mediaBridge\.sweepRemoteOrphans\(60\)/);
   const br = fs.readFileSync(path.join(__dirname, '..', 'media-bridge.js'), 'utf8');
-  assert.match(br, /find "\$T" -maxdepth 1 -type d -name 'dexmedia\.\*' -mmin \+\$\{n\}/);
+  assert.match(br, /tracked-terminal-resources/);
+});
+
+// D-034: cleanup transport must not bypass release in finally.
+test('cleanup transport throws: completed output survives, exact cleanup failure persists, lease released', async () => {
+  const bytes = wav(), h = harness({ remoteOut: okOut(bytes), scpBytes: bytes, cleanupThrows: true });
+  const r = h.bridge.start('kokoro', { text: 'fixture' }, { probe });
+  const g = await settle(h.jobStore, r.job_id);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(g.status, 'COMPLETE'); assert.equal(h.arbiter.state().owner, null);
+  assert.equal(g.owned_resources[0].state, 'failed');
+  assert.equal(g.owned_resources[0].receipt.reason, 'cleanup transport failed');
+  assert.ok(h.mediaStore.resolve(g.artifacts[0]));
 });

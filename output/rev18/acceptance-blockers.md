@@ -1,3 +1,9 @@
+# Current acceptance boundary — Rev19, 2026-10-04
+
+See [Rev19 current report](../rev19/FINAL_REPORT.md). Detector timeout/cancellation/reap/retry is VERIFIED for owned controlled stalled children; physically wedged Apple Neural Engine remains UNVERIFIED. Accessibility/interaction is CLOSED for executable specification version1:180/180 cells PASS,1,027 contract checks PASS,268 N/A, no required FAIL/BLOCKED. Six previously closed Rev18 live cases retain their scoped closure. The older blocker records below remain historical evidence.
+
+---
+
 # Rev18 current acceptance blockers — closure v17
 
 Six CLOSED; two UNVERIFIED. This is scoped closure, not VERIFIED COMPLETE. See [live evidence](closure-v17-live-acceptance.md) and [current report](FINAL_REPORT.md).

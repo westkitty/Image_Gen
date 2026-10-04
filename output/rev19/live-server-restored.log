@@ -1,0 +1,23 @@
+SDCPP Workbench listening on http://127.0.0.1:31337 (image-gen-console-2026-06-22-render-wrapper, HEAD 8f6d711, pid 33767)
+voice-routes: Error: 5 renderable line(s) have no generated take
+    at Object.assemble (/Users/andrew/Image_Gen/operator-console/drama.js:279:40)
+    at Object.assembleExport (/Users/andrew/Image_Gen/operator-console/drama-service.js:143:17)
+    at /Users/andrew/Image_Gen/operator-console/voice-routes.js:113:82
+    at /Users/andrew/Image_Gen/operator-console/voice-routes.js:36:17
+    at Layer.handleRequest (/Users/andrew/Image_Gen/operator-console/node_modules/router/lib/layer.js:152:17)
+    at next (/Users/andrew/Image_Gen/operator-console/node_modules/router/lib/route.js:157:13)
+    at Route.dispatch (/Users/andrew/Image_Gen/operator-console/node_modules/router/lib/route.js:117:3)
+    at handle (/Users/andrew/Image_Gen/operator-console/node_modules/router/index.js:435:11)
+    at Layer.handleRequest (/Users/andrew/Image_Gen/operator-console/node_modules/router/lib/layer.js:152:17)
+    at /Users/andrew/Image_Gen/operator-console/node_modules/router/index.js:295:15
+voice-routes: Error: 5 renderable line(s) have no generated take
+    at Object.assemble (/Users/andrew/Image_Gen/operator-console/drama.js:279:40)
+    at Object.assembleExport (/Users/andrew/Image_Gen/operator-console/drama-service.js:143:17)
+    at /Users/andrew/Image_Gen/operator-console/voice-routes.js:113:82
+    at /Users/andrew/Image_Gen/operator-console/voice-routes.js:36:17
+    at Layer.handleRequest (/Users/andrew/Image_Gen/operator-console/node_modules/router/lib/layer.js:152:17)
+    at next (/Users/andrew/Image_Gen/operator-console/node_modules/router/lib/route.js:157:13)
+    at Route.dispatch (/Users/andrew/Image_Gen/operator-console/node_modules/router/lib/route.js:117:3)
+    at handle (/Users/andrew/Image_Gen/operator-console/node_modules/router/index.js:435:11)
+    at Layer.handleRequest (/Users/andrew/Image_Gen/operator-console/node_modules/router/lib/layer.js:152:17)
+    at /Users/andrew/Image_Gen/operator-console/node_modules/router/index.js:295:15

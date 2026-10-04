@@ -1,0 +1,300 @@
+{
+  "specVersion": 1,
+  "started": "2026-10-03T23:42:59.261Z",
+  "requiredBaseCells": 180,
+  "partial": true,
+  "cells": [
+    {
+      "id": "V1/375x812/Create",
+      "screen": "Create",
+      "shell": 1,
+      "viewport": [
+        375,
+        812
+      ],
+      "status": "PASS",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 374,
+                "height": 398.71875,
+                "left": 0,
+                "right": 374,
+                "overflow": 0
+              }
+            ]
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 58,
+            "disabled": 7
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 51,
+            "reached": 51,
+            "focusSamples": 65,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 18,
+            "toggles": 1,
+            "validation": 2,
+            "selects": 5,
+            "details": 1
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "N/A",
+          "failures": [],
+          "measures": {
+            "exercised": 0
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "options": 18
+          }
+        },
+        {
+          "contract": "model-disabled-state",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "targets": [
+              "sd15",
+              "flux2-klein-4b"
+            ],
+            "preservesIndependentDisabled": true,
+            "keyboardSelections": 2
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 44,
+            "minObservedHeight": 44,
+            "minObservedButtonWidth": 51.8125,
+            "controls": 54
+          }
+        }
+      ]
+    },
+    {
+      "id": "V1/1280x800/Library",
+      "screen": "Library",
+      "shell": 1,
+      "viewport": [
+        1280,
+        800
+      ],
+      "status": "PASS",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 1022,
+                "height": 760,
+                "left": 258,
+                "right": 1280,
+                "overflow": 0
+              }
+            ]
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 69,
+            "disabled": 1
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 68,
+            "reached": 68,
+            "focusSamples": 76,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 3,
+            "toggles": 2,
+            "validation": 0,
+            "selects": 0,
+            "details": 0
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 2,
+            "fields": 6
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "N/A",
+          "failures": [],
+          "measures": {
+            "exercised": 0,
+            "options": 0
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 32,
+            "minObservedHeight": 32,
+            "minObservedButtonWidth": 32,
+            "controls": 64
+          }
+        }
+      ]
+    }
+  ]
+}

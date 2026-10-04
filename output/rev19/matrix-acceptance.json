@@ -1,0 +1,18 @@
+{
+  "spec_version": 1,
+  "required_cells": 180,
+  "measured_cells": 180,
+  "cells": {
+    "PASS": 180
+  },
+  "contracts": {
+    "PASS": 1027,
+    "N/A": 268
+  },
+  "dialog_exercises": 75,
+  "keyboard_controls_reached": 6859,
+  "scope": "Defined rendered baseline and disposable fixtures; model activation mocked; no media generation",
+  "evidence": "matrix-final-v2/interaction-matrix.json",
+  "exact_required_id_coverage": true,
+  "unique_cells": 180
+}

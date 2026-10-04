@@ -1,0 +1,114 @@
+{
+  "schema": "dexdiffusion.rev19.storage_contract_result.v1",
+  "inspected_at": "2026-10-03T23:41:23.414Z",
+  "defects": [
+    {
+      "id": "D-032",
+      "type": "PRODUCT DEFECT",
+      "cause": "Signature-only checks accepted eight-byte truncated PNG as final canonical output",
+      "repair": "Bounded Pillow verify plus full decode, extension format match, sha256 and dimensions before publication"
+    },
+    {
+      "id": "D-033",
+      "type": "PRODUCT DEFECT",
+      "cause": "Canonical publication removed source and exposed final before index write; metadata failure orphaned final",
+      "repair": "Preserved source, validated owned staging, inode-owned pending journal, collision-safe link, atomic metadata rename, precommit rollback; postcommit cleanup cannot delete published bytes"
+    }
+  ],
+  "checks": {
+    "combined": {
+      "command": "node --test operator-console/tests/canonical-publication.test.js operator-console/tests/canonical-images.test.js operator-console/tests/native-batch.test.js",
+      "pass": 37,
+      "fail": 0,
+      "exit": 0
+    },
+    "latest": {
+      "command": "node --test operator-console/tests/canonical-publication.test.js",
+      "pass": 16,
+      "fail": 0,
+      "exit": 0
+    },
+    "syntax_and_diff_check": {
+      "exit": 0
+    }
+  },
+  "fault_matrix": [
+    {
+      "boundary": "before-transfer",
+      "result": "PASS"
+    },
+    {
+      "boundary": "after-transfer",
+      "result": "PASS"
+    },
+    {
+      "boundary": "after-validation",
+      "result": "PASS"
+    },
+    {
+      "boundary": "before-publication",
+      "result": "PASS"
+    },
+    {
+      "boundary": "after-publication",
+      "result": "PASS"
+    },
+    {
+      "boundary": "before-metadata",
+      "result": "PASS"
+    },
+    {
+      "boundary": "after-metadata",
+      "result": "PASS"
+    },
+    {
+      "boundary": "real-metadata-rename-failure",
+      "result": "PASS"
+    },
+    {
+      "boundary": "signature-only-truncated-png",
+      "result": "PASS"
+    },
+    {
+      "boundary": "existing-name-collision",
+      "result": "PASS"
+    },
+    {
+      "boundary": "replacement-metadata-failure",
+      "result": "PASS"
+    },
+    {
+      "boundary": "actual-process-death-after-link",
+      "result": "PASS"
+    },
+    {
+      "boundary": "inode-owned-pending-collision",
+      "result": "PASS"
+    },
+    {
+      "boundary": "direct-source-cli",
+      "result": "PASS"
+    },
+    {
+      "boundary": "successful-owned-transform",
+      "result": "PASS"
+    },
+    {
+      "boundary": "read-only-missing-orphan-digest-duplicate-broken-fixture",
+      "result": "PASS"
+    }
+  ],
+  "read_only_inventory": "storage-integrity-current.json",
+  "no_historical_images_or_metadata_modified": true,
+  "earlier_harness_failure": {
+    "cause": "New test pasted an invalid PNG literal; strict validator correctly rejected it",
+    "resolution": "Replaced literal with identical independently Pillow-generated real PNG fixture used in updated legacy tests",
+    "product_defect": false
+  },
+  "limits": [
+    "Crash leftovers remain explicit pending and hidden; no automatic destructive reconciliation",
+    "Full filesystem/power-loss durability not claimed",
+    "Decoder unavailability is explicit failure/unknown, never inferred validity",
+    "Read-only current inventory does not establish why historical files disappeared"
+  ]
+}

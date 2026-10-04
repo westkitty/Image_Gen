@@ -1,0 +1,131 @@
+{
+  "core": [
+    {
+      "gate": "check",
+      "command": "npm run check",
+      "exit": 0
+    },
+    {
+      "gate": "unit",
+      "command": "npm test",
+      "exit": 0
+    }
+  ],
+  "unit": {
+    "total": 295,
+    "pass": 295,
+    "fail": 0,
+    "skipped": 0,
+    "exit": 0
+  },
+  "focused_reliability": {
+    "total": 37,
+    "pass": 37,
+    "exit": 0,
+    "log": "final-reliability-focused.log"
+  },
+  "browser": [
+    {
+      "gate": "edit",
+      "command": "npm run test:browser:edit",
+      "exit": 0,
+      "results": {
+        "edit-workbench-results.json": {
+          "total": 24,
+          "pass": 24,
+          "fail": 0
+        }
+      }
+    },
+    {
+      "gate": "voice",
+      "command": "npm run test:browser:voice",
+      "exit": 0,
+      "results": {
+        "voice-drama-results.json": {
+          "total": 8,
+          "pass": 8,
+          "fail": 0
+        }
+      }
+    },
+    {
+      "gate": "chain",
+      "command": "npm run test:browser",
+      "exit": 0,
+      "results": {
+        "voice-drama-results.json": {
+          "total": 8,
+          "pass": 8,
+          "fail": 0
+        },
+        "edit-workbench-results.json": {
+          "total": 24,
+          "pass": 24,
+          "fail": 0
+        }
+      }
+    }
+  ],
+  "matrix": {
+    "time": "2026-10-04T00:06:23.607798+00:00",
+    "command": "DEX_TEST_BASE=http://127.0.0.1:31999 DEX_BROWSER_PATH=\"/Applications/Brave Browser.app/Contents/MacOS/Brave Browser\" DEX_MATRIX_DISABLE_GPU=1 DEX_MATRIX_OUTPUT_DIR=output/rev19/matrix-final-v2 node operator-console/tests/browser/interaction-matrix.browser.js",
+    "exit": 0,
+    "requiredCells": 180,
+    "measuredCells": 180,
+    "cellCounts": {
+      "PASS": 180
+    },
+    "contractCounts": {
+      "PASS": 1027,
+      "N/A": 268
+    },
+    "perContract": {
+      "controls": {
+        "PASS": 180
+      },
+      "dialogs": {
+        "N/A": 120,
+        "PASS": 60
+      },
+      "forms": {
+        "PASS": 167,
+        "N/A": 13
+      },
+      "keyboard": {
+        "PASS": 180
+      },
+      "layout": {
+        "PASS": 180
+      },
+      "model-disabled-state": {
+        "PASS": 15
+      },
+      "navigation-label-regression": {
+        "PASS": 5
+      },
+      "popovers": {
+        "PASS": 45,
+        "N/A": 135
+      },
+      "studio-rail-geometry": {
+        "PASS": 15
+      },
+      "typography": {
+        "PASS": 180
+      }
+    }
+  },
+  "static": {
+    "javascript_files": 31,
+    "node_check_exit": 0,
+    "bash_n_exit": 0,
+    "git_diff_check_exit": 0
+  },
+  "live_generation": {
+    "count": 1,
+    "status": "PASS",
+    "evidence": "integration-receipt.json"
+  },
+  "browser_scope": "Current read-only capabilities/models snapshots; production network bootstrap latency not certified."
+}

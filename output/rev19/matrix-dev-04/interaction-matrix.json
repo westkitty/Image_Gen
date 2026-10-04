@@ -1,0 +1,203 @@
+{
+  "specVersion": 1,
+  "started": "2026-10-03T23:16:15.033Z",
+  "requiredBaseCells": 180,
+  "partial": true,
+  "cells": [
+    {
+      "id": "V1/375x812/Create",
+      "screen": "Create",
+      "shell": 1,
+      "viewport": [
+        375,
+        812
+      ],
+      "status": "PASS",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 374,
+                "height": 398.71875,
+                "left": 0,
+                "right": 374,
+                "overflow": 0
+              }
+            ]
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 58,
+            "disabled": 4
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 54,
+            "reached": 54,
+            "focusSamples": 65,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 18,
+            "toggles": 1,
+            "validation": 3,
+            "selects": 6,
+            "details": 1
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "N/A",
+          "failures": [],
+          "measures": {
+            "exercised": 0
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "options": 18
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 44,
+            "minObservedHeight": 44,
+            "controls": 54
+          }
+        }
+      ]
+    },
+    {
+      "id": "V1/375x812/Edit Compact",
+      "screen": "Edit Compact",
+      "shell": 1,
+      "viewport": [
+        375,
+        812
+      ],
+      "status": "BLOCKED",
+      "checks": [
+        {
+          "contract": "execution",
+          "status": "BLOCKED",
+          "failures": [
+            "page.waitForLoadState: Timeout 5000ms exceeded."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V1/1280x800/Library",
+      "screen": "Library",
+      "shell": 1,
+      "viewport": [
+        1280,
+        800
+      ],
+      "status": "BLOCKED",
+      "checks": [
+        {
+          "contract": "execution",
+          "status": "BLOCKED",
+          "failures": [
+            "page.goto: Timeout 30000ms exceeded."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V1/1280x800/Enhance",
+      "screen": "Enhance",
+      "shell": 1,
+      "viewport": [
+        1280,
+        800
+      ],
+      "status": "BLOCKED",
+      "checks": [
+        {
+          "contract": "execution",
+          "status": "BLOCKED",
+          "failures": [
+            "page.waitForFunction: Timeout 5000ms exceeded."
+          ]
+        }
+      ]
+    }
+  ]
+}

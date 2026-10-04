@@ -1,0 +1,126 @@
+{
+  "specVersion": 1,
+  "started": "2026-10-03T23:41:17.136Z",
+  "requiredBaseCells": 180,
+  "partial": true,
+  "cells": [
+    {
+      "id": "V1/1280x800/Library",
+      "screen": "Library",
+      "shell": 1,
+      "viewport": [
+        1280,
+        800
+      ],
+      "status": "BLOCKED",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 1022,
+                "height": 760,
+                "left": 258,
+                "right": 1280,
+                "overflow": 0
+              }
+            ]
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 69,
+            "disabled": 1
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 68,
+            "reached": 68,
+            "focusSamples": 76,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 3,
+            "toggles": 2,
+            "validation": 0,
+            "selects": 0,
+            "details": 0
+          }
+        },
+        {
+          "contract": "execution",
+          "status": "BLOCKED",
+          "failures": [
+            "locator.waitFor: Timeout 3000ms exceeded."
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1598 @@
+{
+  "specVersion": 1,
+  "started": "2026-10-03T23:54:31.488Z",
+  "requiredBaseCells": 180,
+  "partial": true,
+  "cells": [
+    {
+      "id": "V2/375x812/Create",
+      "screen": "Create",
+      "shell": 2,
+      "viewport": [
+        375,
+        812
+      ],
+      "status": "PASS",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 375,
+                "height": 421.8125,
+                "left": 0,
+                "right": 375,
+                "overflow": 0
+              }
+            ],
+            "zeroSized": 0
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 53,
+            "disabled": 5
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 48,
+            "reached": 48,
+            "focusSamples": 60,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 13,
+            "toggles": 0,
+            "validation": 2,
+            "selects": 2,
+            "details": 0
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "N/A",
+          "failures": [],
+          "measures": {
+            "exercised": 0
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "options": 18
+          }
+        },
+        {
+          "contract": "model-disabled-state",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "targets": [
+              "sd15",
+              "flux2-klein-4b"
+            ],
+            "preservesIndependentDisabled": true,
+            "keyboardSelections": 2
+          }
+        },
+        {
+          "contract": "navigation-label-regression",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "before": [
+              {
+                "label": "Create",
+                "width": 44,
+                "content": 44,
+                "text": 55,
+                "clipped": true
+              },
+              {
+                "label": "Batch / Sweep",
+                "width": 44,
+                "content": 44,
+                "text": 56,
+                "clipped": true
+              },
+              {
+                "label": "Voice",
+                "width": 44,
+                "content": 44,
+                "text": 48,
+                "clipped": true
+              },
+              {
+                "label": "Drama",
+                "width": 44,
+                "content": 44,
+                "text": 55,
+                "clipped": true
+              },
+              {
+                "label": "Music",
+                "width": 44,
+                "content": 44,
+                "text": 50,
+                "clipped": true
+              },
+              {
+                "label": "Video",
+                "width": 44,
+                "content": 44,
+                "text": 49,
+                "clipped": true
+              },
+              {
+                "label": "Library",
+                "width": 44,
+                "content": 44,
+                "text": 56,
+                "clipped": true
+              },
+              {
+                "label": "Edit",
+                "width": 44,
+                "content": 44,
+                "text": 44,
+                "clipped": false
+              },
+              {
+                "label": "Enhance",
+                "width": 44,
+                "content": 44,
+                "text": 67,
+                "clipped": true
+              },
+              {
+                "label": "Models",
+                "width": 44,
+                "content": 44,
+                "text": 58,
+                "clipped": true
+              },
+              {
+                "label": "System",
+                "width": 44,
+                "content": 44,
+                "text": 59,
+                "clipped": true
+              }
+            ],
+            "after": [
+              {
+                "label": "Create",
+                "width": 71.03125,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Batch / Sweep",
+                "width": 115.828125,
+                "content": 116,
+                "text": 116,
+                "clipped": false
+              },
+              {
+                "label": "Voice",
+                "width": 63.8125,
+                "content": 64,
+                "text": 64,
+                "clipped": false
+              },
+              {
+                "label": "Drama",
+                "width": 71.015625,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Music",
+                "width": 65.953125,
+                "content": 66,
+                "text": 66,
+                "clipped": false
+              },
+              {
+                "label": "Video",
+                "width": 65.03125,
+                "content": 65,
+                "text": 65,
+                "clipped": false
+              },
+              {
+                "label": "Library",
+                "width": 71.75,
+                "content": 72,
+                "text": 72,
+                "clipped": false
+              },
+              {
+                "label": "Edit",
+                "width": 54.40625,
+                "content": 54,
+                "text": 54,
+                "clipped": false
+              },
+              {
+                "label": "Enhance",
+                "width": 83.328125,
+                "content": 83,
+                "text": 83,
+                "clipped": false
+              },
+              {
+                "label": "Models",
+                "width": 73.921875,
+                "content": 74,
+                "text": 74,
+                "clipped": false
+              },
+              {
+                "label": "System",
+                "width": 75.34375,
+                "content": 75,
+                "text": 75,
+                "clipped": false
+              }
+            ]
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 44,
+            "minObservedHeight": 44,
+            "minObservedButtonWidth": 54.40625,
+            "controls": 53
+          }
+        }
+      ]
+    },
+    {
+      "id": "V2/390x844/Create",
+      "screen": "Create",
+      "shell": 2,
+      "viewport": [
+        390,
+        844
+      ],
+      "status": "PASS",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 390,
+                "height": 453.8125,
+                "left": 0,
+                "right": 390,
+                "overflow": 0
+              }
+            ],
+            "zeroSized": 0
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 53,
+            "disabled": 5
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 48,
+            "reached": 48,
+            "focusSamples": 60,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 13,
+            "toggles": 0,
+            "validation": 2,
+            "selects": 2,
+            "details": 0
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "N/A",
+          "failures": [],
+          "measures": {
+            "exercised": 0
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "options": 18
+          }
+        },
+        {
+          "contract": "model-disabled-state",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "targets": [
+              "sd15",
+              "flux2-klein-4b"
+            ],
+            "preservesIndependentDisabled": true,
+            "keyboardSelections": 2
+          }
+        },
+        {
+          "contract": "navigation-label-regression",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "before": [
+              {
+                "label": "Create",
+                "width": 44,
+                "content": 44,
+                "text": 55,
+                "clipped": true
+              },
+              {
+                "label": "Batch / Sweep",
+                "width": 44,
+                "content": 44,
+                "text": 56,
+                "clipped": true
+              },
+              {
+                "label": "Voice",
+                "width": 44,
+                "content": 44,
+                "text": 48,
+                "clipped": true
+              },
+              {
+                "label": "Drama",
+                "width": 44,
+                "content": 44,
+                "text": 55,
+                "clipped": true
+              },
+              {
+                "label": "Music",
+                "width": 44,
+                "content": 44,
+                "text": 50,
+                "clipped": true
+              },
+              {
+                "label": "Video",
+                "width": 44,
+                "content": 44,
+                "text": 49,
+                "clipped": true
+              },
+              {
+                "label": "Library",
+                "width": 44,
+                "content": 44,
+                "text": 56,
+                "clipped": true
+              },
+              {
+                "label": "Edit",
+                "width": 44,
+                "content": 44,
+                "text": 44,
+                "clipped": false
+              },
+              {
+                "label": "Enhance",
+                "width": 44,
+                "content": 44,
+                "text": 67,
+                "clipped": true
+              },
+              {
+                "label": "Models",
+                "width": 44,
+                "content": 44,
+                "text": 58,
+                "clipped": true
+              },
+              {
+                "label": "System",
+                "width": 44,
+                "content": 44,
+                "text": 59,
+                "clipped": true
+              }
+            ],
+            "after": [
+              {
+                "label": "Create",
+                "width": 71.03125,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Batch / Sweep",
+                "width": 115.828125,
+                "content": 116,
+                "text": 116,
+                "clipped": false
+              },
+              {
+                "label": "Voice",
+                "width": 63.8125,
+                "content": 64,
+                "text": 64,
+                "clipped": false
+              },
+              {
+                "label": "Drama",
+                "width": 71.015625,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Music",
+                "width": 65.953125,
+                "content": 66,
+                "text": 66,
+                "clipped": false
+              },
+              {
+                "label": "Video",
+                "width": 65.03125,
+                "content": 65,
+                "text": 65,
+                "clipped": false
+              },
+              {
+                "label": "Library",
+                "width": 71.75,
+                "content": 72,
+                "text": 72,
+                "clipped": false
+              },
+              {
+                "label": "Edit",
+                "width": 54.40625,
+                "content": 54,
+                "text": 54,
+                "clipped": false
+              },
+              {
+                "label": "Enhance",
+                "width": 83.328125,
+                "content": 83,
+                "text": 83,
+                "clipped": false
+              },
+              {
+                "label": "Models",
+                "width": 73.921875,
+                "content": 74,
+                "text": 74,
+                "clipped": false
+              },
+              {
+                "label": "System",
+                "width": 75.34375,
+                "content": 75,
+                "text": 75,
+                "clipped": false
+              }
+            ]
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 44,
+            "minObservedHeight": 44,
+            "minObservedButtonWidth": 54.40625,
+            "controls": 53
+          }
+        }
+      ]
+    },
+    {
+      "id": "V2/768x1024/Create",
+      "screen": "Create",
+      "shell": 2,
+      "viewport": [
+        768,
+        1024
+      ],
+      "status": "PASS",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 768,
+                "height": 648.8125,
+                "left": 0,
+                "right": 768,
+                "overflow": 0
+              }
+            ],
+            "zeroSized": 0
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 53,
+            "disabled": 5
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 48,
+            "reached": 48,
+            "focusSamples": 60,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 13,
+            "toggles": 0,
+            "validation": 2,
+            "selects": 2,
+            "details": 0
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "N/A",
+          "failures": [],
+          "measures": {
+            "exercised": 0
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "options": 18
+          }
+        },
+        {
+          "contract": "model-disabled-state",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "targets": [
+              "sd15",
+              "flux2-klein-4b"
+            ],
+            "preservesIndependentDisabled": true,
+            "keyboardSelections": 2
+          }
+        },
+        {
+          "contract": "navigation-label-regression",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "before": [
+              {
+                "label": "Create",
+                "width": 65.984375,
+                "content": 66,
+                "text": 66,
+                "clipped": false
+              },
+              {
+                "label": "Batch / Sweep",
+                "width": 104.96875,
+                "content": 105,
+                "text": 105,
+                "clipped": false
+              },
+              {
+                "label": "Voice",
+                "width": 59.703125,
+                "content": 60,
+                "text": 60,
+                "clipped": false
+              },
+              {
+                "label": "Drama",
+                "width": 65.96875,
+                "content": 66,
+                "text": 66,
+                "clipped": false
+              },
+              {
+                "label": "Music",
+                "width": 61.5625,
+                "content": 62,
+                "text": 62,
+                "clipped": false
+              },
+              {
+                "label": "Video",
+                "width": 60.765625,
+                "content": 61,
+                "text": 61,
+                "clipped": false
+              },
+              {
+                "label": "Library",
+                "width": 66.609375,
+                "content": 67,
+                "text": 67,
+                "clipped": false
+              },
+              {
+                "label": "Edit",
+                "width": 51.515625,
+                "content": 52,
+                "text": 52,
+                "clipped": false
+              },
+              {
+                "label": "Enhance",
+                "width": 76.6875,
+                "content": 77,
+                "text": 77,
+                "clipped": false
+              },
+              {
+                "label": "Models",
+                "width": 68.5,
+                "content": 69,
+                "text": 69,
+                "clipped": false
+              },
+              {
+                "label": "System",
+                "width": 69.734375,
+                "content": 70,
+                "text": 70,
+                "clipped": false
+              }
+            ],
+            "after": [
+              {
+                "label": "Create",
+                "width": 71.03125,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Batch / Sweep",
+                "width": 115.828125,
+                "content": 116,
+                "text": 116,
+                "clipped": false
+              },
+              {
+                "label": "Voice",
+                "width": 63.8125,
+                "content": 64,
+                "text": 64,
+                "clipped": false
+              },
+              {
+                "label": "Drama",
+                "width": 71.015625,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Music",
+                "width": 65.953125,
+                "content": 66,
+                "text": 66,
+                "clipped": false
+              },
+              {
+                "label": "Video",
+                "width": 65.03125,
+                "content": 65,
+                "text": 65,
+                "clipped": false
+              },
+              {
+                "label": "Library",
+                "width": 71.75,
+                "content": 72,
+                "text": 72,
+                "clipped": false
+              },
+              {
+                "label": "Edit",
+                "width": 54.40625,
+                "content": 54,
+                "text": 54,
+                "clipped": false
+              },
+              {
+                "label": "Enhance",
+                "width": 83.328125,
+                "content": 83,
+                "text": 83,
+                "clipped": false
+              },
+              {
+                "label": "Models",
+                "width": 73.921875,
+                "content": 74,
+                "text": 74,
+                "clipped": false
+              },
+              {
+                "label": "System",
+                "width": 75.34375,
+                "content": 75,
+                "text": 75,
+                "clipped": false
+              }
+            ]
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 32,
+            "minObservedHeight": 32,
+            "minObservedButtonWidth": 54.40625,
+            "controls": 53
+          }
+        }
+      ]
+    },
+    {
+      "id": "V2/1280x800/Create",
+      "screen": "Create",
+      "shell": 2,
+      "viewport": [
+        1280,
+        800
+      ],
+      "status": "PASS",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 370,
+                "height": 646,
+                "left": 910,
+                "right": 1280,
+                "overflow": 0
+              }
+            ],
+            "zeroSized": 0
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 53,
+            "disabled": 5
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 48,
+            "reached": 48,
+            "focusSamples": 60,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 13,
+            "toggles": 0,
+            "validation": 2,
+            "selects": 2,
+            "details": 0
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "N/A",
+          "failures": [],
+          "measures": {
+            "exercised": 0
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "options": 18
+          }
+        },
+        {
+          "contract": "model-disabled-state",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "targets": [
+              "sd15",
+              "flux2-klein-4b"
+            ],
+            "preservesIndependentDisabled": true,
+            "keyboardSelections": 2
+          }
+        },
+        {
+          "contract": "navigation-label-regression",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "before": [
+              {
+                "label": "Create",
+                "width": 71.03125,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Batch / Sweep",
+                "width": 115.828125,
+                "content": 116,
+                "text": 116,
+                "clipped": false
+              },
+              {
+                "label": "Voice",
+                "width": 63.8125,
+                "content": 64,
+                "text": 64,
+                "clipped": false
+              },
+              {
+                "label": "Drama",
+                "width": 71.015625,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Music",
+                "width": 65.953125,
+                "content": 66,
+                "text": 66,
+                "clipped": false
+              },
+              {
+                "label": "Video",
+                "width": 65.03125,
+                "content": 65,
+                "text": 65,
+                "clipped": false
+              },
+              {
+                "label": "Library",
+                "width": 71.75,
+                "content": 72,
+                "text": 72,
+                "clipped": false
+              },
+              {
+                "label": "Edit",
+                "width": 54.40625,
+                "content": 54,
+                "text": 54,
+                "clipped": false
+              },
+              {
+                "label": "Enhance",
+                "width": 83.328125,
+                "content": 83,
+                "text": 83,
+                "clipped": false
+              },
+              {
+                "label": "Models",
+                "width": 73.921875,
+                "content": 74,
+                "text": 74,
+                "clipped": false
+              },
+              {
+                "label": "System",
+                "width": 75.34375,
+                "content": 75,
+                "text": 75,
+                "clipped": false
+              }
+            ],
+            "after": [
+              {
+                "label": "Create",
+                "width": 71.03125,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Batch / Sweep",
+                "width": 115.828125,
+                "content": 116,
+                "text": 116,
+                "clipped": false
+              },
+              {
+                "label": "Voice",
+                "width": 63.8125,
+                "content": 64,
+                "text": 64,
+                "clipped": false
+              },
+              {
+                "label": "Drama",
+                "width": 71.015625,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Music",
+                "width": 65.953125,
+                "content": 66,
+                "text": 66,
+                "clipped": false
+              },
+              {
+                "label": "Video",
+                "width": 65.03125,
+                "content": 65,
+                "text": 65,
+                "clipped": false
+              },
+              {
+                "label": "Library",
+                "width": 71.75,
+                "content": 72,
+                "text": 72,
+                "clipped": false
+              },
+              {
+                "label": "Edit",
+                "width": 54.40625,
+                "content": 54,
+                "text": 54,
+                "clipped": false
+              },
+              {
+                "label": "Enhance",
+                "width": 83.328125,
+                "content": 83,
+                "text": 83,
+                "clipped": false
+              },
+              {
+                "label": "Models",
+                "width": 73.921875,
+                "content": 74,
+                "text": 74,
+                "clipped": false
+              },
+              {
+                "label": "System",
+                "width": 75.34375,
+                "content": 75,
+                "text": 75,
+                "clipped": false
+              }
+            ]
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 32,
+            "minObservedHeight": 32,
+            "minObservedButtonWidth": 46.453125,
+            "controls": 53
+          }
+        }
+      ]
+    },
+    {
+      "id": "V2/1440x900/Create",
+      "screen": "Create",
+      "shell": 2,
+      "viewport": [
+        1440,
+        900
+      ],
+      "status": "PASS",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 370,
+                "height": 746,
+                "left": 1070,
+                "right": 1440,
+                "overflow": 0
+              }
+            ],
+            "zeroSized": 0
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 53,
+            "disabled": 5
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 48,
+            "reached": 48,
+            "focusSamples": 60,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 13,
+            "toggles": 0,
+            "validation": 2,
+            "selects": 2,
+            "details": 0
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "N/A",
+          "failures": [],
+          "measures": {
+            "exercised": 0
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "options": 18
+          }
+        },
+        {
+          "contract": "model-disabled-state",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "targets": [
+              "sd15",
+              "flux2-klein-4b"
+            ],
+            "preservesIndependentDisabled": true,
+            "keyboardSelections": 2
+          }
+        },
+        {
+          "contract": "navigation-label-regression",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "before": [
+              {
+                "label": "Create",
+                "width": 71.03125,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Batch / Sweep",
+                "width": 115.828125,
+                "content": 116,
+                "text": 116,
+                "clipped": false
+              },
+              {
+                "label": "Voice",
+                "width": 63.8125,
+                "content": 64,
+                "text": 64,
+                "clipped": false
+              },
+              {
+                "label": "Drama",
+                "width": 71.015625,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Music",
+                "width": 65.953125,
+                "content": 66,
+                "text": 66,
+                "clipped": false
+              },
+              {
+                "label": "Video",
+                "width": 65.03125,
+                "content": 65,
+                "text": 65,
+                "clipped": false
+              },
+              {
+                "label": "Library",
+                "width": 71.75,
+                "content": 72,
+                "text": 72,
+                "clipped": false
+              },
+              {
+                "label": "Edit",
+                "width": 54.40625,
+                "content": 54,
+                "text": 54,
+                "clipped": false
+              },
+              {
+                "label": "Enhance",
+                "width": 83.328125,
+                "content": 83,
+                "text": 83,
+                "clipped": false
+              },
+              {
+                "label": "Models",
+                "width": 73.921875,
+                "content": 74,
+                "text": 74,
+                "clipped": false
+              },
+              {
+                "label": "System",
+                "width": 75.34375,
+                "content": 75,
+                "text": 75,
+                "clipped": false
+              }
+            ],
+            "after": [
+              {
+                "label": "Create",
+                "width": 71.03125,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Batch / Sweep",
+                "width": 115.828125,
+                "content": 116,
+                "text": 116,
+                "clipped": false
+              },
+              {
+                "label": "Voice",
+                "width": 63.8125,
+                "content": 64,
+                "text": 64,
+                "clipped": false
+              },
+              {
+                "label": "Drama",
+                "width": 71.015625,
+                "content": 71,
+                "text": 71,
+                "clipped": false
+              },
+              {
+                "label": "Music",
+                "width": 65.953125,
+                "content": 66,
+                "text": 66,
+                "clipped": false
+              },
+              {
+                "label": "Video",
+                "width": 65.03125,
+                "content": 65,
+                "text": 65,
+                "clipped": false
+              },
+              {
+                "label": "Library",
+                "width": 71.75,
+                "content": 72,
+                "text": 72,
+                "clipped": false
+              },
+              {
+                "label": "Edit",
+                "width": 54.40625,
+                "content": 54,
+                "text": 54,
+                "clipped": false
+              },
+              {
+                "label": "Enhance",
+                "width": 83.328125,
+                "content": 83,
+                "text": 83,
+                "clipped": false
+              },
+              {
+                "label": "Models",
+                "width": 73.921875,
+                "content": 74,
+                "text": 74,
+                "clipped": false
+              },
+              {
+                "label": "System",
+                "width": 75.34375,
+                "content": 75,
+                "text": 75,
+                "clipped": false
+              }
+            ]
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 32,
+            "minObservedHeight": 32,
+            "minObservedButtonWidth": 46.453125,
+            "controls": 53
+          }
+        }
+      ]
+    }
+  ]
+}

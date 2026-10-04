@@ -1,0 +1,30 @@
+{
+  "schema": "dexdiffusion.rev19.storage-baseline.v1",
+  "inspected_at": "2026-10-03T23:14:58.721Z",
+  "owned_fixtures_only": true,
+  "fixture_cleanup": "succeeded",
+  "defects": [
+    {
+      "id": "D-032",
+      "type": "PRODUCT DEFECT",
+      "reproduction": "finalizeRun accepts an eight-byte PNG signature",
+      "observed": {
+        "adopted": 1,
+        "published_bytes": 8
+      },
+      "root_cause": "hasImageSignature checks header only; no format/decode validation"
+    },
+    {
+      "id": "D-033",
+      "type": "PRODUCT DEFECT",
+      "reproduction": "index temporary path made an owned directory before finalizeRun",
+      "observed": {
+        "metadata_error": "EISDIR",
+        "canonical_orphan": "owned-other.png",
+        "source_exists": false,
+        "index_count": 1
+      },
+      "root_cause": "adoptFile removes source and publishes before metadata write; failure has no rollback"
+    }
+  ]
+}

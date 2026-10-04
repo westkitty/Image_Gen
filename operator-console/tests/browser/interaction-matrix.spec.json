@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "screens": ["Create", "Library", "Batch", "Edit Compact", "Edit Studio", "Enhance", "Voice", "Drama", "Music", "Video", "Models", "System"],
+  "viewports": [[375,812],[390,844],[768,1024],[1280,800],[1440,900]],
+  "shells": [1,2,3],
+  "contracts": ["layout", "controls", "keyboard", "forms", "dialogs", "popovers", "typography"],
+  "minimumControlHeight": {"mobile":44,"desktop":32},
+  "tolerancePixels": 1.5,
+  "scope": "Rendered screen with deterministic owned image and API fixtures; all native controls, rendered details, model pickers and available fullscreen dialogs. No generation, system mutation or durable project writes. Native form validation is exercised only on fields declaring constraints. Ellipsis labels and scrollable navigation are intentional geometry exceptions."
+}

@@ -11,7 +11,7 @@ const { capabilityForJob, CAPABILITIES } = require('../capabilities');
 
 const SCRIPT = fs.readFileSync(path.join(__dirname, '..', '..', 'sdcpp-workflow', 'bin', 'sdcpp-controlled-generate.sh'), 'utf8');
 const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 1)]);
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGMU0QhgYGBgYgADAAZ+AJD85S7OAAAAAElFTkSuQmCC', 'base64');
 const sd15 = { id: 'sd15', backend: 'sdcpp' };
 const flux = { id: 'flux2-klein-4b', backend: 'mflux' };
 

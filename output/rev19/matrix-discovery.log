@@ -1,0 +1,78 @@
+V1/375x812/Create PASS 
+V1/375x812/Library BLOCKED execution: [data-lightbox] did not open: locator.waitFor: Timeout 5000ms exceeded.
+V1/375x812/Batch PASS 
+V1/375x812/Edit Compact FAIL popovers: Picker initial focus outside panel; ArrowDown did not reach first model; End did not reach last model
+V1/375x812/Edit Studio FAIL popovers: Picker initial focus outside panel; ArrowDown did not reach first model; End did not reach last model
+V1/375x812/Enhance PASS 
+V1/375x812/Voice PASS 
+V1/375x812/Drama PASS 
+V1/375x812/Music PASS 
+V1/375x812/Video PASS 
+V1/375x812/Models PASS 
+V1/375x812/System PASS 
+V1/390x844/Create BLOCKED execution: page.waitForFunction: Timeout 5000ms exceeded.
+V1/390x844/Library BLOCKED execution: [data-lightbox] did not open: locator.waitFor: Timeout 5000ms exceeded.
+V1/390x844/Batch PASS 
+V1/390x844/Edit Compact PASS 
+V1/390x844/Edit Studio FAIL popovers: Picker initial focus outside panel; ArrowDown did not reach first model
+V1/390x844/Enhance PASS 
+V1/390x844/Voice PASS 
+V1/390x844/Drama PASS 
+V1/390x844/Music FAIL forms: Constraint has no inspectable native error: Seed
+V1/390x844/Video PASS 
+V1/390x844/Models PASS 
+V1/390x844/System PASS 
+V1/768x1024/Create PASS 
+V1/768x1024/Library BLOCKED execution: [data-lightbox] did not open: locator.waitFor: Timeout 5000ms exceeded.
+V1/768x1024/Batch PASS 
+V1/768x1024/Edit Compact FAIL popovers: Picker initial focus outside panel; ArrowDown did not reach first model
+V1/768x1024/Edit Studio PASS 
+V1/768x1024/Enhance PASS 
+V1/768x1024/Voice PASS 
+V1/768x1024/Drama PASS 
+V1/768x1024/Music BLOCKED execution: locator.evaluate: Timeout 5000ms exceeded.
+V1/768x1024/Video PASS 
+V1/768x1024/Models PASS 
+V1/768x1024/System PASS 
+V1/1280x800/Create PASS 
+V1/1280x800/Library BLOCKED execution: [data-lightbox] did not open: locator.waitFor: Timeout 5000ms exceeded.
+V1/1280x800/Batch BLOCKED execution: locator.evaluate: Timeout 5000ms exceeded.
+V1/1280x800/Edit Compact BLOCKED execution: locator.evaluate: Timeout 5000ms exceeded.
+V1/1280x800/Edit Studio BLOCKED layout: Control intersection ["Steps","Run Inpaint",116,24]; Control intersection ["CFG","Run Inpaint",116,24]; Control intersection ["Seed (−1 = random)","Run Inpaint",116,18] | execution: locator.evaluate: Timeout 5000ms exceeded.
+V1/1280x800/Enhance PASS 
+V1/1280x800/Voice PASS 
+V1/1280x800/Drama FAIL forms: Select loses coherent focus
+V1/1280x800/Music BLOCKED execution: locator.evaluate: Timeout 5000ms exceeded.
+V1/1280x800/Video PASS 
+V1/1280x800/Models PASS 
+V1/1280x800/System FAIL forms: Summary Enter failed
+V1/1440x900/Create PASS 
+V1/1440x900/Library BLOCKED execution: [data-lightbox] did not open: locator.waitFor: Timeout 5000ms exceeded.
+V1/1440x900/Batch BLOCKED execution: locator.evaluate: Timeout 5000ms exceeded.
+V1/1440x900/Edit Compact BLOCKED execution: locator.evaluate: Timeout 5000ms exceeded.
+V1/1440x900/Edit Studio BLOCKED layout: Control intersection ["Strength","Run Inpaint",383,7] | execution: locator.evaluate: Timeout 5000ms exceeded.
+V1/1440x900/Enhance PASS 
+V1/1440x900/Voice PASS 
+V1/1440x900/Drama PASS 
+V1/1440x900/Music BLOCKED execution: locator.evaluate: Timeout 5000ms exceeded.
+V1/1440x900/Video PASS 
+V1/1440x900/Models PASS 
+V1/1440x900/System FAIL forms: Summary Enter failed
+V2/375x812/Create FAIL typography: Clipped Create; Clipped Batch / Sweep; Clipped Voice
+
+[suite] SIGTERM received — cleaning up
+V2/375x812/Library BLOCKED execution: [data-lightbox] did not open: locator.waitFor: Target page, context or browser has been closed
+V2/375x812/Batch BLOCKED execution: page.evaluate: Target page, context or browser has been closed
+V2/375x812/Edit Compact BLOCKED execution: page.evaluate: Target page, context or browser has been closed
+V2/375x812/Edit Studio BLOCKED execution: page.evaluate: Target page, context or browser has been closed
+V2/375x812/Enhance BLOCKED execution: page.evaluate: Target page, context or browser has been closed
+V2/375x812/Voice BLOCKED execution: page.evaluate: Target page, context or browser has been closed
+V2/375x812/Drama BLOCKED execution: page.evaluate: Target page, context or browser has been closed
+V2/375x812/Music BLOCKED execution: page.evaluate: Target page, context or browser has been closed
+V2/375x812/Video BLOCKED execution: page.evaluate: Target page, context or browser has been closed
+V2/375x812/Models BLOCKED execution: page.evaluate: Target page, context or browser has been closed
+V2/375x812/System BLOCKED execution: page.evaluate: Target page, context or browser has been closed
+browser.newContext: Target page, context or browser has been closed
+    at async /Users/andrew/Image_Gen/operator-console/tests/browser/interaction-matrix.browser.js:195:17 {
+  log: []
+}

@@ -1,0 +1,4 @@
+[edit-workbench +0.6s] START img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result
+[edit-workbench +7.5s] PASS img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result (6941 ms)
+
+1/1 browser checks passed

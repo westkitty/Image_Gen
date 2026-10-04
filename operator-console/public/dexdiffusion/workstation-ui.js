@@ -80,9 +80,9 @@
   P._targetSpec = function (id) { return (this.state.modelTargets || []).find(t => t.id === (id || this.state.target)) || null; };
   P._controls = function () { return D.controlsFor(this._targetSpec()); };
   P._gate = function (k) { const g = ((this.state.capabilityData || {}).featureGates || {})[k]; return !!(g && g.supported === true); };
-  P._api = async function (route, body, method) {
+  P._api = async function (route, body, method, signal) {
     const r = await fetch(this.state.backendUrl + route, body === undefined && !method ? undefined : {
-      method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+      signal, method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
     const data = await r.json().catch(() => ({ error: r.statusText }));
     return { ok: r.ok, status: r.status, data };
   };
@@ -655,6 +655,7 @@
 
   // ── Detailer (Apple Vision Face / Hand / Person) ──────────────
   P.openDetailer = function (imageId) {
+    this._detailerDetectController?.abort();
     this._detailerPreviewToken = this._detailerRunToken = null;
     this._detailerOpener = document.activeElement;
     const ws = this._ws();
@@ -682,6 +683,7 @@
   };
 
   P.closeDetailer = function () {
+    this._detailerDetectController?.abort();
     this._detailerPreviewToken = this._detailerRunToken = null;
     const ws = this._ws();
     this.wsSet({ detailer: Object.assign({}, ws.detailer, { open: false, maskPreview: null }) });
@@ -700,9 +702,11 @@
     if (!d || !d.imageId) return;
     const requestKey = JSON.stringify(this.detailerPayload(d));
     const previewToken = this._detailerPreviewToken = {};
-    this.wsSet({ detailer: Object.assign({}, d, { loading: true, note: 'Detecting with Apple Vision…' }) });
+    this._detailerDetectController?.abort();
+    const controller = this._detailerDetectController = new AbortController();
+    this.wsSet({ detailer: Object.assign({}, d, { loading: true, maskPreview: null, detections: [], note: 'Detecting with Apple Vision…' }) });
     try {
-      const res = await this._api('/api/detailer/mask-preview', this.detailerPayload(d));
+      const res = await this._api('/api/detailer/mask-preview', this.detailerPayload(d), undefined, controller.signal);
       if (this._detailerPreviewToken !== previewToken) return;
       const cur = this._ws().detailer;
       if (!cur.open || JSON.stringify(this.detailerPayload(cur)) !== requestKey) {
@@ -734,11 +738,13 @@
     if (!d || !d.imageId) return;
     const runKey = JSON.stringify(this.detailerPayload(d));
     const runToken = this._detailerRunToken = {};
+    this._detailerDetectController?.abort();
+    const controller = this._detailerDetectController = new AbortController();
     this.wsSet({ detailer: Object.assign({}, d, { loading: true, note: 'Detecting with Apple Vision…' }) });
     try {
       let maskData = d.maskPreview;
       if (!maskData) {
-        const pRes = await this._api('/api/detailer/mask-preview', this.detailerPayload(d));
+        const pRes = await this._api('/api/detailer/mask-preview', this.detailerPayload(d), undefined, controller.signal);
         if (pRes.ok && pRes.data.empty) throw new Error(pRes.data.message);
         if (!pRes.ok || !pRes.data.mask_preview) throw new Error((pRes.data && pRes.data.error) || 'Failed to detect targets for detailer mask');
         maskData = pRes.data.mask_preview;

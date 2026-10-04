@@ -1,0 +1,45 @@
+✔ publication interruption: before-transfer (29.337833ms)
+✔ publication interruption: after-transfer (8.450875ms)
+✔ publication interruption: after-validation (759.657667ms)
+✔ publication interruption: before-publication (525.445875ms)
+✔ publication interruption: after-publication (470.705958ms)
+✔ publication interruption: before-metadata (370.163ms)
+✔ truncated/signature-only PNG cannot become canonical (361.280042ms)
+✔ real metadata rename failure rolls back new links, preserves source and old index (385.862333ms)
+✔ collision, successful digest and pending visibility do not overwrite unrelated image (696.017834ms)
+✔ owned transformed canonical copy preserves original on metadata failure (550.415375ms)
+✔ read-only inventory identifies exactly owned missing/orphan/digest/duplicate/broken references without repair (709.042792ms)
+✔ process death after link leaves explicit hidden pending publication, never completed metadata (451.974541ms)
+✔ interruption after metadata commit preserves canonical bytes and explicit pending visibility (301.679458ms)
+✔ pending identity never hides a collision belonging to another inode (4.162333ms)
+✔ direct source CLI uses the same validated publication boundary (504.445208ms)
+✔ successful owned transform atomically updates canonical digest and cleans its backup (466.017458ms)
+✔ exact ownership rejects traversal, arbitrary roots, descendants and command injection (23.923625ms)
+✔ cleanup transport failure visible; terminal exact retry preserves canonical and unrelated fixture (106.692542ms)
+✔ startup reconciliation touches only tracked terminal resources, not untracked directory patterns (1.428541ms)
+✔ pending cleanup survives restart as unknown and unverified success is rejected (27.335541ms)
+✔ a delayed Detailer mask cannot attach to changed options, image or a closed dialog (42.618125ms)
+✔ a delayed inpaint submission cannot attach to a replacement Detailer dialog (5.395375ms)
+✔ Detailer timeout is terminal, preserves selection/options, and late failed preview cannot overwrite retry (2.977583ms)
+✔ safe detector stall is bounded, reaps only owned worker, produces no mask, then healthy retry succeeds (1109.18375ms)
+✔ cancelled detector reaps its owned child and never auto-retries (46.771417ms)
+✔ detector unavailable and unreadable output use stable failure codes (429.822167ms)
+✔ shared contract rejects terminal reversal, conflicting outcome and unvalidated completion (10.713292ms)
+✔ unknown percentage allowed; invented percentages rejected; measured counts accepted (0.347833ms)
+✔ explicit non-artifact operation permits completion but cannot smuggle unvalidated output (9.726375ms)
+✔ canonical media metadata write failure leaves no public registry record or new canonical bytes (25.949667ms)
+✔ canonical media rejects truncated wave content before any publication (5.738667ms)
+✔ canonical media collision preserves old bytes and returns validated digest receipt (20.563291ms)
+✔ privacy persistence saving OFF distinguishes intentional retention from non-retention (661.222167ms)
+✔ privacy persistence saving ON distinguishes intentional retention from non-retention (578.452041ms)
+✔ historical exposure is an explicit preserved exception, not a clean-current claim (2.937125ms)
+✔ executed server finalization rejects metadata failure before success reaches consumers (8.081375ms)
+✔ generic server completion requires a fresh canonical receipt and releases lease on rejection (6.881208ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7159.211625

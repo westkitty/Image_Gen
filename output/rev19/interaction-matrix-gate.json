@@ -1,0 +1,49 @@
+{
+  "time": "2026-10-04T00:06:23.607798+00:00",
+  "command": "DEX_TEST_BASE=http://127.0.0.1:31999 DEX_BROWSER_PATH=\"/Applications/Brave Browser.app/Contents/MacOS/Brave Browser\" DEX_MATRIX_DISABLE_GPU=1 DEX_MATRIX_OUTPUT_DIR=output/rev19/matrix-final-v2 node operator-console/tests/browser/interaction-matrix.browser.js",
+  "exit": 0,
+  "requiredCells": 180,
+  "measuredCells": 180,
+  "cellCounts": {
+    "PASS": 180
+  },
+  "contractCounts": {
+    "PASS": 1027,
+    "N/A": 268
+  },
+  "perContract": {
+    "controls": {
+      "PASS": 180
+    },
+    "dialogs": {
+      "N/A": 120,
+      "PASS": 60
+    },
+    "forms": {
+      "PASS": 167,
+      "N/A": 13
+    },
+    "keyboard": {
+      "PASS": 180
+    },
+    "layout": {
+      "PASS": 180
+    },
+    "model-disabled-state": {
+      "PASS": 15
+    },
+    "navigation-label-regression": {
+      "PASS": 5
+    },
+    "popovers": {
+      "PASS": 45,
+      "N/A": 135
+    },
+    "studio-rail-geometry": {
+      "PASS": 15
+    },
+    "typography": {
+      "PASS": 180
+    }
+  }
+}

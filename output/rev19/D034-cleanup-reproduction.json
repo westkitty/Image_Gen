@@ -1,0 +1,18 @@
+{
+  "defect": "D-034",
+  "seam": "fake SSH cleanup throws; actual bridge source from HEAD versus current",
+  "results": [
+    {
+      "version": "HEAD",
+      "status": "COMPLETE",
+      "lease_stranded": true,
+      "cleanup_state": null
+    },
+    {
+      "version": "current",
+      "status": "COMPLETE",
+      "lease_stranded": false,
+      "cleanup_state": "failed"
+    }
+  ]
+}

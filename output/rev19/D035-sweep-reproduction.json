@@ -1,0 +1,16 @@
+{
+  "defect": "D-035",
+  "scope": "local isolated fake SSH shell; no remote writes",
+  "results": [
+    {
+      "version": "HEAD",
+      "untracked_fixture_preserved": false,
+      "remote_calls_simulated": 1
+    },
+    {
+      "version": "current",
+      "untracked_fixture_preserved": true,
+      "remote_calls_simulated": 0
+    }
+  ]
+}

@@ -1,0 +1,1027 @@
+{
+  "specVersion": 1,
+  "started": "2026-10-03T23:37:12.796Z",
+  "requiredBaseCells": 180,
+  "partial": true,
+  "cells": [
+    {
+      "id": "V1/375x812/Create",
+      "screen": "Create",
+      "shell": 1,
+      "viewport": [
+        375,
+        812
+      ],
+      "status": "FAIL",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 374,
+                "height": 398.71875,
+                "left": 0,
+                "right": 374,
+                "overflow": 0
+              }
+            ]
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "FAIL",
+          "failures": [
+            "Disabled styling lacks disabled state low quality, blurry…",
+            "Disabled styling lacks disabled state CFG",
+            "Disabled styling lacks disabled state Scheduler"
+          ],
+          "measures": {
+            "visible": 58,
+            "disabled": 4
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 54,
+            "reached": 54,
+            "focusSamples": 65,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 18,
+            "toggles": 1,
+            "validation": 3,
+            "selects": 6,
+            "details": 1
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "N/A",
+          "failures": [],
+          "measures": {
+            "exercised": 0
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "options": 18
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 44,
+            "minObservedHeight": 44,
+            "minObservedButtonWidth": 51.8125,
+            "controls": 54
+          }
+        }
+      ]
+    },
+    {
+      "id": "V1/375x812/Edit Compact",
+      "screen": "Edit Compact",
+      "shell": 1,
+      "viewport": [
+        375,
+        812
+      ],
+      "status": "PASS",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 375,
+                "height": 721,
+                "left": 0,
+                "right": 375,
+                "overflow": 0
+              },
+              {
+                "width": 339,
+                "height": 2355.3125,
+                "left": 14,
+                "right": 353,
+                "overflow": 0
+              }
+            ]
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 55,
+            "disabled": 3
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 52,
+            "reached": 53,
+            "focusSamples": 61,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 13,
+            "toggles": 0,
+            "validation": 2,
+            "selects": 4,
+            "details": 2
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1,
+            "options": 17
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 44,
+            "minObservedHeight": 44,
+            "minObservedButtonWidth": 44,
+            "controls": 49
+          }
+        }
+      ]
+    },
+    {
+      "id": "V1/1280x800/Library",
+      "screen": "Library",
+      "shell": 1,
+      "viewport": [
+        1280,
+        800
+      ],
+      "status": "BLOCKED",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 1022,
+                "height": 760,
+                "left": 258,
+                "right": 1280,
+                "overflow": 0
+              }
+            ]
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 179,
+            "disabled": 1
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "FAIL",
+          "failures": [
+            "Tab unreachable: ☆ Keeper",
+            "Tab unreachable: Download",
+            "Tab unreachable: Refresh",
+            "Tab unreachable: All",
+            "Tab unreachable: ★ Keepers",
+            "Tab unreachable: FLUX",
+            "Tab unreachable: SD1.5",
+            "Tab unreachable: txt2img",
+            "Tab unreachable: Variations",
+            "Tab unreachable: Seed Lab",
+            "Tab unreachable: Batch",
+            "Tab unreachable: Img2Img",
+            "Tab unreachable: Inpaint",
+            "Tab unreachable: Outpaint",
+            "Tab unreachable: Real-ESRGAN",
+            "Tab unreachable: Lanczos",
+            "Tab unreachable: Open fullscreen image rev19-matrix-owned.png",
+            "Tab unreachable: Select rev19-matrix-owned.png for details",
+            "Tab unreachable: Fullscreen",
+            "Tab unreachable: Variation",
+            "Tab unreachable: Explore Seeds",
+            "Tab unreachable: Enhance",
+            "Tab unreachable: Detailer",
+            "Tab unreachable: Compare",
+            "Tab unreachable: Reuse Seed",
+            "Tab unreachable: Reuse Settings",
+            "Tab unreachable: Lineage",
+            "Tab unreachable: Copy path",
+            "Tab unreachable: Filter loaded runs",
+            "Tab unreachable: Controlled",
+            "Tab unreachable: SDXL base",
+            "Tab unreachable: SDXL Turbo",
+            "Tab unreachable: Flux fp8",
+            "Tab unreachable: Hires Fix",
+            "Tab unreachable: Upscale",
+            "Tab unreachable: Smoke proofs",
+            "Tab unreachable: Failed",
+            "Tab unreachable: Latest sweep",
+            "Tab unreachable: Open fullscreen image no runs yet"
+          ],
+          "measures": {
+            "expected": 178,
+            "reached": 67,
+            "focusSamples": 67,
+            "unreached": [
+              {
+                "i": 67,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 68,
+                "name": "Download"
+              },
+              {
+                "i": 69,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 70,
+                "name": "Download"
+              },
+              {
+                "i": 71,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 72,
+                "name": "Download"
+              },
+              {
+                "i": 73,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 74,
+                "name": "Download"
+              },
+              {
+                "i": 75,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 76,
+                "name": "Download"
+              },
+              {
+                "i": 77,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 78,
+                "name": "Download"
+              },
+              {
+                "i": 79,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 80,
+                "name": "Download"
+              },
+              {
+                "i": 81,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 82,
+                "name": "Download"
+              },
+              {
+                "i": 83,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 84,
+                "name": "Download"
+              },
+              {
+                "i": 85,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 86,
+                "name": "Download"
+              },
+              {
+                "i": 87,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 88,
+                "name": "Download"
+              },
+              {
+                "i": 89,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 90,
+                "name": "Download"
+              },
+              {
+                "i": 91,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 92,
+                "name": "Download"
+              },
+              {
+                "i": 93,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 94,
+                "name": "Download"
+              },
+              {
+                "i": 95,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 96,
+                "name": "Download"
+              },
+              {
+                "i": 97,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 98,
+                "name": "Download"
+              },
+              {
+                "i": 99,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 100,
+                "name": "Download"
+              },
+              {
+                "i": 101,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 102,
+                "name": "Download"
+              },
+              {
+                "i": 103,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 104,
+                "name": "Download"
+              },
+              {
+                "i": 105,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 106,
+                "name": "Download"
+              },
+              {
+                "i": 107,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 108,
+                "name": "Download"
+              },
+              {
+                "i": 109,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 110,
+                "name": "Download"
+              },
+              {
+                "i": 111,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 112,
+                "name": "Download"
+              },
+              {
+                "i": 113,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 114,
+                "name": "Download"
+              },
+              {
+                "i": 115,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 116,
+                "name": "Download"
+              },
+              {
+                "i": 117,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 118,
+                "name": "Download"
+              },
+              {
+                "i": 119,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 120,
+                "name": "Download"
+              },
+              {
+                "i": 121,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 122,
+                "name": "Download"
+              },
+              {
+                "i": 123,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 124,
+                "name": "Download"
+              },
+              {
+                "i": 125,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 126,
+                "name": "Download"
+              },
+              {
+                "i": 127,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 128,
+                "name": "Download"
+              },
+              {
+                "i": 129,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 130,
+                "name": "Download"
+              },
+              {
+                "i": 131,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 132,
+                "name": "Download"
+              },
+              {
+                "i": 133,
+                "name": "Refresh"
+              },
+              {
+                "i": 134,
+                "name": "All"
+              },
+              {
+                "i": 135,
+                "name": "★ Keepers"
+              },
+              {
+                "i": 136,
+                "name": "FLUX"
+              },
+              {
+                "i": 137,
+                "name": "SD1.5"
+              },
+              {
+                "i": 138,
+                "name": "txt2img"
+              },
+              {
+                "i": 139,
+                "name": "Variations"
+              },
+              {
+                "i": 140,
+                "name": "Seed Lab"
+              },
+              {
+                "i": 141,
+                "name": "Batch"
+              },
+              {
+                "i": 142,
+                "name": "Img2Img"
+              },
+              {
+                "i": 143,
+                "name": "Inpaint"
+              },
+              {
+                "i": 144,
+                "name": "Outpaint"
+              },
+              {
+                "i": 145,
+                "name": "Real-ESRGAN"
+              },
+              {
+                "i": 146,
+                "name": "Lanczos"
+              },
+              {
+                "i": 147,
+                "name": "Open fullscreen image rev19-matrix-owned.png"
+              },
+              {
+                "i": 148,
+                "name": "Select rev19-matrix-owned.png for details"
+              },
+              {
+                "i": 149,
+                "name": "Open fullscreen image rev19-matrix-owned.png"
+              },
+              {
+                "i": 150,
+                "name": "Fullscreen"
+              },
+              {
+                "i": 151,
+                "name": "Variation"
+              },
+              {
+                "i": 152,
+                "name": "Explore Seeds"
+              },
+              {
+                "i": 153,
+                "name": "Img2Img"
+              },
+              {
+                "i": 154,
+                "name": "Inpaint"
+              },
+              {
+                "i": 155,
+                "name": "Outpaint"
+              },
+              {
+                "i": 156,
+                "name": "Enhance"
+              },
+              {
+                "i": 157,
+                "name": "Detailer"
+              },
+              {
+                "i": 158,
+                "name": "Compare"
+              },
+              {
+                "i": 159,
+                "name": "Reuse Seed"
+              },
+              {
+                "i": 160,
+                "name": "Reuse Settings"
+              },
+              {
+                "i": 161,
+                "name": "☆ Keeper"
+              },
+              {
+                "i": 162,
+                "name": "Lineage"
+              },
+              {
+                "i": 163,
+                "name": "Copy path"
+              },
+              {
+                "i": 164,
+                "name": "Refresh"
+              },
+              {
+                "i": 165,
+                "name": "Filter loaded runs"
+              },
+              {
+                "i": 166,
+                "name": "All"
+              },
+              {
+                "i": 167,
+                "name": "Controlled"
+              },
+              {
+                "i": 168,
+                "name": "SD1.5"
+              },
+              {
+                "i": 169,
+                "name": "SDXL base"
+              },
+              {
+                "i": 170,
+                "name": "SDXL Turbo"
+              },
+              {
+                "i": 171,
+                "name": "Flux fp8"
+              },
+              {
+                "i": 172,
+                "name": "Hires Fix"
+              },
+              {
+                "i": 173,
+                "name": "Upscale"
+              },
+              {
+                "i": 174,
+                "name": "Smoke proofs"
+              },
+              {
+                "i": 175,
+                "name": "Failed"
+              },
+              {
+                "i": 177,
+                "name": "Latest sweep"
+              },
+              {
+                "i": 178,
+                "name": "Open fullscreen image no runs yet"
+              }
+            ],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "execution",
+          "status": "BLOCKED",
+          "failures": [
+            "locator.focus: Timeout 5000ms exceeded."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V1/1280x800/Enhance",
+      "screen": "Enhance",
+      "shell": 1,
+      "viewport": [
+        1280,
+        800
+      ],
+      "status": "PASS",
+      "checks": [
+        {
+          "contract": "layout",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "documentOverflow": 0,
+            "panes": [
+              {
+                "width": 1022,
+                "height": 760,
+                "left": 258,
+                "right": 1280,
+                "overflow": 0
+              }
+            ]
+          }
+        },
+        {
+          "contract": "controls",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "visible": 36,
+            "disabled": 4
+          }
+        },
+        {
+          "contract": "keyboard",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "expected": 32,
+            "reached": 32,
+            "focusSamples": 43,
+            "unreached": [],
+            "firstFocusSamples": [
+              {
+                "id": "0",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "1",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "2",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "3",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "4",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "5",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "6",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              },
+              {
+                "id": "7",
+                "outline": "solid",
+                "width": "2px",
+                "shadow": "none"
+              }
+            ]
+          }
+        },
+        {
+          "contract": "forms",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "fields": 12,
+            "toggles": 2,
+            "validation": 0,
+            "selects": 6,
+            "details": 0
+          }
+        },
+        {
+          "contract": "dialogs",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "exercised": 1
+          }
+        },
+        {
+          "contract": "popovers",
+          "status": "N/A",
+          "failures": [],
+          "measures": {
+            "exercised": 0,
+            "options": 0
+          }
+        },
+        {
+          "contract": "typography",
+          "status": "PASS",
+          "failures": [],
+          "measures": {
+            "minimumHeight": 32,
+            "minObservedHeight": 32,
+            "minObservedButtonWidth": 35.6875,
+            "controls": 33
+          }
+        }
+      ]
+    }
+  ]
+}

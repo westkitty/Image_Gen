@@ -1,3 +1,9 @@
+# Current reliability closeout — Rev19, 2026-10-04
+
+Current report: [Rev19 FINAL_REPORT.md](../rev19/FINAL_REPORT.md). Required gates pass; READY FOR REVIEW: YES within documented scope. Physically wedged Neural Engine remains UNVERIFIED; the defined interaction matrix is CLOSED180/180. The Rev18 report below is preserved historical evidence, including its then-current Git status. Rev19 baseline is8f6d711; new consolidation changes remain uncommitted.
+
+---
+
 # Rev18 current closure report — v17, 2026-10-03
 
 ## A. Verdict

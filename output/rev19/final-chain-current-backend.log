@@ -1,0 +1,55 @@
+
+> operator-console@1.0.0 test:browser
+> node tests/browser/edit-workbench.browser.js && node tests/browser/voice-drama.browser.js
+
+[edit-workbench +6.4s] START provenance: Edit carries the SELECTED image's parameters, not the Create form
+[edit-workbench +21.8s] PASS provenance: Edit carries the SELECTED image's parameters, not the Create form (15391 ms)
+[edit-workbench +21.8s] START privacy on: stored prompt is recalled; different image → its own values
+[edit-workbench +35.1s] PASS privacy on: stored prompt is recalled; different image → its own values (13335 ms)
+[edit-workbench +35.1s] START img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result
+[edit-workbench +96.7s] FAIL img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result 
+    page.waitForFunction: Timeout 30000ms exceeded.
+[edit-workbench +96.9s] START failures are visible with stage + actual error; polling loss offers a safe retry
+[edit-workbench +124.5s] PASS failures are visible with stage + actual error; polling loss offers a safe retry (27682 ms)
+[edit-workbench +124.5s] START Run never fails silently: blocked state explains itself and click surfaces the reason
+[edit-workbench +143.9s] PASS Run never fails silently: blocked state explains itself and click surfaces the reason (19344 ms)
+[edit-workbench +143.9s] START inpaint alignment (fx-square.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches
+[edit-workbench +153.3s] PASS inpaint alignment (fx-square.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches (9394 ms)
+[edit-workbench +153.3s] START inpaint alignment (fx-landscape.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches
+[edit-workbench +166.6s] PASS inpaint alignment (fx-landscape.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches (13343 ms)
+[edit-workbench +166.7s] START inpaint alignment (fx-portrait.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches
+[edit-workbench +188.6s] PASS inpaint alignment (fx-portrait.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches (21950 ms)
+[edit-workbench +188.6s] START fullscreen: sources/results/library open the viewer; Esc closes; inpaint canvas never does
+[edit-workbench +202.6s] PASS fullscreen: sources/results/library open the viewer; Esc closes; inpaint canvas never does (13977 ms)
+[edit-workbench +202.6s] START Create output hero image opens fullscreen
+[edit-workbench +210.3s] PASS Create output hero image opens fullscreen (7684 ms)
+[edit-workbench +210.3s] START Detailer: preview/run use the selected targets, empty result is explained, stale preview is dropped, mask goes to inpaint untouched
+[edit-workbench +222.5s] PASS Detailer: preview/run use the selected targets, empty result is explained, stale preview is dropped, mask goes to inpaint untouched (12245 ms)
+[edit-workbench +222.5s] START every screen renders in all three shell layouts without script errors (incl. Drama/Voice/Edit)
+[edit-workbench +229.9s] PASS every screen renders in all three shell layouts without script errors (incl. Drama/Voice/Edit) (7361 ms)
+[edit-workbench +229.9s] START both Edit layouts render the SAME state; preference persists
+[edit-workbench +233.0s] PASS both Edit layouts render the SAME state; preference persists (3087 ms)
+[edit-workbench +233.0s] START resources: LoRAs visible in Create and Edit, weight changes are structured, incompatible ones excluded
+[edit-workbench +234.2s] PASS resources: LoRAs visible in Create and Edit, weight changes are structured, incompatible ones excluded (1200 ms)
+[edit-workbench +234.2s] START model picker: concise, grouped, searchable
+[edit-workbench +235.4s] PASS model picker: concise, grouped, searchable (1254 ms)
+[edit-workbench +235.4s] START presets: per-operation, versioned, privacy-aware, legacy migrated
+[edit-workbench +237.0s] PASS presets: per-operation, versioned, privacy-aware, legacy migrated (1522 ms)
+[edit-workbench +237.0s] START saving off: both browser storage areas exclude current edit prompt and negative after preset save and reload
+[edit-workbench +238.5s] PASS saving off: both browser storage areas exclude current edit prompt and negative after preset save and reload (1541 ms)
+[edit-workbench +238.5s] START saving ON: actual browser storage retains explicitly saved preset text after reload, sessionStorage remains unused
+[edit-workbench +239.9s] PASS saving ON: actual browser storage retains explicitly saved preset text after reload, sessionStorage remains unused (1407 ms)
+[edit-workbench +239.9s] START Detailer dialog traps focus, closes with Escape, and restores the opener
+[edit-workbench +242.8s] PASS Detailer dialog traps focus, closes with Escape, and restores the opener (2877 ms)
+[edit-workbench +242.8s] START safe owned detector stall shows terminal timeout, no mask/job, and healthy retry retains image/options
+[edit-workbench +245.7s] PASS safe owned detector stall shows terminal timeout, no mask/job, and healthy retry retains image/options (2908 ms)
+[edit-workbench +245.7s] START Detailer keeps truthful job progress visible until the canonical result is ready
+[edit-workbench +251.0s] PASS Detailer keeps truthful job progress visible until the canonical result is ready (5363 ms)
+[edit-workbench +251.0s] START responsive @375px: no horizontal overflow on Create/Edit/Library
+[edit-workbench +252.6s] PASS responsive @375px: no horizontal overflow on Create/Edit/Library (1588 ms)
+[edit-workbench +252.6s] START responsive @768px: no horizontal overflow on Create/Edit/Library
+[edit-workbench +254.4s] PASS responsive @768px: no horizontal overflow on Create/Edit/Library (1758 ms)
+[edit-workbench +254.4s] START responsive @1280px: no horizontal overflow on Create/Edit/Library
+[edit-workbench +255.9s] PASS responsive @1280px: no horizontal overflow on Create/Edit/Library (1483 ms)
+
+23/24 browser checks passed

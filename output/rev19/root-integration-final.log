@@ -1,0 +1,38 @@
+✔ shared contract rejects terminal reversal, conflicting outcome and unvalidated completion (5.295625ms)
+✔ unknown percentage allowed; invented percentages rejected; measured counts accepted (0.235834ms)
+✔ explicit non-artifact operation permits completion but cannot smuggle unvalidated output (0.149875ms)
+✔ validateRequest: per-worker required fields, limits, private vs safe split (2.825125ms)
+✔ buildPayload: private text only inside base64 stdin payload, job dir confined, magenta home private (0.786625ms)
+✔ parseMarkers reads digits (SHA256) and flags (0.36775ms)
+✔ remote driver: redacts private text in errors, validates WAV, never touches protected stores (0.510792ms)
+✔ run: success -> transfer, checksum, canonical voice artifact, evidence, cleanup, lease released, no private text (58.225166ms)
+✔ run: failure gates are specific and never produce a canonical artifact (69.526708ms)
+✔ run: cleanup failure after canonicalization keeps the verified output and records the problem (46.900333ms)
+✔ start: gating and reference validation happen before any lease; clone uploads only a server-resolved staged file (30.28975ms)
+✔ run: second heavy job waits for the lease held by the first (capacity 1) (63.791625ms)
+✔ restart: an in-flight media job reconciles to INTERRUPTED with no stranded lease; private text not stored (11.730458ms)
+✔ server wiring: bridged generate path, lease sweep respects durable media jobs, orphan sweep scoped to DexDiffusion tmp (1.104167ms)
+✔ cleanup transport throws: completed output survives, exact cleanup failure persists, lease released (47.069375ms)
+✔ canonical media metadata write failure leaves no public registry record or new canonical bytes (34.614917ms)
+✔ canonical media rejects truncated wave content before any publication (4.653583ms)
+✔ canonical media collision preserves old bytes and returns validated digest receipt (16.637417ms)
+✔ generic jobs: lifecycle, invalid transitions, privacy, restart reconciliation (30.553458ms)
+✔ arbiter: capacity 1, FIFO waiting, release on success/failure, external load blocks without killing (12.354542ms)
+✔ external-load detection parses ollama ps conservatively (1.656041ms)
+✔ workers: bridged voice/music workers promote only on live probe + real DexDiffusion evidence; LTX stays dormant (1.904166ms)
+✔ worker paths: single authoritative table matches the model-stack install layout (3.048875ms)
+✔ media store: roots, atomic finalize, sha256/bytes/mime, no overwrite, safe resolve (38.112292ms)
+✔ staging: valid PNG/JPEG/WebP/WAV (+M4A via ffprobe) stage; bad input rejected; expiry sweep (1109.653417ms)
+✔ server wiring: leases for heavy jobs, generic job adapter, safe routes, dormant gating before lease (1.25575ms)
+✔ audio download controls use the durable same-origin attachment route (0.281333ms)
+✔ native WebKit wrapper turns same-origin media attachment links into real downloads (0.680333ms)
+✔ executed server finalization rejects metadata failure before success reaches consumers (6.469916ms)
+✔ generic server completion requires a fresh canonical receipt and releases lease on rejection (3.351041ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1398.937834

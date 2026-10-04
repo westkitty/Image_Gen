@@ -1,0 +1,14 @@
+{
+  "pid": 83172,
+  "port": 31999,
+  "listenerOwners": [
+    "83172"
+  ],
+  "ownerBefore": null,
+  "waitingBefore": [],
+  "signal": "SIGTERM",
+  "time": "2026-10-04T00:06:23.769730+00:00",
+  "exit": 143,
+  "listenerRemaining": [],
+  "completedAt": "2026-10-04T00:07:24.371172+00:00"
+}

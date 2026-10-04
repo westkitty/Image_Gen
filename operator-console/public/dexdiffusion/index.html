@@ -59,15 +59,16 @@
       [data-v="1"] aside nav [data-nav][data-active="true"]{border-bottom-color:#38bdf8!important}
       [data-v="2"] header > div:first-child,[data-v="2"] header > div:last-child{display:none!important}
       [data-v="2"] header nav{flex:1;min-width:0;max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+      [data-v="2"] header nav [data-tab]{flex:0 0 auto;white-space:nowrap}
       [data-prompt-tools-row]{flex-wrap:wrap;min-width:0}
       [data-prompt-tools-row] > div{min-width:0;max-width:100%}
     }
     /* Edit workbench */
     .dex-ed-studio{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,1fr);gap:14px;align-items:start}
     @media (max-width: 900px){.dex-ed-studio{grid-template-columns:minmax(0,1fr)}}
-    /* Studio: the Run block sticks inside the right rail only, never over the canvas. */
+    /* Studio: keep Run in right-rail flow so it cannot cover settings controls. */
     [data-edit-workbench] .dex-ed-run{border:1px solid rgba(167,139,250,.4)!important}
-    @media (min-width: 901px){.dex-ed-studio .dex-ed-run{position:sticky;bottom:6px;z-index:5;background:#09101a;box-shadow:0 -8px 24px rgba(0,0,0,.45)}}
+    @media (min-width: 901px){.dex-ed-studio .dex-ed-run{background:#09101a;box-shadow:0 -8px 24px rgba(0,0,0,.45)}}
     [data-edit-workbench] input[type=range]{accent-color:#a78bfa}
     [data-edit-workbench] summary{list-style:none}
     /* Indeterminate progress shimmer when the backend reports no percentage */

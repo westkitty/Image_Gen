@@ -1,0 +1,7 @@
+[
+ [
+  "PASS",
+  "img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result",
+  6941
+ ]
+]

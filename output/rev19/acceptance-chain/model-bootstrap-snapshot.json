@@ -1,0 +1,19 @@
+{
+  "scope": "real read-only catalogue fixture; bootstrap network latency not certified",
+  "snapshots": [
+    {
+      "endpoint": "/api/capabilities",
+      "status": 200,
+      "captured_at": "2026-10-04T05:24:13.693Z",
+      "bytes": 42468,
+      "sha256": "37e1d8da49b32a193f140a7618dc57b2c5069911d1a8b0c34448da64e071601e"
+    },
+    {
+      "endpoint": "/api/models",
+      "status": 200,
+      "captured_at": "2026-10-04T05:24:13.672Z",
+      "bytes": 23856,
+      "sha256": "1df011cab17b8d665dd3d76b524db531981b9d04254866e1e342af2267cf4ac4"
+    }
+  ]
+}

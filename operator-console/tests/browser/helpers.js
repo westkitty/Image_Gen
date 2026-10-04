@@ -88,6 +88,7 @@ function runner(name, { testMs = Number(process.env.DEX_BROWSER_TEST_MS) || 1200
   }, totalMs);
   watchdog.unref();
   const test = async (title, fn) => {
+    if (process.env.DEX_BROWSER_TEST_FILTER && !title.includes(process.env.DEX_BROWSER_TEST_FILTER)) return;
     current = title; const t0 = Date.now(); log('START', title);
     let timer;
     try {
@@ -108,13 +109,33 @@ async function startServer(preferred) {
   const exited = new Promise(r => sup.on('exit', r));
   const stop = () => { try { sup.kill('SIGTERM'); } catch (_) {} return Promise.race([exited, new Promise(r => setTimeout(r, 6000))]); };
   onCleanup(stop);
-  await waitHttp(`http://127.0.0.1:${port}/api/version`);
+  await waitHttp(`http://127.0.0.1:${port}/api/version`, 60000);
   return { base: `http://127.0.0.1:${port}`, stop };
+}
+
+// Read-only real catalogue fixture, captured once per suite/base. UI tests do
+// not test bootstrap network latency; no target or availability is invented.
+const modelSnapshots = new Map();
+async function installModelSnapshots(page, base) {
+  if (!modelSnapshots.has(base)) modelSnapshots.set(base, Promise.all(['/api/capabilities','/api/models'].map(async endpoint => {
+    const res = await fetch(base + endpoint, { signal: AbortSignal.timeout(60000) });
+    if (!res.ok) throw new Error('model fixture HTTP ' + res.status + ' at ' + endpoint);
+    const body = await res.text(), data = JSON.parse(body);
+    if (endpoint === '/api/capabilities' && (data.modelTargets || data.controlledTargets || []).length <= 3) throw new Error('model fixture catalogue incomplete');
+    return { endpoint, body, status: res.status, captured_at: new Date().toISOString() };
+  })));
+  const snapshots = await modelSnapshots.get(base);
+  for (const item of snapshots) await page.route('**' + item.endpoint, route => route.request().method() === 'GET'
+    ? route.fulfill({ status:item.status, contentType:'application/json', body:item.body }) : route.fallback());
+  if (process.env.DEX_BROWSER_OUTPUT_DIR) {
+    const fs = require('fs'), crypto = require('crypto'); fs.mkdirSync(process.env.DEX_BROWSER_OUTPUT_DIR,{recursive:true});
+    fs.writeFileSync(path.join(process.env.DEX_BROWSER_OUTPUT_DIR,'model-bootstrap-snapshot.json'),JSON.stringify({scope:'real read-only catalogue fixture; bootstrap network latency not certified',snapshots:snapshots.map(({endpoint,body,status,captured_at})=>({endpoint,status,captured_at,bytes:Buffer.byteLength(body),sha256:crypto.createHash('sha256').update(body).digest('hex')}))},null,2)+'\n');
+  }
 }
 
 // Launches Chrome through playwright and guarantees it is closed on any exit path.
 async function launchBrowser(chromium) {
-  const browser = await chromium.launch(Object.assign({ headless: true }, process.env.DEX_BROWSER_PATH
+  const browser = await chromium.launch(Object.assign({ headless: true, args: ['--disable-gpu'], timeout: 180000 }, process.env.DEX_BROWSER_PATH
     ? { executablePath: process.env.DEX_BROWSER_PATH } : { channel: 'chrome' }));
   onCleanup(() => browser.close());
   return browser;
@@ -145,4 +166,4 @@ function makeWav(sec = 5, hz = 220, rate = 24000, amp = 0.4) {
   return Buffer.concat([h, data]);
 }
 
-module.exports = { makePng, decodePng, makeWav, startServer, installImageFixtures, runner, launchBrowser, onCleanup, runCleanups };
+module.exports = { makePng, decodePng, makeWav, startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, onCleanup, runCleanups };

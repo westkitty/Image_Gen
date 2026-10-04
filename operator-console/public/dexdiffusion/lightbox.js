@@ -93,10 +93,18 @@
     const id = t.getAttribute('data-fullscreen-image-id');
     const app = window.__dex;
     const actions = id && app && typeof app.lightboxActions === 'function' ? app.lightboxActions(id) : [];
+    // The delegated image is the opener. Clicks otherwise blur the previous
+    // control to body, which cannot receive meaningful returned focus.
+    if (t.tabIndex >= 0) t.focus();
     const ok = open({ src, caption: t.getAttribute('data-fullscreen-caption') || id || '', alt: t.getAttribute('alt') || '', actions });
     if (ok && t.getAttribute('data-fullscreen') === 'only') { e.stopPropagation(); e.preventDefault(); }
   }
   document.addEventListener('click', onClick, true);
+  document.addEventListener('keydown', e => {
+    const opener = e.target?.closest?.('[data-fullscreen]');
+    if (!opener || opener.closest('[data-no-fullscreen]') || opener.matches('button,a[href]')) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); opener.click(); }
+  });
 
   window.DexLightbox = { open, close, isOpen: () => !!root };
 })();

@@ -1,0 +1,15 @@
+{
+  "type": "TEST/HARNESS DEFECT",
+  "chain_failure": "saved.steps17 instead of23;23/24pass",
+  "cause": "helper accepted existing workbench before queued operation DOM commit",
+  "deterministic_test_only_held_frames": {
+    "connected": true,
+    "state_replaced": true,
+    "prior_steps": "23",
+    "current_steps": 17,
+    "dom_steps": "23"
+  },
+  "repair": "await real source/selected-op/preset DOM and frame commit; assert current steps23 after fill; exact saved/preset assertions retained",
+  "focused_exit": 0,
+  "focused_count": "1/1"
+}

@@ -1,0 +1,24 @@
+✔ publication interruption: before-transfer (13.667ms)
+✔ publication interruption: after-transfer (8.112625ms)
+✔ publication interruption: after-validation (226.391166ms)
+✔ publication interruption: before-publication (161.377458ms)
+✔ publication interruption: after-publication (173.007292ms)
+✔ publication interruption: before-metadata (138.220833ms)
+✔ truncated/signature-only PNG cannot become canonical (117.884083ms)
+✔ real metadata rename failure rolls back new links, preserves source and old index (115.644042ms)
+✔ collision, successful digest and pending visibility do not overwrite unrelated image (325.947875ms)
+✔ owned transformed canonical copy preserves original on metadata failure (209.079667ms)
+✔ read-only inventory identifies exactly owned missing/orphan/digest/duplicate/broken references without repair (344.970875ms)
+✔ process death after link leaves explicit hidden pending publication, never completed metadata (400.030125ms)
+✔ interruption after metadata commit preserves canonical bytes and explicit pending visibility (241.802667ms)
+✔ pending identity never hides a collision belonging to another inode (3.514125ms)
+✔ direct source CLI uses the same validated publication boundary (301.801875ms)
+✔ successful owned transform atomically updates canonical digest and cleans its backup (627.598333ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3692.750167

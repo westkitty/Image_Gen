@@ -4,7 +4,7 @@ const test = require('node:test'); const assert = require('node:assert/strict');
 const fs = require('node:fs'); const path = require('node:path'); const vm = require('node:vm');
 function fixture() {
   function C() {}
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/dexdiffusion/workstation-ui.js'), 'utf8'), { window: { DexDiffusionComponent: C, DexClient: {} }, React: { createElement() {} }, document: {}, console });
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/dexdiffusion/workstation-ui.js'), 'utf8'), { window: { DexDiffusionComponent: C, DexClient: {} }, AbortController, React: { createElement() {} }, document: {}, console });
   const a = new C(); a.ws = { detailer: { open: true, imageId: 'a.png', mode: 'face' } };
   a._ws = () => a.ws; a.wsSet = p => Object.assign(a.ws, p); a.toast = () => {};
   return a;
@@ -26,4 +26,20 @@ test('a delayed inpaint submission cannot attach to a replacement Detailer dialo
   a.ws.detailer = { open: true, imageId: 'b.png', mode: 'hand', note: 'new dialog' };
   resolve({ ok: true, data: { job_id: 'old-job' } }); await pending;
   assert.equal(a.ws.detailer.jobId, undefined); assert.equal(a.ws.detailer.note, 'new dialog');
+});
+
+
+test('Detailer timeout is terminal, preserves selection/options, and late failed preview cannot overwrite retry', async () => {
+  const a = fixture(); a.ws.detailer.mode = 'hand'; a.ws.detailer.threshold = 0.6;
+  a._api = async () => ({ ok: false, data: { code: 'timeout', error: 'Detector timed out' } });
+  await a.previewDetailerMask();
+  assert.equal(a.ws.detailer.loading, false); assert.equal(a.ws.detailer.maskPreview, null);
+  assert.match(a.ws.detailer.note, /timed out/); assert.equal(a.ws.detailer.imageId, 'a.png');
+  assert.equal(a.ws.detailer.threshold, 0.6);
+  let old; a._api = () => new Promise(r => { old = r; });
+  const pending = a.previewDetailerMask();
+  a._api = async () => ({ ok: true, data: { mask_preview: 'HEALTHY', detections: [{ class: 'hand' }] } });
+  await a.previewDetailerMask();
+  old({ ok: true, data: { mask_preview: 'STALE', detections: [] } }); await pending;
+  assert.equal(a.ws.detailer.maskPreview, 'HEALTHY'); assert.equal(a.ws.detailer.loading, false);
 });

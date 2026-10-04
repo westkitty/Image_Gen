@@ -1,0 +1,8 @@
+{
+  "baseline": "8f6d711",
+  "aborted": true,
+  "worker_alive_after_abort": true,
+  "terminal_after_abort": false,
+  "eventual_code": "timeout",
+  "elapsed_ms": 960
+}

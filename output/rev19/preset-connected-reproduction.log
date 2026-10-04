@@ -1,0 +1,5 @@
+[edit-workbench +1.0s] START presets: per-operation, versioned, privacy-aware, legacy migrated
+REV19_PRESET_CONNECTED_STALE_REPRO={"connected":true,"state_replaced":true,"prior_steps":"23","current_steps":17,"dom_steps":"23"}
+[edit-workbench +2.8s] PASS presets: per-operation, versioned, privacy-aware, legacy migrated (1804 ms)
+
+1/1 browser checks passed

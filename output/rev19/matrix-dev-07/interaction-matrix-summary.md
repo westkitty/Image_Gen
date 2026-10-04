@@ -1,0 +1,11 @@
+# Executable interaction matrix
+Specification version 1. Required base cells: 180. Measured cells: 4.
+{"PASS":3,"FAIL":0,"N/A":0,"BLOCKED":1}
+Scope: Rendered screen with deterministic owned image and API fixtures; all native controls, rendered details, model pickers and available fullscreen dialogs. No generation, system mutation or durable project writes. Native form validation is exercised only on fields declaring constraints. Ellipsis labels and scrollable navigation are intentional geometry exceptions.
+
+| Cell | Status | Failed contracts |
+|---|---|---|
+| V1/375x812/Create | PASS |  |
+| V1/375x812/Edit Compact | PASS |  |
+| V1/1280x800/Library | BLOCKED | keyboard: Tab unreachable: ☆ Keeper; Tab unreachable: Download; Tab unreachable: Refresh; Tab unreachable: All; Tab unreachable: ★ Keepers; Tab unreachable: FLUX; Tab unreachable: SD1.5; Tab unreachable: txt2img; Tab unreachable: Variations; Tab unreachable: Seed Lab; Tab unreachable: Batch; Tab unreachable: Img2Img; Tab unreachable: Inpaint; Tab unreachable: Outpaint; Tab unreachable: Real-ESRGAN; Tab unreachable: Lanczos; Tab unreachable: Open fullscreen image rev19-matrix-owned.png; Tab unreachable: Select rev19-matrix-owned.png for details; Tab unreachable: Fullscreen; Tab unreachable: Variation; Tab unreachable: Explore Seeds; Tab unreachable: Enhance; Tab unreachable: Detailer; Tab unreachable: Compare; Tab unreachable: Reuse Seed; Tab unreachable: Reuse Settings; Tab unreachable: Lineage; Tab unreachable: Copy path; Tab unreachable: Filter loaded runs; Tab unreachable: Controlled; Tab unreachable: SDXL base; Tab unreachable: SDXL Turbo; Tab unreachable: Flux fp8; Tab unreachable: Hires Fix; Tab unreachable: Upscale; Tab unreachable: Smoke proofs; Tab unreachable: Failed; Tab unreachable: Latest sweep; Tab unreachable: Open fullscreen image no runs yet / execution: locator.isChecked: Timeout 5000ms exceeded. |
+| V1/1280x800/Enhance | PASS |  |

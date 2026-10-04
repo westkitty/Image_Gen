@@ -1,0 +1,175 @@
+{
+  "schema": "dexdiffusion.image_integrity.v1",
+  "root": "/Users/andrew/images_made",
+  "inspected_at": "2026-10-03T23:39:34.302Z",
+  "read_only": true,
+  "counts": {
+    "valid": 1,
+    "missing": 502,
+    "orphan": 1,
+    "digest-mismatch": 0,
+    "broken": 0,
+    "duplicate": 0,
+    "pending": 0,
+    "unknown": 0
+  },
+  "present": [
+    {
+      "image_id": "20261003-153007-inpaint-inpaint_20261003-153007.png",
+      "path": "/Users/andrew/images_made/20261003-153007-inpaint-inpaint_20261003-153007.png",
+      "inspected_at": "2026-10-03T23:39:34.302Z",
+      "reference_state": "referenced",
+      "known_digests": [],
+      "state": "valid",
+      "sha256": "cd84cee3d08a2bbc1bfca22c97502a1a992f57903d6ef3c6b1858de652df32f7",
+      "bytes": 2578,
+      "format": "PNG",
+      "dimensions": [
+        640,
+        384
+      ],
+      "owners": [
+        {
+          "run_id": "20261003-153007-inpaint",
+          "run_file": "inpaint_20261003-153007.png"
+        }
+      ]
+    },
+    {
+      "image_id": "Rev18-owned-zoom-fixture.png",
+      "path": "/Users/andrew/images_made/Rev18-owned-zoom-fixture.png",
+      "inspected_at": "2026-10-03T23:39:34.302Z",
+      "reference_state": "unreferenced",
+      "known_digests": [],
+      "state": "orphan",
+      "sha256": "ac3b08592975e04573b3177a7ee9032586405b4da02f8eeeacba22f54676cbff",
+      "bytes": 1576,
+      "format": "PNG",
+      "dimensions": [
+        640,
+        384
+      ],
+      "owners": []
+    }
+  ],
+  "metadata_errors": [],
+  "missing_identity_count": 502,
+  "missing_identity_sha256": "41af6490381601cc7022f4bac14d2d211a8f8da1a780db1a98379213ebdbac17",
+  "missing_sample": [
+    {
+      "image_id": "20260624-163615-controlled-sdxl-epicrealism-controlled-sdxl-epicrealism.png",
+      "owners": [
+        {
+          "run_id": "20260624-163615-controlled-sdxl-epicrealism",
+          "run_file": "controlled-sdxl-epicrealism.png"
+        },
+        {
+          "run_id": "20260707-224237-controlled-sdxl-epicrealism",
+          "run_file": "controlled-sdxl-epicrealism.png"
+        }
+      ],
+      "path": "/Users/andrew/images_made/20260624-163615-controlled-sdxl-epicrealism-controlled-sdxl-epicrealism.png",
+      "known_digests": []
+    },
+    {
+      "image_id": "20260627-131843-controlled-sd15-controlled-sd15.png",
+      "owners": [
+        {
+          "run_id": "20260627-131843-controlled-sd15",
+          "run_file": "controlled-sd15.png"
+        }
+      ],
+      "path": "/Users/andrew/images_made/20260627-131843-controlled-sd15-controlled-sd15.png",
+      "known_digests": []
+    },
+    {
+      "image_id": "20260627-131843-server-gen-openai.png",
+      "owners": [
+        {
+          "run_id": "20260627-131843-server-gen",
+          "run_file": "openai.png"
+        }
+      ],
+      "path": "/Users/andrew/images_made/20260627-131843-server-gen-openai.png",
+      "known_digests": []
+    },
+    {
+      "image_id": "20260707-180300-server-gen-openai.png",
+      "owners": [
+        {
+          "run_id": "20260707-180300-server-gen",
+          "run_file": "openai.png"
+        }
+      ],
+      "path": "/Users/andrew/images_made/20260707-180300-server-gen-openai.png",
+      "known_digests": []
+    },
+    {
+      "image_id": "20260707-180412-cli-sd15_cli_20260707-180412.png",
+      "owners": [
+        {
+          "run_id": "20260707-180412-cli",
+          "run_file": "sd15_cli_20260707-180412.png"
+        }
+      ],
+      "path": "/Users/andrew/images_made/20260707-180412-cli-sd15_cli_20260707-180412.png",
+      "known_digests": []
+    },
+    {
+      "image_id": "20260707-180505-server-gen-openai.png",
+      "owners": [
+        {
+          "run_id": "20260707-180505-server-gen",
+          "run_file": "openai.png"
+        }
+      ],
+      "path": "/Users/andrew/images_made/20260707-180505-server-gen-openai.png",
+      "known_digests": []
+    },
+    {
+      "image_id": "20260707-180514-server-gen-sdapi.png",
+      "owners": [
+        {
+          "run_id": "20260707-180514-server-gen",
+          "run_file": "sdapi.png"
+        }
+      ],
+      "path": "/Users/andrew/images_made/20260707-180514-server-gen-sdapi.png",
+      "known_digests": []
+    },
+    {
+      "image_id": "20260707-181131-cli-sd15_cli_20260707-181131.png",
+      "owners": [
+        {
+          "run_id": "20260707-181131-cli",
+          "run_file": "sd15_cli_20260707-181131.png"
+        }
+      ],
+      "path": "/Users/andrew/images_made/20260707-181131-cli-sd15_cli_20260707-181131.png",
+      "known_digests": []
+    },
+    {
+      "image_id": "20260707-181255-cli-sd15_cli_20260707-181255.png",
+      "owners": [
+        {
+          "run_id": "20260707-181255-cli",
+          "run_file": "sd15_cli_20260707-181255.png"
+        }
+      ],
+      "path": "/Users/andrew/images_made/20260707-181255-cli-sd15_cli_20260707-181255.png",
+      "known_digests": []
+    },
+    {
+      "image_id": "20260707-181346-server-gen-openai.png",
+      "owners": [
+        {
+          "run_id": "20260707-181346-server-gen",
+          "run_file": "openai.png"
+        }
+      ],
+      "path": "/Users/andrew/images_made/20260707-181346-server-gen-openai.png",
+      "known_digests": []
+    }
+  ],
+  "note": "Full identity remains in original unchanged run metadata and live read-only diagnostic; no reconstruction/deletion. Missing cause not established."
+}

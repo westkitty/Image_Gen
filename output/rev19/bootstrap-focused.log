@@ -1,0 +1,5 @@
+[edit-workbench +1.4s] START img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result
+[edit-workbench +2.1s] FAIL img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result 
+    fetch failed
+
+0/1 browser checks passed

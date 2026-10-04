@@ -1,0 +1,30 @@
+{
+  "durable_status": "COMPLETE",
+  "durable_validation": {
+    "canonical": true,
+    "validated": true,
+    "artifacts": [
+      {
+        "artifact_id": "20261003-194723-controlled-flux2-klein-4b-s946273-controlled-flux2-klein-4b.png",
+        "sha256": "0dcb69a08c44cc0a730e968e70500e0810410a170c413b0ade402db2203dd5b3"
+      }
+    ]
+  },
+  "resources": {
+    "group": "bigmac-heavy-inference",
+    "capacity": 1,
+    "owner": null,
+    "waiting": [],
+    "external": {
+      "occupied": false,
+      "detail": null,
+      "checkedAt": 1791072242607
+    },
+    "blocked_reason": null
+  },
+  "cleanup": {
+    "resources": [],
+    "pending_publications": [],
+    "scope": "exact-project-owned-resources"
+  }
+}
