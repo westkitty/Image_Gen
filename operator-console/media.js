@@ -19,12 +19,13 @@ const { execFileSync } = require('child_process');
 const JobContract = require('./job-contract');
 const CleanupOwner = require('./cleanup-owner');
 
-const MEDIA_KINDS = ['image', 'voice', 'music', 'video'];
+const MEDIA_KINDS = ['image', 'voice', 'music', 'video', 'world'];
 const CANONICAL_ROOTS = {
   image: '/Users/andrew/images_made',
   voice: '/Users/andrew/audio_made/voice',
   music: '/Users/andrew/audio_made/music',
   video: '/Users/andrew/video_made',
+  world: '/Users/andrew/worlds',
 };
 
 function atomicWriteJson(file, data) {
@@ -326,8 +327,8 @@ function createWorkerRegistry({ imageAdapters = {}, getEvidence = () => ({}) } =
 }
 
 // ---- Media store ---------------------------------------------------------------
-const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.flac': 'audio/flac', '.mp4': 'video/mp4', '.webm': 'video/webm' };
-const KIND_EXT = { image: ['.png', '.jpg', '.jpeg', '.webp'], voice: ['.wav', '.mp3', '.m4a', '.flac'], music: ['.wav', '.mp3', '.m4a', '.flac'], video: ['.mp4', '.webm'] };
+const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.flac': 'audio/flac', '.mp4': 'video/mp4', '.webm': 'video/webm', '.ply': 'application/vnd.ply' };
+const KIND_EXT = { image: ['.png', '.jpg', '.jpeg', '.webp'], voice: ['.wav', '.mp3', '.m4a', '.flac'], music: ['.wav', '.mp3', '.m4a', '.flac'], video: ['.mp4', '.webm'], world: ['.ply'] };
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,160}\.[a-z0-9]{2,5}$/;
 
 function sniff(buf) {
@@ -339,6 +340,7 @@ function sniff(buf) {
   if (b.length >= 3 && (b.toString('latin1', 0, 3) === 'ID3' || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0))) return { mime: 'audio/mpeg', ext: '.mp3', kind: 'audio' };
   if (b.length >= 12 && b.toString('latin1', 4, 8) === 'ftyp' && /^(M4A |mp42|isom|M4B )/.test(b.toString('latin1', 8, 12))) return { mime: 'audio/mp4', ext: '.m4a', kind: 'audio' };
   if (b.length >= 4 && b.toString('latin1', 0, 4) === 'fLaC') return { mime: 'audio/flac', ext: '.flac', kind: 'audio' };
+  if (b.length >= 4 && b.toString('latin1', 0, 4) === 'ply\n') return { mime: 'application/vnd.ply', ext: '.ply', kind: 'world' };
   return null;
 }
 
@@ -407,7 +409,7 @@ function createMediaStore({ roots = CANONICAL_ROOTS, registryFile, now = () => D
     if (!registry || typeof registry.artifacts !== 'object') registry = { schema: 'dexdiffusion.media.v1', artifacts: {} };
     return registry;
   }
-  function ensureRoots() { for (const k of MEDIA_KINDS) fs.mkdirSync(roots[k], { recursive: true }); }
+  function ensureRoots() { for (const k of MEDIA_KINDS) if (roots[k]) fs.mkdirSync(roots[k], { recursive: true }); }
   // Finalize a validated incoming file: stage in root as .incoming-*, link to a
   // free name (never overwrite), record sha256/size/mime. Non-image kinds only;
   // images keep image-store.js.
@@ -417,13 +419,19 @@ function createMediaStore({ roots = CANONICAL_ROOTS, registryFile, now = () => D
     const ext = path.extname(src).toLowerCase();
     if (!KIND_EXT[kind].includes(ext)) throw new Error('output-invalid: extension not allowed for ' + kind);
     const sourceBytes = fs.readFileSync(src);
-    if (ext === '.wav') {
+    if (kind === 'world') {
+      const header = sourceBytes.slice(0, 64 * 1024).toString('latin1');
+      if (!/^ply\n/.test(header) || !/\nelement vertex\s+[1-9][0-9]*/.test(header) || !/\nend_header\n/.test(header)) {
+        throw new Error('output-invalid: PLY header is missing a positive vertex count');
+      }
+    } else if (ext === '.wav') {
       try { require('./voice-audio').parseWav(sourceBytes); }
       catch (e) { throw new Error('output-invalid: ' + e.message); }
     }
     const head = sourceBytes.slice(0, 64);
     const s = sniff(head);
-    if (!s || s.kind !== 'audio' || s.ext !== (ext === '.jpeg' ? '.jpg' : ext)) throw new Error('output-invalid: content does not match ' + ext);
+    const expectedKind = kind === 'voice' || kind === 'music' ? 'audio' : kind;
+    if (!s || s.kind !== expectedKind || s.ext !== (ext === '.jpeg' ? '.jpg' : ext)) throw new Error('output-invalid: content does not match ' + ext);
     const root = path.resolve(roots[kind]);
     fs.mkdirSync(root, { recursive: true });
     const incoming = path.join(root, `.incoming-${crypto.randomBytes(6).toString('hex')}${ext}`);

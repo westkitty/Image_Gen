@@ -107,7 +107,7 @@
     </div>
     <nav style="flex:1;min-height:0;overflow-y:auto;padding:10px 8px;">
       <div style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#4e7090;font-weight:700;padding:8px 8px 4px;">Generate</div>
-      <button data-nav="true" data-active="{{ isCreateStr }}" onClick="{{ navCreate }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Create</button><button data-nav="true" data-active="{{ isBatchStr }}" onClick="{{ navBatch }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Batch / Sweep</button><button data-nav="true" data-active="{{ isVoiceStr }}" onClick="{{ navVoice }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Voice</button><button data-nav="true" data-active="{{ isDramaStr }}" onClick="{{ navDrama }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Drama</button><button data-nav="true" data-active="{{ isMusicStr }}" onClick="{{ navMusic }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Music</button><button data-nav="true" data-active="{{ isVideoStr }}" onClick="{{ navVideo }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Video</button>
+      <button data-nav="true" data-active="{{ isCreateStr }}" onClick="{{ navCreate }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Create</button><button data-nav="true" data-active="{{ isBatchStr }}" onClick="{{ navBatch }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Batch / Sweep</button><button data-nav="true" data-active="{{ isVoiceStr }}" onClick="{{ navVoice }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Voice</button><button data-nav="true" data-active="{{ isDramaStr }}" onClick="{{ navDrama }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Drama</button><button data-nav="true" data-active="{{ isMusicStr }}" onClick="{{ navMusic }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Music</button><button data-nav="true" data-active="{{ isVideoStr }}" onClick="{{ navVideo }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Video</button><button data-nav="true" data-active="{{ isWorldStr }}" onClick="{{ navWorld }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">WorldGen</button>
       <div style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#4e7090;font-weight:700;padding:12px 8px 4px;">Library</div>
       <button data-nav="true" data-active="{{ isLibraryStr }}" onClick="{{ navLibrary }}" style="width:100%;border:none;border-left:2px solid transparent;background:transparent;color:#6a8090;border-radius:0 8px 8px 0;padding:8px 10px 8px 12px;text-align:left;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:block;">Library</button>
       <div style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#4e7090;font-weight:700;padding:12px 8px 4px;">Tools</div>
@@ -224,7 +224,8 @@
             </div>
             {{ libraryLoadMore }}
           </div>
-        </sc-if>
+    </sc-if>
+    <sc-if value="{{ isWorld }}" hint-placeholder-val="{{ false }}"><div data-scroll-pane style="height:100%;overflow-y:auto;padding:16px;background:#080c12;"><div>{{ worldWorkspace }}</div></div></sc-if>
     <sc-if value="{{ isMedia }}" hint-placeholder-val="{{ false }}">
           <div data-scroll-pane style="height:100%;overflow-y:auto;padding:16px;display:grid;gap:12px;align-content:start;"><div>{{ mediaWorkspace }}</div></div>
     </sc-if>
@@ -396,7 +397,8 @@
             </sc-for>
           </div>
           {{ libraryLoadMore }}</div>
-        </sc-if>
+    </sc-if>
+    <sc-if value="{{ isWorld }}" hint-placeholder-val="{{ false }}"><div data-scroll-pane style="height:100%;overflow-y:auto;padding:16px;background:#100f18;"><div>{{ worldWorkspace }}</div></div></sc-if>
     <sc-if value="{{ isMedia }}" hint-placeholder-val="{{ false }}">
           <div data-scroll-pane style="height:100%;overflow-y:auto;padding:16px;display:grid;gap:12px;align-content:start;"><div>{{ mediaWorkspace }}</div></div>
     </sc-if>
@@ -553,7 +555,8 @@
             </div>
             {{ libraryLoadMore }}
           </div>
-        </sc-if>
+    </sc-if>
+    <sc-if value="{{ isWorld }}" hint-placeholder-val="{{ false }}"><div data-scroll-pane style="height:100%;overflow-y:auto;padding:16px;background:#0d0b16;"><div>{{ worldWorkspace }}</div></div></sc-if>
     <sc-if value="{{ isMedia }}" hint-placeholder-val="{{ false }}">
           <div data-scroll-pane style="height:100%;overflow-y:auto;padding:16px;display:grid;gap:12px;align-content:start;"><div>{{ mediaWorkspace }}</div></div>
     </sc-if>

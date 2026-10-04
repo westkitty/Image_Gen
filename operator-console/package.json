@@ -20,7 +20,9 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "express": "^5.2.1"
+    "@sparkjsdev/spark": "^2.3.1",
+    "express": "^5.2.1",
+    "three": "^0.186.1"
   },
   "devDependencies": {
     "playwright-core": "^1.61.1"
