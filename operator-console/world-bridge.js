@@ -327,7 +327,7 @@ printf 'WORLD_PANORAMA_PASS\\tpath=%s\\twidth=%s\\theight=%s\\tsha256=%s\\tmodel
       writeJson(panoramaEvidenceFile, { at: new Date().toISOString(), projectId: project.id, jobId, model: PANORAMA_MODEL, lora: PANORAMA_LORA, artifactId: panoRec.artifact_id, sha256: panoRec.sha256 });
       if (lease && arbiter.holds(jobId)) { arbiter.release(jobId); lease = null; }
       const derivedResult = await runDerivedPipeline(jobId, project, panoRec, staged.path, localRoot);
-      const allArtifacts = [anchorRec, panoRec, ...derivedResult.derived.depth, derivedResult.derived.coarse, derivedResult.derived.collision, derivedResult.derived.rig, ...derivedResult.derived.views, derivedResult.derived.quality].filter(Boolean);
+      const allArtifacts = [anchorRec, panoRec, ...derivedResult.derived.depth, derivedResult.derived.coarse, derivedResult.derived.collision, derivedResult.derived.rig, ...derivedResult.derived.views, ...derivedResult.derived.proposals, derivedResult.derived.fusion, derivedResult.derived.quality].filter(Boolean);
       const receipt = artifactReceipt(allArtifacts);
       const done = jobStore.transition(jobId, 'COMPLETE', { resource_lease: null, artifacts: allArtifacts.map(rec => rec.artifact_id), artifact_validation: receipt });
       if (done.error) throw new Error(done.error);
