@@ -22,16 +22,29 @@ const WORLD_WORK = '/Volumes/wc2tb/dex-world-work';
 const SHARP_MODEL = 'apple-aiml-research/ml-sharp';
 const PANORAMA_MODEL = 'AITRADER/FLUX2-klein-base-4B-mlx-4bit';
 const PANORAMA_LORA = 'nomadoor/flux-2-klein-4B-360-erp-outpaint-lora';
+const PANORAMA_CACHE = `${WORLD_ROOT}/mflux-cache`;
+const PANORAMA_BIN = '$HOME/Library/Caches/DexDiffusion/mflux/venv/bin/mflux-generate-flux2';
+const PANORAMA_WIDTH = 1024;
+const PANORAMA_HEIGHT = 512;
+const COMPILER = path.join(__dirname, 'world-compiler.py');
 
 function sha256File(file) { return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); }
 function q(value) { return `'${String(value).replace(/'/g, `'\\''`)}'`; }
 function idSafe(value) { return /^[A-Za-z0-9._/-]+$/.test(String(value)); }
+
+function writeJson(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(3).toString('hex')}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(value, null, 1) + '\n', { mode: 0o600 });
+  fs.renameSync(tmp, file);
+}
 
 async function runFile(file, args, timeout = 300000) {
   return execFileP(file, args, { timeout, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' });
 }
 
 function createWorldBridge({ jobStore, arbiter, staging, mediaStore, worldStore, imageStore, stateDir, sshTarget = 'westcat', log = () => {} }) {
+  const panoramaEvidenceFile = path.join(stateDir, 'world-panorama-evidence.json');
   async function ssh(command, timeout = 300000) {
     return runFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', sshTarget, command], timeout);
   }
@@ -47,19 +60,118 @@ sharp=0; checkpoint=0; world=0
 test -x ${q(`${SHARP_VENV}/bin/sharp`)} && sharp=1
 test -s ${q(SHARP_CHECKPOINT)} && checkpoint=1
 test -d ${q(WORLD_WORK)} && world=1
-printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s host=%s user=%s\\n' "$sharp" "$checkpoint" "$world" "$(hostname)" "$(whoami)"`;
+panorama=0
+test -x ${PANORAMA_BIN} && test -d ${q(`${PANORAMA_CACHE}/huggingface/hub/models--AITRADER--FLUX2-klein-base-4B-mlx-4bit`)} && test -d ${q(`${PANORAMA_CACHE}/xdg/mflux/loras/models--nomadoor--flux-2-klein-4B-360-erp-outpaint-lora`)} && panorama=1
+printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\\n' "$sharp" "$checkpoint" "$world" "$panorama" "$(hostname)" "$(whoami)"`;
     try {
       const r = await ssh(command, 20000);
-      const m = /WORLD_ASSETS sharp=(\d+) checkpoint=(\d+) work=(\d+) host=(\S+) user=(\S+)/.exec(`${r.stdout}\n${r.stderr}`);
+      const m = /WORLD_ASSETS sharp=(\d+) checkpoint=(\d+) work=(\d+) panorama=(\d+) host=(\S+) user=(\S+)/.exec(`${r.stdout}\n${r.stderr}`);
       if (!m) throw new Error('world asset probe missing in-band marker');
-      return { reachable: true, identity: `${m[5]}@${m[4]}`, sharp: m[1] === '1' && m[2] === '1', worldWork: m[3] === '1', panorama: false, checkedAt: new Date().toISOString() };
+      return { reachable: true, identity: `${m[6]}@${m[5]}`, sharp: m[1] === '1' && m[2] === '1', worldWork: m[3] === '1', panorama: m[4] === '1', checkedAt: new Date().toISOString() };
     } catch (error) {
       return { reachable: false, identity: null, sharp: false, worldWork: false, panorama: false, error: String(error.message).slice(0, 180), checkedAt: new Date().toISOString() };
     }
   }
 
+  async function runCompiler(args, timeout = 120000) { return runFile('python3', [COMPILER, ...args], timeout); }
+
+  async function runComplete360(jobId, project, staged) {
+    const remoteDir = `${WORLD_WORK}/${jobId}/complete360`;
+    const remoteJobDir = `${WORLD_WORK}/${jobId}`;
+    const remoteInput = `${remoteDir}/input/${staged.file}`;
+    const localRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-world-360-'));
+    const localAnchor = path.join(localRoot, 'erp-reference.png');
+    const localMask = path.join(localRoot, 'source-mask.png');
+    const cameraManifest = path.join(localRoot, 'camera.json');
+    const anchorManifest = path.join(localRoot, 'erp-reference.json');
+    let lease = null;
+    try {
+      lease = await arbiter.acquire(jobId, 'flux2-world-completion panorama');
+      if (!lease.granted) throw Object.assign(new Error('heavy-compute lease was not granted'), { gate: 'resource-wait' });
+      jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+      worldStore.updateStage(project.id, 'camera', { status: 'RUNNING', worker: 'world-compiler', model: 'deterministic-camera-v1' });
+      await runCompiler(['anchor', '--source', staged.path, '--output', localAnchor, '--mask', localMask, '--manifest', anchorManifest, '--width', String(PANORAMA_WIDTH), '--height', String(PANORAMA_HEIGHT), '--fov', String(project.parameters.fov || 70)]);
+      const camera = JSON.parse(fs.readFileSync(anchorManifest, 'utf8'));
+      worldStore.setCamera(project.id, camera);
+      worldStore.updateStage(project.id, 'camera', { status: 'READY', worker: 'world-compiler', model: 'deterministic-camera-v1' });
+      const anchorRec = mediaStore.finalize(localAnchor, { kind: 'world', base: `${project.id}-erp-reference`, job_id: jobId, worker: 'world-compiler', model: 'deterministic-camera-v1', parent: project.sourceArtifactId, meta: { mode: 'complete360', sourceMask: localMask, fov: camera.fovHorizontal } });
+      worldStore.attachArtifact(project.id, 'erpReference', anchorRec, { stage: 'erpReference' });
+      worldStore.updateStage(project.id, 'erpReference', { status: 'READY', worker: 'world-compiler', model: 'deterministic-camera-v1', artifacts: [anchorRec.artifact_id] });
+      worldStore.setManifest(project.id, { sourceCommit: process.env.DEX_WORLD_SOURCE_HEAD || null, dependencies: { erpReference: { source: project.sourceArtifactId, camera: camera.erpReferenceSha256 } } });
+      worldStore.updateStage(project.id, 'complete', { status: 'RUNNING', worker: 'flux2-world-completion', model: PANORAMA_MODEL });
+      const prepared = await ssh(`set -e; mkdir -p ${q(`${remoteDir}/input`)} ${q(`${remoteDir}/output`)}; printf 'WORLD_PANORAMA_PREPARED\\n'`);
+      if (!/WORLD_PANORAMA_PREPARED/.test(`${prepared.stdout}\n${prepared.stderr}`)) throw new Error('remote panorama preparation missing in-band marker');
+      await runFile('scp', ['-O', '-q', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', staged.path, `${sshTarget}:${remoteInput}`], 300000);
+      const requestedCandidates = Number(project.parameters.candidates || 1);
+      const candidateCount = Math.max(1, Math.min(3, Number.isFinite(requestedCandidates) ? requestedCandidates : 1));
+      const requestedSteps = Number(project.parameters.steps || 1);
+      const steps = Math.max(1, Math.min(4, Number.isFinite(requestedSteps) ? requestedSteps : 1));
+      const candidates = [];
+      for (let i = 0; i < candidateCount; i++) {
+        const seed = Number(project.parameters.seed || 42) + i;
+        const remoteOut = `${remoteDir}/output/candidate-${i + 1}.png`;
+        const command = `set -uo pipefail
+export HF_HOME=${q(`${PANORAMA_CACHE}/huggingface`)} XDG_CACHE_HOME=${q(`${PANORAMA_CACHE}/xdg`)} HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false
+OUT=${q(remoteOut)}
+MFLUX="$HOME/Library/Caches/DexDiffusion/mflux/venv/bin/mflux-generate-flux2"
+PYTHON="$HOME/Library/Caches/DexDiffusion/mflux/venv/bin/python"
+"$MFLUX" --model ${q(PANORAMA_MODEL)} --base-model flux2-klein-base-4b --lora-paths ${q(PANORAMA_LORA)} --lora-scales 1.0 --prompt ${q('equirectangular 360 degree panoramic world, preserve the observed scene and continue the environment around the camera, seamless horizon, consistent lighting')} --image ${q(remoteInput)} 0.85 --steps ${steps} --seed ${seed} --width ${PANORAMA_WIDTH} --height ${PANORAMA_HEIGHT} --output "$OUT" --no-metadata
+RC=$?
+if [ "$RC" -ne 0 ] || [ ! -s "$OUT" ]; then printf 'WORLD_PANORAMA_FAIL\\trc=%s\\tcandidate=%s\\n' "$RC" "${i + 1}"; exit 0; fi
+DIMS=$("$PYTHON" -c 'from PIL import Image; import sys; im=Image.open(sys.argv[1]); print(im.width, im.height)' "$OUT" 2>/dev/null)
+WIDTH=$(printf '%s' "$DIMS" | awk '{print $1}')
+HEIGHT=$(printf '%s' "$DIMS" | awk '{print $2}')
+SHA=$(shasum -a 256 "$OUT" | awk '{print $1}')
+if [ -z "$WIDTH" ] || [ -z "$HEIGHT" ] || [ -z "$SHA" ]; then printf 'WORLD_PANORAMA_FAIL\\toutput-invalid\\tcandidate=%s\\n' "${i + 1}"; exit 0; fi
+printf 'WORLD_PANORAMA_PASS\\tpath=%s\\twidth=%s\\theight=%s\\tsha256=%s\\tmodel=%s\\tlora=%s\\tseed=%s\\tcandidate=%s\\n' "$OUT" "$WIDTH" "$HEIGHT" "$SHA" ${q(PANORAMA_MODEL)} ${q(PANORAMA_LORA)} "${seed}" "${i + 1}"`;
+        const remote = await ssh(command, 1200000);
+        const combined = `${remote.stdout}\n${remote.stderr}`;
+        try { fs.writeFileSync(path.join(stateDir, `world-${jobId}-candidate-${i + 1}.remote.log`), combined, { mode: 0o600 }); } catch (_) {}
+        const marker = /WORLD_PANORAMA_PASS[ \t]+path=(\S+)[ \t]+width=(\d+)[ \t]+height=(\d+)[ \t]+sha256=([a-f0-9]{64})[ \t]+model=(\S+)[ \t]+lora=(\S+)[ \t]+seed=(\d+)[ \t]+candidate=(\d+)/.exec(combined);
+        if (!marker || marker[1] !== remoteOut || Number(marker[2]) !== 2 * Number(marker[3])) {
+          const failMarker = /WORLD_PANORAMA_FAIL[^\n]*/.exec(combined)?.[0];
+          const tail = combined.replace(/\s+/g, ' ').slice(-700);
+          throw new Error(failMarker || `panorama result missing 2:1 in-band marker; remote tail: ${tail}`);
+        }
+        const localPano = path.join(localRoot, `candidate-${i + 1}.png`);
+        await scpRemote(marker[1], localPano, 300000);
+        const localSha = sha256File(localPano);
+        if (localSha !== marker[4]) throw new Error('transferred panorama checksum does not match Big Mac marker');
+        const score = JSON.parse((await runCompiler(['score', '--source', staged.path, '--panorama', localPano])).stdout.trim());
+        candidates.push({ path: localPano, remotePath: marker[1], remoteSha256: marker[4], localSha256: localSha, width: Number(marker[2]), height: Number(marker[3]), seed, score });
+      }
+      candidates.sort((a, b) => b.score.score - a.score.score);
+      const winner = candidates[0];
+      const panoRec = mediaStore.finalize(winner.path, { kind: 'world', base: `${project.id}-panorama`, job_id: jobId, worker: 'flux2-world-completion', model: PANORAMA_MODEL, seed: winner.seed, parent: project.sourceArtifactId, meta: { mode: 'complete360', lora: PANORAMA_LORA, dimensions: { width: winner.width, height: winner.height }, candidateCount: candidates.length, selectedCandidate: candidates.indexOf(winner) + 1, score: winner.score, remotePath: winner.remotePath, remoteSha256: winner.remoteSha256, localSha256: winner.localSha256 } });
+      worldStore.attachArtifact(project.id, 'panorama', panoRec, { stage: 'complete' });
+      worldStore.recordEvidence(project.id, { worker: 'flux2-world-completion', model: PANORAMA_MODEL, workerEvidence: { status: 'PASS', lora: PANORAMA_LORA, width: winner.width, height: winner.height, steps, remoteSha256: winner.remoteSha256, localSha256: winner.localSha256, candidateCount: candidates.length, selectedCandidate: candidates.indexOf(winner) + 1, scores: candidates.map(c => c.score) }, modelEvidence: { baseModel: PANORAMA_MODEL, lora: PANORAMA_LORA, cache: PANORAMA_CACHE }, timing: { panoramaSeconds: Math.round((Date.now() - Date.parse(project.createdAt)) / 1000) } });
+      worldStore.updateStage(project.id, 'complete', { status: 'READY', worker: 'flux2-world-completion', model: PANORAMA_MODEL, artifacts: [panoRec.artifact_id] });
+      worldStore.setManifest(project.id, { dependencies: { complete: { erpReference: anchorRec.artifact_id, model: PANORAMA_MODEL, lora: PANORAMA_LORA, seed: winner.seed } } });
+      writeJson(panoramaEvidenceFile, { at: new Date().toISOString(), projectId: project.id, jobId, model: PANORAMA_MODEL, lora: PANORAMA_LORA, artifactId: panoRec.artifact_id, sha256: panoRec.sha256 });
+      const receipt = artifactReceipt([anchorRec, panoRec]);
+      const done = jobStore.transition(jobId, 'COMPLETE', { artifacts: [anchorRec.artifact_id, panoRec.artifact_id], artifact_validation: receipt });
+      if (done.error) throw new Error(done.error);
+      project.status = 'PARTIAL'; project.currentStage = 'complete'; worldStore.touch(project);
+      return { ok: true, project, panorama: panoRec, candidates };
+    } catch (error) {
+      const message = String(error.message || error).slice(0, 300);
+      const gate = error.gate || (/panorama|checksum|marker|PNG/i.test(message) ? 'output-invalid' : 'generation-failed');
+      const job = jobStore.get(jobId);
+      if (job && !['COMPLETE', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(job.status)) jobStore.transition(jobId, 'FAILED', { first_failed_gate: gate, error: message });
+      if (worldStore.get(project.id)) worldStore.updateStage(project.id, 'complete', { status: gate === 'resource-wait' ? 'BLOCKED' : 'FAILED', error: message, failure: { gate, error: message } });
+      log(`world complete360 ${jobId} ${gate}: ${message}`);
+      return { ok: false, gate, error: message, project: worldStore.get(project.id) };
+    } finally {
+      try { await ssh(`set +e; rm -rf -- ${q(remoteJobDir)}; printf 'WORLD_CLEANUP_%s\\n' "$([ ! -e ${q(remoteJobDir)} ] && echo PASS || echo FAIL)"`, 30000); } catch (_) {}
+      try { fs.rmSync(localRoot, { recursive: true, force: true }); } catch (_) {}
+      if (lease && arbiter.holds(jobId)) arbiter.release(jobId);
+      try { staging.remove(staged.id); } catch (_) {}
+    }
+  }
+
   async function runQuick3d(jobId, project, staged) {
     const remoteDir = `${WORLD_WORK}/${jobId}/quick3d`;
+    const remoteJobDir = `${WORLD_WORK}/${jobId}`;
     const remoteInput = `${remoteDir}/input/${staged.file}`;
     const remoteOutput = `${remoteDir}/output`;
     const localTransferRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-world-'));
@@ -113,7 +225,7 @@ printf 'WORLD_SHARP_PASS\\tply=%s\\tbytes=%s\\tvertices=%s\\tsha256=%s\\tdevice=
       log(`world quick3d ${jobId} ${gate}: ${message}`);
       return { ok: false, gate, error: message, project: worldStore.get(project.id) };
     } finally {
-      try { await ssh(`set +e; rm -rf -- ${q(remoteDir)}; printf 'WORLD_CLEANUP_%s\\n' "$([ ! -e ${q(remoteDir)} ] && echo PASS || echo FAIL)"`, 30000); } catch (_) {}
+      try { await ssh(`set +e; rm -rf -- ${q(remoteJobDir)}; printf 'WORLD_CLEANUP_%s\\n' "$([ ! -e ${q(remoteJobDir)} ] && echo PASS || echo FAIL)"`, 30000); } catch (_) {}
       try { fs.rmSync(localTransferRoot, { recursive: true, force: true }); } catch (_) {}
       if (lease && arbiter.holds(jobId)) arbiter.release(jobId);
       try { staging.remove(staged.id); } catch (_) {}
@@ -135,10 +247,8 @@ printf 'WORLD_SHARP_PASS\\tply=%s\\tbytes=%s\\tvertices=%s\\tsha256=%s\\tdevice=
     const job = jobStore.create({ media_kind: 'world', operation: mode === 'quick3d' ? 'quick3d' : 'complete360', worker_id: mode === 'quick3d' ? 'sharp-reconstruct' : 'flux2-world-completion', model_id: mode === 'quick3d' ? SHARP_MODEL : PANORAMA_MODEL, resource_class: 'heavy', params: { mode, source_artifact_id: source.id, seed: parameters.seed ?? 42 }, persist_text: !!saveText });
     project.jobId = job.job_id; worldStore.touch(project);
     if (mode === 'complete360') {
-      worldStore.updateStage(project.id, 'complete', { status: 'BLOCKED', worker: 'flux2-world-completion', model: PANORAMA_MODEL, error: 'Complete 360 product bridge is not yet wired; the exact Base+LoRA compatibility proof is recorded separately.' });
-      jobStore.transition(job.job_id, 'FAILED', { first_failed_gate: 'worker-unavailable', error: 'Complete 360 worker is not yet integrated into the product bridge' });
-      try { staging.remove(staged.id); } catch (_) {}
-      return { job_id: job.job_id, project_id: project.id, status: job.status, project: worldStore.get(project.id) };
+      runComplete360(job.job_id, project, staged).catch(error => log(`world complete360 uncaught: ${error.message}`));
+      return { job_id: job.job_id, project_id: project.id, status: job.status, project };
     }
     runQuick3d(job.job_id, project, staged).catch(error => log(`world bridge uncaught: ${error.message}`));
     return { job_id: job.job_id, project_id: project.id, status: job.status, project };
@@ -146,17 +256,19 @@ printf 'WORLD_SHARP_PASS\\tply=%s\\tbytes=%s\\tvertices=%s\\tsha256=%s\\tdevice=
 
   async function workers() {
     const assets = await remoteStatus();
+    let evidence = null;
+    try { evidence = JSON.parse(fs.readFileSync(panoramaEvidenceFile, 'utf8')); } catch (_) {}
     return {
       assets,
       workers: [
         { id: 'sharp-reconstruct', label: 'Apple SHARP', stage: 'reconstruct', installed: assets.sharp, proven: assets.sharp, status: assets.sharp ? 'PROVEN' : 'MODEL/RUNTIME MISSING', model: SHARP_MODEL, checkpoint: SHARP_CHECKPOINT, license: 'Model weights require separate research-use review.' },
-        { id: 'flux2-world-completion', label: 'FLUX.2 Klein Base 4B + 360 ERP LoRA', stage: 'complete', installed: false, proven: false, status: 'EXPERIMENTAL PROOF ONLY', model: PANORAMA_MODEL, lora: PANORAMA_LORA, peakMemory: '31.43 GiB at 2048×1024 proof' },
+        { id: 'flux2-world-completion', label: 'FLUX.2 Klein Base 4B + 360 ERP LoRA', stage: 'complete', installed: assets.panorama, proven: !!evidence, status: !assets.panorama ? 'MODEL/RUNTIME MISSING' : evidence ? 'PROVEN' : 'READY — awaiting product proof', model: PANORAMA_MODEL, lora: PANORAMA_LORA, peakMemory: '31.43 GiB at 2048×1024 proof', lastPass: evidence },
         { id: 'spark-three', label: 'Spark / Three.js viewer', stage: 'viewer', installed: true, proven: true, status: 'READY', model: 'three@0.186.1 + @sparkjsdev/spark@2.3.1' },
       ],
     };
   }
 
-  return { start, workers, remoteStatus, runQuick3d, constants: { WORLD_ROOT, SHARP_ROOT, SHARP_CHECKPOINT, SHARP_MODEL, PANORAMA_MODEL, PANORAMA_LORA, WORLD_WORK } };
+  return { start, workers, remoteStatus, runQuick3d, runComplete360, constants: { WORLD_ROOT, SHARP_ROOT, SHARP_CHECKPOINT, SHARP_MODEL, PANORAMA_MODEL, PANORAMA_LORA, PANORAMA_CACHE, WORLD_WORK } };
 }
 
-module.exports = { createWorldBridge, constants: { WORLD_ROOT, SHARP_ROOT, SHARP_CHECKPOINT, SHARP_MODEL, PANORAMA_MODEL, PANORAMA_LORA, WORLD_WORK } };
+module.exports = { createWorldBridge, constants: { WORLD_ROOT, SHARP_ROOT, SHARP_CHECKPOINT, SHARP_MODEL, PANORAMA_MODEL, PANORAMA_LORA, PANORAMA_CACHE, WORLD_WORK } };

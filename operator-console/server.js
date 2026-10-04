@@ -3814,8 +3814,7 @@ app.post('/api/world/projects', (req, res) => {
 app.post('/api/world/projects/:id/retry', (req, res) => {
   const p = worldStore.get(req.params.id);
   if (!p) return res.status(404).json({ error: 'World project not found' });
-  if (p.mode !== 'quick3d') return res.status(409).json({ error: 'Complete 360 retry is not yet integrated', gate: 'worker-unavailable' });
-  const result = worldBridge.start('quick3d', { sourceArtifactId: p.sourceArtifactId, parameters: p.parameters });
+  const result = worldBridge.start(p.mode, { sourceArtifactId: p.sourceArtifactId, parameters: p.parameters });
   if (result.error) return res.status(result.status || 400).json(result);
   res.status(202).json({ ...result, retriedFrom: p.id });
 });

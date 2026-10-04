@@ -16,7 +16,7 @@ test('World Project creates, persists, reloads, and records lineage/stages', () 
   const clock = (() => { let t = 1700000000000; return () => ++t; })();
   const store = createWorldStore({ root, now: clock });
   const p = store.create({ mode: 'quick3d', sourceArtifactId: 'source.png', sourceImage: { artifactId: 'source.png' }, parameters: { seed: 42 } });
-  assert.equal(p.schema, 'dexdiffusion.world_project.v1');
+  assert.equal(p.schema, 'dexdiffusion.world_project.v2');
   assert.equal(p.stages.source.status, 'READY');
   store.updateStage(p.id, 'reconstruct', { status: 'RUNNING', worker: 'sharp-reconstruct' });
   store.attachArtifact(p.id, 'finalPly', { artifact_id: 'scene.ply', parent: 'source.png' }, { stage: 'finalize' });
@@ -58,4 +58,22 @@ test('world media store accepts a validated PLY and rejects a fake output', () =
   const bad = path.join(root, 'bad.ply'); fs.writeFileSync(bad, 'not a ply');
   assert.throws(() => store.finalize(bad, { kind: 'world', base: 'bad' }), /output-invalid/);
   assert.equal(crypto.createHash('sha256').update(body).digest('hex'), rec.sha256);
+});
+
+test('World Project retry invalidates only descendants and preserves ancestors', () => {
+  const root = temp();
+  const store = createWorldStore({ root });
+  const p = store.create({ mode: 'complete360', sourceArtifactId: 'source.png' });
+  store.attachArtifact(p.id, 'panorama', { artifact_id: 'pano.png', parent: 'source.png' }, { stage: 'complete' });
+  store.updateStage(p.id, 'complete', { status: 'READY' });
+  store.attachArtifact(p.id, 'depthMaps', { artifact_id: 'depth.pgm', parent: 'pano.png' }, { stage: 'depth360' });
+  store.updateStage(p.id, 'depth360', { status: 'READY' });
+  store.retry(p.id, 'depth360');
+  const saved = store.get(p.id);
+  assert.equal(saved.stages.complete.status, 'READY');
+  assert.equal(saved.artifacts.panorama.artifact_id, 'pano.png');
+  assert.equal(saved.stages.depth360.status, 'NOT_STARTED');
+  assert.deepEqual(saved.artifacts.depthMaps, []);
+  assert.equal(saved.stages.fusion.status, 'NOT_STARTED');
+  assert.ok(saved.manifest.invalidated.includes('fusion'));
 });
