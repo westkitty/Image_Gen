@@ -77,3 +77,26 @@ test('World Project retry invalidates only descendants and preserves ancestors',
   assert.equal(saved.stages.fusion.status, 'NOT_STARTED');
   assert.ok(saved.manifest.invalidated.includes('fusion'));
 });
+
+test('Complete 360 projects expose progressive geometry, rig, runtime, and quality slots', () => {
+  const root = temp();
+  const store = createWorldStore({ root });
+  const p = store.create({ mode: 'complete360', sourceArtifactId: 'source.png' });
+  assert.equal(p.artifacts.coarseGeometry, null);
+  assert.equal(p.artifacts.cameraRig, null);
+  assert.equal(p.artifacts.runtimeSplat, null);
+  assert.equal(p.artifacts.collisionMesh, null);
+  assert.equal(p.artifacts.qualityReport, null);
+  store.attachArtifact(p.id, 'coarseGeometry', { artifact_id: 'coarse.ply', parent: 'source.png' }, { stage: 'project' });
+  store.attachArtifact(p.id, 'collisionMesh', { artifact_id: 'collision.obj', parent: 'coarse.ply' }, { stage: 'runtime' });
+  store.attachArtifact(p.id, 'qualityReport', { artifact_id: 'quality.json', parent: 'coarse.ply' }, { stage: 'quality' });
+  store.updateStage(p.id, 'project', { status: 'READY' });
+  store.updateStage(p.id, 'runtime', { status: 'READY' });
+  store.updateStage(p.id, 'quality', { status: 'READY' });
+  store.retry(p.id, 'project');
+  const saved = store.get(p.id);
+  assert.equal(saved.artifacts.coarseGeometry, null);
+  assert.equal(saved.artifacts.collisionMesh, null);
+  assert.equal(saved.artifacts.qualityReport, null);
+  assert.equal(saved.stages.complete.status, 'NOT_STARTED');
+});

@@ -3797,7 +3797,9 @@ app.get('/api/world/projects/:id', (req, res) => {
     const ids = Array.isArray(value) ? value : value ? [value] : [];
     artifacts[slot] = ids.map(id => { const r = mediaStore.resolve(typeof id === 'string' ? id : id.artifact_id); return r ? { artifact_id: r.artifact_id, url: r.safe_url, mime: r.mime, bytes: r.bytes, sha256: r.sha256 } : id; });
   }
-  res.json({ ...p, artifacts });
+  const first = slot => Array.isArray(artifacts[slot]) ? artifacts[slot][0] : artifacts[slot];
+  const viewerArtifact = first('finalPly') || first('runtimeSplat') || first('coarseGeometry') || first('perViewSplats');
+  res.json({ ...p, artifacts, viewerArtifact: viewerArtifact || null });
 });
 app.patch('/api/world/projects/:id', (req, res) => {
   const p = worldStore.get(req.params.id);

@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+import struct
 from pathlib import Path
 
 import numpy as np
@@ -106,7 +107,10 @@ def depth(args: argparse.Namespace) -> dict:
     depth_arr = np.clip(0.35 + 0.65 * (1.0 - gray), 0.05, 1.0)
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(np.round(depth_arr * 65535).astype(np.uint16), mode="I;16").save(out)
+    values = np.round(depth_arr * 65535).astype(">u2")
+    with out.open("wb") as f:
+        f.write(f"P5\n{values.shape[1]} {values.shape[0]}\n65535\n".encode("ascii"))
+        f.write(values.tobytes())
     result = {"schema": "dexdiffusion.world.depth360.v1", "method": "bounded-luminance-fallback", "width": int(arr.shape[1]), "height": int(arr.shape[0]), "validPixelRatio": 1.0, "nanCount": 0, "infCount": 0, "overlapDisagreement": None, "confidence": "LOW", "sha256": sha256(out)}
     write_json(Path(args.manifest), result)
     return result
@@ -116,7 +120,7 @@ def point_cloud(args: argparse.Namespace) -> dict:
     pano = np.asarray(image(Path(args.panorama)), dtype=np.float32) / 255.0
     dep = np.asarray(Image.open(args.depth), dtype=np.float32) / 65535.0
     h, w, _ = pano.shape
-    step = max(1, int(math.sqrt((w * h) / max(args.max_points, 1))))
+    step = max(1, int(math.ceil(math.sqrt((w * h) / max(args.max_points, 1)))))
     rows = []
     for y in range(0, h, step):
         phi = (0.5 - (y + 0.5) / h) * math.pi
@@ -128,11 +132,11 @@ def point_cloud(args: argparse.Namespace) -> dict:
             rows.append((radius * cp * math.sin(theta), radius * sp, radius * cp * math.cos(theta), int(pano[y, x, 0] * 255), int(pano[y, x, 1] * 255), int(pano[y, x, 2] * 255)))
     ply = Path(args.output)
     ply.parent.mkdir(parents=True, exist_ok=True)
-    with ply.open("w", encoding="ascii") as f:
-        f.write("ply\nformat ascii 1.0\n")
-        f.write(f"element vertex {len(rows)}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n")
+    with ply.open("wb") as f:
+        f.write(b"ply\nformat binary_little_endian 1.0\n")
+        f.write(f"element vertex {len(rows)}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n".encode("ascii"))
         for row in rows:
-            f.write("%.6f %.6f %.6f %d %d %d\n" % row)
+            f.write(struct.pack("<fffBBB", *row))
     # A separate low-density navigation shell; it is never used as the visual
     # splat artifact.
     obj = Path(args.collision)
@@ -168,6 +172,33 @@ def rig(args: argparse.Namespace) -> dict:
     return result
 
 
+def views(args: argparse.Namespace) -> dict:
+    pano = image(Path(args.panorama))
+    width, height = pano.size
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # These are deterministic ERP-aligned proposals. They are intentionally
+    # named projected views rather than pretending to be learned perspective
+    # renders; the rig manifest carries the exact yaw/pitch provenance.
+    specs = [("front", 0, 0), ("right", 90, 0), ("back", 180, 0), ("left", 270, 0), ("up", 0, 90), ("down", 0, -90)]
+    records = []
+    for name, yaw, pitch in specs:
+        if pitch == 0:
+            center = int((yaw / 360.0 + 0.5) * width) % width
+            half = max(1, width // 8)
+            rolled = np.roll(np.asarray(pano), width // 2 - center, axis=1)
+            crop = Image.fromarray(rolled[:, width // 2 - half:width // 2 + half])
+        else:
+            crop = pano.crop((0, 0, width, max(1, height // 2))) if pitch > 0 else pano.crop((0, height // 2, width, height))
+        crop = ImageOps.fit(crop, (512, 512), method=Image.Resampling.LANCZOS)
+        target = out_dir / f"{name}.png"
+        crop.save(target, format="PNG", optimize=True)
+        records.append({"id": name, "yaw": yaw, "pitch": pitch, "fov": 105, "overlapDegrees": 15, "path": str(target), "sha256": sha256(target), "width": crop.width, "height": crop.height})
+    result = {"schema": "dexdiffusion.world.projected-views.v1", "projection": "erp-window", "views": records, "count": len(records)}
+    write_json(Path(args.manifest), result)
+    return result
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="command", required=True)
@@ -176,6 +207,7 @@ def main() -> None:
     d = sub.add_parser("depth"); d.add_argument("--panorama", required=True); d.add_argument("--output", required=True); d.add_argument("--manifest", required=True); d.set_defaults(fn=depth)
     g = sub.add_parser("scaffold"); g.add_argument("--panorama", required=True); g.add_argument("--depth", required=True); g.add_argument("--output", required=True); g.add_argument("--collision", required=True); g.add_argument("--manifest", required=True); g.add_argument("--max-points", type=int, default=250000); g.set_defaults(fn=point_cloud)
     r = sub.add_parser("rig"); r.add_argument("--output", required=True); r.set_defaults(fn=rig)
+    v = sub.add_parser("views"); v.add_argument("--panorama", required=True); v.add_argument("--output-dir", required=True); v.add_argument("--manifest", required=True); v.set_defaults(fn=views)
     args = p.parse_args(); result = args.fn(args)
     if args.command != "score": print(json.dumps(result, sort_keys=True))
 

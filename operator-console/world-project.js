@@ -28,7 +28,7 @@ const STAGE_DESCENDANTS = {
   viewer: ['quality'],
   quality: [],
 };
-const STAGE_ARTIFACT_SLOTS = { erpReference: ['erpReference'], complete: ['panorama'], depth360: ['depthMaps'], project: ['preview'], rig: ['cubemapFaces'], reconstruct: ['perViewSplats'], align: [], fusion: ['finalPly'], finalize: [], runtime: ['optionalColliderOrMesh'], viewer: [], quality: [] };
+const STAGE_ARTIFACT_SLOTS = { erpReference: ['erpReference'], complete: ['panorama'], depth360: ['depthMaps'], project: ['coarseGeometry'], rig: ['cameraRig', 'projectedViews'], reconstruct: ['perViewSplats'], align: [], fusion: ['finalPly'], finalize: [], runtime: ['runtimeSplat', 'collisionMesh'], viewer: [], quality: ['qualityReport'] };
 
 function atomicWrite(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
@@ -73,7 +73,7 @@ function newProject({ id, mode, sourceArtifactId, sourceImage, parameters = {}, 
     lineage: sourceArtifactId ? [{ type: 'source', artifactId: sourceArtifactId }] : [],
     timing: {},
     failure: null,
-    artifacts: { source: sourceArtifactId || null, erpReference: null, panorama: null, cubemapFaces: [], depthMaps: [], perViewSplats: [], finalPly: null, preview: null, optionalColliderOrMesh: null },
+    artifacts: { source: sourceArtifactId || null, erpReference: null, panorama: null, cubemapFaces: [], projectedViews: [], depthMaps: [], perViewSplats: [], finalPly: null, coarseGeometry: null, cameraRig: null, runtimeSplat: null, collisionMesh: null, preview: null, optionalColliderOrMesh: null, qualityReport: null },
     stages: stageMap(),
     manifest: { source: { artifactId: sourceArtifactId || null }, dependencies: {}, invalidated: [], sourceCommit: null },
     camera: null,

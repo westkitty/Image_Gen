@@ -75,6 +75,96 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
 
   async function runCompiler(args, timeout = 120000) { return runFile('python3', [COMPILER, ...args], timeout); }
 
+  function finalizeWorld(file, base, jobId, worker, model, parent, meta = {}) {
+    return mediaStore.finalize(file, { kind: 'world', base, job_id: jobId, worker, model, parent, meta });
+  }
+
+  async function runDerivedPipeline(jobId, project, panoRec, sourcePath, localRoot) {
+    const derived = { depth: [], views: [], coarse: null, collision: null, rig: null, quality: null };
+    const depthPath = path.join(localRoot, 'depth-360.pgm');
+    const depthManifestPath = path.join(localRoot, 'depth-360.json');
+    const scaffoldPath = path.join(localRoot, 'coarse.ply');
+    const collisionPath = path.join(localRoot, 'collision.obj');
+    const scaffoldManifestPath = path.join(localRoot, 'scaffold.json');
+    const rigPath = path.join(localRoot, 'camera-rig.json');
+    const viewsDir = path.join(localRoot, 'views');
+    const viewsManifestPath = path.join(localRoot, 'views.json');
+    const qualityPath = path.join(localRoot, 'quality-report.json');
+    const worker = 'world-compiler';
+    const model = 'deterministic-world-v1';
+    try {
+      worldStore.updateStage(project.id, 'depth360', { status: 'RUNNING', worker, model });
+      const panoramaPath = mediaStore.resolve(panoRec.artifact_id)?.path;
+      if (!panoramaPath) throw new Error('canonical panorama could not be reopened for derived stages');
+      await runCompiler(['depth', '--panorama', panoramaPath, '--output', depthPath, '--manifest', depthManifestPath]);
+      const depthMetrics = JSON.parse(fs.readFileSync(depthManifestPath, 'utf8'));
+      const depthRec = finalizeWorld(depthPath, `${project.id}-depth360`, jobId, worker, model, panoRec.artifact_id, { metrics: depthMetrics, confidence: 'LOW' });
+      const depthManifestRec = finalizeWorld(depthManifestPath, `${project.id}-depth360-metrics`, jobId, worker, model, depthRec.artifact_id, { metrics: depthMetrics });
+      worldStore.attachArtifact(project.id, 'depthMaps', depthRec, { stage: 'depth360' });
+      worldStore.attachArtifact(project.id, 'depthMaps', depthManifestRec, { stage: 'depth360' });
+      worldStore.updateStage(project.id, 'depth360', { status: 'READY', worker, model, artifacts: [depthRec.artifact_id, depthManifestRec.artifact_id] });
+      derived.depth.push(depthRec, depthManifestRec);
+
+      worldStore.updateStage(project.id, 'project', { status: 'RUNNING', worker, model });
+      await runCompiler(['scaffold', '--panorama', panoramaPath, '--depth', depthPath, '--output', scaffoldPath, '--collision', collisionPath, '--manifest', scaffoldManifestPath]);
+      const scaffoldMetrics = JSON.parse(fs.readFileSync(scaffoldManifestPath, 'utf8'));
+      const coarseRec = finalizeWorld(scaffoldPath, `${project.id}-coarse-geometry`, jobId, worker, model, depthRec.artifact_id, { metrics: scaffoldMetrics, coordinateFrame: 'erp-spherical' });
+      const collisionRec = finalizeWorld(collisionPath, `${project.id}-collision`, jobId, worker, model, coarseRec.artifact_id, { metrics: scaffoldMetrics, collisionOnly: true });
+      const scaffoldManifestRec = finalizeWorld(scaffoldManifestPath, `${project.id}-scaffold-metrics`, jobId, worker, model, coarseRec.artifact_id, { metrics: scaffoldMetrics });
+      worldStore.attachArtifact(project.id, 'coarseGeometry', coarseRec, { stage: 'project' });
+      worldStore.attachArtifact(project.id, 'collisionMesh', collisionRec, { stage: 'runtime' });
+      worldStore.updateStage(project.id, 'project', { status: 'READY', worker, model, artifacts: [coarseRec.artifact_id] });
+      derived.coarse = coarseRec; derived.collision = collisionRec;
+
+      worldStore.updateStage(project.id, 'rig', { status: 'RUNNING', worker, model });
+      await runCompiler(['rig', '--output', rigPath]);
+      const rigMetrics = JSON.parse(fs.readFileSync(rigPath, 'utf8'));
+      const rigRec = finalizeWorld(rigPath, `${project.id}-camera-rig`, jobId, worker, model, panoRec.artifact_id, { metrics: rigMetrics });
+      worldStore.attachArtifact(project.id, 'cameraRig', rigRec, { stage: 'rig' });
+      await runCompiler(['views', '--panorama', panoramaPath, '--output-dir', viewsDir, '--manifest', viewsManifestPath]);
+      const viewsMetrics = JSON.parse(fs.readFileSync(viewsManifestPath, 'utf8'));
+      const viewRecs = viewsMetrics.views.map(view => finalizeWorld(view.path, `${project.id}-view-${view.id}`, jobId, worker, model, panoRec.artifact_id, { metrics: view, projected: true }));
+      for (const rec of viewRecs) worldStore.attachArtifact(project.id, 'projectedViews', rec, { stage: 'rig' });
+      worldStore.updateStage(project.id, 'rig', { status: 'READY', worker, model, artifacts: [rigRec.artifact_id, ...viewRecs.map(rec => rec.artifact_id)] });
+      derived.rig = rigRec; derived.views.push(...viewRecs);
+
+      const quality = {
+        schema: 'dexdiffusion.world.quality-report.v1',
+        status: 'PARTIAL',
+        classification: 'WARN',
+        generatedAt: new Date().toISOString(),
+        coordinateFrame: 'erp-spherical',
+        checks: {
+          panorama: { status: 'PASS', score: project.workerEvidence?.['flux2-world-completion']?.scores?.[0] || null },
+          depth360: { status: 'WARN', method: depthMetrics.method, confidence: depthMetrics.confidence, validPixelRatio: depthMetrics.validPixelRatio, nanCount: depthMetrics.nanCount, infCount: depthMetrics.infCount },
+          coarseGeometry: { status: 'PASS', points: scaffoldMetrics.points, finite: scaffoldMetrics.finite, bounds: scaffoldMetrics.bounds },
+          cameraRig: { status: 'PASS', cameras: rigMetrics.cameras.length, overlapDegrees: 15 },
+          sharpPerView: { status: 'NOT_STARTED', reason: 'Per-view SHARP fitting requires a bounded remote compute pass.' },
+          fusion: { status: 'NOT_STARTED', reason: 'Fusion awaits learned per-view proposals.' },
+          runtime: { status: 'PASS', collision: true, progressiveArtifact: true },
+          viewer: { status: 'READY', artifact: coarseRec.artifact_id },
+        },
+        blockers: ['learned global depth unavailable in this local runtime', 'SHARP per-view fitting and fusion not yet executed'],
+      };
+      writeJson(qualityPath, quality);
+      const qualityRec = finalizeWorld(qualityPath, `${project.id}-quality-report`, jobId, worker, model, coarseRec.artifact_id, { classification: 'WARN' });
+      worldStore.attachArtifact(project.id, 'qualityReport', qualityRec, { stage: 'quality' });
+      worldStore.setQualityReport(project.id, quality);
+      worldStore.updateStage(project.id, 'runtime', { status: 'READY', worker, model, artifacts: [coarseRec.artifact_id, collisionRec.artifact_id] });
+      worldStore.updateStage(project.id, 'viewer', { status: 'READY', worker: 'spark-three', model: 'three@0.186.1 + @sparkjsdev/spark@2.3.1', artifacts: [coarseRec.artifact_id] });
+      worldStore.updateStage(project.id, 'quality', { status: 'READY', worker, model, artifacts: [qualityRec.artifact_id] });
+      project.status = 'PARTIAL'; project.currentStage = 'quality'; worldStore.touch(project);
+      derived.quality = qualityRec;
+      return { ok: true, derived, quality };
+    } catch (error) {
+      const message = String(error.message || error).slice(0, 260);
+      const stage = project.currentStage || 'depth360';
+      try { worldStore.updateStage(project.id, stage, { status: 'FAILED', error: message, failure: { gate: 'derived-stage', error: message } }); } catch (_) {}
+      log(`world derived pipeline ${jobId} failed at ${stage}: ${message}`);
+      return { ok: false, error: message, derived, stage };
+    }
+  }
+
   async function runComplete360(jobId, project, staged) {
     const remoteDir = `${WORLD_WORK}/${jobId}/complete360`;
     const remoteJobDir = `${WORLD_WORK}/${jobId}`;
@@ -148,11 +238,14 @@ printf 'WORLD_PANORAMA_PASS\\tpath=%s\\twidth=%s\\theight=%s\\tsha256=%s\\tmodel
       worldStore.updateStage(project.id, 'complete', { status: 'READY', worker: 'flux2-world-completion', model: PANORAMA_MODEL, artifacts: [panoRec.artifact_id] });
       worldStore.setManifest(project.id, { dependencies: { complete: { erpReference: anchorRec.artifact_id, model: PANORAMA_MODEL, lora: PANORAMA_LORA, seed: winner.seed } } });
       writeJson(panoramaEvidenceFile, { at: new Date().toISOString(), projectId: project.id, jobId, model: PANORAMA_MODEL, lora: PANORAMA_LORA, artifactId: panoRec.artifact_id, sha256: panoRec.sha256 });
-      const receipt = artifactReceipt([anchorRec, panoRec]);
-      const done = jobStore.transition(jobId, 'COMPLETE', { artifacts: [anchorRec.artifact_id, panoRec.artifact_id], artifact_validation: receipt });
+      if (lease && arbiter.holds(jobId)) { arbiter.release(jobId); lease = null; }
+      const derivedResult = await runDerivedPipeline(jobId, project, panoRec, staged.path, localRoot);
+      const allArtifacts = [anchorRec, panoRec, ...derivedResult.derived.depth, derivedResult.derived.coarse, derivedResult.derived.collision, derivedResult.derived.rig, ...derivedResult.derived.views, derivedResult.derived.quality].filter(Boolean);
+      const receipt = artifactReceipt(allArtifacts);
+      const done = jobStore.transition(jobId, 'COMPLETE', { resource_lease: null, artifacts: allArtifacts.map(rec => rec.artifact_id), artifact_validation: receipt });
       if (done.error) throw new Error(done.error);
-      project.status = 'PARTIAL'; project.currentStage = 'complete'; worldStore.touch(project);
-      return { ok: true, project, panorama: panoRec, candidates };
+      project.status = 'PARTIAL'; project.currentStage = derivedResult.ok ? 'quality' : 'complete'; worldStore.touch(project);
+      return { ok: true, project, panorama: panoRec, candidates, derived: derivedResult };
     } catch (error) {
       const message = String(error.message || error).slice(0, 300);
       const gate = error.gate || (/panorama|checksum|marker|PNG/i.test(message) ? 'output-invalid' : 'generation-failed');
