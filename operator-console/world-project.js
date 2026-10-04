@@ -8,10 +8,27 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const SCHEMA = 'dexdiffusion.world_project.v1';
+const SCHEMA = 'dexdiffusion.world_project.v2';
 const MODES = ['quick3d', 'complete360'];
-const STAGES = ['source', 'complete', 'project', 'reconstruct', 'align', 'finalize', 'viewer'];
+const STAGES = ['source', 'camera', 'erpReference', 'complete', 'depth360', 'project', 'rig', 'reconstruct', 'align', 'fusion', 'finalize', 'runtime', 'viewer', 'quality'];
 const STAGE_STATES = ['NOT_STARTED', 'READY', 'RUNNING', 'FAILED', 'BLOCKED', 'EXPERIMENTAL', 'NOT_INSTALLED'];
+const STAGE_DESCENDANTS = {
+  source: ['camera', 'erpReference', 'complete', 'depth360', 'project', 'rig', 'reconstruct', 'align', 'fusion', 'finalize', 'runtime', 'viewer', 'quality'],
+  camera: ['erpReference', 'complete', 'depth360', 'project', 'rig', 'reconstruct', 'align', 'fusion', 'finalize', 'runtime', 'viewer', 'quality'],
+  erpReference: ['complete', 'depth360', 'project', 'rig', 'reconstruct', 'align', 'fusion', 'finalize', 'runtime', 'viewer', 'quality'],
+  complete: ['depth360', 'project', 'rig', 'reconstruct', 'align', 'fusion', 'finalize', 'runtime', 'viewer', 'quality'],
+  depth360: ['project', 'rig', 'reconstruct', 'align', 'fusion', 'finalize', 'runtime', 'viewer', 'quality'],
+  project: ['rig', 'reconstruct', 'align', 'fusion', 'finalize', 'runtime', 'viewer', 'quality'],
+  rig: ['reconstruct', 'align', 'fusion', 'finalize', 'runtime', 'viewer', 'quality'],
+  reconstruct: ['align', 'fusion', 'finalize', 'runtime', 'viewer', 'quality'],
+  align: ['fusion', 'finalize', 'runtime', 'viewer', 'quality'],
+  fusion: ['finalize', 'runtime', 'viewer', 'quality'],
+  finalize: ['runtime', 'viewer', 'quality'],
+  runtime: ['viewer', 'quality'],
+  viewer: ['quality'],
+  quality: [],
+};
+const STAGE_ARTIFACT_SLOTS = { erpReference: ['erpReference'], complete: ['panorama'], depth360: ['depthMaps'], project: ['coarseGeometry'], rig: ['cameraRig', 'projectedViews'], reconstruct: ['perViewSplats'], align: [], fusion: ['finalPly'], finalize: [], runtime: ['runtimeSplat', 'collisionMesh'], viewer: [], quality: ['qualityReport'] };
 
 function atomicWrite(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
@@ -41,7 +58,7 @@ function newProject({ id, mode, sourceArtifactId, sourceImage, parameters = {}, 
   const created = new Date(now()).toISOString();
   const p = {
     schema: SCHEMA,
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: id || projectId(),
     createdAt: created,
     updatedAt: created,
@@ -56,8 +73,11 @@ function newProject({ id, mode, sourceArtifactId, sourceImage, parameters = {}, 
     lineage: sourceArtifactId ? [{ type: 'source', artifactId: sourceArtifactId }] : [],
     timing: {},
     failure: null,
-    artifacts: { source: sourceArtifactId || null, erpReference: null, panorama: null, cubemapFaces: [], depthMaps: [], perViewSplats: [], finalPly: null, preview: null, optionalColliderOrMesh: null },
+    artifacts: { source: sourceArtifactId || null, erpReference: null, panorama: null, cubemapFaces: [], projectedViews: [], depthMaps: [], perViewSplats: [], finalPly: null, coarseGeometry: null, cameraRig: null, runtimeSplat: null, collisionMesh: null, preview: null, optionalColliderOrMesh: null, qualityReport: null },
     stages: stageMap(),
+    manifest: { source: { artifactId: sourceArtifactId || null }, dependencies: {}, invalidated: [], sourceCommit: null },
+    camera: null,
+    qualityReport: null,
     viewerState: { opened: false, camera: null, lastArtifactId: null },
   };
   p.stages.source = { ...stageState(), status: sourceArtifactId ? 'READY' : 'NOT_STARTED', artifacts: sourceArtifactId ? [sourceArtifactId] : [] };
@@ -68,7 +88,7 @@ function migrate(input, now = Date.now) {
   if (!input || typeof input !== 'object') return null;
   const p = { ...input };
   p.schema = SCHEMA;
-  p.schemaVersion = 1;
+  p.schemaVersion = 2;
   p.mode = MODES.includes(p.mode) ? p.mode : 'quick3d';
   p.parameters = p.parameters && typeof p.parameters === 'object' ? p.parameters : { seed: 42 };
   p.workerEvidence = p.workerEvidence && typeof p.workerEvidence === 'object' ? p.workerEvidence : {};
@@ -78,6 +98,9 @@ function migrate(input, now = Date.now) {
   p.artifacts = { ...newProject({ mode: p.mode, now }).artifacts, ...(p.artifacts || {}) };
   p.stages = { ...stageMap(), ...(p.stages || {}) };
   for (const stage of STAGES) p.stages[stage] = { ...stageState(), ...(p.stages[stage] || {}) };
+  p.manifest = { source: { artifactId: p.sourceArtifactId || null }, dependencies: {}, invalidated: [], sourceCommit: null, ...(p.manifest || {}) };
+  p.camera = p.camera || null;
+  p.qualityReport = p.qualityReport || null;
   p.viewerState = { opened: false, camera: null, lastArtifactId: null, ...(p.viewerState || {}) };
   p.status = String(p.status || 'QUEUED');
   p.currentStage = STAGES.includes(p.currentStage) ? p.currentStage : 'source';
@@ -105,11 +128,23 @@ function createWorldStore({ root, now = () => Date.now() } = {}) {
   function create(input) { const p = newProject({ ...input, now }); projects.set(p.id, p); persist(p); return p; }
   function touch(p) { if (!p || !projects.has(p.id)) return null; persist(p); return p; }
   function list() { return [...projects.values()].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).map(p => ({ ...p, stages: undefined })); }
+  function invalidateDescendants(p, stage) {
+    const descendants = STAGE_DESCENDANTS[stage] || [];
+    p.manifest.invalidated = [...new Set([...(p.manifest.invalidated || []), ...descendants])];
+    for (const descendant of descendants) {
+      p.stages[descendant] = stageState();
+      for (const slot of STAGE_ARTIFACT_SLOTS[descendant] || []) {
+        if (Array.isArray(p.artifacts[slot])) p.artifacts[slot] = [];
+        else if (slot !== 'source') p.artifacts[slot] = null;
+      }
+    }
+  }
   function updateStage(id, stage, patch = {}) {
     if (!STAGES.includes(stage)) throw new Error('unknown world stage');
     const p = get(id); if (!p) throw new Error('world project not found');
     const next = String(patch.status || p.stages[stage].status || 'NOT_STARTED');
     if (!STAGE_STATES.includes(next)) throw new Error('invalid world stage status');
+    if (patch.invalidateDescendants) invalidateDescendants(p, stage);
     const before = p.stages[stage];
     const entry = { ...before, ...patch, status: next };
     if (next === 'RUNNING' && !entry.startedAt) entry.startedAt = new Date(now()).toISOString();
@@ -119,6 +154,7 @@ function createWorldStore({ root, now = () => Date.now() } = {}) {
     if (next === 'FAILED' || next === 'BLOCKED') { p.status = next; p.failure = { stage, ...(patch.failure || {}), error: patch.error || entry.error || null }; }
     else if (next === 'RUNNING') { p.status = 'RUNNING'; p.failure = null; }
     else if (next === 'READY' || next === 'EXPERIMENTAL') { p.status = next === 'EXPERIMENTAL' ? 'EXPERIMENTAL' : p.status === 'QUEUED' ? 'RUNNING' : p.status; }
+    p.manifest.invalidated = (p.manifest.invalidated || []).filter(x => x !== stage);
     persist(p); return p;
   }
   function attachArtifact(id, slot, artifact, { stage = null } = {}) {
@@ -139,9 +175,18 @@ function createWorldStore({ root, now = () => Date.now() } = {}) {
   function setViewer(id, patch) { const p = get(id); if (!p) throw new Error('world project not found'); p.viewerState = { ...p.viewerState, ...patch }; persist(p); return p; }
   function retry(id, stage) {
     const p = get(id); if (!p || !STAGES.includes(stage)) return null;
+    invalidateDescendants(p, stage);
+    p.stages[stage] = stageState();
+    for (const slot of STAGE_ARTIFACT_SLOTS[stage] || []) {
+      if (Array.isArray(p.artifacts[slot])) p.artifacts[slot] = [];
+      else if (slot !== 'source') p.artifacts[slot] = null;
+    }
     p.failure = null; p.status = 'QUEUED'; p.currentStage = stage; p.stages[stage] = stageState(); persist(p); return p;
   }
-  return { root: dir, file, get, list, create, touch, updateStage, attachArtifact, recordEvidence, setViewer, retry, reload: load, valid: id => /^wp-[a-f0-9]{8}$/.test(String(id)) };
+  function setCamera(id, camera) { const p = get(id); if (!p) throw new Error('world project not found'); p.camera = camera; p.manifest.dependencies.camera = { method: camera && camera.method, confidence: camera && camera.confidence }; touch(p); return p; }
+  function setManifest(id, patch) { const p = get(id); if (!p) throw new Error('world project not found'); p.manifest = { ...p.manifest, ...patch, dependencies: { ...p.manifest.dependencies, ...(patch.dependencies || {}) } }; touch(p); return p; }
+  function setQualityReport(id, report) { const p = get(id); if (!p) throw new Error('world project not found'); p.qualityReport = report; touch(p); return p; }
+  return { root: dir, file, get, list, create, touch, updateStage, attachArtifact, recordEvidence, setViewer, retry, setCamera, setManifest, setQualityReport, reload: load, valid: id => /^wp-[a-f0-9]{8}$/.test(String(id)), descendants: stage => [...(STAGE_DESCENDANTS[stage] || [])] };
 }
 
-module.exports = { SCHEMA, MODES, STAGES, STAGE_STATES, newProject, migrate, createWorldStore };
+module.exports = { SCHEMA, MODES, STAGES, STAGE_STATES, STAGE_DESCENDANTS, newProject, migrate, createWorldStore };

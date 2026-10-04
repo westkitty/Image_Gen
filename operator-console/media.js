@@ -327,8 +327,8 @@ function createWorkerRegistry({ imageAdapters = {}, getEvidence = () => ({}) } =
 }
 
 // ---- Media store ---------------------------------------------------------------
-const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.flac': 'audio/flac', '.mp4': 'video/mp4', '.webm': 'video/webm', '.ply': 'application/vnd.ply' };
-const KIND_EXT = { image: ['.png', '.jpg', '.jpeg', '.webp'], voice: ['.wav', '.mp3', '.m4a', '.flac'], music: ['.wav', '.mp3', '.m4a', '.flac'], video: ['.mp4', '.webm'], world: ['.ply'] };
+const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.flac': 'audio/flac', '.mp4': 'video/mp4', '.webm': 'video/webm', '.ply': 'application/vnd.ply', '.json': 'application/json', '.pgm': 'image/x-portable-graymap', '.obj': 'model/obj', '.glb': 'model/gltf-binary' };
+const KIND_EXT = { image: ['.png', '.jpg', '.jpeg', '.webp'], voice: ['.wav', '.mp3', '.m4a', '.flac'], music: ['.wav', '.mp3', '.m4a', '.flac'], video: ['.mp4', '.webm'], world: ['.ply', '.png', '.json', '.pgm', '.obj', '.glb'] };
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,160}\.[a-z0-9]{2,5}$/;
 
 function sniff(buf) {
@@ -341,6 +341,7 @@ function sniff(buf) {
   if (b.length >= 12 && b.toString('latin1', 4, 8) === 'ftyp' && /^(M4A |mp42|isom|M4B )/.test(b.toString('latin1', 8, 12))) return { mime: 'audio/mp4', ext: '.m4a', kind: 'audio' };
   if (b.length >= 4 && b.toString('latin1', 0, 4) === 'fLaC') return { mime: 'audio/flac', ext: '.flac', kind: 'audio' };
   if (b.length >= 4 && b.toString('latin1', 0, 4) === 'ply\n') return { mime: 'application/vnd.ply', ext: '.ply', kind: 'world' };
+  if (b.length >= 4 && b.toString('latin1', 0, 4) === 'glTF') return { mime: 'model/gltf-binary', ext: '.glb', kind: 'world' };
   return null;
 }
 
@@ -419,11 +420,19 @@ function createMediaStore({ roots = CANONICAL_ROOTS, registryFile, now = () => D
     const ext = path.extname(src).toLowerCase();
     if (!KIND_EXT[kind].includes(ext)) throw new Error('output-invalid: extension not allowed for ' + kind);
     const sourceBytes = fs.readFileSync(src);
-    if (kind === 'world') {
+    if (kind === 'world' && ext === '.ply') {
       const header = sourceBytes.slice(0, 64 * 1024).toString('latin1');
       if (!/^ply\n/.test(header) || !/\nelement vertex\s+[1-9][0-9]*/.test(header) || !/\nend_header\n/.test(header)) {
         throw new Error('output-invalid: PLY header is missing a positive vertex count');
       }
+    } else if (kind === 'world' && ext === '.png') {
+      if (!/^\x89PNG/.test(sourceBytes.toString('latin1', 0, 4))) throw new Error('output-invalid: panorama is not PNG data');
+    } else if (kind === 'world' && ext === '.json') {
+      try { JSON.parse(sourceBytes.toString('utf8')); } catch (_) { throw new Error('output-invalid: world manifest is not valid JSON'); }
+    } else if (kind === 'world' && ext === '.pgm') {
+      if (!/^P5\n/.test(sourceBytes.toString('latin1', 0, 3))) throw new Error('output-invalid: depth artifact is not binary PGM');
+    } else if (kind === 'world' && ext === '.obj') {
+      if (!/^(?:#|v\s)/m.test(sourceBytes.toString('utf8', 0, 4096))) throw new Error('output-invalid: collision artifact has no vertices');
     } else if (ext === '.wav') {
       try { require('./voice-audio').parseWav(sourceBytes); }
       catch (e) { throw new Error('output-invalid: ' + e.message); }
@@ -431,7 +440,10 @@ function createMediaStore({ roots = CANONICAL_ROOTS, registryFile, now = () => D
     const head = sourceBytes.slice(0, 64);
     const s = sniff(head);
     const expectedKind = kind === 'voice' || kind === 'music' ? 'audio' : kind;
-    if (!s || s.kind !== expectedKind || s.ext !== (ext === '.jpeg' ? '.jpg' : ext)) throw new Error('output-invalid: content does not match ' + ext);
+    const worldImage = kind === 'world' && ((ext === '.png' && s && s.kind === 'image') || (ext === '.pgm' && sourceBytes.toString('latin1', 0, 3) === 'P5\n'));
+    const worldText = kind === 'world' && ['.json', '.obj'].includes(ext);
+    const worldBinary = kind === 'world' && ext === '.glb' && s && s.ext === '.glb';
+    if ((!s && !worldImage && !worldText && !worldBinary) || (!worldImage && !worldText && !worldBinary && (s.kind !== expectedKind || s.ext !== (ext === '.jpeg' ? '.jpg' : ext)))) throw new Error('output-invalid: content does not match ' + ext);
     const root = path.resolve(roots[kind]);
     fs.mkdirSync(root, { recursive: true });
     const incoming = path.join(root, `.incoming-${crypto.randomBytes(6).toString('hex')}${ext}`);

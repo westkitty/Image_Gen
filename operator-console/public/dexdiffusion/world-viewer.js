@@ -66,14 +66,14 @@ async function loadProject() {
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || `project request failed (${response.status})`);
   state.project = body;
-  const artifact = Array.isArray(body.artifacts?.finalPly) ? body.artifacts.finalPly[0] : body.artifacts?.finalPly;
-  if (!artifact?.url) throw new Error('World project has no final PLY artifact');
+  const artifact = body.viewerArtifact || (Array.isArray(body.artifacts?.finalPly) ? body.artifacts.finalPly[0] : body.artifacts?.finalPly);
+  if (!artifact?.url) throw new Error('World project has no viewer-ready PLY artifact');
   const worker = body.workerEvidence?.['sharp-reconstruct'];
   if (renderer) {
     await loadSplat(new URL(artifact.url, location.origin).href);
-    setStatus(body.mode === 'quick3d' ? 'Quick 3D World' : 'Complete 360 World', `${body.id} · ${body.status} · PLY ${artifact.bytes || 'unknown'} bytes · ${worker?.vertices || 'unknown'} vertices`);
+    setStatus(body.mode === 'quick3d' ? 'Quick 3D World' : 'Complete 360 World · Progressive Preview', `${body.id} · ${body.status} · ${artifact.artifact_id} · PLY ${artifact.bytes || 'unknown'} bytes · ${worker?.vertices || 'coarse scaffold'} vertices`);
   } else {
-    setStatus('World artifact ready', `${body.id} · ${body.status} · PLY ${artifact.bytes || 'unknown'} bytes · WebGL is unavailable in this browser`, true);
+    setStatus('World artifact ready', `${body.id} · ${body.status} · ${artifact.artifact_id} · PLY ${artifact.bytes || 'unknown'} bytes · WebGL is unavailable in this browser`, true);
   }
   fetch('/api/world/projects/' + encodeURIComponent(projectId), { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ viewerState: { opened: true, lastArtifactId: artifact.artifact_id } }) }).catch(() => {});
 }

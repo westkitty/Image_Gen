@@ -16,7 +16,7 @@ test('World Project creates, persists, reloads, and records lineage/stages', () 
   const clock = (() => { let t = 1700000000000; return () => ++t; })();
   const store = createWorldStore({ root, now: clock });
   const p = store.create({ mode: 'quick3d', sourceArtifactId: 'source.png', sourceImage: { artifactId: 'source.png' }, parameters: { seed: 42 } });
-  assert.equal(p.schema, 'dexdiffusion.world_project.v1');
+  assert.equal(p.schema, 'dexdiffusion.world_project.v2');
   assert.equal(p.stages.source.status, 'READY');
   store.updateStage(p.id, 'reconstruct', { status: 'RUNNING', worker: 'sharp-reconstruct' });
   store.attachArtifact(p.id, 'finalPly', { artifact_id: 'scene.ply', parent: 'source.png' }, { stage: 'finalize' });
@@ -58,4 +58,45 @@ test('world media store accepts a validated PLY and rejects a fake output', () =
   const bad = path.join(root, 'bad.ply'); fs.writeFileSync(bad, 'not a ply');
   assert.throws(() => store.finalize(bad, { kind: 'world', base: 'bad' }), /output-invalid/);
   assert.equal(crypto.createHash('sha256').update(body).digest('hex'), rec.sha256);
+});
+
+test('World Project retry invalidates only descendants and preserves ancestors', () => {
+  const root = temp();
+  const store = createWorldStore({ root });
+  const p = store.create({ mode: 'complete360', sourceArtifactId: 'source.png' });
+  store.attachArtifact(p.id, 'panorama', { artifact_id: 'pano.png', parent: 'source.png' }, { stage: 'complete' });
+  store.updateStage(p.id, 'complete', { status: 'READY' });
+  store.attachArtifact(p.id, 'depthMaps', { artifact_id: 'depth.pgm', parent: 'pano.png' }, { stage: 'depth360' });
+  store.updateStage(p.id, 'depth360', { status: 'READY' });
+  store.retry(p.id, 'depth360');
+  const saved = store.get(p.id);
+  assert.equal(saved.stages.complete.status, 'READY');
+  assert.equal(saved.artifacts.panorama.artifact_id, 'pano.png');
+  assert.equal(saved.stages.depth360.status, 'NOT_STARTED');
+  assert.deepEqual(saved.artifacts.depthMaps, []);
+  assert.equal(saved.stages.fusion.status, 'NOT_STARTED');
+  assert.ok(saved.manifest.invalidated.includes('fusion'));
+});
+
+test('Complete 360 projects expose progressive geometry, rig, runtime, and quality slots', () => {
+  const root = temp();
+  const store = createWorldStore({ root });
+  const p = store.create({ mode: 'complete360', sourceArtifactId: 'source.png' });
+  assert.equal(p.artifacts.coarseGeometry, null);
+  assert.equal(p.artifacts.cameraRig, null);
+  assert.equal(p.artifacts.runtimeSplat, null);
+  assert.equal(p.artifacts.collisionMesh, null);
+  assert.equal(p.artifacts.qualityReport, null);
+  store.attachArtifact(p.id, 'coarseGeometry', { artifact_id: 'coarse.ply', parent: 'source.png' }, { stage: 'project' });
+  store.attachArtifact(p.id, 'collisionMesh', { artifact_id: 'collision.obj', parent: 'coarse.ply' }, { stage: 'runtime' });
+  store.attachArtifact(p.id, 'qualityReport', { artifact_id: 'quality.json', parent: 'coarse.ply' }, { stage: 'quality' });
+  store.updateStage(p.id, 'project', { status: 'READY' });
+  store.updateStage(p.id, 'runtime', { status: 'READY' });
+  store.updateStage(p.id, 'quality', { status: 'READY' });
+  store.retry(p.id, 'project');
+  const saved = store.get(p.id);
+  assert.equal(saved.artifacts.coarseGeometry, null);
+  assert.equal(saved.artifacts.collisionMesh, null);
+  assert.equal(saved.artifacts.qualityReport, null);
+  assert.equal(saved.stages.complete.status, 'NOT_STARTED');
 });

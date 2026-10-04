@@ -3797,7 +3797,9 @@ app.get('/api/world/projects/:id', (req, res) => {
     const ids = Array.isArray(value) ? value : value ? [value] : [];
     artifacts[slot] = ids.map(id => { const r = mediaStore.resolve(typeof id === 'string' ? id : id.artifact_id); return r ? { artifact_id: r.artifact_id, url: r.safe_url, mime: r.mime, bytes: r.bytes, sha256: r.sha256 } : id; });
   }
-  res.json({ ...p, artifacts });
+  const first = slot => Array.isArray(artifacts[slot]) ? artifacts[slot][0] : artifacts[slot];
+  const viewerArtifact = first('finalPly') || first('runtimeSplat') || first('coarseGeometry') || first('perViewSplats');
+  res.json({ ...p, artifacts, viewerArtifact: viewerArtifact || null });
 });
 app.patch('/api/world/projects/:id', (req, res) => {
   const p = worldStore.get(req.params.id);
@@ -3814,8 +3816,7 @@ app.post('/api/world/projects', (req, res) => {
 app.post('/api/world/projects/:id/retry', (req, res) => {
   const p = worldStore.get(req.params.id);
   if (!p) return res.status(404).json({ error: 'World project not found' });
-  if (p.mode !== 'quick3d') return res.status(409).json({ error: 'Complete 360 retry is not yet integrated', gate: 'worker-unavailable' });
-  const result = worldBridge.start('quick3d', { sourceArtifactId: p.sourceArtifactId, parameters: p.parameters });
+  const result = worldBridge.start(p.mode, { sourceArtifactId: p.sourceArtifactId, parameters: p.parameters });
   if (result.error) return res.status(result.status || 400).json(result);
   res.status(202).json({ ...result, retriedFrom: p.id });
 });
