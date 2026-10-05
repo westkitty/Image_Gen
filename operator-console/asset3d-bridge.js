@@ -152,7 +152,7 @@ printf 'DEX_3D_ASSETS runtime=%s shape_small=%s shape_large=%s paint_rgb=%s host
       const command = `set -uo pipefail
 ROOT=${q(ROOT)}; D=${q(remoteJobDir)}; OUT=${q(remoteOutput)}
 if [ ${q(mode)} = textured ]; then
-  "$ROOT/.build/out/Products/Release/hy3d" generate "$D/input/${staged.file}" -o "$OUT" --shape-weights ${shapeWeights} --paint-weights ${q(PAINT_RGB)}
+  "$ROOT/.build/out/Products/Release/hy3d" generate "$D/input/${staged.file}" -o "$OUT" --shape-weights ${shapeWeights} --paint-weights ${q(PAINT_RGB)} --no-superres
 else
   "$ROOT/.build/out/Products/Release/hy3d" shape "$D/input/${staged.file}" -o "$OUT" --weights ${shapeWeights}
 fi
