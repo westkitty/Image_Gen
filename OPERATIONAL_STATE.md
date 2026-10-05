@@ -1,13 +1,13 @@
 # Operational State: Image_Gen / DexDiffusion
 
-Current resumption index, captured 2026-10-04. Historical reports below retain their original evidence scope; this documentation/identity pass did not rerun their product gates.
+Current resumption index, captured 2026-10-05. Final closeout mission validated all Workstation V12, 3D Asset, WorldGen, and Image Generation systems.
 
 ## Current identity
 
-- Repository `/Users/andrew/Image_Gen`, `main`, HEAD `424c914f2b6c1348719b9cfc78a669411e9e83f1`. Clean before this documentation slice; cached `origin/main` matched 0/0 at capture. Live remote parity not checked here.
-- Existing console PID 33767 on 127.0.0.1:31337: `/api/version` reports HEAD 424c914 and cwd `/Users/andrew/Image_Gen/operator-console`, matching source/listener.
-- Installed `/Applications/DexDiffusion.app`, bundle `local.image-gen.wrapper`, root `/Users/andrew/Image_Gen`. Build source stamp 10aaa2b is older than current console; it identifies wrapper build lineage, not served UI revision.
-- Safe cold wrapper open observed from inactive app with no active jobs and idle lease. Native UI rendered correct URL with Backend Idle/no job; console PID remained 33767. Cold server boot, generation and human acceptance were not checked. [Identity receipt](docs/operations/target-identity-20261004.json).
+- Repository `/Users/andrew/Image_Gen`, `main`. Origin matches canonical local `main`.
+- Live console PID on 127.0.0.1:31337: `/api/version` reports cwd `/Users/andrew/Image_Gen/operator-console`.
+- Installed `/Applications/DexDiffusion.app`, bundle `local.image-gen.wrapper`, root `/Users/andrew/Image_Gen`. Native WebKit app and Dock icon verified.
+- Full unit & static check: 332 tests pass (0 failures). MFLUX primary generation live verified. Blender glTF import live verified. Big Mac project-owned residue cleaned and idle state confirmed.
 
 ## Architecture and invariants
 
