@@ -47,7 +47,7 @@ Excluded (unless Andrew explicitly escalates later):
 - Repo: `$HOME/stable-diffusion.cpp`, pinned clean at commit `7f0e728`.
 - Out-of-repo build: `$HOME/sdcpp-staging/builds/build-metal-proof-20260620-143223` (pointer in `$HOME/sdcpp-staging/build_dir.txt`).
 - Binaries: `<build>/bin/sd-cli`, `<build>/bin/sd-server` (server flags `--listen-ip`, `--listen-port`).
-- Model: `$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors` (4,265,146,304 bytes).
+- Model: `/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors` (4,265,146,304 bytes).
 - CLI proof PASS; server proof PASS via `/v1/images/generations` (OpenAI), `/sdapi/v1/txt2img` (SDAPI), `/sdcpp/v1/img_gen` (native async, optional).
 - Metal confirmed via `ggml_metal_device_init: GPU name: MTL0 (Apple M4)`.
 - Port 7860 occupied by unrelated Python (do not kill); proof used remote 7870 / local 17870.
@@ -105,7 +105,7 @@ Commands Run:
 ```sh
 # local tool check + live remote re-verification
 for t in ssh scp jq base64 lsof file date shasum tmux; do command -v "$t"; done
-ssh westcat 'hostname; echo $HOME; cd "$HOME/stable-diffusion.cpp" && git rev-parse --short HEAD && git status --short; cat "$HOME/sdcpp-staging/build_dir.txt"; test -x "<build>/bin/sd-cli"; test -x "<build>/bin/sd-server"; test -s "$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors"'
+ssh westcat 'hostname; echo $HOME; cd "$HOME/stable-diffusion.cpp" && git rev-parse --short HEAD && git status --short; cat "$HOME/sdcpp-staging/build_dir.txt"; test -x "<build>/bin/sd-cli"; test -x "<build>/bin/sd-server"; test -s "/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors"'
 mkdir -p .../sdcpp-workflow/{config,bin,docs,runs,logs,state}
 ```
 

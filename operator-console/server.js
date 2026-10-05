@@ -407,7 +407,7 @@ for (const [id, version, filename] of [
 CONTROLLED_TARGETS.push({ ...CONTROLLED_TARGETS.find(t => t.id === 'sd15'),
   id: 'sd15-auto-v1-5-pruned-emaonly', label: 'Stable Diffusion 1.5 (same-checkpoint alias)',
   aliasOf: 'sd15', modelFile: 'v1-5-pruned-emaonly.safetensors',
-  modelPath: '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors',
+  modelPath: '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors',
   caveat: 'Alias of sd15 using the exact same canonical checkpoint; no duplicate weights.' });
 const CONTROLLED_TARGET_BY_ID = CONTROLLED_TARGETS.reduce((acc, target) => {
   acc[target.id] = target;
@@ -447,7 +447,7 @@ function buildDiscoveredTargets(assets) {
       mode: 'auto-discovered generation',
       route: '/api/actions/generate-controlled',
       caveat: `Auto-discovered ${typePrefix.toUpperCase()} checkpoint. No individual proof run; experimental.`,
-      modelPath: filename === 'v1-5-pruned-emaonly.safetensors' ? '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors' : fullPath,
+      modelPath: filename === 'v1-5-pruned-emaonly.safetensors' ? '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors' : fullPath,
       aliasOf: filename === 'v1-5-pruned-emaonly.safetensors' ? 'sd15' : undefined,
       modelFile: filename,
       defaultWidth: isSDXL ? 1024 : 512,
@@ -904,7 +904,7 @@ function readSdcppEnv(key, fallback) {
 }
 const SSH_TARGET_NAME = readSdcppEnv('SSH_TARGET', 'westcat');
 const TARGET_MODELS = targetModelMap(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-controlled-generate.sh'),
-  readSdcppEnv('REMOTE_MODEL', '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors'));
+  readSdcppEnv('REMOTE_MODEL', '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors'));
 const evidenceStore = createEvidenceStore(path.join(STATE_DIR, 'capability-evidence.json'));
 let assetCache = null;
 async function refreshAssets() {
@@ -3938,7 +3938,7 @@ app.get('/api/doctor', async (req, res) => {
     add('MFLUX runtime', a.mfluxRuntime ? 'PASS' : 'FAIL', 'internal venv');
     add('MFLUX model (FLUX.2 Klein 4B 4-bit)', a.mfluxModel ? 'PASS' : 'FAIL', '$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit');
     add('SDCPP sd-cli', a.sdCli ? 'PASS' : 'FAIL', 'stable-diffusion.cpp 7f0e728');
-    add('SD1.5 model', a.sd15Model ? 'PASS' : 'FAIL', '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors');
+    add('SD1.5 model', a.sd15Model ? 'PASS' : 'FAIL', '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors');
     add('Real-ESRGAN model', a.esrganModel ? 'PASS' : 'FAIL', 'RealESRGAN_x4plus.pth');
     const missing = Object.entries(a.models || {}).filter(([, v]) => v === false).length;
     add('Configured SDCPP targets', missing ? 'WARN' : 'PASS', missing ? `${missing} configured model file(s) absent (targets report model-missing)` : 'all present');

@@ -40,7 +40,7 @@ const SYSTEM = {
     binary: '$HOME/stable-diffusion.cpp/build/bin/sd-cli (build dir in ~/sdcpp-staging/build_dir.txt)',
     build: 'cmake -S . -B build -DSD_METAL=ON -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release -j 8 (cmake via uvx)',
     models: [
-      { use: 'SD1.5 txt2img / img2img / inpaint / hires-fix', path: '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors', source: 'huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5', license: 'CreativeML OpenRAIL-M', sha256: '6ce0161689b3853acaa03779ec93eafe75a02f4ced659bee03f50797806fa2fa' },
+      { use: 'SD1.5 txt2img / img2img / inpaint / hires-fix', path: '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors', source: 'huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5', license: 'CreativeML OpenRAIL-M', sha256: '6ce0161689b3853acaa03779ec93eafe75a02f4ced659bee03f50797806fa2fa' },
       { use: 'Real-ESRGAN x4 upscale', path: '/Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth', source: 'github.com/xinntao/Real-ESRGAN releases v0.1.0', license: 'BSD-3-Clause', sha256: '4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1' },
     ],
     otherTargets: 'Available source checkpoints are reported by live capability probes. One validated SDCPP source is selected through the atomic managed secondary slot; FLUX is excluded.',

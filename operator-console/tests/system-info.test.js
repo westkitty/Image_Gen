@@ -39,7 +39,7 @@ test('system-info reports primary target, canonical storage, derived capabilitie
       launcher: async () => ({ appPath: SYSTEM.launcher.appPath, installed: false, dockEntries: null }),
     },
     getAssets: () => ({ reachable: true, mfluxRuntime: true, mfluxModel: true, sdCli: false, sd15Model: false, esrganModel: false,
-      secondaryModelState: 'active', activeSecondaryModel: 'sd15', secondarySourcePath: '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors',
+      secondaryModelState: 'active', activeSecondaryModel: 'sd15', secondarySourcePath: '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors',
       secondaryActivePath: '$HOME/Library/Caches/DexDiffusion/secondary-model/current/model.safetensors', secondaryLastSwitchResult: 'pass' }),
     getEvidence: () => ({ 'txt2img-mflux': { lastPass: { at: '2026-09-25T23:16:00Z', runId: 'r1' } } }),
   });

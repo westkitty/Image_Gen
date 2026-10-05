@@ -43,9 +43,9 @@ test('evidence comes only from finished real jobs; validation failures do not ma
 });
 
 test('targets: missing model or runtime can never look ready; MFLUX stays primary', () => {
-  const models = targetModelMap(path.join(BIN, 'sdcpp-controlled-generate.sh'), '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors');
-  assert.equal(models.sd15, '$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors');
-  assert.match(models['sdxl-base'], /^\$HOME\/sdcpp-staging\/models\/sd_xl_base_1\.0\.safetensors$/);
+  const models = targetModelMap(path.join(BIN, 'sdcpp-controlled-generate.sh'), '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors');
+  assert.equal(models.sd15, '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors');
+  assert.match(models['sdxl-base'], /^\/Volumes\/wc2tb\/ImageGen\/checkpoints\/sdxl\/sd_xl_base_1\.0\.safetensors$/);
   const assets = { ...ALL, models: { [models.sd15]: true, [models['sdxl-base']]: false } };
   assert.equal(targetRuntime({ id: 'sd15' }, assets, models), 'available');
   assert.equal(targetRuntime({ id: 'sdxl-base' }, assets, models), 'model-missing');

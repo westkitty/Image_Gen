@@ -165,7 +165,7 @@ case "$ARG_TARGET" in
     TARGET_MODE="proofed controlled generation"
     TARGET_STATUS="proofed"
     TARGET_CAVEAT="Controlled proofed path; not full A1111 parity."
-    TARGET_MODEL_PATH="$SDXL_MODEL_ROOT/sd_xl_base_1.0.safetensors"
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/sd_xl_base_1.0.safetensors"
     TARGET_DEFAULT_WIDTH=1024
     TARGET_DEFAULT_HEIGHT=1024
     TARGET_DEFAULT_STEPS=20
@@ -374,7 +374,7 @@ case "$ARG_TARGET" in
     TARGET_MODE="proofed controlled generation"
     TARGET_STATUS="proofed"
     TARGET_CAVEAT="Controlled proofed path; not full A1111 parity."
-    TARGET_MODEL_PATH="$SDXL_MODEL_ROOT/sd_xl_turbo_1.0_fp16.safetensors"
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors"
     TARGET_MAX_STEPS=4
     TARGET_DEFAULT_STEPS=4
     # sd.cpp 7f0e728: cfg 0 = unconditioned (ignores the prompt); distilled models use cfg 1.
@@ -850,7 +850,7 @@ case "$ARG_TARGET" in
     REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} --sampling-method ${TARGET_SAMPLER:-euler_a} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   sdxl-base)
-    TARGET_MODEL_PATH="$SDXL_MODEL_ROOT/sd_xl_base_1.0.safetensors"
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/sd_xl_base_1.0.safetensors"
     remote_test "test -s \"$TARGET_MODEL_PATH\"" || controlled_fail "model-present" "SDXL base checkpoint is missing or empty: $TARGET_MODEL_PATH"
     REMOTE_MODEL_BYTES="$(ssh_remote "stat -f %z \"$TARGET_MODEL_PATH\" 2>/dev/null || wc -c < \"$TARGET_MODEL_PATH\" 2>/dev/null || printf '0'" 2>&1 | tail -n 1 | tr -d '[:space:]')"
     case "$REMOTE_MODEL_BYTES" in ''|*[!0-9]*) controlled_fail "model-size" "Could not read a numeric size for $TARGET_MODEL_PATH." ;; esac
@@ -866,7 +866,7 @@ case "$ARG_TARGET" in
     REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   sdxl-turbo)
-    TARGET_MODEL_PATH="$SDXL_MODEL_ROOT/sd_xl_turbo_1.0_fp16.safetensors"
+    TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors"
     remote_test "test -s \"$TARGET_MODEL_PATH\"" || controlled_fail "model-present" "SDXL Turbo checkpoint is missing or empty: $TARGET_MODEL_PATH"
     REMOTE_MODEL_BYTES="$(ssh_remote "stat -f %z \"$TARGET_MODEL_PATH\" 2>/dev/null || wc -c < \"$TARGET_MODEL_PATH\" 2>/dev/null || printf '0'" 2>&1 | tail -n 1 | tr -d '[:space:]')"
     case "$REMOTE_MODEL_BYTES" in ''|*[!0-9]*) controlled_fail "model-size" "Could not read a numeric size for $TARGET_MODEL_PATH." ;; esac

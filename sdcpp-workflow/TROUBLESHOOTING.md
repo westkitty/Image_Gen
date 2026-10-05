@@ -42,7 +42,7 @@ broad-kill, never touch port 7860's owner.**
 
 ## Model missing
 - Symptom: `model` gate.
-- Why: `$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors` absent/empty.
+- Why: `/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors` absent/empty.
 - Fix: stage it manually on BigMac (the workflow never downloads weights). Expected size ~4,265,146,304 bytes.
 
 ## `--backend metal` failure

@@ -22,7 +22,7 @@ verified PNGs back to **this MacBook**. It packages the one-time proof
 - BigMac: Apple M4 Mac mini, 32 GB, macOS 26.5.1, hostname `bigmac`, `$HOME=/Users/bigmac`.
 - Repo `$HOME/stable-diffusion.cpp` pinned clean at commit `7f0e728`.
 - Out-of-repo Metal build; pointer at `$HOME/sdcpp-staging/build_dir.txt`.
-- Model `$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors`.
+- Model `/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors`.
 - CLI + 3 server APIs proved working. Full details in `docs/proven-state.md`.
 
 ## Requirements
