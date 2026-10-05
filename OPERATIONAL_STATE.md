@@ -69,3 +69,17 @@ The complete original 541-line state is byte-identical in [immutable history](do
 - **F14 (Scoped Cancellation)**: Immediate queued job cancellation, local PID-verified graceful termination (`SIGTERM` -> `SIGKILL`), and remote job-scoped identity marker verification failing closed against killing unrelated processes.
 - **F15 (Decomposition)**: Modularized backend services (`event-bus.js`, `operational-jobs.js`, `timing-store.js`, `library-index.js`, `collections-store.js`, `recipes-store.js`, `macro-store.js`, `repro-bundle.js`, `thumbnail-service.js`, `cancellation.js`) and unified frontend live engine (`public/dexdiffusion-v12.js`).
 - Test suite expanded from 109 to 128 tests (100% pass, zero regressions, full privacy canary verification).
+
+
+## Approved UX direction — Concept A — 2026-10-05
+
+- User approved **Concept A — Single-Canvas Workstation** as the governing UI/UX direction for the next DexDiffusion uplift.
+- This is a **planned design/implementation direction, not implemented or runtime-verified behavior**. Existing verified V12, generation, 3D, World, storage, privacy, and operational behavior remains the protected baseline until each migration slice is implemented and revalidated.
+- Governing planning artifacts:
+  - [Concept A PRD](docs/concept-a/DEXDIFFUSION_CONCEPT_A_PRD.md)
+  - [Concept A UX specification](docs/concept-a/DEXDIFFUSION_CONCEPT_A_UX_SPEC.md)
+  - [Concept A implementation checklist](docs/concept-a/DEXDIFFUSION_CONCEPT_A_IMPLEMENTATION_CHECKLIST.md)
+  - [Concept A agent handoff](docs/concept-a/DEXDIFFUSION_CONCEPT_A_AGENT_HANDOFF.md)
+- The approved UX principles are: one shared application shell; persistent global navigation; distinct but restrained color identity per module; contextual right inspector; global Queue/History; progressive disclosure; and one reusable contextual Help/Tutorial modal with Quick Start, What It Does, Steps, Tips, and FAQ.
+- The first recommended implementation slice is **shared foundation + Workstation + Generate migration**, preserving current capability-driven controls and V12 job/event infrastructure. Music and Drama mockups are target UX structures only; no planned control becomes enabled without a real backend contract and validation.
+- Future implementation must preserve unrelated dirty/untracked files and must not interpret this planning approval as authorization to delete history, alter model storage, replace backends, or weaken privacy/capability gates.
