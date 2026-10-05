@@ -35,7 +35,7 @@ function atomicWrite(file, value) {
   fs.renameSync(tmp, file);
 }
 
-function createAsset3dBridge({ jobStore, arbiter, staging, mediaStore, imageStore, stateDir, sshTarget = 'westcat', log = () => {} }) {
+function createAsset3dBridge({ jobStore, arbiter, staging, mediaStore, imageStore, stateDir = path.join(__dirname, '..', 'sdcpp-workflow', 'state'), sshTarget = 'westcat', log = () => {} }) {
   const evidenceFile = path.join(stateDir, '3d-capability-evidence.json');
 
   function readEvidence() {
@@ -219,14 +219,33 @@ printf 'DEX_3D_PASS mode=%s output=%s bytes=%s sha256=%s magic=%s engine=hunyuan
     return { job_id: job.job_id, status: job.status, mode, source_artifact_id: source.id };
   }
 
-  function openInBlender(artifactId) {
+  function openInBlender(artifactId, options = {}) {
     const rec = mediaStore.resolve(String(artifactId || ''));
-    const blender = ['/Applications/Blender.app/Contents/MacOS/Blender', '/usr/local/bin/blender', '/opt/homebrew/bin/blender'].find(p => fs.existsSync(p));
-    if (!rec || rec.kind !== 'world' || path.extname(rec.path).toLowerCase() !== '.glb') return { error: 'GLB artifact not found', status: 404 };
-    if (!blender) return { error: 'Blender is not installed', status: 409 };
-    const child = spawn('open', ['-a', blender.includes('/Applications/') ? 'Blender' : blender, rec.path], { detached: true, stdio: 'ignore' });
-    child.unref();
-    return { ok: true, artifact_id: rec.artifact_id, path: rec.path };
+    if (!rec || rec.kind !== 'world' || path.extname(rec.path).toLowerCase() !== '.glb') {
+      return { error: 'GLB artifact not found', status: 404 };
+    }
+    const candidates = options.blenderBin ? [options.blenderBin] : ['/Applications/Blender.app/Contents/MacOS/Blender', '/usr/local/bin/blender', '/opt/homebrew/bin/blender'];
+    const blender = candidates.find(p => fs.existsSync(p));
+    if (!blender) {
+      return { error: 'Blender is not installed', status: 409 };
+    }
+    const helperScript = options.helperScript || path.join(__dirname, 'blender-import-glb.py');
+    const receiptPath = options.receiptPath || path.join(os.tmpdir(), 'dexdiffusion-blender-receipts', `${rec.artifact_id}-${Date.now()}.json`);
+    const args = ['--python', helperScript, '--', rec.path, receiptPath];
+    const spawnFn = options.spawn || spawn;
+    const child = spawnFn(blender, args, { detached: true, stdio: 'ignore' });
+    if (child && typeof child.unref === 'function') {
+      child.unref();
+    }
+    return {
+      ok: true,
+      blender,
+      artifact_id: rec.artifact_id,
+      artifact: rec.path,
+      path: rec.path,
+      action: 'import-glb',
+      receipt_path: receiptPath
+    };
   }
 
   return { workers, start, openInBlender, constants: { ROOT, BIN, SHAPE_SMALL, SHAPE_LARGE, PAINT_RGB, UPSTREAM_REPOSITORY, UPSTREAM_COMMIT, evidenceFile } };
