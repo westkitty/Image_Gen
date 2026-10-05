@@ -83,3 +83,10 @@ The complete original 541-line state is byte-identical in [immutable history](do
 - The approved UX principles are: one shared application shell; persistent global navigation; distinct but restrained color identity per module; contextual right inspector; global Queue/History; progressive disclosure; and one reusable contextual Help/Tutorial modal with Quick Start, What It Does, Steps, Tips, and FAQ.
 - The first recommended implementation slice is **shared foundation + Workstation + Generate migration**, preserving current capability-driven controls and V12 job/event infrastructure. Music and Drama mockups are target UX structures only; no planned control becomes enabled without a real backend contract and validation.
 - Future implementation must preserve unrelated dirty/untracked files and must not interpret this planning approval as authorization to delete history, alter model storage, replace backends, or weaken privacy/capability gates.
+
+### Implementation state — 2026-10-05
+
+- Concept A shared shell, Workstation, Generate, Edit, Media, Voice, Music, 3D, World, Drama, and Settings/Help surfaces are implemented in the current working tree through `operator-console/public/dexdiffusion/concept-a.js`, composing the existing capability-backed workspaces rather than replacing them.
+- Final validation is complete: Edit 24/24, interaction matrix 180/180, Voice/Drama 8/8, Detailer 11/11, `npm run check` passed, and `npm test` passed 332/332 with zero failures and zero skips.
+- Live route evidence on `127.0.0.1:31337/dexdiffusion/` confirms Concept A navigation, Generate, contextual Help with Escape close, command palette, and the V12 global Job Center. The active runtime is this checkout and was restarted through the project lifecycle owner for final revision identity verification.
+- Concept A is publication-complete for this repository slice. The validated source and directly necessary browser-harness fixes are committed and pushed; the exact commit and local/remote parity are recorded in the closure receipt.

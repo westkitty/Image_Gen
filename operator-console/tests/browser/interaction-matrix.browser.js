@@ -23,8 +23,9 @@ async function configure(page, base, screen, shell) {
   const initial=page.url()==='about:blank';
   if(initial){
   const pending={count:0,last:Date.now()};network.set(page,pending);
-  page.on('request',()=>{pending.count++;pending.last=Date.now();});
-  const finish=()=>{pending.count=Math.max(0,pending.count-1);pending.last=Date.now();};
+  const isEventStream = request => { try { return new URL(request.url()).pathname === '/api/events'; } catch (_) { return false; } };
+  page.on('request',request=>{if(isEventStream(request))return;pending.count++;pending.last=Date.now();});
+  const finish=request=>{if(isEventStream(request))return;pending.count=Math.max(0,pending.count-1);pending.last=Date.now();};
   page.on('requestfinished',finish);page.on('requestfailed',finish);
   await installImageFixtures(page, { [fixture]: { w: 640, h: 384, meta: { target: 'sd15', seed: 42, steps: 20, operation: 'txt2img', prompt_saved: false } } });
   await page.route('**/api/library/images**', r => r.fulfill({ json: { total: 1, items: [{ id: fixture, url: '/api/images/' + fixture, width: 640, height: 384, keeper: false, meta: { target: 'sd15', seed: 42 }, children: [], ancestors: [] }] } }));
@@ -38,6 +39,7 @@ async function configure(page, base, screen, shell) {
     if (!['GET', 'HEAD'].includes(r.request().method())) return r.fulfill({ status: 409, json: { error: 'Matrix is read-only', stage: 'test-read-only' } });
     const url=new URL(r.request().url()),key=url.pathname+url.search;
     if(/^\/api\/(images|library|run-index|runs|media\/library)/.test(url.pathname))return r.fallback();
+    if(url.pathname === '/api/events')return r.fallback();
     // Snapshot unchanged read-only capability/worker/config endpoints once,
     // avoiding 180 duplicate remote status probes. Every cell renders real UI.
     if(!apiSnapshots.has(key))apiSnapshots.set(key,(async()=>{const response=await r.fetch({timeout:20000});return{status:response.status(),headers:response.headers(),body:await response.body()};})());

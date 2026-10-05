@@ -961,7 +961,7 @@
               background: 'rgba(4,8,16,.85)', backdropFilter: 'blur(6px)',
               border: '1px solid rgba(148,163,184,.2)', borderRadius: 6,
               padding: '6px 10px', display: 'flex', justifyContent: 'space-between',
-              alignItems: 'center', fontSize: 11, color: '#e2e8f0', fontFamily: "'IBM Plex Mono',monospace"
+              alignItems: 'center', fontSize: 11, color: '#e2e8f0', fontFamily: "'IBM Plex Mono',monospace", pointerEvents: 'none'
             }
           },
             h('span', null, [

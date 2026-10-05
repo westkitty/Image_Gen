@@ -5,8 +5,8 @@
 
 class Component extends DCLogic {
   state = {
-    version: (() => { const v = Number(localStorage.getItem('dex_version')); return v === 2 || v === 3 ? v : 1; })(),
-    screens: (() => { let s = 'create'; try { s = sessionStorage.getItem('dex_screen') || 'create'; } catch {} return { 1: s, 2: s, 3: s }; })(),
+    version: (() => { const v = Number(localStorage.getItem('dex_version')); return v === 1 || v === 2 || v === 3 || v === 4 ? v : 4; })(),
+    screens: (() => { let s = 'create'; try { s = sessionStorage.getItem('dex_screen') || 'create'; } catch {} let ca = 'workstation'; try { ca = sessionStorage.getItem('dex_concept_screen') || 'workstation'; } catch {} return { 1: s, 2: s, 3: s, 4: ca }; })(),
     // Create
     target: 'sd15',
     prompt: '', negPrompt: '',
@@ -670,7 +670,7 @@ class Component extends DCLogic {
   }
 
   setVersion(v) { try { localStorage.setItem('dex_version', String(v)); } catch {} this.setState({ version: v }); }
-  setScreen(s) { const { version, screens } = this.state; try { sessionStorage.setItem('dex_screen', s); } catch {} this.setState({ screens: { ...screens, [version]: s } }); }
+  setScreen(s) { const { version, screens } = this.state; try { sessionStorage.setItem(version === 4 ? 'dex_concept_screen' : 'dex_screen', s); } catch {} this.setState({ screens: { ...screens, [version]: s } }); }
 
   // ── Models — load from /api/capabilities & /api/models ───────
   async loadModels() {
@@ -2038,9 +2038,9 @@ class Component extends DCLogic {
 
     return {
       version, versionStr: String(version), screen, compactModeStr: String(s.compactMode),
-      isV1: version===1, isV2: version===2, isV3: version===3,
-      isV1Str: String(version===1), isV2Str: String(version===2), isV3Str: String(version===3),
-      setV1: ()=>this.setVersion(1), setV2: ()=>this.setVersion(2), setV3: ()=>this.setVersion(3),
+      isV1: version===1, isV2: version===2, isV3: version===3, isV4: version===4, isLegacy: version !== 4,
+      isV1Str: String(version===1), isV2Str: String(version===2), isV3Str: String(version===3), isV4Str: String(version===4),
+      setV1: ()=>this.setVersion(1), setV2: ()=>this.setVersion(2), setV3: ()=>this.setVersion(3), setV4: ()=>this.setVersion(4),
       isCreate: screen==='create', isBatch: screen==='batch', isEdit: screen==='edit',
       isEnhance: screen==='enhance', isLibrary: screen==='library', isWorld: screen==='world', is3d: screen==='3d', isModels: screen==='models', isSystem: screen==='system',
       isCreateStr: String(screen==='create'), isBatchStr: String(screen==='batch'),

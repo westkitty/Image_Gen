@@ -152,6 +152,7 @@
     V12.queuedJobCount = (snap.queue || []).length;
 
     renderHud();
+    if (window.__dex && typeof window.__dex.caSync === 'function') window.__dex.caSync();
     if (V12.jobCenterOpen) {
       renderJobCenterContent();
     }
@@ -276,6 +277,7 @@
       drawer.style.right = '-460px';
     }
   }
+  V12.toggleJobCenter = toggleJobCenter;
 
   function renderJobCenterContent() {
     const container = document.getElementById('v12-jc-content');
@@ -465,6 +467,7 @@
       overlay.style.display = 'none';
     }
   }
+  V12.toggleCommandPalette = toggleCommandPalette;
 
   function renderPaletteResults(query) {
     const container = document.getElementById('v12-palette-results');

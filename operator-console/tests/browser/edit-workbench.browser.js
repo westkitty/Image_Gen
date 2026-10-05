@@ -170,6 +170,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
         assert.ok(Math.abs(g.im.w - w) < 1 && Math.abs(g.im.h - h) < 1, '100% uses actual pixels even when Fit enlarges a small source');
         await page.getByRole('button', { name: 'Fit', exact: true }).click();
         const paint = async (ix, iy) => { // drag a short stroke starting at image pixel (ix,iy)
+          await page.locator('[data-mask-viewport]').scrollIntoViewIfNeeded();
           const gg = await geo(); const s = gg.im.w / w;
           const sx = gg.im.x + ix * s, sy = gg.im.y + iy * s;
           await page.mouse.move(sx, sy); await page.mouse.down(); await page.mouse.move(sx + 6, sy + 6, { steps: 3 }); await page.mouse.up();
