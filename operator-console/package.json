@@ -13,7 +13,8 @@
     "test:browser": "node tests/browser/edit-workbench.browser.js && node tests/browser/voice-drama.browser.js",
     "test:browser:edit": "node tests/browser/edit-workbench.browser.js",
     "test:browser:voice": "node tests/browser/voice-drama.browser.js",
-    "test:browser:matrix": "node tests/browser/interaction-matrix.browser.js"
+    "test:browser:matrix": "node tests/browser/interaction-matrix.browser.js",
+    "test:browser:concept-a": "node tests/browser/concept-a-refinement.browser.js"
   },
   "keywords": [],
   "author": "",
