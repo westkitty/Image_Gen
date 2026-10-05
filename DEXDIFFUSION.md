@@ -230,7 +230,7 @@ used for SD1.5 txt2img, img2img, inpaint, hires-fix, batch and Real-ESRGAN.
 | Checkout | `$HOME/stable-diffusion.cpp` (pinned, clean) |
 | Build | `cd ~/stable-diffusion.cpp && uvx --from cmake cmake -S . -B build -DSD_METAL=ON -DCMAKE_BUILD_TYPE=Release && uvx --from cmake cmake --build build --config Release -j 8` (cmake 4.4.3 via uv, no system install) |
 | Binaries | `$HOME/stable-diffusion.cpp/build/bin/{sd-cli,sd-server}` — pointer in `~/sdcpp-staging/build_dir.txt` |
-| SD1.5 model | `$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors` — https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5 · **CreativeML OpenRAIL-M** · 4,265,146,304 B · sha256 `6ce0161689b3853acaa03779ec93eafe75a02f4ced659bee03f50797806fa2fa` |
+| SD1.5 model | `/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors` — https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5 · **CreativeML OpenRAIL-M** · 4,265,146,304 B · sha256 `6ce0161689b3853acaa03779ec93eafe75a02f4ced659bee03f50797806fa2fa` |
 | Real-ESRGAN | `/Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth` — https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.1.0 · **BSD-3-Clause** · 67,040,989 B · sha256 `4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1` |
 | Managed secondary sources | SD1.5, Photonic Fusion SDXL, SDXL base 1.0 and SDXL Turbo are currently available. Selection atomically points `$HOME/Library/Caches/DexDiffusion/secondary-model/current/model.safetensors` at exactly one validated source checkpoint. Missing sources remain unavailable. FLUX cannot enter this slot. |
 
@@ -259,6 +259,22 @@ real job results are recorded in `sdcpp-workflow/state/capability-evidence.json`
 
 Shown in **System → Truth status**, `GET /api/system-info` (`capabilities`), and
 `bin/dexdiffusion status`. Unit tests cannot make anything PROVEN.
+
+## Individual 3D assets
+
+The top-level `3D` workspace converts a canonical image into an individual GLB
+asset on the Big Mac. `Mesh` uses the proven Hunyuan3D-Swift shape-small path;
+`Textured Asset` adds the proven RGB paint-small path. Both modes require a
+recorded real-job proof before their controls are enabled. `PBR` is explicitly
+disabled because the textured proof used substantial memory and increased swap.
+
+Outputs are checksum-verified over an SSH byte stream, validated as GLB, then
+finalized once in the MacBook world media store. The remote job directory and
+local temporary directory are cleaned in the job's `finally` path. `World`
+remains the environment and 360 workspace, and `Quick Geometry` remains its
+existing SHARP PLY comparison route. See
+[OPERATIONAL_STATE.md](OPERATIONAL_STATE.md#individual-3d-asset-capability--2026-10-04)
+for the dated live proof.
 
 ## Incident 2026-09-25: `Job FAIL · gate: remote-png (exit 1)`
 

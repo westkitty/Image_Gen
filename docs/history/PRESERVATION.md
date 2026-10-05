@@ -1,0 +1,7 @@
+# Operational-state preservation mapping
+
+Original `OPERATIONAL_STATE.md` at source HEAD `424c914f2b6c1348719b9cfc78a669411e9e83f1` maps in full, lines 1–541, to `docs/history/OPERATIONAL_STATE-through-rev19-20261004.md`, lines 1–541. Bytes, section headings, metadata, VER/INV/BRK/LIM/IMP/UNK/DEC identifiers, revision 1–19 narrative, all paths, claims and contradictions are unchanged. SHA-256 `435eff15248666f0b57db7cc9a44a61d54186295dd28e17fd5a9fd3fd5b7017d`. Verify against `git show 424c914f2b6c1348719b9cfc78a669411e9e83f1:OPERATIONAL_STATE.md` before accepting preservation.
+
+The archive is immutable history, including stale revision17 metadata and prepublication Git statements. Interpret relative paths inside its original prose/backtick references from repository root `/Users/andrew/Image_Gen`, where the original file lived, rather than from `docs/history/`. Absolute paths stay unchanged; unavailable historical artifacts remain unavailable and are not reconstructed. No original Markdown hyperlinks required relocation.
+
+Current identity/architecture maps to the short root index and `AGENTS.md`; current runtime facts map to `docs/operations/target-identity-20261004.json`; latest reported product gates/gaps map to `output/rev19/FINAL_REPORT.md`; detailed earlier investigations map to this whole archive and its original evidence references. Root `OPERATIONAL_STATE.md` remains the stable resumption entry point.

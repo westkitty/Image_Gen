@@ -75,3 +75,4 @@ sdcpp-proof-*/.proof-env
 Image_Gen_*.zip
 __MACOSX/
 operator-console/dexdiffusion.pid
+operator-console/.server.pid

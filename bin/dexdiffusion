@@ -153,7 +153,7 @@ print("%s [%s, %s]" % (t[0]["label"], t[0]["id"], t[0]["status"]) if t else "non
   local ssh_state="DOWN" mflux="unknown" model="unknown"
   local remote
   if remote="$(ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
-      "printf 'HOST=%s\n' \"\$(hostname)\"; test -x $REMOTE_VENV/bin/mflux-generate-flux2 && printf 'MFLUX=PRESENT\n' || printf 'MFLUX=MISSING\n'; test -s $REMOTE_MODEL/transformer/model.safetensors.index.json && printf 'MODEL=PRESENT\n' || printf 'MODEL=MISSING\n'; bd=\$(cat \$HOME/sdcpp-staging/build_dir.txt 2>/dev/null); test -n \"\$bd\" && test -x \"\$bd/bin/sd-cli\" && printf 'SDCLI=PRESENT\n' || printf 'SDCLI=MISSING\n'; test -s \$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors && printf 'SD15=PRESENT\n' || printf 'SD15=MISSING\n'; test -s /Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth && printf 'ESRGAN=PRESENT\n' || printf 'ESRGAN=MISSING\n'" 2>/dev/null)"; then
+      "printf 'HOST=%s\n' \"\$(hostname)\"; test -x $REMOTE_VENV/bin/mflux-generate-flux2 && printf 'MFLUX=PRESENT\n' || printf 'MFLUX=MISSING\n'; test -s $REMOTE_MODEL/transformer/model.safetensors.index.json && printf 'MODEL=PRESENT\n' || printf 'MODEL=MISSING\n'; bd=\$(cat \$HOME/sdcpp-staging/build_dir.txt 2>/dev/null); test -n \"\$bd\" && test -x \"\$bd/bin/sd-cli\" && printf 'SDCLI=PRESENT\n' || printf 'SDCLI=MISSING\n'; test -s \/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors && printf 'SD15=PRESENT\n' || printf 'SD15=MISSING\n'; test -s /Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth && printf 'ESRGAN=PRESENT\n' || printf 'ESRGAN=MISSING\n'" 2>/dev/null)"; then
     ssh_state="UP ($(printf '%s' "$remote" | sed -n 's/^HOST=//p'))"
     mflux="$(printf '%s' "$remote" | sed -n 's/^MFLUX=//p')"
     model="$(printf '%s' "$remote" | sed -n 's/^MODEL=//p')"
@@ -198,7 +198,7 @@ Storage
 
 SDCPP (secondary)
   sd-cli:    ${sdcli:-unknown} (\$HOME/stable-diffusion.cpp/build, rev 7f0e728)
-  SD1.5:     ${sd15:-unknown} (\$HOME/sdcpp-staging/models/v1-5-pruned-emaonly.safetensors)
+  SD1.5:     ${sd15:-unknown} (\/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors)
   ESRGAN:    ${esrgan:-unknown} (/Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth)
 
 Capabilities (derived from real job evidence + asset probe)

@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-04T06:07:21.801084+00:00",
+  "root": "/Users/andrew/Image_Gen",
+  "source": {
+    "head": "424c914f2b6c1348719b9cfc78a669411e9e83f1",
+    "branch": "main",
+    "cached_upstream": "424c914f2b6c1348719b9cfc78a669411e9e83f1",
+    "ahead_behind": "0\t0",
+    "remote_live_parity": "UNVERIFIED; no fetch/ls-remote in this pass"
+  },
+  "installed_wrapper": {
+    "path": "/Applications/DexDiffusion.app",
+    "bundle_id": "local.image-gen.wrapper",
+    "project_root": "/Users/andrew/Image_Gen",
+    "build_source_head": "10aaa2b",
+    "meaning": "build lineage stamp; dynamic console source is checked separately",
+    "executable_sha256": "dcc252fb8fce4700d047b71ad31c0d2b1120022e0ad01d136c9f1a581c134565"
+  },
+  "runtime": {
+    "name": "Image_Gen Operator Console",
+    "version": "image-gen-console-2026-06-22-render-wrapper",
+    "gitHead": "424c914",
+    "pid": 33767,
+    "cwd": "/Users/andrew/Image_Gen/operator-console",
+    "bind": "http://127.0.0.1:31337",
+    "workflowRoot": "/Users/andrew/Image_Gen/sdcpp-workflow",
+    "startedAt": "2026-10-04T06:07:21.546Z"
+  },
+  "checks": {
+    "source_runtime_head_match": true,
+    "runtime_cwd_match": true,
+    "listener_pid_match": true,
+    "loopback_bind_match": true,
+    "wrapper_root_match": true,
+    "wrapper_build_stamp_equals_current_source": false
+  },
+  "cold_wrapper_open": {
+    "preflight": "wrapper inactive; image and generic jobs had zero active entries; compute lease idle",
+    "action": "open -g -a /Applications/DexDiffusion.app",
+    "wrapper_pid": 83540,
+    "console_pid_before": 33767,
+    "console_pid_after": 33767,
+    "native_ui_observed": "DexDiffusion window; HTML URL127.0.0.1:31337/dexdiffusion/; Backend Idle; idle/no job; Create/Voice/Drama/Edit/Models/System controls rendered",
+    "state": "OBSERVED; not a cold server boot or generation proof",
+    "human_acceptance": "UNKNOWN"
+  },
+  "gaps": [
+    "Installed wrapper build stamp10aaa2b differs from source424c914; no rebuild or metadata rewrite performed",
+    "Cold server boot not exercised: existing console preserved",
+    "No generation, weight loading, remote asset verification or full wrapper journey rerun"
+  ],
+  "lease_idle": true
+}
