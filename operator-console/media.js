@@ -18,6 +18,7 @@ const { execFileSync } = require('child_process');
 
 const JobContract = require('./job-contract');
 const CleanupOwner = require('./cleanup-owner');
+const { validateGlb } = require('./glb-validator');
 
 const MEDIA_KINDS = ['image', 'voice', 'music', 'video', 'world'];
 const CANONICAL_ROOTS = {
@@ -433,6 +434,8 @@ function createMediaStore({ roots = CANONICAL_ROOTS, registryFile, now = () => D
       if (!/^P5\n/.test(sourceBytes.toString('latin1', 0, 3))) throw new Error('output-invalid: depth artifact is not binary PGM');
     } else if (kind === 'world' && ext === '.obj') {
       if (!/^(?:#|v\s)/m.test(sourceBytes.toString('utf8', 0, 4096))) throw new Error('output-invalid: collision artifact has no vertices');
+    } else if (kind === 'world' && ext === '.glb') {
+      validateGlb(sourceBytes, { textured: !!meta.textured });
     } else if (ext === '.wav') {
       try { require('./voice-audio').parseWav(sourceBytes); }
       catch (e) { throw new Error('output-invalid: ' + e.message); }
@@ -559,5 +562,5 @@ function createStaging({ root, limits = STAGING_LIMITS, now = () => Date.now() }
 module.exports = {
   MEDIA_KINDS, CANONICAL_ROOTS, JOB_STATES, FAILURE_GATES, PRIVATE_KEYS, safeParams,
   createJobStore, createResourceArbiter, parseOllamaPs, createWorkerRegistry, WORKER_PATHS, WORKER_PROBE_PATHS, createMediaStore, createStaging,
-  sniff, imageDims, wavInfo, atomicWriteJson, STAGING_LIMITS,
+  sniff, imageDims, wavInfo, atomicWriteJson, STAGING_LIMITS, validateGlb,
 };

@@ -30,3 +30,13 @@ test('World creation is owned by the World workspace rather than Library cards',
   assert.match(component, /this\.startWorld\('quick3d'\)/);
   assert.match(component, /this\.startWorld\('complete360'\)/);
 });
+
+test('3D asset generation is a separate tab with proven-mode gates', () => {
+  assert.match(html, /data-active="{{ is3dStr }}" onClick="{{ nav3d }}"[^>]*>3D<\/button>/);
+  assert.equal((html.match(/data-tab="true" data-active="{{ is3dStr }}" onClick="{{ nav3d }}"/g) || []).length, 1);
+  assert.equal((html.match(/data-rail="true" data-active="{{ is3dStr }}" onClick="{{ nav3d }}" title="3D"/g) || []).length, 1);
+  assert.equal((html.match(/value="{{ is3d }}"/g) || []).length, 3);
+  assert.match(component, /asset3dWorkspace:\s*this\.buildAsset3dWorkspace\(\)/);
+  assert.match(component, /this\.startAsset3d\('mesh'\)/);
+  assert.match(component, /PBR: disabled/);
+});

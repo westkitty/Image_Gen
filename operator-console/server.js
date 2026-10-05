@@ -13,6 +13,7 @@ const { validateImage } = require('./image-validation');
 const { artifactReceipt, TERMINAL } = require('./job-contract');
 const { createWorldStore } = require('./world-project');
 const { createWorldBridge } = require('./world-bridge');
+const { createAsset3dBridge } = require('./asset3d-bridge');
 const { createSystemInfo } = require('./system-info');
 const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime, targetVerification } = require('./capabilities');
 const { rulesForTarget, validateDimensions } = require('./dimension-policy');
@@ -3785,6 +3786,21 @@ app.get('/api/generic-jobs', (req, res) => res.json({ jobs: jobStore.list({ medi
 // World projects keep durable lineage/stage truth; the bridge owns only the
 // heavy remote execution and never promotes SSH exit status to success.
 const worldBridge = createWorldBridge({ jobStore, arbiter, staging, mediaStore, worldStore, imageStore, stateDir: STATE_DIR, sshTarget: SSH_TARGET_NAME, log: m => console.log(m) });
+const asset3dBridge = createAsset3dBridge({ jobStore, arbiter, staging, mediaStore, imageStore, stateDir: STATE_DIR, sshTarget: SSH_TARGET_NAME, log: m => console.log(m) });
+app.get('/api/3d/workers', async (req, res) => {
+  try { res.json(await asset3dBridge.workers()); } catch (error) { res.status(503).json({ error: '3D worker probe failed', detail: String(error.message).slice(0, 180) }); }
+});
+app.post('/api/3d/jobs', (req, res) => {
+  const body = req.body || {};
+  const result = asset3dBridge.start(String(body.mode || ''), { sourceArtifactId: body.sourceArtifactId || body.imageId || body.image });
+  if (result.error) return res.status(result.status || 400).json(result);
+  res.status(202).json(result);
+});
+app.post('/api/3d/open-in-blender', (req, res) => {
+  const result = asset3dBridge.openInBlender(req.body && req.body.artifact_id);
+  if (result.error) return res.status(result.status || 400).json(result);
+  res.json(result);
+});
 app.get('/api/world/workers', async (req, res) => {
   try { res.json(await worldBridge.workers()); } catch (error) { res.status(503).json({ error: 'world worker probe failed', detail: String(error.message).slice(0, 180) }); }
 });
