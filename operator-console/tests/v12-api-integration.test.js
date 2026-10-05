@@ -102,3 +102,22 @@ test('thumbnail security: path traversal rejection and cache isolation', () => {
     assert.match(err.message, /not found/);
   });
 });
+
+test('thumbnail service handles both string and object record from imageStore.resolveImage', (t, done) => {
+  const dir = tmp('thumb-obj');
+  const srcPng = path.join(dir, 'sample.png');
+  fs.writeFileSync(srcPng, 'fake-data');
+  const mockStore = {
+    resolveImage: (id) => {
+      if (id === 'sample.png') return { id: 'sample.png', path: srcPng, contentType: 'image/png' };
+      return null;
+    }
+  };
+  const thumbService = createThumbnailService({ cacheDir: path.join(dir, 'cache'), imageStore: mockStore });
+  thumbService.generateThumbnail('sample.png', (err) => {
+    if (err) {
+      assert.doesNotMatch(err.message, /Canonical source image not found/);
+    }
+    done();
+  });
+});

@@ -4206,7 +4206,7 @@ app.get('/api/thumbnails/:id', (req, res) => {
       return res.sendFile(thumbPath);
     }
     // Fallback: send full canonical original
-    res.sendFile(canonical);
+    res.sendFile(canonical.path || canonical);
   });
 });
 

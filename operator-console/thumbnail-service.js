@@ -39,7 +39,8 @@ function createThumbnailService({ cacheDir, imageStore, maxDimension = 384 }) {
       return callback(new Error('ImageStore unavailable'));
     }
 
-    const sourcePath = imageStore.resolveImage(imageId);
+    const resolved = imageStore.resolveImage(imageId);
+    const sourcePath = typeof resolved === 'string' ? resolved : (resolved && resolved.path);
     if (!sourcePath || !fs.existsSync(sourcePath)) {
       return callback(new Error(`Canonical source image not found for ${imageId}`));
     }
