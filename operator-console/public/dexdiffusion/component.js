@@ -63,12 +63,13 @@ class Component extends DCLogic {
     runs: (() => { try { return JSON.parse(localStorage.getItem('dex_runs') || '[]'); } catch { return []; } })(),
     selectedRunId: '', selectedRunDetail: null, loadingRunDetail: false, runSearch: '',
     worldProjects: [], worldLoading: false, worldSourceArtifact: '', worldWorkerStatus: null,
+    asset3dWorkerStatus: null, asset3dSourceArtifact: '', asset3dMode: 'mesh', asset3dLoading: false, asset3dJob: null,
     assetQuery: '', serverStatusSummary: '', lastValidation: '',
     savePrompts: localStorage.getItem('dex_save_prompts') === 'true',
     toasts: [],
   };
 
-  _pingTimer = null; _pollTimer = null; _toastId = 0;
+  _pingTimer = null; _pollTimer = null; _worldPollTimer = null; _asset3dPollTimer = null; _toastId = 0;
   _completedImageCache = { key: null, node: null };
 
   componentDidMount() {
@@ -78,6 +79,7 @@ class Component extends DCLogic {
     this._pingTimer = setInterval(() => this.pingBackend(), 20000);
     this.loadRuns();
     this.loadWorldProjects();
+    this.loadAsset3dWorkers();
     this.loadModels();
     this.loadAssets();
     this.loadWildcards();
@@ -85,7 +87,7 @@ class Component extends DCLogic {
     this.loadSystemInfo();
   }
   componentWillUnmount() {
-    clearInterval(this._pingTimer); clearInterval(this._pollTimer); clearInterval(this._worldPollTimer);
+    clearInterval(this._pingTimer); clearInterval(this._pollTimer); clearInterval(this._worldPollTimer); clearInterval(this._asset3dPollTimer);
     this._pollGeneration = (this._pollGeneration || 0) + 1;
     for (const controller of this._jobWaitControllers || []) controller.abort();
     this._detailerDetectController?.abort();
@@ -189,6 +191,7 @@ class Component extends DCLogic {
     this.pingBackend();
     this.loadRuns();
     this.loadWorldProjects();
+    this.loadAsset3dWorkers();
     this.loadModels();
     this.loadAssets();
     this.loadWildcards();
@@ -208,6 +211,54 @@ class Component extends DCLogic {
       const w = workers.ok ? await workers.json() : null;
       this.setState({ worldProjects: p.projects || [], worldWorkerStatus: w, worldLoading: false });
     } catch (_) { this.setState({ worldLoading: false }); }
+  }
+
+  async loadAsset3dWorkers() {
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/3d/workers', { signal: AbortSignal.timeout(15000) });
+      if (r.ok) this.setState({ asset3dWorkerStatus: await r.json() });
+    } catch (_) {}
+  }
+
+  async startAsset3d(mode) {
+    const source = this.state.asset3dSourceArtifact || (this.state.runs[0] && this.state.runs[0].imageFile);
+    if (!source) { this.toast('Select a canonical library image first', '#fbbf24'); return; }
+    this.setState({ asset3dLoading: true, asset3dMode: mode });
+    try {
+      const url = mode === 'quick3d' ? '/api/world/projects' : '/api/3d/jobs';
+      const body = mode === 'quick3d' ? { mode, sourceArtifactId: source, parameters: { seed: 42 } } : { mode, sourceArtifactId: source };
+      const r = await fetch(this.state.backendUrl + url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const result = await r.json().catch(() => ({}));
+      if (!r.ok) { this.toast(result.error || '3D request rejected', '#ef4444'); this.setState({ asset3dLoading: false }); return; }
+      this.setState({ asset3dLoading: false, asset3dJob: result });
+      this.toast(mode === 'quick3d' ? 'Quick Geometry queued' : (mode === 'textured' ? 'Textured Asset queued' : 'Mesh queued'), '#38bdf8');
+      await this.loadWorldProjects();
+      if (result.job_id) this.pollAsset3dJob(result.job_id);
+    } catch (e) { this.setState({ asset3dLoading: false }); this.toast('3D request failed: ' + e.message, '#ef4444'); }
+  }
+
+  pollAsset3dJob(jobId) {
+    clearInterval(this._asset3dPollTimer);
+    let failures = 0;
+    this._asset3dPollTimer = setInterval(async () => {
+      try {
+        const r = await fetch(this.state.backendUrl + '/api/generic-jobs/' + encodeURIComponent(jobId), { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) throw new Error('job ' + r.status);
+        const job = await r.json(); this.setState({ asset3dJob: job });
+        if (['COMPLETE', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(job.status)) {
+          clearInterval(this._asset3dPollTimer); await this.loadAsset3dWorkers();
+          this.toast(job.status === 'COMPLETE' ? '3D asset ready' : '3D job ' + job.status.toLowerCase(), job.status === 'COMPLETE' ? '#65d66e' : '#ef4444');
+        }
+      } catch (_) { if (++failures >= 5) clearInterval(this._asset3dPollTimer); }
+    }, 1200);
+  }
+
+  openAsset3dViewer(artifactId) { window.open('/dexdiffusion/asset3d-viewer.html?artifact=' + encodeURIComponent(artifactId), '_blank', 'noopener'); }
+
+  openAsset3dInBlender(artifactId) {
+    fetch(this.state.backendUrl + '/api/3d/open-in-blender', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ artifact_id: artifactId }) })
+      .then(async r => { const body = await r.json().catch(() => ({})); if (!r.ok) throw new Error(body.error || 'Blender request failed'); this.toast('Opened in Blender', '#65d66e'); })
+      .catch(e => this.toast(e.message, '#ef4444'));
   }
 
   async startWorld(mode, sourceArtifactId) {
@@ -252,8 +303,8 @@ class Component extends DCLogic {
     const workerLine = status && status.workers ? status.workers.map(w => `${w.label}: ${w.status}`).join(' · ') : 'Worker status loading…';
     return h('div', { style: { display: 'grid', gap: 14 } },
       h('div', { style: { background: '#060a10', border: '1px solid rgba(148,163,184,.14)', borderRadius: 12, padding: 16 } },
-        h('div', { style: { fontSize: 18, color: '#f0f4f8', fontWeight: 750, marginBottom: 4 } }, 'World Projects'),
-        h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, marginBottom: 12 } }, 'Local WorldGen uses the shared heavy-inference lease. Quick 3D reconstructs the selected image; Complete 360 remains stage-truthful until alignment is integrated.'),
+        h('div', { style: { fontSize: 18, color: '#f0f4f8', fontWeight: 750, marginBottom: 4 } }, 'World'),
+        h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, marginBottom: 12 } }, 'Dedicated local 3D workspace. Quick 3D reconstructs one image; Complete 360 builds panorama, depth/scaffold, aligned SHARP proposals, fusion and viewer artifacts. Learned global depth is not installed, so Complete 360 may report WARN while using the bounded fallback.'),
         h('select', { value: s.worldSourceArtifact || (runs[0] && runs[0].imageFile) || '', onChange: e => this.setState({ worldSourceArtifact: e.target.value }), style: { width: '100%', maxWidth: 520, marginBottom: 10, border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
         h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
           h('button', { onClick: () => this.startWorld('quick3d'), style: { border: '1px solid #38bdf866', background: '#38bdf616', color: '#38bdf8', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make 3D'),
@@ -272,6 +323,52 @@ class Component extends DCLogic {
           h('div', { style: { display: 'flex', gap: 7, marginTop: 10 } }, canOpen ? h('button', { onClick: () => this.openWorldViewer(p.id), style: { border: '1px solid #a78bfa66', background: '#a78bfa16', color: '#c4b5fd', borderRadius: 7, padding: '6px 9px', cursor: 'pointer' } }, 'Open Focus') : null, p.status === 'FAILED' ? h('button', { onClick: () => this.startWorld(p.mode, p.sourceArtifactId), style: { border: '1px solid #f59e0b66', background: 'transparent', color: '#fbbf24', borderRadius: 7, padding: '6px 9px', cursor: 'pointer' } }, 'Retry') : null)
         );
       })
+    );
+  }
+
+  buildAsset3dWorkspace() {
+    const h = React.createElement;
+    const s = this.state;
+    const runs = (s.runs || []).filter(r => r.imageFile);
+    const selected = s.asset3dSourceArtifact || (runs[0] && runs[0].imageFile) || '';
+    const worker = s.asset3dWorkerStatus;
+    const modes = worker && worker.modes ? worker.modes : {};
+    const meshReady = modes.mesh && modes.mesh.status === 'PROVEN';
+    const texturedReady = modes.textured && modes.textured.status === 'PROVEN';
+    const job = s.asset3dJob;
+    const artifact = job && Array.isArray(job.artifacts_detail) ? job.artifacts_detail[0] : null;
+    const sourcePreview = selected ? s.backendUrl + '/api/images/' + encodeURIComponent(selected) : '';
+    const opts = runs.length ? runs.map(r => h('option', { key: r.imageFile, value: r.imageFile }, r.id + ' · ' + r.model)) : [h('option', { value: '' }, 'No canonical images loaded')];
+    const statusLine = worker ? `Big Mac: ${worker.remote?.reachable ? worker.remote.identity : 'unavailable'} · runtime ${worker.remote?.runtime ? 'present' : 'missing'} · lease shared with all heavy inference` : 'Loading Big Mac 3D capability status…';
+    const chip = (label, item) => h('div', { style: { border: '1px solid rgba(148,163,184,.15)', borderRadius: 7, padding: '8px 10px', background: 'rgba(9,20,32,.55)' } }, h('div', { style: { color: '#8da0b4', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em' } }, label), h('div', { style: { color: item?.status === 'PROVEN' ? '#65d66e' : item?.status === 'DISABLED' ? '#70849a' : '#fbbf24', font: "700 11px 'IBM Plex Mono',monospace", marginTop: 4 } }, item?.status || 'NOT_TESTED'));
+    return h('div', { style: { display: 'grid', gap: 14, maxWidth: 1080 } },
+      h('div', { style: { background: '#060a10', border: '1px solid rgba(148,163,184,.14)', borderRadius: 12, padding: 16 } },
+        h('div', { style: { fontSize: 20, color: '#f0f4f8', fontWeight: 750 } }, '3D'),
+        h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, margin: '4px 0 13px' } }, 'Create individual 3D assets from canonical DexDiffusion images. WorldGen remains the environment and 360 workspace.'),
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(260px,1fr) minmax(180px,280px)', gap: 14, alignItems: 'start' } },
+          h('div', null,
+            h('div', { style: { color: '#6090a8', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 5 } }, 'Source · canonical image'),
+            h('select', { value: selected, onChange: e => this.setState({ asset3dSourceArtifact: e.target.value }), style: { width: '100%', border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
+            sourcePreview ? h('img', { src: sourcePreview, alt: 'Selected canonical source', style: { width: 150, height: 150, objectFit: 'cover', borderRadius: 8, marginTop: 10, border: '1px solid rgba(148,163,184,.16)' } }) : null
+          ),
+          h('div', null,
+            h('div', { style: { color: '#6090a8', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 5 } }, 'Mode'),
+            h('button', { onClick: () => this.startAsset3d('quick3d'), disabled: s.asset3dLoading, style: { width: '100%', marginBottom: 7, border: '1px solid #38bdf866', background: '#38bdf616', color: '#38bdf8', borderRadius: 7, padding: '9px 10px', cursor: 'pointer', fontWeight: 700, textAlign: 'left' } }, 'Quick Geometry · PLY'),
+            h('button', { onClick: () => this.startAsset3d('mesh'), disabled: !meshReady || s.asset3dLoading, style: { width: '100%', marginBottom: 7, border: '1px solid #a78bfa66', background: '#a78bfa16', color: '#c4b5fd', borderRadius: 7, padding: '9px 10px', cursor: meshReady ? 'pointer' : 'not-allowed', fontWeight: 700, textAlign: 'left', opacity: meshReady ? 1 : .5 } }, 'Mesh · GLB'),
+            texturedReady ? h('button', { onClick: () => this.startAsset3d('textured'), disabled: s.asset3dLoading, style: { width: '100%', marginBottom: 7, border: '1px solid #65d66e66', background: '#65d66e16', color: '#9ae6a5', borderRadius: 7, padding: '9px 10px', cursor: 'pointer', fontWeight: 700, textAlign: 'left' } }, 'Textured Asset · GLB') : null,
+            h('div', { style: { color: '#70849a', fontSize: 11, marginTop: 4 } }, 'PBR: disabled · not proven safe on this 32 GiB machine')
+          )
+        ),
+        h('div', { style: { color: '#70849a', font: "11px 'IBM Plex Mono',monospace", marginTop: 13 } }, statusLine)
+      ),
+      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 8 } }, chip('Quick Geometry', modes.quickGeometry), chip('Mesh', modes.mesh), chip('Textured Asset', modes.textured), chip('PBR', modes.pbr)),
+      job ? h('div', { style: { background: '#060a10', border: '1px solid rgba(148,163,184,.12)', borderRadius: 10, padding: 13 } },
+        h('div', { style: { color: '#e2e8f0', fontWeight: 700 } }, 'Latest 3D job · ' + (job.status || 'QUEUED')),
+        h('div', { style: { color: '#8da0b4', fontSize: 11, marginTop: 6 } }, (job.worker_id || job.mode || '3D') + ' · ' + (job.job_id || 'queued')),
+        job.error ? h('div', { style: { color: '#fca5a5', fontSize: 11, marginTop: 6 } }, (job.first_failed_gate || 'failed') + ': ' + job.error) : null,
+        artifact ? h('div', { style: { display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 } }, h('button', { onClick: () => this.openAsset3dViewer(artifact.artifact_id), style: { border: '1px solid #a78bfa66', background: '#a78bfa16', color: '#c4b5fd', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' } }, 'Open 3D preview'), h('button', { onClick: () => this.openAsset3dInBlender(artifact.artifact_id), style: { border: '1px solid #65d66e66', background: '#65d66e16', color: '#9ae6a5', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' } }, 'Open in Blender'), h('a', { href: artifact.url + '/download', style: { border: '1px solid rgba(148,163,184,.2)', color: '#b8c7d6', borderRadius: 7, padding: '7px 10px', textDecoration: 'none' } }, 'Download GLB')) : null
+      ) : null,
+      h('div', { style: { color: '#70849a', fontSize: 11 } }, 'Generated assets are canonical MacBook artifacts. Big Mac output is temporary and cleaned after each job.')
     );
   }
 
@@ -1213,10 +1310,7 @@ class Component extends DCLogic {
     const accent = version === 2 ? '#f59e0b' : version === 3 ? '#a78bfa' : '#38bdf8';
 
     // ── Library cards ──────────────────────────────────────────
-    const libraryCards = runs.length > 0 ? runs.map(card => ({ ...card,
-      make3d: () => this.startWorld('quick3d', card.imageFile),
-      makeWorld: () => this.startWorld('complete360', card.imageFile),
-    })) : [{ id: 'no runs yet', badge: '—', badgeColor: '#6060a0', badgeBg: 'rgba(80,80,160,.08)', model: 'run generate to start', size: '—', thumb: 'linear-gradient(135deg,#0a0a18,#141428)' }];
+    const libraryCards = runs.length > 0 ? runs.map(card => ({ ...card })) : [{ id: 'no runs yet', badge: '—', badgeColor: '#6060a0', badgeBg: 'rgba(80,80,160,.08)', model: 'run generate to start', size: '—', thumb: 'linear-gradient(135deg,#0a0a18,#141428)' }];
 
     // ── Status chips ──────────────────────────────────────────
     const backendDot = backendOnline ? '#65d66e' : '#ef4444';
@@ -1948,13 +2042,13 @@ class Component extends DCLogic {
       isV1Str: String(version===1), isV2Str: String(version===2), isV3Str: String(version===3),
       setV1: ()=>this.setVersion(1), setV2: ()=>this.setVersion(2), setV3: ()=>this.setVersion(3),
       isCreate: screen==='create', isBatch: screen==='batch', isEdit: screen==='edit',
-      isEnhance: screen==='enhance', isLibrary: screen==='library', isWorld: screen==='world', isModels: screen==='models', isSystem: screen==='system',
+      isEnhance: screen==='enhance', isLibrary: screen==='library', isWorld: screen==='world', is3d: screen==='3d', isModels: screen==='models', isSystem: screen==='system',
       isCreateStr: String(screen==='create'), isBatchStr: String(screen==='batch'),
       isEditStr: String(screen==='edit'), isEnhanceStr: String(screen==='enhance'),
-      isLibraryStr: String(screen==='library'), isWorldStr: String(screen==='world'), isModelsStr: String(screen==='models'), isSystemStr: String(screen==='system'),
+      isLibraryStr: String(screen==='library'), isWorldStr: String(screen==='world'), is3dStr: String(screen==='3d'), isModelsStr: String(screen==='models'), isSystemStr: String(screen==='system'),
       navCreate: ()=>this.setScreen('create'), navBatch: ()=>this.setScreen('batch'),
       navEdit: ()=>this.setScreen('edit'), navEnhance: ()=>this.setScreen('enhance'),
-      navLibrary: ()=>this.setScreen('library'), navWorld: ()=>this.setScreen('world'), navModels: ()=>this.setScreen('models'), navSystem: ()=>this.setScreen('system'),
+      navLibrary: ()=>this.setScreen('library'), navWorld: ()=>this.setScreen('world'), nav3d: ()=>this.setScreen('3d'), navModels: ()=>this.setScreen('models'), navSystem: ()=>this.setScreen('system'),
       // Create form
       prompt, negPrompt, steps: String(steps), cfg: String(cfg), seed: String(seed),
       width: String(width), height: String(height), promptLen: String(prompt.length),
@@ -2013,7 +2107,7 @@ class Component extends DCLogic {
       savePrompts, onSavePrompts: e=>{ const v=e.target.checked; this.setState({savePrompts:v}); localStorage.setItem('dex_save_prompts',String(v)); },
       onRefreshRuns: ()=>this.loadRuns(), onRefreshAll: ()=>this.refreshAll(), onDiscoverAssets: ()=>this.discoverAssets(),
       settingsDrawer, runInspector, truthStatusPanel, systemInfoPanel, keyboardHelp, validationPanel,
-      libraryCards, runsCount: String(runs.length), jobLogDisplay, worldWorkspace: this.buildWorldWorkspace(),
+      libraryCards, runsCount: String(runs.length), jobLogDisplay, worldWorkspace: this.buildWorldWorkspace(), asset3dWorkspace: this.buildAsset3dWorkspace(),
       libraryFilters, libraryLoadMore, extraNetworksDisplay,
       assetCountsDisplay: (assets.loras || []).length + ' LoRAs · ' + (assets.vaes || []).length + ' VAEs · ' + (assets.controlnets || []).length + ' ControlNets',
       onHiresSubmit: ()=>this.onHiresSubmit(),
