@@ -401,3 +401,15 @@ the HF cache on wc2tb, `OPERATIONAL_STATE.md`, run metadata.
 ## Revision 18 verification handoff
 
 Current uncommitted repairs preserve feather alpha, show only backend progress, guard async image/job ownership, reject stale Drama profiles, remove rejected staged-image working copies, and apply attenuation-only speech levels consistently. The Detailer modal keeps progress/errors visible and contains keyboard focus. Final gates: 259/259 unit, Edit 21/21, Voice/Drama 7/7, chained 21+7; installed Brave override, natural exits, no test-owned process candidates. Acceptance remains VERIFIED WITH EXPLICIT BLOCKERS. See OPERATIONAL_STATE Revision 18 and output/rev18/BUGS.md for current evidence, preserved failures/exposures and unexercised live paths.
+
+## Workstation V12 Live Operations
+
+DexDiffusion V12 operates with a unified real-time architecture:
+- **Live Event Stream**: Native Server-Sent Events (`GET /api/events`) eliminate aggressive HTTP polling and keep browser state in continuous sync with the backend.
+- **Global Job Center**: Press `Cmd/Ctrl + Shift + J` or click **Jobs** in the bottom HUD to open the persistent drawer showing Active, Queue, and Recent jobs with cancellation actions.
+- **Resource HUD**: Persistent bar at the bottom displaying real-time Big Mac lease status and conservative queue wait estimations derived from historical completed runs.
+- **Command Palette**: Press `Cmd/Ctrl + K` to access global actions, screen navigation, workflows, and diagnostic tools.
+- **Indexed Library & Thumbnails**: Incremental indexed querying with filters, collections (`/api/collections`), and fast lightweight thumbnails (`/api/thumbnails/:id`).
+- **Synchronized Image Comparison**: Compare 2–4 images side-by-side or with swipe/flicker modes without generating redundant disk artifacts.
+- **Reproducibility & Workflows**: Export and import settings bundles (`dexdiffusion.repro.v1`), reusable recipes (`dexdiffusion.recipe.v1`), and declarative workflow macros (`dexdiffusion.macro.v1`).
+- **Scoped Cancellation**: Safe cancellation of queued and active jobs with PID and nonce verification that strictly prevents killing unrelated processes.

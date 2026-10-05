@@ -23,6 +23,16 @@ const { getWildcardCatalog, expandWildcards: expandWildcardsUtil } = require('./
 const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily } = require('./extra-networks');
 const { MODEL_CARDS, getModelCards, getModelCardById, checkModelSwitchWarnings } = require('./model-registry');
 const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt, ATTEMPT_TIMEOUT_MS } = require('./detailer');
+const { createEventBus } = require('./event-bus');
+const { projectOperationalJob } = require('./operational-jobs');
+const { createTimingStore } = require('./timing-store');
+const { createCollectionStore } = require('./collections-store');
+const { createRecipeStore } = require('./recipes-store');
+const { createMacroStore } = require('./macro-store');
+const { exportReproBundle, validateReproBundle, checkBundleCompatibility } = require('./repro-bundle');
+const { createThumbnailService } = require('./thumbnail-service');
+const { createCancellationManager } = require('./cancellation');
+const { createLibraryIndex } = require('./library-index');
 
 const app = express();
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
@@ -46,6 +56,15 @@ try { mediaStore.ensureRoots(); } catch (_) {}
 const worldStore = createWorldStore({ root: path.join(STATE_DIR, 'world-projects') });
 const staging = M.createStaging({ root: path.join(STATE_DIR, 'staging') });
 setInterval(() => { try { staging.sweep(); } catch (_) {} }, 30 * 60 * 1000).unref();
+
+// V12 Workstation Services
+const eventBus = createEventBus();
+const timingStore = createTimingStore(path.join(STATE_DIR, 'timing-stats.json'));
+const collectionStore = createCollectionStore(path.join(STATE_DIR, 'collections.json'));
+const recipeStore = createRecipeStore(path.join(STATE_DIR, 'recipes.json'));
+const macroStore = createMacroStore(path.join(STATE_DIR, 'macros.json'));
+const thumbnailService = createThumbnailService({ cacheDir: path.join(STATE_DIR, 'thumbnails'), imageStore });
+const libraryIndex = createLibraryIndex({ indexPath: path.join(STATE_DIR, 'library-index.json'), imageStore, imageMeta, runsDir: RUNS_DIR });
 const HEAVY_ACTIONS = new Set(['controlled-generate', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test']);
 const IMAGE_EDIT_CACHE = path.join(STATE_DIR, 'image-edit-capabilities.json');
 const UPSCALE_CACHE = path.join(STATE_DIR, 'upscale-capabilities.json');
@@ -967,6 +986,9 @@ function createJob(action, summary, requestParams = {}) {
       params: requestParams, persist_text: !!(requestParams && requestParams.save_prompts),
     });
   } catch (_) {}
+  try {
+    eventBus.publish('job.created', { id, action, status: 'queued', createdAt: jobs[id].createdAt });
+  } catch (_) {}
   return id;
 }
 
@@ -979,6 +1001,16 @@ const arbiter = M.createResourceArbiter({
     require('child_process').execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=6', SSH_TARGET_NAME, 'ollama ps 2>/dev/null; printf "\nPROBE_DONE\n"'],
       { timeout: 12000, encoding: 'utf8' }, (err, out) => resolve(String(out || '').includes('PROBE_DONE') ? M.parseOllamaPs(out.split('PROBE_DONE')[0]) : { occupied: false, detail: null }));
   }),
+});
+const cancelManager = createCancellationManager({
+  arbiter,
+  jobStore,
+  eventBus,
+  onLocalTerminate: async (active) => {
+    if (active.pid) {
+      try { process.kill(active.pid, 'SIGTERM'); } catch (_) {}
+    }
+  }
 });
 setInterval(() => { arbiter.refreshExternal().catch(() => {}); }, 60 * 1000).unref();
 setInterval(() => {
@@ -1004,6 +1036,11 @@ function withLease(jobId, start) {
     job.waitingForLease = false;
     if (!r.granted || job.status !== 'queued') return;
     jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+    try {
+      job.startedAt = Date.now();
+      eventBus.publish('job.started', { id: jobId, status: 'running' });
+      eventBus.publish('resource.changed', { resources: arbiter.state() });
+    } catch (_) {}
     start();
   });
 }
@@ -1023,6 +1060,7 @@ function syncGenericTerminal(job) {
     fromRuns = runs.flatMap(run => imageStore.readRunIndex(path.join(RUNS_DIR, run)).map(entry => entry.image_id));
   }
   const ids = [...new Set([...fromResults, ...fromFields, ...fromRuns])];
+  const arts = ids;
   let receipt = null;
   if (st === 'COMPLETE') {
     try {
@@ -1047,6 +1085,22 @@ function syncGenericTerminal(job) {
     jobStore.transition(job.id, 'FAILED', { first_failed_gate: job.firstFailedGate, error: result.error });
   }
   arbiter.release(job.id);
+  try {
+    const eventName = st === 'COMPLETE' ? 'job.completed' : st === 'FAILED' ? 'job.failed' : st === 'CANCELLED' ? 'job.cancelled' : 'job.interrupted';
+    eventBus.publish(eventName, { id: job.id, status: st, firstFailedGate: job.firstFailedGate || null, artifactIds: arts });
+    if (st === 'COMPLETE' && timingStore && job.startedAt) {
+      const dur = (job.completedAt || Date.now()) - job.startedAt;
+      const worker = job.commandAction === 'upscale' ? 'local' : (job.requestParams && job.requestParams.target) || 'sdcpp';
+      timingStore.recordCompletedJob({ worker, operation: job.commandAction, durationMs: dur });
+    }
+    // Update library index with new canonical artifacts
+    if (st === 'COMPLETE' && libraryIndex) {
+      for (const aId of arts) {
+        libraryIndex.upsertItem({ id: aId, target: (job.requestParams && job.requestParams.target) || null, operation: job.commandAction });
+      }
+      eventBus.publish('library.changed', { count: arts.length });
+    }
+  } catch (_) {}
 }
 
 function updateSequentialProgress(job, patch = {}) {
@@ -1066,6 +1120,9 @@ function updateSequentialProgress(job, patch = {}) {
   job.progress.currentRunPercent = currentRunPercent;
   job.progress.runsLeft = Math.max(0, totalRuns - completedRuns);
   job.progress.totalPercent = Math.max(0, Math.min(100, Math.round(((completedRuns + currentRunPercent / 100) / totalRuns) * 100)));
+  try {
+    eventBus.publish('job.progress', { id: job.id, progress: job.progress });
+  } catch (_) {}
 }
 
 function startRunProgress(job, runIndex, quantity) {
@@ -3977,6 +4034,380 @@ app.get('/api/doctor', async (req, res) => {
   res.json({ overall: worst, checkedAt: new Date().toISOString(), rows });
 });
 
+// ---- V12 Workstation Operational Projection Helper --------------------------
+function getOperationalJobSnapshot() {
+  const activeJobs = [];
+  const queuedJobs = [];
+  const recentJobs = [];
+
+  // 1. Gather all jobs from in-memory and durable jobStore
+  const allDurable = jobStore ? jobStore.list({ limit: 100 }) : [];
+  const seenIds = new Set();
+
+  // In-memory active image jobs
+  for (const [id, j] of Object.entries(jobs)) {
+    seenIds.add(id);
+    const est = timingStore ? timingStore.getEstimate(j.commandAction === 'upscale' ? 'local' : (j.requestParams && j.requestParams.target) || 'sdcpp', j.commandAction) : null;
+    const proj = projectOperationalJob({
+      id: j.id,
+      mediaKind: 'image',
+      operation: j.commandAction,
+      label: j.commandSummary || j.commandAction,
+      worker: (j.requestParams && j.requestParams.target) || 'sdcpp',
+      target: (j.requestParams && j.requestParams.target) || null,
+      status: j.status,
+      progress: j.progress,
+      createdAt: j.createdAt,
+      startedAt: j.startedAt || j.createdAt,
+      completedAt: j.completedAt,
+      queuePosition: j.waitingForLease ? arbiter.position(j.id) : null,
+      resourceClass: HEAVY_ACTIONS.has(j.commandAction) ? 'heavy' : 'light',
+      resourceState: j.waitingForLease ? 'WAITING_LEASE' : (j.status === 'running' ? 'RUNNING' : 'QUEUED'),
+      canCancel: ['queued', 'running'].includes(j.status),
+      firstFailedGate: j.firstFailedGate,
+      artifactIds: (j.results || []).filter(r => r.imageId).map(r => r.imageId),
+      estimatedDurationMs: est && est.available ? est.estimatedDurationMs : null
+    });
+
+    if (['queued'].includes(j.status)) queuedJobs.push(proj);
+    else if (['running'].includes(j.status)) activeJobs.push(proj);
+    else recentJobs.push(proj);
+  }
+
+  // Durable media & past image jobs
+  for (const g of allDurable) {
+    if (seenIds.has(g.job_id)) continue;
+    seenIds.add(g.job_id);
+    const proj = projectOperationalJob({
+      id: g.job_id,
+      mediaKind: g.media_kind,
+      operation: g.operation,
+      label: g.operation,
+      worker: g.worker_id,
+      target: g.model_id,
+      status: g.status,
+      createdAt: g.created_at,
+      startedAt: g.started_at,
+      completedAt: g.completed_at,
+      queuePosition: g.status === 'QUEUED' ? arbiter.position(g.job_id) : null,
+      resourceClass: g.resource_class,
+      resourceState: g.status === 'QUEUED' ? 'WAITING_LEASE' : g.status,
+      canCancel: ['QUEUED', 'RUNNING', 'TRANSFERRING'].includes(g.status),
+      firstFailedGate: g.first_failed_gate,
+      artifactIds: g.artifacts || []
+    });
+
+    if (g.status === 'QUEUED') queuedJobs.push(proj);
+    else if (['RUNNING', 'TRANSFERRING'].includes(g.status)) activeJobs.push(proj);
+    else recentJobs.push(proj);
+  }
+
+  return {
+    active: activeJobs,
+    queue: queuedJobs,
+    recent: recentJobs.slice(0, 30),
+    resources: arbiter.state(),
+    timing: {
+      queueWait: timingStore ? timingStore.estimateQueueWait(queuedJobs, activeJobs[0] || null) : null
+    }
+  };
+}
+
+// ---- F01: Server-Sent Events Control Plane -----------------------------------
+app.get('/api/events', (req, res) => {
+  eventBus.handleSseConnection(req, res, getOperationalJobSnapshot);
+});
+
+// ---- F02: Global Operational Snapshot & Job Center Data -----------------------
+app.get('/api/operations/snapshot', (req, res) => {
+  res.json(getOperationalJobSnapshot());
+});
+
+// ---- F14: Safe Job Cancellation Route ----------------------------------------
+app.post('/api/jobs/:id/cancel', async (req, res) => {
+  const jobId = req.params.id;
+  const reason = (req.body && req.body.reason) || 'Cancelled by user';
+
+  // Check in-memory image job
+  const job = jobs[jobId];
+  if (job && (job.status === 'queued' || job.status === 'running')) {
+    job.status = 'CANCELLED';
+    job.completedAt = Date.now();
+    job.firstFailedGate = 'user-cancelled';
+    job.stderr += '\nJob cancelled by user request.';
+    if (job.activeChildPid) {
+      try { process.kill(job.activeChildPid, 'SIGTERM'); } catch (_) {}
+    }
+  }
+
+  const result = await cancelManager.cancelJob(jobId, { reason });
+  res.json(result);
+});
+
+// ---- F04: Indexed Library Endpoints ------------------------------------------
+app.get('/api/library/v2/items', (req, res) => {
+  const filter = req.query.filter || 'all';
+  const collectionId = req.query.collection_id || null;
+  const operation = req.query.operation || null;
+  const model = req.query.model || null;
+  const showTest = req.query.show_test === '1';
+  const search = req.query.search || '';
+  const sort = req.query.sort || 'newest';
+  const offset = parseInt(req.query.offset, 10) || 0;
+  const limit = Math.min(100, parseInt(req.query.limit, 10) || 50);
+
+  const results = libraryIndex.query({
+    filter,
+    collectionId,
+    operation,
+    model,
+    showTest,
+    search,
+    sort,
+    offset,
+    limit
+  });
+
+  // Attach thumbnail URLs to returned items
+  const itemsWithUrls = results.items.map(it => {
+    return {
+      ...it,
+      imageUrl: imageStore.imageUrl(it.id),
+      thumbnailUrl: thumbnailService.hasThumbnail(it.id) ? `/api/thumbnails/${encodeURIComponent(it.id)}` : imageStore.imageUrl(it.id)
+    };
+  });
+
+  res.json({
+    ...results,
+    items: itemsWithUrls
+  });
+});
+
+app.post('/api/library/rebuild', (req, res) => {
+  const r = libraryIndex.rebuild();
+  eventBus.publish('library.changed', { action: 'rebuild', count: r.count });
+  res.json(r);
+});
+
+// ---- F04: Thumbnail Route ----------------------------------------------------
+app.get('/api/thumbnails/:id', (req, res) => {
+  const imageId = req.params.id;
+  // Security: verify image belongs to imageStore
+  const canonical = imageStore.resolveImage(imageId);
+  if (!canonical) return res.status(404).send('Image not found in canonical store');
+
+  if (thumbnailService.hasThumbnail(imageId)) {
+    return res.sendFile(thumbnailService.getThumbnailFile(imageId));
+  }
+
+  // Generate on demand if available
+  thumbnailService.generateThumbnail(imageId, (err, thumbPath) => {
+    if (!err && thumbPath && fs.existsSync(thumbPath)) {
+      return res.sendFile(thumbPath);
+    }
+    // Fallback: send full canonical original
+    res.sendFile(canonical);
+  });
+});
+
+// ---- F05: Collections Endpoints ----------------------------------------------
+app.get('/api/collections', (req, res) => {
+  res.json({ collections: collectionStore.list() });
+});
+
+app.post('/api/collections', (req, res) => {
+  try {
+    const col = collectionStore.create(req.body || {});
+    res.json({ ok: true, collection: col });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/collections/:id', (req, res) => {
+  const col = collectionStore.get(req.params.id);
+  if (!col) return res.status(404).json({ error: 'Collection not found' });
+  res.json({ collection: col });
+});
+
+app.put('/api/collections/:id', (req, res) => {
+  try {
+    const col = collectionStore.update(req.params.id, req.body || {});
+    if (!col) return res.status(404).json({ error: 'Collection not found' });
+    res.json({ ok: true, collection: col });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/collections/:id', (req, res) => {
+  const ok = collectionStore.remove(req.params.id);
+  res.json({ ok });
+});
+
+app.post('/api/collections/:id/artifacts', (req, res) => {
+  const ids = req.body && req.body.artifactIds;
+  const col = collectionStore.addArtifacts(req.params.id, ids || []);
+  if (!col) return res.status(404).json({ error: 'Collection not found' });
+  res.json({ ok: true, collection: col });
+});
+
+app.delete('/api/collections/:id/artifacts', (req, res) => {
+  const ids = req.body && req.body.artifactIds;
+  const col = collectionStore.removeArtifacts(req.params.id, ids || []);
+  if (!col) return res.status(404).json({ error: 'Collection not found' });
+  res.json({ ok: true, collection: col });
+});
+
+// ---- F13: Unified Recipes Endpoints ------------------------------------------
+app.get('/api/recipes', (req, res) => {
+  const category = req.query.category || null;
+  const search = req.query.search || '';
+  res.json({ recipes: recipeStore.list({ category, search }) });
+});
+
+app.post('/api/recipes', (req, res) => {
+  try {
+    const r = recipeStore.create(req.body || {});
+    res.json({ ok: true, recipe: r });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/recipes/:id', (req, res) => {
+  const r = recipeStore.get(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Recipe not found' });
+  res.json({ recipe: r });
+});
+
+app.put('/api/recipes/:id', (req, res) => {
+  try {
+    const r = recipeStore.update(req.params.id, req.body || {});
+    if (!r) return res.status(404).json({ error: 'Recipe not found' });
+    res.json({ ok: true, recipe: r });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/recipes/:id', (req, res) => {
+  const ok = recipeStore.remove(req.params.id);
+  res.json({ ok });
+});
+
+app.post('/api/recipes/:id/duplicate', (req, res) => {
+  const r = recipeStore.duplicate(req.params.id, req.body && req.body.name);
+  if (!r) return res.status(404).json({ error: 'Recipe not found' });
+  res.json({ ok: true, recipe: r });
+});
+
+app.post('/api/recipes/import-legacy', (req, res) => {
+  const styles = req.body && req.body.styles;
+  const result = recipeStore.importLegacyStyles(styles || []);
+  res.json({ ok: true, ...result });
+});
+
+// ---- F11: Declarative Macros Endpoints ----------------------------------------
+app.get('/api/macros', (req, res) => {
+  res.json({ macros: macroStore.list() });
+});
+
+app.post('/api/macros', (req, res) => {
+  try {
+    const m = macroStore.create(req.body || {});
+    res.json({ ok: true, macro: m });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/macros/:id', (req, res) => {
+  const m = macroStore.get(req.params.id);
+  if (!m) return res.status(404).json({ error: 'Macro not found' });
+  res.json({ macro: m });
+});
+
+app.delete('/api/macros/:id', (req, res) => {
+  const ok = macroStore.remove(req.params.id);
+  res.json({ ok });
+});
+
+// ---- F12: Reproducibility Bundles Endpoints -----------------------------------
+app.post('/api/repro/export', (req, res) => {
+  const bundle = exportReproBundle(req.body || {});
+  res.json({ ok: true, bundle });
+});
+
+app.post('/api/repro/validate', (req, res) => {
+  const bundle = req.body && req.body.bundle;
+  const validation = validateReproBundle(bundle);
+  if (!validation.valid) return res.status(400).json(validation);
+  const compat = checkBundleCompatibility(bundle, CONTROLLED_TARGETS);
+  res.json({ valid: true, compatibility: compat, preview: bundle });
+});
+
+// ---- F09: Lineage Settings Diff Endpoint -------------------------------------
+app.get('/api/lineage/:id/diff', (req, res) => {
+  const childId = req.params.id;
+  const childMeta = imageMeta.get(childId);
+  if (!childMeta) return res.status(404).json({ error: 'Child image metadata not found' });
+
+  const parentId = childMeta.parent_id;
+  if (!parentId) {
+    return res.json({ childId, parentId: null, hasParent: false, changes: [], isRoot: true });
+  }
+
+  const parentMeta = imageMeta.get(parentId) || {};
+  const diffs = [];
+
+  const compareKeys = [
+    ['operation', 'Operation'],
+    ['target', 'Model / Target'],
+    ['seed', 'Seed'],
+    ['width', 'Width'],
+    ['height', 'Height'],
+    ['steps', 'Steps'],
+    ['cfg_scale', 'Guidance / CFG'],
+    ['sampler', 'Sampler'],
+    ['scheduler', 'Scheduler'],
+    ['strength', 'Denoise Strength']
+  ];
+
+  for (const [key, label] of compareKeys) {
+    const parentVal = parentMeta[key] !== undefined ? parentMeta[key] : null;
+    const childVal = childMeta[key] !== undefined ? childMeta[key] : null;
+    if (parentVal !== childVal) {
+      diffs.push({ field: key, label, parent: parentVal, child: childVal });
+    }
+  }
+
+  // Prompt diff handling under strict privacy contract
+  let promptStatus = 'PRIVATE / NOT SAVED';
+  let parentPrompt = null;
+  let childPrompt = null;
+
+  if (childMeta.prompt_saved && parentMeta.prompt_saved) {
+    promptStatus = 'SAVED';
+    parentPrompt = parentMeta.prompt || null;
+    childPrompt = childMeta.prompt || null;
+  } else if (childMeta.prompt_saved) {
+    promptStatus = 'PARENT_PRIVATE';
+  } else {
+    promptStatus = 'PRIVATE / NOT SAVED';
+  }
+
+  res.json({
+    childId,
+    parentId,
+    hasParent: true,
+    promptStatus,
+    parentPrompt,
+    childPrompt,
+    changes: diffs
+  });
+});
+
 // Tail of the actual sd-cli log for Create and Edit sampling progress.
 // Create refreshes its run directory for each sequential image.
 function sdLogTailForJob(job) {
@@ -3997,6 +4428,7 @@ function sdLogTailForJob(job) {
     try { const b = Buffer.alloc(n); fs.readSync(fd, b, 0, n, st.size - n); return b.toString('utf8'); } finally { fs.closeSync(fd); }
   } catch (_) { return ''; }
 }
+
 app.get('/api/jobs/:jobId', (req, res) => {
   const job = jobs[req.params.jobId];
   if (!job) {
