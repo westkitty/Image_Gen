@@ -178,6 +178,13 @@
     return h('section', { className: 'ca-panel', style: { borderTopColor: accent || '#334155' } }, h('h3', null, title), body);
   }
   function status(text, color) { return h('span', { className: 'ca-status', style: { color: color || '#94a3b8', borderColor: (color || '#94a3b8') + '66', background: (color || '#94a3b8') + '12' } }, text); }
+  function progressPercent(progress) {
+    if (!progress || typeof progress !== 'object') return null;
+    const value = Number.isFinite(progress.totalPercent) ? progress.totalPercent
+      : Number.isFinite(progress.currentRunPercent) ? progress.currentRunPercent
+        : Number.isFinite(progress.percent) ? progress.percent : null;
+    return value == null ? null : Math.max(0, Math.min(100, Math.round(value)));
+  }
 
   P.buildConceptWorkstation = function (vals, accent) {
     const runs = (this.state.runs || []).slice(0, 8), v12 = window.__DEX_V12 || {}, snap = v12.snapshot || {};
@@ -324,7 +331,7 @@
     const snap = (window.__DEX_V12 && window.__DEX_V12.snapshot) || {};
     const lists = [['Active', snap.active || [], '#38bdf8'], ['Queue', snap.queue || [], '#f59e0b'], ['Recent', snap.recent || [], '#94a3b8']];
     const jobRow = (j, i, toneColor) => {
-      const id = j.id || j.job_id || ('job-' + i), p = j.progress, pct = p && typeof p.percent === 'number' ? Math.max(0, Math.min(100, p.percent)) : null;
+      const id = j.id || j.job_id || ('job-' + i), p = j.progress, pct = progressPercent(p);
       return h('div', { className: 'ca-queue-row', key: id }, h('div', { className: 'ca-queue-row-title' }, h('span', { className: 'ca-queue-dot', style: { background: toneColor } }), h('b', null, j.label || j.operation || j.kind || 'Job'), status(j.status || (toneColor === '#f59e0b' ? 'QUEUED' : 'ACTIVE'), toneColor)), h('small', null, j.error || j.message || (j.artifact_id ? 'Artifact ' + j.artifact_id : id)), pct != null ? h('div', { className: 'ca-queue-progress', role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('span', { style: { width: pct + '%' } })) : null, p && p.label ? h('small', { className: 'ca-muted' }, p.label) : null, j.elapsedMs != null ? h('small', null, Math.round(j.elapsedMs / 1000) + ' s elapsed') : null, j.canCancel ? h('button', { type: 'button', className: 'ca-secondary ca-queue-cancel', onClick: () => window.__DEX_V12.cancelJob && window.__DEX_V12.cancelJob(id) }, 'Cancel') : null);
     };
     return h('section', { className: 'ca-queue-expanded', 'aria-label': 'Queue and history dock' }, h('div', { className: 'ca-queue-expanded-head' }, h('div', null, h('b', null, 'Queue / History'), h('span', null, 'Shared V12 snapshot · no duplicate subscription')), h('div', { className: 'ca-form-actions' }, h('button', { type: 'button', className: 'ca-secondary', onClick: () => this.caToggleJobs() }, 'Open Full Job Center'), h('button', { type: 'button', className: 'ca-icon-button', 'aria-label': 'Collapse queue and history', onClick: () => this.caToggleQueue() }, '×'))), h('div', { className: 'ca-queue-columns' }, ...lists.map(([label, jobs, color]) => h('div', { className: 'ca-queue-column', key: label }, h('h4', null, label, h('span', null, jobs.length)), jobs.length ? jobs.slice(0, 8).map((j, i) => jobRow(j, i, color)) : h('div', { className: 'ca-empty' }, 'None reported by V12.')))));
@@ -346,8 +353,8 @@
   P.buildConceptShell = function (vals) {
     const ca = this._ca(), moduleId = this.caModule(), mod = MODULES.find(m => m.id === moduleId) || MODULES[0], accent = mod.accent, screen = this.state.screens[this.state.version];
     const nav = MODULES.map(m => h('button', { key: m.id, type: 'button', className: 'ca-nav-item' + (m.id === moduleId ? ' is-active' : ''), 'data-nav': 'true', 'data-active': m.id === moduleId ? 'true' : 'false', 'aria-current': m.id === moduleId ? 'page' : undefined, title: m.label, onClick: () => this.caNavigate(m.id), style: { '--ca-accent': m.accent } }, h('span', { className: 'ca-nav-icon', 'aria-hidden': 'true' }, moduleIcon(m.icon, 17)), h('span', { className: 'ca-nav-label' }, m.label)));
-    const tabs = moduleId === 'generate' ? [['create', 'Text to Image', true], ['batch', 'Batch / Sweep', true]] : moduleId === 'edit' ? [['edit', 'Img2Img / Inpaint', true], ['enhance', 'Upscale / Enhance', true]] : moduleId === 'music' ? [['music', 'Song', true], ['music', 'Instrumental', true], ['planned-stems', 'Stems · Planned', false], ['planned-mastering', 'Mastering · Planned', false]] : moduleId === 'drama' ? [['drama', 'Script', true], ['planned-beats', 'Beats · Planned', false], ['planned-storyboard', 'Storyboard · Planned', false], ['drama', 'Performance', true], ['planned-polish', 'Dialogue Polish · Planned', false]] : moduleId === 'settings' ? [['general', 'General', true], ['capabilities', 'Capabilities', true], ['help', 'Help / Tutorials', true], ['system', 'System', true]] : [];
-    const headerTabs = tabs.length ? h('div', { className: 'ca-tabs ca-header-tabs', role: 'tablist' }, ...tabs.map(([id, label, enabled], i) => { const selected = id === screen || (moduleId === 'settings' && ca.settingsTab === id) || (moduleId === 'music' && i === 0) || (moduleId === 'drama' && i === 0); return h('button', { key: label, type: 'button', role: 'tab', className: 'ca-tab' + (selected ? ' is-selected' : ''), 'aria-selected': String(selected), disabled: !enabled, onClick: () => { if (id === 'general' || id === 'capabilities' || id === 'help' || id === 'system') { ca.settingsTab = id; this.caSync(); } else if (id === 'edit' || id === 'enhance' || id === 'create' || id === 'batch') this.setScreen(id); } }, label); })) : null;
+    const tabs = moduleId === 'generate' ? [['create', 'Text to Image', true], ['batch', 'Batch / Sweep', true]] : moduleId === 'edit' ? [['edit', 'Img2Img / Inpaint', true], ['enhance', 'Upscale / Enhance', true]] : moduleId === 'music' ? [['music-song', 'Song', true], ['music-instrumental', 'Instrumental', true], ['planned-stems', 'Stems · Planned', false], ['planned-mastering', 'Mastering · Planned', false]] : moduleId === 'drama' ? [['drama', 'Script', true], ['planned-beats', 'Beats · Planned', false], ['planned-storyboard', 'Storyboard · Planned', false], ['drama', 'Performance', true], ['planned-polish', 'Dialogue Polish · Planned', false]] : moduleId === 'settings' ? [['general', 'General', true], ['capabilities', 'Capabilities', true], ['help', 'Help / Tutorials', true], ['system', 'System', true]] : [];
+    const headerTabs = tabs.length ? h('div', { className: 'ca-tabs ca-header-tabs', role: 'tablist' }, ...tabs.map(([id, label, enabled], i) => { const selected = id === screen || (moduleId === 'settings' && ca.settingsTab === id) || (id === 'music-song' && !this._mws().instrumental) || (id === 'music-instrumental' && !!this._mws().instrumental) || (moduleId === 'drama' && i === 0); return h('button', { key: label, type: 'button', role: 'tab', className: 'ca-tab' + (selected ? ' is-selected' : ''), 'aria-selected': String(selected), disabled: !enabled, onClick: () => { if (id === 'general' || id === 'capabilities' || id === 'help' || id === 'system') { ca.settingsTab = id; this.caSync(); } else if (id === 'music-song' || id === 'music-instrumental') this.mSet({ instrumental: id === 'music-instrumental' }); else if (id === 'edit' || id === 'enhance' || id === 'create' || id === 'batch') this.setScreen(id); } }, label); })) : null;
     let canvas;
     if (moduleId === 'workstation') canvas = this.buildConceptWorkstation(vals, accent);
     else if (moduleId === 'generate') canvas = this.buildConceptGenerate(vals, accent);
@@ -361,7 +368,7 @@
     else canvas = this.buildConceptSettings(vals, accent);
     return h('div', { className: 'ca-shell', 'data-ca-module': moduleId, style: { '--ca-accent': accent } },
       h('aside', { className: 'ca-nav', 'aria-label': 'Primary modules' }, h('div', { className: 'ca-brand' }, h('img', { src: 'uploads/grok_image_1775521844329.jpg', alt: 'DexDiffusion' }), h('div', null, h('b', null, 'DexDiffusion'), h('small', null, 'Single-Canvas Workstation'))), h('nav', null, ...nav), h('button', { type: 'button', className: 'ca-nav-jobs', onClick: () => this.caToggleJobs() }, '▤  Jobs', status(String((window.__DEX_V12?.activeJobCount || 0) + (window.__DEX_V12?.queuedJobCount || 0)), '#38bdf8'))),
-      h('header', { className: 'ca-topbar' }, h('div', { className: 'ca-topbar-context' }, h('span', { className: 'ca-kicker' }, 'DEXDIFFUSION'), h('b', null, 'Local creative workstation')), h('button', { type: 'button', className: 'ca-search', onClick: () => this.caTogglePalette() }, '⌘K  Search projects, assets, runs, help'), h('div', { className: 'ca-topbar-actions' }, h('span', { className: 'ca-live' }, window.__DEX_V12?.connected ? 'LIVE' : 'CONNECTING'), h('button', { type: 'button', className: 'ca-topbar-job', onClick: () => this.caToggleJobs() }, 'Jobs ' + ((window.__DEX_V12?.activeJobCount || 0) + (window.__DEX_V12?.queuedJobCount || 0))), h('button', { type: 'button', className: 'ca-icon-button', 'aria-label': 'Open help', 'data-ca-open-help': moduleId, onClick: e => this.caOpenHelp(moduleId, e) }, '?'))),
+      h('header', { className: 'ca-topbar' }, h('div', { className: 'ca-topbar-context' }, h('span', { className: 'ca-kicker' }, 'DEXDIFFUSION'), h('b', null, 'Local creative workstation')), h('button', { type: 'button', className: 'ca-search', onClick: () => this.caTogglePalette() }, '⌘K  Search commands and navigation'), h('div', { className: 'ca-topbar-actions' }, h('span', { className: 'ca-live' }, window.__DEX_V12?.connected ? 'LIVE' : 'CONNECTING'), h('button', { type: 'button', className: 'ca-topbar-job', onClick: () => this.caToggleJobs() }, 'Jobs ' + ((window.__DEX_V12?.activeJobCount || 0) + (window.__DEX_V12?.queuedJobCount || 0))), h('button', { type: 'button', className: 'ca-icon-button', 'aria-label': 'Open help', 'data-ca-open-help': moduleId, onClick: e => this.caOpenHelp(moduleId, e) }, '?'))),
       h('header', { className: 'ca-module-header', style: { borderLeftColor: accent } }, h('div', { className: 'ca-module-title' }, h('span', { className: 'ca-module-icon', style: { color: accent } }, moduleIcon(mod.icon, 22)), h('div', null, h('h1', null, mod.label), h('p', null, mod.desc))), headerTabs, h('button', { type: 'button', className: 'ca-help-button', 'data-ca-open-help': moduleId, onClick: e => this.caOpenHelp(moduleId, e) }, '?  How to use this section')),
       h('main', { className: 'ca-canvas', 'data-ca-module': moduleId }, canvas),
       this.buildConceptInspector(moduleId, accent),
@@ -406,5 +413,13 @@
       };
       document.addEventListener('click', this._caHelpDelegate);
     }
+  };
+  const oldUnmount = P.componentWillUnmount;
+  P.componentWillUnmount = function () {
+    if (this._caHelpDelegate) {
+      document.removeEventListener('click', this._caHelpDelegate);
+      this._caHelpDelegate = null;
+    }
+    if (oldUnmount) oldUnmount.call(this);
   };
 })();

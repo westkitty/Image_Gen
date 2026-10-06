@@ -208,7 +208,7 @@ test('browser: successful enhancement is reviewed before Apply, with Cancel and 
     assert.ok(requests.every((request) => request.save_prompts === false));
     const geometry = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }));
     assert.ok(geometry.scrollWidth <= geometry.innerWidth, `mobile page overflow: ${JSON.stringify(geometry)}`);
-    assert.ok(await page.locator('[data-v="1"] aside nav [data-nav]').first().isVisible(), 'mobile screen navigation visible');
+    assert.ok(await page.locator('.ca-nav .ca-nav-item').first().isVisible(), 'Concept A mobile screen navigation visible');
   } finally {
     await browser.close();
   }

@@ -22,6 +22,7 @@ BASE="http://127.0.0.1:$PORT"
 LOCAL_URL="$BASE/dexdiffusion/"
 LOG="$CONSOLE_DIR/server.log"
 PIDFILE="$CONSOLE_DIR/dexdiffusion.pid"
+DETACH_HELPER="$ROOT/scripts/detach-process.py"
 APP_PATH="/Applications/DexDiffusion.app"
 IMAGES_ROOT="/Users/andrew/images_made"
 SSH_TARGET="${DEX_SSH_TARGET:-westcat}"   # DEX_SSH_TARGET: test-only override
@@ -72,10 +73,11 @@ cmd_start() {
     command -v node >/dev/null 2>&1 || { echo "ERROR: node not found on PATH" >&2; exit 1; }
     [ -d "$CONSOLE_DIR/node_modules" ] || { echo "ERROR: $CONSOLE_DIR/node_modules missing. Run once: (cd operator-console && npm install)" >&2; exit 1; }
     echo "Starting DexDiffusion (log: $LOG)..."
-    # Only node is backgrounded (not a `cd && node` list), with every stdio fd
-    # detached, so no helper process lingers holding the caller's stdout/stderr
-    # (the Dock wrapper reads this command's output until EOF).
-    ( cd "$CONSOLE_DIR" || exit 1; nohup node server.js </dev/null >>"$LOG" 2>&1 & echo $! >"$PIDFILE" )
+    # A double fork plus a new session keeps the console independent of the
+    # terminal, Dock wrapper, or automation process that invoked this helper.
+    # Plain `nohup ... &` still shares the caller's process group and can be
+    # reaped when that caller exits even after the health check succeeds.
+    python3 "$DETACH_HELPER" "$CONSOLE_DIR" "$LOG" node server.js
     for _ in $(seq 1 30); do
       healthy && break
       sleep 1
@@ -85,7 +87,9 @@ cmd_start() {
       tail -n 20 "$LOG" >&2 || true
       exit 1
     fi
-    echo "DexDiffusion started (pid $(owned_pid || cat "$PIDFILE"))."
+    pid="$(owned_pid)"
+    printf '%s\n' "$pid" >"$PIDFILE"
+    echo "DexDiffusion started (pid $pid)."
   fi
   echo "  local:   $LOCAL_URL"
   if t="$(tailnet_url)"; then

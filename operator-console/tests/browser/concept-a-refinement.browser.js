@@ -86,6 +86,97 @@ async function openConcept(page, base) {
       const planned = await page.locator('.ca-header-tabs button:disabled').allTextContents();
       assert.ok(planned.some(x => /Stems/.test(x)));
       assert.ok(planned.some(x => /Mastering/.test(x)));
+      await page.locator('.ca-header-tabs button', { hasText: 'Instrumental' }).click();
+      assert.equal(await page.evaluate(() => __dex._mws().instrumental), true);
+      await page.waitForFunction(() => [...document.querySelectorAll('.ca-header-tabs button')].some(b => b.textContent.includes('Instrumental') && b.getAttribute('aria-selected') === 'true'));
+      assert.equal(await page.locator('.ca-header-tabs button', { hasText: 'Instrumental' }).getAttribute('aria-selected'), 'true');
+      await page.locator('.ca-header-tabs button', { hasText: 'Song' }).click();
+      assert.equal(await page.evaluate(() => __dex._mws().instrumental), false);
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
+    await test('queue progress is truthful and Help delegation is removed on teardown', async () => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const errors = await openConcept(page, srv.base);
+      await page.evaluate(() => {
+        __DEX_V12.snapshot = {
+          active: [
+            { id: 'measured', label: 'Measured job', status: 'RUNNING', progress: { currentRunPercent: 25, totalPercent: 40 } },
+            { id: 'unknown', label: 'Unknown job', status: 'RUNNING', progress: null },
+          ],
+          queue: [], recent: [], resources: {}, timing: null,
+        };
+        __DEX_V12.activeJobCount = 2;
+        __DEX_V12.queuedJobCount = 0;
+        __dex.caSync();
+      });
+      await page.locator('.ca-queue-bar button').first().click();
+      const measured = page.locator('.ca-queue-row', { hasText: 'Measured job' });
+      assert.equal(await measured.locator('[role=progressbar]').getAttribute('aria-valuenow'), '40');
+      assert.equal(await page.locator('.ca-queue-row', { hasText: 'Unknown job' }).locator('[role=progressbar]').count(), 0);
+      await page.evaluate(() => __DEX_V12.toggleJobCenter());
+      assert.match(await page.locator('#v12-jc-content').innerText(), /Progress unavailable/);
+      assert.doesNotMatch(await page.locator('#v12-jc-content').innerText(), /Unknown job[^]*0%/);
+      const delegatedAfterUnmount = await page.evaluate(() => {
+        let calls = 0;
+        __dex.caOpenHelp = () => { calls += 1; };
+        __dex.componentWillUnmount();
+        const trigger = document.createElement('button');
+        trigger.dataset.caOpenHelp = 'generate';
+        document.body.appendChild(trigger);
+        trigger.click();
+        trigger.remove();
+        return calls;
+      });
+      assert.equal(delegatedAfterUnmount, 0);
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
+    await test('command palette lists and navigates the complete Concept A module set', async () => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const errors = await openConcept(page, srv.base);
+      await page.locator('.ca-search').focus();
+      await page.locator('.ca-search').click();
+      await page.waitForSelector('#v12-palette-overlay', { state: 'visible' });
+      await page.waitForFunction(() => document.activeElement?.id === 'v12-palette-input');
+      const paletteText = await page.locator('#v12-palette-results').innerText();
+      for (const label of ['Workstation', 'Generate', 'Edit', 'Media', 'Voice', 'Music', '3D Assets', 'World Viewer', 'Drama', 'Settings / Help']) {
+        assert.match(paletteText, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+      }
+      await page.fill('#v12-palette-input', 'World Viewer');
+      await page.locator('.v12-palette-item', { hasText: 'Go to World Viewer' }).click();
+      await page.waitForSelector('.ca-shell[data-ca-module="world"]');
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
+    await test('shared dialogs move focus inside and restore their opener', async () => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const errors = await openConcept(page, srv.base);
+      const opener = page.locator('.ca-search');
+
+      await opener.focus();
+      await opener.click();
+      await page.waitForFunction(() => document.activeElement?.id === 'v12-palette-input');
+      assert.equal(await page.locator('#v12-palette-modal').getAttribute('role'), 'dialog');
+      await page.keyboard.press('Escape');
+      assert.equal(await opener.evaluate(e => document.activeElement === e), true);
+
+      await page.evaluate(() => __DEX_V12.toggleJobCenter());
+      await page.waitForFunction(() => document.activeElement?.id === 'v12-jc-close-btn');
+      assert.equal(await page.locator('#v12-job-center-drawer').getAttribute('aria-hidden'), 'false');
+      await page.waitForTimeout(400); // snapshot refresh may remount the Concept A opener
+      await page.keyboard.press('Escape');
+      assert.equal(await opener.evaluate(e => document.activeElement === e), true);
+      assert.equal(await page.locator('#v12-job-center-drawer').getAttribute('aria-hidden'), 'true');
+
+      await page.evaluate(() => __DEX_V12.openComparison([]));
+      await page.waitForFunction(() => document.activeElement?.id === 'v12-cmp-close-btn');
+      assert.equal(await page.locator('#v12-compare-modal').getAttribute('aria-modal'), 'true');
+      await page.keyboard.press('Escape');
+      assert.equal(await opener.evaluate(e => document.activeElement === e), true);
       assert.deepEqual(errors, []);
       await page.close();
     });
@@ -93,7 +184,8 @@ async function openConcept(page, base) {
     await test('narrow Concept A geometry has no document-wide horizontal overflow', async () => {
       const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
       const errors = await openConcept(page, srv.base);
-      await page.evaluate(() => __dex.caNavigate('generate'));
+      assert.equal(await page.locator('.ca-nav').isVisible(), true);
+      await page.locator('.ca-nav-item', { hasText: 'Generate' }).click();
       await page.waitForSelector('.ca-shell[data-ca-module="generate"]');
       const geometry = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, shell: document.querySelector('.ca-shell').getBoundingClientRect().width }));
       assert.ok(geometry.scrollWidth <= geometry.width + 2, JSON.stringify(geometry));

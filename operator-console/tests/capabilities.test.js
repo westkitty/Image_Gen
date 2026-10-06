@@ -88,10 +88,36 @@ test('nested run cells are recorded as their top-level run', () => {
   assert.deepEqual(out.trim().split('\n'), [`${base}/runs/20260925-000000-hires-fix`, `${base}/runs/20260925-000001-img2img`]);
 });
 
-test('lifecycle helper backgrounds only node with detached stdio (no lingering helper)', () => {
+test('lifecycle helper uses a double-forked session and records only the verified listener pid', () => {
   const src = fs.readFileSync(path.join(ROOT, 'bin', 'dexdiffusion'), 'utf8');
-  assert.match(src, /\( cd "\$CONSOLE_DIR" \|\| exit 1; nohup node server\.js <\/dev\/null >>"\$LOG" 2>&1 & echo \$! >"\$PIDFILE" \)/);
-  assert.doesNotMatch(src, /cd "\$CONSOLE_DIR" && nohup/);
+  const helper = fs.readFileSync(path.join(ROOT, 'scripts', 'detach-process.py'), 'utf8');
+  assert.match(src, /python3 "\$DETACH_HELPER" "\$CONSOLE_DIR" "\$LOG" node server\.js/);
+  assert.match(src, /pid="\$\(owned_pid\)"[^]*printf '%s\\n' "\$pid" >"\$PIDFILE"/);
+  assert.doesNotMatch(src, /nohup node server\.js/);
+  assert.match(helper, /os\.fork\(\)[^]*os\.setsid\(\)[^]*os\.fork\(\)/);
+  assert.match(helper, /os\.dup2\(null_fd, 0\)[^]*os\.dup2\(log_fd, 1\)[^]*os\.dup2\(log_fd, 2\)/);
+});
+
+test('detached process survives launcher exit with init ownership and closed caller stdio', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-detach-'));
+  const helper = path.join(ROOT, 'scripts', 'detach-process.py');
+  const log = path.join(dir, 'child.log');
+  const pidFile = path.join(dir, 'child.pid');
+  let pid = null;
+  try {
+    execFileSync('python3', [helper, dir, log, '/bin/sh', '-c', 'printf "%s\\n" "$$" > "$1"; exec sleep 30', 'detached-probe', pidFile], { stdio: 'pipe' });
+    for (let i = 0; i < 40 && !fs.existsSync(pidFile); i++) await new Promise(resolve => setTimeout(resolve, 25));
+    assert.ok(fs.existsSync(pidFile), 'detached child published its pid after the launcher returned');
+    pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
+    assert.ok(Number.isInteger(pid) && pid > 1);
+    process.kill(pid, 0);
+    const ppid = Number(execFileSync('ps', ['-o', 'ppid=', '-p', String(pid)], { encoding: 'utf8' }).trim());
+    assert.equal(ppid, 1, 'double-forked child is independent of the launcher process');
+  } finally {
+    if (pid) {
+      try { process.kill(pid, 'SIGTERM'); } catch (_) {}
+    }
+  }
 });
 
 test('a custom SDCPP target failure is never recorded against SD1.5 txt2img', () => {

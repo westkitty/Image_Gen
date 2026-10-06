@@ -158,11 +158,23 @@
     }
   }
 
+  function progressPercent(progress) {
+    if (!progress || typeof progress !== 'object') return null;
+    const value = Number.isFinite(progress.totalPercent)
+      ? progress.totalPercent
+      : Number.isFinite(progress.currentRunPercent)
+        ? progress.currentRunPercent
+        : Number.isFinite(progress.percent)
+          ? progress.percent
+          : null;
+    return value == null ? null : Math.max(0, Math.min(100, Math.round(value)));
+  }
+
   function updateJobProgress(jobId, progress) {
-    if (!progress) return;
+    const pct = progressPercent(progress);
+    if (pct == null) return;
     const bar = document.getElementById(`v12-job-bar-${jobId}`);
     const text = document.getElementById(`v12-job-pct-${jobId}`);
-    const pct = Math.round(progress.currentRunPercent || progress.totalPercent || 0);
     if (bar) bar.style.width = pct + '%';
     if (text) text.textContent = pct + '%';
   }
@@ -249,12 +261,14 @@
     drawer.setAttribute('role', 'dialog');
     drawer.setAttribute('aria-label', 'Operational Job Center');
     drawer.setAttribute('aria-modal', 'true');
+    drawer.setAttribute('aria-hidden', 'true');
+    drawer.inert = true;
     drawer.style.cssText = 'position:fixed;top:0;right:-460px;width:440px;max-width:100vw;bottom:38px;background:#0f172a;border-left:1px solid rgba(255,255,255,0.15);box-shadow:-8px 0 24px rgba(0,0,0,0.5);z-index:10000;display:flex;flex-direction:column;transition:right 0.25s ease;font-family:system-ui,-apple-system,sans-serif;color:#f8fafc;';
 
     drawer.innerHTML = `
       <div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between;">
         <div style="font-size:15px;font-weight:600;letter-spacing:0.3px;">Workstation Job Center</div>
-        <button id="v12-jc-close-btn" type="button" style="background:transparent;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:4px 8px;">✕</button>
+        <button id="v12-jc-close-btn" type="button" aria-label="Close Job Center" style="background:transparent;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:4px 8px;">✕</button>
       </div>
       <div id="v12-jc-content" style="flex:1;overflow-y:auto;padding:16px;">
         Loading jobs…
@@ -270,11 +284,18 @@
     if (!drawer) return;
     V12.jobCenterOpen = !V12.jobCenterOpen;
     if (V12.jobCenterOpen) {
+      captureFocus('jobCenterReturnFocus');
+      drawer.inert = false;
+      drawer.setAttribute('aria-hidden', 'false');
       drawer.style.right = '0';
       renderJobCenterContent();
       fetchSnapshot();
+      requestAnimationFrame(() => document.getElementById('v12-jc-close-btn')?.focus());
     } else {
       drawer.style.right = '-460px';
+      drawer.setAttribute('aria-hidden', 'true');
+      drawer.inert = true;
+      restoreFocus('jobCenterReturnFocus');
     }
   }
   V12.toggleJobCenter = toggleJobCenter;
@@ -326,7 +347,7 @@
   }
 
   function renderJobCard(j, isActive) {
-    const pct = j.progress ? Math.round(j.progress.currentRunPercent || j.progress.totalPercent || 0) : 0;
+    const pct = progressPercent(j.progress);
     const canCancel = j.canCancel;
     const statusColor = isActive ? '#38bdf8' : '#f59e0b';
 
@@ -339,7 +360,7 @@
           </div>
           <span style="font-size:10px;font-weight:600;color:${statusColor};border:1px solid ${statusColor};padding:1px 5px;border-radius:4px;">${escapeHtml(j.status)}</span>
         </div>
-        ${isActive ? `
+        ${isActive && pct != null ? `
           <div style="margin:8px 0 6px 0;">
             <div style="display:flex;justify-content:space-between;font-size:11px;color:#cbd5e1;margin-bottom:4px;">
               <span>Progress</span>
@@ -349,7 +370,7 @@
               <div id="v12-job-bar-${j.id}" style="background:#38bdf8;height:100%;width:${pct}%;transition:width 0.2s;"></div>
             </div>
           </div>
-        ` : ''}
+        ` : isActive ? `<div style="margin:8px 0 6px 0;font-size:11px;color:#94a3b8;">Progress unavailable · current stage is indeterminate</div>` : ''}
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
           <span style="font-size:10px;color:#64748b;">${new Date(j.createdAt).toLocaleTimeString()}</span>
           ${canCancel ? `<button type="button" onclick="window.__DEX_V12.cancelJob('${j.id}')" style="background:#ef4444;border:none;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;">Cancel</button>` : ''}
@@ -399,15 +420,19 @@
 
   // ---- 4. Global Command Palette (Cmd/Ctrl + K) ------------------------------
   const COMMANDS = [
-    { id: 'nav_create', group: 'NAVIGATE', title: 'Go to Create', action: () => navigateTo('create') },
-    { id: 'nav_library', group: 'NAVIGATE', title: 'Go to Library', action: () => navigateTo('library') },
+    { id: 'nav_workstation', group: 'NAVIGATE', title: 'Go to Workstation', action: () => navigateTo('workstation') },
+    { id: 'nav_create', group: 'NAVIGATE', title: 'Go to Generate', action: () => navigateTo('create') },
+    { id: 'nav_library', group: 'NAVIGATE', title: 'Go to Media', action: () => navigateTo('library') },
     { id: 'nav_batch', group: 'NAVIGATE', title: 'Go to Batch', action: () => navigateTo('batch') },
     { id: 'nav_edit', group: 'NAVIGATE', title: 'Go to Edit', action: () => navigateTo('edit') },
     { id: 'nav_enhance', group: 'NAVIGATE', title: 'Go to Enhance', action: () => navigateTo('enhance') },
     { id: 'nav_voice', group: 'NAVIGATE', title: 'Go to Voice', action: () => navigateTo('voice') },
     { id: 'nav_music', group: 'NAVIGATE', title: 'Go to Music', action: () => navigateTo('music') },
-    { id: 'nav_models', group: 'NAVIGATE', title: 'Go to Models', action: () => navigateTo('models') },
-    { id: 'nav_system', group: 'NAVIGATE', title: 'Go to System', action: () => navigateTo('system') },
+    { id: 'nav_3d', group: 'NAVIGATE', title: 'Go to 3D Assets', action: () => navigateTo('3d') },
+    { id: 'nav_world', group: 'NAVIGATE', title: 'Go to World Viewer', action: () => navigateTo('world') },
+    { id: 'nav_drama', group: 'NAVIGATE', title: 'Go to Drama', action: () => navigateTo('drama') },
+    { id: 'nav_models', group: 'NAVIGATE', title: 'Go to Models / Capabilities', action: () => navigateTo('models') },
+    { id: 'nav_system', group: 'NAVIGATE', title: 'Go to Settings / Help', action: () => navigateTo('system') },
     { id: 'op_jobs', group: 'OPERATIONS', title: 'Toggle Job Center', shortcut: '⌘⇧J', action: () => toggleJobCenter() },
     { id: 'op_generate', group: 'OPERATIONS', title: 'Primary Generate', shortcut: '⌘Enter', action: () => triggerGenerate() },
     { id: 'op_doctor', group: 'OPERATIONS', title: 'Run System Doctor', action: () => runDoctor() },
@@ -420,10 +445,11 @@
 
     const overlay = document.createElement('div');
     overlay.id = 'v12-palette-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);z-index:11000;display:none;align-items:flex-start;justify-content:center;padding-top:12vh;font-family:system-ui,-apple-system,sans-serif;';
 
     overlay.innerHTML = `
-      <div id="v12-palette-modal" style="width:540px;max-width:92vw;background:#0f172a;border:1px solid rgba(255,255,255,0.2);border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,0.6);overflow:hidden;display:flex;flex-direction:column;">
+      <div id="v12-palette-modal" role="dialog" aria-modal="true" aria-label="Command palette" style="width:540px;max-width:92vw;background:#0f172a;border:1px solid rgba(255,255,255,0.2);border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,0.6);overflow:hidden;display:flex;flex-direction:column;">
         <div style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;gap:10px;">
           <span style="color:#94a3b8;font-size:16px;">🔍</span>
           <input id="v12-palette-input" type="text" placeholder="Type a command or search action…" style="flex:1;background:transparent;border:none;color:#f8fafc;font-size:15px;outline:none;" />
@@ -458,6 +484,8 @@
     if (!overlay) return;
     V12.commandPaletteOpen = !V12.commandPaletteOpen;
     if (V12.commandPaletteOpen) {
+      captureFocus('commandPaletteReturnFocus');
+      overlay.setAttribute('aria-hidden', 'false');
       overlay.style.display = 'flex';
       const input = document.getElementById('v12-palette-input');
       input.value = '';
@@ -465,6 +493,8 @@
       setTimeout(() => input.focus(), 50);
     } else {
       overlay.style.display = 'none';
+      overlay.setAttribute('aria-hidden', 'true');
+      restoreFocus('commandPaletteReturnFocus');
     }
   }
   V12.toggleCommandPalette = toggleCommandPalette;
@@ -514,6 +544,10 @@
     // Check if DexDiffusion component navigation exists
     if (window.__dex && typeof window.__dex.navigate === 'function') {
       window.__dex.navigate(screenId);
+      return;
+    }
+    if (window.__dex && typeof window.__dex.setScreen === 'function') {
+      window.__dex.setScreen(screenId);
       return;
     }
     // Fallback: standard A1111 workbench navigation
@@ -573,6 +607,10 @@
 
     const modal = document.createElement('div');
     modal.id = 'v12-compare-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Image comparison');
+    modal.setAttribute('aria-hidden', 'true');
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(5,7,12,0.92);backdrop-filter:blur(8px);z-index:12000;display:none;flex-direction:column;font-family:system-ui,-apple-system,sans-serif;color:#f8fafc;';
 
     modal.innerHTML = `
@@ -585,7 +623,7 @@
             <button id="v12-cmp-mode-toggle" type="button" style="background:rgba(255,255,255,0.05);border:none;color:#94a3b8;padding:4px 10px;border-radius:4px;font-size:11px;cursor:pointer;">A/B Flicker</button>
           </div>
         </div>
-        <button id="v12-cmp-close-btn" type="button" style="background:transparent;border:none;color:#94a3b8;font-size:20px;cursor:pointer;">✕</button>
+        <button id="v12-cmp-close-btn" type="button" aria-label="Close image comparison" style="background:transparent;border:none;color:#94a3b8;font-size:20px;cursor:pointer;">✕</button>
       </div>
       <div id="v12-cmp-stage" style="flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:20px;">
       </div>
@@ -593,10 +631,17 @@
 
     document.body.appendChild(modal);
 
-    document.getElementById('v12-cmp-close-btn').onclick = () => {
+    document.getElementById('v12-cmp-close-btn').onclick = closeComparison;
+  }
+
+  function closeComparison() {
+    const modal = document.getElementById('v12-compare-modal');
+    if (modal) {
       modal.style.display = 'none';
-      V12.comparisonOpen = false;
-    };
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    V12.comparisonOpen = false;
+    restoreFocus('comparisonReturnFocus');
   }
 
   V12.openComparison = function(images = []) {
@@ -607,7 +652,10 @@
 
     V12.compareImages = images;
     V12.comparisonOpen = true;
+    captureFocus('comparisonReturnFocus');
+    modal.setAttribute('aria-hidden', 'false');
     modal.style.display = 'flex';
+    requestAnimationFrame(() => document.getElementById('v12-cmp-close-btn')?.focus());
 
     if (images.length === 0) {
       stage.innerHTML = '<div style="color:#64748b;">No images selected for comparison</div>';
@@ -641,6 +689,17 @@
       const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
       const isInput = tag === 'input' || tag === 'textarea' || (e.target && e.target.isContentEditable);
 
+      if (e.key === 'Tab') {
+        const focusRoot = V12.comparisonOpen
+          ? document.getElementById('v12-compare-modal')
+          : V12.commandPaletteOpen
+            ? document.getElementById('v12-palette-modal')
+            : V12.jobCenterOpen
+              ? document.getElementById('v12-job-center-drawer')
+              : null;
+        if (focusRoot && trapFocus(e, focusRoot)) return;
+      }
+
       // Cmd/Ctrl + K: Command Palette
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -670,9 +729,7 @@
           return;
         }
         if (V12.comparisonOpen) {
-          const modal = document.getElementById('v12-compare-modal');
-          if (modal) modal.style.display = 'none';
-          V12.comparisonOpen = false;
+          closeComparison();
           e.preventDefault();
           return;
         }
@@ -683,6 +740,46 @@
         }
       }
     });
+  }
+
+  function captureFocus(key) {
+    const target = document.activeElement;
+    let selector = null;
+    if (target && target !== document.body) {
+      if (target.id) selector = '#' + CSS.escape(target.id);
+      else {
+        const uniqueClass = Array.from(target.classList || []).find(name => document.getElementsByClassName(name).length === 1);
+        if (uniqueClass) selector = '.' + CSS.escape(uniqueClass);
+      }
+    }
+    V12[key] = { target, selector };
+  }
+
+  function restoreFocus(key) {
+    const record = V12[key];
+    V12[key] = null;
+    let target = record && record.target;
+    if ((!target || !target.isConnected) && record && record.selector) target = document.querySelector(record.selector);
+    if (target && target.isConnected && typeof target.focus === 'function') target.focus();
+  }
+
+  function trapFocus(event, root) {
+    const focusable = Array.from(root.querySelectorAll('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'))
+      .filter(node => !node.hidden && node.getAttribute('aria-hidden') !== 'true');
+    if (!focusable.length) return false;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !root.contains(document.activeElement))) {
+      last.focus();
+      event.preventDefault();
+      return true;
+    }
+    if (!event.shiftKey && (document.activeElement === last || !root.contains(document.activeElement))) {
+      first.focus();
+      event.preventDefault();
+      return true;
+    }
+    return false;
   }
 
   function escapeHtml(str) {
