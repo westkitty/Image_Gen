@@ -2,6 +2,17 @@
 
 Current resumption index, captured 2026-10-05. Final closeout mission validated all Workstation V12, 3D Asset, WorldGen, and Image Generation systems.
 
+## Human-acceptance preparation — 2026-10-05
+
+**HUMAN ACCEPTANCE STATUS: READY FOR HUMAN ACCEPTANCE.** This is an engineering readiness state, not human acceptance. Andrew has not yet performed the subjective acceptance run. The preparation started from published baseline `b493643ec937325c2d183bd72f3d53496a664eae`; the acceptance build is the current published `main` reported by `/api/version` and Settings/System.
+
+- Fresh real generation passed through the primary Big Mac MFLUX path using `mlx-community/flux2-klein-4b-4bit`: 512×512, 4 steps, seed 51005. Run `20261005-214701-controlled-flux2-klein-4b` completed PASS with in-band remote exit and cleanup markers. Canonical asset `20261005-214701-controlled-flux2-klein-4b-s51005-controlled-flux2-klein-4b.png` is 244,827 bytes with SHA-256 `ba85e2cb11ad1d18b57cae69baa3297d30096580063dcca9246944850e888bb8` at `/Users/andrew/images_made/20261005-214701-controlled-flux2-klein-4b-s51005-controlled-flux2-klein-4b.png`.
+- The fresh asset is indexed in Media with coherent model, dimensions, seed, operation, run, and privacy metadata. The installed native app directly opened its preview and completed the Generate → Media → Edit handoff without another render; Edit retained the canonical source and truthfully selected its supported edit model.
+- DexDiffusion's Ollama dependency is healthy at its project endpoint `http://127.0.0.1:11436`. The prior 502 was a stale DexDiffusion-owned SSH tunnel forward using local port 11434. Only `com.bigmac.ollama-tunnel` was repaired to forward local 11436 to Big Mac loopback 11434; Big Mac's general Ollama/Hermes service was not changed. `/api/ollama/status` returns the installed `qwen3.8:27b-mlx` model.
+- Canonical storage has 9 valid assets and zero current missing, broken, digest-mismatch, pending, or unknown problems. All 502 preserved missing references form a fully dated cohort ending `20261003012305`, strictly before the retained valid cohort beginning `20261003153007`; diagnostics now label them historical missing references without deleting or rewriting any record or canonical asset. Any overlap, undated record, or unavailable separation remains a current problem by default.
+- The normal human path was exercised through `/Applications/DexDiffusion.app` (bundle `local.image-gen.wrapper`) and the Dock, including open, module navigation, fresh-asset preview, Send to Edit, and close/reopen handling. The final installed-wrapper stamp, current-HEAD `/api/version` match, and single-listener state are rechecked after publication.
+- Andrew's direct checklist is [DexDiffusion Human Acceptance](docs/acceptance/DEXDIFFUSION_HUMAN_ACCEPTANCE.md). No Terminal or model render is required for the acceptance session.
+
 ## Current identity
 
 - Repository `/Users/andrew/Image_Gen`, `main`. Origin matches canonical local `main`.

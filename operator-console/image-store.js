@@ -22,6 +22,11 @@ const IMAGE_CONTENT_TYPES = {
 };
 const SAFE_IMAGE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)*$/;
 
+function datedImageKey(imageId) {
+  const match = /^(20\d{6})-(\d{6})/.exec(String(imageId || ''));
+  return match ? match[1] + match[2] : null;
+}
+
 function isImageName(name) {
   return Object.prototype.hasOwnProperty.call(IMAGE_CONTENT_TYPES, path.extname(String(name)).toLowerCase());
 }
@@ -300,8 +305,37 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT, fault } = {}) {
       if (row.owners.some(r => r.image_path && path.resolve(r.image_path) !== row.path)) { row.state = 'broken'; row.reason = 'reference-path-mismatch'; }
       if (pending.has(row.image_id)) row.state = 'pending';
     }
+
+    // A missing path is not automatically a current runtime failure. Classify a
+    // fully dated, strictly older missing cohort as historical only when it does
+    // not overlap the retained dated cohort. Any ambiguity or overlap stays a
+    // current problem; the underlying references are always preserved.
+    const validDated = rows.filter(r => r.state === 'valid').map(r => datedImageKey(r.image_id)).filter(Boolean).sort();
+    const missingRows = rows.filter(r => r.state === 'missing');
+    const missingDated = missingRows.map(r => datedImageKey(r.image_id)).filter(Boolean).sort();
+    const historicalGap = missingRows.length > 0 && missingDated.length === missingRows.length && validDated.length > 0
+      && missingDated[missingDated.length - 1] < validDated[0];
+    for (const row of missingRows) {
+      row.missing_classification = historicalGap ? 'historical-missing-reference' : 'current-missing-reference';
+      row.classification_basis = historicalGap
+        ? 'missing dated cohort predates retained dated canonical cohort'
+        : 'missing reference overlaps or cannot be separated from retained canonical cohort';
+    }
     const counts = { valid: 0, missing: 0, orphan: 0, 'digest-mismatch': 0, broken: metadata_errors.length, duplicate: 0, pending: 0, unknown: 0 };
     for (const row of rows) { counts[row.state]++; if (row.duplicate_logical_reference) counts.duplicate++; }
+    const historical_missing_references = missingRows.filter(r => r.missing_classification === 'historical-missing-reference').length;
+    const current_missing_references = missingRows.length - historical_missing_references;
+    const current_problems = current_missing_references + counts.broken + counts['digest-mismatch'] + counts.pending + counts.unknown;
+    const classification = {
+      current_problems,
+      current_missing_references,
+      historical_missing_references,
+      retained_dated_cohort_start: validDated[0] || null,
+      historical_missing_cohort_end: historicalGap ? missingDated[missingDated.length - 1] : null,
+      basis: historicalGap
+        ? 'strict non-overlap between fully dated missing and retained canonical cohorts'
+        : 'conservative: missing references remain current when cohort separation is unavailable'
+    };
     const pending_publications = [];
     let journalNames = []; try { journalNames = fs.readdirSync(rootDir).filter(n => /^\.pending-.*\.json$/.test(n)); } catch (_) {}
     for (const name of journalNames) {
@@ -309,7 +343,7 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT, fault } = {}) {
       try { pending_publications.push({ ...JSON.parse(fs.readFileSync(journal_path, 'utf8')), journal_path }); }
       catch (_) { pending_publications.push({ journal_path, cleanup_state: 'unknown', reason: 'invalid-publication-journal' }); }
     }
-    return { schema: 'dexdiffusion.image_integrity.v1', root: rootDir, inspected_at, counts, records: rows, metadata_errors, pending_publications };
+    return { schema: 'dexdiffusion.image_integrity.v1', root: rootDir, inspected_at, counts, classification, records: rows, metadata_errors, pending_publications };
   }
 
   function runSeedLabel(runDir) {

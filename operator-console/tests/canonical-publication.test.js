@@ -68,6 +68,28 @@ test('read-only inventory identifies exactly owned missing/orphan/digest/duplica
   assert.equal(report.counts['digest-mismatch'], 1);
 });
 
+test('integrity separates a strictly older historical missing cohort without hiding overlap', t => {
+  const { store } = fixture(t); store.ensureRoot();
+  const validId = '20261004-120000-controlled-flux2-klein-4b.png';
+  fs.writeFileSync(path.join(store.root, validId), PNG);
+  const historicalId = '20261003-010000-controlled-flux2-klein-4b.png';
+  const refs = [
+    { image_id: validId, image_path: path.join(store.root, validId), run_id: '20261004-120000-controlled-flux2-klein-4b' },
+    { image_id: historicalId, image_path: path.join(store.root, historicalId), run_id: '20261003-010000-controlled-flux2-klein-4b' }
+  ];
+  let report = store.inspectIntegrity({ references: refs });
+  assert.equal(report.classification.current_problems, 0);
+  assert.equal(report.classification.historical_missing_references, 1);
+  assert.equal(report.records.find(r => r.image_id === historicalId).missing_classification, 'historical-missing-reference');
+
+  const overlappingId = '20261005-010000-controlled-flux2-klein-4b.png';
+  refs.push({ image_id: overlappingId, image_path: path.join(store.root, overlappingId), run_id: '20261005-010000-controlled-flux2-klein-4b' });
+  report = store.inspectIntegrity({ references: refs });
+  assert.equal(report.classification.current_problems, 2);
+  assert.equal(report.classification.historical_missing_references, 0);
+  assert.ok(report.records.filter(r => r.state === 'missing').every(r => r.missing_classification === 'current-missing-reference'));
+});
+
 test('process death after link leaves explicit hidden pending publication, never completed metadata', t => {
   const { run, store } = fixture(t);
   const child = require('child_process').spawnSync(process.execPath, ['-e', `const {createImageStore}=require(${JSON.stringify(path.resolve(__dirname, '../image-store'))});createImageStore({root:process.argv[1],fault:p=>{if(p==='after-publication')process.exit(73)}}).finalizeRun(process.argv[2])`, store.root, run], { timeout: 30000 });

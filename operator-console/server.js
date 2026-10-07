@@ -3983,7 +3983,16 @@ app.get('/api/doctor', async (req, res) => {
   add('Loopback bind', HOST === '127.0.0.1' ? 'PASS' : 'FAIL', `${HOST}:${PORT}`);
   const cleanup = mediaBridge.inspectCleanup();
   add('Owned temporary cleanup', cleanup.some(r => r.state !== 'succeeded') ? 'WARN' : 'PASS', `${cleanup.length} tracked resources · read-only /api/cleanup/ownership`);
-  try { const inventory = canonicalIntegrity(); const bad = ['missing','broken','digest-mismatch','pending'].reduce((n,k)=>n+(inventory.counts[k]||0),0); add('Canonical storage integrity', bad ? 'WARN' : 'PASS', JSON.stringify(inventory.counts) + ' · read-only /api/storage/integrity'); } catch(e) { add('Canonical storage integrity','WARN',e.message); }
+  try {
+    const inventory = canonicalIntegrity();
+    const classification = inventory.classification || {};
+    const current = Number.isInteger(classification.current_problems)
+      ? classification.current_problems
+      : ['missing','broken','digest-mismatch','pending','unknown'].reduce((n,k)=>n+(inventory.counts[k]||0),0);
+    const historical = classification.historical_missing_references || 0;
+    add('Canonical storage integrity', current ? 'WARN' : 'PASS',
+      `current problems ${current} · valid ${inventory.counts.valid || 0} · historical missing references ${historical} · read-only /api/storage/integrity`);
+  } catch(e) { add('Canonical storage integrity','WARN',e.message); }
   try { fs.accessSync(imageStore.root, fs.constants.R_OK | fs.constants.W_OK); add('Canonical image root', 'PASS', imageStore.root + ' readable/writable'); }
   catch (_) { add('Canonical image root', 'FAIL', imageStore.root + ' not accessible'); }
   const a = await refreshAssets();
