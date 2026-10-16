@@ -209,13 +209,33 @@
           const top = mk('div', 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;'); top.append(mk('b', 'font-weight:700;', it.label), ...(it.primary ? [mk('span', 'font-size:10px;color:#fbbf24;', '★ primary')] : []),
             mk('span', `font-size:10px;font-weight:700;border:1px solid ${it.readiness.ok ? '#65d66e55' : '#f8717155'};color:${it.readiness.ok ? '#86efac' : '#fca5a5'};border-radius:5px;padding:1px 6px;`, it.readiness.label), mk('span', 'font-size:10px;color:#7f8ca8;', it.backend.toUpperCase()));
           row.append(top, mk('div', 'font-size:11px;color:#8193a8;line-height:1.35;', it.blurb)); row.disabled = !it.readiness.ok && it.readiness.key !== 'available';
-          row.addEventListener('click', () => { close(); props.onPick(it.id); requestAnimationFrame(() => trigger.focus()); }); return row; })]) : [mk('div', 'color:#8193a8;font-size:12px;padding:10px;', 'No models match.')]));
+          row.addEventListener('click', () => {
+            close(); trigger.focus();   // synchronously: the option that had focus was just hidden, so focus would otherwise sit on <body> until the next frame
+            const done = props.onPick(it.id); requestAnimationFrame(() => trigger.focus());
+            guardFocus(done);
+          }); return row; })]) : [mk('div', 'color:#8193a8;font-size:12px;padding:10px;', 'No models match.')]));
       foot.textContent = g.shown + ' of ' + g.total + ' models';
       const a = props.targets.find(t => t.id === props.activeId), c = props.cards.find(x => x.id === props.activeId), fam = a ? E.familyOf(c && c.family ? { family: c.family, id: a.id } : a) : '';
       const rd = E.readinessOf(a);
       trigger.replaceChildren(mk('span', 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', (a && (a.label || a.id)) || props.activeId || 'Choose a model'),
         mk('span', 'font-size:10px;color:#7f8ca8;', E.FAMILY_LABEL[fam] || ''), mk('span', `font-size:10px;font-weight:700;color:${rd.ok ? '#86efac' : '#fca5a5'};`, a ? rd.label : ''), mk('span', 'color:#7f8ca8;', q.open ? '▴' : '▾'));
       trigger.setAttribute('aria-expanded', String(q.open));
+    }
+    // A model switch is asynchronous (a secondary-model activation takes seconds, then the screen re-renders and can drop focus to
+    // <body>). Until the switch settles, give focus back to the picker whenever it falls to <body>; any key press or pointer
+    // action by the user ends the guard immediately so it never fights real navigation.
+    let guardStop = null;
+    function guardFocus(done) {
+      if (guardStop) guardStop();
+      let finished = false;
+      const tick = () => { const a = document.activeElement; if (trigger.isConnected && (!a || a === document.body)) trigger.focus(); };
+      const timer = setInterval(tick, 120);
+      const hard = setTimeout(stop, 30000);
+      const user = () => stop();
+      function stop() { if (finished) return; finished = true; clearInterval(timer); clearTimeout(hard); document.removeEventListener('keydown', user, true); document.removeEventListener('pointerdown', user, true); guardStop = null; }
+      guardStop = stop;
+      document.addEventListener('keydown', user, true); document.addEventListener('pointerdown', user, true);
+      Promise.resolve(done).catch(() => {}).then(() => setTimeout(() => { tick(); stop(); }, 1500));
     }
     function close() { q.open = false; panel.style.display = 'none'; trigger.setAttribute('aria-expanded', 'false'); draw(); }
     function open() { q.open = true; panel.style.display = 'block'; draw(); setTimeout(() => search.focus(), 0); }

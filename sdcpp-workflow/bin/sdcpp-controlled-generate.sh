@@ -786,6 +786,19 @@ if lsof -nP -iTCP:"$SD15_TUNNEL_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   "$HERE/sdcpp-server-stop.sh" >/dev/null 2>&1 || controlled_fail "model-slot-server-stop" "Could not stop the workflow-owned warm server before changing the secondary model."
 fi
 SLOT_SOURCE="${TARGET_MODEL_PATH:-$REMOTE_MODEL}"
+# SLOT_RESOLVE_BEGIN
+# A pre-migration config can still name the legacy staging path, which is now a symlink into the external model
+# root. The slot refuses symlinks on purpose, so resolve exactly one level on Big Mac here; the slot then validates
+# the result itself (regular .safetensors file, approved root, no symlink), so nothing is weakened.
+case "$SLOT_SOURCE" in
+  '$HOME/sdcpp-staging/models/'*|/Users/*/sdcpp-staging/models/*)
+    _slot_resolved="$(ssh_remote "p=\"$SLOT_SOURCE\"; if [ -L \"\$p\" ]; then readlink \"\$p\"; fi" 2>/dev/null | tail -n 1 | tr -d '\r' || true)"
+    case "$_slot_resolved" in
+      /*.safetensors) log "Resolved legacy staging symlink for the model slot: $SLOT_SOURCE -> $_slot_resolved"; SLOT_SOURCE="$_slot_resolved" ;;
+    esac
+    ;;
+esac
+# SLOT_RESOLVE_END
 SLOT_RESULT=""
 if ! SLOT_RESULT="$(DEX_SSH_TARGET="$SSH_TARGET" "$HERE/sdcpp-secondary-slot.sh" activate "$ARG_TARGET" "$SLOT_SOURCE")"; then
   controlled_fail "model-slot" "Secondary model activation failed: $SLOT_RESULT"

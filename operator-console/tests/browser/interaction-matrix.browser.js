@@ -191,7 +191,10 @@ async function modelDisabledContract(page){
   const failures=[], original=await page.evaluate(()=>__dex.state.target),picker=page.locator('[data-model-picker="create"]'),trigger=picker.locator(':scope > button');
   for(const target of ['sd15',original]){
     await trigger.focus();await page.keyboard.press('Enter');const option=picker.locator(`[data-model-id="${target}"]`);await option.focus();await page.keyboard.press('Enter');
-    await page.waitForFunction(t=>__dex.state.target===t,target);await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+    await page.waitForFunction(t=>__dex.state.target===t,target,{timeout:30000}); // a real secondary-model activation (~8 ssh round trips, 5-6 s here) is part of this stepawait page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+    // The a11y sweep that mirrors data-ctl-off onto disabled runs from a MutationObserver -> rAF chain, so its frame can
+    // land after the two frames above. Allow it up to 2 s to converge; a field that never converges still fails below.
+    await page.waitForFunction(()=>[...document.querySelectorAll('[data-ctl-off]')].filter(n=>['INPUT','SELECT','TEXTAREA'].includes(n.tagName)).every(n=>(n.getAttribute('data-ctl-off')==='true')===n.disabled),null,{timeout:2000}).catch(()=>{});
     const state=await page.locator('[data-ctl-off]').evaluateAll(nodes=>nodes.filter(n=>['INPUT','SELECT','TEXTAREA'].includes(n.tagName)).map(n=>({off:n.getAttribute('data-ctl-off')==='true',disabled:n.disabled})));
     if(state.some(n=>n.off!==n.disabled))failures.push('Model disabled state mismatch after '+target);
     if(!await trigger.evaluate(n=>document.activeElement===n))failures.push('Keyboard model selection loses focus '+target);

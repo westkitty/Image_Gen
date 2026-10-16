@@ -96,6 +96,31 @@ const stopStorm = page => page.evaluate(() => { window.__storm.stop = true; retu
       await page.close();
     });
 
+    await test('a persistent Node widget (the model picker) keeps keyboard focus across re-renders', async () => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const errors = [];
+      page.on('pageerror', e => errors.push(String(e)));
+      await installModelSnapshots(page, srv.base);
+      await page.route('**/api/models/secondary/activate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ modelState: {} }) }));
+      await page.goto(srv.base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.ca-shell, [data-vbtn]');
+      await page.locator('[data-vbtn="1"]').click();
+      await page.waitForSelector('[data-model-picker="create"] > button');
+      await page.waitForTimeout(1500);
+      await page.locator('[data-model-picker="create"] > button').focus();
+      const same = await page.evaluate(() => { window.__trigger = document.querySelector('[data-model-picker="create"] > button'); return document.activeElement === window.__trigger; });
+      assert.equal(same, true, 'trigger focused before the storm');
+      await startStorm(page, 40);
+      await page.waitForTimeout(500);
+      const stats = await stopStorm(page);
+      assert.ok(stats.renders >= 5, JSON.stringify(stats));
+      const after = await page.evaluate(() => ({ sameNode: document.querySelector('[data-model-picker="create"] > button') === window.__trigger, focused: document.activeElement === window.__trigger }));
+      assert.equal(after.sameNode, true, 'the widget node itself survives re-renders');
+      assert.equal(after.focused, true, 'and keeps focus');
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
     await test('typing straight after load and after a target switch keeps focus (the original startup churn)', async () => {
       for (let round = 0; round < 3; round++) {
         const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

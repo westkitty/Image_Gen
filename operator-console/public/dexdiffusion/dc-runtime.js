@@ -116,9 +116,11 @@
   function captureFocus(roots) {
     const ae = document.activeElement;
     if (!ae || ae === document.body || ae === document.documentElement) return null;
-    // Only text-entry controls: that is where losing focus destroys the user's work. Buttons are left alone so a
-    // re-render never changes focus-dependent behaviour elsewhere (and costs nothing for them).
-    if (!ae.matches || !ae.matches('input:not([type=button]):not([type=submit]):not([type=reset]):not([type=checkbox]):not([type=radio]):not([type=file]),textarea,select,[contenteditable="true"]')) return null;
+    // Text-entry controls are matched across the rebuild by signature (losing focus there destroys the user's work).
+    // Any other focused element (buttons, custom widgets) is only re-focused if the very same DOM node survives the
+    // rebuild — persistent Node-valued widgets such as the model picker are moved into the new tree, and a detached
+    // node loses focus even though it is back in the document a moment later.
+    const textEntry = !!(ae.matches && ae.matches('input:not([type=button]):not([type=submit]):not([type=reset]):not([type=checkbox]):not([type=radio]):not([type=file]),textarea,select,[contenteditable="true"]'));
     for (let r = 0; r < roots.length; r++) {
       const root = roots[r];
       if (!(root instanceof Element) || !root.contains(ae)) continue;
@@ -127,7 +129,7 @@
       const text = typeof ae.selectionStart === 'number' && /^(TEXTAREA|INPUT)$/.test(ae.tagName);
       let sel = null;
       try { if (text) sel = { start: ae.selectionStart, end: ae.selectionEnd, dir: ae.selectionDirection }; } catch (_) { sel = null; }
-      return { root: r, path, sig: fieldSignature(ae), sel, scrollTop: ae.scrollTop, scrollLeft: ae.scrollLeft };
+      return { el: ae, textEntry, root: r, path, sig: fieldSignature(ae), sel, scrollTop: ae.scrollTop, scrollLeft: ae.scrollLeft };
     }
     return null;
   }
@@ -135,6 +137,12 @@
     if (!cap) return;
     const root = roots[cap.root];
     if (!(root instanceof Element)) return;
+    // Same node moved into the new tree: just give it focus back.
+    if (cap.el && cap.el.isConnected && root.contains(cap.el)) {
+      if (document.activeElement !== cap.el) { try { cap.el.focus({ preventScroll: true }); } catch (_) {} }
+      return;
+    }
+    if (!cap.textEntry) return;
     const same = (a, b) => a.tag === b.tag && a.type === b.type;
     let target = null;
     const candidates = Array.from(root.querySelectorAll('input,textarea,select,button,[tabindex],[contenteditable="true"]'));
