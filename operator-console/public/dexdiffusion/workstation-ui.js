@@ -63,7 +63,7 @@
       editSourceId: saved.editSourceId || null, editOriginalId: saved.editOriginalId || null, editSource: null, editResults: [], editStatus: 'idle', prep: 'none',
       brush: saved.brush || { mode: 'paint', size: 40 }, maskZoom: 1, maskInfo: null,
       out: { left: 0, right: 128, top: 0, bottom: 0, strength: 0.85 }, outStatus: 'idle',
-      enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2, pnginfo: { busy: false, name: '', result: null, error: null }, fileCheck: { busy: false, items: [], error: null }, xyz: { x: { type: 'steps', values: '10, 20' }, y: { type: 'cfg_scale', values: '5, 7' }, z: { type: 'none', values: '' }, keepRandom: false, legend: true, margin: 0, plan: null, error: null, grid: null }, extras: { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5 },
+      enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2, refEdit: { prompt: '', steps: 4, seed: -1 }, pnginfo: { busy: false, name: '', result: null, error: null }, fileCheck: { busy: false, items: [], error: null }, xyz: { x: { type: 'steps', values: '10, 20' }, y: { type: 'cfg_scale', values: '5, 7' }, z: { type: 'none', values: '' }, keepRandom: false, legend: true, margin: 0, plan: null, error: null, grid: null }, extras: { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5 },
       lib: { filter: 'all', items: [], total: 0, selectedId: null, selected: null, loading: false },
       compareIds: Array.isArray(saved.compareIds) ? saved.compareIds.slice(0, 4) : [], compareItems: [], compareZoom: 1,
       doctor: null, doctorBusy: false, activeJobId: saved.activeJobId || null, recovered: false,
@@ -447,6 +447,23 @@
       h('div', { style: css.mono, 'data-extras-field': 'preview' }, err ? err : ('method: extras · ' + src.width + '×' + src.height + ' → ' + plan.out.w + '×' + plan.out.h)),
       btn('Run Extras', () => { if (!err) this._runEnhance('/api/actions/upscale', { image_id: src.id, extras: chk.options }, 'Extras'); }, err ? '#64748b' : '#f59e0b'));
   };
+  // FLUX.2 Klein reference editing (MFLUX): the image + a prompt -> a new image that keeps the scene. Not ControlNet.
+  P._refEditCard = function (src) {
+    const re = this._ws().refEdit, setRe = patch => this.wsSet({ refEdit: Object.assign({}, this._ws().refEdit, patch) });
+    const fit = v => Math.min(1536, Math.max(256, Math.round(v / 16) * 16));
+    const w = fit(src.width), hgt = fit(src.height);
+    const steps = Number(re.steps), okSteps = Number.isInteger(steps) && steps >= 1 && steps <= 8, okPrompt = String(re.prompt || '').trim().length > 0;
+    const run = () => { if (okSteps && okPrompt) this._runEnhance('/api/actions/flux2-edit', { image_id: src.id, prompt: re.prompt, steps, seed: re.seed === '' ? -1 : Number(re.seed), save_prompts: !!this.state.savePrompts }, 'FLUX.2 reference edit'); };
+    return h('div', { 'data-refedit-card': 'true', style: { border: '1px solid rgba(148,163,184,.14)', borderRadius: 8, padding: 10, display: 'grid', gap: 6, gridColumn: '1 / -1' } },
+      h('div', { style: { fontWeight: 800, color: '#e2e8f0', fontSize: 13 } }, 'Reference edit · FLUX.2 Klein'),
+      h('div', { style: css.muted }, 'Describe the change; the model keeps the scene of this image and applies it (MFLUX on Big Mac, ~1 min). This is reference editing, not ControlNet: no control weight, preprocessors or start/end fractions.'),
+      h('textarea', { rows: 2, value: re.prompt, placeholder: 'e.g. the same fox, but with bright blue fur', style: Object.assign({}, css.input, { resize: 'vertical' }), 'data-refedit-field': 'prompt', 'aria-label': 'Reference edit prompt', onChange: e => setRe({ prompt: e.target.value }) }),
+      h('div', { style: css.row },
+        h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, 'Steps (1–8)', h('input', { type: 'number', min: '1', max: '8', step: '1', value: String(re.steps), style: css.input, 'data-refedit-field': 'steps', onChange: e => setRe({ steps: e.target.value }) })),
+        h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, 'Seed (-1 random)', h('input', { type: 'number', step: '1', value: String(re.seed), style: css.input, 'data-refedit-field': 'seed', onChange: e => setRe({ seed: e.target.value }) }))),
+      h('div', { style: css.mono, 'data-refedit-field': 'preview' }, 'method: FLUX.2 reference edit · ' + src.width + '×' + src.height + ' → ' + w + '×' + hgt + (okSteps ? '' : ' · steps must be 1–8') + (okPrompt ? '' : ' · describe the edit')),
+      btn('Run reference edit', run, okSteps && okPrompt ? '#f59e0b' : '#64748b'));
+  };
   P.buildEnhanceWorkbench = function () {
     const ws = this._ws(), src = ws.enhSource, base = this.state.backendUrl;
     if (!src) return h('div', { style: css.panel }, h('div', { style: css.title }, 'Enhance'), h('div', { style: css.muted }, 'Choose Enhance on any result or Library image to preselect it here.'));
@@ -466,6 +483,7 @@
           h('div', { style: css.row }, ...[2, 3, 4].map(k => btn(k + '×', () => this.wsSet({ lanczosScale: k }), k === sc ? '#f59e0b' : '#94a3b8')),
             btn('Run Lanczos', () => this._runEnhance('/api/actions/upscale', { image_id: src.id, scale: sc, resample: 'lanczos' }, 'Lanczos'), '#f59e0b')), true),
         this._extrasCard(src),
+        this._refEditCard(src),
         card('Real-ESRGAN x4', 'AI super-resolution (RealESRGAN_x4plus on Big Mac)', 'Model-based upscaling; sharpens and invents fine texture.', (src.width * 4) + '×' + (src.height * 4),
           this._gate('realEsrgan') ? btn('Run Real-ESRGAN', () => this._runEnhance('/api/actions/upscale-esrgan', { image_id: src.id }, 'Real-ESRGAN'), '#f59e0b') : h('div', { style: css.muted }, 'Unavailable (gate closed).'), this._gate('realEsrgan')),
         card('High-Res Refine', 'diffusion second pass (sd-cli --hires, SDCPP)', 'A generation-time second pass: it re-renders the image at higher resolution with denoising. It needs the original prompt and seed, so it runs from Create.', '×1.1–2.0',
@@ -669,7 +687,7 @@
         btn('Clear', () => this.wsSet({ batchText: '', parse: null, preflight: null }), '#94a3b8')),
       parsePanel, pfPanel, queuePanel,
       ws.queueLost ? h('div', { style: { color: tone.warn, fontSize: 12 } }, ws.queueLost) : null);
-    return h('div', { style: { display: 'grid', gap: 10 } }, this.buildXyzPanel(), numbered);
+    return h('div', { style: { display: 'grid', gap: 10 } }, this.buildXyzPanel(), this.buildPromptMatrixPanel(), this.buildPromptLinesPanel(), numbered);
   };
 
   // ── X/Y/Z plot (A1111 script): axes + values -> validated cells -> durable queue -> legend grid ──
@@ -684,7 +702,10 @@
   };
   P.xyzStart = async function () {
     if (!(await this.xyzCheck())) return;
-    const r = await this._api('/api/xyz', this._xyzBody());
+    // Run with the seed the preview showed (a random base seed is fixed once per plot, and the preview must match the run).
+    const body = this._xyzBody(), shown = this._ws().xyz.plan;
+    if (shown && shown.fixedSeed != null && !(Number(body.settings.seed) >= 0)) body.settings.seed = shown.fixedSeed;
+    const r = await this._api('/api/xyz', body);
     if (!r.ok) { this.wsSet({ xyz: Object.assign({}, this._ws().xyz, { error: r.data.error || 'Plot rejected', needsConfirm: !!r.data.needs_confirmation }) }); return; }
     this.wsSet({ queueId: r.data.id, queue: r.data, xyz: Object.assign({}, this._ws().xyz, { error: null, queueId: r.data.id, grid: null }) });
     this._pollQueue();
@@ -715,7 +736,7 @@
       h('div', { style: Object.assign({}, css.title, { marginBottom: 4 }) }, 'X/Y/Z plot'),
       h('div', { style: Object.assign({}, css.muted, { marginBottom: 8 }) }, 'Runs the Create settings once per cell, changing only the chosen axes (A1111 script). A random seed is fixed once so cells differ only by the axes.'),
       h('div', { style: { display: 'grid', gap: 8 } }, axisRow('x'), axisRow('y'), axisRow('z')),
-      h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1', margin: '6px 0' }) }, h('input', { type: 'checkbox', checked: !!x.keepRandom, 'data-xyz-field': 'keep-random', onChange: e => setX({ keepRandom: e.target.checked }) }), 'Keep random seeds (every cell draws its own seed)'),
+      h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1', margin: '6px 0' }) }, h('input', { type: 'checkbox', checked: !!x.keepRandom, 'data-xyz-field': 'keep-random', onChange: e => setX({ keepRandom: e.target.checked }) }), 'Keep random seeds in the X/Y/Z plot (every cell draws its own seed)'),
       h('div', { style: css.muted, 'data-xyz-field': 'unavailable' }, 'Not available with the installed engines: Checkpoint / VAE / Refiner axes (a model-slot swap per cell), prompt-order permutations, [a:b:n] scheduling, Hires and denoising axes, noise/sigma axes.'),
       h('div', { style: Object.assign({}, css.row, { margin: '8px 0' }) },
         btn('Check plot', () => this.xyzCheck(), '#38bdf8'),
@@ -761,6 +782,141 @@
       h('div', { style: css.muted }, 'Reads each checkpoint\'s safetensors header on Big Mac (never the weights) to confirm the architecture, precision and embedded VAE, instead of trusting the filename.'),
       fc.error ? h('div', { style: { color: tone.bad, fontSize: 12, marginTop: 6 }, 'data-file-error': 'true' }, fc.error) : null,
       fc.items && fc.items.length ? h('div', { style: { marginTop: 8 } }, ...fc.items.map(row)) : null);
+  };
+
+  // ── Prompt matrix + Prompts from list (A1111 scripts, SC-16..SC-19): plan on the server, run as validated queue cells ──
+  P._pmx = function () {
+    const ws = this._ws();
+    if (!ws.pmx) ws.pmx = { target: 'positive', putAtStart: false, joiner: 'comma', differentSeeds: false, keepRandom: false, legend: true, margin: 0, plan: null, error: null, grid: null };
+    return ws.pmx;
+  };
+  P._plines = function () {
+    const ws = this._ws();
+    if (!ws.plines) ws.plines = { text: '', iterateSeed: false, keepRandom: false, plan: null, error: null, needsConfirm: false };
+    return ws.plines;
+  };
+  P._pmxBody = function () {
+    const m = this._pmx();
+    return { settings: this._createBody({ quantity: 1 }), target: m.target, put_at_start: !!m.putAtStart, joiner: m.joiner, different_seeds: !!m.differentSeeds, keep_random_seed: !!m.keepRandom, confirm_large: !!this._ws().confirmLarge };
+  };
+  P._plinesBody = function () {
+    const m = this._plines();
+    return { settings: this._createBody({ quantity: 1 }), text: m.text, iterate_seed: !!m.iterateSeed, keep_random_seed: !!m.keepRandom, confirm_large: !!this._ws().confirmLarge };
+  };
+  P.pmxCheck = async function () {
+    const r = await this._api('/api/promptmatrix/plan', this._pmxBody());
+    this.wsSet({ pmx: Object.assign({}, this._pmx(), { plan: r.ok ? r.data : null, error: r.ok ? null : (r.data.error || 'Matrix rejected'), needsConfirm: false }) });
+    return r.ok;
+  };
+  P.pmxStart = async function () {
+    if (!(await this.pmxCheck())) return;
+    const r = await this._api('/api/promptmatrix', this._pmxBody());
+    if (!r.ok) { this.wsSet({ pmx: Object.assign({}, this._pmx(), { error: r.data.error || 'Matrix rejected', needsConfirm: !!r.data.needs_confirmation }) }); return; }
+    this.wsSet({ queueId: r.data.id, queue: r.data, pmx: Object.assign({}, this._pmx(), { error: null, needsConfirm: false, queueId: r.data.id, grid: null }) });
+    this._pollQueue();
+  };
+  P.pmxGrid = async function () {
+    const m = this._pmx();
+    this.wsSet({ pmx: Object.assign({}, m, { gridStatus: 'running' }) });
+    const r = await this._api('/api/xyz/' + m.queueId + '/grid', { legend: m.legend, margin: +m.margin || 0 });
+    if (!r.ok) { this.wsSet({ pmx: Object.assign({}, this._pmx(), { gridStatus: 'error', error: r.data.error }) }); return; }
+    const job = await this._waitJob(r.data.job_id);
+    const res = D.jobResults(job);
+    this.wsSet({ pmx: Object.assign({}, this._pmx(), { gridStatus: this._jobOk(job.status) && res.length ? 'done' : 'error', grid: res, error: this._jobOk(job.status) ? null : this._failText(job) }) });
+  };
+  P.plinesCheck = async function () {
+    const r = await this._api('/api/promptlines/plan', this._plinesBody());
+    this.wsSet({ plines: Object.assign({}, this._plines(), { plan: r.ok ? r.data : null, error: r.ok ? null : (r.data.errors && r.data.errors.length > 1 ? r.data.errors.join('\n') : (r.data.error || 'List rejected')), needsConfirm: false }) });
+    return r.ok;
+  };
+  P.plinesStart = async function () {
+    if (!(await this.plinesCheck())) return;
+    const r = await this._api('/api/promptlines', this._plinesBody());
+    if (!r.ok) { this.wsSet({ plines: Object.assign({}, this._plines(), { error: r.data.error || 'List rejected', needsConfirm: !!r.data.needs_confirmation }) }); return; }
+    this.wsSet({ queueId: r.data.id, queue: r.data, plines: Object.assign({}, this._plines(), { error: null, needsConfirm: false, queueId: r.data.id }) });
+    this._pollQueue();
+  };
+  // One cell of a plan preview: the exact normalised job the server validated (SC-19 dry run).
+  function jobLine(c) {
+    const j = c.job || {};
+    const bits = [j.width + '×' + j.height, j.steps + ' steps'];
+    if (j.cfg_scale !== '' && j.cfg_scale != null) bits.push('cfg ' + j.cfg_scale);
+    if (j.sampler) bits.push(j.sampler);
+    bits.push('seed ' + (Number(j.seed) >= 0 ? j.seed : 'random'));
+    return bits.join(' · ');
+  }
+  function planList(plan, field, withLine) {
+    return h('div', { style: { maxHeight: 320, overflowY: 'auto', display: 'grid', gap: 6, border: '1px solid rgba(148,163,184,.1)', borderRadius: 7, padding: 7 }, ['data-' + field + '-field']: 'cells' },
+      ...plan.cells.map(c => h('div', { key: c.index, style: { display: 'grid', gap: 2 }, 'data-cell': String(c.index + 1) },
+        h('div', { style: { fontSize: 12, color: '#dbe4ee', overflowWrap: 'anywhere' } }, (c.index + 1) + '. ' + (withLine ? 'Line ' + c.line + ' · ' : '') + c.prompt),
+        c.negative_prompt ? h('div', { style: css.mono }, 'negative: ' + c.negative_prompt) : null,
+        h('div', { style: css.mono }, jobLine(c)))));
+  }
+  P.buildPromptMatrixPanel = function () {
+    const ws = this._ws(), m = this._pmx(), base = this.state.backendUrl, q = ws.queue;
+    const setM = patch => this.wsSet({ pmx: Object.assign({}, this._pmx(), patch, { plan: null }) });
+    const isM = q && q.settings && q.settings.kind === 'promptmatrix';
+    const running = isM && q.status === 'RUNNING';
+    const plan = m.plan;
+    const sel = (field, value, opts, onChange, label) => h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, label,
+      h('select', { value, style: css.input, 'data-pmx-field': field, 'aria-label': label, onChange: e => onChange(e.target.value) }, ...opts.map(o => h('option', { key: o[0], value: o[0] }, o[1]))));
+    const chk = (field, checked, onChange, label) => h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1' }) }, h('input', { type: 'checkbox', checked: !!checked, 'data-pmx-field': field, onChange: e => onChange(e.target.checked) }), label);
+    return h('div', { style: css.panel, 'data-pmx-panel': 'true' },
+      h('div', { style: Object.assign({}, css.title, { marginBottom: 4 }) }, 'Prompt matrix'),
+      h('div', { style: Object.assign({}, css.muted, { marginBottom: 8 }) }, 'Split the Create ' + (m.target === 'negative' ? 'negative ' : '') + 'prompt with | : the first part is the base and every other part is switched on or off, giving 2^N images (up to 6 parts = 64). Example: a cat | red hat | blue scarf. Cells run with the Create settings; a random seed is fixed once so only the prompt changes.'),
+      h('div', { style: css.row },
+        sel('target', m.target, [['positive', 'Positive prompt'], ['negative', 'Negative prompt']], v => setM({ target: v }), 'Matrix on'),
+        sel('joiner', m.joiner, [['comma', 'Comma ( , )'], ['space', 'Space']], v => setM({ joiner: v }), 'Joining character')),
+      h('div', { style: { display: 'grid', gap: 4, margin: '6px 0' } },
+        chk('put-at-start', m.putAtStart, v => setM({ putAtStart: v }), 'Put variable parts at start of prompt'),
+        chk('different-seeds', m.differentSeeds, v => setM({ differentSeeds: v }), 'Use a different seed for each picture (base seed + cell number)'),
+        chk('keep-random', m.keepRandom, v => setM({ keepRandom: v }), 'Keep random seeds in the prompt matrix (each part combination draws its own seed)')),
+      h('div', { style: css.muted, 'data-pmx-field': 'unavailable' }, 'Not available: more than 6 optional parts, empty parts (refused rather than duplicated), A1111\'s coloured active/inactive text on the grid (the grid uses the X/Y/Z legend labels), a matrix on positive and negative at once, and varying the checkpoint per cell.'),
+      h('div', { style: Object.assign({}, css.row, { margin: '8px 0' }) },
+        btn('Check matrix', () => this.pmxCheck(), '#38bdf8'),
+        btn(running ? 'Matrix running…' : 'Start matrix', () => this.pmxStart(), '#65d66e', { disabled: !!running })),
+      m.error ? h('div', { style: { color: tone.bad, fontSize: 12, whiteSpace: 'pre-wrap' }, 'data-pmx-field': 'error' }, m.error) : null,
+      m.needsConfirm ? h('label', { style: Object.assign({}, css.row, { color: tone.warn, fontSize: 12 }) }, h('input', { type: 'checkbox', checked: !!ws.confirmLarge, onChange: e => this.wsSet({ confirmLarge: e.target.checked }) }), 'Confirm this large matrix, then press Start again') : null,
+      plan ? h('div', { style: { display: 'grid', gap: 4 }, 'data-pmx-field': 'plan' },
+        h('div', { style: { fontWeight: 800, color: tone.ok } }, plan.total + ' cells · ' + plan.dims[0] + ' × ' + plan.dims[1] + (plan.fixedSeed != null ? ' · seed ' + plan.fixedSeed : ' · random seeds')),
+        planList(plan, 'pmx', false)) : null,
+      isM ? h('div', { style: { display: 'grid', gap: 6, marginTop: 6 }, 'data-pmx-field': 'progress' },
+        h('div', { style: { fontWeight: 800, color: stateTone(q.status) } }, 'Matrix ' + q.status + ' · ' + q.complete + ' / ' + q.total + ' cells' + (q.failed ? ' · ' + q.failed + ' failed' : '')),
+        h('div', { style: css.row },
+          chk('legend', m.legend !== false, v => this.wsSet({ pmx: Object.assign({}, this._pmx(), { legend: v }) }), 'Legend'),
+          h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, 'Margin px', numInput(m.margin, v => this.wsSet({ pmx: Object.assign({}, this._pmx(), { margin: v }) }), { min: '0', max: '200', step: '2' })),
+          btn(m.gridStatus === 'running' ? 'Building grid…' : 'Build grid', () => this.pmxGrid(), '#f59e0b', { disabled: !q.complete || m.gridStatus === 'running' }))) : null,
+      m.grid && m.grid.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 8, marginTop: 8 }, 'data-pmx-field': 'grid' },
+        ...m.grid.map(r => h('div', { key: r.imageId }, thumb(base + r.imageUrl, false, () => openFull(this, r.imageId, base + r.imageUrl), r.imageId, 'Matrix grid ' + r.width + '×' + r.height)))) : null);
+  };
+  P.buildPromptLinesPanel = function () {
+    const ws = this._ws(), m = this._plines(), q = ws.queue;
+    const setM = patch => this.wsSet({ plines: Object.assign({}, this._plines(), patch, { plan: null }) });
+    const isL = q && q.settings && q.settings.kind === 'promptlines';
+    const running = isL && q.status === 'RUNNING';
+    const plan = m.plan;
+    const chk = (field, checked, onChange, label) => h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1' }) }, h('input', { type: 'checkbox', checked: !!checked, 'data-plines-field': field, onChange: e => onChange(e.target.checked) }), label);
+    return h('div', { style: css.panel, 'data-plines-panel': 'true' },
+      h('div', { style: Object.assign({}, css.title, { marginBottom: 4 }) }, 'Prompts from list'),
+      h('div', { style: Object.assign({}, css.muted, { marginBottom: 8 }) }, 'One prompt per line (blank lines are skipped, up to 64). A line that starts with -- sets options A1111-style: --prompt "a cat" --negative_prompt "blurry" --steps 20 --cfg_scale 7 --seed 5 --width 512 --height 512 --sampler_name "Euler a". Without --prompt the Create prompt is used. Anything unrecognised is an error naming its line.'),
+      h('textarea', { rows: 8, value: m.text, 'data-plines-field': 'text', 'aria-label': 'Prompt list', placeholder: 'a red cat on a sofa\n--prompt "a blue dog" --steps 12 --seed 5\n--prompt "a green frog" --sampler_name "Euler a"',
+        onChange: e => setM({ text: e.target.value }), style: Object.assign({}, css.input, { fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, resize: 'vertical', minHeight: 120 }) }),
+      h('div', { style: Object.assign({}, css.row, { margin: '6px 0' }) },
+        h('label', { style: Object.assign({}, css.muted) }, 'Load a text file ', h('input', { type: 'file', accept: '.txt,text/plain', 'data-plines-field': 'file', 'aria-label': 'Load prompt list from a text file',
+          onChange: e => { const f = e.target.files && e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => setM({ text: String(rd.result || '') }); rd.readAsText(f); e.target.value = ''; } }))),
+      h('div', { style: { display: 'grid', gap: 4, margin: '6px 0' } },
+        chk('iterate-seed', m.iterateSeed, v => setM({ iterateSeed: v }), 'Iterate seed every line (base seed + line index; a --seed on a line wins)'),
+        chk('keep-random', m.keepRandom, v => setM({ keepRandom: v }), 'Keep random seeds (every line draws its own seed; otherwise one random seed is fixed for all lines)')),
+      h('div', { style: css.muted, 'data-plines-field': 'unavailable' }, 'Not available (refused by name, never ignored): --sd_model, --outpath_samples/--outpath_grids, --styles, --subseed/--subseed_strength, --seed_resize_from_w/h, --sampler_index, --batch_size, --n_iter, --restore_faces, --tiling, --do_not_save_samples/--do_not_save_grid, --prompt_for_display. No combined grid of the lines. Options a target ignores (for example --cfg_scale on FLUX.2) are refused.'),
+      h('div', { style: Object.assign({}, css.row, { margin: '8px 0' }) },
+        btn('Dry run', () => this.plinesCheck(), '#38bdf8'),
+        btn(running ? 'List running…' : 'Start list', () => this.plinesStart(), '#65d66e', { disabled: !!running })),
+      m.error ? h('div', { style: { color: tone.bad, fontSize: 12, whiteSpace: 'pre-wrap' }, 'data-plines-field': 'error' }, m.error) : null,
+      m.needsConfirm ? h('label', { style: Object.assign({}, css.row, { color: tone.warn, fontSize: 12 }) }, h('input', { type: 'checkbox', checked: !!ws.confirmLarge, onChange: e => this.wsSet({ confirmLarge: e.target.checked }) }), 'Confirm this large list, then press Start again') : null,
+      plan ? h('div', { style: { display: 'grid', gap: 4 }, 'data-plines-field': 'plan' },
+        h('div', { style: { fontWeight: 800, color: tone.ok } }, plan.total + ' prompts' + (plan.skipped ? ' · ' + plan.skipped + ' blank lines skipped' : '') + (plan.fixedSeed != null ? ' · base seed ' + plan.fixedSeed : ' · random seeds') + ' — exactly what will run:'),
+        planList(plan, 'plines', true)) : null,
+      isL ? h('div', { style: { fontWeight: 800, color: stateTone(q.status), marginTop: 6 }, 'data-plines-field': 'progress' }, 'List ' + q.status + ' · ' + q.complete + ' / ' + q.total + ' prompts' + (q.failed ? ' · ' + q.failed + ' failed' : '')) : null);
   };
 
   // ── Doctor ──────────────────────────────────────────────────────

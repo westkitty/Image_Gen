@@ -3340,8 +3340,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Implement combinatorial prompt variants and seed rules",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10b 2026-10-16: operator-console/public/dexdiffusion/prompt-matrix.js, operator-console/prompt-scripts.js (routes /api/promptmatrix[/plan], /api/promptlines[/plan]), workstation-ui.js panels; tests/prompt-matrix.test.js (14), tests/browser/prompt-matrix.browser.js (4). Cells run as validated queue items; grid reuses /api/xyz/:id/grid. Ported from knowledge, not diffed against the pinned upstream. Proof is validators + queue interception only (no live generation). || A1111 | split, 2^N cells (cap 6 parts / 64 cells), positive OR negative target, seed fixed once unless keep_random_seed. Not: more than 6 parts, positive and negative at once, per-cell checkpoint.",
    "runtime_receipt": null
   },
   {
@@ -3360,8 +3360,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Match text variants and label composition",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10b 2026-10-16: operator-console/public/dexdiffusion/prompt-matrix.js, operator-console/prompt-scripts.js (routes /api/promptmatrix[/plan], /api/promptlines[/plan]), workstation-ui.js panels; tests/prompt-matrix.test.js (14), tests/browser/prompt-matrix.browser.js (4). Cells run as validated queue items; grid reuses /api/xyz/:id/grid. Ported from knowledge, not diffed against the pinned upstream. Proof is validators + queue interception only (no live generation). || Delimiter, A1111 bit ordering, comma/space joiner, put-variable-parts-at-start, A1111 grid split into X/Y legend labels. Not: coloured active/inactive text; empty parts are an error.",
    "runtime_receipt": null
   },
   {
@@ -3380,8 +3380,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Parse A1111 prompt lines and argument tokens",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10b 2026-10-16: operator-console/public/dexdiffusion/prompt-matrix.js, operator-console/prompt-scripts.js (routes /api/promptmatrix[/plan], /api/promptlines[/plan]), workstation-ui.js panels; tests/prompt-matrix.test.js (14), tests/browser/prompt-matrix.browser.js (4). Cells run as validated queue items; grid reuses /api/xyz/:id/grid. Ported from knowledge, not diffed against the pinned upstream. Proof is validators + queue interception only (no live generation). || One prompt per line with strict A1111 flags (--prompt --negative_prompt --seed --steps --cfg_scale --width --height --sampler_name); other flags refused by name; 64-line cap; no combined grid.",
    "runtime_receipt": null
   },
   {
@@ -3400,8 +3400,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Show exact normalized jobs before enqueue",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10b 2026-10-16: operator-console/public/dexdiffusion/prompt-matrix.js, operator-console/prompt-scripts.js (routes /api/promptmatrix[/plan], /api/promptlines[/plan]), workstation-ui.js panels; tests/prompt-matrix.test.js (14), tests/browser/prompt-matrix.browser.js (4). Cells run as validated queue items; grid reuses /api/xyz/:id/grid. Ported from knowledge, not diffed against the pinned upstream. Proof is validators + queue interception only (no live generation). || Plan routes return every cell's validator-normalised job before anything is enqueued; errors name the line or cell. Browser-tested; not live-generated.",
    "runtime_receipt": null
   },
   {
@@ -4302,7 +4302,7 @@
    "required_implementation": "Prove real scoped remote cancellation by nonce and process identity",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PARTIAL",
-   "implementation_receipt": " || P13 2026-10-16: sdcpp-workflow/bin/sdcpp-remote-cancel.sh (run-id scoped, subtree kill, TERM then KILL, verified count), server.js remoteCancelJob + /api/jobs/:id/cancel (lease held until the Big Mac side is confirmed stopped; user cancel stays CANCELLED and is no longer recorded as capability failure evidence; timeouts use the same stop), early SDCPP_RUN_ID announcement and MFLUX run-id label in the generate scripts, workstation-ui.js + concept-a.js Interrupt button; tests/remote-cancel.test.js (4, real decoy processes via a stub ssh), tests/browser/interrupt.browser.js (2). MEASURED BEFORE: after 'Cancel' the remote sd-cli kept running for >1 min while the job showed CANCELLED and the heavy lease was released. LIVE_PROVEN AFTER: sdxl-photonic job cancelled mid-run -> 3 remote processes found, 3 killed, 0 left, remote ps empty; FLUX.2 (MFLUX) job -> 3 found/3 killed/0 left (a first attempt missed the python child and was fixed by killing the whole subtree); a normal job passed right after. || P13: Real scoped remote cancellation for controlled generation (sd-cli and MFLUX). The edit scripts (img2img, inpaint, ESRGAN, hires, xyz) do not carry the run id on the remote command line, so for them the Big Mac side is reported as unverified, not assumed stopped.",
+   "implementation_receipt": " || P13 2026-10-16: sdcpp-workflow/bin/sdcpp-remote-cancel.sh (run-id scoped, subtree kill, TERM then KILL, verified count), server.js remoteCancelJob + /api/jobs/:id/cancel (lease held until the Big Mac side is confirmed stopped; user cancel stays CANCELLED and is no longer recorded as capability failure evidence; timeouts use the same stop), early SDCPP_RUN_ID announcement and MFLUX run-id label in the generate scripts, workstation-ui.js + concept-a.js Interrupt button; tests/remote-cancel.test.js (4, real decoy processes via a stub ssh), tests/browser/interrupt.browser.js (2). MEASURED BEFORE: after 'Cancel' the remote sd-cli kept running for >1 min while the job showed CANCELLED and the heavy lease was released. LIVE_PROVEN AFTER: sdxl-photonic job cancelled mid-run -> 3 remote processes found, 3 killed, 0 left, remote ps empty; FLUX.2 (MFLUX) job -> 3 found/3 killed/0 left (a first attempt missed the python child and was fixed by killing the whole subtree); a normal job passed right after. || P13: Real scoped remote cancellation for controlled generation (sd-cli and MFLUX). The edit scripts (img2img, inpaint, ESRGAN, hires, xyz) do not carry the run id on the remote command line, so for them the Big Mac side is reported as unverified, not assumed stopped. || P13 follow-up 2026-10-16: cancel and timeout now stop the Big Mac side BEFORE the local ssh (ending ssh first made the wrapper exit and orphaned the MFLUX python), the remote wrappers stop their own child on exit, a held lease is honoured by syncGenericTerminal (review finding: the close handler had released it early) and expires after 2 minutes, unverifiable actions clear the hold. Behavioural test in tests/server-publication-contract.test.js; decoy-process tests in tests/remote-cancel.test.js (6). || Verified remote stop now also covers img2img, inpaint, outpaint, upscale-esrgan, hires-fix and flux2-edit (their remote command lines carry the run id). Live-proven for controlled sd-cli, MFLUX generate, MFLUX reference edit and ESRGAN; img2img/inpaint/hires-fix are covered by contract tests only. batch-generate and xyz-plot (shared sd-server) stay unverified.",
    "runtime_receipt": null
   },
   {
@@ -4898,8 +4898,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Exact SD1.5 installed adapter first; expose per-target availability",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || No ControlNet model is installed on either machine (searched /Volumes/wc2tb, ~/Library/Caches/DexDiffusion, HF caches). sd-cli has --control-net/--control-image/--control-strength/--canny and MFLUX ships controlnet commands, but there are no weights; downloading them needs the user's consent.",
    "runtime_receipt": null
   },
   {
@@ -4918,8 +4918,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Local staging only, validate dimensions/mime/size",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || Depends on CN-01 (no control model).",
    "runtime_receipt": null
   },
   {
@@ -4938,8 +4938,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Implement verified Canny/OpenPose preprocessors one by one",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || sd-cli has a built-in --canny preprocessor flag; OpenPose/depth preprocessors are not installed. Blocked on CN-01 for any effect.",
    "runtime_receipt": null
   },
   {
@@ -4958,8 +4958,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Calibrate and prove effect on output",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || --control-strength exists in sd-cli; cannot be proven without a control model.",
    "runtime_receipt": null
   },
   {
@@ -4978,8 +4978,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Implement only with timed conditioning support",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || sd-cli exposes no start/end fraction.",
    "runtime_receipt": null
   },
   {
@@ -4998,8 +4998,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Map into preprocess and compositing for available models",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || Depends on CN-01.",
    "runtime_receipt": null
   },
   {
@@ -5018,8 +5018,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Deterministic crop/fill/stretch compatible with model",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || Depends on CN-01.",
    "runtime_receipt": null
   },
   {
@@ -5038,8 +5038,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Expose only for relevant preprocessor",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || Depends on CN-01.",
    "runtime_receipt": null
   },
   {
@@ -5058,8 +5058,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Start one, extend multi only when worker supports composability",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || Depends on CN-01.",
    "runtime_receipt": null
   },
   {
@@ -5118,8 +5118,8 @@
    "baseline_status": "proposed",
    "required_implementation": "First standalone MFLUX reference-mode proof",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P14 2026-10-16: sdcpp-workflow/bin/mflux-controlled-edit.sh + mflux-remote-edit.sh (reference streams over ssh stdin, checksum-verified, mflux-generate-flux2-edit --image-paths, run-id label for Interrupt), server.js POST /api/actions/flux2-edit (lineage op ref-edit, prompt privacy as generation), Enhance 'Reference edit \u00b7 FLUX.2 Klein' card; tests/ref-edit.test.js (2), tests/browser/ref-edit.browser.js (2). LIVE_PROVEN: standalone and through the console, 512x512, 6-8 steps, ~50 s, peak 4.9 GB; the result kept the reference scene (snow, light, fox position) and applied the requested change (blue fur); lineage parent, operation ref-edit and prompt-not-stored verified; Interrupt stopped it (4 remote processes found/killed/0 left). || FLUX.2 Klein reference editing works end to end (image + prompt, steps 1-8). Not done: multiple reference images, an Edit-module tab (it lives in Enhance), strength control (mflux-generate-flux2-edit has none), batch.",
    "runtime_receipt": null
   },
   {
@@ -5138,8 +5138,8 @@
    "baseline_status": "backend gate",
    "required_implementation": "Install only with consent and real pose-following proof",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || No humanoid OpenPose ControlNet installed; installing needs consent.",
    "runtime_receipt": null
   },
   {
@@ -5158,8 +5158,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Separate guidance/conditioning modes, never false human compatibility",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || Depends on CN-13.",
    "runtime_receipt": null
   },
   {

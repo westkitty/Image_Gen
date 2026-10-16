@@ -118,7 +118,15 @@ Added: run-id scoped remote stop (`sdcpp-remote-cancel.sh`) used by Cancel and b
 Evidence: unit 4 (real decoy processes, TERM-ignoring process, subtree, siblings untouched, malformed ids refused); browser 2; live sd-cli and MFLUX cancellations (0 left on the remote), plus a passing job afterwards.
 Not done: the worker capability flags still say `cancel_supported: false` (left unchanged until the edit scripts are covered); verified remote stop for img2img/inpaint/ESRGAN/hires/xyz; Skip current (JO-03); keyboard shortcuts (JO-15); live preview (JO-08, BLOCKED: no progressive decode in the installed sd-cli); queue-level cancel of XYZ plots relies on stop-after-current.
 
+## P14 Conditioning and Puppet Master (2026-10-16) — partial
+Audit first (installed tools): no ControlNet weights anywhere (MacBook, Big Mac internal, wc2tb, HF caches). sd-cli (rev 7f0e728) has `--control-net`, `--control-image`, `--control-strength`, `--canny`, `-r/--ref-image` (Flux Kontext), PhotoMaker/PuLID flags; MFLUX has controlnet/depth/kontext commands; all need model weights that are not present, so CN-01..09, 13, 14 are BLOCKED until the user consents to a download. Found instead: `mflux-generate-flux2-edit` runs the already-installed FLUX.2 Klein 4-bit model as a reference editor.
+Added: FLUX.2 Klein reference editing (CN-12) — Enhance card, `/api/actions/flux2-edit`, ssh-stdin reference with remote checksum, canonical publication with lineage `ref-edit`, Interrupt support. Proven live (blue-fox edit keeps the scene; ~50 s, 4.9 GB peak).
+Not done: Puppet Master editor/pose export (CN-10/11/15), multi-reference, strength, an Edit-module tab.
+
+## Review follow-up (2026-10-16)
+An independent read-only review of P09-P13 found 11 issues; fixed: quadratic infotext regex (80 KB took 11 s) and unbounded PNG text decompression; the close handler released the heavy lease before the remote stop was verified, and a failed/unverifiable remote stop could hold it forever; Prompt S/R text persisted in queue titles with prompts off; unhandled EPIPE on the ssh script pipe; UNet-only SDXL LoRAs classified SD1.5 and FLUX files overriding filename versions; the remote kill matched any substring; plan/run seed mismatch and per-cell wildcard expansion in X/Y/Z. Found by my own live test afterwards: the remote cancel must precede ending the local ssh (otherwise the MFLUX python is orphaned) and the whole-token match must allow the `dexdiffusion-mflux-<id>` label. Tests added for each.
+
 ## Next eligible slice
-1. P14 conditioning / Puppet Master (leftovers: P13 verified remote stop for edit scripts, P10 SC-16..25 Prompt Matrix / Loopback etc.; P09 batch Extras, Real-ESRGAN inside Extras, SD Upscale). Open design decisions: P07 batch img2img, P08 Poor man's/MK2 outpainting, P04 stepwise conditioning adapter.
+1. P15 release qualification, then Puppet Master / ControlNet once the user approves a model download (leftovers: P13 verified remote stop for edit scripts, P10 SC-16..25 Prompt Matrix / Loopback etc.; P09 batch Extras, Real-ESRGAN inside Extras, SD Upscale). Open design decisions: P07 batch img2img, P08 Poor man's/MK2 outpainting, P04 stepwise conditioning adapter.
 2. P01 completion: obtain upstream source at the pinned commit and enumerate programmatically.
 3. P04 onward per the blueprint; P05–P15 are not started.

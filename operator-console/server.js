@@ -77,7 +77,7 @@ const macroStore = createMacroStore(path.join(STATE_DIR, 'macros.json'));
 const thumbnailService = createThumbnailService({ cacheDir: path.join(STATE_DIR, 'thumbnails'), imageStore });
 const stylesStore = createStylesStore(process.env.DEX_STYLES_FILE || path.join(STATE_DIR, 'styles.json')); // env override: test servers must not touch the user's styles
 const libraryIndex = createLibraryIndex({ indexPath: path.join(STATE_DIR, 'library-index.json'), imageStore, imageMeta, runsDir: RUNS_DIR });
-const HEAVY_ACTIONS = new Set(['controlled-generate', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test']);
+const HEAVY_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test']);
 const IMAGE_EDIT_CACHE = path.join(STATE_DIR, 'image-edit-capabilities.json');
 const UPSCALE_CACHE = path.join(STATE_DIR, 'upscale-capabilities.json');
 const MODEL_STAGE_CACHE = path.join(STATE_DIR, 'model-stage-cache.json');
@@ -1189,9 +1189,10 @@ function terminateChildTree(child) {
 // Remote cancellation (P13): ending the local ssh/script does NOT stop sd-cli / MFLUX on Big Mac (measured: the process
 // kept running for minutes after a "cancelled" job). Every remote command line carries the job's run id, so
 // sdcpp-remote-cancel.sh stops exactly that run's processes and reports whether anything is left.
-// Only controlled generation (sd-cli and MFLUX) puts its run id on the remote command line; the edit scripts name remote
-// files differently, so their remote stop cannot be scoped and is reported as unverified rather than assumed.
-const REMOTE_CANCEL_ACTIONS = new Set(['controlled-generate']);
+// These actions put their run id on the remote command line (output paths or the MFLUX label), so the remote stop can be
+// scoped to the run. batch-generate and xyz-plot talk to the shared sd-server and are not in the set: they are reported
+// as unverified rather than assumed stopped.
+const REMOTE_CANCEL_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix']);
 function runIdsOf(job) {
   const text = String(job.stdout || '');
   const ids = [...new Set([...text.matchAll(/(?:SDCPP_RUN_ID:\s*|runs\/)(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/g)].map(m => m[1]))];
@@ -3597,6 +3598,40 @@ app.post('/api/actions/upscale-esrgan', (req, res) => {
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 
+// FLUX.2 Klein reference editing (P14, CN-12): the library image streams to Big Mac, mflux-generate-flux2-edit renders a new
+// image conditioned on it and on the prompt, and the result is published like any generation (lineage op 'ref-edit').
+// This is reference editing, not ControlNet: no control weight, no preprocessors, no start/end fractions.
+app.post('/api/actions/flux2-edit', (req, res) => {
+  const body = { ...(req.body || {}) };
+  if (!body.image_id) return res.status(400).json({ error: 'Choose a library image as the reference.', gate: 'source' });
+  const srcInfo = resolveImageSource(body);
+  if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
+  if (!srcInfo.imageId || !srcInfo.path) return res.status(400).json({ error: 'The reference must be a canonical library image.', gate: 'source' });
+  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+  if (!validatePrompt(prompt)) return res.status(400).json({ error: 'Describe the edit in the prompt (1-4000 characters).', gate: 'prompt' });
+  const tagErr = validatePromptLoras(prompt, 'mflux');
+  if (!tagErr.ok) return res.status(400).json({ error: tagErr.error, gate: 'prompt' });
+  const steps = body.steps === undefined || body.steps === '' ? 4 : Number(body.steps);
+  if (!Number.isInteger(steps) || steps < 1 || steps > 8) return res.status(400).json({ error: 'FLUX.2 Klein steps must be 1-8.', gate: 'steps' });
+  const seed = body.seed === undefined || body.seed === '' || Number(body.seed) < 0 ? -1 : Number(body.seed);
+  if (seed !== -1 && (!Number.isInteger(seed) || seed > W.MAX_SEED)) return res.status(400).json({ error: 'Seed must be a whole number or -1 for random.', gate: 'seed' });
+  const dims = srcInfo.dims || pngSize(srcInfo.path) || {};
+  const fit = (v, src) => v === undefined || v === '' ? Math.min(1536, Math.max(256, Math.round((src || 1024) / 16) * 16)) : Number(v);
+  const width = fit(body.width, dims.width), height = fit(body.height, dims.height);
+  for (const [n, v] of [['width', width], ['height', height]]) if (!Number.isInteger(v) || v < 256 || v > 2048 || v % 16) return res.status(400).json({ error: `${n} must be a multiple of 16 between 256 and 2048.`, gate: n });
+  const save = !!body.save_prompts;
+  const args = ['--init-img', srcInfo.path, '--prompt', prompt, '--width', String(width), '--height', String(height), '--steps', String(steps), '--seed', String(seed), '--save-prompts', save ? 'true' : 'false'];
+  const sensitives = [prompt];
+  const summary = getRedactedCommandSummary('bin/mflux-controlled-edit.sh', args, sensitives);
+  const jobId = createJob('flux2-edit', summary, sanitizeRequestParams({ prompt, steps, seed, width, height, save_prompts: save, source_image: srcInfo.imageId }, save));
+  jobSensitives[jobId] = sensitives;
+  jobs[jobId].sourceImageId = srcInfo.imageId;
+  jobs[jobId].lineageOp = 'ref-edit';
+  jobs[jobId].genRecord = editGenRecord({}, { prompt, steps, seed, save_prompts: save }, { edit_target: 'flux2-klein-4b', sampler: undefined, vae: undefined, scheduler: undefined, cfg: undefined });
+  runAction(jobId, 'bin/mflux-controlled-edit.sh', args, save);
+  res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
 const ALLOWED_XYZ_AXIS_TYPES = new Set(['steps', 'cfg', 'sampler', 'seed', 'width', 'height']);
 
 // Phase 3 — X/Y/Z plot
@@ -3957,7 +3992,7 @@ app.post('/api/xyz', (req, res) => {
 app.post('/api/xyz/:id/grid', (req, res) => {
   const q = queueRunner._queues.get(req.params.id);
   const meta = q && q.settings && q.settings.private && q.settings.private.xyz;
-  if (!q || q.settings.kind !== 'xyz') return res.status(404).json({ error: 'XYZ plot not found.' });
+  if (!q || (q.settings.kind !== 'xyz' && q.settings.kind !== 'promptmatrix')) return res.status(404).json({ error: 'XYZ plot not found.' });
   if (!meta) return res.status(409).json({ error: 'Plot labels were not kept (the console restarted or prompt saving is off); run the plot again to build a grid.' });
   const body = req.body || {};
   const margin = body.margin === undefined ? 0 : Number(body.margin);
@@ -3975,6 +4010,9 @@ app.post('/api/xyz/:id/grid', (req, res) => {
   runAction(jobId, 'bin/sdcpp-xyz-grid.sh', ['--spec', specFile]);
   res.json({ job_id: jobId, status: jobs[jobId].status, cells: cells.length, missing: q.items.length - cells.length });
 });
+
+// ---- A1111 Prompt matrix + Prompts from file or textbox (SC-16..SC-19): same validated queue cells as the X/Y/Z plot ----
+require('./prompt-scripts').mount(app, { normalizeControlledGenerationBody, validateControlledGenerationParams, allControlledTargets, CONTROLLED_TARGETS, targetCapabilities, queueRunner, W, LARGE_REQUEST_IMAGES, crypto });
 
 app.post('/api/queues', (req, res) => {
   const body = req.body || {};
