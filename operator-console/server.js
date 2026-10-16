@@ -3,7 +3,7 @@ const { spawn, execFile, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { controlledScriptFor, buildControlledArgs, nativeBatchEligible, normalizeSamplingFields, validateSamplingFields } = require('./controlled-args');
+const { controlledScriptFor, buildControlledArgs, nativeBatchEligible, normalizeSamplingFields, validateSamplingFields, SDCLI_SAMPLER } = require('./controlled-args');
 const W = require('./workstation');
 const EC = require('./public/dexdiffusion/edit-core.js');
 const M = require('./media');
@@ -2170,8 +2170,10 @@ function targetCapabilities(target) {
   const sd15 = target.id === 'sd15';
   return {
     backend: mflux ? 'mflux' : 'sdcpp',
-    negativePrompt: !mflux && !target.noNegativePrompt, cfg: !mflux && target.fixedCfgScale === undefined, scheduler: !mflux, sampler: false, vae: !mflux, lora: !mflux,
-    img2img: sd15, inpaint: sd15, outpaint: sd15, controlNet: false, hiresRefine: !mflux,
+    negativePrompt: !mflux && !target.noNegativePrompt, cfg: !mflux && target.fixedCfgScale === undefined, scheduler: !mflux, sampler: samplingEditable, vae: !mflux, lora: !mflux,
+    img2img: sd15, inpaint: sd15, outpaint: sd15, controlNet: false, hiresRefine: !mflux, clipSkip: samplingEditable, tiling: samplingEditable,
+  // MFLUX and FLUX.1 Schnell run a fixed sampler with no CLIP skip or VAE tiling override (worker rejects them).
+  const samplingEditable = !mflux && target.id !== 'flux-fp8';
     nativeBatch: !mflux, maxQuantity: 100,
   };
 }
@@ -2327,7 +2329,7 @@ app.get('/api/capabilities', (req, res) => {
       embeddings: assets ? assets.embeddings.map(({ full_path: _, ...rest }) => rest) : [],
       hypernetworks: assets ? assets.hypernetworks.map(({ full_path: _, ...rest }) => rest) : []
     },
-    samplers: Array.from(ALLOWED_SAMPLERS).map(id => ({ id, name: id.replace(/_/g, ' '), supported: true })),
+    samplers: Array.from(ALLOWED_SAMPLERS).map(id => ({ id, name: id.replace(/_/g, ' '), supported: !!SDCLI_SAMPLER[id], note: SDCLI_SAMPLER[id] ? undefined : 'not supported by the installed stable-diffusion.cpp' })),
     schedulers: Array.from(ALLOWED_SCHEDULERS).map(id => {
       const isDiscrete = id === 'discrete';
       const ok = isDiscrete || schedulerSelectionSupported;

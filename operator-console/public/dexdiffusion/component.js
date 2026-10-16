@@ -26,7 +26,7 @@ class Component extends DCLogic {
       } catch { return []; }
     })(),
     steps: 20, cfg: 7, seed: -1, width: 512, height: 512,
-    sampler: 'euler_a', scheduler: 'discrete',
+    sampler: 'euler_a', scheduler: 'discrete', clipSkip: '', tiling: false,
     jobStatus: 'idle', progress: 0, currentImageSrc: null, lastSeed: null, errorMsg: '', lastGenerationParams: null,
     // Batch
     batchAxisX: 'seed', batchValuesX: '-1,-1,-1,-1',

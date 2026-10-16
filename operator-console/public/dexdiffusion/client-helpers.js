@@ -179,7 +179,19 @@
       vae: on('vae', !mflux), lora: on('lora', !mflux), hiresRefine: on('hiresRefine', !mflux),
       img2img: on('img2img', false), inpaint: on('inpaint', false), outpaint: on('outpaint', false), controlNet: on('controlNet', false),
       nativeBatch: on('nativeBatch', !mflux),
+      sampler: on('sampler', !mflux), clipSkip: on('clipSkip', !mflux), tiling: on('tiling', !mflux),
     };
+  }
+
+  // Sampling methods the installed sd-cli can run (ids match controlled-args.js SDCLI_SAMPLER; test-locked).
+  const SAMPLER_CHOICES = [
+    ['euler_a', 'Euler a'], ['euler', 'Euler'], ['heun', 'Heun'], ['dpm2', 'DPM2'], ['dpmpp2s_a', 'DPM++ 2S a'],
+    ['dpmpp2m', 'DPM++ 2M'], ['dpmpp2mv2', 'DPM++ 2M v2'], ['ipndm', 'iPNDM'], ['ipndm_v', 'iPNDM-v'], ['lcm', 'LCM'],
+  ];
+  const SAMPLER_ALIAS = { 'dpm++2m': 'dpmpp2m', 'dpm++ 2m': 'dpmpp2m', 'dpm++2mv2': 'dpmpp2mv2', 'dpm++2s_a': 'dpmpp2s_a', 'dpm++ 2s a': 'dpmpp2s_a', 'euler a': 'euler_a' };
+  function canonicalSamplerId(value) {
+    const k = String(value == null ? '' : value).trim().toLowerCase();
+    return SAMPLER_ALIAS[k] || k;
   }
 
   const STRENGTH_PRESETS = [['Subtle', 0.35], ['Balanced', 0.55], ['Strong', 0.75]];
@@ -240,6 +252,6 @@
     resolveBackendBase, jobProgressPercent, chooseInitialTarget, targetOptionLabel, capabilityBadge,
     dimensionIssue, dimensionsForTarget, dimensionInfo,
     maskDilate, maskErode, maskBlur, maskFeather, maskInvert, maskCoverage, maskVerdict, FULL_MASK_COVERAGE,
-    aspectDims, controlsFor, STRENGTH_PRESETS, jobResults, compareRows, sanitizeRecipe, RECIPE_FIELDS, persistableSession,
+    aspectDims, controlsFor, SAMPLER_CHOICES, canonicalSamplerId, STRENGTH_PRESETS, jobResults, compareRows, sanitizeRecipe, RECIPE_FIELDS, persistableSession,
   };
 });

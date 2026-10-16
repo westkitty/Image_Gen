@@ -147,3 +147,20 @@ test('P02: sdxl-base spec default sampler matches the worker default (no silent 
   const block = s.slice(s.indexOf("id: 'sdxl-base'"), s.indexOf("id: 'sdxl-base'") + 1800);
   assert.match(block, /defaultSampler: 'dpm\+\+2m'/);
 });
+
+// ---- P03: Generate UI contract ----
+test('P03: UI sampler choices equal the sampler table the worker accepts', () => {
+  const D = require('../public/dexdiffusion/client-helpers.js');
+  assert.deepEqual(D.SAMPLER_CHOICES.map(c => c[0]).sort(), Object.keys(CA.SDCLI_SAMPLER).sort());
+  for (const [id] of D.SAMPLER_CHOICES) assert.equal(D.canonicalSamplerId(id), id);
+  assert.equal(D.canonicalSamplerId('dpm++2m'), 'dpmpp2m');
+  assert.equal(D.canonicalSamplerId('Euler a'), 'euler_a');
+});
+
+test('P03: controlsFor exposes sampler/clipSkip/tiling for SDCPP only', () => {
+  const D = require('../public/dexdiffusion/client-helpers.js');
+  const sd = D.controlsFor({ backend: 'sdcpp' }), mf = D.controlsFor({ backend: 'mflux' });
+  assert.deepEqual([sd.sampler, sd.clipSkip, sd.tiling], [true, true, true]);
+  assert.deepEqual([mf.sampler, mf.clipSkip, mf.tiling], [false, false, false]);
+  assert.equal(D.controlsFor({ backend: 'sdcpp', capabilities: { tiling: false } }).tiling, false);
+});

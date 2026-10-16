@@ -4,7 +4,7 @@ Append-only. Controlling documents (local copies, retrieved read-only from Drive
 `docs/parity/DEXDIFFUSION_COMPLETE_UI_IMPLEMENTATION_PLAN.md`, `docs/parity/DEXDIFFUSION_A1111_PARITY_LEDGER.json` (258 provisional rows; schema `dexdiffusion.a1111.parity-ledger.v1`).
 Upstream pin: AUTOMATIC1111 `82a973c04367123ae98bd9abdf80d9eda9b910e2`. Exclusions: training, checkpoint merging.
 
-## Verdict so far: PARTIAL — 1 of 16 phases started (P02), 0 requirements fully LIVE_PROVEN end-to-end through the UI.
+## Verdict so far: PARTIAL — P02 done for the sampling contract; P03 started (sampler, CLIP skip, tiling controls done; the rest of P03 open). Requirements marked LIVE_PROVEN-for-SDCPP: GN-02 (sampler, via UI), GN-13 (tiling). No row is COMPLETE.
 
 ## P00 preflight (2026-10-16)
 - Host MacBook-Air.local / user andrew; repo `/Users/andrew/Image_Gen`, branch `main`, origin `git@github.com:westkitty/Image_Gen.git`, HEAD `483cb5e` (above the blueprint's `169ad07` baseline).
@@ -26,8 +26,13 @@ SHA-256 (first 16) after P02: controlled-args.js `3b0f5c032c974cc6`, workstation
 ## Incident
 During P02 the console was restarted (`bin/dexdiffusion restart`) without checking `/api/jobs`; a running `controlled-generate` job (`07024a93-4782-4f3a-b7c1-7197573248bf`) was marked INTERRUPTED (`server-restart`). No remote process or image was lost. Rule going forward: query `/api/jobs` and refuse to restart if any job is running.
 
+## P03 Generate UI — status PARTIAL (slice 1 of N: sampling controls)
+Done: Concept A Generate form now has Sampler (10 sd-cli methods, canonical ids), CLIP skip (1-12, blank = model default) and VAE tiling; hidden with an on-screen reason for MFLUX / FLUX.1 Schnell (`targetCapabilities.sampler/clipSkip/tiling`, which previously claimed `sampler:false` truthfully and now claims true only where the worker honours it). `_createBody` sends `sampler` (canonical), `clip_skip`, `tiling`; legacy batch builders in component.js are untouched.
+Evidence: unit 632/632; `node tests/browser/generate-sampling.browser.js` 5/5 (4 consecutive clean runs; it stubs `/api/models/secondary/activate` and refuses the generation POST so it never switches Big Mac's model or runs inference); regression: concept-a-refinement 8/8, edit-workbench 24/24, interaction matrix 180/180 (output to scratch via DEX_MATRIX_OUTPUT_DIR). Live UI run: Photonic + Heun → sd-cli 'sampling using Heun method' (run 20261016-033033-controlled-sdxl-photonic); API run with clip_skip 1 + tiling → 'clip_skip: 1', 'vae_tiling_params', 25 tiles (run 20261016-033232-controlled-sdxl-photonic).
+Open in P03: Basic/Advanced organisation, aspect presets, batch size vs batch count, restore-faces (rejected until P09), per-target resource panel, duplicate-selector audit (V1-V3 templates in index.html still carry their own legacy sampler selects wired to the legacy body builders), inspector rows for sampler/clip skip/tiling, command/JSON preview parity.
+Side effects to know: earlier unmocked test runs and my own Photonic/SD1.5 proof runs switched Big Mac's secondary slot (sd15, sdxl-base, photonic); it was restored to `sdxl-photonic` via the app's own activate endpoint. Never run browser tests that select an SDCPP target without stubbing activation.
+
 ## Next eligible slice
-1. Confirm a Klein 4B generation through the UI/API still passes (sampler `euler` accepted, others rejected).
-2. P03 Generate UI: add clip-skip/tiling/sampler selector wiring with capability-driven enablement; browser tests.
-3. P01 completion: obtain upstream source at the pinned commit and enumerate programmatically.
-4. P04 onward per the blueprint; P05–P15 are not started.
+1. P03 remainder (see Open in P03) — start with inspector rows and the legacy-selector audit.
+2. P01 completion: obtain upstream source at the pinned commit and enumerate programmatically.
+3. P04 onward per the blueprint; P05–P15 are not started.
