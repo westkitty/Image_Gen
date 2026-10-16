@@ -13,7 +13,8 @@ const path = require('path');
 const crypto = require('crypto');
 const A = require('./voice-audio');
 
-const SCHEMA = 'dexdiffusion.drama_project.v1';
+const SCHEMA = 'dexdiffusion.drama_project.v2';
+const LEGACY_SCHEMAS = ['dexdiffusion.drama_project.v1'];
 const KINDS = ['dialogue', 'narration', 'direction'];
 const DEFAULT_SETTINGS = { line_gap_s: 0.35, scene_gap_s: 1.0, narrator_name: 'NARRATOR', default_language: 'en' };
 
@@ -28,6 +29,26 @@ const STOP_NAMES = new Set(['NOTE', 'NOTES', 'TITLE', 'SETTING', 'TIME', 'LOCATI
 const DIALOGUE_RE = /^\s*([A-Za-z][A-Za-z0-9 _.'\-]{0,38}?)\s*(?:\(([^)]{1,60})\))?\s*:\s*(\S.*)$/;
 const PAUSE_RE = /^\s*[\[(]\s*(?:pause|beat|silence)\s*(\d+(?:\.\d+)?)?\s*s?\s*[\])]\s*$/i;
 const FULL_DIRECTION_RE = /^\s*[\[(][^\]):]{1,120}[\])]\s*$/;
+// Sound cues: "[SFX: a heavy door slams, for 1.5s]", "[MUSIC: tense strings, fade out 3s, optional]". They are cues, never speech.
+const CUE_RE = /^\s*[\[(]\s*(SFX|SOUND|FX|MUSIC|AMBIENCE|AMBIENT|BED|ATMOS(?:PHERE)?)\s*[:\-\u2013\u2014]\s*([^\])]{1,200}?)\s*[\])]\s*$/i;
+const CUE_ROLE = { sfx: 'sfx', sound: 'sfx', fx: 'sfx', music: 'music', ambience: 'ambience', ambient: 'ambience', bed: 'ambience', atmos: 'ambience', atmosphere: 'ambience' };
+function parseCue(text) {
+  const m = CUE_RE.exec(text); if (!m) return null;
+  const params = {}, desc = [];
+  for (const raw of m[2].split(',')) {
+    const t = raw.trim(); let x;
+    if ((x = /^fade[- ]?in\s+(\d+(?:\.\d+)?)\s*s?(?:ec(?:onds)?)?$/i.exec(t))) params.fade_in_s = Number(x[1]);
+    else if ((x = /^fade[- ]?out\s+(\d+(?:\.\d+)?)\s*s?(?:ec(?:onds)?)?$/i.exec(t))) params.fade_out_s = Number(x[1]);
+    else if ((x = /^(?:for|duration)\s+(\d+(?:\.\d+)?)\s*s?(?:ec(?:onds)?)?$/i.exec(t)) || (x = /^(\d+(?:\.\d+)?)\s*s(?:ec(?:onds)?)?\s+long$/i.exec(t))) params.duration_s = Number(x[1]);
+    else if (/^loop(?:ed|ing)?$/i.test(t)) params.loop = true;
+    else if (/^optional$/i.test(t)) params.optional = true;
+    else if (/^required$/i.test(t)) params.required = true;
+    else if (/^no[- ]duck$/i.test(t)) params.duck = false;
+    else if (/^duck$/i.test(t)) params.duck = true;
+    else if (t) desc.push(t);
+  }
+  return { role: CUE_ROLE[m[1].toLowerCase()], description: desc.join(', ').slice(0, 160), params };
+}
 const isAllCaps = s => /[A-Z]/.test(s) && s === s.toUpperCase();
 const keyOf = s => String(s || '').trim().replace(/\s+/g, ' ').toUpperCase();
 const headingTitle = line => {
@@ -48,9 +69,18 @@ function leadingDirections(text) {
   return { direction: dirs.join(', '), rest };
 }
 
+const normalizeNewlines = s => String(s == null ? '' : s).replace(/\r\n?/g, '\n');
+const SPAN_CLASSES = ['dialogue', 'narration', 'heading', 'direction', 'pause', 'syntax'];
+// Leading [direction] / (direction) groups with their offsets inside `text`.
+function leadingDirectionSpans(text) {
+  const out = []; let at = 0, m; const re = /^[\[(]([^\])]{1,80})[\])]\s*/;
+  while ((m = re.exec(text.slice(at)))) { out.push([at, at + m[0].trimEnd().length]); at += m[0].length; }
+  return { groups: out, restAt: at };
+}
+
 function parseScript(source, opts = {}) {
   const narrator = (opts.narrator || DEFAULT_SETTINGS.narrator_name).trim() || 'NARRATOR';
-  const original = String(source == null ? '' : source).replace(/\r\n?/g, '\n');
+  const original = normalizeNewlines(source);
   const raw = original.split('\n');
   const starts = []; let off = 0; for (const l of raw) { starts.push(off); off += l.length + 1; }
   // pass 1: which mixed-case "Name:" prefixes are real speakers
@@ -60,27 +90,42 @@ function parseScript(source, opts = {}) {
 
   const scenes = []; let scene = null; let lineNo = 0;
   const warnings = [];
+  const spans = [];   // every meaningful source span → { start, end, class, line }
+  const span = (s, e, cls, line) => { if (e > s) spans.push({ start: s, end: e, class: cls, line: line || null }); };
+  // trimmed content bounds of raw line i
+  const bounds = i => { const l = raw[i]; return [starts[i] + (l.length - l.trimStart().length), starts[i] + l.trimEnd().length]; };
   const newScene = title => { scene = { id: 'sc-' + String(scenes.length + 1).padStart(2, '0'), title: title || 'Scene ' + (scenes.length + 1), lines: [] }; scenes.push(scene); return scene; };
-  const mk = (o) => ({ id: 'ln-' + String(++lineNo).padStart(3, '0'), speaker: o.speaker, speaker_key: keyOf(o.speaker), kind: o.kind, text: o.text, direction: o.direction || '', pause_before_s: o.pause_before_s == null ? null : o.pause_before_s, pause_after_s: null, render: o.kind !== 'direction', src: o.src, takes: [], active_take_id: null });
+  const mk = (o) => Object.assign({ id: 'ln-' + String(++lineNo).padStart(3, '0'), speaker: o.speaker, speaker_key: keyOf(o.speaker), kind: o.kind, text: o.text, direction: o.direction || '', pause_before_s: o.pause_before_s == null ? null : o.pause_before_s, pause_after_s: null, render: o.kind !== 'direction', src: o.src, takes: [], active_take_id: null }, o.cue ? { cue: o.cue } : {});
   const push = o => { if (!scene) newScene(null); scene.lines.push(mk(o)); return scene.lines[scene.lines.length - 1]; };
   let cur = null, nar = null, pendingPause = null;
-  const flushNar = () => { if (nar) { push({ speaker: narrator, kind: 'narration', text: nar.text, src: { start: nar.s, end: nar.e }, pause_before_s: nar.pause }); nar = null; } };
+  const flushNar = () => { if (nar) { const ln = push({ speaker: narrator, kind: 'narration', text: nar.text, src: { start: nar.s, end: nar.e }, pause_before_s: nar.pause }); for (const [a, b] of nar.spans) span(a, b, 'narration', ln); nar = null; } };
   const endAll = () => { flushNar(); cur = null; };
+  // classify "<directions><spoken text>" occupying [from, to) of the source
+  const spokenSpans = (from, to, line) => {
+    const { groups, restAt } = leadingDirectionSpans(original.slice(from, to));
+    for (const [a, b] of groups) span(from + a, from + b, 'direction', line);
+    span(from + restAt, to, 'dialogue', line);
+  };
 
   for (let i = 0; i < raw.length; i++) {
     const line = raw[i], t = line.trim(), s = starts[i], e = s + line.length;
     if (!t) { endAll(); continue; }
+    const [c0, c1] = bounds(i);
     const h = headingTitle(line);
-    if (h) { endAll(); newScene(h); continue; }
+    if (h) { endAll(); span(c0, c1, 'heading'); newScene(h); continue; }
     const pz = PAUSE_RE.exec(line);
-    if (pz) { endAll(); pendingPause = pz[1] ? Number(pz[1]) : 0.6; continue; }
-    if (FULL_DIRECTION_RE.test(line) && !DIALOGUE_RE.test(line)) { endAll(); push({ speaker: narrator, kind: 'direction', text: t.replace(/^[\[(]\s*|\s*[\])]$/g, ''), src: { start: s, end: e } }); continue; }
+    if (pz) { endAll(); span(c0, c1, 'pause'); pendingPause = pz[1] ? Number(pz[1]) : 0.6; continue; }
+    const cueParsed = parseCue(line);
+    if (cueParsed) { endAll(); const ln = push({ speaker: narrator, kind: 'direction', text: t.replace(/^[\[(]\s*|\s*[\])]$/g, ''), src: { start: s, end: e }, cue: cueParsed }); span(c0, c1, 'direction', ln); continue; }
+    if (FULL_DIRECTION_RE.test(line) && !DIALOGUE_RE.test(line)) { endAll(); const ln = push({ speaker: narrator, kind: 'direction', text: t.replace(/^[\[(]\s*|\s*[\])]$/g, ''), src: { start: s, end: e } }); span(c0, c1, 'direction', ln); continue; }
     const dm = DIALOGUE_RE.exec(line);
     if (dm && speakerOk(dm[1]) && accepted(dm[1])) {
       endAll();
       const ld = leadingDirections(dm[3]);
       const dir = [dm[2], ld.direction].filter(Boolean).join(', ');
-      cur = push({ speaker: dm[1].trim(), kind: 'dialogue', text: ld.rest, direction: dir, src: { start: s + line.indexOf(dm[3]), end: e }, pause_before_s: pendingPause }); pendingPause = null;
+      const textStart = e - dm[3].length;
+      cur = push({ speaker: dm[1].trim(), kind: 'dialogue', text: ld.rest, direction: dir, src: { start: textStart, end: e }, pause_before_s: pendingPause }); pendingPause = null;
+      span(c0, textStart, 'syntax', cur); spokenSpans(textStart, c1, cur);
       continue;
     }
     // Fountain-style cue: ALL-CAPS name on its own line, dialogue on the following lines
@@ -88,18 +133,22 @@ function parseScript(source, opts = {}) {
       endAll();
       let j = i + 1, dir = '';
       const par = /^\s*[\[(]([^\])]{1,80})[\])]\s*$/.exec(raw[j]);
+      const parIdx = par ? j : -1;
       if (par) { dir = par[1].trim(); j++; }
-      const body = []; let bs = null, be = null;
-      while (j < raw.length && raw[j].trim() && !headingTitle(raw[j])) { if (bs == null) bs = starts[j]; be = starts[j] + raw[j].length; body.push(raw[j].trim()); j++; }
+      const body = []; let bs = null, be = null; const bodyIdx = [];
+      while (j < raw.length && raw[j].trim() && !headingTitle(raw[j])) { if (bs == null) bs = starts[j]; be = starts[j] + raw[j].length; body.push(raw[j].trim()); bodyIdx.push(j); j++; }
       if (body.length) {
         const ld = leadingDirections(body.join(' '));
-        push({ speaker: t, kind: 'dialogue', text: ld.rest, direction: [dir, ld.direction].filter(Boolean).join(', '), src: { start: bs, end: be }, pause_before_s: pendingPause }); pendingPause = null;
+        const ln = push({ speaker: t, kind: 'dialogue', text: ld.rest, direction: [dir, ld.direction].filter(Boolean).join(', '), src: { start: bs, end: be }, pause_before_s: pendingPause }); pendingPause = null;
+        span(c0, c1, 'syntax', ln);
+        if (parIdx >= 0) { const [pa, pb] = bounds(parIdx); span(pa, pb, 'direction', ln); }
+        bodyIdx.forEach((bi, k) => { const [ba, bb] = bounds(bi); if (k === 0) spokenSpans(ba, bb, ln); else span(ba, bb, 'dialogue', ln); });
         i = j - 1; continue;
       }
     }
-    if (cur) { cur.text += ' ' + t; cur.src.end = e; continue; }      // wrapped dialogue
-    if (nar) { nar.text += ' ' + t; nar.e = e; continue; }            // wrapped narration
-    nar = { text: t, s, e, pause: pendingPause }; pendingPause = null;
+    if (cur) { cur.text += ' ' + t; cur.src.end = e; span(c0, c1, 'dialogue', cur); continue; }      // wrapped dialogue
+    if (nar) { nar.text += ' ' + t; nar.e = e; nar.spans.push([c0, c1]); continue; }                   // wrapped narration
+    nar = { text: t, s, e, pause: pendingPause, spans: [[c0, c1]] }; pendingPause = null;
   }
   endAll();
   const speakers = new Map();
@@ -111,7 +160,43 @@ function parseScript(source, opts = {}) {
   if (!scenes.length) warnings.push('No lines were found. Use "NAME: text" lines, screenplay cues, or plain narration paragraphs.');
   else if (![...speakers.values()].some(s => s.kinds.dialogue)) warnings.push('No dialogue lines were detected (only narration). Use "NAME: text" if you expected speakers.');
   const firstHeading = scenes.length && headingTitle(raw.find(l => headingTitle(l)) || '') || null;
-  return { source_length: original.length, title: firstHeading, scenes, speakers: [...speakers.values()], warnings };
+  const outSpans = spans.map(x => ({ start: x.start, end: x.end, class: x.class, line_id: x.line ? x.line.id : null })).sort((a, b) => a.start - b.start || a.end - b.end);
+  return { source_length: original.length, title: firstHeading, scenes, speakers: [...speakers.values()], warnings, spans: outSpans };
+}
+
+// Proves what the parser did with the source: every non-whitespace character must belong to a classified span,
+// and every parsed line (that still mirrors the source) must equal its source span after the documented
+// normalisation (leading directions stripped, whitespace runs collapsed). Offsets index the newline-normalised source.
+const normWsText = s => String(s == null ? '' : s).normalize('NFC').replace(/\s+/g, ' ').trim();
+function reconstructLineText(text, line) {
+  const slice = text.slice(line.src.start, line.src.end);
+  if (line.kind === 'direction') return normWsText(slice.replace(/^\s*[\[(]\s*|\s*[\])]\s*$/g, ''));
+  const { restAt } = leadingDirectionSpans(slice.trimStart());
+  return normWsText(slice.trimStart().slice(restAt));
+}
+function verifySourceCoverage(source, parsed) {
+  const text = normalizeNewlines(source);
+  const cover = new Int8Array(text.length).fill(-1);
+  const counts = Object.fromEntries(SPAN_CLASSES.map(c => [c, 0]));
+  const problems = [];
+  (parsed.spans || []).forEach((sp, idx) => {
+    if (!SPAN_CLASSES.includes(sp.class) || !(sp.start >= 0 && sp.end <= text.length && sp.end > sp.start)) { problems.push({ index: idx, reason: 'invalid-span' }); return; }
+    const ci = SPAN_CLASSES.indexOf(sp.class);
+    for (let k = sp.start; k < sp.end; k++) if (cover[k] < 0) { cover[k] = ci; if (!/\s/.test(text[k])) counts[sp.class]++; }
+  });
+  const unclassified = [];
+  for (let k = 0; k < text.length; k++) {
+    if (cover[k] >= 0 || /\s/.test(text[k])) continue;
+    const start = k; while (k + 1 < text.length && cover[k + 1] < 0 && !/\s/.test(text[k + 1])) k++;
+    unclassified.push({ start, end: k + 1 });
+  }
+  const mismatches = [];
+  for (const sc of parsed.scenes || []) for (const l of sc.lines) {
+    if (!l.src || l.edited) continue;
+    if (reconstructLineText(text, l) !== normWsText(l.text)) mismatches.push({ line_id: l.id, scene_id: sc.id, reason: 'text-differs-from-source' });
+  }
+  const total = Object.values(counts).reduce((a, b) => a + b, 0) + unclassified.reduce((a, u) => a + (u.end - u.start), 0);
+  return { ok: !unclassified.length && !mismatches.length && !problems.length, unclassified, mismatches, problems, counts, classified_chars: total - unclassified.reduce((a, u) => a + (u.end - u.start), 0), total_chars: total };
 }
 
 // ── Layer 2: optional LLM parse, validated against a strict schema ───────────────
@@ -168,17 +253,33 @@ function newProject({ title, source_script, parsed, settings }) {
     schema: SCHEMA, id: sid('dp'), title: String(title || parsed.title || 'Untitled drama').slice(0, 120), source_script: String(source_script || ''),
     saved: false, scenes: parsed.scenes.map(s => ({ id: s.id, title: s.title, lines: s.lines })), actors: [], tracks: [], exports: [],
     settings: Object.assign({}, DEFAULT_SETTINGS, settings || {}), parse_warnings: parsed.warnings || [], created_at: Date.now(), updated_at: Date.now(),
+    source_rev: 1, archived_lines: [], productions: [], scene_masters: {}, timeline: { version: 1, clip_overrides: {} },
   };
+  stampSource(p, parsed);
   ensureActors(p);
+  return p;
+}
+// Source revision bookkeeping: byte-exact original text hash, coverage proof, per-line source hashes.
+function stampSource(p, parsed) {
+  p.source_sha256 = crypto.createHash('sha256').update(p.source_script).digest('hex');
+  const text = normalizeNewlines(p.source_script);
+  p.source_coverage = parsed && parsed.spans
+    ? (({ ok, counts, unclassified, mismatches, classified_chars, total_chars }) => ({ ok, counts, unclassified: unclassified.length, mismatches: mismatches.length, classified_chars, total_chars, method: 'deterministic-spans' }))(verifySourceCoverage(p.source_script, parsed))
+    : { ok: null, method: 'llm-verbatim', note: 'LLM parses are validated as verbatim substrings, not span-classified' };
+  for (const sc of p.scenes) for (const l of sc.lines) {
+    l.source_sha = l.src && !l.edited ? crypto.createHash('sha256').update(reconstructLineText(text, l)).digest('hex') : null;
+    if (l.rev == null) l.rev = 1;
+  }
   return p;
 }
 function allLines(p) { return p.scenes.flatMap(s => s.lines.map(l => ({ scene: s, line: l }))); }
 function findLine(p, lineId) { for (const s of p.scenes) { const l = s.lines.find(x => x.id === lineId); if (l) return { scene: s, line: l }; } return null; }
 function ensureActors(p) {
   const have = new Map(p.actors.map(a => [a.speaker_key, a]));
+  for (const a of p.actors) { if (!Array.isArray(a.pronunciation)) a.pronunciation = []; if (a.language === undefined) a.language = null; if (a.notes === undefined) a.notes = ''; if (a.fx === undefined) a.fx = null; }
   for (const { line } of allLines(p)) {
     if (line.kind === 'direction' || have.has(line.speaker_key)) continue;
-    const a = { id: sid('ac'), speaker: line.speaker, speaker_key: line.speaker_key, voice_profile_id: null, default_direction: '' };
+    const a = { id: sid('ac'), speaker: line.speaker, speaker_key: line.speaker_key, voice_profile_id: null, default_direction: '', language: null, pronunciation: [], notes: '', fx: null };
     p.actors.push(a); have.set(a.speaker_key, a);
   }
   return p;
@@ -202,7 +303,7 @@ function setLine(p, lineId, patch) {
   if (x.render !== undefined) l.render = !!x.render;
   if (x.direction !== undefined) l.direction = String(x.direction).slice(0, 160);
   for (const k of ['pause_before_s', 'pause_after_s']) if (x[k] !== undefined) l[k] = x[k] === null || x[k] === '' ? null : Math.max(0, Math.min(30, Number(x[k]) || 0));
-  if (x.text !== undefined) { const t = String(x.text).slice(0, 8000); if (t !== l.text) { l.text = t; l.edited = true; } }
+  if (x.text !== undefined) { const t = String(x.text).slice(0, 8000); if (t !== l.text) { l.text = t; l.edited = true; l.source_sha = null; l.rev = (l.rev || 1) + 1; } }
   if (x.engine_override !== undefined) l.engine_override = x.engine_override || null;
   if (x.profile_override !== undefined) l.profile_override = x.profile_override || null;
   ensureActors(p);
@@ -250,16 +351,34 @@ function selectTake(p, lineId, takeId) {
   f.line.active_take_id = t.id; return t;
 }
 
+// Take state is two orthogonal facts plus a display label. LIFECYCLE says what happened to the render;
+// FRESHNESS says whether it still matches today's inputs (compared by speech fingerprint); APPROVAL is a human
+// decision. A take is never deleted because its source changed; it just stops being eligible.
+function takeState(take, currentFp) {
+  if (!take) return { lifecycle: 'missing', freshness: null, approval: 'none', label: 'MISSING' };
+  const lifecycle = take.status === 'failed' && take.interrupted ? 'interrupted' : take.status;
+  const approval = take.approved ? 'approved' : take.review_required ? 'review_required' : 'none';
+  let freshness = null;
+  if (take.status === 'complete') freshness = !take.fingerprint ? 'unverified' : currentFp && take.fingerprint.inputs_sha === currentFp.inputs_sha ? 'current' : 'outdated';
+  let label;
+  if (lifecycle === 'queued') label = 'QUEUED'; else if (lifecycle === 'rendering') label = 'RENDERING';
+  else if (lifecycle === 'interrupted') label = 'INTERRUPTED'; else if (lifecycle === 'failed') label = 'FAILED';
+  else if (freshness === 'outdated') label = approval !== 'none' ? 'REVIEW_REQUIRED' : 'OUTDATED';
+  else if (freshness === 'unverified') label = 'REVIEW_REQUIRED';
+  else if (approval === 'approved') label = 'APPROVED'; else if (approval === 'review_required') label = 'REVIEW_REQUIRED'; else label = 'COMPLETE';
+  return { lifecycle, freshness, approval, label };
+}
+
 // ── Timeline planning + assembly ────────────────────────────────────────────
 // takeDuration(take) → seconds. Returns ordered voice placements and scene spans.
-function planTimeline(p, { sceneId, takeDuration }) {
+function planTimeline(p, { sceneId, takeDuration, takeFor }) {
   const items = [], scenes = []; let t = 0; const missing = [];
   const scs = p.scenes.filter(s => !sceneId || s.id === sceneId);
   scs.forEach((sc, si) => {
     const start = t; let prevAfter = null;
     for (const line of sc.lines) {
       if (line.render === false || line.kind === 'direction' || !String(line.text).trim()) continue;
-      const take = (line.takes || []).find(x => x.id === line.active_take_id && x.status === 'complete');
+      const take = takeFor ? takeFor(line) : (line.takes || []).find(x => x.id === line.active_take_id && x.status === 'complete');
       if (!take) { missing.push({ scene_id: sc.id, line_id: line.id, speaker: line.speaker }); continue; }
       const dur = takeDuration(take); if (!(dur > 0)) { missing.push({ scene_id: sc.id, line_id: line.id, speaker: line.speaker, reason: 'take audio missing' }); continue; }
       if (prevAfter != null) t += prevAfter;
@@ -274,8 +393,8 @@ function planTimeline(p, { sceneId, takeDuration }) {
   return { items, scenes, total_s: t, missing };
 }
 // loadAudio(artifactId) → audio object. Optional tracks (music/ambience/sfx) are mixed with start/trim/gain/fades.
-function assemble(p, { sceneId, takeDuration, loadAudio, loadTrackAudio }) {
-  const plan = planTimeline(p, { sceneId, takeDuration });
+function assemble(p, { sceneId, takeDuration, loadAudio, loadTrackAudio, takeFor }) {
+  const plan = planTimeline(p, { sceneId, takeDuration, takeFor });
   if (plan.missing.length) { const e = new Error(`${plan.missing.length} renderable line(s) have no generated take`); e.missing = plan.missing; e.gate = 'missing-takes'; throw e; }
   if (!plan.items.length) { const e = new Error('nothing to assemble: no renderable lines'); e.gate = 'empty'; throw e; }
   const sceneStart = Object.fromEntries(plan.scenes.map(s => [s.id, s.start_s]));
@@ -310,13 +429,27 @@ function atomicWrite(file, obj) {
 // Migrate older schema revisions in place (v0 had no actors/tracks/exports/settings).
 function migrate(p) {
   if (!p || typeof p !== 'object') return null;
+  if (p.schema && p.schema !== SCHEMA) { if (LEGACY_SCHEMAS.includes(p.schema)) p._migrated_from = p.schema; else if (!/^dexdiffusion\.drama_project\./.test(p.schema)) return null; }
+  else if (!p.schema) p._migrated_from = 'unversioned';
   p.schema = SCHEMA;
   p.settings = Object.assign({}, DEFAULT_SETTINGS, p.settings || {});
   p.actors = Array.isArray(p.actors) ? p.actors : []; p.tracks = Array.isArray(p.tracks) ? p.tracks : []; p.exports = Array.isArray(p.exports) ? p.exports : [];
   p.scenes = Array.isArray(p.scenes) ? p.scenes : [];
+  p.archived_lines = Array.isArray(p.archived_lines) ? p.archived_lines : []; p.productions = Array.isArray(p.productions) ? p.productions : [];
+  p.scene_masters = p.scene_masters && typeof p.scene_masters === 'object' ? p.scene_masters : {};
+  p.timeline = p.timeline && typeof p.timeline === 'object' ? p.timeline : { version: 1, clip_overrides: {} };
+  if (!p.timeline.clip_overrides) p.timeline.clip_overrides = {};
+  if (!p.source_rev) p.source_rev = 1;
+  for (const pr of p.productions) if (['planning', 'rendering', 'assembling', 'mastering', 'publishing', 'reviewing'].includes(pr.status)) { pr.status = 'interrupted'; pr.phase = 'interrupted'; pr.finished_at = pr.finished_at || Date.now(); }
+  const hadHash = !!p.source_sha256;
+  if (!hadHash) p.source_sha256 = crypto.createHash('sha256').update(String(p.source_script || '')).digest('hex');
   for (const sc of p.scenes) for (const l of sc.lines || []) {
     l.takes = Array.isArray(l.takes) ? l.takes : []; if (l.render === undefined) l.render = l.kind !== 'direction'; if (!l.speaker_key) l.speaker_key = keyOf(l.speaker);
-    for (const t of l.takes) if (t.status === 'rendering') { t.status = 'failed'; t.error = 'interrupted: the console restarted before this take finished (it was not completed)'; }
+    if (l.rev == null) l.rev = 1; if (l.source_sha === undefined) l.source_sha = null;
+    for (const t of l.takes) {
+      if (t.status === 'rendering' || t.status === 'queued') { t.status = 'failed'; t.interrupted = true; t.error = 'interrupted: the console restarted before this take finished (it was not completed)'; }
+      if (t.status === 'complete' && !t.fingerprint) t.legacy = true;   // pre-fingerprint recording: kept, never trusted as current
+    }
   }
   ensureActors(p);
   return p;
@@ -333,10 +466,19 @@ function createDramaStore({ root, now = () => Date.now() }) {
       try { const p = migrate(JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'))); if (p) { p.saved = true; projects.set(p.id, p); } } catch (_) {}
     }
   } catch (_) {}
-  const persist = p => { if (p.saved) { p.updated_at = now(); atomicWrite(file(p.id), p); } else p.updated_at = now(); };
+  // A migrated project keeps its pre-upgrade file next to it (written once, never overwritten) before the first rewrite.
+  const persist = p => {
+    p.updated_at = now();
+    if (!p.saved) return;
+    const f = file(p.id), bak = path.join(dir, `${p.id}.pre-v2.bak.json`);
+    if (p._migrated_from && fs.existsSync(f) && !fs.existsSync(bak)) { try { fs.copyFileSync(f, bak, fs.constants.COPYFILE_EXCL); } catch (_) {} }
+    delete p._migrated_from;
+    atomicWrite(f, p);
+  };
   return {
     root: dir,
     create(input) { const p = newProject(input); projects.set(p.id, p); return p; },
+    adopt(p) { projects.set(p.id, p); return p; },
     get: id => projects.get(id) || null,
     list: () => [...projects.values()].map(p => ({ id: p.id, title: p.title, saved: !!p.saved, scenes: p.scenes.length, lines: allLines(p).length, updated_at: p.updated_at })).sort((a, b) => b.updated_at - a.updated_at),
     save(id) { const p = projects.get(id); if (!p) return null; p.saved = true; persist(p); return p; },
@@ -350,6 +492,8 @@ function createDramaStore({ root, now = () => Date.now() }) {
 }
 
 module.exports = {
+  parseCue, takeState, LEGACY_SCHEMAS,
+  normalizeSpoken: normWsText, normalizeNewlines, verifySourceCoverage, reconstructLineText, stampSource, SPAN_CLASSES,
   SCHEMA, KINDS, DEFAULT_SETTINGS, parseScript, validateLlmParse, parseWithLlm, LLM_SYSTEM, newProject, allLines, findLine, ensureActors, actorFor, renderableLines, unresolvedSpeakers,
   setLine, deleteLine, addLine, bindActor, lineStatus, addTake, completeTake, selectTake, planTimeline, assemble, createDramaStore, migrate, keyOf,
 };

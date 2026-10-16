@@ -13,10 +13,11 @@
 
 const { KOKORO_VOICES, LANGS } = require('./media-bridge');
 
-const PROBE = 'runtime probe on Big Mac (mlx-audio 0.5.6, inspect.signature on the installed model class)';
+const RUNTIME_REVISION = 'mlx-audio 0.5.6';
+const PROBE = `runtime probe on Big Mac (${RUNTIME_REVISION}, inspect.signature on the installed model class)`;
 const ENGINES = {
   kokoro: {
-    id: 'kokoro', worker: 'kokoro', label: 'Kokoro 82M', voice_types: ['preset'],
+    id: 'kokoro', worker: 'kokoro', label: 'Kokoro 82M', voice_types: ['preset'], revision: RUNTIME_REVISION,
     capabilities: {
       cloning: false, voice_design: false, preset_voices: true, multi_sample_reference: false,
       delivery_instructions: false, speed_control: true, paralinguistic_tags: false,
@@ -33,7 +34,7 @@ const ENGINES = {
     voices: KOKORO_VOICES,
   },
   'qwen3-tts-base': {
-    id: 'qwen3-tts-base', worker: 'qwen3-tts-base', label: 'Qwen3-TTS Base (voice clone)', voice_types: ['cloned'],
+    id: 'qwen3-tts-base', worker: 'qwen3-tts-base', label: 'Qwen3-TTS Base (voice clone)', voice_types: ['cloned'], revision: RUNTIME_REVISION,
     capabilities: {
       cloning: true, voice_design: false, preset_voices: false,
       multi_sample_reference: false,           // one reference clip per generation; the profile picks the active sample
@@ -52,7 +53,7 @@ const ENGINES = {
     },
   },
   'qwen3-tts-voice-design': {
-    id: 'qwen3-tts-voice-design', worker: 'qwen3-tts-voice-design', label: 'Qwen3-TTS VoiceDesign', voice_types: ['designed'],
+    id: 'qwen3-tts-voice-design', worker: 'qwen3-tts-voice-design', label: 'Qwen3-TTS VoiceDesign', voice_types: ['designed'], revision: RUNTIME_REVISION,
     capabilities: {
       cloning: false, voice_design: true, preset_voices: false, multi_sample_reference: false,
       delivery_instructions: true,             // the voice description IS the instruction text; delivery is appended to it
@@ -67,7 +68,7 @@ const ENGINES = {
 };
 
 const getEngine = id => ENGINES[id] || null;
-const listEngines = () => Object.values(ENGINES).map(e => ({ id: e.id, label: e.label, voice_types: e.voice_types, capabilities: e.capabilities, evidence: e.evidence, voices: e.voices }));
+const listEngines = () => Object.values(ENGINES).map(e => ({ id: e.id, label: e.label, revision: e.revision, voice_types: e.voice_types, capabilities: e.capabilities, evidence: e.evidence, voices: e.voices }));
 const TYPE_ENGINES = { cloned: ['qwen3-tts-base'], designed: ['qwen3-tts-voice-design'], preset: ['kokoro'] };
 const compatibleEngines = profile => TYPE_ENGINES[profile && profile.type] || [];
 
@@ -96,6 +97,8 @@ function validateProfileForEngine(profile, engineId) {
       if (!act.validation || act.validation.ok === false) errors.push(`the active sample "${act.name}" failed validation: ${((act.validation && act.validation.errors) || []).join('; ') || 'unreadable'}`);
       else for (const m of act.validation.warnings || []) warnings.push(`sample "${act.name}": ${m}`);
     }
+    const consent = profile.consent || { kind: 'unspecified' };
+    if (consent.kind === 'real-person' && String(consent.note || '').trim().length < 10) errors.push('a real-person reference voice needs a recorded permission note');
     if ((profile.samples || []).length > 1) warnings.push(`${e.label} uses one reference per render (the active sample); other samples are kept for selection`);
   } else if (profile.type === 'designed') {
     if (String(profile.description || '').trim().length < 10) errors.push('describe the voice (at least a short sentence)');
@@ -117,13 +120,13 @@ function resolveDelivery(engineId, profile, direction) {
 }
 
 // Everything the bridge needs for one engine invocation covering `texts` (one chunk each).
-function buildRenderPlan(engineId, profile, { texts, direction, language, seed, speed, refPath }) {
+function buildRenderPlan(engineId, profile, { texts, direction, language, seed, seeds, speed, refPath }) {
   const e = getEngine(engineId); if (!e) throw new Error('unknown engine ' + engineId);
   const v = validateProfileForEngine(profile, engineId);
   if (!v.ok) { const err = new Error(v.errors.join('; ')); err.gate = 'profile-invalid'; throw err; }
   const lang = language || profile.language || 'en';
   const delivery = resolveDelivery(engineId, profile, direction);
-  const body = { items: texts.map((text, i) => ({ text, seed: seed == null ? null : (Number(seed) + i) % 2147483647 })), language: lang };
+  const body = { items: texts.map((text, i) => ({ text, seed: Array.isArray(seeds) ? (seeds[i] == null ? null : Number(seeds[i])) : seed == null ? null : (Number(seed) + i) % 2147483647 })), language: lang };
   const notes = [];
   if (delivery.note) notes.push(delivery.note);
   if (engineId === 'kokoro') { body.voice = profile.preset_voice; body.speed = speed || profile.default_speed || 1; }

@@ -93,7 +93,37 @@ function projectOperationalJob({
   return projection;
 }
 
+// Durable generic jobs (voice/music/drama) carry {phase, done, total, label}. A percentage exists only when the
+// counts do; otherwise the job is shown as indeterminate rather than with an invented number.
+function projectGenericProgress(progress) {
+  if (!progress || typeof progress !== 'object') return null;
+  const done = Number(progress.done), total = Number(progress.total);
+  if (!Number.isFinite(done) || !Number.isFinite(total) || total <= 0 || done < 0) return null;
+  const pct = Math.max(0, Math.min(100, Math.round(done / total * 100)));
+  return { currentRun: 1, totalRuns: 1, currentRunPercent: pct, totalPercent: pct, step: Math.min(done, total), totalSteps: total };
+}
+function genericJobLabel(job) {
+  const l = job && job.progress && typeof job.progress.label === 'string' ? job.progress.label : '';
+  return (l || (job && job.operation) || 'Job').slice(0, 120);
+}
+
+// Publishes durable non-image job lifecycle changes on the SSE bus. Payloads carry ids, status, measured counts and a
+// generated label only: never request text.
+const GENERIC_EVENT = { created: 'job.created', started: 'job.started', progress: 'job.progress', completed: 'job.completed', failed: 'job.failed', cancelled: 'job.cancelled', interrupted: 'job.interrupted' };
+function createGenericJobEventPublisher(eventBus) {
+  return function genericJobEvent(kind, job) {
+    const name = GENERIC_EVENT[kind];
+    if (!name || !job || job.media_kind === 'image') return;
+    if (kind === 'progress') { eventBus.publish(name, { id: job.job_id, progress: projectGenericProgress(job.progress), label: genericJobLabel(job) }); return; }
+    eventBus.publish(name, { id: job.job_id, mediaKind: job.media_kind, operation: job.operation, status: String(job.status).toLowerCase(), firstFailedGate: job.first_failed_gate || null, artifactIds: job.artifacts || [] });
+    if (kind === 'completed' && (job.artifacts || []).length) eventBus.publish('library.changed', { count: job.artifacts.length });
+  };
+}
+
 module.exports = {
+  createGenericJobEventPublisher,
+  projectGenericProgress,
+  genericJobLabel,
   projectOperationalJob,
   SCHEMA_VERSION,
   FORBIDDEN_FIELDS

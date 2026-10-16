@@ -2785,3 +2785,13 @@ precedence over older sections above for day-to-day operation.
 - Fixed the UI failure `remote-png (exit 1)`. Root cause: seed -1 was forwarded to MFLUX (MLX needs seeds ≥ 0). It was masked because Big Mac's Tailscale SSH always returns exit status 0. The remote MFLUX half now reports status in-band, and the runtime venv is on Big Mac's internal SSD.
 - stable-diffusion.cpp is **restored as a secondary backend** at `7f0e728` with SD1.5 (CreativeML OpenRAIL-M) and Real-ESRGAN x4plus (BSD-3-Clause). This supersedes the revision-5 "SDCPP dormant" note above; MFLUX remains primary.
 - Capability status is now derived from real job evidence plus a Big Mac asset probe (`operator-console/capabilities.js`); see `DEXDIFFUSION.md` → Capability truth.
+
+
+## Audio Drama Studio uplift — 2026-10-08 (additive; earlier revisions above are unchanged)
+
+- Drama now runs as seven stages inside one module (SCRIPT, CAST, DIRECT, PRODUCE, REVIEW, MASTER, EXPORT); the manual per-scene/line render and assembly controls remain under "Advanced manual rendering" and in EXPORT.
+- Take identity is a versioned **speech fingerprint** (`dxsp1`: text, speaker, voice, reference, engine + runtime revision, language, settings/pipeline, *applied* delivery, applied pronunciation, source) and an **assembly fingerprint** (`dxas1`).
+  Stale takes are labelled OUTDATED, never enter a current master, and are only exportable as a labelled HISTORICAL snapshot. Pre-fingerprint takes are REVIEW_REQUIRED until adopted.
+- One-click production uses the existing job queue, event bus and heavy-compute lease; chunk receipts are text-free; speech is rendered grouped per voice (one model load per group) and mixing/mastering/encoding are local FFmpeg/Node.
+- Actor FX are derived audio with lineage (originals untouched) and are part of the same pipeline for preview and export. Pacing is optional/off by default and verified by measurement. ASR and VAD are advisory.
+- Evidence boundary: verified with a fake Big Mac and real local audio tooling; no live model run or human listening acceptance is recorded here. See `operator-console/docs/audio-drama-studio-progress.md`.

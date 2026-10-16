@@ -57,8 +57,11 @@ function safeParams(params, persistText) {
   return out;
 }
 
-function createJobStore(file, { now = () => Date.now() } = {}) {
+function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) {
   const jobs = new Map();
+  // Observers see lifecycle changes (created/started/progress/completed/failed/cancelled/interrupted); they can never break a job.
+  const notify = (kind, job) => { if (!onChange) return; try { onChange(kind, job); } catch (_) {} };
+  const KIND = { RUNNING: 'started', TRANSFERRING: 'progress', COMPLETE: 'completed', FAILED: 'failed', CANCELLED: 'cancelled', INTERRUPTED: 'interrupted' };
   let timer = null;
   function persist() { if (file) atomicWriteJson(file, { schema: 'dexdiffusion.jobs.v1', jobs: [...jobs.values()] }); }
   function schedule() { clearTimeout(timer); timer = setTimeout(() => { try { persist(); } catch (_) {} }, 50); if (timer.unref) timer.unref(); }
@@ -95,6 +98,7 @@ function createJobStore(file, { now = () => Date.now() } = {}) {
     };
     jobs.set(id, j);
     schedule();
+    notify('created', j);
     return j;
   }
   function transition(id, status, patch = {}) {
@@ -102,12 +106,14 @@ function createJobStore(file, { now = () => Date.now() } = {}) {
     if (!j) return { error: 'unknown job' };
     const invalid = JobContract.validateTransition(j, status, patch);
     if (invalid) return { error: invalid };
+    const prev = j.status;
     j.status = status; j.stage_id = JobContract.STAGES[status];
     if (status === 'RUNNING' && !j.started_at) j.started_at = now();
     if (TERMINAL.has(status)) { if (!j.completed_at) j.completed_at = now(); j.resource_lease = null; }
     for (const k of ['progress', 'artifacts', 'artifact_validation', 'first_failed_gate', 'error', 'resource_lease', 'model_id']) if (patch[k] !== undefined) j[k] = patch[k];
     if (patch.error) j.error = String(patch.error).slice(0, 300);
     schedule();
+    if (prev !== status) notify(KIND[status] || 'progress', j); else if (patch.progress !== undefined) notify('progress', j);
     return j;
   }
   function ownResource(id, host, resourcePath) {
@@ -253,8 +259,11 @@ const WORKER_PROBE_PATHS = Object.entries(WORKER_PATHS).flatMap(([id, p]) => [
 function installState(id, assets) {
   const paths = WORKER_PATHS[id];
   const all = kind => Object.keys(paths[kind]).map(k => `${id}:${kind === 'runtime' ? 'runtime' : 'model'}:${k}`).every(k => assets[k] === true);
-  const rt = all('runtime'), md = all('models');
+  const blockedModel = assets.wc2tbReadable === false &&
+    Object.values(paths.models).some(p => p.startsWith('/Volumes/wc2tb/'));
+  const rt = all('runtime'), md = all('models') && !blockedModel;
   const variants = Object.fromEntries(Object.keys(paths.models).map(k => [k, assets[`${id}:model:${k}`] === true]));
+  if (blockedModel) for (const k of Object.keys(variants)) variants[k] = false;
   return { rt, md, variants, runtimePath: Object.values(paths.runtime).join(', '), modelPath: Object.values(paths.models).join(', ') };
 }
 
@@ -273,7 +282,7 @@ function bridgedWorker({ id, media_kind, label, getEvidence }) {
       const proven = enabled && !!ev.lastPass;
       return { architecture_available: true, runtime_available: s.rt, model_available: s.md, model_variants: s.variants, installed: enabled,
         enabled, proven, lastPass: ev.lastPass || null,
-        state: !s.rt ? 'RUNTIME MISSING' : !s.md ? 'MODEL MISSING' : proven ? 'PROVEN' : 'ENABLED — awaiting first DexDiffusion proof',
+        state: !s.rt ? 'RUNTIME MISSING' : assets.wc2tbReadable === false ? 'MODEL INACCESSIBLE (wc2tb)' : !s.md ? 'MODEL MISSING' : proven ? 'PROVEN' : 'ENABLED — awaiting first DexDiffusion proof',
         runtimePath: s.runtimePath, modelPath: s.modelPath };
     },
     capabilities() { return { generate: true, cancel_supported: false, cancel_reason: 'Targeted termination of the remote Big Mac generator via Tailscale SSH is not proven safe; jobs run to completion.' }; },
@@ -328,8 +337,8 @@ function createWorkerRegistry({ imageAdapters = {}, getEvidence = () => ({}) } =
 }
 
 // ---- Media store ---------------------------------------------------------------
-const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.flac': 'audio/flac', '.mp4': 'video/mp4', '.webm': 'video/webm', '.ply': 'application/vnd.ply', '.json': 'application/json', '.pgm': 'image/x-portable-graymap', '.obj': 'model/obj', '.glb': 'model/gltf-binary' };
-const KIND_EXT = { image: ['.png', '.jpg', '.jpeg', '.webp'], voice: ['.wav', '.mp3', '.m4a', '.flac'], music: ['.wav', '.mp3', '.m4a', '.flac'], video: ['.mp4', '.webm'], world: ['.ply', '.png', '.json', '.pgm', '.obj', '.glb'] };
+const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.m4b': 'audio/mp4', '.flac': 'audio/flac', '.mp4': 'video/mp4', '.webm': 'video/webm', '.ply': 'application/vnd.ply', '.json': 'application/json', '.pgm': 'image/x-portable-graymap', '.obj': 'model/obj', '.glb': 'model/gltf-binary' };
+const KIND_EXT = { image: ['.png', '.jpg', '.jpeg', '.webp'], voice: ['.wav', '.mp3', '.m4a', '.m4b', '.flac'], music: ['.wav', '.mp3', '.m4a', '.flac'], video: ['.mp4', '.webm'], world: ['.ply', '.png', '.json', '.pgm', '.obj', '.glb'] };
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,160}\.[a-z0-9]{2,5}$/;
 
 function sniff(buf) {
@@ -339,7 +348,7 @@ function sniff(buf) {
   if (b.length >= 12 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') return { mime: 'image/webp', ext: '.webp', kind: 'image' };
   if (b.length >= 12 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WAVE') return { mime: 'audio/wav', ext: '.wav', kind: 'audio' };
   if (b.length >= 3 && (b.toString('latin1', 0, 3) === 'ID3' || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0))) return { mime: 'audio/mpeg', ext: '.mp3', kind: 'audio' };
-  if (b.length >= 12 && b.toString('latin1', 4, 8) === 'ftyp' && /^(M4A |mp42|isom|M4B )/.test(b.toString('latin1', 8, 12))) return { mime: 'audio/mp4', ext: '.m4a', kind: 'audio' };
+  if (b.length >= 12 && b.toString('latin1', 4, 8) === 'ftyp' && /^(M4A |mp42|isom|M4B )/.test(b.toString('latin1', 8, 12))) return { mime: 'audio/mp4', ext: b.toString('latin1', 8, 12) === 'M4B ' ? '.m4b' : '.m4a', kind: 'audio' };
   if (b.length >= 4 && b.toString('latin1', 0, 4) === 'fLaC') return { mime: 'audio/flac', ext: '.flac', kind: 'audio' };
   if (b.length >= 4 && b.toString('latin1', 0, 4) === 'ply\n') return { mime: 'application/vnd.ply', ext: '.ply', kind: 'world' };
   if (b.length >= 4 && b.toString('latin1', 0, 4) === 'glTF') return { mime: 'model/gltf-binary', ext: '.glb', kind: 'world' };
@@ -393,6 +402,12 @@ function probeDuration(file) {
   } catch (_) { return null; }
 }
 
+function sha256FileSync(file) {
+  const h = crypto.createHash('sha256'), fd = fs.openSync(file, 'r'), buf = Buffer.alloc(1 << 20);
+  try { let pos = 0, n; while ((n = fs.readSync(fd, buf, 0, buf.length, pos)) > 0) { h.update(buf.subarray(0, n)); pos += n; } } finally { fs.closeSync(fd); }
+  return h.digest('hex');
+}
+
 function contained(root, id) {
   if (typeof id !== 'string' || !SAFE_ID.test(id) || id.includes('..') || id.includes('\0') || id.startsWith('.')) return null;
   const full = path.resolve(root, id);
@@ -420,7 +435,13 @@ function createMediaStore({ roots = CANONICAL_ROOTS, registryFile, now = () => D
     if (!KIND_EXT[kind]) throw new Error('unknown media kind');
     const ext = path.extname(src).toLowerCase();
     if (!KIND_EXT[kind].includes(ext)) throw new Error('output-invalid: extension not allowed for ' + kind);
-    const sourceBytes = fs.readFileSync(src);
+    // Audio is validated from its header (WAV additionally fully decoded when small) and checksummed by streaming, so a
+    // multi-hour master never has to fit in memory. Only the small structured kinds are read whole.
+    const size = fs.statSync(src).size, isAudioKind = kind === 'voice' || kind === 'music';
+    const BIG = 32 * 1024 * 1024;
+    let sourceBytes;
+    if (isAudioKind && size > BIG) { const fd = fs.openSync(src, 'r'); try { sourceBytes = Buffer.alloc(Math.min(65536, size)); fs.readSync(fd, sourceBytes, 0, sourceBytes.length, 0); } finally { fs.closeSync(fd); } }
+    else sourceBytes = fs.readFileSync(src);
     if (kind === 'world' && ext === '.ply') {
       const header = sourceBytes.slice(0, 64 * 1024).toString('latin1');
       if (!/^ply\n/.test(header) || !/\nelement vertex\s+[1-9][0-9]*/.test(header) || !/\nend_header\n/.test(header)) {
@@ -437,7 +458,7 @@ function createMediaStore({ roots = CANONICAL_ROOTS, registryFile, now = () => D
     } else if (kind === 'world' && ext === '.glb') {
       validateGlb(sourceBytes, { textured: !!meta.textured });
     } else if (ext === '.wav') {
-      try { require('./voice-audio').parseWav(sourceBytes); }
+      try { if (size > BIG) require('./voice-audio').wavHeaderInfo(sourceBytes, size); else require('./voice-audio').parseWav(sourceBytes); }
       catch (e) { throw new Error('output-invalid: ' + e.message); }
     }
     const head = sourceBytes.slice(0, 64);
@@ -452,15 +473,14 @@ function createMediaStore({ roots = CANONICAL_ROOTS, registryFile, now = () => D
     const incoming = path.join(root, `.incoming-${crypto.randomBytes(6).toString('hex')}${ext}`);
     fs.copyFileSync(src, incoming, fs.constants.COPYFILE_EXCL);
     try {
-      const bytes = fs.readFileSync(incoming);
-      const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+      const sha256 = sha256FileSync(incoming), byteCount = fs.statSync(incoming).size;
       const stem = String(base || 'media').replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 80) || 'media';
       for (let i = 1; i < 1000; i++) {
         const id = `${stem}${i > 1 ? '-' + i : ''}${ext}`;
         try { fs.linkSync(incoming, path.join(root, id)); } catch (e) { if (e.code === 'EEXIST') continue; throw e; }
         const safeUrl = '/api/media/' + encodeURIComponent(id);
         const rec = { artifact_id: id, kind, canonical_path: path.join(root, id), safe_url: safeUrl, download_url: safeUrl + '/download', mime: MIME[ext], sha256,
-          bytes: bytes.length, duration, created_at: now(), job_id, worker, model, seed, parent, keeper: false, meta };
+          bytes: byteCount, duration, created_at: now(), job_id, worker, model, seed, parent, keeper: false, meta };
         const next = { ...read(), artifacts: { ...read().artifacts, [id]: rec } };
         try { atomicWriteJson(registryFile, next); }
         catch (e) {

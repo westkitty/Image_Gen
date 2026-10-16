@@ -33,7 +33,7 @@ const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras
 const { MODEL_CARDS, getModelCards, getModelCardById, checkModelSwitchWarnings } = require('./model-registry');
 const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt, ATTEMPT_TIMEOUT_MS } = require('./detailer');
 const { createEventBus } = require('./event-bus');
-const { projectOperationalJob } = require('./operational-jobs');
+const { projectOperationalJob, projectGenericProgress, genericJobLabel, createGenericJobEventPublisher } = require('./operational-jobs');
 const { createTimingStore } = require('./timing-store');
 const { createCollectionStore } = require('./collections-store');
 const { createRecipeStore } = require('./recipes-store');
@@ -61,7 +61,7 @@ const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
 const imageMeta = W.createImageMetaStore(path.join(STATE_DIR, 'image-meta.json'));
 // Media-neutral core (media.js): durable generic jobs, heavy-compute lease,
 // worker registry, non-image media store and secure temporary staging.
-const jobStore = M.createJobStore(path.join(STATE_DIR, 'jobs.json'));
+const jobStore = M.createJobStore(path.join(STATE_DIR, 'jobs.json'), { onChange: (kind, job) => genericJobEvent(kind, job) });
 const mediaStore = M.createMediaStore({ registryFile: path.join(STATE_DIR, 'media-artifacts.json') });
 try { mediaStore.ensureRoots(); } catch (_) {}
 const worldStore = createWorldStore({ root: path.join(STATE_DIR, 'world-projects') });
@@ -70,12 +70,14 @@ setInterval(() => { try { staging.sweep(); } catch (_) {} }, 30 * 60 * 1000).unr
 
 // V12 Workstation Services
 const eventBus = createEventBus();
+// Durable non-image jobs (voice, music, drama production, 3D, world) announce lifecycle changes on the same SSE bus.
+const genericJobEvent = createGenericJobEventPublisher(eventBus);
 const timingStore = createTimingStore(path.join(STATE_DIR, 'timing-stats.json'));
 const collectionStore = createCollectionStore(path.join(STATE_DIR, 'collections.json'));
 const recipeStore = createRecipeStore(path.join(STATE_DIR, 'recipes.json'));
+const stylesStore = createStylesStore(process.env.DEX_STYLES_FILE || path.join(STATE_DIR, 'styles.json')); // env override: test servers must not touch the user's styles
 const macroStore = createMacroStore(path.join(STATE_DIR, 'macros.json'));
 const thumbnailService = createThumbnailService({ cacheDir: path.join(STATE_DIR, 'thumbnails'), imageStore });
-const stylesStore = createStylesStore(process.env.DEX_STYLES_FILE || path.join(STATE_DIR, 'styles.json')); // env override: test servers must not touch the user's styles
 const libraryIndex = createLibraryIndex({ indexPath: path.join(STATE_DIR, 'library-index.json'), imageStore, imageMeta, runsDir: RUNS_DIR });
 const HEAVY_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test']);
 const IMAGE_EDIT_CACHE = path.join(STATE_DIR, 'image-edit-capabilities.json');
@@ -1042,6 +1044,8 @@ const cancelManager = createCancellationManager({
     if (active.pid) {
       try { process.kill(active.pid, 'SIGTERM'); } catch (_) {}
     }
+    // A drama production owns no process: cancelling it stops further Big Mac groups after the one already running.
+    try { if (typeof voiceModule !== 'undefined' && voiceModule.producer) voiceModule.producer.cancelByJob(active.jobId); } catch (_) {}
   }
 });
 setInterval(() => { arbiter.refreshExternal().catch(() => {}); }, 60 * 1000).unref();
@@ -4184,6 +4188,7 @@ setInterval(() => mediaBridge.sweepRemoteOrphans(60).catch(() => {}), 60 * 60 * 
 // Persistent voice profiles, long-form speech and audio-drama production (voice-routes.js).
 const voiceModule = require('./voice-routes').registerVoiceRoutes(app, {
   stateDir: STATE_DIR, jobStore, mediaStore, staging, mediaBridge, log: m => console.log(m),
+  cancelJob: id => cancelManager.cancelJob(id), onJobStart: id => cancelManager.registerActiveJob(id, {}), onJobEnd: id => cancelManager.unregisterActiveJob(id),
   probeFor: id => workerRegistry.get(id).probe(workerAssets()),
   // Optional local intelligent parse: strict-schema JSON from the managed Ollama tunnel (never rewrites dialogue; see drama.js).
   llmChat: async messages => {
@@ -4194,6 +4199,7 @@ const voiceModule = require('./voice-routes').registerVoiceRoutes(app, {
     return r.json && r.json.message && r.json.message.content || '';
   },
 });
+setTimeout(() => { try { voiceModule.chunkStore.sweepOrphans({ knownProjects: voiceModule.dramaStore.list().map(x => x.id) }); } catch (_) {} }, 45000).unref();
 app.get('/api/workers', (req, res) => res.json({ workers: workerRegistry.describe(workerAssets()), options: { kokoro_voices: KOKORO_VOICES, languages: require('./media-bridge').LANGS } }));
 app.get('/api/resources', (req, res) => res.json(arbiter.state()));
 app.get('/api/generic-jobs/:id', (req, res) => {
@@ -4367,6 +4373,8 @@ app.get('/api/doctor', async (req, res) => {
     add('Big Mac', 'PASS', 'reachable via ssh ' + SSH_TARGET_NAME);
     add('Big Mac identity', a.identity === 'bigmac@bigmac' ? 'PASS' : 'WARN', a.identity || 'unknown');
     add('wc2tb mounted', a.wc2tb ? 'PASS' : 'FAIL', '/Volumes/wc2tb' + (a.wc2tb ? '' : ' not mounted'));
+    add('wc2tb readable by SSH worker', a.wc2tbReadable === true ? 'PASS' : a.wc2tbReadable === false ? 'FAIL' : 'WARN',
+      a.wc2tbReadable === true ? 'remote SSH can list external model content' : 'mounted does not imply readable: DexDiffusion SSH cannot open /Volumes/wc2tb');
     add('MFLUX runtime', a.mfluxRuntime ? 'PASS' : 'FAIL', 'internal venv');
     add('MFLUX model (FLUX.2 Klein 4B 4-bit)', a.mfluxModel ? 'PASS' : 'FAIL', '$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit');
     add('SDCPP sd-cli', a.sdCli ? 'PASS' : 'FAIL', 'stable-diffusion.cpp 7f0e728');
@@ -4457,7 +4465,8 @@ function getOperationalJobSnapshot() {
       id: g.job_id,
       mediaKind: g.media_kind,
       operation: g.operation,
-      label: g.operation,
+      label: genericJobLabel(g),
+      progress: projectGenericProgress(g.progress),
       worker: g.worker_id,
       target: g.model_id,
       status: g.status,

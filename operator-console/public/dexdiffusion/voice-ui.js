@@ -130,7 +130,12 @@
     return h('div', { key: s.id, 'data-sample': s.id, style: { border: '1px solid ' + (s.active ? 'rgba(101,214,110,.45)' : 'rgba(148,163,184,.18)'), borderRadius: 9, padding: 9, display: 'grid', gap: 6, minWidth: 0 } },
       h('div', { style: css.row }, h('b', { style: { color: '#e2e8f0', fontSize: 13 } }, s.name), s.active ? chip('active', tone.ok) : btn('Use this sample', () => this.updateProfileSample(p.id, s.id, { active: true }), '#94a3b8'), h('div', { style: { flex: 1 } }), btn('Remove', () => this.removeProfileSample(p.id, s.id), '#f87171')),
       this._mediaEl(base + s.audio_url, 'audio', 'sample-' + s.id),
-      h('div', { style: css.row }, chip(fmtT(dg.duration), '#94a3b8'), chip('RMS ' + dg.rms_db + ' dB', '#94a3b8'), chip('peak ' + dg.peak_db + ' dB', '#94a3b8'), chip('silence ' + Math.round((dg.silence_ratio || 0) * 100) + '%', '#94a3b8'), ...(s.validation.warnings || []).map(w => chip('⚠ ' + w, tone.warn)), ...(s.validation.errors || []).map(w => chip('✗ ' + w, tone.bad))),
+      dg.waveform && window.DexStudio ? window.DexStudio.waveform(this, 'sample-' + s.id, dg.waveform, 420, 44, '#a78bfa') : null,
+      h('div', { style: css.row }, chip(fmtT(dg.duration), '#94a3b8'), chip('RMS ' + dg.rms_db + ' dB', '#94a3b8'), chip('peak ' + dg.peak_db + ' dB', '#94a3b8'), chip('clipping ' + (dg.clip_percent != null ? dg.clip_percent : (dg.clip_ratio || 0) * 100).toString().slice(0, 5) + '%', dg.clip_percent > 0.5 ? tone.warn : '#94a3b8'), chip('silence ' + Math.round(dg.silence_percent != null ? dg.silence_percent : (dg.silence_ratio || 0) * 100) + '%', '#94a3b8'),
+        dg.snr ? chip(dg.snr.db != null ? 'SNR ≈ ' + dg.snr.db + ' dB (estimate)' : 'SNR: not estimable', '#94a3b8') : null, ...(s.validation.warnings || []).map(w => chip('⚠ ' + w, tone.warn)), ...(s.validation.errors || []).map(w => chip('✗ ' + w, tone.bad))),
+      h('div', { style: css.muted }, (s.diagnostics_disclaimer || '') + (dg.snr && dg.snr.note ? ' ' + dg.snr.note + '.' : '')),
+      h('div', { 'data-sample-review': s.id, style: css.row }, h('b', { style: { fontSize: 11, color: '#cbd5e1' } }, 'Listening review:'), chip((s.review && s.review.state) || 'unreviewed', s.review && s.review.state === 'approved' ? tone.ok : s.review && s.review.state === 'rejected' ? tone.bad : '#94a3b8'),
+        btn('Heard — good reference', () => this._vpApi(`/api/voice/profiles/${p.id}/samples/${s.id}/review`, { state: 'approved' }, 'PUT').then(() => this.loadVoiceProfiles()), tone.ok), btn('Reject', () => this._vpApi(`/api/voice/profiles/${p.id}/samples/${s.id}/review`, { state: 'rejected' }, 'PUT').then(() => this.loadVoiceProfiles()), '#f87171')),
       tr);
   };
   P._profileEditor = function (p) {
@@ -224,8 +229,8 @@
   const _buildVoice = P.buildVoiceWorkspace;
   P.buildVoiceWorkspace = function () {
     const vp = this._vp();
-    const tabs = h('div', { role: 'tablist', style: css.row }, ...[['profiles', 'Voices & long-form'], ['quick', 'Quick (one-shot)']].map(([k, l]) => btn(l, () => this.vpSet({ tab: k }), vp.tab === k ? '#a78bfa' : '#94a3b8', { role: 'tab', 'aria-selected': String(vp.tab === k), 'data-voice-tab': k })));
-    return h('div', { style: { display: 'grid', gap: 12, minWidth: 0 } }, tabs, vp.tab === 'profiles' ? this.buildVoiceProfilesPanel() : _buildVoice.call(this));
+    const tabs = h('div', { role: 'tablist', style: css.row }, ...[['profiles', 'Voices & long-form'], ['designer', 'Designer'], ['quick', 'Quick (one-shot)']].map(([k, l]) => btn(l, () => this.vpSet({ tab: k }), vp.tab === k ? '#a78bfa' : '#94a3b8', { role: 'tab', 'aria-selected': String(vp.tab === k), 'data-voice-tab': k })));
+    return h('div', { style: { display: 'grid', gap: 12, minWidth: 0 } }, tabs, vp.tab === 'profiles' ? this.buildVoiceProfilesPanel() : vp.tab === 'designer' && this.buildVoiceDesigner ? this.buildVoiceDesigner() : _buildVoice.call(this));
   };
   const _mount = P.componentDidMount;
   P.componentDidMount = function () { _mount.call(this); this._vp(); };

@@ -5,7 +5,9 @@ const path = require('node:path');
 const { chromium } = require('playwright-core');
 const { startServer, launchBrowser, installImageFixtures, runCleanups } = require('./helpers');
 const spec = require('./interaction-matrix.spec.json');
-const out = process.env.DEX_MATRIX_OUTPUT_DIR || path.join(__dirname, '../../../output/rev19');
+const { resolveOutputDir, createOwnedWriter } = require('./safe-output');
+// Never defaults into a historical report directory: either the explicit directory (existing files are never replaced) or a fresh unique one.
+const out = resolveOutputDir(process.env.DEX_MATRIX_OUTPUT_DIR, { label: 'matrix' }), writer = createOwnedWriter(out);
 const select = (process.env.DEX_MATRIX_SLICE || '').split(',').filter(Boolean);
 const cells = [];
 const apiSnapshots = new Map();
@@ -223,7 +225,7 @@ async function studioGeometryContract(page){
 }
 
 (async()=>{
-  fs.mkdirSync(out,{recursive:true});const started=new Date().toISOString();
+  const started=new Date().toISOString();
   const srv=process.env.DEX_TEST_BASE?{base:process.env.DEX_TEST_BASE}:await startServer();
   const browser=await launchBrowser({launch:opts=>chromium.launch({...opts,timeout:60000,...(process.env.DEX_MATRIX_DISABLE_GPU==='1'?{args:['--disable-gpu']}:{} )})});
   try{
@@ -251,12 +253,12 @@ async function studioGeometryContract(page){
       }catch(e){checks.push({contract:'execution',status:'BLOCKED',failures:[e.message.split('\n')[0]]});}
       const status=checks.some(c=>c.status==='BLOCKED')?'BLOCKED':checks.some(c=>c.status==='FAIL')?'FAIL':'PASS';cells.push({id,screen,shell,viewport:[width,height],status,checks});
       console.log(id+' '+status+' '+checks.filter(c=>c.status==='FAIL'||c.status==='BLOCKED').map(c=>c.contract+': '+c.failures.slice(0,3).join('; ')).join(' | '));
-      fs.writeFileSync(path.join(out,'interaction-matrix.json'),JSON.stringify({specVersion:spec.version,started,requiredBaseCells:180,partial:!!select.length,cells},null,2)+'\n');
+      writer.write('interaction-matrix.json',JSON.stringify({specVersion:spec.version,started,requiredBaseCells:180,partial:!!select.length,cells},null,2)+'\n');
       }
       await ctx.close();
     }
   }finally{await runCleanups();}
   const counts=Object.fromEntries(['PASS','FAIL','N/A','BLOCKED'].map(s=>[s,cells.filter(c=>c.status===s).length]));
   const summary=['# Executable interaction matrix',`Specification version ${spec.version}. Required base cells: 180. Measured cells: ${cells.length}.`,JSON.stringify(counts),`Scope: ${spec.scope}`,'','| Cell | Status | Failed contracts |','|---|---|---|',...cells.map(c=>`| ${c.id} | ${c.status} | ${c.checks.filter(k=>['FAIL','BLOCKED'].includes(k.status)).map(k=>k.contract+': '+k.failures.join('; ')).join(' / ').replaceAll('|','/')} |`)];
-  fs.writeFileSync(path.join(out,'interaction-matrix-summary.md'),summary.join('\n')+'\n');process.exitCode=counts.FAIL||counts.BLOCKED?1:0;
+  writer.write('interaction-matrix-summary.md',summary.join('\n')+'\n');console.log('reports: '+Object.values(writer.owned()).join(', '));process.exitCode=counts.FAIL||counts.BLOCKED?1:0;
 })().catch(async e=>{console.error(e);await runCleanups();process.exitCode=2;});

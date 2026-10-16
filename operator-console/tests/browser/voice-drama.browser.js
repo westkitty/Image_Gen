@@ -6,7 +6,9 @@ const assert = require('node:assert/strict');
 const fs = require('fs'); const path = require('path');
 const { chromium } = require('playwright-core');
 const { startServer, installModelSnapshots, makeWav, runner, launchBrowser, runCleanups } = require('./helpers');
-const OUT = process.env.DEX_BROWSER_OUTPUT_DIR || path.join(__dirname, '..', '..', '..', 'output', 'playwright'); fs.mkdirSync(OUT, { recursive: true });
+const { resolveOutputDir, createOwnedWriter } = require('./safe-output');
+// A fresh directory per run (or the explicit one); existing files are never replaced.
+const OUT = resolveOutputDir(process.env.DEX_BROWSER_OUTPUT_DIR, { label: 'voice' }), WRITER = createOwnedWriter(OUT), outPath = n => WRITER.pathFor(n);
 const SCRIPT = 'INT. WAREHOUSE - NIGHT\n\nTIGER: I warned you.\nCODEC: [quietly] I know.\n\nThe rain hammers the roof.\n\n[pause 2s]\nTIGER (angry): Then why come back?\n\nEXT. ROOFTOP - DAWN\n\nNARRATOR: And so it ended.';
 const { results, test, phase, exitCode } = runner('voice-drama');
 
@@ -43,7 +45,7 @@ const { results, test, phase, exitCode } = runner('voice-drama');
       assert.match(await page.innerText('[data-profile-render]'), /not supported by Kokoro/i);
       const profs = (await api('GET', '/api/voice/profiles')).profiles; profs.filter(p => !existingProfiles.has(p.id) && p.name.startsWith('ZZ-UI-')).forEach(p => made.profiles.push(p.id));
       assert.equal(made.profiles.length, 2, JSON.stringify(profs.map(p => p.name))); assert.deepEqual(errors, []);
-      await page.screenshot({ path: path.join(OUT, 'voice-profiles.png') }); await ctx.close();
+      await page.screenshot({ path: outPath('voice-profiles.png') }); await ctx.close();
     });
 
     await test('Cloned voice: invalid until a sample WITH transcript is approved; multiple samples; active sample; remove', async () => {
@@ -143,37 +145,43 @@ const { results, test, phase, exitCode } = runner('voice-drama');
       const { ctx, page, errors } = await open();
       await page.evaluate(() => __dex.setScreen('drama')); await page.waitForSelector('[data-drama-script-input]');
       await page.fill('[data-drama-script-input]', SCRIPT);
-      await page.click('[data-parse]'); await page.waitForSelector('[data-drama-cast]').catch(async e => { console.error('Drama parse UI:', await page.locator('[data-drama]').innerText()); throw e; });
+      await page.click('[data-parse]'); await page.waitForSelector('[data-drama-stages]').catch(async e => { console.error('Drama parse UI:', await page.locator('[data-drama]').innerText()); throw e; });
       const pid = await page.evaluate(() => __dex.dm.current.id); made.projects.push(pid);
+      assert.equal(await page.$$eval('[data-stage]', e => e.map(x => x.dataset.stage).join()), 'script,cast,direct,produce,review,master,export', 'the seven workflow stages live inside the one Drama module');
       assert.equal(await page.$$eval('[data-scene]', e => e.length), 2); assert.equal(await page.$$eval('[data-line]', e => e.length), 5);
       assert.match(await page.innerText('[data-drama-unresolved]'), /TIGER.*CODEC|CODEC.*TIGER/s);
+      await page.click('[data-stage="cast"]'); await page.waitForSelector('[data-drama-cast]');
       for (const k of ['TIGER', 'CODEC', 'NARRATOR']) assert.ok(await page.$(`[data-actor="${k}"]`), 'speaker discovered ' + k);
       assert.match(await page.innerText('[data-drama-privacy="unsaved"]'), /UNSAVED working script/);
-      // blocked render surfaces the reason (no job)
-      await page.click('[data-render-project]'); await page.waitForFunction(() => /assign voices to/.test(__dex.dm.error || ''));
+      // the one-click production button is disabled with the reason while speakers have no voice; manual render surfaces the same refusal (no job)
+      await page.click('[data-stage="produce"]'); await page.waitForSelector('[data-produce]'); assert.equal(await page.isDisabled('[data-produce]'), true); assert.match(await page.innerText('[data-produce]'), /Cast voices first|Blocked/);
+      await page.click('[data-advanced-render] summary'); await page.click('[data-render-project]'); await page.waitForFunction(() => /assign voices to/.test(__dex.dm.error || ''));
       assert.match(await page.evaluate(() => __dex.dm.error), /TIGER/);
       // bind two actors to voices
       const ids = made.profiles; await page.evaluate(() => {});
       const p1 = made.profiles[0], p2 = made.profiles[1];
+      await page.click('[data-stage="cast"]'); await page.waitForSelector('[data-actor="TIGER"]');
       await page.selectOption('[data-actor="TIGER"] select', p1); await page.waitForFunction(() => !/TIGER/.test(document.querySelector('[data-drama-unresolved]').innerText));
       await page.selectOption('[data-actor="CODEC"] select', p2); await page.selectOption('[data-actor="NARRATOR"] select', p2);
       await page.waitForFunction(() => !document.querySelector('[data-drama-unresolved]'));
       // edit a line direction by typing, then verify the server has it (debounced PATCH, no lost input)
+      await page.click('[data-stage="script"]'); await page.waitForSelector('[data-line]');
       const ln = '[data-line] input[placeholder="e.g. quietly"]'; await page.locator(ln).first().fill('furious but controlled');
       await page.waitForFunction(async id => (await (await fetch('/api/drama/projects/' + id)).json()).project.scenes[0].lines.some(l => l.direction === 'furious but controlled'), pid, { timeout: 8000 });
       // reassign a speaker through the UI
       await page.locator('[data-line] input[list="dm-speakers"]').first().fill('Rex'); await page.keyboard.press('Tab');
-      await page.waitForFunction(() => document.querySelector('[data-actor="REX"]'));
+      await page.click('[data-stage="cast"]'); await page.waitForFunction(() => document.querySelector('[data-actor="REX"]'));
       // privacy: unsaved → not on disk → save → saved
       assert.equal((await api('GET', '/api/drama/projects')).projects.find(p => p.id === pid).saved, false);
       await page.click('[data-drama-save]'); await page.waitForSelector('[data-drama-privacy="saved"]');
       assert.ok(fs.existsSync(path.join(__dirname, '..', '..', '..', 'sdcpp-workflow', 'state', 'drama', pid + '.json')));
       assert.match(await page.innerText('[data-drama-privacy="saved"]'), /still never copied into job logs/);
       // assemble without takes → visible refusal naming lines
+      await page.click('[data-stage="export"]'); await page.waitForSelector('[data-assemble-project]');
       await page.click('[data-assemble-project]'); await page.waitForSelector('[data-assemble-error]');
-      assert.match(await page.innerText('[data-assemble-error]'), /no generated take/);
+      assert.match(await page.innerText('[data-assemble-error]'), /no (current )?generated take/);
       assert.deepEqual(errors, []);
-      await page.screenshot({ path: path.join(OUT, 'drama.png'), fullPage: false });
+      await page.screenshot({ path: outPath('drama.png'), fullPage: false });
       await page.once('dialog', d => d.accept()); await page.click('[data-drama-unsave]'); await page.waitForSelector('[data-drama-privacy="unsaved"]');
       assert.equal(fs.existsSync(path.join(__dirname, '..', '..', '..', 'sdcpp-workflow', 'state', 'drama', pid + '.json')), false);
       await ctx.close();
@@ -206,7 +214,7 @@ const { results, test, phase, exitCode } = runner('voice-drama');
           else await page.waitForSelector('[data-drama]');
           const o = await page.evaluate(() => { const bad = []; document.querySelectorAll('[data-scroll-pane]').forEach(p => { if (p.scrollWidth > p.clientWidth + 1) bad.push(p.scrollWidth + '>' + p.clientWidth); }); return { doc: document.documentElement.scrollWidth - innerWidth, bad }; });
           assert.ok(o.doc <= 1 && !o.bad.length, `${screen}: ${JSON.stringify(o)}`);
-          await page.screenshot({ path: path.join(OUT, `${screen}-${width}.png`) });
+          await page.screenshot({ path: outPath(`${screen}-${width}.png`) });
         }
         await ctx.close();
       });
@@ -223,6 +231,6 @@ const { results, test, phase, exitCode } = runner('voice-drama');
   }
   const failed = results.filter(r => r[0] === 'FAIL');
   console.log(`\n${results.length - failed.length}/${results.length} voice/drama browser checks passed`);
-  fs.writeFileSync(path.join(OUT, 'voice-drama-results.json'), JSON.stringify(results, null, 1));
+  WRITER.write('voice-drama-results.json', JSON.stringify(results, null, 1));
   process.exit(exitCode(failed.length));
 })().catch(e => { console.error(e); runCleanups().then(() => process.exit(2)); });

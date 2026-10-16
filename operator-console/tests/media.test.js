@@ -277,3 +277,16 @@ test('native WebKit wrapper turns same-origin media attachment links into real d
   assert.match(swift, /decideDestinationUsing response: URLResponse/);
   assert.match(swift, /\.downloadsDirectory/);
 });
+
+test('volume permission failure suppresses stale voice proofs and worker availability', () => {
+  const reg = M.createWorkerRegistry({
+    getEvidence: () => ({ kokoro: { lastPass: { at: '2026-10-07T00:00:00Z' } } }),
+  });
+  const state = reg.get('kokoro').probe({ ...allKeys('kokoro'), wc2tbReadable: false });
+  assert.equal(state.runtime_available, true);
+  assert.equal(state.model_available, false);
+  assert.equal(state.enabled, false);
+  assert.equal(state.proven, false);
+  assert.equal(state.model_variants.voices, false);
+  assert.equal(state.state, 'MODEL INACCESSIBLE (wc2tb)');
+});

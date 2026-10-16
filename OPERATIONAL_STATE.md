@@ -122,3 +122,84 @@ The complete original 541-line state is byte-identical in [immutable history](do
 - Fresh live QA passed on the project-owned loopback route at 1440×900, 1024×768, 768×1024 and 390×844. Each viewport directly opened all ten modules, exercised Help/search, palette, Queue and Job Center through four representative cycles, retained exactly one active EventSource, reported zero page errors and no horizontal overflow. The separate Ollama status request remained a truthful 502 and was not altered.
 - Big Mac was reachable as `bigmac@bigmac`; `bin/dexdiffusion doctor` verified the mounted model volume, configured SDCPP targets, primary MFLUX runtime/model, idle heavy-compute lease, canonical media roots and tailnet-only Serve route. No expensive model render was run for these local shell/lifecycle repairs. Doctor retained the historical canonical-storage warning: 8 valid and 502 missing records; no repair or deletion was attempted.
 - Final Git commit: the closure commit containing this record; its exact hash is recorded in Git and the completion receipt after commit. Publication state: authorized push to `origin/main`, with local main, remote-tracking main and `ls-remote` parity verified after publication. Unrelated untracked PNG files remain preserved and unstaged.
+
+## Audio Drama Studio uplift — 2026-10-08 (uncommitted working tree)
+
+- Scope: local-only uplift inside the single Drama module — staged SCRIPT/CAST/DIRECT/PRODUCE/REVIEW/MASTER/EXPORT workflow, Voice Designer, fingerprinted takes, one-click `PRODUCE ENTIRE DRAMA`,
+  Cast Bible + Actor FX rack, Sound Director cues, multitrack timeline, optional pacing, QA, streaming mix/master/export, Production Proof and Director's Revision reports, portable voice bank and project package.
+  Full design record and receipts: `operator-console/docs/audio-drama-studio-progress.md`. Chatterbox Turbo evidence: `operator-console/docs/chatterbox-turbo-compat-20261008.md` (verdict EXPERIMENT; nothing installed).
+- State: **implemented and tested, NOT committed, NOT pushed.** Verification at this point: `npm run check` OK; `npm test` 601 tests / 600 pass / 0 fail / 1 skipped; browser Edit 24/24, Voice/Drama 8/8, Drama Studio 9/9, Concept A 8/8, interaction matrix 180/180.
+- Measured: a synthetic 60-minute programme mixes, concatenates, masters (loudness verified) and exports MP3 + chaptered M4B in 345 s with 174 MiB peak process-tree RSS.
+- Not yet proven: any real Qwen/Kokoro inference or live production on Big Mac, whisper.cpp ASR (not installed → reports UNAVAILABLE), Silero VAD (not installed → energy detector), and human listening acceptance. Nothing in this section is a human-approval claim.
+- Invariants kept: no cloud/external speech APIs, no model downloads or runtime changes, Big Mac output stays ephemeral, unsaved screenplay text never enters generic jobs/SSE/logs/media metadata/receipts. Project files migrate to `dexdiffusion.drama_project.v2` with a byte-identical `*.pre-v2.bak.json` on first rewrite; historical records and approved takes are never deleted.
+
+
+## External-first model storage gate — 2026-10-09
+
+- User approved making DexDiffusion model storage external-first, with evidence-based exceptions. **Protected: FLUX.2 Klein 4-bit model and pinned MFLUX venv on Big Mac internal SSD; MacBook retains canonical generated images/audio.** No models were relocated, overwritten, deleted or downloaded in this pass.
+- Fresh Big Mac audit: internal APFS Data approximately 17 GiB available; `wc2tb` 254 GiB available but **file-content access is denied (Operation not permitted)**. The intended `ssh westcat` route (tailscaled), separate authorized Apple `sshd` on port 2222, and DEX//REACH process all fail to list external model contents. Ordinary owner/mode bits, symlink targets and a mounted volume are not evidence of model readability. macOS host consent remains BLOCKED; do not bypass privacy controls.
+- Internal migration candidates verified by stat: FLUX.1 Schnell FP8 17,236,328,572 bytes (full hash UNVERIFIED after bounded hash timeout; live model proof historically unresolved), Photonic Fusion 6,938,043,264 bytes (full SHA-256 `3d781844e3cb1968e1ba96e87969e8699e8a1b08e35df04ab8880b25eb816b41`). Additional MFLUX hub/cache about 4.3 GiB is not proven redundant. Voice/music model weights are already configured under `wc2tb`; their Python runtimes remain internal by design. Previously migrated SD1.5/SDXL Base/Turbo are external symlinks.
+- Truthfulness fix **applied in uncommitted MacBook working tree**: `capabilities.js` now probes `wc2tbReadable` through an actual SSH directory read, and fails affected external model/worker availability while leaving internal Klein and Photonic eligible; `media.js` labels external workers `MODEL INACCESSIBLE (wc2tb)`; `server.js` doctor reports a separate read-access FAIL. Two regression tests added. Backup verified at `/Users/andrew/Image_Gen_rescue/external-access-20261009.dZHCjz/`. Unit suite passed **615/615** (zero failures, zero skipped), focused 22/22, syntax checks and git diff whitespace check clean.
+- Project-owned console restarted while idle, verified pid 22962, `/api/version` current checkout HEAD 169ad07; live doctor now FAILS honestly on unreadable external storage, with internal MFLUX PASS. No stage/commit/push; unrelated uncommitted Audio Drama Studio work and media preserved.
+- Exact inventory, gate and safe staged cutover/rollback procedure: [External-first storage audit](docs/operations/DEXDIFFUSION_EXTERNAL_FIRST_20261009.md). **Next required proof:** authorized worker can open actual external model bytes; only then may models be copied, hashed, repointed and generated through the actual backend before any original can be considered for removal.
+
+## Permission architecture decision — 2026-10-09
+
+**User requirement:** Grant external-volume access to a dedicated DexDiffusion application identity on Big Mac, **not** broad Full Disk Access to `tailscaled`, general SSH servers, or DEX//REACH. Preserve Tailscale for network transport only. Prefer a macOS Files & Folders **Removable Volumes** grant before considering broader Full Disk Access.
+
+Observed: Big Mac currently has no `/Applications/DexDiffusion.app` or `DexDiffusion Worker.app`; MacBook is the sole DexDiffusion GUI/control owner. Tailscale-SSH, native sshd (port 2222), and DEX//REACH read attempts on Big Mac all failed for `/Volumes/wc2tb` with `Operation not permitted`. Granting permissions to the existing MacBook app will not authorize Big Mac model processes.
+
+**Revised authorized design target (NOT YET IMPLEMENTED):** Big Mac dedicated, stable-identity, user-owned `DexDiffusion Worker.app` launches/owns model-reading processes. The worker must request the normal macOS removable-volume permission through an honest app-level prompt, then prove it can read model bytes; no TCC database edits, privilege escalation, host-permission bypass, or raw arbitrary command service. Communicate with MacBook through an authenticated, narrowly allowlisted local IPC endpoint transported over existing tailnet/SSH, with no public listener or new cloud dependency. Before integration, prove child model processes retain effective authorized access. Protect the internal FLUX.2 Klein runtime, existing canonical MacBook media and old SSH workflow until all real image and voice gates pass. No custom worker was built, installed, authorized, or enabled by this entry. Owner interaction with macOS may still be required to grant privacy consent.
+
+## Performance optimization pass — 2026-10-16 (uncommitted working tree)
+
+**Scope:** end-to-end Generate latency for the primary MFLUX FLUX.2 Klein 4B 4-bit path. Same model, same internal-SSD runtime, no new frameworks, no model/precision/step changes. Not committed, not pushed.
+
+**Conditions.** MacBook Air → Big Mac (M4, 32 GB) over `ssh westcat` / Tailscale (direct IPv6 path, 73–99 ms RTT, ~10 % ICMP loss observed during part of the session). Prompt "a red fox sitting in a snowy forest, golden hour, detailed fur", seed 12345, 4 steps, guidance 1, quantity 1. Runs were interleaved A/B (HEAD scripts vs working tree, via scratch copies with `DEX_IMAGES_ROOT_OVERRIDE`, so benchmark images are not in `/Users/andrew/images_made`), each gated on Big Mac having no other heavy job. Two baseline 1024 runs taken earlier while a user SDXL job was running (159 s, 194 s) are contaminated and excluded.
+
+**Measured baseline (where the time goes, 512² / 1024², idle Big Mac, good network):**
+
+| Stage | 512² | 1024² |
+|---|---|---|
+| Denoising incl. lazy weight use + text encode (GPU-bound, MFLUX CLI) | ~14.5–17 s (≈75–80 %) | ~50–54 s (≈90 %) |
+| VAE decode + PNG save | ~0.8–1.3 s | ~6–7 s |
+| Python imports + model load (in-process) | ~1.5 s (0.9 + 0.6) | ~1.5 s |
+| Pre-generation ssh handshakes (3 calls: hostname, runtime, model) | 3.1–4.6 s (median ~3.7) | same |
+| ssh setup of the generate call | ~1 s | ~1 s |
+| PNG transfer (0.43 MB / 1.75 MB) | 0.5 s when network is healthy; 5–30 s when the Tailscale path is lossy | same |
+| Local sha/strip/verify/canonicalize | ~0.4–0.5 s | ~0.5 s |
+
+Peak MLX memory 4.83 GB (512²) / 12.37 GB (1024²); no Metal errors; swap in use on Big Mac ~4.9 GB before any of my runs.
+
+**Candidates rejected on evidence.**
+- *Persistent warm-model Big Mac worker* (built as a prototype: private unix socket, flock single-instance, idle exit, SHA-pinned source, one-shot fallback): the model load it removes is only ~0.6 s + ~0.9 s imports. A/B in-process (fresh process each, 512²) measured total 17.0–17.2 s with the text encoder evicted (CLI behaviour) and kept (worker behaviour); the warm worker's requests took 19.9–20.4 s end to end vs 19.0–21.3 s one-shot, i.e. **no measurable gain**, with +2.3 GB resident (peak 7.16 vs 4.83 GB at 512²) and a daemon to supervise. Not shipped; prototype source not retained in the repo.
+- *Text-encoder eviction tuning, Metal/MLX flags, `mx.set_wired_limit`, dequantized weights*: no safe measured benefit, risk of Metal watchdog timeouts; not attempted.
+- *Lossless PNG recompression to cut transfer bytes*: would alter bytes/SHA contract; not done.
+
+**Implemented (3 files + 1 UI constant + tests):**
+1. `sdcpp-workflow/bin/mflux-controlled-generate.sh`: the three preflight ssh calls (`verify_route`, two `remote_test`) are merged into one call with identical failure gates; the preflight and generate calls share one private OpenSSH ControlMaster connection (`~/.ssh/dexdiffusion-cm/%C`, dir 0700, `ControlPersist=120`, opt-out `DEX_SSH_MUX=0`; same host, keys and Tailscale SSH auth, no new listener); stage banners `=== Pre-flight verification ===`, `=== Generating … on BigMac …`, `=== Finalizing canonical image ===`; per-stage `timings` written to the manifest and `MFLUX_TIMING:` log line (numbers only, no prompt data).
+2. `sdcpp-workflow/bin/mflux-remote-generate.sh`: `MFLUX_REMOTE_T: <stage> <epoch>` stderr stamps (script-start, generate-start/-end, stream-start/-end). Generation command, markers, cleanup and exit contract unchanged.
+3. `sdcpp-workflow/bin/sdcpp-lib.sh`: `ssh_remote` honours an optional `SDCPP_SSH_EXTRA_OPTS` (empty by default; SDCPP scripts behave as before).
+4. `operator-console/public/dexdiffusion/edit-core.js`: new `finalizing` job-stage label.
+5. `operator-console/tests/mflux-bridge.test.js`: 7 new tests (single-ssh preflight per gate, private 0700 mux dir and opt-out, ordered stage stamps off the PNG stream, manifest timings, stage ladder).
+
+**Before / after (median wall clock, script start → canonical image, interleaved A/B, same prompt/seed):**
+
+| Backend / model | Res | Cold / first run (before → after) | Median warm (before → after) | Model load | Transfer + finalize | Peak mem | Improvement | Validation |
+|---|---|---|---|---|---|---|---|---|
+| MFLUX FLUX.2 Klein 4B 4-bit | 512² | 36.1 → 26.6 s (first of series; network-degraded window) | 23.13 → 19.29 s (n=7 pairs) | n/a (in-process ~1.5 s, unchanged) | 0.4 s local finalize; ssh transfer network-bound | 4.83 GB | −16.6 % | pixel hash identical `ca58eda05947f901` in all 22 benchmark runs + API run |
+| MFLUX FLUX.2 Klein 4B 4-bit | 1024² | 61.0 → 55.3 s | 60.28 → 55.79 s (n=3 pairs) | n/a | 0.8 s ssh tail + 0.5 s local | 12.37 GB | −7.4 % | pixel hash identical `54a66402bab56ec0` in all 6 runs + API run |
+
+The saving is the removed handshakes (microbenchmark, 6 reps: old 3 calls 3.1–4.6 s; merged 0.9–1.9 s; merged on a live control connection ~0.3 s). Remote generation time is unchanged (512² 17.1 s, 1024² 53–54 s in `timings.remote_generate_s`), as expected. In degraded-network windows the ssh data path dominated (13–32 s of ssh connect/teardown in both old and new scripts, 65–80 KB/s); those pairs are in the raw record but are noise for comparing code paths. A second mux benefit (not separately benchmarked): a second image within 120 s starts with ~0.6 s of handshake instead of ~4.5 s.
+
+**Verification.** `npm test` 622/622 pass (615 before + 7 new), `npm run check`, `bash -n` on the three scripts, `node --check` on changed JS, `git diff --check` clean. Console restarted through `bin/dexdiffusion restart` (single listener 127.0.0.1:31337, pid 13179, cwd this checkout). Real generations through `POST /api/actions/generate-controlled` passed at 512² (35.5 s, network-degraded) and 1024² (58.7 s): canonical files `20261016-011820-…-s12345-….png` and `20261016-011936-…-s12345-….png` in `/Users/andrew/images_made`, pixel hashes equal to the benchmark hashes, `prompt-in-exif` false with `save_prompts=false`, `/api/images/<id>` HTTP 200, job stages Checking Big Mac and model → Generating on Big Mac → (Finalizing in canonical storage) → Complete. No `dexdiffusion-mflux.*` temp dir left on Big Mac; no new PNG in `~/sdcpp-staging/outputs` (one pre-existing Oct 15 11:18 file untouched). Mux masters expire after 120 s idle (0 remaining). Tailscale Serve, Funnel, DEX//REACH untouched.
+
+**Limitations / honest notes.**
+- Gains are latency-handshake gains (~4–5 s), not GPU gains: denoising is ~75–90 % of wall clock and cannot be cut without changing steps/precision/resolution, which this pass forbids.
+- Network variance (loss on the Tailscale direct path) swamped some pairs; only paired medians are quoted. Transfer time is not improved.
+- SD1.5 (SDCPP) baseline: one run through the HEAD script PASSED in 259 s, but that includes the managed secondary-slot activation (it left the secondary slot pointing at SD1.5 instead of Photonic; the slot re-activates on demand) and external-drive reads, so it is not a warm baseline. The matching run with the working tree failed at gate `model-slot` ("source checkpoint is missing, unsafe, or not a .safetensors file") — the wc2tb external volume is intermittently unreadable on Big Mac (see the 2026-10-09 entry); the SDCPP code path is unchanged by this pass and the failure was not reproduced as a code regression.
+- Warm-worker idea was measured and rejected; do not revisit without a different bottleneck.
+
+**Rollback.** Uncommitted: `git checkout -- sdcpp-workflow/bin/mflux-controlled-generate.sh sdcpp-workflow/bin/mflux-remote-generate.sh sdcpp-workflow/bin/sdcpp-lib.sh operator-console/public/dexdiffusion/edit-core.js` and drop the 7 `perf:` tests from `operator-console/tests/mflux-bridge.test.js`. Soft rollback without editing: `DEX_SSH_MUX=0` in the console's environment disables connection reuse. `rm -rf ~/.ssh/dexdiffusion-cm` removes the control socket directory.
+
+**Best next optimization (only if justified later):** none is worth doing for the GPU stage at fixed quality; the next real lever is diagnosing the lossy Tailscale path (direct IPv6, 10 % ICMP loss, 65–80 KB/s ssh throughput in bad windows), which dominated the worst runs.

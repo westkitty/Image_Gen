@@ -141,6 +141,7 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
     ...paths.map((p, i) => `printf 'model${i}=%s\\n' "$(test -s ${JSON.stringify(p).replace(/^"\$HOME/, '"$HOME')} && echo 1 || echo 0)"`),
     `printf 'identity=%s@%s\\n' "$(whoami)" "$(hostname -s)"`,
     `printf 'wc2tb=%s\\n' "$(test -d /Volumes/wc2tb/ImageGen && echo 1 || echo 0)"`,
+    `printf 'wc2tbReadable=%s\\n' "$(/bin/ls /Volumes/wc2tb >/dev/null 2>&1 && echo 1 || echo 0)"`,
     `printf 'secondaryStateB64=%s\\n' "$(test -s "$HOME/Library/Caches/DexDiffusion/secondary-model/current/state.json" && /usr/bin/base64 < "$HOME/Library/Caches/DexDiffusion/secondary-model/current/state.json" | tr -d '\\n' || true)"`,
     // Dormant future workers: existence checks only (nothing is installed or started).
     ...DORMANT_PATHS.map(([k, pth]) => `printf '${k}=%s\\n' "$(test -e "${pth}" && echo 1 || echo 0)"`),
@@ -155,16 +156,18 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
       }
       if (kv.probe !== 'done') return resolve({ reachable: false });
       const flag = k => (kv[k] === '1' ? true : kv[k] === '0' ? false : null);
+      const wc2tbReadable = flag('wc2tbReadable');
+      const externalBlocked = wc2tbReadable === false;
       const models = {};
-      paths.forEach((p, i) => { models[p] = flag(`model${i}`); });
+      paths.forEach((p, i) => { models[p] = externalBlocked && p.startsWith('/Volumes/wc2tb/') ? false : flag(`model${i}`); });
       let secondary = {};
       try { secondary = JSON.parse(Buffer.from(kv.secondaryStateB64 || '', 'base64').toString('utf8')); } catch (_) {}
       resolve({
         reachable: true,
         mfluxRuntime: flag('mfluxRuntime'), mfluxModel: flag('mfluxModel'),
-        sdCli: flag('sdCli'), sd15Model: flag('sd15Model'), photonicModel: flag('photonicModel'), sdxlBaseModel: flag('sdxlBaseModel'), sdxlTurboModel: flag('sdxlTurboModel'), esrganModel: flag('esrganModel'),
-        identity: kv.identity || null, wc2tb: flag('wc2tb'),
-        dormant: Object.fromEntries(DORMANT_PATHS.map(([k]) => [k, flag(k)])),
+        sdCli: flag('sdCli'), sd15Model: externalBlocked ? false : flag('sd15Model'), photonicModel: flag('photonicModel'), sdxlBaseModel: externalBlocked ? false : flag('sdxlBaseModel'), sdxlTurboModel: externalBlocked ? false : flag('sdxlTurboModel'), esrganModel: externalBlocked ? false : flag('esrganModel'),
+        identity: kv.identity || null, wc2tb: flag('wc2tb'), wc2tbReadable,
+        dormant: Object.fromEntries(DORMANT_PATHS.map(([k, path]) => [k, externalBlocked && path.startsWith('/Volumes/wc2tb/') ? false : flag(k)])),
         models,
         secondaryModelState: secondary.secondaryModelState || 'inactive',
         activeSecondaryModel: secondary.activeSecondaryModel || null,
@@ -186,6 +189,7 @@ function targetRuntime(target, assets, targetModels) {
   }
   if (assets.sdCli === false) return 'dormant';
   const model = targetModels[target.id] || target.modelPath;
+  if (model && assets.wc2tbReadable === false && model.startsWith('/Volumes/wc2tb/')) return 'model-inaccessible';
   if (model && assets.models && assets.models[model] === false) return 'model-missing';
   return 'available';
 }

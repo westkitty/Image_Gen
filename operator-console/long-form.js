@@ -104,4 +104,22 @@ function tagsIntact(input, chunks) {
   return chunks.every(c => !spans.some(([a, b]) => (c.start > a && c.start < b) || (c.end > a && c.end < b)));
 }
 
-module.exports = { splitLongText, tagsIntact, protectedSpans, GAP_MS };
+// Exact reconstruction proof (not a word-count check): the ordered chunks must tile the normalised text. Every chunk
+// is the verbatim slice [start,end) of the text, chunks never overlap or reorder, and everything between/around
+// chunks is whitespace only (the one documented normalisation: chunk edges are trimmed).
+function verifyChunkReconstruction(input, chunks) {
+  const text = String(input == null ? '' : input).replace(/\r\n?/g, '\n');
+  const norm = s => String(s).normalize('NFC').replace(/\s+/g, ' ').trim();
+  if (!Array.isArray(chunks) || !chunks.length) return { ok: !text.trim(), reason: text.trim() ? 'no chunks for non-empty text' : null };
+  let prev = 0;
+  for (const [i, c] of chunks.entries()) {
+    if (!(c.start >= prev)) return { ok: false, reason: `chunk ${i + 1} is out of order or overlaps its predecessor`, chunk: i };
+    if (text.slice(c.start, c.end) !== c.text) return { ok: false, reason: `chunk ${i + 1} text differs from the source slice`, chunk: i };
+    if (text.slice(prev, c.start).trim()) return { ok: false, reason: `uncovered text before chunk ${i + 1}`, chunk: i };
+    prev = c.end;
+  }
+  if (text.slice(prev).trim()) return { ok: false, reason: 'uncovered trailing text (chunks end before the text does)', chunk: chunks.length - 1 };
+  return { ok: true, chunks: chunks.length, chars: norm(text).length };
+}
+
+module.exports = { splitLongText, tagsIntact, protectedSpans, verifyChunkReconstruction, GAP_MS };

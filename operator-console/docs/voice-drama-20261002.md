@@ -79,3 +79,14 @@ chunk-failure attribution, privacy, cleanup), `drama.test.js`, `drama-service.te
 ## Rev 18 evidence boundary
 
 Delivery metadata stores requested/applied booleans; full delivery text stays in the ephemeral response when text saving is off. Drama assembly retains its separate −1 dBFS peak policy. Current live evidence and unexercised cases are recorded in OPERATIONAL_STATE Revision 18; unit tests do not establish those missing runtime paths.
+
+## Addendum — Audio Drama Studio (2026-10-08)
+
+New contracts layered on the above (details and receipts in `audio-drama-studio-progress.md`):
+- **Engines/capabilities**: `voice-engines.js` now carries `revision`/`RUNTIME_REVISION` and seeds per chunk; capability truth is exposed (`GET /api/voice/designer/capabilities`) and the UI disables unsupported controls with the probe reason.
+- **Bridge item mode** (`media-bridge.js`, `ctx.mode:'items'`): one remote job → N independently delivered, checksum-verified outputs; partial results survive a remote failure.
+- **Production API**: `POST /api/drama/projects/:id/produce`, `GET /api/drama/productions/:id`, `POST /api/drama/productions/:id/cancel`, `GET /api/drama/projects/:id/history`; progress labels are index-only; no screenplay text in jobs or SSE.
+- **Studio API** (`drama-studio-routes.js`): Cast Bible, FX presets/validate, timeline/preview/clip/markers/peaks, cues bind/suggest/procedural, pacing preview, QA/boundaries/apply-trim, delivery/mastering/mix, proof/acceptance/revisions/history, package export/import, track split.
+- **Voice Designer API**: design spec, audition rounds (hash-only text unless opted in), approve/lock, design→clone promotion with exact-transcript verification, clone trial, scratch preview, portable voice bank (metadata-only by default).
+- **Project schema** `dexdiffusion.drama_project.v2` with a one-time byte-identical `*.pre-v2.bak.json`.
+- Browser coverage: `tests/browser/drama-studio.browser.js` (`npm run test:browser:studio`) uses real server routes and fixture-intercepts only the calls that would start Big Mac work.

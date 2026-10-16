@@ -40,6 +40,26 @@ function parseWav(buf) {
   return { sampleRate: fmt.sampleRate, channels };
 }
 
+// Header-only WAV validation for files too large to decode in memory. Walks the chunk list inside `head`
+// (the first bytes of the file) and checks the declared data chunk against the real file size.
+function wavHeaderInfo(head, fileSize) {
+  if (!Buffer.isBuffer(head) || head.length < 44 || head.toString('latin1', 0, 4) !== 'RIFF' || head.toString('latin1', 8, 12) !== 'WAVE') throw new Error('not a RIFF/WAVE file');
+  let p = 12, fmt = null;
+  while (p + 8 <= head.length) {
+    const id = head.toString('latin1', p, p + 4), len = head.readUInt32LE(p + 4);
+    if (id === 'fmt ' && p + 24 <= head.length) { let tag = head.readUInt16LE(p + 8); if (tag === 0xfffe && len >= 40) tag = head.readUInt16LE(p + 8 + 24); fmt = { tag, channels: head.readUInt16LE(p + 10), rate: head.readUInt32LE(p + 12), bits: head.readUInt16LE(p + 22) }; }
+    if (id === 'data') {
+      if (!fmt) throw new Error('WAV data chunk precedes its fmt chunk');
+      const avail = fileSize - (p + 8), bytes = Math.min(len === 0xffffffff ? avail : len, avail), frameBytes = fmt.channels * fmt.bits / 8, frames = Math.floor(bytes / frameBytes);
+      if (!(fmt.channels >= 1 && fmt.channels <= 8) || !(fmt.rate >= 4000 && fmt.rate <= 384000) || ![8, 16, 24, 32].includes(fmt.bits) || ![1, 3].includes(fmt.tag)) throw new Error('unsupported WAV header');
+      if (frames <= 0) throw new Error('WAV has no audio frames');
+      return { sampleRate: fmt.rate, channels: fmt.channels, bits: fmt.bits, tag: fmt.tag, frames, duration: frames / fmt.rate, dataOffset: p + 8, dataBytes: frames * frameBytes };
+    }
+    p += 8 + len + (len % 2);
+  }
+  throw new Error('WAV has no fmt/data chunk in its header');
+}
+
 function encodeWav(audio) {
   const ch = audio.channels.length, frames = audio.channels[0].length, bytes = 2;
   const out = Buffer.alloc(44 + frames * ch * bytes);
@@ -157,4 +177,49 @@ function mix(items, { sampleRate = 24000, channels = 2, normalizeOutput = true }
   return normalizeOutput ? normalize(res, { targetPeakDb: -1 }) : res;
 }
 
-module.exports = { parseWav, encodeWav, frames, duration, silence, toMono, resample, conform, analyze, normalize, applyGain, trimSilence, concat, crossfade, stitch, mix };
+
+// ── Reference-sample inspection (DexSpeak-style) ─────────────────────────────────────────
+// Objective measurements to help a human decide whether a clip is a good clone reference. These are signal
+// diagnostics only: none of them measures how faithfully a model will reproduce a voice.
+function frameRmsDb(mono, rate, ms = 20) {
+  const win = Math.max(1, Math.round(rate * ms / 1000)), out = [];
+  for (let s = 0; s < mono.length; s += win) { let e = 0; const end = Math.min(mono.length, s + win); for (let i = s; i < end; i++) e += mono[i] * mono[i]; out.push(db(Math.sqrt(e / (end - s)))); }
+  return out;
+}
+function inspectSample(a, { bins = 200 } = {}) {
+  const base = analyze(a), mono = toMono(a).channels[0], n = mono.length;
+  const wmin = new Array(bins).fill(0), wmax = new Array(bins).fill(0);
+  for (let b = 0; b < bins; b++) {
+    const s = Math.floor(b * n / bins), e = Math.max(s + 1, Math.floor((b + 1) * n / bins)); let lo = 0, hi = 0;
+    for (let i = s; i < e && i < n; i++) { if (mono[i] < lo) lo = mono[i]; if (mono[i] > hi) hi = mono[i]; }
+    wmin[b] = Math.round(Math.max(-1, lo) * 127); wmax[b] = Math.round(Math.min(1, hi) * 127);
+  }
+  const frames = frameRmsDb(mono, a.sampleRate).map(x => (Number.isFinite(x) ? x : -120)).sort((x, y) => x - y);
+  const med = arr => arr.length ? arr[Math.floor(arr.length / 2)] : null;
+  const noise = med(frames.slice(0, Math.max(1, Math.floor(frames.length * 0.1)))), speech = med(frames.slice(Math.floor(frames.length * 0.7)));
+  const snr = { estimate: true, method: 'estimate: median RMS of the loudest 30% of 20 ms frames minus the median RMS of the quietest 10%', db: null, noise_floor_db: noise == null ? null : +noise.toFixed(1), speech_level_db: speech == null ? null : +speech.toFixed(1), note: null };
+  if (noise == null || noise < -85) snr.note = 'the quietest passages are digital silence, so a noise floor cannot be estimated';
+  else if (speech - noise < 3) snr.note = 'no pauses or level variation to separate speech from background, so a noise floor cannot be estimated';
+  else snr.db = +(speech - noise).toFixed(1);
+  let dc = 0; for (let i = 0; i < n; i++) dc += mono[i]; dc /= Math.max(1, n);
+  return {
+    duration: +base.duration.toFixed(3), sample_rate: a.sampleRate, channels: a.channels.length,
+    peak_db: Number.isFinite(base.peakDb) ? +base.peakDb.toFixed(1) : -120, rms_db: Number.isFinite(base.rmsDb) ? +base.rmsDb.toFixed(1) : -120,
+    clip_percent: +(base.clipRatio * 100).toFixed(3), silence_percent: +(base.silenceRatio * 100).toFixed(1), dc_offset: +dc.toFixed(5), snr,
+    waveform: { bins, min: wmin, max: wmax },
+    disclaimer: 'Signal diagnostics only. These numbers are not a measure of clone fidelity; audition the cloned voice and decide by listening (human audition approval).',
+  };
+}
+function inspectionWarnings(x, { minSeconds = 3, maxSeconds = 30 } = {}) {
+  const w = [];
+  if (x.duration < minSeconds) w.push(`only ${x.duration.toFixed(1)} s long; clones are unreliable under ${minSeconds} s (short)`);
+  if (x.duration > maxSeconds) w.push(`${x.duration.toFixed(0)} s is long; ${maxSeconds} s or less clones more reliably`);
+  if (x.clip_percent > 0.5) w.push(`clipping in ${x.clip_percent.toFixed(1)}% of samples; re-record or lower the input level`);
+  if (x.rms_db < -40) w.push(`very quiet (RMS ${x.rms_db.toFixed(0)} dBFS); the voice may be dominated by noise`);
+  if (x.silence_percent > 50) w.push(`${Math.round(x.silence_percent)}% of the clip is silence; trim it to the speech`);
+  if (x.snr && x.snr.db != null && x.snr.db < 15) w.push(`estimated signal-to-noise ratio is only ${x.snr.db.toFixed(0)} dB (estimate); background noise may be cloned too`);
+  if (Math.abs(x.dc_offset) > 0.02) w.push('noticeable DC offset; the recording chain may be faulty');
+  return w;
+}
+
+module.exports = { wavHeaderInfo, inspectSample, inspectionWarnings, frameRmsDb, parseWav, encodeWav, frames, duration, silence, toMono, resample, conform, analyze, normalize, applyGain, trimSilence, concat, crossfade, stitch, mix };

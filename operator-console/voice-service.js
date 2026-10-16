@@ -51,6 +51,50 @@ function createVoiceService({ bridge, jobStore, mediaStore, profiles, probeFor, 
       notes: plan.notes, warnings: plan.warnings, long_form: chunks.length > 1, chunk_plan: chunks.map(c => ({ index: c.index, chars: c.text.length, boundary: c.boundary, gap_ms: c.gapAfterMs })) };
   }
 
+
+  // N independent outputs (auditions, trials, production chunks) in ONE Big Mac invocation. Each text must already fit the
+  // engine's chunk limit; each item carries its own seed. onItem receives every verified output as soon as it is local.
+  function renderItems({ profileId, items, direction, language, engine, operation = 'batch', saveText = false, meta = {}, safeParams = {}, onItem, speed }) {
+    const profile = profiles.get(profileId);
+    if (!profile) return { error: 'voice profile not found', status: 404, gate: 'profile-missing' };
+    const engineId = engine || profile.preferred_engine || E.compatibleEngines(profile)[0];
+    const eng = E.getEngine(engineId);
+    if (!eng) return { error: 'no compatible engine', status: 400, gate: 'profile-invalid' };
+    if (!Array.isArray(items) || !items.length) return { error: 'at least one item is required', status: 400 };
+    if (items.length > 400) return { error: 'at most 400 items per job', status: 400 };
+    const texts = items.map(i => String((i && i.text) == null ? '' : i.text).trim());
+    if (texts.some(t => !t)) return { error: 'every item needs text', status: 400 };
+    if (texts.some(t => t.length > eng.capabilities.max_chunk_chars)) return { error: `each item is limited to ${eng.capabilities.max_chunk_chars} characters for ${eng.label}`, status: 400 };
+    let refPath = null;
+    if (profile.type === 'cloned') {
+      const act = profiles.activeSample(profileId);
+      if (!act || !act.path) return { error: 'the active reference sample file is missing', status: 400, gate: 'reference-invalid' };
+      refPath = act.path;
+    }
+    const seeds = items.map(i => (!eng.capabilities.deterministic_seed ? null : i.seed == null || i.seed === '' ? crypto.randomInt(0, 2147483000) : Number(i.seed)));
+    let plan;
+    try { plan = E.buildRenderPlan(engineId, profile, { texts, direction, language, seeds, speed, refPath }); }
+    catch (e) { return { error: e.message, status: 400, gate: e.gate || 'profile-invalid' }; }
+    const r = bridge.startBatch(eng.worker, plan.body, {
+      probe: probeFor(eng.worker), saveText, operation, mode: 'items', onItem,
+      safeParams: Object.assign({ profile_id: profile.id, engine: engineId, items: texts.length }, safeParams),
+      meta: Object.assign({ profile_id: profile.id, profile_name: profile.name, engine: engineId, profile_fingerprint: profile.fingerprint, delivery: { requested: !!plan.delivery.requested, applied: !!plan.delivery.applied } }, meta),
+    });
+    if (r.error) return r;
+    return { job_id: r.job_id, engine: engineId, worker: eng.worker, revision: eng.revision || null, seeds, items: texts.length, delivery: { requested: plan.delivery.requested || null, applied: !!plan.delivery.applied, note: plan.delivery.note }, notes: plan.notes, warnings: plan.warnings };
+  }
+
+  // Fast scratch render of the opening of a text. Always labelled preview; it never becomes a take or enters a master.
+  const PREVIEW_CHARS = 240;
+  function preview({ profileId, text, direction, language, seed, engine }) {
+    const full = String(text == null ? '' : text).trim();
+    if (!full) return { error: 'text is required', status: 400 };
+    let t = full.slice(0, PREVIEW_CHARS), truncated = full.length > PREVIEW_CHARS;
+    if (truncated) { const cut = Math.max(t.lastIndexOf('. '), t.lastIndexOf('! '), t.lastIndexOf('? ')); t = cut > 60 ? t.slice(0, cut + 1) : t.replace(/\s+\S*$/, ''); }
+    const r = renderText({ profileId, text: t, direction, language, seed, engine, operation: 'preview', saveText: false, meta: { preview: true } });
+    return r.error ? r : Object.assign(r, { truncated, preview: true, chars: t.length });
+  }
+
   // Public view of a render job: status, chunk progress, lineage and the final artifact.
   function describe(jobId) {
     const j = jobStore.get(jobId);
@@ -82,7 +126,7 @@ function createVoiceService({ bridge, jobStore, mediaStore, profiles, probeFor, 
       await sleep(pollMs);
     }
   }
-  return { renderText, describe, waitJob, MAX_TEXT_CHARS };
+  return { renderText, renderItems, preview, describe, waitJob, MAX_TEXT_CHARS, PREVIEW_CHARS };
 }
 
 module.exports = { createVoiceService, MAX_TEXT_CHARS };

@@ -152,7 +152,7 @@
   };
   P.loadDramaMusic = async function () {
     const [m, v] = await Promise.all([this._dmApi('/api/library?kind=music'), this._dmApi('/api/library?kind=voice')]);
-    this.dmSet({ musicLib: [...((m.data && m.data.items) || []), ...((v.data && v.data.items) || [])].filter(i => /\.wav$/i.test(i.artifact_id)).slice(0, 80) });
+    this.dmSet({ musicLib: [...((m.data && m.data.items) || []), ...((v.data && v.data.items) || [])].filter(i => /\.(wav|mp3|m4a|m4b|flac)$/i.test(i.artifact_id)).slice(0, 80) });
   };
   P.dramaAddTrack = async function (form) {
     const r = await this._dmApi(`/api/drama/projects/${this._dm().current.id}/tracks`, form);
@@ -185,7 +185,7 @@
   P._dmTake = function (line, t, idx) {
     const base = this.state.backendUrl;
     return h('div', { key: t.id, 'data-take': t.id, style: { border: '1px solid ' + (t.active ? 'rgba(101,214,110,.5)' : 'rgba(148,163,184,.16)'), borderRadius: 8, padding: 6, display: 'grid', gap: 4, minWidth: 0 } },
-      h('div', { style: css.row }, h('b', { style: { fontSize: 11, color: '#cbd5e1' } }, 'Take ' + (idx + 1)), chip(t.status, t.status === 'complete' ? tone.ok : t.status === 'failed' ? tone.bad : tone.info), t.engine ? chip(t.engine, '#94a3b8') : null, t.duration ? chip(fmtT(t.duration), '#94a3b8') : null,
+      h('div', { style: css.row }, h('b', { style: { fontSize: 11, color: '#cbd5e1' } }, 'Take ' + (idx + 1)), chip(t.state ? t.state.label : t.status, (window.DexStudio && window.DexStudio.TAKE_TONE[t.state && t.state.label]) || (t.status === 'complete' ? tone.ok : t.status === 'failed' ? tone.bad : tone.info)), t.engine ? chip(t.engine, '#94a3b8') : null, t.duration ? chip(fmtT(t.duration), '#94a3b8') : null,
         t.seed != null ? h('span', { style: css.mono }, 'seed ' + t.seed) : null, t.settings && t.settings.delivery && t.settings.delivery.note ? chip('direction not applied', tone.warn) : null, t.settings && t.settings.seeded === false ? h('span', { title: 'This engine has no seed: re-rendering the same text gives the same audio. Change the text, direction or voice for a different take.', style: { border: '1px solid rgba(148,163,184,.4)', color: '#94a3b8', borderRadius: 6, padding: '2px 7px', fontSize: 10 } }, 'deterministic engine') : null,
         h('div', { style: { flex: 1 } }), t.status === 'complete' ? (t.active ? chip('✓ active', tone.ok) : btn('Use this take', () => this.dramaSelectTake(line.id, t.id), '#65d66e', { 'data-use-take': t.id })) : null),
       t.url ? this._mediaEl(base + t.url, 'audio', 'take-' + t.id) : null,
@@ -195,7 +195,7 @@
     const dm = this._dm(), running = dm.run && dm.run.status === 'running';
     const skip = line.kind === 'direction' || line.render === false;
     return h('div', { key: line.id, 'data-line': line.id, style: { border: '1px solid rgba(148,163,184,.14)', borderRadius: 9, padding: 8, display: 'grid', gap: 6, background: skip ? 'rgba(8,14,24,.35)' : 'rgba(8,14,24,.7)', opacity: skip ? 0.75 : 1, minWidth: 0 } },
-      h('div', { style: css.row }, chip(line.status, STATUS_TONE[line.status] || '#94a3b8'), h('span', { style: css.mono }, line.id), line.edited ? chip('edited', tone.warn) : null, h('div', { style: { flex: 1 } }),
+      h('div', { style: css.row }, chip(line.freshness === 'stale' ? 'out of date' : line.status, line.freshness === 'stale' ? tone.warn : (STATUS_TONE[line.status] || '#94a3b8')), h('span', { style: css.mono }, line.id), line.edited ? chip('edited', tone.warn) : null, h('div', { style: { flex: 1 } }),
         !skip ? btn('Render', () => this.dramaRender({ scope: 'line', line_id: line.id, alternate: false }), '#38bdf8', { disabled: running, 'data-render-line': line.id }) : null,
         !skip && line.takes.length ? btn('Alternate take', () => this.dramaRender({ scope: 'line', line_id: line.id, alternate: true }), '#a78bfa', { disabled: running, 'data-alt-take': line.id }) : null,
         btn('✕', () => this.dramaDeleteLine(line.id), '#94a3b8', { 'aria-label': 'Delete line', title: 'Remove this line from the project' })),

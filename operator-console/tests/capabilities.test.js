@@ -147,3 +147,13 @@ test('each model requires its own canonical real-job result; partial results nev
   store.record({ ...job, status: 'FAIL', completedAt: 2, firstFailedGate: 'generator-exit' }, 'sdcpp');
   assert.equal(targetVerification(target, assets, models, store.read()).status, 'broken');
 });
+
+test('volume permission failure blocks external targets, not internal MFLUX and Photonic', () => {
+  const external = '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors';
+  const internal = '$HOME/sdcpp-staging/models/photonic_fusion_sdxl_finale_v1.safetensors';
+  const map = { sd15: external, 'sdxl-photonic': internal };
+  const assets = { ...ALL, wc2tbReadable: false, models: { [external]: true, [internal]: true } };
+  assert.equal(targetRuntime({ id: 'sd15' }, assets, map), 'model-inaccessible');
+  assert.equal(targetRuntime({ id: 'sdxl-photonic' }, assets, map), 'available');
+  assert.equal(targetRuntime({ id: 'flux2-klein-4b', backend: 'mflux' }, assets, map), 'available');
+});

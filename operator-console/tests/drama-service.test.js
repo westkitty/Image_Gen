@@ -16,7 +16,7 @@ function setup({ failTexts = [] } = {}) {
   const mediaStore = M.createMediaStore({ roots, registryFile: base + '/media.json' }); mediaStore.ensureRoots();
   const store = createDramaStore({ root: base + '/drama' });
   const calls = [], jobs = new Map(); let n = 0;
-  const profiles = { get: id => (id ? { id, name: id, type: 'preset', validation: { state: 'valid' }, preferred_engine: 'kokoro' } : null) };
+  const profiles = { get: id => (id ? { id, name: id, type: 'preset', preset_voice: 'af_heart', language: 'en', validation: { state: 'valid' }, preferred_engine: 'kokoro' } : null) };
   const voice = {
     renderText(args) {
       calls.push(args);
@@ -92,7 +92,7 @@ test('tracks: music bed from the library is mixed in and recorded in the manifes
   await waitRun(svc, svc.startRun(p.id, { scope: 'project' }).id);
   const f = path.join(tmp('mu'), 'bed.wav'); fs.writeFileSync(f, A.encodeWav({ sampleRate: 48000, channels: [tone(3, 110).channels[0], tone(3, 110).channels[0]] }));
   const rec = mediaStore.finalize(f, { kind: 'music', base: 'bed' });
-  assert.throws(() => svc.addTrack(p.id, { role: 'bogus', artifact_id: rec.artifact_id }), /role/); assert.throws(() => svc.addTrack(p.id, { role: 'music', artifact_id: 'nope.wav' }), /WAV artifact/);
+  assert.throws(() => svc.addTrack(p.id, { role: 'bogus', artifact_id: rec.artifact_id }), /role/); assert.throws(() => svc.addTrack(p.id, { role: 'music', artifact_id: 'nope.wav' }), /audio artifact/);
   const t = svc.addTrack(p.id, { role: 'music', artifact_id: rec.artifact_id, start_s: 0.2, gain: 0.25, fade_out_s: 0.5 });
   const r = svc.assembleExport(p.id); assert.equal(r.manifest.tracks.length, 1); assert.equal(r.manifest.channels, 2); assert.equal(r.manifest.sample_rate, 48000);
   assert.equal(svc.removeTrack(p.id, t.id), true);

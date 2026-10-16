@@ -9,8 +9,9 @@ const path = require('path');
 const { chromium } = require('playwright-core');
 const { makePng, decodePng, startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
 
-const OUT = process.env.DEX_BROWSER_OUTPUT_DIR || path.join(__dirname, '..', '..', '..', 'output', 'playwright');
-fs.mkdirSync(OUT, { recursive: true });
+const { resolveOutputDir, createOwnedWriter } = require('./safe-output');
+// A fresh directory per run (or the explicit one); existing files are never replaced.
+const OUT = resolveOutputDir(process.env.DEX_BROWSER_OUTPUT_DIR, { label: 'edit' }), WRITER = createOwnedWriter(OUT), outPath = n => WRITER.pathFor(n);
 
 const FX = {
   'fx-landscape.png': { w: 800, h: 500, meta: { operation: 'txt2img', target: 'sdxl-base', seed: 1111, steps: 31, cfg: 5.5, sampler: 'dpmpp2m', scheduler: 'karras', vae: 'auto', preset: 'quality', loras: [{ name: 'style_a', weight: 0.7 }, { name: 'bad_lora', weight: 1 }], gen_schema: 1, prompt_saved: false } },
@@ -91,7 +92,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       assert.match(banner, /seed 1111/); assert.match(banner, /steps 31/); assert.match(banner, /Source prompt unavailable — prompt saving was off/);
       assert.equal(await page.inputValue('[data-edit-prompt]'), '');
       assert.equal(await page.evaluate(() => __dex.state.prompt), 'CREATE-FORM-PROMPT', 'Create form untouched');
-      await page.screenshot({ path: path.join(OUT, 'edit-recall-compact.png') });
+      await page.screenshot({ path: outPath('edit-recall-compact.png') });
       assert.deepEqual(errors, []); await ctx.close();
     });
 
@@ -193,7 +194,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
         assert.deepEqual([mask.w, mask.h], [w, h], 'mask sent at the source image dimensions');
         const a = (x, y) => mask.data[(y * mask.w + x) * 4 + 3];
         assert.ok(a(10, 10) > 0 && a(w - 14, h - 14) > 0 && a(Math.floor(w / 2), Math.floor(h / 2)) === 0);
-        await page.screenshot({ path: path.join(OUT, `inpaint-${fx.replace('.png', '')}.png`) });
+        await page.screenshot({ path: outPath(`inpaint-${fx.replace('.png', '')}.png`) });
         await ctx.close();
       });
     }
@@ -299,7 +300,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       assert.equal(await page.evaluate(() => __dex.ed.state.params.steps), 44);
       assert.equal(await page.inputValue('[data-edit-prompt]'), 'a saved prompt');
       assert.equal(await page.evaluate(() => localStorage.getItem('dex_edit_layout')), 'studio');
-      await page.screenshot({ path: path.join(OUT, 'edit-studio.png') });
+      await page.screenshot({ path: outPath('edit-studio.png') });
       await page.reload(); await page.waitForFunction(() => window.__dex && __dex.ed);
       assert.equal(await page.evaluate(() => __dex.ed.layout), 'studio');
       await ctx.close();
@@ -330,7 +331,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       await page.fill('[data-model-picker="create"] input[type=search]', 'pony');
       const filtered = await page.$$eval('[data-model-picker="create"] [role=option]', e => e.map(x => x.innerText));
       assert.ok(filtered.length >= 1 && filtered.length < total && filtered.every(t => /pony/i.test(t)), 'search filters');
-      await page.screenshot({ path: path.join(OUT, 'model-picker.png') });
+      await page.screenshot({ path: outPath('model-picker.png') });
       await ctx.close();
     });
 
@@ -480,7 +481,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
           await page.waitForTimeout(250);
           const o = await page.evaluate(() => { const bad = []; document.querySelectorAll('[data-scroll-pane]').forEach(p => { if (p.scrollWidth > p.clientWidth + 1) bad.push('pane ' + p.scrollWidth + '>' + p.clientWidth); }); return { doc: document.documentElement.scrollWidth - innerWidth, bad }; });
           assert.ok(o.doc <= 1 && !o.bad.length, `${screen}: ${JSON.stringify(o)}`);
-          if (screen === 'edit') await page.screenshot({ path: path.join(OUT, `edit-${width}.png`) });
+          if (screen === 'edit') await page.screenshot({ path: outPath(`edit-${width}.png`) });
         }
         await ctx.close();
       });
@@ -488,6 +489,6 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
   } finally { await browser.close(); await srv.stop(); }
   const failed = results.filter(r => r[0] === 'FAIL');
   console.log(`\n${results.length - failed.length}/${results.length} browser checks passed`);
-  fs.writeFileSync(path.join(OUT, 'edit-workbench-results.json'), JSON.stringify(results, null, 1));
+  WRITER.write('edit-workbench-results.json', JSON.stringify(results, null, 1));
   process.exit(exitCode(failed.length));
 })().catch(e => { console.error(e); runCleanups().then(() => process.exit(2)); });

@@ -359,23 +359,59 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       });
       if (onRemoteOutput) onRemoteOutput(out);
       const mk2 = parseMarkers(out), items = parseItemMarkers(out);
+      const itemsMode = ctx.mode === 'items' && typeof ctx.onItem === 'function';
+      const records = [];
+      // Pull one verified output from Big Mac (size + checksum + decodable WAV). Returns { dest, audio } or { error }.
+      const pull = async (it) => {
+        const dest = path.join(localDir, `item-${String(it.i).padStart(3, '0')}.wav`);
+        await exec('scp', ['-q', `${sshTarget}:${it.path}`, dest], 300000);
+        if (!fs.existsSync(dest) || fs.statSync(dest).size === 0) return { error: ['transfer', `chunk ${it.i + 1}/${total}: WAV transfer from Big Mac failed`] };
+        if (sha256File(dest) !== it.sha) return { error: ['checksum', `chunk ${it.i + 1}/${total}: transferred WAV checksum does not match Big Mac`] };
+        let audio; try { audio = A.parseWav(fs.readFileSync(dest)); } catch (e) { return { error: ['output-invalid', `chunk ${it.i + 1}/${total}: ${e.message}`] }; }
+        return { dest, audio };
+      };
+      // Item mode: hand each verified output to the caller as soon as it is on the MacBook (chunk receipts, auditions, line takes).
+      const deliver = async (list) => {
+        for (const it of list) {
+          const got = await pull(it);
+          if (got.error) return fail(got.error[0], got.error[1]);
+          try {
+            const r = await ctx.onItem({ index: it.i, file: got.dest, sha256: it.sha, bytes: fs.statSync(got.dest).size, duration: it.duration, sample_rate: it.rate, channels: it.channels, job_id: jobId, worker });
+            if (r && r.artifact_id) records.push(r);
+          } catch (e) { return fail('canonicalization', `item ${it.i + 1}/${total}: ${String(e.message).slice(0, 160)}`); }
+        }
+        return null;
+      };
       if (mk2.FAIL) {
         const at = mk2.FAIL_ITEM !== undefined ? Number(mk2.FAIL_ITEM) + 1 : null;
-        return fail(String(mk2.FAIL), (long && at ? `Long-form render failed at chunk ${at}/${total}: ` : at ? `chunk ${at}/${total}: ` : '') + `${worker}: ${mk2.ERROR || 'generation failed'}`);
+        const message = (long && at ? `Long-form render failed at chunk ${at}/${total}: ` : at ? `chunk ${at}/${total}: ` : '') + `${worker}: ${mk2.ERROR || 'generation failed'}`;
+        if (itemsMode && at) {
+          // Outputs before the failing item are complete and verifiable: keep them so only the rest is regenerated later.
+          localDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dexmedia-'));
+          const early = await deliver(items.filter(it => it.i < at - 1 && it.path.startsWith(remoteDir + '/')));
+          if (early) return early;
+        }
+        return fail(String(mk2.FAIL), message);
       }
       if (!mk2.DONE && !mk2.PASS) return fail('generation', 'Big Mac generation did not report completion (timeout or connection loss)');
       if (items.length !== total || items.some((it, k) => it.i !== k)) return fail('output-missing', `expected ${total} chunk outputs, Big Mac reported ${items.length}`);
       if (items.some(it => !it.path.startsWith(remoteDir + '/'))) return fail('output-invalid', 'output outside the job directory');
       jobStore.transition(jobId, 'TRANSFERRING', { progress: { phase: 'transferring', chunk: total, total } });
-      localDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dexmedia-'));
+      localDir = localDir || fs.mkdtempSync(path.join(os.tmpdir(), 'dexmedia-'));
+      if (itemsMode) {
+        const bad = await deliver(items);
+        if (bad) return bad;
+        const patch = { progress: { phase: 'complete', chunk: total, total } };
+        if (records.length) Object.assign(patch, { artifacts: records.map(r => r.artifact_id), artifact_validation: artifactReceipt(records) });
+        jobStore.transition(jobId, 'COMPLETE', patch);
+        evidence.pass(worker, { at: new Date().toISOString(), job_id: jobId, artifact_id: records[0] ? records[0].artifact_id : null, sha256: items[0].sha, chunks: total });
+        return { ok: true, items: items.length, records };
+      }
       const parts = [], lineage = [];
       for (const it of items) {
-        const dest = path.join(localDir, `item-${String(it.i).padStart(3, '0')}.wav`);
-        await exec('scp', ['-q', `${sshTarget}:${it.path}`, dest], 300000);
-        if (!fs.existsSync(dest) || fs.statSync(dest).size === 0) return fail('transfer', `chunk ${it.i + 1}/${total}: WAV transfer from Big Mac failed`);
-        if (sha256File(dest) !== it.sha) return fail('checksum', `chunk ${it.i + 1}/${total}: transferred WAV checksum does not match Big Mac`);
-        let wavAudio; try { wavAudio = A.parseWav(fs.readFileSync(dest)); } catch (e) { return fail('output-invalid', `chunk ${it.i + 1}/${total}: ${e.message}`); }
-        parts.push({ file: dest, audio: wavAudio });
+        const got = await pull(it);
+        if (got.error) return fail(got.error[0], got.error[1]);
+        parts.push({ file: got.dest, audio: got.audio });
         lineage.push({ index: it.i, duration: it.duration, sha256: it.sha, sample_rate: it.rate, chars: v.req.items[it.i].text.length, boundary: (ctx.boundaries || [])[it.i] || null });
       }
       let finalFile = parts[0].file;
@@ -425,7 +461,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
     if (v.error) return { error: v.error, gate: v.gate, status: 400 };
     const priv = privateOnly(Object.assign({}, v.req, { text: v.req.items.map(i => i.text).join('\n') }));
     const job = jobStore.create({ media_kind: spec.media_kind, operation: ctx.operation || spec.operation, worker_id: worker, model_id: worker, resource_class: 'heavy',
-      params: Object.assign({}, v.safe, ctx.safeParams || {}, priv), persist_text: !!ctx.saveText });
+      params: Object.assign({}, v.safe, ctx.safeParams || {}, priv), persist_text: !!ctx.saveText, artifact_required: ctx.mode === 'items' ? false : true });
     runBatch(job.job_id, worker, spec, v, ctx).catch(() => {});
     return { job_id: job.job_id, status: 'QUEUED' };
   }

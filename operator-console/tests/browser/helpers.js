@@ -115,7 +115,7 @@ async function startServer(preferred) {
 
 // Read-only real catalogue fixture, captured once per suite/base. UI tests do
 // not test bootstrap network latency; no target or availability is invented.
-const modelSnapshots = new Map();
+const modelSnapshots = new Map(); const snapshotWriters = new Map();
 async function installModelSnapshots(page, base) {
   if (!modelSnapshots.has(base)) modelSnapshots.set(base, Promise.all(['/api/capabilities','/api/models'].map(async endpoint => {
     const res = await fetch(base + endpoint, { signal: AbortSignal.timeout(60000) });
@@ -128,8 +128,9 @@ async function installModelSnapshots(page, base) {
   for (const item of snapshots) await page.route('**' + item.endpoint, route => route.request().method() === 'GET'
     ? route.fulfill({ status:item.status, contentType:'application/json', body:item.body }) : route.fallback());
   if (process.env.DEX_BROWSER_OUTPUT_DIR) {
-    const fs = require('fs'), crypto = require('crypto'); fs.mkdirSync(process.env.DEX_BROWSER_OUTPUT_DIR,{recursive:true});
-    fs.writeFileSync(path.join(process.env.DEX_BROWSER_OUTPUT_DIR,'model-bootstrap-snapshot.json'),JSON.stringify({scope:'real read-only catalogue fixture; bootstrap network latency not certified',snapshots:snapshots.map(({endpoint,body,status,captured_at})=>({endpoint,status,captured_at,bytes:Buffer.byteLength(body),sha256:crypto.createHash('sha256').update(body).digest('hex')}))},null,2)+'\n');
+    const crypto = require('crypto'); const { resolveOutputDir, createOwnedWriter } = require('./safe-output');
+    const writer = snapshotWriters.get(process.env.DEX_BROWSER_OUTPUT_DIR) || snapshotWriters.set(process.env.DEX_BROWSER_OUTPUT_DIR, createOwnedWriter(resolveOutputDir(process.env.DEX_BROWSER_OUTPUT_DIR))).get(process.env.DEX_BROWSER_OUTPUT_DIR);
+    writer.write('model-bootstrap-snapshot.json',JSON.stringify({scope:'real read-only catalogue fixture; bootstrap network latency not certified',snapshots:snapshots.map(({endpoint,body,status,captured_at})=>({endpoint,status,captured_at,bytes:Buffer.byteLength(body),sha256:crypto.createHash('sha256').update(body).digest('hex')}))},null,2)+'\n');
   }
 }
 
