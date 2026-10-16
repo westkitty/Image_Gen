@@ -63,7 +63,7 @@
       editSourceId: saved.editSourceId || null, editOriginalId: saved.editOriginalId || null, editSource: null, editResults: [], editStatus: 'idle', prep: 'none',
       brush: saved.brush || { mode: 'paint', size: 40 }, maskZoom: 1, maskInfo: null,
       out: { left: 0, right: 128, top: 0, bottom: 0, strength: 0.85 }, outStatus: 'idle',
-      enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2, fileCheck: { busy: false, items: [], error: null }, xyz: { x: { type: 'steps', values: '10, 20' }, y: { type: 'cfg_scale', values: '5, 7' }, z: { type: 'none', values: '' }, keepRandom: false, legend: true, margin: 0, plan: null, error: null, grid: null }, extras: { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5 },
+      enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2, pnginfo: { busy: false, name: '', result: null, error: null }, fileCheck: { busy: false, items: [], error: null }, xyz: { x: { type: 'steps', values: '10, 20' }, y: { type: 'cfg_scale', values: '5, 7' }, z: { type: 'none', values: '' }, keepRandom: false, legend: true, margin: 0, plan: null, error: null, grid: null }, extras: { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5 },
       lib: { filter: 'all', items: [], total: 0, selectedId: null, selected: null, loading: false },
       compareIds: Array.isArray(saved.compareIds) ? saved.compareIds.slice(0, 4) : [], compareItems: [], compareZoom: 1,
       doctor: null, doctorBusy: false, activeJobId: saved.activeJobId || null, recovered: false,
@@ -300,22 +300,67 @@
     setTimeout(() => this.loadRuns(), 1200);
   };
 
-  P.reuseSettings = async function (id) {
-    const m = await this._imageMeta(id);
-    if (!m) return;
-    const meta = m.meta || {};
-    const patch = {};
-    if (meta.target && (this.state.modelTargets || []).some(t => t.id === meta.target)) patch.target = meta.target;
-    if (m.width) patch.width = m.width;
-    if (m.height) patch.height = m.height;
-    if (meta.steps) patch.steps = meta.steps;
-    if (meta.cfg != null) patch.cfg = meta.cfg;
-    if (meta.scheduler) patch.scheduler = meta.scheduler;
-    if (meta.seed != null) patch.seed = String(meta.seed);
+  // Apply parsed Create settings (from /api/pnginfo) to the Create form. Returns the keys that were applied.
+  P.applyCreateSettings = function (st) {
+    const patch = {}, ws = this._ws(), applied = [];
+    const put = (k, v) => { patch[k] = v; applied.push(k); };
+    if (st.target && (this.state.modelTargets || []).some(t => t.id === st.target)) put('target', st.target);
+    for (const k of ['prompt', 'negPrompt', 'steps', 'cfg', 'width', 'height', 'scheduler', 'clipSkip', 'eta']) if (st[k] !== undefined) put(k, st[k]);
+    if (st.seed !== undefined) put('seed', String(st.seed));
+    if (st.sampler) put('sampler', st.sampler);
     this.setState(patch);
-    this.setScreen('create');
-    this.toast('Settings loaded' + (meta.seed != null ? ' · seed ' + meta.seed : '') + ' (prompt text is not stored with images)', '#38bdf8');
+    if (st.hires) {
+      const h2 = st.hires, w = { hires: true };
+      if (h2.width && h2.height) Object.assign(w, { hiresMode: 'size', hiresW: String(h2.width), hiresH: String(h2.height) }); else if (h2.scale) Object.assign(w, { hiresMode: 'scale', hiresScale: h2.scale });
+      if (h2.steps !== undefined) w.hiresSteps = String(h2.steps);
+      if (h2.denoise !== undefined) w.hiresDenoise = h2.denoise;
+      if (h2.upscaler && D.HIRES_UPSCALERS.includes(h2.upscaler)) w.hiresUpscaler = h2.upscaler;
+      this.wsSet(w); applied.push('hires');
+    }
+    return applied;
   };
+  P.reuseSettings = async function (id) {
+    const r = await this._api('/api/pnginfo', { image_id: id });
+    if (!r.ok) { this.toast(r.data.error || 'Could not load settings', '#ef4444'); return; }
+    const applied = this.applyCreateSettings(r.data.create.settings);
+    this.setScreen('create');
+    const seed = r.data.create.settings.seed;
+    this.toast('Restored ' + applied.length + ' settings' + (seed !== undefined ? ' · seed ' + seed : '') + (r.data.create.settings.prompt ? '' : ' · prompt was not saved'), '#38bdf8');
+  };
+  // PNG Info: read A1111 / ComfyUI metadata from any PNG (nothing is stored) and send it to Create.
+  P.readPngInfo = async function (file) {
+    if (!file) return;
+    this.wsSet({ pnginfo: { busy: true, name: file.name, result: null, error: null } });
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/pnginfo', { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: file });
+      const data = await r.json().catch(() => ({}));
+      this.wsSet({ pnginfo: { busy: false, name: file.name, result: r.ok ? data : null, error: r.ok ? null : (data.error || 'HTTP ' + r.status) } });
+    } catch (err) { this.wsSet({ pnginfo: { busy: false, name: file.name, result: null, error: String(err.message || err) } }); }
+  };
+  P.copyInfotext = async function (text) {
+    try { await navigator.clipboard.writeText(text); this.toast('Generation parameters copied', '#65d66e'); } catch (_) { this.toast('Clipboard unavailable', '#fbbf24'); }
+  };
+  P.buildPngInfoPanel = function () {
+    const ws = this._ws(), pi = ws.pnginfo || {}, res = pi.result;
+    const tone3 = { restorable: tone.ok, unavailable: tone.warn, unverified: tone.info };
+    return h('div', { style: css.panel, 'data-pnginfo-panel': 'true' },
+      h('div', { style: css.title }, 'PNG Info'),
+      h('div', { style: Object.assign({}, css.muted, { margin: '4px 0 8px' }) }, 'Read generation parameters from any PNG (A1111 "parameters" text). The file is read once and not stored.'),
+      h('input', { type: 'file', accept: 'image/png', 'aria-label': 'PNG file to read', 'data-pnginfo-file': 'true', onChange: e => { const f = e.target.files && e.target.files[0]; this.readPngInfo(f); e.target.value = ''; } }),
+      pi.busy ? h('div', { style: { color: tone.info, fontSize: 12, marginTop: 6 } }, 'Reading ' + pi.name + '…') : null,
+      pi.error ? h('div', { style: { color: tone.bad, fontSize: 12, marginTop: 6 }, 'data-pnginfo-error': 'true' }, pi.error) : null,
+      res ? h('div', { style: { display: 'grid', gap: 6, marginTop: 8 }, 'data-pnginfo-result': res.source },
+        h('div', { style: { fontWeight: 800, color: res.source === 'a1111' ? tone.ok : tone.warn } }, 'Source: ' + ({ a1111: 'A1111 parameters', comfyui: 'ComfyUI graph', dexdiffusion: 'DexDiffusion library', none: 'no generation metadata' })[res.source] + (res.size ? ' · ' + res.size.width + '×' + res.size.height : '')),
+        ...(res.notes || []).map(n => h('div', { key: n, style: css.muted }, n)),
+        ...(res.create.warnings || []).map(n => h('div', { key: n, style: { color: tone.warn, fontSize: 12 } }, '⚠ ' + n)),
+        res.create.fields.length ? h('div', { style: { display: 'grid', gap: 2 } }, ...res.create.fields.map(f => h('div', { key: f.key, 'data-pnginfo-field': f.key, 'data-state': f.state, style: { display: 'grid', gridTemplateColumns: '130px minmax(0,1fr)', gap: 8, fontSize: 12, padding: '2px 0', borderBottom: '1px solid rgba(148,163,184,.08)' } },
+          h('span', { style: { color: tone3[f.state], fontWeight: 700 } }, f.key),
+          h('span', { style: { color: '#cbd5e1', overflowWrap: 'anywhere' } }, String(f.value).slice(0, 300), (f.reason || f.note) ? h('span', { style: css.muted }, '  — ' + (f.reason || f.note)) : null)))) : null,
+        res.create.fields.length ? h('div', { style: css.row },
+          btn('Send to Create', () => { const a = this.applyCreateSettings(res.create.settings); this.setScreen('create'); this.toast('Restored ' + a.length + ' settings', '#38bdf8'); }, '#65d66e'),
+          btn('Copy infotext', () => this.copyInfotext(res.infotext), '#94a3b8')) : null) : null);
+  };
+
   P.toggleKeeper = async function (id, keeper, img) {
     const r = await this._api('/api/images/' + encodeURIComponent(id) + '/keeper', { keeper });
     if (!r.ok) { this.toast(r.data.error || 'Keeper failed', '#ef4444'); return; }
@@ -462,12 +507,17 @@
         h('div', { style: css.mono }, sel.id),
         h('div', { style: css.muted }, [sel.width + '×' + sel.height, sel.meta.operation, sel.meta.target, sel.meta.seed != null ? 'seed ' + sel.meta.seed : null, sel.meta.steps ? sel.meta.steps + ' steps' : null, sel.meta.strength ? 'strength ' + sel.meta.strength : null, sel.keeper ? '★ Keeper' : null].filter(Boolean).join(' · ') || 'legacy image (no lineage recorded)'),
         h('div', { style: css.row }, ...this.imageActions(selView)),
+        h('div', { style: css.row, 'data-export-actions': 'true' },
+          btn('Copy infotext', async () => { const r = await fetch(base + '/api/images/' + encodeURIComponent(sel.id) + '/infotext'); if (r.ok) this.copyInfotext(await r.text()); else this.toast((await r.json().catch(() => ({}))).error || 'No recorded settings', '#fbbf24'); }, '#94a3b8'),
+          h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export?metadata=1', download: sel.id, 'data-export-link': 'metadata', style: { color: '#94a3b8', fontSize: 12, textDecoration: 'underline', padding: '6px 8px' } }, 'Export PNG with parameters'),
+          h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export', download: sel.id, 'data-export-link': 'plain', style: { color: '#94a3b8', fontSize: 12, textDecoration: 'underline', padding: '6px 8px' } }, 'Export plain PNG')),
         h('div', { style: css.row }, h('span', { style: css.label }, 'Lineage'),
           sel.ancestors.length ? lineageChip(sel.ancestors[sel.ancestors.length - 1], '⇤ Original') : null,
           sel.parent ? lineageChip(sel.parent, '↑ Parent') : h('span', { style: css.muted }, 'no parent'),
           ...sel.children.map((c, i) => lineageChip(c, '↓ Child ' + (i + 1))),
           sel.parent ? btn('Compare with parent', () => { this.wsSet({ compareIds: [sel.parent, sel.id] }); this.loadCompare(); }, '#38bdf8') : null))) : null;
     return h('div', null,
+      this.buildPngInfoPanel(),
       h('div', { style: css.panel },
         h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Images'), h('span', { style: css.muted }, lib.loading ? 'loading…' : lib.total + ' images'), h('div', { style: { flex: 1 } }), btn('Refresh', () => this.loadLibraryImages(), '#94a3b8')),
         h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, ...filters.map(([k, l]) => btn(l, () => this.loadLibraryImages(k), lib.filter === k ? '#38bdf8' : '#94a3b8'))),

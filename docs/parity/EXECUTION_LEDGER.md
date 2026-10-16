@@ -106,7 +106,13 @@ Added: (1) header-verified model facts: `safetensors-inspect.py` reads only the 
 Evidence: unit 11 new; browser 3; live: 19 real checkpoints read in 1.5 s; real validator rejections for each bad tag form on SDCPP and FLUX.2.
 Not provable here: anything that needs an installed LoRA/VAE/embedding (RS-04, RS-07, RS-09, RS-11) — BLOCKED/PENDING until assets exist. Not done: previews, SHA-256 short hashes, checkpoint quick-switch changes (RS-03), LoRA directory tree (RS-06), UNet override (RS-10), optimisation settings (RS-16), hires/refiner checkpoint (RS-17).
 
+## P12 PNG Info and reproducibility (2026-10-16)
+Audit first: generated PNGs carry no text chunks by design (prompt privacy); parameters live in the library record (`image-meta.json`) and `/api/images/:id/meta` recall. The old "Reuse Settings" restored only target, size, steps, CFG, scheduler and seed (no sampler, clip skip, eta, hires, prompt) and said prompts were never stored. `/api/repro/export` exists (bundle format) and is untouched.
+Added: PNG Info panel (Library) reading A1111 `parameters` from any uploaded PNG, with per-field restorable/unavailable/unverified states and "Send to Create"; A1111 infotext writer; export of a copy with embedded parameters (canonical file untouched; prompt only if saved) and Copy infotext; Reuse Settings rebuilt on the same path.
+Evidence: unit 8 (parser, mapping, format round trip, PNG chunk read/write, hostile input incl. a decompression bomb); browser 3; live: real image exported and read back, all fields restorable.
+Not done: sidecar .txt files on disk (MT-07), save-all ZIP (MT-13), filename patterns (MT-14), JPG/WebP options (MT-15/16), grid annotation controls (MT-09/10), regenerate-from-image beyond Send to Create, hash recomputation, ComfyUI graph import, Send to Img2img/Inpaint/Extras for uploaded (non-library) images.
+
 ## Next eligible slice
-1. P12 PNG Info / reproducibility (leftovers: P10 SC-16..25 Prompt Matrix / Loopback etc.; P09 batch Extras, Real-ESRGAN inside Extras, SD Upscale). Open design decisions: P07 batch img2img, P08 Poor man's/MK2 outpainting, P04 stepwise conditioning adapter.
+1. P13 jobs/previews/cancel (leftovers: P10 SC-16..25 Prompt Matrix / Loopback etc.; P09 batch Extras, Real-ESRGAN inside Extras, SD Upscale). Open design decisions: P07 batch img2img, P08 Poor man's/MK2 outpainting, P04 stepwise conditioning adapter.
 2. P01 completion: obtain upstream source at the pinned commit and enumerate programmatically.
 3. P04 onward per the blueprint; P05–P15 are not started.

@@ -12,6 +12,8 @@ const InpaintOptions = require('./public/dexdiffusion/inpaint-options.js');
 const ExtrasOptions = require('./public/dexdiffusion/extras-options.js');
 const XyzPlot = require('./public/dexdiffusion/xyz-plot.js');
 const NetworkTokens = require('./public/dexdiffusion/network-tokens.js');
+const Infotext = require('./public/dexdiffusion/infotext.js');
+const PngText = require('./png-text');
 const { createModelInspector, familyFromArch } = require('./model-inspect');
 const M = require('./media');
 const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
@@ -2211,6 +2213,8 @@ function readPngTextChunks(filePath) {
 function targetCapabilities(target) {
   const mflux = (target.backend || 'sdcpp') === 'mflux';
   const sd15 = target.id === 'sd15';
+  // MFLUX and FLUX.1 Schnell run a fixed sampler with no CLIP skip or VAE tiling override (worker rejects them).
+  const samplingEditable = !mflux && target.id !== 'flux-fp8';
   return {
     backend: mflux ? 'mflux' : 'sdcpp',
     negativePrompt: !mflux && !target.noNegativePrompt, cfg: !mflux && target.fixedCfgScale === undefined, scheduler: !mflux, sampler: samplingEditable, vae: !mflux, lora: !mflux,
@@ -3743,6 +3747,72 @@ app.get('/api/images/:id/meta', (req, res) => {
   const v = imageView(req.params.id);
   if (!v) return res.status(404).json({ error: 'Image not found' });
   res.json({ ...v, recall: EC.buildRecall(v) });
+});
+// ---- PNG Info / reproducibility (P12) ----------------------------------------------------------------------------
+// Generated images carry no metadata by design (prompt privacy); settings live in the library record. These routes
+// (1) read A1111/ComfyUI metadata from any uploaded PNG and map it onto Create, and (2) write A1111 infotext on export.
+function infotextFor(id, { withPrompt }) {
+  const v = imageView(id);
+  if (!v) return null;
+  const meta = { ...v.meta, width: v.width, height: v.height };
+  const spec = CONTROLLED_TARGETS.find(t => t.id === meta.target) || allControlledTargets()[meta.target] || null;
+  const hasText = typeof meta.prompt === 'string' && meta.prompt.length > 0;
+  const text = Infotext.formatInfotext(meta, {
+    prompt: withPrompt && hasText ? meta.prompt : '', negative: withPrompt && hasText ? (meta.negative_prompt || '') : '',
+    modelName: spec ? (spec.modelFile || spec.label) : (meta.target || ''),
+  });
+  return { text, promptIncluded: !!(withPrompt && hasText), recorded: !!(meta.target || meta.steps || meta.seed != null || meta.gen_schema) };
+}
+function readPngSize(buf) { return buf.length >= 24 && buf.toString('latin1', 12, 16) === 'IHDR' ? { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) } : null; }
+app.post('/api/pnginfo', express.raw({ type: 'image/png', limit: PngText.MAX_PNG_BYTES }), (req, res) => {
+  const targets = Object.values(allControlledTargets()).map(t => ({ id: t.id, label: t.label, modelFile: t.modelFile }));
+  const ctx = { targets };
+  // Own library image: the stored record is the source (generated PNGs hold no text chunks).
+  if (req.body && !Buffer.isBuffer(req.body) && typeof req.body.image_id === 'string') {
+    const info = infotextFor(req.body.image_id, { withPrompt: true });
+    if (!info) return res.status(404).json({ error: 'Image not found in the library.' });
+    const parsed = Infotext.parseInfotext(info.text);
+    return res.json({ source: info.recorded ? 'dexdiffusion' : 'none', infotext: info.text, parsed, create: Infotext.toCreateSettings(parsed, ctx), chunks: [], notes: info.promptIncluded ? [] : ['The prompt was not saved for this image (prompt saving was off), so only the settings are shown.'] });
+  }
+  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Send a PNG (Content-Type: image/png) or {"image_id":"…"}.' });
+  let chunks;
+  try { chunks = PngText.readTextChunks(req.body); } catch (err) { return res.status(400).json({ error: err.message }); }
+  const size = readPngSize(req.body);
+  const by = new Map(chunks.map(c => [c.key, c]));
+  const out = { size, chunks: chunks.map(c => ({ key: c.key, kind: c.kind, chars: c.text.length, truncated: !!c.truncated })), notes: [] };
+  if (by.has('parameters')) {
+    const text = by.get('parameters').text;
+    const parsed = Infotext.parseInfotext(text);
+    return res.json({ ...out, source: 'a1111', infotext: text, parsed, create: Infotext.toCreateSettings(parsed, ctx) });
+  }
+  if (by.has('prompt') || by.has('workflow')) {
+    out.notes.push('This looks like a ComfyUI image. Its node graph is not converted; settings are not restorable here.');
+    return res.json({ ...out, source: 'comfyui', infotext: '', parsed: { prompt: '', negative: '', params: [] }, create: { fields: [], settings: {}, warnings: [] } });
+  }
+  out.notes.push('No generation metadata found. DexDiffusion images keep their settings in the library record, not in the file; open the image from the Library instead.');
+  res.json({ ...out, source: 'none', infotext: '', parsed: { prompt: '', negative: '', params: [] }, create: { fields: [], settings: {}, warnings: [] } });
+});
+app.get('/api/images/:id/infotext', (req, res) => {
+  const info = infotextFor(req.params.id, { withPrompt: req.query.prompt !== '0' });
+  if (!info) return res.status(404).json({ error: 'Image not found' });
+  if (!info.recorded) return res.status(409).json({ error: 'This image has no recorded generation settings.' });
+  res.type('text/plain').set('X-Dex-Prompt-Included', info.promptIncluded ? '1' : '0').send(info.text);
+});
+// Export a copy with A1111 infotext in the PNG "parameters" chunk. The canonical file is never modified.
+app.get('/api/images/:id/export', (req, res) => {
+  const img = imageStore.resolveImage(req.params.id);
+  if (!img) return res.status(404).json({ error: 'Image not found' });
+  if (!/\.png$/i.test(img.path)) return res.status(415).json({ error: 'Only PNG images can carry embedded metadata.' });
+  const info = req.query.metadata === '1' ? infotextFor(req.params.id, { withPrompt: req.query.prompt !== '0' }) : null;
+  let buf;
+  try {
+    buf = fs.readFileSync(img.path);
+    if (req.query.metadata === '1') {
+      if (!info || !info.recorded) return res.status(409).json({ error: 'This image has no recorded generation settings to embed.' });
+      buf = PngText.withTextChunk(buf, 'parameters', info.text);
+    }
+  } catch (err) { return res.status(500).json({ error: 'Could not prepare the export: ' + err.message }); }
+  res.set({ 'Content-Type': 'image/png', 'Content-Disposition': `attachment; filename="${req.params.id.replace(/[^A-Za-z0-9._-]/g, '_')}"`, 'X-Dex-Prompt-Included': info && info.promptIncluded ? '1' : '0', 'Cache-Control': 'no-store' }).send(buf);
 });
 app.post('/api/images/:id/keeper', (req, res) => {
   if (!imageStore.resolveImage(req.params.id)) return res.status(404).json({ error: 'Image not found' });

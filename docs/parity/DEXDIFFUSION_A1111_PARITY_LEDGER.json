@@ -3881,8 +3881,8 @@
    "baseline_status": "partial",
    "required_implementation": "Extract infotext and supported parsers, reject malicious oversized chunks",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P12 2026-10-16: public/dexdiffusion/infotext.js (A1111 parse/format + mapping), operator-console/png-text.js (bounded tEXt/zTXt/iTXt reader, iTXt writer), server.js POST /api/pnginfo (raw PNG or image_id), GET /api/images/:id/infotext and /export[?metadata=1], workstation-ui.js Library 'PNG Info' panel, detail export/copy actions, Reuse Settings now restores through the same path; tests/infotext.test.js (8), tests/browser/png-info.browser.js (3). LIVE_PROVEN: a real generated image (sdxl-photonic, seed 42) exported with embedded parameters and read back through /api/pnginfo with every field restorable. Parser ported from generation_parameters_copypaste.py from knowledge; not diffed against the pinned commit. || P12: Any PNG (<=40 MB, raw upload): A1111 parameters text, ComfyUI detected but not converted, no-metadata case explained. Nothing is stored. No JPEG/WebP.",
    "runtime_receipt": null
   },
   {
@@ -3902,8 +3902,8 @@
    "baseline_status": "partial",
    "required_implementation": "Parse model, hash, seed, prompt, negative, sampler, scheduler, hires/refiner fields",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P12 2026-10-16: public/dexdiffusion/infotext.js (A1111 parse/format + mapping), operator-console/png-text.js (bounded tEXt/zTXt/iTXt reader, iTXt writer), server.js POST /api/pnginfo (raw PNG or image_id), GET /api/images/:id/infotext and /export[?metadata=1], workstation-ui.js Library 'PNG Info' panel, detail export/copy actions, Reuse Settings now restores through the same path; tests/infotext.test.js (8), tests/browser/png-info.browser.js (3). LIVE_PROVEN: a real generated image (sdxl-photonic, seed 42) exported with embedded parameters and read back through /api/pnginfo with every field restorable. Parser ported from generation_parameters_copypaste.py from knowledge; not diffed against the pinned commit. || P12: A1111 key/value line, multi-line prompt, negative prompt, quoted values; samplers incl. old \"Karras\" suffix; Schedule type; Hires fields.",
    "runtime_receipt": null
   },
   {
@@ -3923,8 +3923,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Restore foreign input supported fields with explicit warnings",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P12 2026-10-16: public/dexdiffusion/infotext.js (A1111 parse/format + mapping), operator-console/png-text.js (bounded tEXt/zTXt/iTXt reader, iTXt writer), server.js POST /api/pnginfo (raw PNG or image_id), GET /api/images/:id/infotext and /export[?metadata=1], workstation-ui.js Library 'PNG Info' panel, detail export/copy actions, Reuse Settings now restores through the same path; tests/infotext.test.js (8), tests/browser/png-info.browser.js (3). LIVE_PROVEN: a real generated image (sdxl-photonic, seed 42) exported with embedded parameters and read back through /api/pnginfo with every field restorable. Parser ported from generation_parameters_copypaste.py from knowledge; not diffed against the pinned commit. || P12: Send to Create restores prompt, negative, steps, CFG, seed, size, sampler, scheduler, clip skip, eta, model (when installed) and hires; Reuse Settings in the Library uses the same path.",
    "runtime_receipt": null
   },
   {
@@ -3944,8 +3944,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Show non-restorable values without fabricating models",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P12 2026-10-16: public/dexdiffusion/infotext.js (A1111 parse/format + mapping), operator-console/png-text.js (bounded tEXt/zTXt/iTXt reader, iTXt writer), server.js POST /api/pnginfo (raw PNG or image_id), GET /api/images/:id/infotext and /export[?metadata=1], workstation-ui.js Library 'PNG Info' panel, detail export/copy actions, Reuse Settings now restores through the same path; tests/infotext.test.js (8), tests/browser/png-info.browser.js (3). LIVE_PROVEN: a real generated image (sdxl-photonic, seed 42) exported with embedded parameters and read back through /api/pnginfo with every field restorable. Parser ported from generation_parameters_copypaste.py from knowledge; not diffed against the pinned commit. || P12: Every parsed field is listed with restorable / unavailable / unverified and the reason (variation seed, face restoration, refiner...); nothing is dropped silently.",
    "runtime_receipt": null
   },
   {
@@ -3965,8 +3965,8 @@
    "baseline_status": "partial",
    "required_implementation": "Keep original values even if local model differs",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P12 2026-10-16: public/dexdiffusion/infotext.js (A1111 parse/format + mapping), operator-console/png-text.js (bounded tEXt/zTXt/iTXt reader, iTXt writer), server.js POST /api/pnginfo (raw PNG or image_id), GET /api/images/:id/infotext and /export[?metadata=1], workstation-ui.js Library 'PNG Info' panel, detail export/copy actions, Reuse Settings now restores through the same path; tests/infotext.test.js (8), tests/browser/png-info.browser.js (3). LIVE_PROVEN: a real generated image (sdxl-photonic, seed 42) exported with embedded parameters and read back through /api/pnginfo with every field restorable. Parser ported from generation_parameters_copypaste.py from knowledge; not diffed against the pinned commit. || P12: A model name that matches no installed target warns and keeps the current model. Hashes are shown as unverified: they are not recomputed.",
    "runtime_receipt": null
   },
   {
@@ -3986,8 +3986,8 @@
    "baseline_status": "partial",
    "required_implementation": "Respect save_prompts flag and image privacy",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P12 2026-10-16: public/dexdiffusion/infotext.js (A1111 parse/format + mapping), operator-console/png-text.js (bounded tEXt/zTXt/iTXt reader, iTXt writer), server.js POST /api/pnginfo (raw PNG or image_id), GET /api/images/:id/infotext and /export[?metadata=1], workstation-ui.js Library 'PNG Info' panel, detail export/copy actions, Reuse Settings now restores through the same path; tests/infotext.test.js (8), tests/browser/png-info.browser.js (3). LIVE_PROVEN: a real generated image (sdxl-photonic, seed 42) exported with embedded parameters and read back through /api/pnginfo with every field restorable. Parser ported from generation_parameters_copypaste.py from knowledge; not diffed against the pinned commit. || P12: Export PNG with parameters: a copy gets an A1111-compatible iTXt \"parameters\" chunk; the canonical file is never changed. The prompt is included only if it was saved.",
    "runtime_receipt": null
   },
   {
@@ -4007,8 +4007,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Optional opt-in, subject to prompt privacy",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P12 2026-10-16: public/dexdiffusion/infotext.js (A1111 parse/format + mapping), operator-console/png-text.js (bounded tEXt/zTXt/iTXt reader, iTXt writer), server.js POST /api/pnginfo (raw PNG or image_id), GET /api/images/:id/infotext and /export[?metadata=1], workstation-ui.js Library 'PNG Info' panel, detail export/copy actions, Reuse Settings now restores through the same path; tests/infotext.test.js (8), tests/browser/png-info.browser.js (3). LIVE_PROVEN: a real generated image (sdxl-photonic, seed 42) exported with embedded parameters and read back through /api/pnginfo with every field restorable. Parser ported from generation_parameters_copypaste.py from knowledge; not diffed against the pinned commit. || P12: Infotext text endpoint and Copy infotext; no sidecar .txt written to disk.",
    "runtime_receipt": null
   },
   {
@@ -4217,8 +4217,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Add A1111 text format and machine JSON",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P12 2026-10-16: public/dexdiffusion/infotext.js (A1111 parse/format + mapping), operator-console/png-text.js (bounded tEXt/zTXt/iTXt reader, iTXt writer), server.js POST /api/pnginfo (raw PNG or image_id), GET /api/images/:id/infotext and /export[?metadata=1], workstation-ui.js Library 'PNG Info' panel, detail export/copy actions, Reuse Settings now restores through the same path; tests/infotext.test.js (8), tests/browser/png-info.browser.js (3). LIVE_PROVEN: a real generated image (sdxl-photonic, seed 42) exported with embedded parameters and read back through /api/pnginfo with every field restorable. Parser ported from generation_parameters_copypaste.py from knowledge; not diffed against the pinned commit. || P12: Copy infotext from the Library detail panel and the PNG Info result.",
    "runtime_receipt": null
   },
   {
