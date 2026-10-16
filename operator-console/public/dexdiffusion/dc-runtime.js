@@ -102,6 +102,57 @@
     return v instanceof Node || (v && typeof v === 'object' && v.__vnode);
   }
 
+  // -- Focus carry-over for rebuilt DOM -----------------------------------------
+  // A dynamic slot holding a vnode tree (the whole Concept A shell, panels, forms) is rebuilt from scratch whenever
+  // its value changes, which would otherwise drop focus, caret and scroll from a field the user is typing in
+  // (any background setState — polling, SSE snapshots, capability loads — triggers this). Before the old DOM is
+  // removed we note which field has focus, and after the new DOM is inserted we focus its counterpart.
+  function fieldSignature(el) {
+    return {
+      tag: el.tagName, type: el.type || '', id: el.id || '', field: el.getAttribute('data-dex-field') || '',
+      name: el.getAttribute('name') || '', label: el.getAttribute('aria-label') || '', placeholder: el.getAttribute('placeholder') || '',
+    };
+  }
+  function captureFocus(roots) {
+    const ae = document.activeElement;
+    if (!ae || ae === document.body || ae === document.documentElement) return null;
+    for (let r = 0; r < roots.length; r++) {
+      const root = roots[r];
+      if (!(root instanceof Element) || !root.contains(ae)) continue;
+      const path = [];
+      for (let n = ae; n && n !== root; n = n.parentNode) path.unshift(Array.prototype.indexOf.call(n.parentNode.childNodes, n));
+      const text = typeof ae.selectionStart === 'number' && /^(TEXTAREA|INPUT)$/.test(ae.tagName);
+      let sel = null;
+      try { if (text) sel = { start: ae.selectionStart, end: ae.selectionEnd, dir: ae.selectionDirection }; } catch (_) { sel = null; }
+      return { root: r, path, sig: fieldSignature(ae), sel, scrollTop: ae.scrollTop, scrollLeft: ae.scrollLeft };
+    }
+    return null;
+  }
+  function restoreFocus(cap, roots) {
+    if (!cap) return;
+    const root = roots[cap.root];
+    if (!(root instanceof Element)) return;
+    const same = (a, b) => a.tag === b.tag && a.type === b.type;
+    let target = null;
+    const candidates = Array.from(root.querySelectorAll('input,textarea,select,button,[tabindex],[contenteditable="true"]'));
+    if (cap.sig.id) target = candidates.find((el) => el.id === cap.sig.id && same(fieldSignature(el), cap.sig));
+    if (!target && cap.sig.field) target = candidates.find((el) => el.getAttribute('data-dex-field') === cap.sig.field && same(fieldSignature(el), cap.sig));
+    if (!target) {
+      let n = root;
+      for (const i of cap.path) { n = n && n.childNodes[i]; if (!n) break; }
+      if (n instanceof Element && same(fieldSignature(n), cap.sig)) target = n;
+    }
+    if (!target) {
+      const matches = candidates.filter((el) => { const g = fieldSignature(el); return same(g, cap.sig) && g.label === cap.sig.label && g.placeholder === cap.sig.placeholder && g.name === cap.sig.name; });
+      if (matches.length === 1) target = matches[0];
+    }
+    if (!target || target.disabled || document.activeElement === target) return;
+    try { target.focus({ preventScroll: true }); } catch (_) { return; }
+    if (cap.sel) { try { target.setSelectionRange(cap.sel.start, cap.sel.end, cap.sel.dir || 'none'); } catch (_) {} }
+    if (cap.scrollTop) target.scrollTop = cap.scrollTop;
+    if (cap.scrollLeft) target.scrollLeft = cap.scrollLeft;
+  }
+
   // -- DCLogic base class ------------------------------------------------------
   let scheduled = false;
   const dirty = new Set();
@@ -268,6 +319,7 @@
             lastValue = v;
             const parent = anchor.parentNode;
             if (!parent) return;
+            const focusState = captureFocus(managed);
             for (const n of managed) if (n.parentNode === parent) parent.removeChild(n);
             let newNodes;
             if (isRenderable(v)) {
@@ -281,6 +333,7 @@
             const ref = anchor.nextSibling;
             for (const n of newNodes) parent.insertBefore(n, ref);
             managed = newNodes;
+            restoreFocus(focusState, newNodes);
           },
         };
       }
@@ -386,8 +439,10 @@
   }
 
   // -- Mount entry point -------------------------------------------------------
+  let lastInstance = null;
   function mount(ComponentClass, templateRoot, container) {
     const inst = new ComponentClass();
+    lastInstance = inst; // exposed for diagnostics and tests only
     const ctx = { vals: {} };
     const rootBinder = makeBinder(templateRoot, null, ctx);
     rootBinder.mount(container);
@@ -406,5 +461,5 @@
     return inst;
   }
 
-  window.DCRuntime = { mount, renderVNode };
+  window.DCRuntime = { mount, renderVNode, get lastInstance() { return lastInstance; } };
 })();
