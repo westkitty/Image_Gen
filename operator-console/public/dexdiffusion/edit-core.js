@@ -248,6 +248,7 @@
     [/=== Generating [^=]+ on BigMac/, 'generating', 'Generating on Big Mac'],
     [/=== Verifying remote PNG ===/, 'validating', 'Validating output on Big Mac'],
     [/=== Copying PNG to MacBook ===/, 'transferring', 'Transferring result to the MacBook'],
+    [/=== Finalizing canonical image ===/, 'finalizing', 'Finalizing in canonical storage'],
   ];
   // job: API-shaped { status, resource, stdout?, stderr?, firstFailedGate } plus
   // `sdLog` (tail of the sd-cli log) supplied by the server. Returns a stage view.

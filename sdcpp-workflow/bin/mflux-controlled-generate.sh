@@ -8,6 +8,22 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/sdcpp-lib.sh"
 load_config
 
+# Wall-clock stamps (seconds, ms resolution) for the timing record; no prompt data.
+now() { perl -MTime::HiRes=time -e 'printf "%.3f\n", time'; }
+elapsed() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.2f", b - a }'; }
+T_START="$(now)"
+
+# Reuse one authenticated SSH connection for the preflight and the generate call (and for
+# back-to-back runs within 120 s): ~1.0 s -> ~0.3 s per extra ssh. Same host, same keys, same
+# Tailscale SSH auth; only a private 0700 control socket is added. DEX_SSH_MUX=0 disables it.
+if [ "${DEX_SSH_MUX:-1}" != "0" ]; then
+  MUX_DIR="$HOME/.ssh/dexdiffusion-cm"
+  if mkdir -p "$MUX_DIR" 2>/dev/null && chmod 700 "$MUX_DIR" 2>/dev/null; then
+    SDCPP_SSH_EXTRA_OPTS="-o ControlMaster=auto -o ControlPath=$MUX_DIR/%C -o ControlPersist=120"
+    export SDCPP_SSH_EXTRA_OPTS
+  fi
+fi
+
 ARG_TARGET="flux2-klein-4b"
 ARG_PROMPT=""
 ARG_WIDTH="1024"
@@ -93,10 +109,18 @@ INCOMING="$DEX_IMAGES_ROOT/.incoming-$RUN_ID.png"
 RAW_STDERR="$(mktemp "${TMPDIR:-/tmp}/dexdiffusion-mflux-stderr.XXXXXXXX")"
 trap 'rm -f -- "$INCOMING" "$RAW_STDERR"' EXIT
 
-verify_route >/dev/null
-remote_test "test -x \"$REMOTE_MFLUX\"" || fail "mflux-runtime" "MFLUX runtime missing on Big Mac: $REMOTE_VENV"
-remote_test "test -s $REMOTE_MODEL_DIR/transformer/model.safetensors.index.json && test -s $REMOTE_MODEL_DIR/text_encoder/model.safetensors.index.json && test -s $REMOTE_MODEL_DIR/vae/model.safetensors.index.json" \
-  || fail "mflux-model" "4-bit FLUX.2 Klein model missing on Big Mac: $REMOTE_MODEL_DIR"
+log "=== Pre-flight verification ==="
+# One round trip checks hostname + runtime + model (was three ssh calls). Failure gates are unchanged.
+PREFLIGHT_OUT="$(ssh_remote "printf 'HOST=%s\\n' \"\$(hostname)\"; if test -x \"$REMOTE_MFLUX\"; then echo RUNTIME=1; else echo RUNTIME=0; fi; if test -s $REMOTE_MODEL_DIR/transformer/model.safetensors.index.json && test -s $REMOTE_MODEL_DIR/text_encoder/model.safetensors.index.json && test -s $REMOTE_MODEL_DIR/vae/model.safetensors.index.json; then echo MODEL=1; else echo MODEL=0; fi" 2>/dev/null)" \
+  || fail "route" "ssh $SSH_TARGET failed (host unreachable? Tailscale down? See TROUBLESHOOTING.md)."
+PREFLIGHT_HOST="$(printf '%s\n' "$PREFLIGHT_OUT" | sed -n 's/^HOST=//p' | head -1)"
+[ -n "$PREFLIGHT_HOST" ] || fail "route" "ssh $SSH_TARGET returned no preflight data (host unreachable? Tailscale down? See TROUBLESHOOTING.md)."
+[ "$PREFLIGHT_HOST" = "${REMOTE_HOST_EXPECTED:?}" ] \
+  || fail "route-hostname" "Remote hostname is '$PREFLIGHT_HOST', expected '$REMOTE_HOST_EXPECTED'. Refusing to continue."
+log "Route OK: ssh $SSH_TARGET -> hostname=$PREFLIGHT_HOST"
+printf '%s\n' "$PREFLIGHT_OUT" | grep -q '^RUNTIME=1$' || fail "mflux-runtime" "MFLUX runtime missing on Big Mac: $REMOTE_VENV"
+printf '%s\n' "$PREFLIGHT_OUT" | grep -q '^MODEL=1$' || fail "mflux-model" "4-bit FLUX.2 Klein model missing on Big Mac: $REMOTE_MODEL_DIR"
+T_PREFLIGHT="$(now)"
 
 SEED_RESOLVED="$(resolve_seed "$ARG_SEED")"
 SEED_VALUE="$(printf '%s' "$SEED_RESOLVED" | cut -f1)"
@@ -123,12 +147,15 @@ PROMPT_B64="$(python3 -c 'import base64,sys; print(base64.b64encode(sys.argv[1].
 # Big Mac always reports exit-status 0).
 REMOTE_SCRIPT="$(cat "$HERE/mflux-remote-generate.sh")"
 
-log "Running FLUX.2 Klein 4B through MFLUX on Big Mac (ephemeral remote image)."
+log "=== Generating FLUX.2 Klein 4B on BigMac (MFLUX, ephemeral remote image) ==="
+T_SSH_START="$(now)"
 set +e
-ssh -o ConnectTimeout=15 "$SSH_TARGET" "bash -c $(printf '%q' "$REMOTE_SCRIPT") dexdiffusion-mflux $PROMPT_B64 $ARG_STEPS $SEED_VALUE $ARG_WIDTH $ARG_HEIGHT $(printf '%q' "$REMOTE_CACHE_REL") $(printf '%q' "$REMOTE_MFLUX_REL")" \
+# shellcheck disable=SC2086
+ssh -o ConnectTimeout=15 ${SDCPP_SSH_EXTRA_OPTS:-} "$SSH_TARGET" "bash -c $(printf '%q' "$REMOTE_SCRIPT") dexdiffusion-mflux $PROMPT_B64 $ARG_STEPS $SEED_VALUE $ARG_WIDTH $ARG_HEIGHT $(printf '%q' "$REMOTE_CACHE_REL") $(printf '%q' "$REMOTE_MFLUX_REL")" \
   > "$INCOMING" 2> "$RAW_STDERR"
 SSH_RC=$?   # transport-level only (255 = ssh failed); remote status is in-band
 set -e
+T_SSH_END="$(now)"
 if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
   python3 "$HERE/redact_stream.py" "$ARG_PROMPT" "" < "$RAW_STDERR" > "$REMOTE_STDOUT_LOG"
 else
@@ -163,6 +190,7 @@ if [ "$REMOTE_CLEANUP" != "OK" ]; then
 fi
 [ -n "$REMOTE_SHA" ] || fail "output-invalid" "Remote reported success but no PNG checksum; $LOG_HINT"
 [ -s "$INCOMING" ] || fail "transfer-failed" "No PNG bytes arrived over ssh; $LOG_HINT"
+log "=== Finalizing canonical image ==="
 LOCAL_SHA="$(shasum -a 256 "$INCOMING" | cut -d' ' -f1)"
 [ "$LOCAL_SHA" = "$REMOTE_SHA" ] || fail "sha-mismatch" "Streamed PNG checksum mismatch (remote $REMOTE_SHA, local $LOCAL_SHA)."
 
@@ -170,6 +198,7 @@ if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
   strip_png_metadata "$INCOMING" || fail "png-redact" "Could not strip PNG metadata."
 fi
 verify_png "$INCOMING" "MFLUX FLUX.2 Klein PNG"
+T_VALIDATED="$(now)"
 
 # Publish through the same validated transaction as the server and SDCPP.
 CANONICAL_RECORD="$(DEX_IMAGES_ROOT_OVERRIDE="$DEX_IMAGES_ROOT" node "$DEX_CANONICALIZE_JS" \
@@ -178,6 +207,7 @@ CANONICAL_RECORD="$(DEX_IMAGES_ROOT_OVERRIDE="$DEX_IMAGES_ROOT" node "$DEX_CANON
 LOCAL_PNG="$(printf '%s\n' "$CANONICAL_RECORD" | python3 -c 'import json,sys; line=next(x for x in sys.stdin if x.startswith("CANONICAL_RECORD: ")); print(json.loads(line.split(": ",1)[1])["image_path"])')" \
   || fail "canonicalization-failed" "No canonical publication receipt"
 IMAGE_ID="$(basename "$LOCAL_PNG")"
+T_CANON="$(now)"
 IMAGE_URL="/api/images/$IMAGE_ID"
 REMOTE_PNG="ephemeral:$REMOTE_TMP (deleted, verified absent)"
 
@@ -188,10 +218,39 @@ PNG_BYTES="$(wc -c < "$LOCAL_PNG" | tr -d '[:space:]')"
 REPORT_PROMPT="$ARG_PROMPT"
 [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ] && REPORT_PROMPT="[REDACTED]"
 
+# Stage timings (seconds). Remote stamps come from the remote script's own clock and are only
+# ever differenced against each other; local stamps against the MacBook clock. No prompt data.
+rt() { sed -n "s/^MFLUX_REMOTE_T: $1 //p" "$REMOTE_STDOUT_LOG" | head -1; }
+RT_START="$(rt script-start)"; RT_GEN0="$(rt generate-start)"; RT_GEN1="$(rt generate-end)"; RT_STR1="$(rt stream-end)"
+T_END="$(now)"
+TIMINGS_JSON="$(python3 - "$T_START" "$T_PREFLIGHT" "$T_SSH_START" "$T_SSH_END" "$T_VALIDATED" "$T_CANON" "$T_END" \
+  "${RT_START:-}" "${RT_GEN0:-}" "${RT_GEN1:-}" "${RT_STR1:-}" <<'PY'
+import json, sys
+(t0, tpre, ssh0, ssh1, tval, tcan, tend, r_start, r_gen0, r_gen1, r_str1) = sys.argv[1:]
+f = lambda x: float(x) if x else None
+d = lambda a, b: round(f(b) - f(a), 2) if f(a) is not None and f(b) is not None else None
+t = {
+  "preflight_s": d(t0, tpre),
+  "ssh_total_s": d(ssh0, ssh1),
+  "remote_startup_s": d(r_start, r_gen0),
+  "remote_generate_s": d(r_gen0, r_gen1),
+  "remote_check_stream_cleanup_s": d(r_gen1, r_str1),
+  "local_validate_s": d(ssh1, tval),
+  "canonicalize_s": d(tval, tcan),
+  "wall_s": d(t0, tend),
+}
+rem = d(r_start, r_str1)
+t["ssh_connect_and_teardown_s"] = round(t["ssh_total_s"] - rem, 2) if rem is not None else None
+print(json.dumps(t))
+PY
+)" || TIMINGS_JSON='{}'
+log "MFLUX_TIMING: $TIMINGS_JSON"
+export DEX_TIMINGS_JSON="$TIMINGS_JSON"
+
 python3 - "$MANIFEST" "$RUN_DIR" "$CREATED_AT" "$FINISHED_AT" "$ELAPSED" \
   "$LOCAL_PNG" "$REMOTE_PNG" "$PNG_BYTES" "$ARG_WIDTH" "$ARG_HEIGHT" \
   "$ARG_STEPS" "$SEED_LABEL" "$REPORT_PROMPT" <<'PY'
-import json, sys
+import json, os, sys
 (manifest, run_dir, created, finished, elapsed, local_png, remote_png, png_bytes,
  width, height, steps, seed, prompt) = sys.argv[1:]
 obj = {
@@ -228,7 +287,8 @@ obj = {
     "image_url": "/api/images/" + local_png.rsplit("/", 1)[-1],
     "png_bytes": int(png_bytes),
     "png_valid": True,
-    "runtime_controlled_proven": True
+    "runtime_controlled_proven": True,
+    "timings": json.loads(os.environ.get("DEX_TIMINGS_JSON") or "{}")
 }
 with open(manifest, "w", encoding="utf-8") as f:
     json.dump(obj, f, indent=2)

@@ -133,6 +133,16 @@ The exact proven invocation is in `sdcpp-workflow/bin/mflux-remote-generate.sh`
 `mflux-generate-flux2 --model <model path> --base-model flux2-klein-4b --prompt … --steps 4 --seed … --width … --height … --output <remote tmp>`.
 It runs with `HF_HUB_OFFLINE=1`.
 
+**Latency path (2026-10-16).** `mflux-controlled-generate.sh` now makes two ssh round trips
+(one merged preflight for hostname + runtime + model with the same `route` /
+`route-hostname` / `mflux-runtime` / `mflux-model` gates, then the generate call), and both
+reuse one authenticated connection through a private OpenSSH control socket
+(`~/.ssh/dexdiffusion-cm/`, mode 0700, `ControlPersist=120`). Set `DEX_SSH_MUX=0` to disable
+reuse. Every run's `controlled-manifest.json` carries a `timings` block (preflight, ssh total,
+remote generate, validation, canonicalization; no prompt data) and the log line `MFLUX_TIMING:`.
+The job stage now reads Checking Big Mac and model → Generating on Big Mac → Finalizing in
+canonical storage → Complete.
+
 ## Image storage
 
 `/Users/andrew/images_made` is **the sole durable generated-image authority**.

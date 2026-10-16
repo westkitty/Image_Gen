@@ -366,7 +366,9 @@ ssh_remote() {
   # ssh_remote <remote-command-string...>
   # The command runs in a remote shell on BigMac. REMOTE_* values that contain
   # a literal $HOME are expanded there. Add -o ConnectTimeout to fail fast.
-  ssh -o ConnectTimeout=15 "${SSH_TARGET:?SSH_TARGET unset}" "$@"
+  # SDCPP_SSH_EXTRA_OPTS (default empty) is intentionally unquoted: -o key=value words only.
+  # shellcheck disable=SC2086
+  ssh -o ConnectTimeout=15 ${SDCPP_SSH_EXTRA_OPTS:-} "${SSH_TARGET:?SSH_TARGET unset}" "$@"
 }
 
 # ---- canonical image authority ----------------------------------------------

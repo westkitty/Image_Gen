@@ -14,12 +14,16 @@
 #     MFLUX_REMOTE_TMP: <dir>
 #     MFLUX_REMOTE_FAIL: <generator-exit|output-missing|output-empty|output-invalid> <detail>
 #     MFLUX_REMOTE_PNG_SHA256: <sha>
+#     MFLUX_REMOTE_T: <stage> <unix-seconds.fraction>   (wall-clock stage stamps)
 #     MFLUX_REMOTE_EXIT: <status>        (always last; emitted by the EXIT trap)
 #   The EXIT status must be reported in-band because Big Mac's Tailscale SSH
 #   (/usr/bin/login -f ... zsh -c) always returns ssh exit-status 0.
 #   The private mktemp dir is removed by the EXIT trap, i.e. only after the PNG
 #   has been fully written to stdout (or on any failure/hangup).
 set -uo pipefail
+
+tstamp() { echo "MFLUX_REMOTE_T: $1 $(perl -MTime::HiRes=time -e 'printf "%.3f", time' 2>/dev/null || date +%s)" >&2; }
+tstamp script-start
 
 model_dir="${8:-$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit}"
 case "$6" in /*) cache_root="$6" ;; *) cache_root="$HOME/$6" ;; esac
@@ -89,9 +93,11 @@ mkdir -p "$cache_root/huggingface" "$cache_root/xdg"
 export HF_HOME="$cache_root/huggingface" XDG_CACHE_HOME="$cache_root/xdg" TOKENIZERS_PARALLELISM=false HF_HUB_OFFLINE=1
 prompt="$(printf %s "$1" | base64 --decode)" || { echo "MFLUX_REMOTE_FAIL: generator-exit prompt decode failed" >&2; exit 21; }
 
+tstamp generate-start
 "$mflux_bin" --model "$model_dir" --base-model flux2-klein-4b \
   --prompt "$prompt" --steps "$2" --seed "$3" --width "$4" --height "$5" --output "$tmp/out.png" >&2
 gen_rc=$?
+tstamp generate-end
 if [ "$gen_rc" -ne 0 ]; then
   echo "MFLUX_REMOTE_FAIL: generator-exit mflux exited $gen_rc" >&2
   exit 10
@@ -109,7 +115,9 @@ if ! file "$tmp/out.png" | grep -q "PNG image data"; then
   exit 13
 fi
 echo "MFLUX_REMOTE_PNG_SHA256: $(shasum -a 256 "$tmp/out.png" | cut -d' ' -f1)" >&2
+tstamp stream-start
 cat "$tmp/out.png" || exit 14
+tstamp stream-end
 
 if clean_tmp; then
   echo "MFLUX_REMOTE_CLEANUP: OK" >&2

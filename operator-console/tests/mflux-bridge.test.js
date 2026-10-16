@@ -198,3 +198,86 @@ test('14: SHA-256 validation compares remote vs local streamed file', () => {
   assert.match(BRIDGE, /LOCAL_SHA="\$\(shasum -a 256 "\$INCOMING" \| cut -d' ' -f1\)"/);
   assert.match(BRIDGE, /\[ "\$LOCAL_SHA" = "\$REMOTE_SHA" \] \|\| fail "sha-mismatch"/);
 });
+
+// ---- Performance pass (2026-10-16): merged preflight, private SSH reuse, stage timing ----
+
+function bridgeHarness(preflight) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-perf-'));
+  const wf = path.join(root, 'sdcpp-workflow');
+  fs.mkdirSync(wf);
+  fs.cpSync(BIN, path.join(wf, 'bin'), { recursive: true });
+  fs.cpSync(path.join(BIN, '..', 'config'), path.join(wf, 'config'), { recursive: true });
+  fs.symlinkSync(path.join(__dirname, '..'), path.join(root, 'operator-console'));
+  const fakebin = path.join(root, 'fakebin');
+  fs.mkdirSync(fakebin);
+  const home = path.join(root, 'home');
+  fs.mkdirSync(home);
+  const calls = path.join(root, 'ssh-calls.log');
+  fs.writeFileSync(path.join(fakebin, 'ssh'), `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "${calls}"
+case "$*" in *hostname*) printf '%b' "${preflight}" ;; *) echo "unexpected ssh call" >&2 ;; esac
+`, { mode: 0o755 });
+  const run = (env = {}) => spawnSync(path.join(wf, 'bin', 'mflux-controlled-generate.sh'),
+    ['--prompt', 'p', '--width', '512', '--height', '512', '--steps', '4', '--seed', '1'], {
+      encoding: 'utf8', env: { ...process.env, PATH: `${fakebin}:${process.env.PATH}`, HOME: home, DEX_IMAGES_ROOT_OVERRIDE: path.join(root, 'images'), ...env },
+    });
+  return { root, home, run, sshCalls: () => (fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8').trim().split('\n') : []) };
+}
+
+for (const [label, preflight, gate] of [
+  ['wrong host', 'HOST=impostor\\nRUNTIME=1\\nMODEL=1\\n', 'route-hostname'],
+  ['missing runtime', 'HOST=bigmac\\nRUNTIME=0\\nMODEL=1\\n', 'mflux-runtime'],
+  ['missing model', 'HOST=bigmac\\nRUNTIME=1\\nMODEL=0\\n', 'mflux-model'],
+  ['no preflight data', '', 'route'],
+]) {
+  test(`perf: merged preflight keeps the "${gate}" gate (${label}) and costs exactly one ssh round trip`, () => {
+    const h = bridgeHarness(preflight);
+    try {
+      const r = h.run();
+      assert.notEqual(r.status, 0);
+      assert.match(r.stderr, new RegExp(`First failed gate: ${gate}\\b`));
+      assert.equal(h.sshCalls().length, 1, 'hostname + runtime + model are verified in a single ssh call');
+      assert.match(r.stderr, /=== Pre-flight verification ===/);
+    } finally { fs.rmSync(h.root, { recursive: true, force: true }); }
+  });
+}
+
+test('perf: SSH connection reuse is private (0700 control dir under HOME), time-bounded and can be disabled', () => {
+  const on = bridgeHarness('');
+  try {
+    on.run();
+    const call = on.sshCalls()[0];
+    assert.match(call, /-o ControlMaster=auto/);
+    assert.match(call, /-o ControlPersist=120\b/);
+    const dir = path.join(on.home, '.ssh', 'dexdiffusion-cm');
+    assert.ok(call.includes(`ControlPath=${dir}/%C`), 'control socket lives only in the private per-user directory');
+    assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
+  } finally { fs.rmSync(on.root, { recursive: true, force: true }); }
+
+  const off = bridgeHarness('');
+  try {
+    off.run({ DEX_SSH_MUX: '0' });
+    assert.doesNotMatch(off.sshCalls()[0], /Control/);
+    assert.equal(fs.existsSync(path.join(off.home, '.ssh', 'dexdiffusion-cm')), false);
+  } finally { fs.rmSync(off.root, { recursive: true, force: true }); }
+});
+
+test('perf: remote stage stamps go to stderr only, in order, and never touch the PNG stream or contain the prompt', () => {
+  const r = run('ok', 'a very private prompt');
+  assert.deepEqual(r.stdout, PNG);
+  const stamps = [...r.stderr.matchAll(/^MFLUX_REMOTE_T: (\S+) (\d+(?:\.\d+)?)$/gm)].map(m => [m[1], Number(m[2])]);
+  assert.deepEqual(stamps.map(s => s[0]), ['script-start', 'generate-start', 'generate-end', 'stream-start', 'stream-end']);
+  for (let i = 1; i < stamps.length; i++) assert.ok(stamps[i][1] >= stamps[i - 1][1], 'stamps are monotonic');
+  assert.doesNotMatch(r.stderr.replace(/fake mflux progress line/g, ''), /private prompt/);
+});
+
+test('perf: bridge records per-stage timings in the manifest and exposes the finalizing stage to the UI', () => {
+  assert.match(BRIDGE, /"timings": json\.loads\(os\.environ\.get\("DEX_TIMINGS_JSON"\) or "\{\}"\)/);
+  assert.match(BRIDGE, /log "MFLUX_TIMING: \$TIMINGS_JSON"/);
+  assert.match(BRIDGE, /=== Generating FLUX\.2 Klein 4B on BigMac/);
+  assert.match(BRIDGE, /=== Finalizing canonical image ===/);
+  const E = require('../public/dexdiffusion/edit-core.js');
+  assert.equal(E.deriveStage({ status: 'running', stderr: '=== Pre-flight verification ===' }).key, 'preflight');
+  assert.equal(E.deriveStage({ status: 'running', stderr: '=== Pre-flight verification ===\n=== Generating FLUX.2 Klein 4B on BigMac (MFLUX, ephemeral remote image) ===' }).key, 'generating');
+  assert.equal(E.deriveStage({ status: 'running', stderr: '=== Generating FLUX.2 Klein 4B on BigMac (x) ===\n=== Finalizing canonical image ===' }).key, 'finalizing');
+});
