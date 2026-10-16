@@ -23,7 +23,7 @@ const FAMILIES = {
 function inferAssetFamily(filename) {
   const f = String(filename || '').toLowerCase();
   if (f.includes('flux2') || f.includes('flux_2')) return FAMILIES.FLUX2;
-  if (f.includes('flux1') || f.includes('flux_1') || f.includes('schnell') || f.includes('dev')) return FAMILIES.FLUX1;
+  if (f.includes('flux1') || f.includes('flux_1') || f.includes('schnell') || /(^|[^a-z])dev([^a-z]|$)/.test(f)) return FAMILIES.FLUX1;  // 'dev' as a word: not 'developer'/'devil'
   if (f.includes('sd15') || f.includes('sd_1_5') || f.includes('sdv1-5') || f.includes('homofidelis')) return FAMILIES.SD15;
   if (f.includes('pony')) return FAMILIES.PONY;
   if (f.includes('turbo') || f.includes('lightning') || f.includes('hyper')) {
@@ -31,7 +31,7 @@ function inferAssetFamily(filename) {
     if (f.includes('sdxl')) return FAMILIES.SDXL;
     return FAMILIES.SDXL_TURBO;
   }
-  if (f.includes('sdxl') || f.includes('camoosexl') || f.includes('photonic') || f.includes('realvis') || f.includes('epicrealism') || f.includes('juggernaut')) return FAMILIES.SDXL;
+  if (f.includes('sdxl') || f.includes('sd_xl') || f.includes('camoosexl') || f.includes('photonic') || f.includes('realvis') || f.includes('epicrealism') || f.includes('juggernaut')) return FAMILIES.SDXL;
   if (f.includes('ltx')) return FAMILIES.LTX;
   return FAMILIES.UNKNOWN;
 }
@@ -101,7 +101,7 @@ function buildLoraCards(discoveredLoras = [], currentTargetId = 'flux2-klein-4b'
   return discoveredLoras.map(lora => {
     const filename = lora.filename || '';
     const baseName = filename.replace(/\.(safetensors|ckpt|pt|bin)$/i, '');
-    const family = inferAssetFamily(filename);
+    const family = lora.header_family || inferAssetFamily(filename);
     const compatibility = evaluateCompatibility(family, targetFamily, 'lora');
 
     // Known trigger words and notes
@@ -129,7 +129,9 @@ function buildLoraCards(discoveredLoras = [], currentTargetId = 'flux2-klein-4b'
       size_bytes: lora.size_bytes || 0,
       family,
       compatibility,
-      trigger_words: triggerWords,
+      trigger_words: lora.header_triggers && lora.header_triggers.length ? lora.header_triggers : triggerWords,
+      family_source: lora.header_family ? 'header' : 'filename',
+      trigger_source: lora.header_triggers && lora.header_triggers.length ? 'dataset tag frequency (kohya metadata) — candidates, not guaranteed trigger words' : 'built-in notes',
       is_speed_adapter: isSpeedAdapter,
       default_weight: 1.0,
       min_weight: 0.0,
@@ -150,7 +152,7 @@ function buildVaeCards(discoveredVaes = [], currentTargetId = 'flux2-klein-4b') 
   return discoveredVaes.map(vae => {
     const filename = vae.filename || '';
     const baseName = filename.replace(/\.(safetensors|ckpt|pt|bin)$/i, '');
-    const family = inferAssetFamily(filename);
+    const family = vae.header_family || inferAssetFamily(filename);
     const compatibility = evaluateCompatibility(family, targetFamily, 'vae');
 
     return {
@@ -180,7 +182,7 @@ function buildEmbeddingState(discoveredEmbeddings = [], currentTargetId = 'flux2
     items: items.map(emb => {
       const filename = emb.filename || '';
       const baseName = filename.replace(/\.(safetensors|ckpt|pt|bin)$/i, '');
-      const family = inferAssetFamily(filename);
+      const family = emb.header_family || inferAssetFamily(filename);
       return {
         id: emb.id || baseName,
         name: baseName,

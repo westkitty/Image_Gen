@@ -100,7 +100,13 @@ Added: X/Y/Z plot in Batch/Sweep. Cells are ordinary controlled generations run 
 Evidence: unit 7; browser 3; live 2x2 Steps x CFG on sdxl-photonic (4 distinct images, one seed, grid 1065x1066). Live test outputs remain in `~/images_made`.
 Not done: Checkpoint/VAE/Refiner axes, prompt-order permutations, Hires/denoising axes, swap axes, combined all-Z grid, per-axis vary seeds, value picker (SC-06..09, 13); Prompt Matrix, Prompts from file dry run, Loopback, Img2img Alternative, Custom Code, script settings persistence (SC-16..25). Legacy xyz-plot endpoint is untouched.
 
+## P11 Models and resources (2026-10-16)
+Audit first: the Models surface is a card registry plus `/api/extra-networks`, fed by a discovery cache (2026-10-02) that lists 19 checkpoints and **zero LoRAs, VAEs, embeddings or hypernetworks**. Family was inferred from filenames only (e.g. any name containing "dev" became FLUX.1). sd-cli's `<lora:name:w>` extraction (examples/common/common.cpp) requires a weight, silently drops bad weights and missing files, and reads "0.5:0.3" as 0.5; `<lyco:>`/`<hypernet:>` are not parsed at all.
+Added: (1) header-verified model facts: `safetensors-inspect.py` reads only the safetensors header on Big Mac; results cached by path+size; Settings > Capabilities shows architecture, precision, embedded VAE and whether the filename agrees. (2) strict extra-network token scanner used by generation and Edit validation, with weightless LoRA tags normalised to weight 1 and every silently-mishandled form refused with the reason. (3) `inferAssetFamily` word-boundary fix and header-first family in LoRA/VAE/embedding cards.
+Evidence: unit 11 new; browser 3; live: 19 real checkpoints read in 1.5 s; real validator rejections for each bad tag form on SDCPP and FLUX.2.
+Not provable here: anything that needs an installed LoRA/VAE/embedding (RS-04, RS-07, RS-09, RS-11) — BLOCKED/PENDING until assets exist. Not done: previews, SHA-256 short hashes, checkpoint quick-switch changes (RS-03), LoRA directory tree (RS-06), UNet override (RS-10), optimisation settings (RS-16), hires/refiner checkpoint (RS-17).
+
 ## Next eligible slice
-1. P11 models/resources (leftovers: P10 SC-16..25 Prompt Matrix / Loopback etc.; P09 batch Extras, Real-ESRGAN inside Extras, SD Upscale). Open design decisions: P07 batch img2img, P08 Poor man's/MK2 outpainting, P04 stepwise conditioning adapter.
+1. P12 PNG Info / reproducibility (leftovers: P10 SC-16..25 Prompt Matrix / Loopback etc.; P09 batch Extras, Real-ESRGAN inside Extras, SD Upscale). Open design decisions: P07 batch img2img, P08 Poor man's/MK2 outpainting, P04 stepwise conditioning adapter.
 2. P01 completion: obtain upstream source at the pinned commit and enumerate programmatically.
 3. P04 onward per the blueprint; P05–P15 are not started.

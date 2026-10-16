@@ -11,6 +11,8 @@ const SourceResize = require('./public/dexdiffusion/source-resize.js');
 const InpaintOptions = require('./public/dexdiffusion/inpaint-options.js');
 const ExtrasOptions = require('./public/dexdiffusion/extras-options.js');
 const XyzPlot = require('./public/dexdiffusion/xyz-plot.js');
+const NetworkTokens = require('./public/dexdiffusion/network-tokens.js');
+const { createModelInspector, familyFromArch } = require('./model-inspect');
 const M = require('./media');
 const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
@@ -554,10 +556,13 @@ function expandWildcards(prompt, maxDepth = 6) {
 function validatePrompt(prompt) {
   return typeof prompt === 'string' && prompt.trim().length > 0 && prompt.length <= 4000;
 }
-function validatePromptLoras(prompt) {
+function validatePromptLoras(prompt, backend) {
   if (typeof prompt !== 'string') return { ok: true };
-  const regex = /<lora:([^:>]+):([^>]+)>/g;
-  let match;
+  const scan = NetworkTokens.scanNetworkTokens(prompt);
+  if (scan.issues.length) return { ok: false, error: scan.issues[0].message };
+  if (!scan.tokens.length) return { ok: true };
+  // FLUX.2 (MFLUX) takes the prompt as plain text and loads no LoRAs: the tag would reach the text encoder as words.
+  if (backend === 'mflux') return { ok: false, error: `LoRA tags are not supported by the FLUX.2 (MFLUX) backend; "${scan.tokens[0].raw}" would be sent as literal text. Remove it or pick an SDCPP model.` };
   const assets = readJsonCache(ASSETS_CACHE);
   const discoveredLoras = (assets && assets.loras) ? assets.loras : [];
 
@@ -601,6 +606,7 @@ function validateStructuredLoras(loras) {
 function resolveEditResources(body) {
   const err = validateStructuredLoras(body.loras);
   if (err) return err;
+  if (typeof body.prompt === 'string') { const sc = NetworkTokens.scanNetworkTokens(body.prompt); if (sc.issues.length) return sc.issues[0].message; body.prompt = NetworkTokens.normalizeDefaultWeights(body.prompt); }
   const rr = EC.resolveResources({ prompt: typeof body.prompt === 'string' ? body.prompt : '', loras: body.loras });
   if (typeof body.prompt === 'string') body.prompt = rr.backendPrompt;
   body.__loras = rr.loras;
@@ -1469,7 +1475,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
 
 function normalizeGenerationBody(body) {
   const params = {
-    prompt: body.prompt,
+    prompt: NetworkTokens.normalizeDefaultWeights(body.prompt),
     negative_prompt: body.negative_prompt || '',
     preset: body.preset || 'Custom',
     mode: body.mode || 'server',
@@ -1541,7 +1547,7 @@ function normalizeControlledGenerationBody(body) {
     : (body.cfg !== undefined && body.cfg !== null && body.cfg !== '' ? body.cfg : '');
   const params = {
     target,
-    prompt: body.prompt,
+    prompt: NetworkTokens.normalizeDefaultWeights(body.prompt),
     negative_prompt: body.negative_prompt !== undefined && body.negative_prompt !== null
       ? body.negative_prompt
       : (body.negativePrompt !== undefined && body.negativePrompt !== null ? body.negativePrompt : ''),
@@ -1571,7 +1577,8 @@ function normalizeControlledGenerationBody(body) {
 
 function validateGenerationParams(params) {
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
-  const loraErr = validatePromptLoras(params.prompt);
+  const gTgt = params.target ? CONTROLLED_TARGETS.find(t => t.id === params.target) : null;
+  const loraErr = validatePromptLoras(params.prompt, gTgt && gTgt.backend);
   if (!loraErr.ok) return loraErr.error;
   if (!validateNegativePrompt(params.negative_prompt)) return 'Invalid negative prompt';
   if (params.preset && !ALLOWED_PRESETS.has(params.preset)) return 'Invalid preset';
@@ -1594,7 +1601,8 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   if (!validateControlledTarget(params.target, allTargetById)) return 'Invalid target';
   if (params.api && !ALLOWED_APIS.has(params.api)) return 'Invalid API';
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
-  const loraErr = validatePromptLoras(params.prompt);
+  const cTgt = allTargetById[params.target] || CONTROLLED_TARGETS.find(t => t.id === params.target);
+  const loraErr = validatePromptLoras(params.prompt, cTgt && cTgt.backend);
   if (!loraErr.ok) return loraErr.error;
   if (!validateNegativePrompt(params.negative_prompt)) return 'Invalid negative prompt';
   if (!validateSeed(params.seed)) return 'Invalid seed';
@@ -2619,12 +2627,50 @@ app.post('/api/models/check-switch', (req, res) => {
   res.json({ allowed: warnings.length === 0, warnings });
 });
 
+// Header-verified facts (P11): the cached safetensors header of an asset, when one was inspected, beats the filename guess.
+const modelInspector = createModelInspector({ cacheFile: process.env.DEX_MODEL_HEADERS_FILE || path.join(STATE_DIR, 'model-headers.json'), sshTarget: SSH_TARGET_NAME });
+function withHeaderFacts(list) {
+  return (list || []).map(a => {
+    const h = a.full_path && modelInspector.cached(a.full_path, a.size_bytes);
+    if (!h || h.error) return a;
+    return { ...a, header_family: familyFromArch(h.arch) === 'unknown' ? undefined : familyFromArch(h.arch), header_triggers: h.trigger_candidates || [] };
+  });
+}
+const ASSET_KINDS = { checkpoint: 'checkpoints', lora: 'loras', vae: 'vaes', embedding: 'embeddings' };
+app.get('/api/models/headers', (req, res) => {
+  const assets = readJsonCache(ASSETS_CACHE) || {};
+  const out = [];
+  for (const [kind, key] of Object.entries(ASSET_KINDS)) for (const a of assets[key] || []) {
+    const h = a.full_path && modelInspector.cached(a.full_path, a.size_bytes);
+    out.push({ kind, id: a.id, filename: a.filename, size_bytes: a.size_bytes, path: a.full_path || null, header: h && !h.error ? h : null, error: h && h.error || null, inspected: !!h });
+  }
+  res.json({ discovered_at: assets.discovered_at_iso || null, items: out });
+});
+app.post('/api/models/inspect', async (req, res) => {
+  const body = req.body || {};
+  const assets = readJsonCache(ASSETS_CACHE) || {};
+  const kinds = body.kind ? [String(body.kind)] : Object.keys(ASSET_KINDS);
+  if (kinds.some(k => !ASSET_KINDS[k])) return res.status(400).json({ error: `kind must be one of ${Object.keys(ASSET_KINDS).join(', ')}` });
+  const ids = Array.isArray(body.ids) ? new Set(body.ids.map(String)) : null;
+  const items = [];
+  for (const k of kinds) for (const a of assets[ASSET_KINDS[k]] || []) if ((!ids || ids.has(a.id)) && a.full_path) items.push({ kind: k, id: a.id, path: a.full_path, size_bytes: a.size_bytes, filename: a.filename });
+  if (!items.length) return res.status(404).json({ error: 'No matching discovered files. Run asset discovery first, or check the ids.' });
+  if (items.length > 25) return res.status(400).json({ error: `Inspect at most 25 files at a time (${items.length} requested).` });
+  try {
+    const out = await modelInspector.inspect(items, { refresh: body.refresh === true });
+    const byPath = new Map(items.map(i => [i.path, i]));
+    res.json({ items: out.map(o => ({ ...o, kind: byPath.get(o.path).kind, id: byPath.get(o.path).id })) });
+  } catch (err) {
+    res.status(502).json({ error: `Could not reach the compute host to read headers: ${String(err.message || err).slice(0, 160)}` });
+  }
+});
+
 app.get('/api/extra-networks', (req, res) => {
   const targetId = req.query.target || 'flux2-klein-4b';
   const assets = readJsonCache(ASSETS_CACHE) || {};
-  const loras = buildLoraCards(assets.loras || [], targetId);
-  const vaes = buildVaeCards(assets.vaes || [], targetId);
-  const embeddings = buildEmbeddingState(assets.embeddings || [], targetId);
+  const loras = buildLoraCards(withHeaderFacts(assets.loras), targetId);
+  const vaes = buildVaeCards(withHeaderFacts(assets.vaes), targetId);
+  const embeddings = buildEmbeddingState(withHeaderFacts(assets.embeddings), targetId);
   res.json({ loras, vaes, embeddings });
 });
 

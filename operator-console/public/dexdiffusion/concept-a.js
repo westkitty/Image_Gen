@@ -396,7 +396,7 @@
       body = panel('Tutorial index', helpIndex, accent);
     } else if (tab === 'capabilities') {
       const ledger = caps.length ? h('div', { className: 'ca-list' }, ...caps) : h('div', { className: 'ca-empty' }, 'Capability data is loading.');
-      body = h('div', { className: 'ca-settings-stack' }, panel('Live model capability ledger', ledger, accent), vals.truthStatusPanel);
+      body = h('div', { className: 'ca-settings-stack' }, panel('Live model capability ledger', ledger, accent), this.buildFileVerificationPanel(), vals.truthStatusPanel);
     } else if (tab === 'keyboard') {
       const keys = h('div', { className: 'ca-list' },
         h('div', { className: 'ca-list-row' }, h('b', null, 'Cmd/Ctrl + K'), h('small', null, 'Command palette')),

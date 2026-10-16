@@ -3540,8 +3540,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Preserve actual model path verification",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P11 2026-10-16: sdcpp-workflow/bin/safetensors-inspect.py (header-only reader, stdlib), operator-console/model-inspect.js (ssh runner, path+size cache, allowlist), server.js /api/models/inspect + /api/models/headers + header facts folded into /api/extra-networks, extra-networks.js (header family beats filename; 'dev' word fix; sd_xl), public/dexdiffusion/network-tokens.js (strict <lora:> scanner), workstation-ui.js + concept-a.js Settings>Capabilities 'Checkpoint file verification'; tests/model-inspect.test.js (6), tests/network-tokens.test.js (5), tests/browser/model-files.browser.js (3). LIVE_PROVEN: all 19 discovered checkpoints read on Big Mac in 1.5 s (18 sdxl/sd15 + flux1-schnell identified; 9 had names the filename guess could not classify); LoRA tag errors verified through the real /api/preview/generation validator. || P11: Catalog entries are now checked against the real file header and size (drift and truncation reported). Discovery itself is unchanged and its cache dates from 2026-10-02.",
    "runtime_receipt": null
   },
   {
@@ -3560,8 +3560,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Add model hashes/family/runtime proof badges",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P11 2026-10-16: sdcpp-workflow/bin/safetensors-inspect.py (header-only reader, stdlib), operator-console/model-inspect.js (ssh runner, path+size cache, allowlist), server.js /api/models/inspect + /api/models/headers + header facts folded into /api/extra-networks, extra-networks.js (header family beats filename; 'dev' word fix; sd_xl), public/dexdiffusion/network-tokens.js (strict <lora:> scanner), workstation-ui.js + concept-a.js Settings>Capabilities 'Checkpoint file verification'; tests/model-inspect.test.js (6), tests/network-tokens.test.js (5), tests/browser/model-files.browser.js (3). LIVE_PROVEN: all 19 discovered checkpoints read on Big Mac in 1.5 s (18 sdxl/sd15 + flux1-schnell identified; 9 had names the filename guess could not classify); LoRA tag errors verified through the real /api/preview/generation validator. || P11: Architecture, precision, tensor count and embedded VAE from the header. No previews and no SHA-256 short hash (reading 7 GB files was not attempted).",
    "runtime_receipt": null
   },
   {
@@ -3600,8 +3600,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Verify selected LoRA modifies actual output",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P11: No LoRA is installed on Big Mac (discovery lists 0), so an effect on real output cannot be proven. Tag validation is hardened (RS-12).",
    "runtime_receipt": null
   },
   {
@@ -3620,8 +3620,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Ensure prompt serialization and family constraints",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P11 2026-10-16: sdcpp-workflow/bin/safetensors-inspect.py (header-only reader, stdlib), operator-console/model-inspect.js (ssh runner, path+size cache, allowlist), server.js /api/models/inspect + /api/models/headers + header facts folded into /api/extra-networks, extra-networks.js (header family beats filename; 'dev' word fix; sd_xl), public/dexdiffusion/network-tokens.js (strict <lora:> scanner), workstation-ui.js + concept-a.js Settings>Capabilities 'Checkpoint file verification'; tests/model-inspect.test.js (6), tests/network-tokens.test.js (5), tests/browser/model-files.browser.js (3). LIVE_PROVEN: all 19 discovered checkpoints read on Big Mac in 1.5 s (18 sdxl/sd15 + flux1-schnell identified; 9 had names the filename guess could not classify); LoRA tag errors verified through the real /api/preview/generation validator. || P11: Trigger candidates come from kohya ss_tag_frequency when a LoRA carries it, labelled as candidates. Proven only on synthetic LoRA files: none is installed.",
    "runtime_receipt": null
   },
   {
@@ -3660,8 +3660,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Verify textual inversion with installed compatible weights",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P11: No textual-inversion embedding is installed; cannot verify insertion.",
    "runtime_receipt": null
   },
   {
@@ -3680,8 +3680,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Add engine adapter only if loadable",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P11: sd-cli has no hypernetwork support; <hypernet:> tags are refused rather than sent as text.",
    "runtime_receipt": null
   },
   {
@@ -3701,7 +3701,7 @@
    "required_implementation": "Verify loaded weights and metadata hash",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "implementation_receipt": " || P11: No external VAE installed (discovery lists 0); override path unchanged and unproven this phase.",
    "runtime_receipt": null
   },
   {
@@ -3760,8 +3760,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Validate exact tag parsing, no silent dropped weights",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P11 2026-10-16: sdcpp-workflow/bin/safetensors-inspect.py (header-only reader, stdlib), operator-console/model-inspect.js (ssh runner, path+size cache, allowlist), server.js /api/models/inspect + /api/models/headers + header facts folded into /api/extra-networks, extra-networks.js (header family beats filename; 'dev' word fix; sd_xl), public/dexdiffusion/network-tokens.js (strict <lora:> scanner), workstation-ui.js + concept-a.js Settings>Capabilities 'Checkpoint file verification'; tests/model-inspect.test.js (6), tests/network-tokens.test.js (5), tests/browser/model-files.browser.js (3). LIVE_PROVEN: all 19 discovered checkpoints read on Big Mac in 1.5 s (18 sdxl/sd15 + flux1-schnell identified; 9 had names the filename guess could not classify); LoRA tag errors verified through the real /api/preview/generation validator. || P11: Strict scanner: <lora:name> now means weight 1 (sd-cli would have sent it as literal text), bad/duplicate weights, lyco/hypernet tags and any LoRA tag on FLUX.2 are refused with the engine reason instead of being silently dropped. Edit routes use the same scanner.",
    "runtime_receipt": null
   },
   {
@@ -3780,8 +3780,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Replace filename-only assumption with metadata/runtime tests",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P11 2026-10-16: sdcpp-workflow/bin/safetensors-inspect.py (header-only reader, stdlib), operator-console/model-inspect.js (ssh runner, path+size cache, allowlist), server.js /api/models/inspect + /api/models/headers + header facts folded into /api/extra-networks, extra-networks.js (header family beats filename; 'dev' word fix; sd_xl), public/dexdiffusion/network-tokens.js (strict <lora:> scanner), workstation-ui.js + concept-a.js Settings>Capabilities 'Checkpoint file verification'; tests/model-inspect.test.js (6), tests/network-tokens.test.js (5), tests/browser/model-files.browser.js (3). LIVE_PROVEN: all 19 discovered checkpoints read on Big Mac in 1.5 s (18 sdxl/sd15 + flux1-schnell identified; 9 had names the filename guess could not classify); LoRA tag errors verified through the real /api/preview/generation validator. || P11: Family from the safetensors header, with the filename only as a fallback and a visible name-vs-header agreement. Checkpoints proven on 19 real files; LoRA/embedding layouts only on synthetic files.",
    "runtime_receipt": null
   },
   {
@@ -3800,8 +3800,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Require real file bytes accessible through worker",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P11 2026-10-16: sdcpp-workflow/bin/safetensors-inspect.py (header-only reader, stdlib), operator-console/model-inspect.js (ssh runner, path+size cache, allowlist), server.js /api/models/inspect + /api/models/headers + header facts folded into /api/extra-networks, extra-networks.js (header family beats filename; 'dev' word fix; sd_xl), public/dexdiffusion/network-tokens.js (strict <lora:> scanner), workstation-ui.js + concept-a.js Settings>Capabilities 'Checkpoint file verification'; tests/model-inspect.test.js (6), tests/network-tokens.test.js (5), tests/browser/model-files.browser.js (3). LIVE_PROVEN: all 19 discovered checkpoints read on Big Mac in 1.5 s (18 sdxl/sd15 + flux1-schnell identified; 9 had names the filename guess could not classify); LoRA tag errors verified through the real /api/preview/generation validator. || P11: Reading a header over ssh proves the worker can open real bytes; unreadable or truncated files are reported.",
    "runtime_receipt": null
   },
   {

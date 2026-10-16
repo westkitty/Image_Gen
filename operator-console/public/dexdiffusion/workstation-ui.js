@@ -63,7 +63,7 @@
       editSourceId: saved.editSourceId || null, editOriginalId: saved.editOriginalId || null, editSource: null, editResults: [], editStatus: 'idle', prep: 'none',
       brush: saved.brush || { mode: 'paint', size: 40 }, maskZoom: 1, maskInfo: null,
       out: { left: 0, right: 128, top: 0, bottom: 0, strength: 0.85 }, outStatus: 'idle',
-      enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2, xyz: { x: { type: 'steps', values: '10, 20' }, y: { type: 'cfg_scale', values: '5, 7' }, z: { type: 'none', values: '' }, keepRandom: false, legend: true, margin: 0, plan: null, error: null, grid: null }, extras: { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5 },
+      enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2, fileCheck: { busy: false, items: [], error: null }, xyz: { x: { type: 'steps', values: '10, 20' }, y: { type: 'cfg_scale', values: '5, 7' }, z: { type: 'none', values: '' }, keepRandom: false, legend: true, margin: 0, plan: null, error: null, grid: null }, extras: { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5 },
       lib: { filter: 'all', items: [], total: 0, selectedId: null, selected: null, loading: false },
       compareIds: Array.isArray(saved.compareIds) ? saved.compareIds.slice(0, 4) : [], compareItems: [], compareZoom: 1,
       doctor: null, doctorBusy: false, activeJobId: saved.activeJobId || null, recovered: false,
@@ -671,6 +671,33 @@
           btn(x.gridStatus === 'running' ? 'Building grid…' : 'Build grid', () => this.xyzGrid(), '#f59e0b', { disabled: !q.complete || x.gridStatus === 'running' }))) : null,
       x.grid && x.grid.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 8, marginTop: 8 }, 'data-xyz-field': 'grid' },
         ...x.grid.map(r => h('div', { key: r.imageId }, thumb(base + r.imageUrl, false, () => openFull(this, r.imageId, base + r.imageUrl), r.imageId, 'XYZ grid ' + r.width + '×' + r.height)))) : null);
+  };
+
+  // ── Model files: header-verified architecture (P11) ──────────────
+  P.verifyModelFiles = async function (refresh) {
+    this.wsSet({ fileCheck: Object.assign({}, this._ws().fileCheck, { busy: true, error: null }) });
+    const r = await this._api('/api/models/inspect', { kind: 'checkpoint', refresh: !!refresh });
+    this.wsSet({ fileCheck: { busy: false, items: r.ok ? r.data.items : (this._ws().fileCheck.items || []), error: r.ok ? null : (r.data.error || 'Inspection failed') } });
+  };
+  P.buildFileVerificationPanel = function () {
+    const ws = this._ws(), fc = ws.fileCheck || {};
+    const gb = n => (n / 1e9).toFixed(2) + ' GB';
+    const tone2 = { match: tone.ok, 'header-only': tone.info, mismatch: tone.bad, unknown: tone.off };
+    const row = it => {
+      const h2 = it.header, ag = it.agreement;
+      return h('div', { key: it.path, 'data-file-row': it.filename, style: { display: 'grid', gridTemplateColumns: 'minmax(0,2fr) 70px 90px 80px minmax(0,1.2fr)', gap: 8, fontSize: 12, padding: '4px 0', borderBottom: '1px solid rgba(148,163,184,.08)', alignItems: 'center' } },
+        h('span', { style: css.mono }, it.filename), h('span', { style: css.muted }, gb(it.size_bytes)),
+        h2 ? h('span', { style: { color: '#e2e8f0', fontWeight: 700 } }, h2.arch + (h2.embedded_vae ? ' + VAE' : '')) : h('span', { style: { color: tone.bad } }, it.error ? 'unreadable' : '—'),
+        h2 ? h('span', { style: css.muted }, Object.keys(h2.dtypes).filter(d => d.startsWith('F') || d.startsWith('BF')).join('/')) : h('span'),
+        h('span', { style: { color: ag ? tone2[ag.state] : tone.off } }, it.error ? it.error : h2 && h2.truncated ? 'file is truncated' : ag ? ({ match: 'name and header agree', 'header-only': 'name gave no family', mismatch: 'NAME SAYS ' + ag.byName + ', HEADER ' + ag.byHeader, unknown: 'architecture not recognised' })[ag.state] : ''));
+    };
+    return h('div', { style: css.panel, 'data-file-verification': 'true' },
+      h('div', { style: Object.assign({}, css.row, { marginBottom: 6 }) }, h('div', { style: css.title }, 'Checkpoint file verification'), h('div', { style: { flex: 1 } }),
+        btn(fc.busy ? 'Reading headers…' : 'Verify files', () => this.verifyModelFiles(false), '#38bdf8', { disabled: !!fc.busy }),
+        btn('Re-read', () => this.verifyModelFiles(true), '#94a3b8', { disabled: !!fc.busy })),
+      h('div', { style: css.muted }, 'Reads each checkpoint\'s safetensors header on Big Mac (never the weights) to confirm the architecture, precision and embedded VAE, instead of trusting the filename.'),
+      fc.error ? h('div', { style: { color: tone.bad, fontSize: 12, marginTop: 6 }, 'data-file-error': 'true' }, fc.error) : null,
+      fc.items && fc.items.length ? h('div', { style: { marginTop: 8 } }, ...fc.items.map(row)) : null);
   };
 
   // ── Doctor ──────────────────────────────────────────────────────
