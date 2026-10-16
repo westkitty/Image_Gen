@@ -84,6 +84,7 @@ export SDCPP_LOGFILE
 MANIFEST="$RUN_DIR/controlled-manifest.json"
 REPORT="$RUN_DIR/controlled-generate-report.md"
 RUN_ID="$(basename "$RUN_DIR")"
+echo "SDCPP_RUN_ID: $RUN_ID"   # announced early so a cancel can scope the remote stop to this run
 # Runtime paths are relative to Big Mac's $HOME (resolved remotely). Everything
 # on the generation hot path is on Big Mac's INTERNAL SSD: the external USB
 # volume (wc2tb) stalled MFLUX imports for 10+ minutes under concurrent disk
@@ -151,7 +152,7 @@ log "=== Generating FLUX.2 Klein 4B on BigMac (MFLUX, ephemeral remote image) ==
 T_SSH_START="$(now)"
 set +e
 # shellcheck disable=SC2086
-ssh -o ConnectTimeout=15 ${SDCPP_SSH_EXTRA_OPTS:-} "$SSH_TARGET" "bash -c $(printf '%q' "$REMOTE_SCRIPT") dexdiffusion-mflux $PROMPT_B64 $ARG_STEPS $SEED_VALUE $ARG_WIDTH $ARG_HEIGHT $(printf '%q' "$REMOTE_CACHE_REL") $(printf '%q' "$REMOTE_MFLUX_REL")" \
+ssh -o ConnectTimeout=15 ${SDCPP_SSH_EXTRA_OPTS:-} "$SSH_TARGET" "bash -c $(printf '%q' "$REMOTE_SCRIPT") dexdiffusion-mflux-$RUN_ID $PROMPT_B64 $ARG_STEPS $SEED_VALUE $ARG_WIDTH $ARG_HEIGHT $(printf '%q' "$REMOTE_CACHE_REL") $(printf '%q' "$REMOTE_MFLUX_REL")" \
   > "$INCOMING" 2> "$RAW_STDERR"
 SSH_RC=$?   # transport-level only (255 = ssh failed); remote status is in-band
 set -e

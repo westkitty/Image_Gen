@@ -4301,8 +4301,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Prove real scoped remote cancellation by nonce and process identity",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P13 2026-10-16: sdcpp-workflow/bin/sdcpp-remote-cancel.sh (run-id scoped, subtree kill, TERM then KILL, verified count), server.js remoteCancelJob + /api/jobs/:id/cancel (lease held until the Big Mac side is confirmed stopped; user cancel stays CANCELLED and is no longer recorded as capability failure evidence; timeouts use the same stop), early SDCPP_RUN_ID announcement and MFLUX run-id label in the generate scripts, workstation-ui.js + concept-a.js Interrupt button; tests/remote-cancel.test.js (4, real decoy processes via a stub ssh), tests/browser/interrupt.browser.js (2). MEASURED BEFORE: after 'Cancel' the remote sd-cli kept running for >1 min while the job showed CANCELLED and the heavy lease was released. LIVE_PROVEN AFTER: sdxl-photonic job cancelled mid-run -> 3 remote processes found, 3 killed, 0 left, remote ps empty; FLUX.2 (MFLUX) job -> 3 found/3 killed/0 left (a first attempt missed the python child and was fixed by killing the whole subtree); a normal job passed right after. || P13: Real scoped remote cancellation for controlled generation (sd-cli and MFLUX). The edit scripts (img2img, inpaint, ESRGAN, hires, xyz) do not carry the run id on the remote command line, so for them the Big Mac side is reported as unverified, not assumed stopped.",
    "runtime_receipt": null
   },
   {
@@ -4323,7 +4323,7 @@
    "required_implementation": "Implement item-skip semantics leaving future items queued",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "implementation_receipt": " || P13: Skip-current-image not started.",
    "runtime_receipt": null
   },
   {
@@ -4427,8 +4427,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Add optional mode only when progressive decode/preview available",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P13: sd-cli exposes no progressive preview/TAESD decode in the installed build; a live image preview cannot be shown without faking it.",
    "runtime_receipt": null
   },
   {
@@ -4449,7 +4449,7 @@
    "required_implementation": "Compose completed outputs incrementally without fake intermediate",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "implementation_receipt": " || P13: Incremental batch grid preview not started (the X/Y/Z grid is built on demand).",
    "runtime_receipt": null
   },
   {
@@ -4574,8 +4574,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Add Generate/Skip/Interrupt with typing/focus protection",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P13: Interrupt button in Create (only while a job runs). No keyboard shortcut and no Skip yet.",
    "runtime_receipt": null
   },
   {

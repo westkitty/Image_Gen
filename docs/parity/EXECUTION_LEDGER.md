@@ -112,7 +112,13 @@ Added: PNG Info panel (Library) reading A1111 `parameters` from any uploaded PNG
 Evidence: unit 8 (parser, mapping, format round trip, PNG chunk read/write, hostile input incl. a decompression bomb); browser 3; live: real image exported and read back, all fields restorable.
 Not done: sidecar .txt files on disk (MT-07), save-all ZIP (MT-13), filename patterns (MT-14), JPG/WebP options (MT-15/16), grid annotation controls (MT-09/10), regenerate-from-image beyond Send to Create, hash recomputation, ComfyUI graph import, Send to Img2img/Inpaint/Extras for uploaded (non-library) images.
 
+## P13 Jobs, previews and cancel (2026-10-16)
+Audit first, by measurement: the Cancel route stopped only the local ssh/script. Starting a 40-step sdxl-photonic job and cancelling it left `sd-cli` running on Big Mac for over a minute while the job read CANCELLED and the heavy-compute lease was already released (so the next job could collide with a runaway). The child's close handler also overwrote CANCELLED with FAIL, which recorded the cancel as capability evidence against the model (the same mechanism that made sd15 "broken" earlier). The workers advertise `cancel_supported: false` for exactly this reason. The UI had no Interrupt control for image jobs.
+Added: run-id scoped remote stop (`sdcpp-remote-cancel.sh`) used by Cancel and by the job timeout; lease held until the remote side is confirmed stopped; CANCELLED preserved and kept out of capability evidence; Interrupt button in Create that reports "Big Mac confirmed stopped" or an error.
+Evidence: unit 4 (real decoy processes, TERM-ignoring process, subtree, siblings untouched, malformed ids refused); browser 2; live sd-cli and MFLUX cancellations (0 left on the remote), plus a passing job afterwards.
+Not done: the worker capability flags still say `cancel_supported: false` (left unchanged until the edit scripts are covered); verified remote stop for img2img/inpaint/ESRGAN/hires/xyz; Skip current (JO-03); keyboard shortcuts (JO-15); live preview (JO-08, BLOCKED: no progressive decode in the installed sd-cli); queue-level cancel of XYZ plots relies on stop-after-current.
+
 ## Next eligible slice
-1. P13 jobs/previews/cancel (leftovers: P10 SC-16..25 Prompt Matrix / Loopback etc.; P09 batch Extras, Real-ESRGAN inside Extras, SD Upscale). Open design decisions: P07 batch img2img, P08 Poor man's/MK2 outpainting, P04 stepwise conditioning adapter.
+1. P14 conditioning / Puppet Master (leftovers: P13 verified remote stop for edit scripts, P10 SC-16..25 Prompt Matrix / Loopback etc.; P09 batch Extras, Real-ESRGAN inside Extras, SD Upscale). Open design decisions: P07 batch img2img, P08 Poor man's/MK2 outpainting, P04 stepwise conditioning adapter.
 2. P01 completion: obtain upstream source at the pinned commit and enumerate programmatically.
 3. P04 onward per the blueprint; P05–P15 are not started.

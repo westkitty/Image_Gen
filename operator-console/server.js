@@ -1061,7 +1061,7 @@ setInterval(() => {
   if (!st.owner) return;
   // Image jobs live in `jobs`; voice/music jobs only in the durable job store.
   const img = jobs[st.owner.job_id], gen = jobStore.get(st.owner.job_id);
-  const imageActive = img && ['queued', 'running'].includes(img.status);
+  const imageActive = img && (['queued', 'running'].includes(img.status) || !!img.remoteOrphan);
   const mediaActive = !img && gen && ['QUEUED', 'RUNNING', 'TRANSFERRING'].includes(gen.status);
   if (!imageActive && !mediaActive) arbiter.release(st.owner.job_id);
 }, 5000).unref();
@@ -1193,6 +1193,38 @@ function terminateChildTree(child) {
   }, 5000).unref();
 }
 
+// Remote cancellation (P13): ending the local ssh/script does NOT stop sd-cli / MFLUX on Big Mac (measured: the process
+// kept running for minutes after a "cancelled" job). Every remote command line carries the job's run id, so
+// sdcpp-remote-cancel.sh stops exactly that run's processes and reports whether anything is left.
+// Only controlled generation (sd-cli and MFLUX) puts its run id on the remote command line; the edit scripts name remote
+// files differently, so their remote stop cannot be scoped and is reported as unverified rather than assumed.
+const REMOTE_CANCEL_ACTIONS = new Set(['controlled-generate']);
+function runIdsOf(job) {
+  const text = String(job.stdout || '');
+  const ids = [...new Set([...text.matchAll(/(?:SDCPP_RUN_ID:\s*|runs\/)(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/g)].map(m => m[1]))];
+  return ids.slice(-2);   // the active stage is always among the latest; earlier stages have finished
+}
+function remoteCancelRun(runId) {
+  return new Promise(resolve => {
+    execFile(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-remote-cancel.sh'), ['--run-id', runId], { cwd: WORKFLOW_ROOT, timeout: 45000, encoding: 'utf8' }, (err, stdout) => {
+      const m = /REMOTE_CANCEL: found=(\d+) killed=(\d+) left=(\d+)/.exec(String(stdout || ''));
+      if (!m) return resolve({ runId, ok: false, error: err ? String(err.message).split('\n')[0].slice(0, 160) : 'no result from the remote cancel' });
+      const r = { runId, found: +m[1], killed: +m[2], left: +m[3] };
+      resolve({ ...r, ok: r.left === 0 });
+    });
+  });
+}
+async function remoteCancelJob(job) {
+  if (!REMOTE_CANCEL_ACTIONS.has(job.commandAction)) return { ok: true, verified: false, runs: [], note: `Big Mac side cannot be verified for ${job.commandAction || 'this action'}; it may finish on its own.` };
+  const ids = runIdsOf(job);
+  if (!ids.length) return { ok: true, verified: true, runs: [], note: 'no remote run had started' };
+  const runs = [];
+  for (const id of ids) runs.push(await remoteCancelRun(id));
+  const ok = runs.every(r => r.ok);
+  job.remoteCancel = { at: new Date().toISOString(), ok, runs };
+  if (ok) delete job.remoteOrphan; else job.remoteOrphan = { runs: ids, at: Date.now() };
+  return { ok, verified: true, runs };
+}
 function markJobTimedOut(job, child, timeoutMs, label) {
   if (!job || job.status !== 'running') return;
   job.status = 'FAIL';
@@ -1201,6 +1233,8 @@ function markJobTimedOut(job, child, timeoutMs, label) {
   job.firstFailedGate = 'timeout';
   job.stderr += `\nTimed out after ${Math.round(timeoutMs / 1000)}s waiting for ${label || job.commandAction || 'job'} to finish.`;
   terminateChildTree(child);
+  job.remoteOrphan = { pending: true, at: Date.now() };   // hold the lease until the remote side is verified stopped
+  remoteCancelJob(job).catch(err => { job.remoteOrphan = { error: err.message, at: Date.now() }; });
 }
 
 function runAction(jobId, scriptPath, args, savePrompts = false) {
@@ -1213,6 +1247,7 @@ function runActionNow(jobId, scriptPath, args, savePrompts = false) {
   if (jobStore.get(jobId) && jobStore.get(jobId).status === 'QUEUED') jobStore.transition(jobId, 'RUNNING');
   const env = { ...process.env, SDCPP_REDACT_PROMPTS: savePrompts ? '0' : '1' };
   const child = spawn(scriptPath, args, { cwd: WORKFLOW_ROOT, shell: false, env, detached: true });
+  job.childPid = child.pid;
   const sensitives = jobSensitives[jobId] || [];
   const timeoutTimer = setTimeout(() => markJobTimedOut(job, child, JOB_TIMEOUT_MS, scriptPath), JOB_TIMEOUT_MS);
   timeoutTimer.unref();
@@ -1232,6 +1267,8 @@ function runActionNow(jobId, scriptPath, args, savePrompts = false) {
   });
   child.on('close', code => {
     clearTimeout(timeoutTimer);
+    // A user cancel is not a failure: keep CANCELLED (it must not be recorded as capability evidence against the model).
+    if (job.status === 'CANCELLED') { job.exitCode = code; cleanupJobTempFiles(job); try { syncGenericTerminal(job); } catch (_) {} return; }
     if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, job.stdout); cleanupJobTempFiles(job); recordJobEvidence(job); return; }
     job.exitCode = code;
     job.completedAt = Date.now();
@@ -1370,6 +1407,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
   }
 
   function runNext(runIndex) {
+    if (job.status === 'CANCELLED') { finish(); return; }   // cancelled between runs: do not start another
     const runNumber = runIndex + 1;
     job.stdout += native ? `\n--- Native batch run: ${quantity} images, seeds ${seeds[0]}..${seeds[quantity - 1]} ---\n` : `\n--- Sequential Run ${runNumber} of ${quantity} ---\n`;
     const progressTimer = startRunProgress(job, runIndex, runsTotal);
@@ -1417,6 +1455,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
       clearTimeout(timeoutTimer);
       clearInterval(progressTimer);
       job.activeChildPid = null;
+      if (job.status === 'CANCELLED') { job.exitCode = code; updateSequentialProgress(job, { currentRunPercent: 100 }); finish(); return; }
       if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, runStdout); finish(); return; }
       job.exitCode = code;
       const combined = runStdout + runStderr;
@@ -4093,11 +4132,11 @@ const workerRegistry = M.createWorkerRegistry({
   imageAdapters: {
     mflux: {
       probe: a => ({ architecture_available: true, runtime_available: a.mfluxRuntime !== false, model_available: a.mfluxModel !== false, enabled: true, proven: true, state: a.mfluxRuntime === false || a.mfluxModel === false ? 'MODEL/RUNTIME MISSING' : 'PROVEN' }),
-      capabilities: () => ({ generate: true, cancel_supported: false, cancel_reason: 'Tailscale SSH does not reliably propagate termination to the remote MFLUX process; not proven safe.' }),
+      capabilities: () => ({ generate: true, cancel_supported: true, cancel_scope: 'controlled generation', cancel_reason: 'Closing the SSH session does not stop MFLUX; Interrupt instead stops the run\'s own remote processes by run id and verifies none are left (proven live 2026-10-16).' }),
     },
     sdcpp: {
       probe: a => ({ architecture_available: true, runtime_available: a.sdCli !== false, model_available: a.sd15Model !== false, enabled: true, proven: true, state: a.sdCli === false ? 'RUNTIME MISSING' : 'PROVEN' }),
-      capabilities: () => ({ generate: true, img2img: true, inpaint: true, outpaint: true, hiresRefine: true, nativeBatch: true, controlNet: false, controlNet_state: 'ENGINE SUPPORTED — MODEL ASSET MISSING', cancel_supported: false, cancel_reason: 'Remote sd-cli termination via Tailscale SSH not proven safe; use Stop After Current.' }),
+      capabilities: () => ({ generate: true, img2img: true, inpaint: true, outpaint: true, hiresRefine: true, nativeBatch: true, controlNet: false, controlNet_state: 'ENGINE SUPPORTED — MODEL ASSET MISSING', cancel_supported: true, cancel_scope: 'controlled generation', cancel_reason: 'Interrupt stops the run\'s own remote sd-cli by run id and verifies none are left (proven live 2026-10-16). Edit, upscale and hires jobs are not covered: their Big Mac side cannot be verified, so use Stop After Current.' }),
     },
   },
 });
@@ -4433,15 +4472,33 @@ app.post('/api/jobs/:id/cancel', async (req, res) => {
   const jobId = req.params.id;
   const reason = (req.body && req.body.reason) || 'Cancelled by user';
 
-  // Check in-memory image job
+  // In-memory image job: stop the local process group, then verify the Big Mac side is really stopped.
   const job = jobs[jobId];
-  if (job && (job.status === 'queued' || job.status === 'running')) {
-    job.status = 'CANCELLED';
-    job.completedAt = Date.now();
-    job.firstFailedGate = 'user-cancelled';
-    job.stderr += '\nJob cancelled by user request.';
-    if (job.activeChildPid) {
-      try { process.kill(job.activeChildPid, 'SIGTERM'); } catch (_) {}
+  const retry = job && job.status === 'CANCELLED' && job.remoteOrphan && !job.remoteOrphan.pending;
+  if (job && (job.status === 'queued' || job.status === 'running' || retry)) {
+    const wasRunning = job.status === 'running' || retry;
+    if (!retry) {
+      job.status = 'CANCELLED';
+      job.completedAt = Date.now();
+      job.firstFailedGate = 'user-cancelled';
+      job.stderr += '\nJob cancelled by user request.';
+      for (const pid of [job.activeChildPid, job.childPid].filter(Boolean)) {
+        try { process.kill(-pid, 'SIGTERM'); } catch (_) { try { process.kill(pid, 'SIGTERM'); } catch (_) {} }
+      }
+    }
+    if (wasRunning) {
+      job.remoteOrphan = job.remoteOrphan || { pending: true, at: Date.now() };   // lease stays held until verified
+      const remote = await remoteCancelJob(job);
+      if (!remote.ok) {
+        job.stderr += '\nRemote cancel could not be verified: ' + remote.runs.filter(r => !r.ok).map(r => r.error || `${r.left} process(es) still running`).join('; ');
+        return res.status(502).json({ ok: false, gate: 'remote-cancel-failed', status: 'CANCELLED', error: 'The job was cancelled locally, but a process on Big Mac could not be confirmed stopped. The heavy-compute lease is kept; press Cancel again to retry.', remote });
+      }
+      if (retry || remote.runs.length) job.stderr += '\nRemote processes stopped (' + remote.runs.map(r => `${r.runId}: killed ${r.killed}`).join(', ') + ').';
+      // The Big Mac side is verified stopped: release the lease and announce. (cancelJob may report "already terminal"
+      // because the child's close handler has already synced the durable record; that is the outcome we want.)
+      try { arbiter.release(jobId); } catch (_) {}
+      await cancelManager.cancelJob(jobId, { reason });
+      return res.json({ ok: true, status: 'CANCELLED', remote });
     }
   }
 
@@ -4806,6 +4863,7 @@ app.get('/api/jobs/:jobId', (req, res) => {
     exitCode: job.exitCode,
     firstFailedGate: job.firstFailedGate,
     runId: job.runId,
+    remoteCancel: job.remoteCancel || null,
     upscaledImage: job.upscaledImage || null,
     upscaleManifest: job.upscaleManifest || null,
     controlledTarget: job.controlledTarget || null,

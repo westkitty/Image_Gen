@@ -192,10 +192,23 @@
         lastGenerationParams: Object.assign({}, this.state.lastGenerationParams || body || {}, { runId: first.runId, status: job.status }) });
       this.toast(results.length > 1 ? results.filter(x => x.status === 'DONE').length + ' / ' + results.length + ' images done' : 'Done · seed ' + first.seed, '#65d66e');
       setTimeout(() => this.loadRuns(), 1200);
+    } else if (job.status === 'CANCELLED') {
+      this.setState({ jobStatus: 'idle', progress: 0, errorMsg: '' });
+      const rc = job.remoteCancel;
+      this.toast('Generation interrupted' + (rc ? (rc.ok ? ' · Big Mac confirmed stopped' : ' · Big Mac NOT confirmed stopped') : ''), rc && !rc.ok ? '#ef4444' : '#fbbf24');
     } else {
       this.setState({ jobStatus: 'error', progress: 0, errorMsg: this._failText(job) });
       this.toast('Generation failed · ' + (job.firstFailedGate || job.status), '#ef4444');
     }
+  };
+  // Interrupt the running generation: stops the local process, then verifies the Big Mac process is really gone.
+  P.interruptGeneration = async function () {
+    const id = this._ws().activeJobId;
+    if (!id || this._ws().interrupting) return;
+    this.wsSet({ interrupting: true });
+    const r = await this._api('/api/jobs/' + encodeURIComponent(id) + '/cancel', { reason: 'Interrupted from Create' });
+    this.wsSet({ interrupting: false });
+    if (!r.ok) this.toast(r.data.error || 'Interrupt failed', '#ef4444');
   };
 
   P.selectResult = function (i) {

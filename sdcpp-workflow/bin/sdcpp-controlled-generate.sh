@@ -529,6 +529,7 @@ if [ "$TARGET_REQUIRE_CFG_SCALE" = "true" ] && ! validateFloatRange "$ARG_CFG" 0
 fi
 
 RUN_DIR="$(make_run_dir controlled-$ARG_TARGET)"
+echo "SDCPP_RUN_ID: $(basename "$RUN_DIR")"   # announced early so a cancel can scope the remote stop to this run
 SDCPP_LOGFILE="$RUN_DIR/controlled-generate.log"
 export SDCPP_LOGFILE
 
