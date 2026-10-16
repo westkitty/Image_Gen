@@ -10,6 +10,7 @@ const PromptParity = require('./public/dexdiffusion/prompt-parity.js');
 const SourceResize = require('./public/dexdiffusion/source-resize.js');
 const InpaintOptions = require('./public/dexdiffusion/inpaint-options.js');
 const ExtrasOptions = require('./public/dexdiffusion/extras-options.js');
+const XyzPlot = require('./public/dexdiffusion/xyz-plot.js');
 const M = require('./media');
 const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
@@ -3742,7 +3743,7 @@ const queueRunner = W.createQueueRunner({
   file: path.join(STATE_DIR, 'queues.json'),
   runItem: (it, prompt, settings, q) => new Promise(resolve => {
     const priv = settings.private || {};
-    const params = normalizeControlledGenerationBody({ ...settings.body, negative_prompt: priv.negative_prompt || '', prompt, operation: 'batch' });
+    const params = normalizeControlledGenerationBody({ ...settings.body, ...(it.overrides || {}), negative_prompt: typeof it.negative === 'string' ? it.negative : (priv.negative_prompt || ''), prompt, operation: 'batch' });
     params.prompt = expandWildcards(params.prompt);
     const allTargetById = allControlledTargets();
     const err = validateControlledGenerationParams(params, allTargetById);
@@ -3757,6 +3758,75 @@ const queueRunner = W.createQueueRunner({
     it.jobId = jobId;
     it.seeds = jobs[jobId].seeds || [];
   }),
+});
+
+// ---- X/Y/Z plot (P10): cells are ordinary controlled generations run through the durable queue ----------
+function xyzPlanFor(body) {
+  const settings = { ...(body.settings || {}) };
+  const prompt = String(settings.prompt || body.prompt || '');
+  const negative = String(settings.negative_prompt || settings.negativePrompt || '');
+  if (!prompt.trim()) return { status: 400, error: 'Enter a prompt first' };
+  const probe0 = normalizeControlledGenerationBody({ ...settings, prompt, negative_prompt: negative });
+  const target = allControlledTargets()[probe0.target] || CONTROLLED_TARGETS.find(t => t.id === probe0.target);
+  if (!target) return { status: 400, error: `Unknown target: ${probe0.target}` };
+  const plan = XyzPlot.buildPlan({ prompt, negative_prompt: negative }, { x: body.x, y: body.y, z: body.z }, targetCapabilities(target));
+  if (!plan.ok) return { status: 400, error: plan.errors[0], errors: plan.errors };
+  // Like A1111, a random base seed (-1) is fixed once so cells differ only by the axes — unless the user keeps random seeds.
+  const seedAxis = plan.axes.some(a => a && a.type === 'seed');
+  const fixedSeed = Number(settings.seed) >= 0 ? Number(settings.seed) : (body.keep_random_seed || seedAxis ? null : crypto.randomInt(0, W.MAX_SEED));
+  if (fixedSeed !== null) settings.seed = fixedSeed;
+  const allTargetById = allControlledTargets();
+  for (const c of plan.cells) {
+    const probe = normalizeControlledGenerationBody({ ...settings, ...c.overrides, prompt: c.prompt, negative_prompt: c.negative_prompt, quantity: 1 });
+    const err = validateControlledGenerationParams(probe, allTargetById);
+    if (err) return { status: 400, error: `Cell ${c.index + 1} (${c.title}): ${err}`, errors: [`Cell ${c.index + 1} (${c.title}): ${err}`] };
+  }
+  return { plan, settings, negative, target, fixedSeed };
+}
+app.post('/api/xyz/plan', (req, res) => {
+  const r = xyzPlanFor(req.body || {});
+  if (r.error) return res.status(r.status).json({ ok: false, error: r.error, errors: r.errors || [r.error] });
+  res.json({ ok: true, total: r.plan.total, dims: r.plan.dims, axes: r.plan.axes, fixedSeed: r.fixedSeed, cells: r.plan.cells.map(c => ({ index: c.index, ix: c.ix, iy: c.iy, iz: c.iz, title: c.title })) });
+});
+app.post('/api/xyz', (req, res) => {
+  const body = req.body || {};
+  const r = xyzPlanFor(body);
+  if (r.error) return res.status(r.status).json({ ok: false, error: r.error, errors: r.errors || [r.error] });
+  if (r.plan.total > LARGE_REQUEST_IMAGES && body.confirm_large !== true) {
+    return res.status(409).json({ error: `This plot generates ${r.plan.total} images. Confirm to continue.`, needs_confirmation: true, total: r.plan.total });
+  }
+  const settings = r.settings;
+  delete settings.prompt; delete settings.negative_prompt; delete settings.negativePrompt;
+  const probe = normalizeControlledGenerationBody({ ...settings, prompt: 'x', quantity: 1 });
+  const view = queueRunner.create({
+    entries: r.plan.cells.map(c => ({ number: String(c.index + 1), title: c.title, prompt: c.prompt, negative: c.negative_prompt, overrides: c.overrides, xyz: { ix: c.ix, iy: c.iy, iz: c.iz } })),
+    settings: { target: probe.target, quantity: 1, width: probe.width, height: probe.height, steps: probe.steps, seed: probe.seed, save_prompts: probe.save_prompts, kind: 'xyz', body: { ...settings, quantity: 1 },
+      private: { negative_prompt: r.negative, xyz: { dims: r.plan.dims, axes: r.plan.axes } } },
+  });
+  res.json({ ...queueRunner.get(view.id), xyz: { dims: r.plan.dims, axes: r.plan.axes.map(a => a && { type: a.type, label: a.label }) } });
+});
+
+// Compose finished cells into legend-annotated grids (one PNG per Z value) and register them as ordinary images.
+app.post('/api/xyz/:id/grid', (req, res) => {
+  const q = queueRunner._queues.get(req.params.id);
+  const meta = q && q.settings && q.settings.private && q.settings.private.xyz;
+  if (!q || q.settings.kind !== 'xyz') return res.status(404).json({ error: 'XYZ plot not found.' });
+  if (!meta) return res.status(409).json({ error: 'Plot labels were not kept (the console restarted or prompt saving is off); run the plot again to build a grid.' });
+  const body = req.body || {};
+  const margin = body.margin === undefined ? 0 : Number(body.margin);
+  if (!Number.isInteger(margin) || margin < 0 || margin > 200) return res.status(400).json({ error: 'margin must be an integer between 0 and 200' });
+  const cells = q.items.filter(it => it.xyz && it.status === 'DONE' && it.results && it.results[0]).map(it => {
+    const img = imageStore.resolveImage(it.results[0].imageId);
+    return img ? { path: img.path, ix: it.xyz.ix, iy: it.xyz.iy, iz: it.xyz.iz } : null;
+  }).filter(Boolean);
+  if (!cells.length) return res.status(409).json({ error: 'No finished cells yet.' });
+  const specFile = path.join(MASK_UPLOADS_DIR, `xyz-spec-${crypto.randomBytes(6).toString('hex')}.json`);
+  fs.writeFileSync(specFile, JSON.stringify({ dims: meta.dims, axes: meta.axes, cells, legend: body.legend !== false, margin }), { mode: 0o600 });
+  const jobId = createJob('xyz-grid', 'bin/sdcpp-xyz-grid.sh --spec …', { queue_id: q.id, cells: cells.length, dims: meta.dims, margin });
+  jobs[jobId].lineageOp = 'xyz-grid';
+  jobs[jobId].tempFiles = [specFile];
+  runAction(jobId, 'bin/sdcpp-xyz-grid.sh', ['--spec', specFile]);
+  res.json({ job_id: jobId, status: jobs[jobId].status, cells: cells.length, missing: q.items.length - cells.length });
 });
 
 app.post('/api/queues', (req, res) => {

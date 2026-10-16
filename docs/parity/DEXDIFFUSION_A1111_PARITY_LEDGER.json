@@ -3040,8 +3040,8 @@
    "baseline_status": "partial",
    "required_implementation": "Mirror all applicable axis options with capability-driven selection",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10 2026-10-16: public/dexdiffusion/xyz-plot.js (axes, CSV/range parser, cells, gating), server.js /api/xyz/plan + /api/xyz + /api/xyz/:id/grid (cells run through the durable queue as ordinary controlled generations, each validated by the real validator), workstation.js queue items carry overrides, bin/xyz-grid.py + sdcpp-xyz-grid.sh (legend grid, one PNG per Z), workstation-ui.js 'X/Y/Z plot' panel in Batch/Sweep; tests/xyz-plot.test.js (5), tests/xyz-grid.test.js (2, real Pillow pixels), tests/browser/xyz-plot.browser.js (3). LIVE_PROVEN: 2x2 Steps x CFG plot on sdxl-photonic through the console, four jobs seed 42, four distinct images, legend grid 1065x1066 registered as an image (lineage xyz-grid). Port from knowledge of xyz_grid.py, not diffed against the pinned commit. || P10: X axis: Seed, Steps, CFG, Sampler, Scheduler, Width, Height, Clip skip, Eta, Prompt S/R, Negative S/R.",
    "runtime_receipt": null
   },
   {
@@ -3060,8 +3060,8 @@
    "baseline_status": "partial",
    "required_implementation": "Match X choices with independent axis state",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10 2026-10-16: public/dexdiffusion/xyz-plot.js (axes, CSV/range parser, cells, gating), server.js /api/xyz/plan + /api/xyz + /api/xyz/:id/grid (cells run through the durable queue as ordinary controlled generations, each validated by the real validator), workstation.js queue items carry overrides, bin/xyz-grid.py + sdcpp-xyz-grid.sh (legend grid, one PNG per Z), workstation-ui.js 'X/Y/Z plot' panel in Batch/Sweep; tests/xyz-plot.test.js (5), tests/xyz-grid.test.js (2, real Pillow pixels), tests/browser/xyz-plot.browser.js (3). LIVE_PROVEN: 2x2 Steps x CFG plot on sdxl-photonic through the console, four jobs seed 42, four distinct images, legend grid 1065x1066 registered as an image (lineage xyz-grid). Port from knowledge of xyz_grid.py, not diffed against the pinned commit. || P10: Y axis, same catalogue.",
    "runtime_receipt": null
   },
   {
@@ -3080,8 +3080,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Add third axis and indexed result matrix",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10 2026-10-16: public/dexdiffusion/xyz-plot.js (axes, CSV/range parser, cells, gating), server.js /api/xyz/plan + /api/xyz + /api/xyz/:id/grid (cells run through the durable queue as ordinary controlled generations, each validated by the real validator), workstation.js queue items carry overrides, bin/xyz-grid.py + sdcpp-xyz-grid.sh (legend grid, one PNG per Z), workstation-ui.js 'X/Y/Z plot' panel in Batch/Sweep; tests/xyz-plot.test.js (5), tests/xyz-grid.test.js (2, real Pillow pixels), tests/browser/xyz-plot.browser.js (3). LIVE_PROVEN: 2x2 Steps x CFG plot on sdxl-photonic through the console, four jobs seed 42, four distinct images, legend grid 1065x1066 registered as an image (lineage xyz-grid). Port from knowledge of xyz_grid.py, not diffed against the pinned commit. || P10: Z axis, one grid PNG per Z value.",
    "runtime_receipt": null
   },
   {
@@ -3100,8 +3100,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Map each axis to effective backend parameter",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10 2026-10-16: public/dexdiffusion/xyz-plot.js (axes, CSV/range parser, cells, gating), server.js /api/xyz/plan + /api/xyz + /api/xyz/:id/grid (cells run through the durable queue as ordinary controlled generations, each validated by the real validator), workstation.js queue items carry overrides, bin/xyz-grid.py + sdcpp-xyz-grid.sh (legend grid, one PNG per Z), workstation-ui.js 'X/Y/Z plot' panel in Batch/Sweep; tests/xyz-plot.test.js (5), tests/xyz-grid.test.js (2, real Pillow pixels), tests/browser/xyz-plot.browser.js (3). LIVE_PROVEN: 2x2 Steps x CFG plot on sdxl-photonic through the console, four jobs seed 42, four distinct images, legend grid 1065x1066 registered as an image (lineage xyz-grid). Port from knowledge of xyz_grid.py, not diffed against the pinned commit. || P10: Seed/steps/CFG/sampler axes done; variation-seed axis BLOCKED (sd-cli has none, see P05).",
    "runtime_receipt": null
   },
   {
@@ -3120,8 +3120,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Implement literal search/replace with missing-string error",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10 2026-10-16: public/dexdiffusion/xyz-plot.js (axes, CSV/range parser, cells, gating), server.js /api/xyz/plan + /api/xyz + /api/xyz/:id/grid (cells run through the durable queue as ordinary controlled generations, each validated by the real validator), workstation.js queue items carry overrides, bin/xyz-grid.py + sdcpp-xyz-grid.sh (legend grid, one PNG per Z), workstation-ui.js 'X/Y/Z plot' panel in Batch/Sweep; tests/xyz-plot.test.js (5), tests/xyz-grid.test.js (2, real Pillow pixels), tests/browser/xyz-plot.browser.js (3). LIVE_PROVEN: 2x2 Steps x CFG plot on sdxl-photonic through the console, four jobs seed 42, four distinct images, legend grid 1065x1066 registered as an image (lineage xyz-grid). Port from knowledge of xyz_grid.py, not diffed against the pinned commit. || P10: A1111 semantics: first value is the search term, an absent term is an error before anything runs.",
    "runtime_receipt": null
   },
   {
@@ -3141,7 +3141,7 @@
    "required_implementation": "Deterministic bounded permutations and preview",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "implementation_receipt": " || P10: Prompt-order permutations not started.",
    "runtime_receipt": null
   },
   {
@@ -3161,7 +3161,7 @@
    "required_implementation": "Safe model switches with up-front cost estimate",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "implementation_receipt": " || P10: Checkpoint/VAE/Refiner axes need a model-slot swap per cell; not designed yet.",
    "runtime_receipt": null
   },
   {
@@ -3181,7 +3181,7 @@
    "required_implementation": "Route into actual generation family",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "implementation_receipt": " || P10: Hires/denoising axes: hires fields exist (P06) but are not axis targets yet.",
    "runtime_receipt": null
   },
   {
@@ -3200,8 +3200,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Gate by exact backend semantics",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P10: Noise multiplier / sigma axes: sd-cli exposes none. Eta is available as an axis.",
    "runtime_receipt": null
   },
   {
@@ -3220,8 +3220,8 @@
    "baseline_status": "partial",
    "required_implementation": "Verify output image geometry",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10 2026-10-16: public/dexdiffusion/xyz-plot.js (axes, CSV/range parser, cells, gating), server.js /api/xyz/plan + /api/xyz + /api/xyz/:id/grid (cells run through the durable queue as ordinary controlled generations, each validated by the real validator), workstation.js queue items carry overrides, bin/xyz-grid.py + sdcpp-xyz-grid.sh (legend grid, one PNG per Z), workstation-ui.js 'X/Y/Z plot' panel in Batch/Sweep; tests/xyz-plot.test.js (5), tests/xyz-grid.test.js (2, real Pillow pixels), tests/browser/xyz-plot.browser.js (3). LIVE_PROVEN: 2x2 Steps x CFG plot on sdxl-photonic through the console, four jobs seed 42, four distinct images, legend grid 1065x1066 registered as an image (lineage xyz-grid). Port from knowledge of xyz_grid.py, not diffed against the pinned commit. || P10: Width and Height axes; grid centres differing sizes in uniform tiles without resizing.",
    "runtime_receipt": null
   },
   {
@@ -3240,8 +3240,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Save grid and all cells, including failed-state metadata",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10 2026-10-16: public/dexdiffusion/xyz-plot.js (axes, CSV/range parser, cells, gating), server.js /api/xyz/plan + /api/xyz + /api/xyz/:id/grid (cells run through the durable queue as ordinary controlled generations, each validated by the real validator), workstation.js queue items carry overrides, bin/xyz-grid.py + sdcpp-xyz-grid.sh (legend grid, one PNG per Z), workstation-ui.js 'X/Y/Z plot' panel in Batch/Sweep; tests/xyz-plot.test.js (5), tests/xyz-grid.test.js (2, real Pillow pixels), tests/browser/xyz-plot.browser.js (3). LIVE_PROVEN: 2x2 Steps x CFG plot on sdxl-photonic through the console, four jobs seed 42, four distinct images, legend grid 1065x1066 registered as an image (lineage xyz-grid). Port from knowledge of xyz_grid.py, not diffed against the pinned commit. || P10: Legend on/off, margin, one grid per Z, axis-name legends. No combined all-Z grid, no hide-individual-images toggle.",
    "runtime_receipt": null
   },
   {
@@ -3260,8 +3260,8 @@
    "baseline_status": "partial",
    "required_implementation": "Match ranges and generated value choices with bounds",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10 2026-10-16: public/dexdiffusion/xyz-plot.js (axes, CSV/range parser, cells, gating), server.js /api/xyz/plan + /api/xyz + /api/xyz/:id/grid (cells run through the durable queue as ordinary controlled generations, each validated by the real validator), workstation.js queue items carry overrides, bin/xyz-grid.py + sdcpp-xyz-grid.sh (legend grid, one PNG per Z), workstation-ui.js 'X/Y/Z plot' panel in Batch/Sweep; tests/xyz-plot.test.js (5), tests/xyz-grid.test.js (2, real Pillow pixels), tests/browser/xyz-plot.browser.js (3). LIVE_PROVEN: 2x2 Steps x CFG plot on sdxl-photonic through the console, four jobs seed 42, four distinct images, legend grid 1065x1066 registered as an image (lineage xyz-grid). Port from knowledge of xyz_grid.py, not diffed against the pinned commit. || P10: CSV with quotes plus A1111 range forms \"a-b\", \"a-b (+s)\", \"a-b [n]\". No value picker.",
    "runtime_receipt": null
   },
   {
@@ -3281,7 +3281,7 @@
    "required_implementation": "Deterministic ordering plus UI controls",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "implementation_receipt": " || P10: Swap axes / execution order not started.",
    "runtime_receipt": null
   },
   {
@@ -3300,8 +3300,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Reproducible per-cell seed plan",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10 2026-10-16: public/dexdiffusion/xyz-plot.js (axes, CSV/range parser, cells, gating), server.js /api/xyz/plan + /api/xyz + /api/xyz/:id/grid (cells run through the durable queue as ordinary controlled generations, each validated by the real validator), workstation.js queue items carry overrides, bin/xyz-grid.py + sdcpp-xyz-grid.sh (legend grid, one PNG per Z), workstation-ui.js 'X/Y/Z plot' panel in Batch/Sweep; tests/xyz-plot.test.js (5), tests/xyz-grid.test.js (2, real Pillow pixels), tests/browser/xyz-plot.browser.js (3). LIVE_PROVEN: 2x2 Steps x CFG plot on sdxl-photonic through the console, four jobs seed 42, four distinct images, legend grid 1065x1066 registered as an image (lineage xyz-grid). Port from knowledge of xyz_grid.py, not diffed against the pinned commit. || P10: A random base seed is fixed once; \"keep random seeds\" lets each cell draw its own. Per-axis vary-seeds not provided.",
    "runtime_receipt": null
   },
   {
@@ -3320,8 +3320,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Extend to model change and multi-pass size",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P10 2026-10-16: public/dexdiffusion/xyz-plot.js (axes, CSV/range parser, cells, gating), server.js /api/xyz/plan + /api/xyz + /api/xyz/:id/grid (cells run through the durable queue as ordinary controlled generations, each validated by the real validator), workstation.js queue items carry overrides, bin/xyz-grid.py + sdcpp-xyz-grid.sh (legend grid, one PNG per Z), workstation-ui.js 'X/Y/Z plot' panel in Batch/Sweep; tests/xyz-plot.test.js (5), tests/xyz-grid.test.js (2, real Pillow pixels), tests/browser/xyz-plot.browser.js (3). LIVE_PROVEN: 2x2 Steps x CFG plot on sdxl-photonic through the console, four jobs seed 42, four distinct images, legend grid 1065x1066 registered as an image (lineage xyz-grid). Port from knowledge of xyz_grid.py, not diffed against the pinned commit. || P10: 64-cell cap, per-cell validation before start, large-request confirmation over 12 images. No time/VRAM estimate.",
    "runtime_receipt": null
   },
   {

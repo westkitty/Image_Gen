@@ -63,7 +63,7 @@
       editSourceId: saved.editSourceId || null, editOriginalId: saved.editOriginalId || null, editSource: null, editResults: [], editStatus: 'idle', prep: 'none',
       brush: saved.brush || { mode: 'paint', size: 40 }, maskZoom: 1, maskInfo: null,
       out: { left: 0, right: 128, top: 0, bottom: 0, strength: 0.85 }, outStatus: 'idle',
-      enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2, extras: { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5 },
+      enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2, xyz: { x: { type: 'steps', values: '10, 20' }, y: { type: 'cfg_scale', values: '5, 7' }, z: { type: 'none', values: '' }, keepRandom: false, legend: true, margin: 0, plan: null, error: null, grid: null }, extras: { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5 },
       lib: { filter: 'all', items: [], total: 0, selectedId: null, selected: null, loading: false },
       compareIds: Array.isArray(saved.compareIds) ? saved.compareIds.slice(0, 4) : [], compareItems: [], compareZoom: 1,
       doctor: null, doctorBusy: false, activeJobId: saved.activeJobId || null, recovered: false,
@@ -594,7 +594,7 @@
           it.error ? h('div', { style: { color: tone.bad, fontSize: 11 } }, it.error) : null,
           it.results && it.results.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(72px,96px))', gap: 5 } },
             ...it.results.filter(r => r.imageUrl).map(r => h('div', { key: r.imageId }, thumb(base + r.imageUrl, false, () => openFull(this, r.imageId, base + r.imageUrl), r.imageId, String(r.seed))))) : null)))) : null;
-    return h('div', { style: css.panel },
+    const numbered = h('div', { style: css.panel },
       h('div', { style: Object.assign({}, css.title, { marginBottom: 4 }) }, 'Numbered prompt batch'),
       h('div', { style: Object.assign({}, css.muted, { marginBottom: 8 }) }, 'Uses the Create settings: ' + ((spec && spec.label) || s.target) + ' · ' + s.width + '×' + s.height + ' · ' + s.steps + ' steps · seed ' + (Number(s.seed) >= 0 ? s.seed : 'random') + '. Titles and numbers are not sent as prompt text.'),
       h('textarea', { rows: 12, value: ws.batchText, onChange: e => this.parseBatch(e.target.value), placeholder: '1. First title\n\nFirst prompt…\n\n2. Second title\n\nSecond prompt…',
@@ -606,6 +606,71 @@
         btn('Clear', () => this.wsSet({ batchText: '', parse: null, preflight: null }), '#94a3b8')),
       parsePanel, pfPanel, queuePanel,
       ws.queueLost ? h('div', { style: { color: tone.warn, fontSize: 12 } }, ws.queueLost) : null);
+    return h('div', { style: { display: 'grid', gap: 10 } }, this.buildXyzPanel(), numbered);
+  };
+
+  // ── X/Y/Z plot (A1111 script): axes + values -> validated cells -> durable queue -> legend grid ──
+  P._xyzBody = function () {
+    const x = this._ws().xyz;
+    return { settings: this._createBody({ quantity: 1 }), x: x.x, y: x.y, z: x.z, keep_random_seed: !!x.keepRandom, confirm_large: !!this._ws().confirmLarge };
+  };
+  P.xyzCheck = async function () {
+    const r = await this._api('/api/xyz/plan', this._xyzBody());
+    this.wsSet({ xyz: Object.assign({}, this._ws().xyz, { plan: r.ok ? r.data : null, error: r.ok ? null : (r.data.error || 'Plot rejected') }) });
+    return r.ok;
+  };
+  P.xyzStart = async function () {
+    if (!(await this.xyzCheck())) return;
+    const r = await this._api('/api/xyz', this._xyzBody());
+    if (!r.ok) { this.wsSet({ xyz: Object.assign({}, this._ws().xyz, { error: r.data.error || 'Plot rejected', needsConfirm: !!r.data.needs_confirmation }) }); return; }
+    this.wsSet({ queueId: r.data.id, queue: r.data, xyz: Object.assign({}, this._ws().xyz, { error: null, queueId: r.data.id, grid: null }) });
+    this._pollQueue();
+  };
+  P.xyzGrid = async function () {
+    const x = this._ws().xyz;
+    this.wsSet({ xyz: Object.assign({}, x, { gridStatus: 'running' }) });
+    const r = await this._api('/api/xyz/' + x.queueId + '/grid', { legend: x.legend, margin: +x.margin || 0 });
+    if (!r.ok) { this.wsSet({ xyz: Object.assign({}, this._ws().xyz, { gridStatus: 'error', error: r.data.error }) }); return; }
+    const job = await this._waitJob(r.data.job_id);
+    const res = D.jobResults(job);
+    this.wsSet({ xyz: Object.assign({}, this._ws().xyz, { gridStatus: this._jobOk(job.status) && res.length ? 'done' : 'error', grid: res, error: this._jobOk(job.status) ? null : this._failText(job) }) });
+  };
+  P.buildXyzPanel = function () {
+    const ws = this._ws(), x = ws.xyz, X = window.DexXyz, base = this.state.backendUrl, q = ws.queue;
+    const setX = patch => this.wsSet({ xyz: Object.assign({}, this._ws().xyz, patch, { plan: null }) });
+    const setAxis = (k, patch) => setX({ [k]: Object.assign({}, this._ws().xyz[k], patch) });
+    const axisRow = k => h('div', { key: k, style: css.row },
+      h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, k.toUpperCase() + ' axis',
+        h('select', { value: x[k].type, style: css.input, 'data-xyz-field': k + '-type', 'aria-label': k.toUpperCase() + ' axis type', onChange: e => setAxis(k, { type: e.target.value }) },
+          h('option', { value: 'none' }, 'Nothing'), ...Object.keys(X.AXES).map(t => h('option', { key: t, value: t }, X.AXES[t].label)))),
+      x[k].type !== 'none' ? h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1', flex: 1, minWidth: 160 } }, k.toUpperCase() + ' values',
+        h('input', { type: 'text', value: x[k].values, style: css.input, 'data-xyz-field': k + '-values', 'aria-label': k.toUpperCase() + ' axis values', placeholder: X.AXES[x[k].type].kind === 'sr' ? 'search, replacement 1, replacement 2' : '10, 20 or 10-30 (+10) or 1-5 [3]', onChange: e => setAxis(k, { values: e.target.value }) })) : null);
+    const running = q && q.settings && q.settings.kind === 'xyz' && q.status === 'RUNNING';
+    const isXyz = q && q.settings && q.settings.kind === 'xyz';
+    const plan = x.plan;
+    return h('div', { style: css.panel, 'data-xyz-panel': 'true' },
+      h('div', { style: Object.assign({}, css.title, { marginBottom: 4 }) }, 'X/Y/Z plot'),
+      h('div', { style: Object.assign({}, css.muted, { marginBottom: 8 }) }, 'Runs the Create settings once per cell, changing only the chosen axes (A1111 script). A random seed is fixed once so cells differ only by the axes.'),
+      h('div', { style: { display: 'grid', gap: 8 } }, axisRow('x'), axisRow('y'), axisRow('z')),
+      h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1', margin: '6px 0' }) }, h('input', { type: 'checkbox', checked: !!x.keepRandom, 'data-xyz-field': 'keep-random', onChange: e => setX({ keepRandom: e.target.checked }) }), 'Keep random seeds (every cell draws its own seed)'),
+      h('div', { style: css.muted, 'data-xyz-field': 'unavailable' }, 'Not available with the installed engines: Checkpoint / VAE / Refiner axes (a model-slot swap per cell), prompt-order permutations, [a:b:n] scheduling, Hires and denoising axes, noise/sigma axes.'),
+      h('div', { style: Object.assign({}, css.row, { margin: '8px 0' }) },
+        btn('Check plot', () => this.xyzCheck(), '#38bdf8'),
+        btn(running ? 'Plot running…' : 'Start plot', () => this.xyzStart(), '#65d66e', { disabled: !!running })),
+      x.error ? h('div', { style: { color: tone.bad, fontSize: 12 }, 'data-xyz-field': 'error' }, x.error) : null,
+      x.needsConfirm ? h('label', { style: Object.assign({}, css.row, { color: tone.warn, fontSize: 12 }) }, h('input', { type: 'checkbox', checked: !!ws.confirmLarge, onChange: e => this.wsSet({ confirmLarge: e.target.checked }) }), 'Confirm this large plot, then press Start again') : null,
+      plan ? h('div', { style: { display: 'grid', gap: 3 }, 'data-xyz-field': 'plan' },
+        h('div', { style: { fontWeight: 800, color: tone.ok } }, plan.total + ' cells · ' + plan.dims.join(' × ') + (plan.fixedSeed != null ? ' · seed ' + plan.fixedSeed : ' · random seeds')),
+        ...plan.cells.slice(0, 8).map(c => h('div', { key: c.index, style: css.mono }, (c.index + 1) + '. ' + c.title)),
+        plan.cells.length > 8 ? h('div', { style: css.muted }, '… ' + (plan.cells.length - 8) + ' more') : null) : null,
+      isXyz ? h('div', { style: { display: 'grid', gap: 6, marginTop: 6 }, 'data-xyz-field': 'progress' },
+        h('div', { style: { fontWeight: 800, color: stateTone(q.status) } }, 'Plot ' + q.status + ' · ' + q.complete + ' / ' + q.total + ' cells' + (q.failed ? ' · ' + q.failed + ' failed' : '')),
+        h('div', { style: css.row },
+          h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1' }) }, h('input', { type: 'checkbox', checked: x.legend !== false, 'data-xyz-field': 'legend', onChange: e => this.wsSet({ xyz: Object.assign({}, this._ws().xyz, { legend: e.target.checked }) }) }), 'Legend'),
+          h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, 'Margin px', numInput(x.margin, v => this.wsSet({ xyz: Object.assign({}, this._ws().xyz, { margin: v }) }), { min: '0', max: '200', step: '2' })),
+          btn(x.gridStatus === 'running' ? 'Building grid…' : 'Build grid', () => this.xyzGrid(), '#f59e0b', { disabled: !q.complete || x.gridStatus === 'running' }))) : null,
+      x.grid && x.grid.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 8, marginTop: 8 }, 'data-xyz-field': 'grid' },
+        ...x.grid.map(r => h('div', { key: r.imageId }, thumb(base + r.imageUrl, false, () => openFull(this, r.imageId, base + r.imageUrl), r.imageId, 'XYZ grid ' + r.width + '×' + r.height)))) : null);
   };
 
   // ── Doctor ──────────────────────────────────────────────────────

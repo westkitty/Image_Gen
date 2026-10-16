@@ -223,7 +223,7 @@ function createQueueRunner({ runItem, onChange = () => {}, file = null }) {
       stopAfterCurrent: q.stopAfterCurrent, total: q.items.length, restored: !!q.restored,
       promptsMissing: q.items.some(it => ['QUEUED', 'INTERRUPTED', 'FAILED'].includes(it.status) && typeof it.prompt !== 'string'),
       complete: counts.DONE, failed: counts.FAILED, interrupted: counts.INTERRUPTED, queued: counts.QUEUED, counts,
-      items: q.items.map(({ prompt: _p, ...it }) => it),
+      items: q.items.map(({ prompt: _p, negative: _n, ...it }) => it),
     };
   }
 
@@ -235,7 +235,7 @@ function createQueueRunner({ runItem, onChange = () => {}, file = null }) {
       if (!keep) delete settings.private;
       return {
         id: q.id, status: q.status, createdAt: q.createdAt, updatedAt: Date.now(), settings, stopAfterCurrent: q.stopAfterCurrent,
-        items: q.items.map(({ prompt, ...it }) => (keep && typeof prompt === 'string' ? { ...it, prompt } : it)),
+        items: q.items.map(({ prompt, negative, ...it }) => (keep && typeof prompt === 'string' ? { ...it, prompt, negative } : it)),
       };
     });
     atomicWriteJson(file, { schema: 'dexdiffusion.queues.v1', queues: out });
@@ -266,6 +266,8 @@ function createQueueRunner({ runItem, onChange = () => {}, file = null }) {
       items: entries.map((e, i) => ({
         queueIndex: i, number: e.number, title: e.title, target: (settings && settings.target) || null,
         status: 'QUEUED', seeds: [], results: [], error: null, gate: null, jobId: null, attempts: 0, prompt: e.prompt,
+        // XYZ cells (P10): per-cell numeric/enum overrides and plot coordinates; a replaced negative prompt is private like the prompt.
+        ...(e.overrides ? { overrides: e.overrides } : {}), ...(e.xyz ? { xyz: e.xyz } : {}), ...(typeof e.negative === 'string' ? { negative: e.negative } : {}),
       })),
     };
     queues.set(id, q);

@@ -94,7 +94,13 @@ Added (UI Enhance 'Extras' card -> `extras` on `/api/actions/upscale` -> `sdcpp-
 Evidence: unit 4; browser 4; two live console jobs PASS (1024x768 crop with a 0.3 Nearest blend; 1.5x bicubic = 768x768). Test outputs remain in `~/images_made` (`*-extras-2242e627.png`, `*-extras-e2fb545b.png`).
 Not done: batch/folder Extras (EX-02/03), Real-ESRGAN as a selectable Extras upscaler with tile/overlap (EX-11/12), SD Upscale (EX-13..15), operation order (EX-21), output format/quality (EX-24). Port is from knowledge of `postprocessing_upscale.py`, not diffed against the pinned commit.
 
+## P10 Scripts and XYZ plot (2026-10-16)
+Audit first: the only XYZ code was the legacy `/api/actions/xyz-plot` (SD1.5 sd-server path, six axis types, two axes, no UI in the Concept A shell) and the numbered-prompt Batch queue (kept; it already covers Prompts-from-textbox in a different, numbered form).
+Added: X/Y/Z plot in Batch/Sweep. Cells are ordinary controlled generations run through the existing durable queue (per-item overrides), each validated up front by the real validator, with axes the target ignores refused instead of producing identical images. Axes: Seed, Steps, CFG, Sampler, Scheduler, Width, Height, Clip skip, Eta, Prompt S/R, Negative prompt S/R. A1111 CSV/range syntax, fixed-once random seed, 64-cell cap, large-plot confirmation, legend grid per Z value registered as an image.
+Evidence: unit 7; browser 3; live 2x2 Steps x CFG on sdxl-photonic (4 distinct images, one seed, grid 1065x1066). Live test outputs remain in `~/images_made`.
+Not done: Checkpoint/VAE/Refiner axes, prompt-order permutations, Hires/denoising axes, swap axes, combined all-Z grid, per-axis vary seeds, value picker (SC-06..09, 13); Prompt Matrix, Prompts from file dry run, Loopback, Img2img Alternative, Custom Code, script settings persistence (SC-16..25). Legacy xyz-plot endpoint is untouched.
+
 ## Next eligible slice
-1. P10 scripts/XYZ (P09 leftovers: batch Extras, Real-ESRGAN inside Extras, SD Upscale). Open design decisions: P07 batch img2img, P08 Poor man's/MK2 outpainting, P04 stepwise conditioning adapter.
+1. P11 models/resources (leftovers: P10 SC-16..25 Prompt Matrix / Loopback etc.; P09 batch Extras, Real-ESRGAN inside Extras, SD Upscale). Open design decisions: P07 batch img2img, P08 Poor man's/MK2 outpainting, P04 stepwise conditioning adapter.
 2. P01 completion: obtain upstream source at the pinned commit and enumerate programmatically.
 3. P04 onward per the blueprint; P05–P15 are not started.
