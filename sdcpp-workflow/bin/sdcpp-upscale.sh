@@ -23,6 +23,7 @@ MAX_OUTPUT_SIDE=4096                     # output image max side length
 SCALE=2
 RESAMPLE=lanczos
 OVERWRITE=0
+EXTRAS_JSON=""
 INPUT_PATH=""
 RUN_ID=""
 IMAGE_REL=""
@@ -46,6 +47,9 @@ while [ $# -gt 0 ]; do
       RESAMPLE="$2"; shift 2 ;;
     --overwrite)
       OVERWRITE=1; shift ;;
+    --extras-json)
+      [ $# -ge 2 ] || fail "args" "--extras-json requires a value"
+      EXTRAS_JSON="$2"; shift 2 ;;
     *)
       fail "args" "Unknown argument: $1" ;;
   esac
@@ -92,7 +96,7 @@ fi
 # ---- validate scale ----------------------------------------------------------
 case "$SCALE" in
   2|3|4) ;;
-  *) fail "scale" "Scale must be 2, 3, or 4 (got: $SCALE)" ;;
+  *) [ -n "$EXTRAS_JSON" ] || fail "scale" "Scale must be 2, 3, or 4 (got: $SCALE)" ;;
 esac
 
 # ---- validate resample -------------------------------------------------------
@@ -147,6 +151,9 @@ mkdir -p "$UPSCALE_DIR"
 BASE_NAME="$(basename "$INPUT_FULL" .png)"
 BASE_NAME="$(basename "$BASE_NAME" .PNG)"
 OUT_NAME="${BASE_NAME}-upscale-${SCALE}x-${RESAMPLE}.png"
+if [ -n "$EXTRAS_JSON" ]; then
+  OUT_NAME="${BASE_NAME}-extras-$(printf '%s' "$EXTRAS_JSON" | shasum -a 256 | cut -c1-8).png"
+fi
 OUT_FULL="$UPSCALE_DIR/$OUT_NAME"
 
 if [ "$OVERWRITE" = "0" ] && [ -f "$OUT_FULL" ]; then
@@ -156,6 +163,18 @@ fi
 CREATED_AT="$(iso_now)"
 
 log "Upscaling $INPUT_FULL -> $OUT_FULL (scale=${SCALE}x resample=$RESAMPLE)"
+
+# ---- A1111 Extras (P09): geometry, upscaler 1/2 blend and crop live in extras-resize.py -----------
+if [ -n "$EXTRAS_JSON" ]; then
+  EX_OUT="$(python3 "$HERE/extras-resize.py" "$INPUT_FULL" "$OUT_FULL" "$EXTRAS_JSON")" || fail "extras" "extras-resize.py failed"
+  [ -s "$OUT_FULL" ] || fail "output-missing" "Output file not written: $OUT_FULL"
+  echo "UPSCALED_IMAGE: $RUN_ID/upscaled/$OUT_NAME"
+  echo "EXTRAS_RESULT: $EX_OUT"
+  pass_banner "Extras complete.
+Source: $INPUT_FULL
+Output: $OUT_FULL"
+  exit 0
+fi
 
 # ---- run Pillow upscale via embedded Python ----------------------------------
 python3 - \

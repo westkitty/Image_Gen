@@ -63,7 +63,7 @@
       editSourceId: saved.editSourceId || null, editOriginalId: saved.editOriginalId || null, editSource: null, editResults: [], editStatus: 'idle', prep: 'none',
       brush: saved.brush || { mode: 'paint', size: 40 }, maskZoom: 1, maskInfo: null,
       out: { left: 0, right: 128, top: 0, bottom: 0, strength: 0.85 }, outStatus: 'idle',
-      enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2,
+      enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2, extras: { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5 },
       lib: { filter: 'all', items: [], total: 0, selectedId: null, selected: null, loading: false },
       compareIds: Array.isArray(saved.compareIds) ? saved.compareIds.slice(0, 4) : [], compareItems: [], compareZoom: 1,
       doctor: null, doctorBusy: false, activeJobId: saved.activeJobId || null, recovered: false,
@@ -364,6 +364,31 @@
       this.toast(method + ' complete', '#65d66e');
     } else this.wsSet({ enhStatus: 'error', enhError: this._failText(job) });
   };
+  // A1111 Extras: scale-by / scale-to (+crop), upscaler 1 and 2 with visibility. Face restoration is shown as unavailable.
+  P._extrasCard = function (src) {
+    const X = window.DexExtras, ex = this._ws().extras;
+    const setEx = patch => this.wsSet({ extras: Object.assign({}, this._ws().extras, patch) });
+    const lbl = (t, el) => h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, t, el);
+    const num = (key, t, attrs) => lbl(t, h('input', Object.assign({ type: 'number', value: String(ex[key]), style: css.input, 'data-extras-field': key, onChange: e => setEx({ [key]: e.target.value }) }, attrs)));
+    const sel = (key, t) => lbl(t, h('select', { value: ex[key], style: css.input, 'data-extras-field': key, 'aria-label': t, onChange: e => setEx({ [key]: e.target.value }) },
+      ...X.UPSCALERS.map(u => h('option', { value: u }, u === 'none' ? 'None' : u[0].toUpperCase() + u.slice(1)))));
+    const chk = X.normalizeExtras(ex);
+    const plan = chk.options ? X.plan(src.width, src.height, chk.options) : null;
+    const tooBig = chk.options ? X.validateForSource(src.width, src.height, chk.options) : null;
+    const err = chk.error || tooBig;
+    return h('div', { 'data-extras-card': 'true', style: { border: '1px solid rgba(148,163,184,.14)', borderRadius: 8, padding: 10, display: 'grid', gap: 6, gridColumn: '1 / -1' } },
+      h('div', { style: { fontWeight: 800, color: '#e2e8f0', fontSize: 13 } }, 'Extras · scale, crop and blend'),
+      h('div', { style: css.muted }, 'A1111 Extras resize: deterministic Pillow resampling on the MacBook. Adds no detail.'),
+      h('div', { style: css.row },
+        lbl('Resize', h('select', { value: ex.mode, style: css.input, 'data-extras-field': 'mode', 'aria-label': 'Extras resize mode', onChange: e => setEx({ mode: e.target.value }) }, h('option', { value: 'by' }, 'Scale by'), h('option', { value: 'to' }, 'Scale to size'))),
+        ex.mode === 'by' ? num('scale', 'Factor (1–8)', { min: '1', max: '8', step: '0.25' }) : [num('width', 'Width', { min: '64', max: '4096', step: '8' }), num('height', 'Height', { min: '64', max: '4096', step: '8' }),
+          lbl('Crop to fit', h('input', { type: 'checkbox', checked: !!ex.crop, 'data-extras-field': 'crop', 'aria-label': 'Crop to fit', onChange: e => setEx({ crop: e.target.checked }) }))]),
+      h('div', { style: css.row }, sel('upscaler', 'Upscaler 1'), sel('upscaler2', 'Upscaler 2'),
+        ex.upscaler2 !== 'none' ? num('visibility', 'Upscaler 2 visibility (0–1)', { min: '0', max: '1', step: '0.05' }) : null),
+      h('div', { style: css.muted, 'data-extras-field': 'face-note' }, 'GFPGAN / CodeFormer face restoration and model upscalers other than Real-ESRGAN are not available: no weights or PyTorch runtime are installed.'),
+      h('div', { style: css.mono, 'data-extras-field': 'preview' }, err ? err : ('method: extras · ' + src.width + '×' + src.height + ' → ' + plan.out.w + '×' + plan.out.h)),
+      btn('Run Extras', () => { if (!err) this._runEnhance('/api/actions/upscale', { image_id: src.id, extras: chk.options }, 'Extras'); }, err ? '#64748b' : '#f59e0b'));
+  };
   P.buildEnhanceWorkbench = function () {
     const ws = this._ws(), src = ws.enhSource, base = this.state.backendUrl;
     if (!src) return h('div', { style: css.panel }, h('div', { style: css.title }, 'Enhance'), h('div', { style: css.muted }, 'Choose Enhance on any result or Library image to preselect it here.'));
@@ -382,6 +407,7 @@
         card('Resize · Lanczos', 'deterministic resampling (not AI)', 'Pixel resampling on the MacBook. Adds no detail.', (src.width * sc) + '×' + (src.height * sc),
           h('div', { style: css.row }, ...[2, 3, 4].map(k => btn(k + '×', () => this.wsSet({ lanczosScale: k }), k === sc ? '#f59e0b' : '#94a3b8')),
             btn('Run Lanczos', () => this._runEnhance('/api/actions/upscale', { image_id: src.id, scale: sc, resample: 'lanczos' }, 'Lanczos'), '#f59e0b')), true),
+        this._extrasCard(src),
         card('Real-ESRGAN x4', 'AI super-resolution (RealESRGAN_x4plus on Big Mac)', 'Model-based upscaling; sharpens and invents fine texture.', (src.width * 4) + '×' + (src.height * 4),
           this._gate('realEsrgan') ? btn('Run Real-ESRGAN', () => this._runEnhance('/api/actions/upscale-esrgan', { image_id: src.id }, 'Real-ESRGAN'), '#f59e0b') : h('div', { style: css.muted }, 'Unavailable (gate closed).'), this._gate('realEsrgan')),
         card('High-Res Refine', 'diffusion second pass (sd-cli --hires, SDCPP)', 'A generation-time second pass: it re-renders the image at higher resolution with denoising. It needs the original prompt and seed, so it runs from Create.', '×1.1–2.0',

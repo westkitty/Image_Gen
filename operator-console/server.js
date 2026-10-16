@@ -9,6 +9,7 @@ const EC = require('./public/dexdiffusion/edit-core.js');
 const PromptParity = require('./public/dexdiffusion/prompt-parity.js');
 const SourceResize = require('./public/dexdiffusion/source-resize.js');
 const InpaintOptions = require('./public/dexdiffusion/inpaint-options.js');
+const ExtrasOptions = require('./public/dexdiffusion/extras-options.js');
 const M = require('./media');
 const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
@@ -3066,6 +3067,23 @@ app.post('/api/actions/upscale', (req, res) => {
   const relPath = path.relative(RUNS_DIR, fullPath);
   if (relPath.startsWith('..') || path.isAbsolute(relPath)) {
     return res.status(403).json({ error: 'Path resolves outside runs directory' });
+  }
+
+  // P09 A1111 Extras: resize-to / crop / second upscaler with visibility blend, run by extras-resize.py.
+  if (body.extras !== undefined) {
+    const ex = ExtrasOptions.normalizeExtras(body.extras);
+    if (ex.error) return res.status(400).json({ error: ex.error, gate: 'extras' });
+    const canonSrc = upscaleSource.imageId ? imageStore.resolveImage(upscaleSource.imageId) : null;
+    const srcDims = (canonSrc && pngSize(canonSrc.path)) || pngSize(path.resolve(RUNS_DIR, upscalePath));
+    if (!srcDims) return res.status(400).json({ error: 'Could not read the source image size', gate: 'extras' });
+    const tooBig = ExtrasOptions.validateForSource(srcDims.width, srcDims.height, ex.options);
+    if (tooBig) return res.status(400).json({ error: tooBig, gate: 'extras' });
+    const plan = ExtrasOptions.plan(srcDims.width, srcDims.height, ex.options);
+    const exJob = createJob('upscale', `bin/sdcpp-upscale.sh --path ${upscalePath} --extras-json …`, { path: upscalePath, extras: ex.options, result_size: `${plan.out.w}x${plan.out.h}` });
+    jobs[exJob].sourceImageId = upscaleSource.imageId || null;
+    jobs[exJob].lineageOp = 'extras';
+    runAction(exJob, 'bin/sdcpp-upscale.sh', ['--path', upscalePath, '--extras-json', JSON.stringify(ex.options)]);
+    return res.json({ job_id: exJob, status: jobs[exJob].status, plan: { stage: plan.stage, out: plan.out } });
   }
 
   const scale = body.scale !== undefined ? Number(body.scale) : 2;

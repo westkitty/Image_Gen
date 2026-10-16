@@ -88,7 +88,13 @@ Evidence: unit 6 (JS==Python crop-region parity on 60 random cases; real Pillow 
 Caveat: crop-region arithmetic and `fill` were ported from knowledge of upstream `modules/masking.py` / `images.py`; they have not been diffed against the pinned commit (no network access this session) — flagged in each row.
 Not done: A1111 Poor man's outpainting and Outpainting MK2 (IP-14/15; the existing canvas-extension outpaint is a different algorithm and is not claimed as equivalent), mask overlay transparency (IP-05), save mask / composite (IP-11).
 
+## P09 Extras and postprocessing (2026-10-16)
+Installed-tool audit first: Big Mac has `RealESRGAN_x4plus.pth` only (already wired as `/api/actions/upscale-esrgan`); neither machine has PyTorch, GFPGAN, CodeFormer, SwinIR, LDSR or ScuNET. Face restoration and other model upscalers are therefore BLOCKED (EX-16..20, EX-23, GN-14) and requests naming them are rejected with that reason, never faked.
+Added (UI Enhance 'Extras' card -> `extras` on `/api/actions/upscale` -> `sdcpp-upscale.sh --extras-json` -> `bin/extras-resize.py`): scale by 1-8 or scale to W x H (covering scale, optional centred crop-to-fit), upscaler 1 and 2 from the Pillow resamplers with a visibility blend, 4096 px output limit, lineage op `extras`.
+Evidence: unit 4; browser 4; two live console jobs PASS (1024x768 crop with a 0.3 Nearest blend; 1.5x bicubic = 768x768). Test outputs remain in `~/images_made` (`*-extras-2242e627.png`, `*-extras-e2fb545b.png`).
+Not done: batch/folder Extras (EX-02/03), Real-ESRGAN as a selectable Extras upscaler with tile/overlap (EX-11/12), SD Upscale (EX-13..15), operation order (EX-21), output format/quality (EX-24). Port is from knowledge of `postprocessing_upscale.py`, not diffed against the pinned commit.
+
 ## Next eligible slice
-1. P09 Extras and postprocessing (check installed upscalers/face restoration first); then P10 scripts/XYZ. Open design decisions: P07 batch img2img, P08 Poor man's/MK2 outpainting, P04 stepwise conditioning adapter.
+1. P10 scripts/XYZ (P09 leftovers: batch Extras, Real-ESRGAN inside Extras, SD Upscale). Open design decisions: P07 batch img2img, P08 Poor man's/MK2 outpainting, P04 stepwise conditioning adapter.
 2. P01 completion: obtain upstream source at the pinned commit and enumerate programmatically.
 3. P04 onward per the blueprint; P05–P15 are not started.

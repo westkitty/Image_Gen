@@ -743,8 +743,8 @@
    "baseline_status": "accepted but unwired",
    "required_implementation": "Route to compatible proved postprocess pipeline",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PARTIAL",
-   "implementation_receipt": "P02 2026-10-16: controlled-args.js normalizeSamplingFields/validateSamplingFields/buildControlledArgs; server.js normalize+validate+meta; sdcpp-controlled-generate.sh --sampler/--clip-skip/--tiling. Accepted field now REJECTED with a precise message instead of ignored; real GFPGAN/CodeFormer face restoration is P09.",
+   "completion_status": "BLOCKED",
+   "implementation_receipt": "P02 2026-10-16: controlled-args.js normalizeSamplingFields/validateSamplingFields/buildControlledArgs; server.js normalize+validate+meta; sdcpp-controlled-generate.sh --sampler/--clip-skip/--tiling. Accepted field now REJECTED with a precise message instead of ignored; real GFPGAN/CodeFormer face restoration is P09. || P09: Generation-time face restoration needs EX-16/EX-18 weights; rejected with that reason.",
    "runtime_receipt": null
   },
   {
@@ -2560,8 +2560,8 @@
    "baseline_status": "partial",
    "required_implementation": "Consolidate into complete Extras workspace without duplicating store",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P09 2026-10-16: public/dexdiffusion/extras-options.js (validation + plan), sdcpp-workflow/bin/extras-resize.py (Pillow), sdcpp-upscale.sh --extras-json, server.js /api/actions/upscale `extras`, workstation-ui.js Enhance 'Extras' card; tests/extras-options.test.js (4, JS plan == Python output size, real blend pixels), tests/browser/extras.browser.js (4). Live (console, canonical inpaint image 512x512): to 1024x768 crop + Lanczos/Nearest 0.3 blend -> 1024x768 PASS; by 1.5 bicubic -> 768x768 PASS. Port from knowledge of postprocessing_upscale.py, not diffed against the pinned commit. || P09: Single image via Enhance only.",
    "runtime_receipt": null
   },
   {
@@ -2581,7 +2581,7 @@
    "required_implementation": "Accept ordered images, per-item failures and partial outputs",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "implementation_receipt": " || P09: Not started: batch upload.",
    "runtime_receipt": null
   },
   {
@@ -2601,7 +2601,7 @@
    "required_implementation": "Authorize input path; prevent traversal; never escape canonical store",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "implementation_receipt": " || P09: Not started: directory input.",
    "runtime_receipt": null
   },
   {
@@ -2620,8 +2620,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Provide continuous validated scale with bounds",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P09 2026-10-16: public/dexdiffusion/extras-options.js (validation + plan), sdcpp-workflow/bin/extras-resize.py (Pillow), sdcpp-upscale.sh --extras-json, server.js /api/actions/upscale `extras`, workstation-ui.js Enhance 'Extras' card; tests/extras-options.test.js (4, JS plan == Python output size, real blend pixels), tests/browser/extras.browser.js (4). Live (console, canonical inpaint image 512x512): to 1024x768 crop + Lanczos/Nearest 0.3 blend -> 1024x768 PASS; by 1.5 bicubic -> 768x768 PASS. Port from knowledge of postprocessing_upscale.py, not diffed against the pinned commit. || P09: Scale by 1-8 (output limit 4096 px).",
    "runtime_receipt": null
   },
   {
@@ -2640,8 +2640,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Add target pixel dimensions and crop mode",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P09 2026-10-16: public/dexdiffusion/extras-options.js (validation + plan), sdcpp-workflow/bin/extras-resize.py (Pillow), sdcpp-upscale.sh --extras-json, server.js /api/actions/upscale `extras`, workstation-ui.js Enhance 'Extras' card; tests/extras-options.test.js (4, JS plan == Python output size, real blend pixels), tests/browser/extras.browser.js (4). Live (console, canonical inpaint image 512x512): to 1024x768 crop + Lanczos/Nearest 0.3 blend -> 1024x768 PASS; by 1.5 bicubic -> 768x768 PASS. Port from knowledge of postprocessing_upscale.py, not diffed against the pinned commit. || P09: Scale to W x H, covering scale as upstream.",
    "runtime_receipt": null
   },
   {
@@ -2660,8 +2660,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Cap output dimension before scheduling",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P09 2026-10-16: public/dexdiffusion/extras-options.js (validation + plan), sdcpp-workflow/bin/extras-resize.py (Pillow), sdcpp-upscale.sh --extras-json, server.js /api/actions/upscale `extras`, workstation-ui.js Enhance 'Extras' card; tests/extras-options.test.js (4, JS plan == Python output size, real blend pixels), tests/browser/extras.browser.js (4). Live (console, canonical inpaint image 512x512): to 1024x768 crop + Lanczos/Nearest 0.3 blend -> 1024x768 PASS; by 1.5 bicubic -> 768x768 PASS. Port from knowledge of postprocessing_upscale.py, not diffed against the pinned commit. || P09: Hard 4096 px side limit enforced before the job starts.",
    "runtime_receipt": null
   },
   {
@@ -2680,8 +2680,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Add A1111 crop policy",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P09 2026-10-16: public/dexdiffusion/extras-options.js (validation + plan), sdcpp-workflow/bin/extras-resize.py (Pillow), sdcpp-upscale.sh --extras-json, server.js /api/actions/upscale `extras`, workstation-ui.js Enhance 'Extras' card; tests/extras-options.test.js (4, JS plan == Python output size, real blend pixels), tests/browser/extras.browser.js (4). Live (console, canonical inpaint image 512x512): to 1024x768 crop + Lanczos/Nearest 0.3 blend -> 1024x768 PASS; by 1.5 bicubic -> 768x768 PASS. Port from knowledge of postprocessing_upscale.py, not diffed against the pinned commit. || P09: Centred paste onto the target canvas.",
    "runtime_receipt": null
   },
   {
@@ -2700,8 +2700,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Discovery-driven list; prove selected worker",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P09 2026-10-16: public/dexdiffusion/extras-options.js (validation + plan), sdcpp-workflow/bin/extras-resize.py (Pillow), sdcpp-upscale.sh --extras-json, server.js /api/actions/upscale `extras`, workstation-ui.js Enhance 'Extras' card; tests/extras-options.test.js (4, JS plan == Python output size, real blend pixels), tests/browser/extras.browser.js (4). Live (console, canonical inpaint image 512x512): to 1024x768 crop + Lanczos/Nearest 0.3 blend -> 1024x768 PASS; by 1.5 bicubic -> 768x768 PASS. Port from knowledge of postprocessing_upscale.py, not diffed against the pinned commit. || P09: Pillow resamplers only (Lanczos, Bicubic, Bilinear, Nearest, None); Real-ESRGAN remains its own action and is not selectable as an Extras upscaler.",
    "runtime_receipt": null
   },
   {
@@ -2720,8 +2720,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Compute both only when engines available",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P09 2026-10-16: public/dexdiffusion/extras-options.js (validation + plan), sdcpp-workflow/bin/extras-resize.py (Pillow), sdcpp-upscale.sh --extras-json, server.js /api/actions/upscale `extras`, workstation-ui.js Enhance 'Extras' card; tests/extras-options.test.js (4, JS plan == Python output size, real blend pixels), tests/browser/extras.browser.js (4). Live (console, canonical inpaint image 512x512): to 1024x768 crop + Lanczos/Nearest 0.3 blend -> 1024x768 PASS; by 1.5 bicubic -> 768x768 PASS. Port from knowledge of postprocessing_upscale.py, not diffed against the pinned commit. || P09: Second Pillow resampler; same limit as EX-08.",
    "runtime_receipt": null
   },
   {
@@ -2740,8 +2740,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Verify interpolation and metadata",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P09 2026-10-16: public/dexdiffusion/extras-options.js (validation + plan), sdcpp-workflow/bin/extras-resize.py (Pillow), sdcpp-upscale.sh --extras-json, server.js /api/actions/upscale `extras`, workstation-ui.js Enhance 'Extras' card; tests/extras-options.test.js (4, JS plan == Python output size, real blend pixels), tests/browser/extras.browser.js (4). Live (console, canonical inpaint image 512x512): to 1024x768 crop + Lanczos/Nearest 0.3 blend -> 1024x768 PASS; by 1.5 bicubic -> 768x768 PASS. Port from knowledge of postprocessing_upscale.py, not diffed against the pinned commit. || P09: Image.blend(first, second, visibility); visibility 0 skips the second upscaler.",
    "runtime_receipt": null
   },
   {
@@ -2860,8 +2860,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Gate missing model/runtime; blend result with original",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P09: GFPGAN: no weights and no PyTorch on MacBook or Big Mac; requests are rejected with that reason.",
    "runtime_receipt": null
   },
   {
@@ -2880,8 +2880,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "UI controlled blend with validated model",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P09: Depends on EX-16.",
    "runtime_receipt": null
   },
   {
@@ -2900,8 +2900,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Gate model/runtime and safety",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P09: CodeFormer: no weights and no PyTorch; rejected with that reason.",
    "runtime_receipt": null
   },
   {
@@ -2920,8 +2920,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Blend under checksum-proven pipeline",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P09: Depends on EX-18.",
    "runtime_receipt": null
   },
   {
@@ -2940,8 +2940,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Verify effective restoration strength",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P09: Depends on EX-18.",
    "runtime_receipt": null
   },
   {
@@ -3000,8 +3000,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Inventory stock A1111 options, test compatibility, add adapter only if viable",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P09: LDSR/ScuNET/SwinIR: none installed (only RealESRGAN_x4plus.pth on Big Mac).",
    "runtime_receipt": null
   },
   {
