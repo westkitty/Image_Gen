@@ -88,8 +88,8 @@ const SCRIPT = fs.readFileSync(path.join(__dirname, '..', '..', 'sdcpp-workflow'
 
 test('P02: normalizeSamplingFields keeps sampler, clip_skip, tiling and restore_faces (they were silently dropped)', () => {
   const p = CA.normalizeSamplingFields({ sampler: 'dpmpp2m', clip_skip: '2', tiling: true, restore_faces: false });
-  assert.deepEqual(p, { sampler: 'dpmpp2m', clip_skip: 2, tiling: true, restore_faces: false });
-  assert.deepEqual(CA.normalizeSamplingFields({}), { sampler: '', clip_skip: '', tiling: false, restore_faces: false });
+  assert.deepEqual(p, { sampler: 'dpmpp2m', clip_skip: 2, tiling: true, restore_faces: false, eta: '', rng: '' });
+  assert.deepEqual(CA.normalizeSamplingFields({}), { sampler: '', clip_skip: '', tiling: false, restore_faces: false, eta: '', rng: '' });
 });
 
 test('P02: sampler spellings from the UI canonicalise to one id', () => {
@@ -163,4 +163,49 @@ test('P03: controlsFor exposes sampler/clipSkip/tiling for SDCPP only', () => {
   assert.deepEqual([sd.sampler, sd.clipSkip, sd.tiling], [true, true, true]);
   assert.deepEqual([mf.sampler, mf.clipSkip, mf.tiling], [false, false, false]);
   assert.equal(D.controlsFor({ backend: 'sdcpp', capabilities: { tiling: false } }).tiling, false);
+});
+
+// ---- P05: eta, noise RNG and the wider sampler inventory ----
+test('P05: eta and rng are normalised, validated against the effective sampler, and forwarded', () => {
+  const n = CA.normalizeSamplingFields({ eta: '0.5', rng: 'CPU' });
+  assert.equal(n.eta, 0.5); assert.equal(n.rng, 'cpu');
+  assert.equal(CA.normalizeSamplingFields({ eta: '' }).eta, '');
+  const photonic = { id: 'sdxl-photonic', backend: 'sdcpp', defaultSampler: 'dpm++2m' };
+  const sd15 = { id: 'sd15', backend: 'sdcpp', defaultSampler: 'euler_a' };
+  assert.equal(CA.validateSamplingFields(sd15, { eta: 0.5 }), null, 'default euler_a honours eta');
+  assert.equal(CA.validateSamplingFields(photonic, { sampler: 'er_sde', eta: 1 }), null);
+  assert.match(CA.validateSamplingFields(photonic, { eta: 0.5 }), /eta has no effect with the dpmpp2m sampler/);
+  assert.match(CA.validateSamplingFields(photonic, { sampler: 'heun', eta: 0.5 }), /eta has no effect with the heun/);
+  assert.match(CA.validateSamplingFields(sd15, { eta: 3 }), /Invalid eta/);
+  assert.match(CA.validateSamplingFields(sd15, { eta: -1 }), /Invalid eta/);
+  assert.match(CA.validateSamplingFields(sd15, { eta: NaN }), /Invalid eta/);
+  assert.match(CA.validateSamplingFields(sd15, { rng: 'gpu' }), /Unknown noise RNG/);
+  assert.equal(CA.validateSamplingFields(sd15, { rng: 'cpu' }), null);
+  assert.match(CA.validateSamplingFields(KLEIN, { eta: 0.5 }), /no noise multiplier/);
+  assert.match(CA.validateSamplingFields(KLEIN, { rng: 'cpu' }), /noise RNG/);
+  assert.match(CA.validateSamplingFields({ id: 'flux-fp8', backend: 'sdcpp', defaultSampler: 'euler' }, { eta: 1, sampler: 'euler_a' }), /Schnell/);
+  const base = { target: 'sd15', prompt: 'p', width: 512, height: 512, steps: 10, save_prompts: false };
+  const args = CA.buildControlledArgs(sd15, { ...base, eta: 0.25, rng: 'cpu' }, { seedValue: 1 });
+  assert.equal(args[args.indexOf('--eta') + 1], '0.25'); assert.equal(args[args.indexOf('--rng') + 1], 'cpu');
+  for (const f of ['--eta', '--rng']) assert.equal(CA.buildControlledArgs(sd15, { ...base, eta: '', rng: '' }, { seedValue: 1 }).includes(f), false, f);
+  for (const f of ['--eta', '--rng']) assert.equal(CA.buildControlledArgs(KLEIN, { ...FULL_PARAMS, eta: 1, rng: 'cpu' }, { seedValue: 1 }).includes(f), false, 'MFLUX never gets ' + f);
+});
+
+test('P05: eta-capable samplers match what sd-cli documents; the shell worker accepts eta/rng', () => {
+  assert.deepEqual([...CA.ETA_SAMPLERS].sort(), ['ddim_trailing', 'dpmpp2s_a', 'er_sde', 'euler_a', 'res_2s', 'res_multistep', 'tcd']);
+  for (const id of CA.ETA_SAMPLERS) assert.ok(CA.SDCLI_SAMPLER[id], id + ' is a runnable sampler');
+  for (const f of ['--eta)', '--rng)']) assert.ok(SCRIPT.includes(f), f);
+  assert.match(SCRIPT, /--rng must be cuda\|cpu\|std_default/);
+  const D = require('../public/dexdiffusion/client-helpers.js');
+  assert.deepEqual([...D.ETA_SAMPLERS].sort(), [...CA.ETA_SAMPLERS].sort());
+  assert.deepEqual(D.RNG_CHOICES.map(c => c[0]).filter(Boolean).sort(), [...CA.RNG_SOURCES].filter(x => x !== 'cuda').sort());
+  assert.equal(D.controlsFor({ backend: 'sdcpp' }).eta, true); assert.equal(D.controlsFor({ backend: 'mflux' }).rng, false);
+});
+
+test('P05: the UI scheduler choices are all accepted by the server', () => {
+  const D = require('../public/dexdiffusion/client-helpers.js');
+  const s = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const m = s.match(/const ALLOWED_SCHEDULERS = new Set\(\[([^\]]+)\]\)/);
+  const allowed = m[1].split(',').map(x => x.trim().replace(/'/g, ''));
+  for (const [id] of D.SCHEDULER_CHOICES) assert.ok(allowed.includes(id), id);
 });

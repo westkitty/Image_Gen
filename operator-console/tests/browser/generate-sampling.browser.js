@@ -57,7 +57,7 @@ async function generateOnce(page, bodies) {
       await sampler.waitFor({ state: 'visible' });
       assert.equal(await sampler.count(), 1);
       assert.deepEqual(await sampler.locator('option').evaluateAll(o => o.map(x => x.value)),
-        ['euler_a', 'euler', 'heun', 'dpm2', 'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm']);
+        ['euler_a', 'euler', 'heun', 'dpm2', 'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm', 'ddim_trailing', 'tcd', 'res_multistep', 'res_2s', 'er_sde', 'euler_cfg_pp', 'euler_a_cfg_pp']);
       assert.equal(await page.locator('[data-dex-field="sampling-note"]').count(), 0);
       await sampler.selectOption('heun');
       await page.locator('[data-dex-field="clip-skip"]').fill('2');
@@ -198,6 +198,69 @@ async function generateOnce(page, bodies) {
       const command = await page.locator('[data-dex-field="preview-command"]').innerText();
       assert.match(command, /mflux-controlled-generate\.sh/);
       for (const f of ['--sampler', '--clip-skip', '--tiling', '--cfg', '--scheduler', '--negative-prompt', '--vae']) assert.equal(command.includes(f), false, f);
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
+    await test('Advanced sampling: eta follows the sampler, RNG is sent, unavailable options are listed, MFLUX hides it all', async () => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const { errors, bodies } = await openGenerate(page, srv.base);
+      await chooseTarget(page, 'sdxl-base');
+      await page.locator('[data-dex-field="advanced-sampling"] > summary').click();
+      const eta = page.locator('[data-dex-field="eta"]');
+      await eta.waitFor({ state: 'visible' });
+      await page.locator('[data-dex-field="sampler"]').selectOption('heun');
+      await page.waitForTimeout(300);
+      assert.equal(await eta.isDisabled(), true, 'eta is disabled for a sampler it does not affect');
+      assert.match(await page.locator('[data-dex-field="eta-note"]').innerText(), /no effect with the heun sampler/);
+      await page.locator('[data-dex-field="sampler"]').selectOption('euler_a');
+      await page.waitForTimeout(300);
+      assert.equal(await page.locator('[data-dex-field="eta"]').isDisabled(), false);
+      await page.locator('[data-dex-field="eta"]').fill('0.4');
+      await page.locator('[data-dex-field="rng"]').selectOption('cpu');
+      const sent = await generateOnce(page, bodies);
+      assert.equal(sent.sampler, 'euler_a'); assert.equal(sent.eta, 0.4); assert.equal(sent.rng, 'cpu');
+      // Switch to a sampler eta does not affect: the stale value is NOT sent.
+      await page.locator('[data-dex-field="sampler"]').selectOption('dpmpp2m');
+      const sent2 = await generateOnce(page, bodies);
+      assert.equal('eta' in sent2, false, 'eta is not sent for a sampler it does not affect');
+      assert.equal(sent2.rng, 'cpu');
+      const text = await page.locator('[data-dex-field="unavailable-sampling"]').innerText();
+      for (const w of ['variation seed', 'seed resize', 'UniPC', 'beta schedule']) assert.match(text, new RegExp(w, 'i'), w);
+      await chooseTarget(page, 'flux2-klein-4b');
+      await page.waitForTimeout(400);
+      assert.equal(await page.locator('[data-dex-field="advanced-sampling"]').count(), 0);
+      const sentK = await generateOnce(page, bodies);
+      for (const k of ['eta', 'rng']) assert.equal(k in sentK, false, k);
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
+    await test('server accepts eta/rng/new samplers/kl_optimal end to end (preview uses the real validator) and rejects bad combinations', async () => {
+      const post = async body => {
+        const r = await fetch(srv.base + '/api/preview/generation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ job_type: 'txt2img', target: 'sdxl-base', prompt: 'a fox', steps: 10 }, body)) });
+        return { status: r.status, data: await r.json() };
+      };
+      let r = await post({ sampler: 'euler_a', eta: 0.4, rng: 'cpu', scheduler: 'kl_optimal' });
+      assert.equal(r.status, 200, JSON.stringify(r.data));
+      const argv = r.data.preview.argv;
+      for (const [flag, val] of [['--sampler', 'euler_a'], ['--eta', '0.4'], ['--rng', 'cpu'], ['--scheduler', 'kl_optimal']]) assert.equal(argv[argv.indexOf(flag) + 1], val, flag);
+      for (const s of ['ddim_trailing', 'tcd', 'res_multistep', 'res_2s', 'er_sde', 'euler_cfg_pp', 'euler_a_cfg_pp']) assert.equal((await post({ sampler: s })).status, 200, s);
+      assert.match((await post({ sampler: 'heun', eta: 0.5 })).data.error, /eta has no effect with the heun/);
+      assert.match((await post({ eta: 9 })).data.error, /Invalid eta/);
+      assert.match((await post({ rng: 'gpu' })).data.error, /Unknown noise RNG/);
+      assert.match((await post({ target: 'flux2-klein-4b', steps: 4, eta: 1 })).data.error, /no noise multiplier/);
+    });
+
+    await test('scheduler list comes from the shared choices and includes KL optimal', async () => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const { errors, bodies } = await openGenerate(page, srv.base);
+      await chooseTarget(page, 'sdxl-base');
+      const sched = page.locator('select', { has: page.locator('option[value="kl_optimal"]') }).first();
+      await sched.waitFor({ state: 'visible' });
+      assert.deepEqual(await sched.locator('option').evaluateAll(o => o.map(x => x.value)), ['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple', 'kl_optimal']);
+      await sched.selectOption('kl_optimal');
+      assert.equal((await generateOnce(page, bodies)).scheduler, 'kl_optimal');
       assert.deepEqual(errors, []);
       await page.close();
     });

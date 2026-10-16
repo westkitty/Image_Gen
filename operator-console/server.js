@@ -111,7 +111,7 @@ const ALLOWED_SAMPLERS = new Set([
   'euler_a', 'euler', 'heun', 'dpm2', 'dpm2_a', 'lms',
   'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm'
 ]);
-const ALLOWED_SCHEDULERS = new Set(['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple']);
+const ALLOWED_SCHEDULERS = new Set(['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple', 'kl_optimal']);
 const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'flux2-klein-4b', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis', 'sdxl-juggernaut', 'sdxl-realvisxl', 'sdxl-cyberrealistic', 'sdxl-epicrealism', 'sdxl-biglust', 'sdxl-lustify', 'sdxl-biglove', 'sdxl-biglove-photo1', 'sdxl-biglove-photo45']);
 const CONTROLLED_TARGETS = [
   {
@@ -1314,6 +1314,10 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
             prompt_saved: !!params.save_prompts,
             clip_skip: spec.backend === 'mflux' || params.clip_skip === '' ? undefined : params.clip_skip,
             tiling: spec.backend !== 'mflux' && params.tiling ? true : undefined,
+            eta: spec.backend === 'mflux' || params.eta === '' ? undefined : params.eta,
+            rng: spec.backend === 'mflux' || !params.rng ? undefined : params.rng,
+            clip_skip: spec.backend === 'mflux' || params.clip_skip === '' ? undefined : params.clip_skip,
+            tiling: spec.backend !== 'mflux' && params.tiling ? true : undefined,
             prompt: params.save_prompts ? EC.stripLoraTags(params.prompt) : undefined,
             negative_prompt: params.save_prompts && !(spec.backend === 'mflux' || spec.noNegativePrompt) ? params.negative_prompt : undefined,
           });
@@ -1468,6 +1472,8 @@ function normalizeControlledGenerationBody(body) {
     'restore_faces',
     'prompt',
     'negative_prompt',
+    'eta',
+    'rng',
     'negativePrompt',
     'width',
     'height',
@@ -2169,9 +2175,7 @@ function targetCapabilities(target) {
   return {
     backend: mflux ? 'mflux' : 'sdcpp',
     negativePrompt: !mflux && !target.noNegativePrompt, cfg: !mflux && target.fixedCfgScale === undefined, scheduler: !mflux, sampler: samplingEditable, vae: !mflux, lora: !mflux,
-    img2img: sd15, inpaint: sd15, outpaint: sd15, controlNet: false, hiresRefine: !mflux, clipSkip: samplingEditable, tiling: samplingEditable,
-  // MFLUX and FLUX.1 Schnell run a fixed sampler with no CLIP skip or VAE tiling override (worker rejects them).
-  const samplingEditable = !mflux && target.id !== 'flux-fp8';
+    img2img: sd15, inpaint: sd15, outpaint: sd15, controlNet: false, hiresRefine: !mflux, clipSkip: samplingEditable, tiling: samplingEditable, eta: samplingEditable, rng: samplingEditable,
     nativeBatch: !mflux, maxQuantity: 100,
   };
 }
@@ -2327,7 +2331,7 @@ app.get('/api/capabilities', (req, res) => {
       embeddings: assets ? assets.embeddings.map(({ full_path: _, ...rest }) => rest) : [],
       hypernetworks: assets ? assets.hypernetworks.map(({ full_path: _, ...rest }) => rest) : []
     },
-    samplers: Array.from(ALLOWED_SAMPLERS).map(id => ({ id, name: id.replace(/_/g, ' '), supported: !!SDCLI_SAMPLER[id], note: SDCLI_SAMPLER[id] ? undefined : 'not supported by the installed stable-diffusion.cpp' })),
+    samplers: Array.from(new Set([...ALLOWED_SAMPLERS, ...Object.keys(SDCLI_SAMPLER)])).map(id => ({ id, name: id.replace(/_/g, ' '), supported: !!SDCLI_SAMPLER[id], note: SDCLI_SAMPLER[id] ? undefined : 'not supported by the installed stable-diffusion.cpp' })),
     schedulers: Array.from(ALLOWED_SCHEDULERS).map(id => {
       const isDiscrete = id === 'discrete';
       const ok = isDiscrete || schedulerSelectionSupported;

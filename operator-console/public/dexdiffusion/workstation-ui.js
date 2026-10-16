@@ -142,6 +142,8 @@
     if (ctl.sampler && s.sampler) body.sampler = D.canonicalSamplerId(s.sampler);
     if (ctl.clipSkip && s.clipSkip !== '' && s.clipSkip != null) body.clip_skip = parseInt(s.clipSkip, 10);
     if (ctl.tiling && s.tiling) body.tiling = true;
+    if (ctl.eta && s.eta !== '' && s.eta != null && D.ETA_SAMPLERS.includes(D.canonicalSamplerId(s.sampler))) body.eta = Number(s.eta);  // disabled in the UI otherwise, so not sent
+    if (ctl.rng && s.rng) body.rng = s.rng;
     if (ctl.vae) body.vae = s.selectedVae === 'default' ? 'auto' : s.selectedVae;
     if (ctl.hiresRefine && ws.hires) Object.assign(body, { hires_scale: +ws.hiresScale, hires_steps: parseInt(ws.hiresSteps, 10) || 0, hires_denoise: +ws.hiresDenoise, hires_upscaler: ws.hiresUpscaler });
     return Object.assign(body, over || {});

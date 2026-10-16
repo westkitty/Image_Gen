@@ -492,7 +492,7 @@
    "required_implementation": "Add sampler to _createBody, normalized params, validation, args, script, receipt",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PARTIAL",
-   "implementation_receipt": "P02 2026-10-16: controlled-args.js normalizeSamplingFields/validateSamplingFields/buildControlledArgs; server.js normalize+validate+meta; sdcpp-controlled-generate.sh --sampler/--clip-skip/--tiling. WIRED+LIVE_PROVEN (API->worker, SDCPP). UI selector path and MFLUX fixed-sampler display still to be proven in P03. || P03 2026-10-16: Concept A Generate form (concept-a.js buildConceptGenerate) + client-helpers controlsFor/SAMPLER_CHOICES + workstation-ui _createBody + server targetCapabilities; tests/browser/generate-sampling.browser.js (5 checks, 4 consecutive clean runs). LIVE_PROVEN for SDCPP via the real UI: Photonic target, Heun chosen in the Generate form, run 20261016-033033-controlled-sdxl-photonic, sd-cli log 'sampling using Heun method', sample_method: heun, 768x768/10 steps/seed 7, prompt [REDACTED]. Remaining: sampler list is the 10 methods sd-cli supports (A1111's full inventory incl. DDIM/PLMS/UniPC/DPM fast/adaptive/SDE/Restart/LMS/DPM2 a is P05), MFLUX shows an explanatory note.",
+   "implementation_receipt": "P02 2026-10-16: controlled-args.js normalizeSamplingFields/validateSamplingFields/buildControlledArgs; server.js normalize+validate+meta; sdcpp-controlled-generate.sh --sampler/--clip-skip/--tiling. WIRED+LIVE_PROVEN (API->worker, SDCPP). UI selector path and MFLUX fixed-sampler display still to be proven in P03. || P03 2026-10-16: Concept A Generate form (concept-a.js buildConceptGenerate) + client-helpers controlsFor/SAMPLER_CHOICES + workstation-ui _createBody + server targetCapabilities; tests/browser/generate-sampling.browser.js (5 checks, 4 consecutive clean runs). LIVE_PROVEN for SDCPP via the real UI: Photonic target, Heun chosen in the Generate form, run 20261016-033033-controlled-sdxl-photonic, sd-cli log 'sampling using Heun method', sample_method: heun, 768x768/10 steps/seed 7, prompt [REDACTED]. Remaining: sampler list is the 10 methods sd-cli supports (A1111's full inventory incl. DDIM/PLMS/UniPC/DPM fast/adaptive/SDE/Restart/LMS/DPM2 a is P05), MFLUX shows an explanatory note. || P05: sampler list now 17 sd-cli methods; the 7 sd.cpp-only ones (ddim_trailing, tcd, res_multistep, res_2s, er_sde, euler_cfg_pp, euler_a_cfg_pp) each ran live on photonic 512x512 6 steps seed 7 and logged their own 'sampling using ... method' (distinct pixels 35b16914..., ce4ba5c7..., 52a3750..., 0647c0bd..., 392e2a12..., c30db171..., f5db3fdf...). A1111 stock samplers still missing: LMS, DPM2 a, DPM++ SDE/2M SDE, DPM fast/adaptive, DDIM, PLMS, UniPC, Restart.",
    "runtime_receipt": "2026-10-16 sdxl-photonic 768x768 seed 7: euler_a -> sd-cli 'sampling using Euler A method', pixel_sha e4f39cbb1b714ccf, meta sampler euler_a; dpmpp2m -> 'DPM++ (2M) method', pixel_sha 6a772e7800645f8e. 'lms' rejected HTTP 400."
   },
   {
@@ -888,8 +888,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Capture resolved seed in result receipt",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). Same seed reproduces identical pixels: e4f39cbb1b714ccf in two independent Big Mac runs (photonic 768x768, seed 7, euler_a), different runs/day-of-week. Determinism across samplers also seen. UI path for fixed seed unchanged.",
    "runtime_receipt": null
   },
   {
@@ -945,8 +945,8 @@
    "baseline_status": "accepted but unwired",
    "required_implementation": "Add backend support or a verified compatible sampler mechanism",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (variation seed needs a second noise stream mixed into the initial latent). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -964,8 +964,8 @@
    "baseline_status": "accepted but unwired",
    "required_implementation": "Blend supported noise latents, test endpoints and numerical effect",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (variation strength). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -983,8 +983,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Generate and record resolved variation seed",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (random variation seed). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1002,8 +1002,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Restore correct result's variation seed",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (reuse variation seed). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1021,8 +1021,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Match seed-resize noise semantics when compatible",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (seed resize-from width needs A1111's latent-noise resampling). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1040,8 +1040,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Match seed-resize noise semantics when compatible",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (seed resize-from height). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1059,8 +1059,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Persist only non-sensitive effective parameter values",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (subseed metadata has nothing to record). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1116,8 +1116,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Explicit engine compatibility; no fictional NV GPU on Apple Silicon",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). WIRED+LIVE_PROVEN as an sd.cpp setting: --rng cuda(default)|cpu|std_default; seed 7 euler_a: default pixel aaa46ca7de159624 vs cpu b9cccfbbfc668022, sd-cli log rng_type: cpu. Equivalence to A1111's CPU/GPU/NV sources is NOT established (sd.cpp documents cuda as the sd-webui-compatible default, cpu as ComfyUI-style); no NV equivalent.",
    "runtime_receipt": null
   },
   {
@@ -1135,8 +1135,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Route only to sampler supporting ETA",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). 'ddim_trailing' sampler runs live (log 'DDIM \"trailing\" method', pixel 35b16914d8774384) and accepts --eta; A1111's plain DDIM sampler is not available and trailing spacing is not shown to be equivalent.",
    "runtime_receipt": null
   },
   {
@@ -1154,8 +1154,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Route to compatible sampling backend",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). LIVE_PROVEN on euler_a: eta 0 -> pixel 35b16914d8774384 (log 'eta: 0.00'), eta 1 -> aaa46ca7de159624 (log 'eta: 1.00', identical to the default run). Applies only to euler_a, dpm++2s_a, ddim_trailing, tcd, res_multistep, res_2s, er_sde (others rejected with a reason). Range 0-2. Other eta samplers wired but not individually live-run.",
    "runtime_receipt": null
   },
   {
@@ -1173,8 +1173,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Document reproducibility effect and prove",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (eta noise seed delta). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1192,8 +1192,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Add validated solver option with backend proof",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (sigma churn (S churn)). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1211,8 +1211,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Enforce ranges and prove CLI/plugin consumption",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (sigma tmin/tmax). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1230,8 +1230,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Add supported effective noise level",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (sigma noise (s_noise)). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1249,8 +1249,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Derive configured schedule with actual solver proof",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (sigma min/max; only a custom --sigmas list exists, with different semantics). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1268,8 +1268,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Verify shape parameter with selected scheduler",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (rho). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1287,8 +1287,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Verify supported beta schedule and parameters",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (beta schedule alpha/beta; no 'beta' scheduler). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1306,8 +1306,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Conditional UniPC family controls and trace proof",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (UniPC sampler absent). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1325,8 +1325,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Only relevant trained models; capability gate",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (zero-terminal-SNR schedule). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1344,8 +1344,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Implement backend-compatible guidance timing or block explicitly",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (skip early CFG / negative guidance min sigma). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1363,8 +1363,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Only engine with semantics; separately verify",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (SGM noise multiplier). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1382,8 +1382,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Test actual sigma sequence",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (discard next-to-last sigma). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1401,8 +1401,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Implement and verify img2img-only setting",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (initial noise multiplier). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -1420,8 +1420,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Test effect in appropriate refinement path",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). sd-cli rev 7f0e728 --help (Big Mac) lists no such option (extra noise for img2img/hires). The UI lists it under 'Not available' and the API rejects the field as unexpected; nothing is faked.",
    "runtime_receipt": null
   },
   {
@@ -4593,8 +4593,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Bind to exact solver and reject unsupported choices",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P05 2026-10-16: eta/rng/extra samplers/kl_optimal wired UI->request->validation->worker->metadata (controlled-args.js, server.js, sdcpp-controlled-generate.sh, client-helpers.js, concept-a.js 'Advanced sampling'); tests/controlled-args.test.js (+3), tests/browser/generate-sampling.browser.js (11). Eta wired and live-proven (SD-15); S churn/tmin/tmax/noise and sigma min/max/rho have no sd-cli option (BLOCKED, see SD-17..21).",
    "runtime_receipt": null
   },
   {

@@ -23,7 +23,14 @@ const SDCLI_SAMPLER = Object.freeze({
   euler: 'euler', euler_a: 'euler_a', heun: 'heun', dpm2: 'dpm2',
   dpmpp2s_a: 'dpm++2s_a', dpmpp2m: 'dpm++2m', dpmpp2mv2: 'dpm++2mv2',
   ipndm: 'ipndm', ipndm_v: 'ipndm_v', lcm: 'lcm',
+  // sd.cpp-only methods (not A1111 stock samplers); each was executed live before being listed (P05).
+  ddim_trailing: 'ddim_trailing', tcd: 'tcd', res_multistep: 'res_multistep', res_2s: 'res_2s', er_sde: 'er_sde',
+  euler_cfg_pp: 'euler_cfg_pp', euler_a_cfg_pp: 'euler_a_cfg_pp',
 });
+// Samplers whose sd-cli help documents an --eta default (noise multiplier is meaningful); others reject --eta.
+const ETA_SAMPLERS = Object.freeze(['euler_a', 'dpmpp2s_a', 'ddim_trailing', 'tcd', 'res_multistep', 'res_2s', 'er_sde']);
+const RNG_SOURCES = Object.freeze(['cuda', 'cpu', 'std_default']);
+const ETA_MAX = 2;
 // Known A1111 sampler ids the installed sd-cli cannot run: rejected, never ignored.
 const KNOWN_UNSUPPORTED_SAMPLERS = new Set(['dpm2_a', 'lms']);
 
@@ -43,6 +50,8 @@ function normalizeSamplingFields(body = {}) {
     clip_skip: clip === undefined || clip === null || clip === '' ? '' : Number(clip),
     tiling: truthy(body.tiling),
     restore_faces: truthy(body.restore_faces),
+    eta: body.eta === undefined || body.eta === null || body.eta === '' ? '' : Number(body.eta),
+    rng: String(body.rng == null ? '' : body.rng).trim().toLowerCase(),
   };
 }
 
@@ -54,7 +63,12 @@ function validateSamplingFields(spec, p = {}) {
   const clip = p.clip_skip;
   const hasClip = clip !== '' && clip !== undefined && clip !== null;
   if (hasClip && (!Number.isInteger(clip) || clip < 1 || clip > 12)) return 'Invalid clip_skip: use an integer 1-12';
+  const hasEta = p.eta !== '' && p.eta !== undefined && p.eta !== null;
+  if (hasEta && (!Number.isFinite(p.eta) || p.eta < 0 || p.eta > ETA_MAX)) return `Invalid eta: use a number from 0 to ${ETA_MAX}`;
+  if (p.rng && !RNG_SOURCES.includes(p.rng)) return `Unknown noise RNG "${p.rng}": use ${RNG_SOURCES.join(', ')}`;
   if (mflux) {
+    if (hasEta) return `${label} has no noise multiplier; eta is not supported`;
+    if (p.rng) return `${label} does not expose a noise RNG choice`;
     if (p.sampler && p.sampler !== 'euler') return `${label} uses a fixed flow-match Euler sampler; sampler "${p.sampler}" is not supported`;
     if (hasClip && clip !== 1) return `${label} has no CLIP skip; clip_skip ${clip} is not supported`;
     if (p.tiling) return `${label} does not support VAE tiling`;
@@ -65,6 +79,12 @@ function validateSamplingFields(spec, p = {}) {
     if (!SDCLI_SAMPLER[p.sampler]) return `Unknown sampler "${p.sampler}"`;
     if (spec && spec.id === 'flux-fp8' && p.sampler !== 'euler') return 'FLUX.1 Schnell is fixed to the euler sampler';
   }
+  if (hasEta) {
+    if (spec && spec.id === 'flux-fp8') return 'FLUX.1 Schnell does not accept eta';
+    const effective = p.sampler || canonicalSampler(spec && spec.defaultSampler) || 'euler_a';
+    if (!ETA_SAMPLERS.includes(effective)) return `eta has no effect with the ${effective} sampler; it applies to ${ETA_SAMPLERS.join(', ')}`;
+  }
+  if (p.rng && spec && spec.id === 'flux-fp8') return 'FLUX.1 Schnell does not accept a noise RNG override';
   return null;
 }
 
@@ -97,6 +117,8 @@ function buildControlledArgs(spec, params, { seedValue, isDiscovered = false, re
     if (params.sampler) args.push('--sampler', String(params.sampler));
     if (params.clip_skip !== undefined && params.clip_skip !== null && params.clip_skip !== '') args.push('--clip-skip', String(params.clip_skip));
     if (params.tiling) args.push('--tiling');
+    if (params.eta !== undefined && params.eta !== null && params.eta !== '') args.push('--eta', String(params.eta));
+    if (params.rng) args.push('--rng', String(params.rng));
   }
   args.push('--save-prompts', params.save_prompts ? 'true' : 'false');
   return args;
@@ -104,5 +126,5 @@ function buildControlledArgs(spec, params, { seedValue, isDiscovered = false, re
 
 module.exports = {
   controlledScriptFor, buildControlledArgs, nativeBatchEligible, NATIVE_BATCH_MAX,
-  SDCLI_SAMPLER, canonicalSampler, normalizeSamplingFields, validateSamplingFields,
+  SDCLI_SAMPLER, ETA_SAMPLERS, RNG_SOURCES, ETA_MAX, canonicalSampler, normalizeSamplingFields, validateSamplingFields,
 };

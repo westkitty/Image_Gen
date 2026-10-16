@@ -31,6 +31,8 @@ ARG_SAMPLER=""
 ARG_SAMPLER_CLI=""
 ARG_CLIP_SKIP=""
 ARG_TILING="false"
+ARG_ETA=""
+ARG_RNG=""
 ARG_VAE=""
 ARG_MODEL_PATH=""
 ARG_BATCH_COUNT="1"
@@ -81,6 +83,8 @@ while [ "$#" -gt 0 ]; do
     --sampler) ARG_SAMPLER="${2:?}"; shift 2 ;;
     --clip-skip) ARG_CLIP_SKIP="${2:?}"; shift 2 ;;
     --tiling) ARG_TILING="true"; shift ;;
+    --eta) ARG_ETA="${2:?}"; shift 2 ;;
+    --rng) ARG_RNG="${2:?}"; shift 2 ;;
     --vae) ARG_VAE="${2:?}"; shift 2 ;;
     --save-prompts) ARG_SAVE_PROMPTS="${2:?}"; shift 2 ;;
     --batch-count) ARG_BATCH_COUNT="${2:?}"; shift 2 ;;
@@ -109,10 +113,22 @@ if [ -n "$ARG_SAMPLER" ]; then
     ipndm)     ARG_SAMPLER_CLI="ipndm" ;;
     ipndm_v)   ARG_SAMPLER_CLI="ipndm_v" ;;
     lcm)       ARG_SAMPLER_CLI="lcm" ;;
+    ddim_trailing)  ARG_SAMPLER_CLI="ddim_trailing" ;;
+    tcd)            ARG_SAMPLER_CLI="tcd" ;;
+    res_multistep)  ARG_SAMPLER_CLI="res_multistep" ;;
+    res_2s)         ARG_SAMPLER_CLI="res_2s" ;;
+    er_sde)         ARG_SAMPLER_CLI="er_sde" ;;
+    euler_cfg_pp)   ARG_SAMPLER_CLI="euler_cfg_pp" ;;
+    euler_a_cfg_pp) ARG_SAMPLER_CLI="euler_a_cfg_pp" ;;
     *) fail "args" "Unsupported sampler: $ARG_SAMPLER" ;;
   esac
   # SAMPLER_TABLE_END
 fi
+if [ -n "$ARG_ETA" ]; then
+  case "$ARG_ETA" in ''|*[!0-9.]*|*.*.*|.) fail "args" "--eta must be a number 0-2" ;; esac
+  awk -v e="$ARG_ETA" 'BEGIN { exit !(e >= 0 && e <= 2) }' || fail "args" "--eta must be a number 0-2"
+fi
+case "$ARG_RNG" in ''|cuda|cpu|std_default) : ;; *) fail "args" "--rng must be cuda|cpu|std_default" ;; esac
 if [ -n "$ARG_CLIP_SKIP" ]; then
   case "$ARG_CLIP_SKIP" in ''|*[!0-9]*) fail "args" "--clip-skip must be an integer 1-12" ;; esac
   [ "$ARG_CLIP_SKIP" -ge 1 ] && [ "$ARG_CLIP_SKIP" -le 12 ] || fail "args" "--clip-skip must be an integer 1-12"
@@ -450,7 +466,7 @@ fi
 # Explicit request fields win over the target's built-in defaults (and are recorded in the command).
 [ -z "$ARG_SAMPLER_CLI" ] || TARGET_SAMPLER="$ARG_SAMPLER_CLI"
 [ -z "$ARG_CLIP_SKIP" ] || TARGET_CLIP_SKIP="$ARG_CLIP_SKIP"
-if [ "$ARG_TARGET" = "flux-fp8" ] && { [ -n "$ARG_CLIP_SKIP" ] || [ "$ARG_TILING" = "true" ] || { [ -n "$ARG_SAMPLER_CLI" ] && [ "$ARG_SAMPLER_CLI" != "euler" ]; }; }; then
+if [ "$ARG_TARGET" = "flux-fp8" ] && { [ -n "$ARG_CLIP_SKIP" ] || [ "$ARG_TILING" = "true" ] || [ -n "$ARG_ETA" ] || [ -n "$ARG_RNG" ] || { [ -n "$ARG_SAMPLER_CLI" ] && [ "$ARG_SAMPLER_CLI" != "euler" ]; }; }; then
   fail "args" "flux-fp8 has a fixed euler sampler and no CLIP skip or tiling override."
 fi
 
@@ -755,7 +771,7 @@ printf '%s\n' "$SLOT_RESULT" > "$RUN_DIR/model-slot.json"
 log "Secondary model slot active for $ARG_TARGET: $SLOT_RESULT"
 
 SD15_USE_SERVER=false
-if [ "$ARG_TARGET" = "sd15" ] && [ "$ARG_BATCH_COUNT" = "1" ] && [ -z "$ARG_HIRES_SCALE" ] && [ -z "$ARG_CLIP_SKIP" ] && [ "$ARG_TILING" != "true" ] && ! printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
+if [ "$ARG_TARGET" = "sd15" ] && [ "$ARG_BATCH_COUNT" = "1" ] && [ -z "$ARG_HIRES_SCALE" ] && [ -z "$ARG_CLIP_SKIP" ] && [ "$ARG_TILING" != "true" ] && [ -z "$ARG_ETA" ] && [ -z "$ARG_RNG" ] && ! printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
   if lsof -nP -iTCP:"$SD15_TUNNEL_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
     SD15_USE_SERVER=true
   else
@@ -855,7 +871,7 @@ if [ -n "$ARG_SCHEDULER" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '
 fi
 
 # Explicit sampling overrides: verified against the installed sd-cli before use, never dropped.
-OVR_SAMPLER_FRAG=""; OVR_CLIP_FRAG=""; OVR_TILE_FRAG=""
+OVR_SAMPLER_FRAG=""; OVR_CLIP_FRAG=""; OVR_TILE_FRAG=""; OVR_NOISE_FRAG=""
 if [ -n "$ARG_SAMPLER_CLI" ]; then
   printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--sampling-method' || controlled_fail "sd-cli-help" "sd-cli help does not show --sampling-method."
   OVR_SAMPLER_FRAG="--sampling-method $ARG_SAMPLER_CLI"
@@ -863,6 +879,14 @@ fi
 if [ -n "$ARG_CLIP_SKIP" ]; then
   printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--clip-skip' || controlled_fail "sd-cli-help" "sd-cli help does not show --clip-skip."
   OVR_CLIP_FRAG="--clip-skip $ARG_CLIP_SKIP"
+fi
+if [ -n "$ARG_ETA" ]; then
+  printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--eta' || controlled_fail "sd-cli-help" "sd-cli help does not show --eta."
+  OVR_NOISE_FRAG="--eta $ARG_ETA"
+fi
+if [ -n "$ARG_RNG" ]; then
+  printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--rng' || controlled_fail "sd-cli-help" "sd-cli help does not show --rng."
+  OVR_NOISE_FRAG="$OVR_NOISE_FRAG --rng $ARG_RNG"
 fi
 if [ "$ARG_TILING" = "true" ]; then
   printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--vae-tiling' || controlled_fail "sd-cli-help" "sd-cli help does not show --vae-tiling."
@@ -899,7 +923,7 @@ case "$ARG_TARGET" in
     if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--cfg-scale'; then
       CFG_FLAG="--cfg-scale $ARG_CFG"
     fi
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} --sampling-method ${TARGET_SAMPLER:-euler_a} ${OVR_CLIP_FRAG:-} ${OVR_TILE_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} --sampling-method ${TARGET_SAMPLER:-euler_a} ${OVR_CLIP_FRAG:-} ${OVR_TILE_FRAG:-} ${OVR_NOISE_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   sdxl-base)
     TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl/sd_xl_base_1.0.safetensors"
@@ -915,7 +939,7 @@ case "$ARG_TARGET" in
     if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--cfg-scale'; then
       CFG_FLAG="--cfg-scale $ARG_CFG"
     fi
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} ${OVR_SAMPLER_FRAG:-} ${OVR_CLIP_FRAG:-} ${OVR_TILE_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} ${OVR_SAMPLER_FRAG:-} ${OVR_CLIP_FRAG:-} ${OVR_TILE_FRAG:-} ${OVR_NOISE_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   sdxl-turbo)
     TARGET_MODEL_PATH="$MODEL_STAGE_ROOT/checkpoints/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors"
@@ -928,7 +952,7 @@ case "$ARG_TARGET" in
     for flag in '--model' '--prompt' '--output' '--width' '--height' '--steps' '--cfg-scale' '--prediction'; do
       printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- "$flag" || controlled_fail "sd-cli-help" "sd-cli help does not show required flag $flag."
     done
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --cfg-scale 1 --prediction eps ${OVR_SAMPLER_FRAG:-} ${OVR_CLIP_FRAG:-} ${OVR_TILE_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS --cfg-scale 1 --prediction eps ${OVR_SAMPLER_FRAG:-} ${OVR_CLIP_FRAG:-} ${OVR_TILE_FRAG:-} ${OVR_NOISE_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
   flux-fp8)
     remote_test "test -s \"$TARGET_MODEL_PATH\"" || controlled_fail "model-present" "Flux full checkpoint is missing: $TARGET_MODEL_PATH"
@@ -979,7 +1003,7 @@ case "$ARG_TARGET" in
     if [ "$ARG_VAE" != "none" ] && [ -n "$TARGET_VAE_PATH" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--vae'; then
       BUILT_VAE_FLAG="--vae \"$TARGET_VAE_PATH\""
     fi
-    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} ${SAMPLER_FRAG:-} ${CLIP_SKIP_FRAG:-} ${OVR_TILE_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${BUILT_VAE_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
+    REMOTE_STDOUT_CMD="\"$SDCLI\" -m \"$SECONDARY_ACTIVE_MODEL\" -p $Q_PROMPT -n $Q_NEG -W $ARG_WIDTH -H $ARG_HEIGHT --steps $ARG_STEPS ${CFG_FLAG:-} ${SAMPLER_FRAG:-} ${CLIP_SKIP_FRAG:-} ${OVR_TILE_FRAG:-} ${OVR_NOISE_FRAG:-} $SEED_FRAG ${SCHEDULER_FLAG:-} ${BUILT_VAE_FLAG:-} ${VAE_FLAG:-} ${LORA_DIR_FLAG:-} ${EMBD_DIR_FLAG:-} ${BACKEND_FLAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\""
     ;;
 esac
 

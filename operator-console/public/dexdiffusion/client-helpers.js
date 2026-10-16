@@ -179,7 +179,7 @@
       vae: on('vae', !mflux), lora: on('lora', !mflux), hiresRefine: on('hiresRefine', !mflux),
       img2img: on('img2img', false), inpaint: on('inpaint', false), outpaint: on('outpaint', false), controlNet: on('controlNet', false),
       nativeBatch: on('nativeBatch', !mflux),
-      sampler: on('sampler', !mflux), clipSkip: on('clipSkip', !mflux), tiling: on('tiling', !mflux),
+      sampler: on('sampler', !mflux), clipSkip: on('clipSkip', !mflux), tiling: on('tiling', !mflux), eta: on('eta', !mflux), rng: on('rng', !mflux),
     };
   }
 
@@ -187,7 +187,14 @@
   const SAMPLER_CHOICES = [
     ['euler_a', 'Euler a'], ['euler', 'Euler'], ['heun', 'Heun'], ['dpm2', 'DPM2'], ['dpmpp2s_a', 'DPM++ 2S a'],
     ['dpmpp2m', 'DPM++ 2M'], ['dpmpp2mv2', 'DPM++ 2M v2'], ['ipndm', 'iPNDM'], ['ipndm_v', 'iPNDM-v'], ['lcm', 'LCM'],
+    // stable-diffusion.cpp methods that are not A1111 stock samplers (labelled so; each was run live).
+    ['ddim_trailing', 'DDIM trailing (sd.cpp)'], ['tcd', 'TCD (sd.cpp)'], ['res_multistep', 'RES multistep (sd.cpp)'], ['res_2s', 'RES 2S (sd.cpp)'],
+    ['er_sde', 'ER SDE (sd.cpp)'], ['euler_cfg_pp', 'Euler CFG++ (sd.cpp)'], ['euler_a_cfg_pp', 'Euler a CFG++ (sd.cpp)'],
   ];
+  const SCHEDULER_CHOICES = [['discrete', 'discrete'], ['karras', 'karras'], ['exponential', 'exponential'], ['ays', 'align your steps'], ['sgm_uniform', 'sgm uniform'], ['simple', 'simple'], ['kl_optimal', 'KL optimal']];
+  // Samplers for which --eta is meaningful (sd-cli help documents a default); mirrors controlled-args.js ETA_SAMPLERS.
+  const ETA_SAMPLERS = ['euler_a', 'dpmpp2s_a', 'ddim_trailing', 'tcd', 'res_multistep', 'res_2s', 'er_sde'];
+  const RNG_CHOICES = [['', 'Default (CUDA-compatible, sd-webui)'], ['cpu', 'CPU (ComfyUI-style)'], ['std_default', 'C++ std default']];
   const SAMPLER_ALIAS = { 'dpm++2m': 'dpmpp2m', 'dpm++ 2m': 'dpmpp2m', 'dpm++2mv2': 'dpmpp2mv2', 'dpm++2s_a': 'dpmpp2s_a', 'dpm++ 2s a': 'dpmpp2s_a', 'euler a': 'euler_a' };
   function canonicalSamplerId(value) {
     const k = String(value == null ? '' : value).trim().toLowerCase();
@@ -252,6 +259,6 @@
     resolveBackendBase, jobProgressPercent, chooseInitialTarget, targetOptionLabel, capabilityBadge,
     dimensionIssue, dimensionsForTarget, dimensionInfo,
     maskDilate, maskErode, maskBlur, maskFeather, maskInvert, maskCoverage, maskVerdict, FULL_MASK_COVERAGE,
-    aspectDims, controlsFor, SAMPLER_CHOICES, canonicalSamplerId, STRENGTH_PRESETS, jobResults, compareRows, sanitizeRecipe, RECIPE_FIELDS, persistableSession,
+    aspectDims, controlsFor, SAMPLER_CHOICES, SCHEDULER_CHOICES, ETA_SAMPLERS, RNG_CHOICES, canonicalSamplerId, STRENGTH_PRESETS, jobResults, compareRows, sanitizeRecipe, RECIPE_FIELDS, persistableSession,
   };
 });

@@ -295,8 +295,8 @@
       h('pre', { className: 'ca-code', 'data-dex-field': 'style-preview-prompt', style: { whiteSpace: 'pre-wrap', margin: 0 } }, st.preview.prompt),
       h('pre', { className: 'ca-code', 'data-dex-field': 'style-preview-negative', style: { whiteSpace: 'pre-wrap', margin: 0 } }, st.preview.negative_prompt || '(no negative prompt)'),
       st.preview.syntax_error ? h('div', { className: 'ca-note', role: 'alert', 'data-dex-field': 'style-syntax-error' }, st.preview.syntax_error) : null) : null;
-    return h('details', { className: 'ca-field', 'data-dex-field': 'styles-panel', open: !!st.open, onToggle: e => { st.open = e.target.open; if (st.open && !st.loaded) this.caLoadStyles(); } },
-      h('summary', null, 'Prompt styles' + (st.list.length ? ' (' + st.list.length + ')' : '')),
+    return h('details', { className: 'ca-field', 'data-dex-field': 'styles-panel', open: !!st.open },
+      h('summary', { onClick: e => { e.preventDefault(); st.open = !st.open; if (st.open && !st.loaded) this.caLoadStyles(); else this.caSync(); } }, 'Prompt styles' + (st.list.length ? ' (' + st.list.length + ')' : '')),
       h('div', { className: 'ca-stack' }, h('div', { className: 'ca-list' }, ...rows),
         h('div', { className: 'ca-form-actions' },
           h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'style-preview-button', onClick: () => this.caPreviewStyles() }, 'Preview'),
@@ -304,6 +304,24 @@
           h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'style-new', onClick: () => this.caOpenStyleEditor(null) }, 'New style'),
           h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'style-from-prompt', onClick: () => this.caStyleFromPrompt() }, 'Save prompt as style')),
         st.note ? h('div', { className: 'ca-muted', role: 'status', 'data-dex-field': 'style-note' }, st.note) : null, pv, editor));
+  };
+
+  // Advanced sampling: only controls the installed sd-cli can honour, plus an explicit list of what it cannot.
+  P.buildAdvancedSampling = function () {
+    const s = this.state, ctl = this._controls(), D = window.DexClient;
+    if (!ctl.eta && !ctl.rng) return null;
+    const effective = D.canonicalSamplerId(s.sampler);
+    const etaOk = D.ETA_SAMPLERS.includes(effective);
+    const input = (label, value, onInput, extra) => h('label', { className: 'ca-field' }, h('span', null, label), h('input', Object.assign({ value: String(value ?? ''), onInput, onChange: onInput }, extra || {})));
+    return h('details', { className: 'ca-field', 'data-dex-field': 'advanced-sampling', open: !!this._ca().advSampling },
+      // Open state is owned by app state and flipped synchronously on click (the native 'toggle' event is async and
+      // loses a race with a re-render that rebuilds the element).
+      h('summary', { onClick: e => { e.preventDefault(); const ca = this._ca(); ca.advSampling = !ca.advSampling; this.caSync(); } }, 'Advanced sampling'),
+      h('div', { className: 'ca-stack' },
+        ctl.eta ? input('Eta — noise multiplier (blank = sampler default)', s.eta, e => { this.state.eta = e.target.value; }, { type: 'number', min: 0, max: 2, step: 0.05, 'data-dex-field': 'eta', disabled: !etaOk, title: etaOk ? '' : 'Eta only affects ' + D.ETA_SAMPLERS.join(', ') }) : null,
+        ctl.eta && !etaOk ? h('div', { className: 'ca-note', 'data-dex-field': 'eta-note' }, 'Eta has no effect with the ' + effective + ' sampler. It applies to: ' + D.ETA_SAMPLERS.join(', ') + '.') : null,
+        ctl.rng ? h('label', { className: 'ca-field' }, h('span', null, 'Noise RNG'), h('select', { value: s.rng || '', 'data-dex-field': 'rng', onChange: e => this.setState({ rng: e.target.value }) }, ...D.RNG_CHOICES.map(([id, label]) => h('option', { key: id || 'default', value: id }, label)))) : null,
+        h('div', { className: 'ca-muted', 'data-dex-field': 'unavailable-sampling' }, 'Not available with the installed stable-diffusion.cpp (no matching option): variation seed and strength, seed resize, S churn / tmin / tmax / noise, UniPC variant and order, beta schedule, zero-terminal-SNR, sigma min/max/rho.')));
   };
 
   // Request preview: asks the server to normalise the exact body Generate would send and to build the
@@ -357,10 +375,10 @@
       ctl.sampler ? h('label', { className: 'ca-field' }, h('span', null, 'Sampler'), h('select', { value: window.DexClient.canonicalSamplerId(s.sampler), 'data-dex-field': 'sampler', onChange: e => this.setState({ sampler: e.target.value }) }, ...window.DexClient.SAMPLER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null,
       ctl.clipSkip ? input('CLIP skip (blank = model default)', s.clipSkip, e => { this.state.clipSkip = e.target.value; }, { type: 'number', min: 1, max: 12, step: 1, 'data-dex-field': 'clip-skip' }) : null,
       ctl.tiling ? h('label', { className: 'ca-check-row' }, h('input', { type: 'checkbox', checked: !!s.tiling, 'data-dex-field': 'tiling', onChange: e => this.setState({ tiling: e.target.checked }) }), h('span', null, 'VAE tiling (lower memory for large images)')) : null,
-      ctl.scheduler ? h('label', { className: 'ca-field' }, h('span', null, 'Scheduler'), h('select', { value: s.scheduler, onChange: e => this.setState({ scheduler: e.target.value }) }, ...['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple'].map(x => h('option', { key: x }, x)))) : null);
+      ctl.scheduler ? h('label', { className: 'ca-field' }, h('span', null, 'Scheduler'), h('select', { value: s.scheduler, onChange: e => this.setState({ scheduler: e.target.value }) }, ...window.DexClient.SCHEDULER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null);
     const generate = h('button', { type: 'button', className: 'ca-primary', onClick: () => this.onGenerate(), disabled: s.jobStatus === 'generating' }, s.jobStatus === 'generating' ? (vals.generateLabel || 'Generating…') : 'Generate Image');
     const modelPicker = vals.targetSelectV1 || targetSelect;
-    const workbench = s.screens[s.version] === 'batch' ? this.buildBatchWorkspace() : h('div', { className: 'ca-generate-form' }, panel('Prompt and target', h('div', { className: 'ca-stack' }, prompt, vals.promptTools || null, modelPicker, targetSelect, negative, samplingNote, basic, this.buildStylesPanel(), vals.createResources || null, vals.createPresets || null, h('div', { className: 'ca-form-actions' }, generate), this.buildRequestPreview()), accent), this.buildCreateWorkbench(vals.modelsListDisplay));
+    const workbench = s.screens[s.version] === 'batch' ? this.buildBatchWorkspace() : h('div', { className: 'ca-generate-form' }, panel('Prompt and target', h('div', { className: 'ca-stack' }, prompt, vals.promptTools || null, modelPicker, targetSelect, negative, samplingNote, basic, this.buildAdvancedSampling(), this.buildStylesPanel(), vals.createResources || null, vals.createPresets || null, h('div', { className: 'ca-form-actions' }, generate), this.buildRequestPreview()), accent), this.buildCreateWorkbench(vals.modelsListDisplay));
     return h('div', { className: 'ca-generate-layout' }, h('section', { className: 'ca-results-column' }, panel('Preview and result', this.buildResultStaging(), accent), s.screens[s.version] === 'batch' ? null : panel('Advanced workflows', h('div', { className: 'ca-muted' }, 'Batch / Sweep, prompt drafts, wildcards, enhancement, recipes, macros, and reproducibility remain available in their existing controls. Use Preview request below the form to inspect the exact request and worker command.'), accent)), h('section', { className: 'ca-main-column' }, workbench));
   };
 
