@@ -78,6 +78,31 @@ test('the MFLUX wrapper label form matches, but a longer run id that starts with
   } finally { for (const p of [label, longer]) try { process.kill(p.pid, 'SIGKILL'); } catch (_) {} fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('the MFLUX remote wrappers stop their generator on HUP at once (a foreground child would defer the trap)', async () => {
+  for (const script of ['mflux-remote-generate.sh', 'mflux-remote-edit.sh']) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mfw-'));
+    const pidFile = path.join(dir, 'gen.pid');
+    const fake = path.join(dir, 'fake-mflux');
+    fs.writeFileSync(fake, `#!/bin/bash\necho $$ > "${pidFile}"\nexec sleep 30\n`, { mode: 0o755 });
+    const ref = path.join(dir, 'in.bin'); fs.writeFileSync(ref, 'ref');
+    const sha = require('node:crypto').createHash('sha256').update('ref').digest('hex');
+    const b64 = Buffer.from('p').toString('base64');
+    const args = script.includes('edit') ? [b64, '4', '1', '512', '512', dir, fake, sha] : [b64, '4', '1', '512', '512', dir, fake];
+    const child = spawn('bash', [path.join(ROOT, 'sdcpp-workflow', 'bin', script), ...args], { stdio: [fs.openSync(ref, 'r'), 'ignore', 'ignore'], env: { ...process.env, TMPDIR: dir } });
+    for (let i = 0; i < 50 && !fs.existsSync(pidFile); i++) await wait(100);
+    assert.ok(fs.existsSync(pidFile), script + ': the fake generator started');
+    const gen = Number(fs.readFileSync(pidFile, 'utf8').trim());
+    assert.ok(alive(gen));
+    const t0 = Date.now();
+    child.kill('SIGHUP');
+    for (let i = 0; i < 40 && alive(gen); i++) await wait(100);
+    assert.equal(alive(gen), false, script + ': the generator is stopped when the wrapper is hung up');
+    assert.ok(Date.now() - t0 < 4000, 'within seconds, not after the generator would have finished');
+    try { process.kill(gen, 'SIGKILL'); } catch (_) {}
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('malformed run ids are refused before anything is sent', async () => {
   const dir = stubSshDir();
   for (const bad of ['', 'x', '20261016-111111', 'a; rm -rf ~', '20261016-111111-$(id)', '../20261016-111111-x']) {
@@ -98,6 +123,7 @@ test('server contract: verified remote stop gates the lease, timeouts use it, MF
   assert.match(SERVER, /REMOTE_ORPHAN_HOLD_MS = 2 \* 60 \* 1000/, 'a failed remote cancel cannot hold the lease forever');
   assert.match(SERVER, /if \(!REMOTE_CANCEL_ACTIONS\.has\(job\.commandAction\)\) \{ delete job\.remoteOrphan;/, 'unverifiable actions clear the hold');
   assert.match(SERVER, /gate: 'remote-cancel-failed'/);
+  assert.match(SERVER, /gate: 'cancel-in-progress'/, 'a second Cancel cannot release the lease while the first is verifying');
   assert.match(SERVER, /job\.childPid = child\.pid/);
   const mflux = fs.readFileSync(path.join(ROOT, 'sdcpp-workflow', 'bin', 'mflux-controlled-generate.sh'), 'utf8');
   assert.match(mflux, /dexdiffusion-mflux-\$RUN_ID/);

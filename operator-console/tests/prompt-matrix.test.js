@@ -171,3 +171,15 @@ test('dry run: ordered, exact preview text for both scripts', () => {
   assert.deepEqual(m.preview, ['1. a', '2. a, b  (seed+1)']);
   assert.deepEqual(P.dryRun('lines', { text: '--bogus 1', base: B('') }).preview, [], 'a failed plan previews nothing');
 });
+
+test('review hardening: long whitespace runs stay linear, inherited flag names are refused, error lists are bounded', () => {
+  const t0 = Date.now();
+  P.buildMatrix({ prompt: 'a | b' + ' '.repeat(120000) + 'c', negative_prompt: '' }, { target: 'positive' }, null, {});
+  assert.ok(Date.now() - t0 < 1500, 'no quadratic trim');
+  for (const f of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+    const r = P.buildLines(`a cat --${f} 5`, { prompt: 'b' }, {}, null, {});
+    assert.equal(r.ok, false, f); assert.doesNotMatch(r.errors.join(), /undefined/, f);
+  }
+  const bad = Array.from({ length: 5000 }, () => 'x --nope 1').join('\n');
+  assert.ok(P.buildLines(bad, { prompt: 'b' }, {}, null, {}).errors.length <= 21, 'errors are capped');
+});

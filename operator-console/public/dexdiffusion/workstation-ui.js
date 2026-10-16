@@ -810,7 +810,10 @@
   };
   P.pmxStart = async function () {
     if (!(await this.pmxCheck())) return;
-    const r = await this._api('/api/promptmatrix', this._pmxBody());
+    // Run with the seed the preview showed (a random base seed is fixed once; the preview must match the run).
+    const body = this._pmxBody(), shown = this._pmx().plan;
+    if (shown && shown.fixedSeed != null && !(Number(body.settings.seed) >= 0)) body.settings.seed = shown.fixedSeed;
+    const r = await this._api('/api/promptmatrix', body);
     if (!r.ok) { this.wsSet({ pmx: Object.assign({}, this._pmx(), { error: r.data.error || 'Matrix rejected', needsConfirm: !!r.data.needs_confirmation }) }); return; }
     this.wsSet({ queueId: r.data.id, queue: r.data, pmx: Object.assign({}, this._pmx(), { error: null, needsConfirm: false, queueId: r.data.id, grid: null }) });
     this._pollQueue();
@@ -831,7 +834,9 @@
   };
   P.plinesStart = async function () {
     if (!(await this.plinesCheck())) return;
-    const r = await this._api('/api/promptlines', this._plinesBody());
+    const body = this._plinesBody(), shown = this._plines().plan;
+    if (shown && shown.fixedSeed != null && !(Number(body.settings.seed) >= 0)) body.settings.seed = shown.fixedSeed;
+    const r = await this._api('/api/promptlines', body);
     if (!r.ok) { this.wsSet({ plines: Object.assign({}, this._plines(), { error: r.data.error || 'List rejected', needsConfirm: !!r.data.needs_confirmation }) }); return; }
     this.wsSet({ queueId: r.data.id, queue: r.data, plines: Object.assign({}, this._plines(), { error: null, needsConfirm: false, queueId: r.data.id }) });
     this._pollQueue();

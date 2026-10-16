@@ -77,11 +77,14 @@ async function newPage(browser, base) {
       const exp = await fetch(srv.base + '/api/images/' + id + '/export?metadata=1');
       assert.equal(exp.status, 200);
       const buf = Buffer.from(await exp.arrayBuffer());
-      assert.equal(PngText.readTextChunks(buf).find(c => c.key === 'parameters').text, text);
+      const embedded = PngText.readTextChunks(buf).filter(c => c.key === 'parameters');
+      assert.equal(embedded.length, 1, 'any pre-existing parameters chunk is replaced, never duplicated');
+      assert.equal(embedded[0].text, text);
       const plain = Buffer.from(await (await fetch(srv.base + '/api/images/' + id + '/export')).arrayBuffer());
       const orig = Buffer.from(await (await fetch(srv.base + '/api/images/' + id)).arrayBuffer());
       assert.ok(plain.equals(orig), 'plain export is the canonical file, unchanged');
-      assert.equal(PngText.readTextChunks(plain).some(c => c.key === 'parameters'), false);
+      // images made with prompt saving on may already carry sd-cli's own `parameters` chunk: the plain export must not change that
+      assert.deepEqual(PngText.readTextChunks(plain), PngText.readTextChunks(orig));
       // privacy: without ?prompt=0 the prompt is only present if it was saved; with prompt=0 it never is
       const noPrompt = await (await fetch(srv.base + '/api/images/' + id + '/infotext?prompt=0')).text();
       assert.doesNotMatch(noPrompt, /Negative prompt:/);

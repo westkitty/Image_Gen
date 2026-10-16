@@ -48,7 +48,14 @@
   }
 
   // ───────────────────────── Prompt matrix ─────────────────────────
-  const clean = s => String(s).trim().replace(/^[\s,]+|[\s,]+$/g, '');
+  // Linear trim of whitespace and commas at both ends (a regex alternation here was quadratic on long whitespace runs).
+  const clean = s => {
+    const t = String(s).trim();
+    let i = 0, j = t.length;
+    while (i < j && (t[i] === ',' || /\s/.test(t[i]))) i++;
+    while (j > i && (t[j - 1] === ',' || /\s/.test(t[j - 1]))) j--;
+    return t.slice(i, j);
+  };
 
   // -> { base, parts[] } ; parts keep their raw text (labels), joined text is cleaned later.
   function splitMatrix(text) {
@@ -191,7 +198,7 @@
       const name = tok.text.slice(2);
       if (!name) return fail('a bare "--" is not a flag');
       if (Object.prototype.hasOwnProperty.call(UNSUPPORTED_FLAGS, name)) return fail(`--${name} is an A1111 option this console does not support (${UNSUPPORTED_FLAGS[name]})`);
-      const def = FLAGS[name];
+      const def = Object.prototype.hasOwnProperty.call(FLAGS, name) ? FLAGS[name] : undefined;   // not inherited names like constructor
       if (!def) return fail(`unknown flag --${name} (supported: ${Object.keys(FLAGS).map(k => '--' + k).join(', ')})`);
       if (out.flags.includes(name)) return fail(`--${name} appears twice`);
       if (def.cap && caps && caps[def.cap] === false) return fail(`--${name} is refused: this target does not use ${def.capLabel}, so it would not change the image`);
@@ -234,6 +241,7 @@
     const errors = [], cells = [];
     let skipped = 0;
     rows.forEach((row, i) => {
+      if (errors.length >= 20) return;   // enough to fix; never build a response proportional to the input
       if (!row.trim()) { skipped++; return; }
       const r = parseLine(row, i + 1, caps, base && base.prompt);
       if (!r.ok) { errors.push(...r.errors); return; }

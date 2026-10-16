@@ -104,7 +104,11 @@ got_sha="$(shasum -a 256 "$tmp/ref.png" | cut -d' ' -f1)"
 [ "$got_sha" = "$ref_sha" ] || { echo "MFLUX_REMOTE_FAIL: generator-exit reference checksum mismatch" >&2; exit 16; }
 tstamp generate-start
 "$mflux_bin" --model "$model_dir" --base-model flux2-klein-4b --image-paths "$tmp/ref.png" \
-  --prompt "$prompt" --steps "$2" --seed "$3" --width "$4" --height "$5" --output "$tmp/out.png" >&2
+  --prompt "$prompt" --steps "$2" --seed "$3" --width "$4" --height "$5" --output "$tmp/out.png" >&2 &
+# Foreground children defer bash's HUP/TERM traps until they exit; waiting on a background job lets the traps fire at once
+# (finish() then stops the generator), so a dropped ssh session or a cancel cannot leave MFLUX running.
+gen_pid=$!
+wait "$gen_pid"
 gen_rc=$?
 tstamp generate-end
 if [ "$gen_rc" -ne 0 ]; then

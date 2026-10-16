@@ -100,3 +100,10 @@ test('hostile infotext stays linear and many small compressed chunks stay within
   assert.ok(total <= 5 * 1024 * 1024, 'cumulative budget: ' + total);
   assert.ok(out.some(c => c.truncated), 'the rest is reported as skipped');
 });
+
+test('a whitespace-padded parameters line stays linear (second review: the leading \\s* was still quadratic)', () => {
+  const t0 = Date.now();
+  I.parseInfotext('p\nSteps: 1,' + ' '.repeat(30000) + '!');
+  I.parseInfotext('p\n' + ' '.repeat(30000) + 'x');
+  assert.ok(Date.now() - t0 < 800, 'linear');
+});

@@ -10,12 +10,13 @@ const PromptMatrix = require('./public/dexdiffusion/prompt-matrix.js');
 
 function mount(app, deps) {
   const { normalizeControlledGenerationBody, validateControlledGenerationParams, allControlledTargets, CONTROLLED_TARGETS,
-    targetCapabilities, queueRunner, W, LARGE_REQUEST_IMAGES, crypto } = deps;
+    targetCapabilities, queueRunner, W, LARGE_REQUEST_IMAGES, crypto, expandWildcards = t => t } = deps;
 
   // kind: 'matrix' | 'lines'.  Returns { plan, settings, negative, target, fixedSeed, jobs } or { status, error, errors }.
   function planFor(kind, body) {
     const settings = { ...(body.settings || {}) };
-    const prompt = String(settings.prompt || '');
+    // Wildcards are expanded ONCE per plan (not per cell at run time), so cells differ only by the script's own variation.
+    const prompt = expandWildcards(String(settings.prompt || ''));
     const negative = String(settings.negative_prompt || settings.negativePrompt || '');
     delete settings.negativePrompt;
     if (kind === 'matrix' && !prompt.trim()) return { status: 400, error: 'Enter a prompt first' };
@@ -26,7 +27,7 @@ function mount(app, deps) {
     const base = { prompt, negative_prompt: negative };
     const plan = kind === 'matrix'
       ? PromptMatrix.buildMatrix(base, { target: body.target === 'negative' ? 'negative' : (body.target || 'positive'), putAtStart: !!body.put_at_start, joiner: body.joiner || 'comma', differentSeeds: !!body.different_seeds }, caps)
-      : PromptMatrix.buildLines(typeof body.text === 'string' ? body.text : '', base, { iterateSeed: !!body.iterate_seed }, caps);
+      : PromptMatrix.buildLines(expandWildcards(typeof body.text === 'string' ? body.text : ''), base, { iterateSeed: !!body.iterate_seed }, caps);
     if (!plan.ok) return { status: 400, error: plan.errors[0], errors: plan.errors };
     // Like A1111 (and the X/Y/Z plot) a random base seed (-1) is fixed once so cells differ only by the script's variation,
     // unless the user keeps random seeds. Per-cell seed offsets (different seed per image / iterate seed) need a fixed base.

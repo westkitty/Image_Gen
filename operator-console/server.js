@@ -3603,7 +3603,8 @@ app.post('/api/actions/upscale-esrgan', (req, res) => {
 // This is reference editing, not ControlNet: no control weight, no preprocessors, no start/end fractions.
 app.post('/api/actions/flux2-edit', (req, res) => {
   const body = { ...(req.body || {}) };
-  if (!body.image_id) return res.status(400).json({ error: 'Choose a library image as the reference.', gate: 'source' });
+  if (!body.image_id || body.staged_id) return res.status(400).json({ error: 'Choose a library image as the reference.', gate: 'source' });
+  const asked = { width: body.width, height: body.height };   // resolveImageSource fills blank sizes with the raw source size
   const srcInfo = resolveImageSource(body);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
   if (!srcInfo.imageId || !srcInfo.path) return res.status(400).json({ error: 'The reference must be a canonical library image.', gate: 'source' });
@@ -3617,7 +3618,7 @@ app.post('/api/actions/flux2-edit', (req, res) => {
   if (seed !== -1 && (!Number.isInteger(seed) || seed > W.MAX_SEED)) return res.status(400).json({ error: 'Seed must be a whole number or -1 for random.', gate: 'seed' });
   const dims = srcInfo.dims || pngSize(srcInfo.path) || {};
   const fit = (v, src) => v === undefined || v === '' ? Math.min(1536, Math.max(256, Math.round((src || 1024) / 16) * 16)) : Number(v);
-  const width = fit(body.width, dims.width), height = fit(body.height, dims.height);
+  const width = fit(asked.width, dims.width), height = fit(asked.height, dims.height);
   for (const [n, v] of [['width', width], ['height', height]]) if (!Number.isInteger(v) || v < 256 || v > 2048 || v % 16) return res.status(400).json({ error: `${n} must be a multiple of 16 between 256 and 2048.`, gate: n });
   const save = !!body.save_prompts;
   const args = ['--init-img', srcInfo.path, '--prompt', prompt, '--width', String(width), '--height', String(height), '--steps', String(steps), '--seed', String(seed), '--save-prompts', save ? 'true' : 'false'];
@@ -4012,7 +4013,7 @@ app.post('/api/xyz/:id/grid', (req, res) => {
 });
 
 // ---- A1111 Prompt matrix + Prompts from file or textbox (SC-16..SC-19): same validated queue cells as the X/Y/Z plot ----
-require('./prompt-scripts').mount(app, { normalizeControlledGenerationBody, validateControlledGenerationParams, allControlledTargets, CONTROLLED_TARGETS, targetCapabilities, queueRunner, W, LARGE_REQUEST_IMAGES, crypto });
+require('./prompt-scripts').mount(app, { expandWildcards, normalizeControlledGenerationBody, validateControlledGenerationParams, allControlledTargets, CONTROLLED_TARGETS, targetCapabilities, queueRunner, W, LARGE_REQUEST_IMAGES, crypto });
 
 app.post('/api/queues', (req, res) => {
   const body = req.body || {};
@@ -4504,6 +4505,8 @@ app.post('/api/jobs/:id/cancel', async (req, res) => {
 
   // In-memory image job: stop the local process group, then verify the Big Mac side is really stopped.
   const job = jobs[jobId];
+  // A second Cancel while the first is still verifying the Big Mac side must not fall through and release the lease early.
+  if (job && job.status === 'CANCELLED' && job.remoteOrphan && job.remoteOrphan.pending) return res.status(409).json({ ok: false, gate: 'cancel-in-progress', error: 'A cancel is already stopping this job on Big Mac; wait for it to finish.' });
   const retry = job && job.status === 'CANCELLED' && job.remoteOrphan && !job.remoteOrphan.pending;
   if (job && (job.status === 'queued' || job.status === 'running' || retry)) {
     const wasRunning = job.status === 'running' || retry;

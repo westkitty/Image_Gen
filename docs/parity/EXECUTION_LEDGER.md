@@ -4,7 +4,7 @@ Append-only. Controlling documents (local copies, retrieved read-only from Drive
 `docs/parity/DEXDIFFUSION_COMPLETE_UI_IMPLEMENTATION_PLAN.md`, `docs/parity/DEXDIFFUSION_A1111_PARITY_LEDGER.json` (258 provisional rows; schema `dexdiffusion.a1111.parity-ledger.v1`).
 Upstream pin: AUTOMATIC1111 `82a973c04367123ae98bd9abdf80d9eda9b910e2`. Exclusions: training, checkpoint merging.
 
-## Verdict so far: PARTIAL — P02 done for the sampling contract; P03 started (sampler, CLIP skip, tiling controls done; the rest of P03 open). Requirements marked LIVE_PROVEN-for-SDCPP: GN-02 (sampler, via UI), GN-13 (tiling). No row is COMPLETE.
+## Verdict: PARTIAL — 258 rows: 0 COMPLETE, 81 PARTIAL, 64 BLOCKED, 113 PENDING (counts recomputed in the P15 section). P02-P14 each delivered a supported subset with live or browser proof; P01 (exhaustive upstream enumeration) and the unsupported engine features remain open.
 
 ## P00 preflight (2026-10-16)
 - Host MacBook-Air.local / user andrew; repo `/Users/andrew/Image_Gen`, branch `main`, origin `git@github.com:westkitty/Image_Gen.git`, HEAD `483cb5e` (above the blueprint's `169ad07` baseline).

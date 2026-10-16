@@ -14,8 +14,9 @@
   'use strict';
 
   // Keys are bounded (A1111 keys are short): an unbounded key made a long colon-free line quadratic (80 KB took 11 s).
-  const RE_PARAM = /\s*(\w[\w \-/]{0,60}):\s*("(?:\\.|[^\\"])+"|[^,]*)(?:,|$)/g;
-  const MAX_INFOTEXT = 256 * 1024;
+  // No leading \s* either: a long whitespace run made every start position rescan it (quadratic); keys start with \w anyway.
+  const RE_PARAM = /(\w[\w \-/]{0,60}):\s*("(?:\\.|[^\\"])+"|[^,]*)(?:,|$)/g;
+  const MAX_INFOTEXT = 32 * 1024;
   const RE_IMAGESIZE = /^(\d+)x(\d+)$/;
 
   function unquote(v) {
