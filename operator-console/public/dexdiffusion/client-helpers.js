@@ -191,6 +191,14 @@
     ['ddim_trailing', 'DDIM trailing (sd.cpp)'], ['tcd', 'TCD (sd.cpp)'], ['res_multistep', 'RES multistep (sd.cpp)'], ['res_2s', 'RES 2S (sd.cpp)'],
     ['er_sde', 'ER SDE (sd.cpp)'], ['euler_cfg_pp', 'Euler CFG++ (sd.cpp)'], ['euler_a_cfg_pp', 'Euler a CFG++ (sd.cpp)'],
   ];
+  // Mirrors controlled-args.js HIRES_UPSCALERS (test-locked).
+  const HIRES_UPSCALERS = ['Latent', 'Latent (nearest)', 'Latent (nearest-exact)', 'Latent (antialiased)', 'Latent (bicubic)', 'Latent (bicubic antialiased)', 'Lanczos', 'Nearest'];
+  // Final size of the second pass, using the same rules the server applies (multiples of 8 for scale mode).
+  function hiresTarget(base, ws) {
+    if (ws && ws.hiresMode === 'size') return { width: parseInt(ws.hiresW, 10) || 0, height: parseInt(ws.hiresH, 10) || 0 };
+    const sc = Number(ws && ws.hiresScale) || 0;
+    return { width: Math.round(base.width * sc / 8) * 8, height: Math.round(base.height * sc / 8) * 8 };
+  }
   const SCHEDULER_CHOICES = [['discrete', 'discrete'], ['karras', 'karras'], ['exponential', 'exponential'], ['ays', 'align your steps'], ['sgm_uniform', 'sgm uniform'], ['simple', 'simple'], ['kl_optimal', 'KL optimal']];
   // Samplers for which --eta is meaningful (sd-cli help documents a default); mirrors controlled-args.js ETA_SAMPLERS.
   const ETA_SAMPLERS = ['euler_a', 'dpmpp2s_a', 'ddim_trailing', 'tcd', 'res_multistep', 'res_2s', 'er_sde'];
@@ -259,6 +267,6 @@
     resolveBackendBase, jobProgressPercent, chooseInitialTarget, targetOptionLabel, capabilityBadge,
     dimensionIssue, dimensionsForTarget, dimensionInfo,
     maskDilate, maskErode, maskBlur, maskFeather, maskInvert, maskCoverage, maskVerdict, FULL_MASK_COVERAGE,
-    aspectDims, controlsFor, SAMPLER_CHOICES, SCHEDULER_CHOICES, ETA_SAMPLERS, RNG_CHOICES, canonicalSamplerId, STRENGTH_PRESETS, jobResults, compareRows, sanitizeRecipe, RECIPE_FIELDS, persistableSession,
+    aspectDims, controlsFor, SAMPLER_CHOICES, SCHEDULER_CHOICES, HIRES_UPSCALERS, hiresTarget, ETA_SAMPLERS, RNG_CHOICES, canonicalSamplerId, STRENGTH_PRESETS, jobResults, compareRows, sanitizeRecipe, RECIPE_FIELDS, persistableSession,
   };
 });

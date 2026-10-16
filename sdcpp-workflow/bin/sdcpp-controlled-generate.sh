@@ -40,6 +40,10 @@ ARG_HIRES_SCALE=""
 ARG_HIRES_STEPS="0"
 ARG_HIRES_DENOISE="0.5"
 ARG_HIRES_UPSCALER="Latent"
+ARG_HIRES_W=""
+ARG_HIRES_H=""
+HIRES_ON="false"
+HIRES_JSON="null"
 
 usage() {
   cat <<EOF
@@ -92,6 +96,8 @@ while [ "$#" -gt 0 ]; do
     --hires-steps) ARG_HIRES_STEPS="${2:?}"; shift 2 ;;
     --hires-denoise) ARG_HIRES_DENOISE="${2:?}"; shift 2 ;;
     --hires-upscaler) ARG_HIRES_UPSCALER="${2:?}"; shift 2 ;;
+    --hires-width) ARG_HIRES_W="${2:?}"; shift 2 ;;
+    --hires-height) ARG_HIRES_H="${2:?}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) fail "args" "Unknown argument: $1 (see --help)" ;;
   esac
@@ -153,10 +159,28 @@ else
 fi
 case "$ARG_BATCH_COUNT" in ''|*[!0-9]*) fail "args" "--batch-count must be an integer 1-16" ;; esac
 [ "$ARG_BATCH_COUNT" -ge 1 ] && [ "$ARG_BATCH_COUNT" -le 16 ] || fail "args" "--batch-count must be an integer 1-16"
-if [ -n "$ARG_HIRES_SCALE" ]; then
-  python3 -c 'import sys; s,d,n=float(sys.argv[1]),float(sys.argv[2]),int(sys.argv[3]); sys.exit(0 if 1.1<=s<=2.0 and 0.05<=d<=0.95 and 0<=n<=150 else 1)' "$ARG_HIRES_SCALE" "$ARG_HIRES_DENOISE" "$ARG_HIRES_STEPS" 2>/dev/null \
-    || fail "args" "--hires-scale 1.1-2.0, --hires-denoise 0.05-0.95, --hires-steps 0-150"
-  case "$ARG_HIRES_UPSCALER" in Latent|Lanczos|Nearest) : ;; *) fail "args" "--hires-upscaler must be Latent|Lanczos|Nearest" ;; esac
+if [ -n "$ARG_HIRES_SCALE" ] || [ -n "$ARG_HIRES_W" ] || [ -n "$ARG_HIRES_H" ]; then
+  HIRES_ON="true"
+  # Scale mode XOR resize-to mode (sd-cli: --hires-width/--hires-height 0 means "use --hires-scale").
+  if [ -n "$ARG_HIRES_SCALE" ] && { [ -n "$ARG_HIRES_W" ] || [ -n "$ARG_HIRES_H" ]; }; then
+    fail "args" "Use either --hires-scale or --hires-width/--hires-height, not both."
+  fi
+  if [ -n "$ARG_HIRES_SCALE" ]; then
+    python3 -c 'import sys; s=float(sys.argv[1]); sys.exit(0 if 1.1<=s<=2.0 else 1)' "$ARG_HIRES_SCALE" 2>/dev/null || fail "args" "--hires-scale 1.1-2.0"
+  else
+    for _hv in "$ARG_HIRES_W" "$ARG_HIRES_H"; do
+      case "$_hv" in ''|*[!0-9]*) fail "args" "--hires-width and --hires-height must both be integers (multiples of 8, 64-2048)." ;; esac
+      [ "$_hv" -ge 64 ] && [ "$_hv" -le 2048 ] && [ $((_hv % 8)) -eq 0 ] || fail "args" "--hires-width/--hires-height must be multiples of 8 between 64 and 2048."
+    done
+  fi
+  python3 -c 'import sys; d,n=float(sys.argv[1]),int(sys.argv[2]); sys.exit(0 if 0.05<=d<=0.95 and 0<=n<=150 else 1)' "$ARG_HIRES_DENOISE" "$ARG_HIRES_STEPS" 2>/dev/null \
+    || fail "args" "--hires-denoise 0.05-0.95, --hires-steps 0-150"
+  # SAMPLER-INDEPENDENT allowlist: exactly the upscalers sd-cli documents without a model directory.
+  case "$ARG_HIRES_UPSCALER" in
+    "Latent"|"Latent (nearest)"|"Latent (nearest-exact)"|"Latent (antialiased)"|"Latent (bicubic)"|"Latent (bicubic antialiased)"|"Lanczos"|"Nearest") : ;;
+    *) fail "args" "Unsupported --hires-upscaler: $ARG_HIRES_UPSCALER" ;;
+  esac
+  HIRES_JSON="$(python3 -c 'import json,sys; sc,w,h,st,dn,up=sys.argv[1:7]; o={"steps":int(st),"denoise":float(dn),"upscaler":up}; o.update({"scale":float(sc)} if sc else {"width":int(w),"height":int(h)}); print(json.dumps(o))' "$ARG_HIRES_SCALE" "$ARG_HIRES_W" "$ARG_HIRES_H" "$ARG_HIRES_STEPS" "$ARG_HIRES_DENOISE" "$ARG_HIRES_UPSCALER")"
 fi
 case "$ARG_API" in openai|sdapi|both|native) : ;; *) fail "args" "--api must be openai|sdapi|both|native" ;; esac
 if [ "$ARG_SAVE_PROMPTS" = "true" ]; then
@@ -771,7 +795,7 @@ printf '%s\n' "$SLOT_RESULT" > "$RUN_DIR/model-slot.json"
 log "Secondary model slot active for $ARG_TARGET: $SLOT_RESULT"
 
 SD15_USE_SERVER=false
-if [ "$ARG_TARGET" = "sd15" ] && [ "$ARG_BATCH_COUNT" = "1" ] && [ -z "$ARG_HIRES_SCALE" ] && [ -z "$ARG_CLIP_SKIP" ] && [ "$ARG_TILING" != "true" ] && [ -z "$ARG_ETA" ] && [ -z "$ARG_RNG" ] && ! printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
+if [ "$ARG_TARGET" = "sd15" ] && [ "$ARG_BATCH_COUNT" = "1" ] && [ "$HIRES_ON" != "true" ] && [ -z "$ARG_CLIP_SKIP" ] && [ "$ARG_TILING" != "true" ] && [ -z "$ARG_ETA" ] && [ -z "$ARG_RNG" ] && ! printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
   if lsof -nP -iTCP:"$SD15_TUNNEL_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
     SD15_USE_SERVER=true
   else
@@ -1014,9 +1038,13 @@ fi
 # Native sd-cli extras (pinned 7f0e728): --batch-count and --hires second pass.
 NATIVE_EXTRA=""
 REMOTE_OUT_ARG="$REMOTE_PNG"
-if [ -n "$ARG_HIRES_SCALE" ]; then
+if [ "$HIRES_ON" = "true" ]; then
   printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--hires-denoising-strength' || controlled_fail "sd-cli-help" "sd-cli help does not show --hires."
-  NATIVE_EXTRA="--hires --hires-scale $ARG_HIRES_SCALE --hires-steps $ARG_HIRES_STEPS --hires-denoising-strength $ARG_HIRES_DENOISE --hires-upscaler $ARG_HIRES_UPSCALER"
+  if [ -n "$ARG_HIRES_SCALE" ]; then HIRES_GEOMETRY="--hires-scale $ARG_HIRES_SCALE"; else
+    printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--hires-width' || controlled_fail "sd-cli-help" "sd-cli help does not show --hires-width."
+    HIRES_GEOMETRY="--hires-width $ARG_HIRES_W --hires-height $ARG_HIRES_H"
+  fi
+  NATIVE_EXTRA="--hires $HIRES_GEOMETRY --hires-steps $ARG_HIRES_STEPS --hires-denoising-strength $ARG_HIRES_DENOISE --hires-upscaler '$ARG_HIRES_UPSCALER'"
 fi
 BATCH_REMOTE_PNGS=()
 if [ "$ARG_BATCH_COUNT" -gt 1 ]; then
@@ -1078,7 +1106,7 @@ if [ "$ARG_BATCH_COUNT" -gt 1 ]; then
   RUN_STATUS="PASS"
   controlled_write_artifacts "PASS"
   printf '{"schema":"dexdiffusion.controlled_extras.v1","native_batch_count":%s,"output_seeds":%s,"hires":%s}\n' \
-    "$ARG_BATCH_COUNT" "$OUTPUT_SEEDS_JSON" "$([ -n "$ARG_HIRES_SCALE" ] && printf '{"scale":%s,"steps":%s,"denoise":%s,"upscaler":"%s"}' "$ARG_HIRES_SCALE" "$ARG_HIRES_STEPS" "$ARG_HIRES_DENOISE" "$ARG_HIRES_UPSCALER" || printf null)" \
+    "$ARG_BATCH_COUNT" "$OUTPUT_SEEDS_JSON" "$HIRES_JSON" \
     > "$RUN_DIR/controlled-extras.json"
   for lp in "${LOCAL_BATCH_PNGS[@]}"; do printf 'CONTROLLED_BATCH_IMAGE: %s\n' "$lp"; done
   pass_banner "CONTROLLED GENERATE PASS ($ARG_TARGET native batch x$ARG_BATCH_COUNT, seeds=$SEED_VALUE..$((SEED_VALUE + ARG_BATCH_COUNT - 1))).
@@ -1103,9 +1131,8 @@ controlled_verify_content "$LOCAL_PNG"
 RUN_STATUS="PASS"
 
 controlled_write_artifacts "PASS"
-if [ -n "$ARG_HIRES_SCALE" ]; then
-  printf '{"schema":"dexdiffusion.controlled_extras.v1","native_batch_count":1,"output_seeds":null,"hires":{"scale":%s,"steps":%s,"denoise":%s,"upscaler":"%s"}}\n' \
-    "$ARG_HIRES_SCALE" "$ARG_HIRES_STEPS" "$ARG_HIRES_DENOISE" "$ARG_HIRES_UPSCALER" > "$RUN_DIR/controlled-extras.json"
+if [ "$HIRES_ON" = "true" ]; then
+  printf '{"schema":"dexdiffusion.controlled_extras.v1","native_batch_count":1,"output_seeds":null,"hires":%s}\n' "$HIRES_JSON" > "$RUN_DIR/controlled-extras.json"
 fi
 
 pass_banner "CONTROLLED GENERATE PASS ($ARG_TARGET, seed=$SEED_LABEL).

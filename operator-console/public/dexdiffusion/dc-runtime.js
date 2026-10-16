@@ -116,6 +116,9 @@
   function captureFocus(roots) {
     const ae = document.activeElement;
     if (!ae || ae === document.body || ae === document.documentElement) return null;
+    // Only text-entry controls: that is where losing focus destroys the user's work. Buttons are left alone so a
+    // re-render never changes focus-dependent behaviour elsewhere (and costs nothing for them).
+    if (!ae.matches || !ae.matches('input:not([type=button]):not([type=submit]):not([type=reset]):not([type=checkbox]):not([type=radio]):not([type=file]),textarea,select,[contenteditable="true"]')) return null;
     for (let r = 0; r < roots.length; r++) {
       const root = roots[r];
       if (!(root instanceof Element) || !root.contains(ae)) continue;
@@ -319,7 +322,8 @@
             lastValue = v;
             const parent = anchor.parentNode;
             if (!parent) return;
-            const focusState = captureFocus(managed);
+            let focusState = null;
+            try { focusState = captureFocus(managed); } catch (e) { console.warn('[dc-runtime] focus capture skipped:', e && e.message); }
             for (const n of managed) if (n.parentNode === parent) parent.removeChild(n);
             let newNodes;
             if (isRenderable(v)) {
@@ -333,7 +337,7 @@
             const ref = anchor.nextSibling;
             for (const n of newNodes) parent.insertBefore(n, ref);
             managed = newNodes;
-            restoreFocus(focusState, newNodes);
+            try { restoreFocus(focusState, newNodes); } catch (e) { console.warn('[dc-runtime] focus restore skipped:', e && e.message); }  // never let focus carry-over break a render
           },
         };
       }

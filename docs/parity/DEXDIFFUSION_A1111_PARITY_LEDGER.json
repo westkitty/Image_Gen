@@ -1440,8 +1440,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Preserve native SDCPP second pass",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). UI_EXPOSED+WIRED+LIVE_PROVEN for SDCPP; hidden with MFLUX/FLUX.1 targets as unsupported. Live (Big Mac, photonic, euler_a, 512x512 base, 8 steps, seed 7, hires 4 steps denoise 0.5): no_hires e4429269c1256f9c 512x512; scale 1.5/Latent 7f90c9e901c23c59 768x768; resize-to 640x576/Lanczos e9b9a6cf018557a9 640x576; Latent (bicubic antialiased) 5859ebe446b4f856 768x768; Latent (nearest-exact) a4bfb1a6146fba4d 768x768; sd-cli log 'hires: { enabled: true, ... }' matches each request. ",
    "runtime_receipt": null
   },
   {
@@ -1460,8 +1460,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Retain bounded worker limit; validate actual final size",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). scale 1.1-2.0, final size capped at 2048; LIVE_PROVEN (768x768 from 512). Live (Big Mac, photonic, euler_a, 512x512 base, 8 steps, seed 7, hires 4 steps denoise 0.5): no_hires e4429269c1256f9c 512x512; scale 1.5/Latent 7f90c9e901c23c59 768x768; resize-to 640x576/Lanczos e9b9a6cf018557a9 640x576; Latent (bicubic antialiased) 5859ebe446b4f856 768x768; Latent (nearest-exact) a4bfb1a6146fba4d 768x768; sd-cli log 'hires: { enabled: true, ... }' matches each request. ",
    "runtime_receipt": null
   },
   {
@@ -1480,8 +1480,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Add explicit final width independent of scale",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). resize-to width LIVE_PROVEN (640). Requires both dims, multiples of 8, 64-2048, not below the base size. Live (Big Mac, photonic, euler_a, 512x512 base, 8 steps, seed 7, hires 4 steps denoise 0.5): no_hires e4429269c1256f9c 512x512; scale 1.5/Latent 7f90c9e901c23c59 768x768; resize-to 640x576/Lanczos e9b9a6cf018557a9 640x576; Latent (bicubic antialiased) 5859ebe446b4f856 768x768; Latent (nearest-exact) a4bfb1a6146fba4d 768x768; sd-cli log 'hires: { enabled: true, ... }' matches each request. ",
    "runtime_receipt": null
   },
   {
@@ -1500,8 +1500,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Add explicit final height independent of scale",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). resize-to height LIVE_PROVEN (576). Live (Big Mac, photonic, euler_a, 512x512 base, 8 steps, seed 7, hires 4 steps denoise 0.5): no_hires e4429269c1256f9c 512x512; scale 1.5/Latent 7f90c9e901c23c59 768x768; resize-to 640x576/Lanczos e9b9a6cf018557a9 640x576; Latent (bicubic antialiased) 5859ebe446b4f856 768x768; Latent (nearest-exact) a4bfb1a6146fba4d 768x768; sd-cli log 'hires: { enabled: true, ... }' matches each request. ",
    "runtime_receipt": null
   },
   {
@@ -1520,8 +1520,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Match every usable installed latent/image upscaler capability",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). All 8 upscalers sd-cli documents without a model directory are offered; 4 live-run (Latent, Lanczos, Latent (bicubic antialiased), Latent (nearest-exact)), the rest wired. Model-backed upscalers (ESRGAN etc. via --hires-upscalers-dir) not exposed: no directory configured and no weights approved. 'Nearest' and the other Latent variants not individually live-run.",
    "runtime_receipt": null
   },
   {
@@ -1540,8 +1540,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Verify 0=same semantics",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). hires_steps 0-150 (0 = reuse first-pass steps) wired; live used 4. Live (Big Mac, photonic, euler_a, 512x512 base, 8 steps, seed 7, hires 4 steps denoise 0.5): no_hires e4429269c1256f9c 512x512; scale 1.5/Latent 7f90c9e901c23c59 768x768; resize-to 640x576/Lanczos e9b9a6cf018557a9 640x576; Latent (bicubic antialiased) 5859ebe446b4f856 768x768; Latent (nearest-exact) a4bfb1a6146fba4d 768x768; sd-cli log 'hires: { enabled: true, ... }' matches each request. ",
    "runtime_receipt": null
   },
   {
@@ -1560,8 +1560,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Verify actual worker argument",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). denoise 0.05-0.95 wired; live used 0.5. Live (Big Mac, photonic, euler_a, 512x512 base, 8 steps, seed 7, hires 4 steps denoise 0.5): no_hires e4429269c1256f9c 512x512; scale 1.5/Latent 7f90c9e901c23c59 768x768; resize-to 640x576/Lanczos e9b9a6cf018557a9 640x576; Latent (bicubic antialiased) 5859ebe446b4f856 768x768; Latent (nearest-exact) a4bfb1a6146fba4d 768x768; sd-cli log 'hires: { enabled: true, ... }' matches each request. ",
    "runtime_receipt": null
   },
   {
@@ -1580,8 +1580,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Add separate positive prompt to actual second pass",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). sd-cli rev 7f0e728 --help has no such option (second-pass prompt); the panel says so and the API rejects the field as unexpected. Not faked by a second job or text substitution.",
    "runtime_receipt": null
   },
   {
@@ -1600,8 +1600,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Add distinct negative prompt on compatible backends",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). sd-cli rev 7f0e728 --help has no such option (second-pass negative prompt); the panel says so and the API rejects the field as unexpected. Not faked by a second job or text substitution.",
    "runtime_receipt": null
   },
   {
@@ -1620,8 +1620,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Support second-pass model only with verified in-process/second-pass swap",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). sd-cli rev 7f0e728 --help has no such option (second-pass checkpoint); the panel says so and the API rejects the field as unexpected. Not faked by a second job or text substitution.",
    "runtime_receipt": null
   },
   {
@@ -1640,8 +1640,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Expose independent second-pass sampler when engine supports it",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). sd-cli rev 7f0e728 --help has no such option (second-pass sampler); the panel says so and the API rejects the field as unexpected. Not faked by a second job or text substitution.",
    "runtime_receipt": null
   },
   {
@@ -1660,8 +1660,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Expose independent scheduler when engine supports it",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). sd-cli rev 7f0e728 --help has no such option (second-pass scheduler); the panel says so and the API rejects the field as unexpected. Not faked by a second job or text substitution.",
    "runtime_receipt": null
   },
   {
@@ -1680,8 +1680,8 @@
    "baseline_status": "partial",
    "required_implementation": "Show exact aligned width/height and memory estimate",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). Final resolution preview shown for both modes and unit-tested against the server's rounding; preview in scale mode uses the UI's current base size. Live (Big Mac, photonic, euler_a, 512x512 base, 8 steps, seed 7, hires 4 steps denoise 0.5): no_hires e4429269c1256f9c 512x512; scale 1.5/Latent 7f90c9e901c23c59 768x768; resize-to 640x576/Lanczos e9b9a6cf018557a9 640x576; Latent (bicubic antialiased) 5859ebe446b4f856 768x768; Latent (nearest-exact) a4bfb1a6146fba4d 768x768; sd-cli log 'hires: { enabled: true, ... }' matches each request. ",
    "runtime_receipt": null
   },
   {
@@ -1700,8 +1700,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Implement only with proven refiner lifecycle",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). sd-cli rev 7f0e728 --help has no such option (refiner on first/second/both passes; --high-noise-* are Wan-style dual-expert options, not an SDXL refiner); the panel says so and the API rejects the field as unexpected. Not faked by a second job or text substitution.",
    "runtime_receipt": null
   },
   {
@@ -1720,8 +1720,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Gate SDXL refiner by actual compatible weights/runtime",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). sd-cli rev 7f0e728 --help has no such option (refiner checkpoint); the panel says so and the API rejects the field as unexpected. Not faked by a second job or text substitution.",
    "runtime_receipt": null
   },
   {
@@ -1740,8 +1740,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Implement time/step switch under actual engine proof",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). sd-cli rev 7f0e728 --help has no such option (refiner switch point); the panel says so and the API rejects the field as unexpected. Not faked by a second job or text substitution.",
    "runtime_receipt": null
   },
   {
@@ -1760,8 +1760,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Preserve explicit algorithm and record in metadata",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). sd-cli rev 7f0e728 --help has no such option (refiner switch semantics); the panel says so and the API rejects the field as unexpected. Not faked by a second job or text substitution.",
    "runtime_receipt": null
   },
   {
@@ -1780,8 +1780,8 @@
    "baseline_status": "partial",
    "required_implementation": "Reuse exact metadata of source and create new child artifact",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P06 2026-10-16: controlled-args.js validateHiresFields/normalizeHiresFields/HIRES_UPSCALERS + buildControlledArgs, server.js (keys, validation, capability id, 'hires' image metadata), sdcpp-controlled-generate.sh (--hires-width/--hires-height, allowlist, quoting, HIRES_JSON), workstation-ui.js High-Res panel; tests/controlled-args.test.js (+2), tests/browser/generate-hires.browser.js (4). The installed engine runs hires only inside a txt2img job; a post-generation hires pass on an existing image would be a separate img2img job and is not A1111's Hires fix semantics. (The older /api/actions/hires-fix Lanczos+img2img script remains available and is unchanged.)",
    "runtime_receipt": null
   },
   {

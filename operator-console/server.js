@@ -3,7 +3,7 @@ const { spawn, execFile, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { controlledScriptFor, buildControlledArgs, nativeBatchEligible, normalizeSamplingFields, validateSamplingFields, SDCLI_SAMPLER } = require('./controlled-args');
+const { controlledScriptFor, buildControlledArgs, nativeBatchEligible, normalizeSamplingFields, validateSamplingFields, SDCLI_SAMPLER, normalizeHiresFields, validateHiresFields, hiresRequested } = require('./controlled-args');
 const W = require('./workstation');
 const EC = require('./public/dexdiffusion/edit-core.js');
 const PromptParity = require('./public/dexdiffusion/prompt-parity.js');
@@ -1269,7 +1269,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
   job.seeds = seeds;
   job.nativeBatch = native;
   if (native) job.capabilityId = 'quantity-native-batch';
-  else if (params.hires_scale) job.capabilityId = 'hires-refine';
+  else if (hiresRequested(params)) job.capabilityId = 'hires-refine';
   const runsTotal = native ? 1 : quantity;
   const controlledScript = controlledScriptFor(spec);
   const finish = () => {
@@ -1314,6 +1314,9 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
             prompt_saved: !!params.save_prompts,
             clip_skip: spec.backend === 'mflux' || params.clip_skip === '' ? undefined : params.clip_skip,
             tiling: spec.backend !== 'mflux' && params.tiling ? true : undefined,
+            hires: spec.backend !== 'mflux' && hiresRequested(params)
+              ? Object.assign(params.hires_width != null ? { width: params.hires_width, height: params.hires_height } : { scale: params.hires_scale }, { steps: params.hires_steps, denoise: params.hires_denoise, upscaler: params.hires_upscaler })
+              : undefined,
             eta: spec.backend === 'mflux' || params.eta === '' ? undefined : params.eta,
             rng: spec.backend === 'mflux' || !params.rng ? undefined : params.rng,
             clip_skip: spec.backend === 'mflux' || params.clip_skip === '' ? undefined : params.clip_skip,
@@ -1489,6 +1492,8 @@ function normalizeControlledGenerationBody(body) {
     'hires_upscaler',
     'parent_image_id',
     'operation',
+    'hires_width',
+    'hires_height',
     'loras'
   ]);
   for (const key of Object.keys(body || {})) {
@@ -1526,7 +1531,8 @@ function normalizeControlledGenerationBody(body) {
     operation: body.operation ? String(body.operation) : 'txt2img',
     preset: typeof body.preset === 'string' && /^[A-Za-z0-9_-]{1,24}$/.test(body.preset) ? body.preset : '',
     loras: body.loras,
-    ...normalizeSamplingFields(body)
+    ...normalizeSamplingFields(body),
+    ...normalizeHiresFields(body)
   };
   return params;
 }
@@ -1592,15 +1598,8 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
       return 'Quantity must be an integer between 1 and 100';
     }
   }
-  if (params.hires_scale !== null && params.hires_scale !== undefined) {
-    if ((spec.backend || 'sdcpp') === 'mflux') return 'High-Res Refine is an SDCPP feature; MFLUX targets do not support it';
-    if (!(params.hires_scale >= 1.1 && params.hires_scale <= 2)) return 'hires_scale must be between 1.1 and 2.0';
-    if (!Number.isInteger(params.hires_steps) || params.hires_steps < 0 || params.hires_steps > 150) return 'hires_steps must be an integer 0-150';
-    if (!(params.hires_denoise >= 0.05 && params.hires_denoise <= 0.95)) return 'hires_denoise must be between 0.05 and 0.95';
-    if (!['Latent', 'Lanczos', 'Nearest'].includes(params.hires_upscaler)) return 'hires_upscaler must be Latent, Lanczos or Nearest';
-    const w = Number(params.width || spec.defaultWidth), h = Number(params.height || spec.defaultHeight);
-    if (w * params.hires_scale > 2048 || h * params.hires_scale > 2048) return 'High-Res Refine output would exceed 2048 px';
-  }
+  const hiresError = validateHiresFields(spec, params);
+  if (hiresError) return hiresError;
   if (!['txt2img', 'variation', 'seed-lab', 'prompt-ab', 'batch'].includes(params.operation)) return 'Invalid operation';
   if (params.parent_image_id && !imageStore.resolveImage(params.parent_image_id)) return 'parent_image_id is not a canonical image';
   if (W.isFixedSeedValue(params.seed) && parseInt(params.seed, 10) + (params.quantity || 1) - 1 > W.MAX_SEED) return 'seed + quantity exceeds the maximum seed';

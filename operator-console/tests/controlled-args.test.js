@@ -209,3 +209,42 @@ test('P05: the UI scheduler choices are all accepted by the server', () => {
   const allowed = m[1].split(',').map(x => x.trim().replace(/'/g, ''));
   for (const [id] of D.SCHEDULER_CHOICES) assert.ok(allowed.includes(id), id);
 });
+
+// ---- P06: High-Res Refine (sd-cli --hires) ----
+test('P06: hires validation covers scale mode, resize-to mode, limits and the upscaler allowlist', () => {
+  const sd = { id: 'sd15', backend: 'sdcpp', defaultWidth: 512, defaultHeight: 512 };
+  const ok = { width: 512, height: 512, hires_scale: null, hires_width: null, hires_height: null, hires_steps: 0, hires_denoise: 0.5, hires_upscaler: 'Latent' };
+  assert.equal(CA.validateHiresFields(sd, ok), null, 'no hires requested is fine');
+  assert.equal(CA.validateHiresFields(sd, { ...ok, hires_scale: 1.5 }), null);
+  assert.equal(CA.validateHiresFields(sd, { ...ok, hires_width: 768, hires_height: 640 }), null);
+  assert.match(CA.validateHiresFields(sd, { ...ok, hires_scale: 1.5, hires_width: 768, hires_height: 768 }), /not both/);
+  assert.match(CA.validateHiresFields(sd, { ...ok, hires_width: 768 }), /together/);
+  assert.match(CA.validateHiresFields(sd, { ...ok, hires_width: 770, hires_height: 768 }), /multiple of 8/);
+  assert.match(CA.validateHiresFields(sd, { ...ok, hires_width: 2056, hires_height: 2056 }), /between 64 and 2048/);
+  assert.match(CA.validateHiresFields(sd, { ...ok, hires_width: 256, hires_height: 768 }), /at least the base size/);
+  assert.match(CA.validateHiresFields(sd, { ...ok, hires_scale: 1.0 }), /1\.1 and 2\.0/);
+  assert.match(CA.validateHiresFields({ ...sd, defaultWidth: 1536 }, { ...ok, width: 1536, hires_scale: 1.5 }), /exceed 2048/);
+  assert.match(CA.validateHiresFields(sd, { ...ok, hires_scale: 1.5, hires_steps: 200 }), /hires_steps/);
+  assert.match(CA.validateHiresFields(sd, { ...ok, hires_scale: 1.5, hires_denoise: 0.99 }), /hires_denoise/);
+  assert.match(CA.validateHiresFields(sd, { ...ok, hires_scale: 1.5, hires_upscaler: 'ESRGAN' }), /hires_upscaler must be one of/);
+  assert.match(CA.validateHiresFields(KLEIN, { ...ok, hires_scale: 1.5 }), /MFLUX targets do not support/);
+  for (const u of CA.HIRES_UPSCALERS) assert.equal(CA.validateHiresFields(sd, { ...ok, hires_scale: 1.5, hires_upscaler: u }), null, u);
+});
+
+test('P06: hires arguments are scale XOR size, and the shell worker/UI lists agree with the JS list', () => {
+  const sd = { id: 'sd15', backend: 'sdcpp' };
+  const base = { target: 'sd15', prompt: 'p', width: 512, height: 512, steps: 10, save_prompts: false, hires_steps: 5, hires_denoise: 0.4, hires_upscaler: 'Latent (bicubic)' };
+  const a = CA.buildControlledArgs(sd, { ...base, hires_scale: 1.5, hires_width: null, hires_height: null }, { seedValue: 1 });
+  assert.equal(a[a.indexOf('--hires-scale') + 1], '1.5'); assert.equal(a.includes('--hires-width'), false);
+  assert.equal(a[a.indexOf('--hires-upscaler') + 1], 'Latent (bicubic)');
+  const b = CA.buildControlledArgs(sd, { ...base, hires_scale: null, hires_width: 768, hires_height: 640 }, { seedValue: 1 });
+  assert.equal(b[b.indexOf('--hires-width') + 1], '768'); assert.equal(b[b.indexOf('--hires-height') + 1], '640'); assert.equal(b.includes('--hires-scale'), false);
+  assert.equal(CA.buildControlledArgs(sd, { ...base, hires_scale: null, hires_width: null, hires_height: null }, { seedValue: 1 }).some(x => x.startsWith('--hires')), false);
+  assert.equal(CA.buildControlledArgs(KLEIN, { ...FULL_PARAMS, hires_scale: 1.5 }, { seedValue: 1 }).some(x => x.startsWith('--hires')), false, 'MFLUX never gets hires flags');
+  const D = require('../public/dexdiffusion/client-helpers.js');
+  assert.deepEqual(D.HIRES_UPSCALERS, [...CA.HIRES_UPSCALERS]);
+  for (const u of CA.HIRES_UPSCALERS) assert.ok(SCRIPT.includes(`"${u}"`), 'worker allowlist has ' + u);
+  for (const f of ['--hires-width)', '--hires-height)']) assert.ok(SCRIPT.includes(f), f);
+  assert.deepEqual(D.hiresTarget({ width: 512, height: 512 }, { hiresMode: 'scale', hiresScale: 1.5 }), { width: 768, height: 768 });
+  assert.deepEqual(D.hiresTarget({ width: 512, height: 512 }, { hiresMode: 'size', hiresW: 900, hiresH: 700 }), { width: 900, height: 700 });
+});

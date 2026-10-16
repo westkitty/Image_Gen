@@ -55,7 +55,7 @@
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}') || {}; } catch (_) {}
     this.ws = {
-      quantity: saved.quantity || 1, hires: false, hiresScale: 2, hiresSteps: 0, hiresDenoise: 0.45, hiresUpscaler: 'Latent',
+      quantity: saved.quantity || 1, hires: false, hiresMode: 'scale', hiresScale: 2, hiresW: 1024, hiresH: 1024, hiresSteps: 0, hiresDenoise: 0.45, hiresUpscaler: 'Latent',
       results: [], activeIndex: 0, lastBody: null,
       seedLab: { open: false, mode: 'neighbors', count: 4 }, ab: { open: false, promptB: '', status: 'idle', pair: [] },
       batchText: typeof saved.batchText === 'string' ? saved.batchText : '', parse: null, expanded: {}, batchQty: 1, preflight: null, confirmLarge: false,
@@ -145,7 +145,11 @@
     if (ctl.eta && s.eta !== '' && s.eta != null && D.ETA_SAMPLERS.includes(D.canonicalSamplerId(s.sampler))) body.eta = Number(s.eta);  // disabled in the UI otherwise, so not sent
     if (ctl.rng && s.rng) body.rng = s.rng;
     if (ctl.vae) body.vae = s.selectedVae === 'default' ? 'auto' : s.selectedVae;
-    if (ctl.hiresRefine && ws.hires) Object.assign(body, { hires_scale: +ws.hiresScale, hires_steps: parseInt(ws.hiresSteps, 10) || 0, hires_denoise: +ws.hiresDenoise, hires_upscaler: ws.hiresUpscaler });
+    if (ctl.hiresRefine && ws.hires) {
+      Object.assign(body, { hires_steps: parseInt(ws.hiresSteps, 10) || 0, hires_denoise: +ws.hiresDenoise, hires_upscaler: ws.hiresUpscaler });
+      if (ws.hiresMode === 'size') Object.assign(body, { hires_width: parseInt(ws.hiresW, 10), hires_height: parseInt(ws.hiresH, 10) });
+      else body.hires_scale = +ws.hiresScale;
+    }
     return Object.assign(body, over || {});
   };
 
@@ -649,13 +653,22 @@
         h('label', { style: Object.assign({}, css.row, { color: '#dbe4ee', fontSize: 12 }) },
           h('input', { type: 'checkbox', checked: !!ws.hires, onChange: e => this.wsSet({ hires: e.target.checked }) }),
           'High-Res Refine (diffusion second pass, sd-cli --hires) — not a resize, not Real-ESRGAN'),
-        ws.hires ? h('div', { style: css.row },
-          h('label', { style: css.muted }, 'Scale'), numInput(ws.hiresScale, v => this.wsSet({ hiresScale: v }), { min: '1.1', max: '2', step: '0.1' }),
-          h('label', { style: css.muted }, '2nd-pass steps (0 = same)'), numInput(ws.hiresSteps, v => this.wsSet({ hiresSteps: v }), { min: '0', max: '150', step: '1' }),
-          h('label', { style: css.muted }, 'Denoise'), numInput(ws.hiresDenoise, v => this.wsSet({ hiresDenoise: v }), { min: '0.05', max: '0.95', step: '0.05' }),
-          h('select', { value: ws.hiresUpscaler, onChange: e => this.wsSet({ hiresUpscaler: e.target.value }), style: Object.assign({}, css.input, { width: 'auto' }) },
-            ...['Latent', 'Lanczos', 'Nearest'].map(u => h('option', { value: u }, u + ' upscaler'))),
-          h('span', { style: css.muted }, '→ ' + Math.round(s.width * ws.hiresScale / 8) * 8 + '×' + Math.round(s.height * ws.hiresScale / 8) * 8)) : null) : null);
+        ws.hires ? h('div', { style: { display: 'grid', gap: 6 }, 'data-dex-field': 'hires-panel' },
+          h('div', { style: css.row },
+            h('label', { style: css.muted }, 'Second pass size'),
+            h('select', { value: ws.hiresMode, 'data-dex-field': 'hires-mode', 'aria-label': 'Hires size mode', onChange: e => this.wsSet({ hiresMode: e.target.value }), style: Object.assign({}, css.input, { width: 'auto' }) },
+              h('option', { value: 'scale' }, 'Upscale by'), h('option', { value: 'size' }, 'Resize to')),
+            ws.hiresMode === 'size'
+              ? [h('label', { key: 'w', style: css.muted }, 'Width'), numInput(ws.hiresW, v => this.wsSet({ hiresW: v }), { min: '64', max: '2048', step: '8', 'data-dex-field': 'hires-width' }),
+                 h('label', { key: 'h', style: css.muted }, 'Height'), numInput(ws.hiresH, v => this.wsSet({ hiresH: v }), { min: '64', max: '2048', step: '8', 'data-dex-field': 'hires-height' })]
+              : [h('label', { key: 's', style: css.muted }, 'Scale'), numInput(ws.hiresScale, v => this.wsSet({ hiresScale: v }), { min: '1.1', max: '2', step: '0.1', 'data-dex-field': 'hires-scale' })],
+            h('span', { style: css.muted, 'data-dex-field': 'hires-final' }, '→ ' + (t => t.width + '×' + t.height)(D.hiresTarget({ width: +s.width, height: +s.height }, ws)))),
+          h('div', { style: css.row },
+            h('label', { style: css.muted }, '2nd-pass steps (0 = same)'), numInput(ws.hiresSteps, v => this.wsSet({ hiresSteps: v }), { min: '0', max: '150', step: '1' }),
+            h('label', { style: css.muted }, 'Denoise'), numInput(ws.hiresDenoise, v => this.wsSet({ hiresDenoise: v }), { min: '0.05', max: '0.95', step: '0.05' }),
+            h('select', { value: ws.hiresUpscaler, 'data-dex-field': 'hires-upscaler', 'aria-label': 'Hires upscaler', onChange: e => this.wsSet({ hiresUpscaler: e.target.value }), style: Object.assign({}, css.input, { width: 'auto' }) },
+              ...D.HIRES_UPSCALERS.map(u => h('option', { key: u, value: u }, u)))),
+          h('div', { style: css.muted, 'data-dex-field': 'hires-unavailable' }, 'Not available with the installed stable-diffusion.cpp (no option exists): a separate second-pass prompt, sampler, scheduler or checkpoint, and a refiner model with a switch point. Only the first-pass settings are used for the second pass.')) : null) : null);
   };
 
   // ── Detailer (Apple Vision Face / Hand / Person) ──────────────

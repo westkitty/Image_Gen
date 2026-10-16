@@ -88,6 +88,43 @@ function validateSamplingFields(spec, p = {}) {
   return null;
 }
 
+// ---- High-Res Refine (sd-cli --hires) -------------------------------------------------------------------------
+// Upscalers sd-cli documents without a --hires-upscalers-dir model directory (help text, rev 7f0e728).
+const HIRES_UPSCALERS = Object.freeze(['Latent', 'Latent (nearest)', 'Latent (nearest-exact)', 'Latent (antialiased)', 'Latent (bicubic)', 'Latent (bicubic antialiased)', 'Lanczos', 'Nearest']);
+const HIRES_MAX_EDGE = 2048;
+
+const numOrNull = v => (v === undefined || v === null || v === '' ? null : Number(v));
+function normalizeHiresFields(body = {}) {
+  return { hires_width: numOrNull(body.hires_width), hires_height: numOrNull(body.hires_height) };
+}
+// Active when a scale or an explicit target size is present.
+function hiresRequested(p = {}) {
+  return (p.hires_scale !== null && p.hires_scale !== undefined) || (p.hires_width !== null && p.hires_width !== undefined) || (p.hires_height !== null && p.hires_height !== undefined);
+}
+// Returns an error string or null. Scale mode XOR resize-to mode; both validated against the base size and the 2048 px cap.
+function validateHiresFields(spec, p = {}) {
+  if (!hiresRequested(p)) return null;
+  if (spec && spec.backend === 'mflux') return 'High-Res Refine is an SDCPP feature; MFLUX targets do not support it';
+  const hasScale = p.hires_scale !== null && p.hires_scale !== undefined;
+  const hasW = p.hires_width !== null && p.hires_width !== undefined, hasH = p.hires_height !== null && p.hires_height !== undefined;
+  if (hasScale && (hasW || hasH)) return 'Use either hires_scale or hires_width/hires_height, not both';
+  const baseW = Number(p.width || (spec && spec.defaultWidth)), baseH = Number(p.height || (spec && spec.defaultHeight));
+  if (hasScale) {
+    if (!(p.hires_scale >= 1.1 && p.hires_scale <= 2)) return 'hires_scale must be between 1.1 and 2.0';
+    if (baseW * p.hires_scale > HIRES_MAX_EDGE || baseH * p.hires_scale > HIRES_MAX_EDGE) return 'High-Res Refine output would exceed 2048 px';
+  } else {
+    if (!(hasW && hasH)) return 'hires_width and hires_height must be given together';
+    for (const [name, v, base] of [['hires_width', p.hires_width, baseW], ['hires_height', p.hires_height, baseH]]) {
+      if (!Number.isInteger(v) || v < 64 || v > HIRES_MAX_EDGE || v % 8) return `${name} must be a multiple of 8 between 64 and 2048`;
+      if (v < base) return `${name} (${v}) must be at least the base size (${base})`;
+    }
+  }
+  if (!Number.isInteger(p.hires_steps) || p.hires_steps < 0 || p.hires_steps > 150) return 'hires_steps must be an integer 0-150';
+  if (!(p.hires_denoise >= 0.05 && p.hires_denoise <= 0.95)) return 'hires_denoise must be between 0.05 and 0.95';
+  if (!HIRES_UPSCALERS.includes(p.hires_upscaler)) return 'hires_upscaler must be one of: ' + HIRES_UPSCALERS.join(', ');
+  return null;
+}
+
 function buildControlledArgs(spec, params, { seedValue, isDiscovered = false, resolveVaePath = () => null, batchCount = 1 } = {}) {
   const mflux = spec.backend === 'mflux';
   const args = ['--target', params.target, '--prompt', params.prompt];
@@ -109,9 +146,10 @@ function buildControlledArgs(spec, params, { seedValue, isDiscovered = false, re
     if (vaePath) args.push('--vae', vaePath);
   }
   if (!mflux && batchCount > 1) args.push('--batch-count', String(batchCount));
-  if (!mflux && params.hires_scale) {
-    args.push('--hires-scale', String(params.hires_scale), '--hires-steps', String(params.hires_steps || 0),
-      '--hires-denoise', String(params.hires_denoise || 0.5), '--hires-upscaler', params.hires_upscaler || 'Latent');
+  if (!mflux && hiresRequested(params)) {
+    if (params.hires_width !== null && params.hires_width !== undefined) args.push('--hires-width', String(params.hires_width), '--hires-height', String(params.hires_height));
+    else args.push('--hires-scale', String(params.hires_scale));
+    args.push('--hires-steps', String(params.hires_steps || 0), '--hires-denoise', String(params.hires_denoise || 0.5), '--hires-upscaler', params.hires_upscaler || 'Latent');
   }
   if (!mflux) {
     if (params.sampler) args.push('--sampler', String(params.sampler));
@@ -126,5 +164,6 @@ function buildControlledArgs(spec, params, { seedValue, isDiscovered = false, re
 
 module.exports = {
   controlledScriptFor, buildControlledArgs, nativeBatchEligible, NATIVE_BATCH_MAX,
+  HIRES_UPSCALERS, normalizeHiresFields, validateHiresFields, hiresRequested,
   SDCLI_SAMPLER, ETA_SAMPLERS, RNG_SOURCES, ETA_MAX, canonicalSampler, normalizeSamplingFields, validateSamplingFields,
 };

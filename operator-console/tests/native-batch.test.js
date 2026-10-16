@@ -39,7 +39,10 @@ test('High-Res Refine args are SDCPP-only and distinct from resize/ESRGAN', () =
   assert.deepEqual(a.slice(a.indexOf('--hires-scale'), a.indexOf('--hires-scale') + 8),
     ['--hires-scale', '2', '--hires-steps', '8', '--hires-denoise', '0.45', '--hires-upscaler', 'Latent']);
   assert.ok(!buildControlledArgs(flux, p, { seedValue: 1 }).includes('--hires-scale'));
-  assert.match(SCRIPT, /--hires --hires-scale \$ARG_HIRES_SCALE --hires-steps \$ARG_HIRES_STEPS --hires-denoising-strength \$ARG_HIRES_DENOISE/);
+  // The worker builds scale mode and resize-to mode from one HIRES_GEOMETRY (P06); both end in the same native flags.
+  assert.match(SCRIPT, /HIRES_GEOMETRY="--hires-scale \$ARG_HIRES_SCALE"/);
+  assert.match(SCRIPT, /HIRES_GEOMETRY="--hires-width \$ARG_HIRES_W --hires-height \$ARG_HIRES_H"/);
+  assert.match(SCRIPT, /--hires \$HIRES_GEOMETRY --hires-steps \$ARG_HIRES_STEPS --hires-denoising-strength \$ARG_HIRES_DENOISE/);
 });
 
 test('script: native batch enumerates every output, registers each for Big Mac cleanup, records per-output seeds', () => {
@@ -49,7 +52,7 @@ test('script: native batch enumerates every output, registers each for Big Mac c
   assert.match(SCRIPT, /\$\(\(SEED_VALUE \+ bi\)\)/);
   assert.match(SCRIPT, /CONTROLLED_BATCH_IMAGE: %s/);
   // server/tunnel path is bypassed when native extras are requested
-  assert.match(SCRIPT, /\[ "\$ARG_BATCH_COUNT" = "1" \] && \[ -z "\$ARG_HIRES_SCALE" \]/);
+  assert.match(SCRIPT, /\[ "\$ARG_BATCH_COUNT" = "1" \] && \[ "\$HIRES_ON" != "true" \]/);
 });
 
 test('native batch outputs canonicalize independently with their own seeds (no collision/overwrite)', () => {
