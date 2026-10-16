@@ -79,3 +79,71 @@ test('FLUX.1 Schnell fixes CFG at 1, drops negative prompts, and stays on SDCPP'
   assert.equal(args[args.indexOf('--cfg') + 1], '1');
   assert.ok(!args.includes('--negative-prompt'));
 });
+
+// ---- P02: sampling-field contract (UI -> normalized request -> worker args) ----
+const CA = require('../controlled-args');
+const SDXL = { id: 'sdxl-photonic', backend: 'sdcpp', defaultSampler: 'dpm++2m' };
+const KLEIN = { id: 'flux2-klein-4b', backend: 'mflux', defaultSampler: 'euler' };
+const SCRIPT = fs.readFileSync(path.join(__dirname, '..', '..', 'sdcpp-workflow', 'bin', 'sdcpp-controlled-generate.sh'), 'utf8');
+
+test('P02: normalizeSamplingFields keeps sampler, clip_skip, tiling and restore_faces (they were silently dropped)', () => {
+  const p = CA.normalizeSamplingFields({ sampler: 'dpmpp2m', clip_skip: '2', tiling: true, restore_faces: false });
+  assert.deepEqual(p, { sampler: 'dpmpp2m', clip_skip: 2, tiling: true, restore_faces: false });
+  assert.deepEqual(CA.normalizeSamplingFields({}), { sampler: '', clip_skip: '', tiling: false, restore_faces: false });
+});
+
+test('P02: sampler spellings from the UI canonicalise to one id', () => {
+  for (const s of ['dpm++2m', 'DPM++ 2M', 'dpmpp2m']) assert.equal(CA.canonicalSampler(s), 'dpmpp2m', s);
+  assert.equal(CA.canonicalSampler('Euler a'), 'euler_a');
+  assert.equal(CA.canonicalSampler('euler'), 'euler');
+  assert.equal(CA.canonicalSampler(''), '');
+});
+
+test('P02: two different samplers produce two different, correct worker arguments', () => {
+  const base = { target: 'sdxl-photonic', prompt: 'p', width: 1024, height: 1024, steps: 20, cfg_scale: 6, save_prompts: false };
+  const a = CA.buildControlledArgs(SDXL, { ...base, sampler: 'euler_a' }, { seedValue: 1 });
+  const b = CA.buildControlledArgs(SDXL, { ...base, sampler: 'dpmpp2m' }, { seedValue: 1 });
+  assert.equal(a[a.indexOf('--sampler') + 1], 'euler_a');
+  assert.equal(b[b.indexOf('--sampler') + 1], 'dpmpp2m');
+  assert.notDeepEqual(a, b);
+});
+
+test('P02: clip_skip and tiling reach the SDCPP worker; unset values add nothing', () => {
+  const base = { target: 'sdxl-photonic', prompt: 'p', width: 1024, height: 1024, steps: 20, save_prompts: false };
+  const args = CA.buildControlledArgs(SDXL, { ...base, clip_skip: 2, tiling: true }, { seedValue: 1 });
+  assert.equal(args[args.indexOf('--clip-skip') + 1], '2');
+  assert.ok(args.includes('--tiling'));
+  const none = CA.buildControlledArgs(SDXL, { ...base, sampler: '', clip_skip: '', tiling: false }, { seedValue: 1 });
+  for (const f of ['--sampler', '--clip-skip', '--tiling']) assert.equal(none.includes(f), false, f);
+});
+
+test('P02: unsupported sampling settings are rejected before inference, never ignored', () => {
+  assert.match(CA.validateSamplingFields(SDXL, { sampler: 'lms' }), /not supported by the installed stable-diffusion\.cpp/);
+  assert.match(CA.validateSamplingFields(SDXL, { sampler: 'nonsense' }), /Unknown sampler/);
+  assert.match(CA.validateSamplingFields(SDXL, { restore_faces: true }), /Face restoration/);
+  assert.match(CA.validateSamplingFields(SDXL, { clip_skip: 99 }), /clip_skip/);
+  assert.equal(CA.validateSamplingFields(SDXL, { sampler: 'dpmpp2m', clip_skip: 2, tiling: true }), null);
+  assert.match(CA.validateSamplingFields(KLEIN, { sampler: 'dpmpp2m' }), /fixed flow-match Euler/);
+  assert.match(CA.validateSamplingFields(KLEIN, { tiling: true }), /tiling/);
+  assert.match(CA.validateSamplingFields(KLEIN, { clip_skip: 2 }), /clip_skip/);
+  assert.equal(CA.validateSamplingFields(KLEIN, { sampler: 'euler', clip_skip: '', tiling: false }), null);
+});
+
+test('P02: MFLUX never receives sampling flags', () => {
+  const args = CA.buildControlledArgs(KLEIN, { ...FULL_PARAMS, sampler: 'euler', clip_skip: '', tiling: false }, { seedValue: 1 });
+  for (const f of ['--sampler', '--clip-skip', '--tiling']) assert.equal(args.includes(f), false, f);
+});
+
+test('P02: the shell worker accepts the flags and its sampler table matches the JS table', () => {
+  for (const f of ['--sampler)', '--clip-skip)', '--tiling)']) assert.ok(SCRIPT.includes(f), f);
+  const m = SCRIPT.match(/# SAMPLER_TABLE_BEGIN\n([\s\S]*?)# SAMPLER_TABLE_END/);
+  assert.ok(m, 'sampler table markers present');
+  const shell = Object.fromEntries([...m[1].matchAll(/^\s*([a-z0-9_]+)\)\s+ARG_SAMPLER_CLI="([^"]+)"/gm)].map(x => [x[1], x[2]]));
+  assert.deepEqual(shell, CA.SDCLI_SAMPLER);
+});
+
+test('P02: sdxl-base spec default sampler matches the worker default (no silent behaviour change)', () => {
+  const s = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const block = s.slice(s.indexOf("id: 'sdxl-base'"), s.indexOf("id: 'sdxl-base'") + 1800);
+  assert.match(block, /defaultSampler: 'dpm\+\+2m'/);
+});

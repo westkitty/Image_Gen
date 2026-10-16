@@ -3,7 +3,7 @@ const { spawn, execFile, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { controlledScriptFor, buildControlledArgs, nativeBatchEligible } = require('./controlled-args');
+const { controlledScriptFor, buildControlledArgs, nativeBatchEligible, normalizeSamplingFields, validateSamplingFields } = require('./controlled-args');
 const W = require('./workstation');
 const EC = require('./public/dexdiffusion/edit-core.js');
 const M = require('./media');
@@ -143,7 +143,7 @@ const CONTROLLED_TARGETS = [
     defaultHeight: 1024,
     defaultSteps: 20,
     defaultCfgScale: 7,
-    defaultSampler: 'euler_a',
+    defaultSampler: 'dpm++2m',
     maxWidth: 1536,
     maxHeight: 1536,
     minSteps: 1,
@@ -1308,6 +1308,8 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
             preset: params.preset || undefined,
             loras: spec.backend === 'mflux' ? [] : (params.loras || []),
             prompt_saved: !!params.save_prompts,
+            clip_skip: spec.backend === 'mflux' || params.clip_skip === '' ? undefined : params.clip_skip,
+            tiling: spec.backend !== 'mflux' && params.tiling ? true : undefined,
             prompt: params.save_prompts ? EC.stripLoraTags(params.prompt) : undefined,
             negative_prompt: params.save_prompts && !(spec.backend === 'mflux' || spec.noNegativePrompt) ? params.negative_prompt : undefined,
           });
@@ -1513,7 +1515,8 @@ function normalizeControlledGenerationBody(body) {
     parent_image_id: typeof body.parent_image_id === 'string' && body.parent_image_id ? body.parent_image_id : null,
     operation: body.operation ? String(body.operation) : 'txt2img',
     preset: typeof body.preset === 'string' && /^[A-Za-z0-9_-]{1,24}$/.test(body.preset) ? body.preset : '',
-    loras: body.loras
+    loras: body.loras,
+    ...normalizeSamplingFields(body)
   };
   return params;
 }
@@ -1556,6 +1559,8 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   if (params.height === undefined || params.height === null || params.height === '') params.height = spec.defaultHeight;
   const dimensionError = validateDimensions(spec, params.width, params.height);
   if (dimensionError) return dimensionError;
+  const samplingError = validateSamplingFields(spec, params);
+  if (samplingError) return samplingError;
   const steps = params.steps === undefined || params.steps === null || params.steps === ''
     ? spec.defaultSteps
     : Number(params.steps);
