@@ -44,7 +44,12 @@ function createModelInspector({ cacheFile, sshTarget = 'westcat', run } = {}) {
       if (err && !stdout) return reject(err);
       resolve(String(stdout).split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch (_) { return null; } }).filter(Boolean));
     });
-    fs.createReadStream(SCRIPT).pipe(child.stdin);
+    // ssh can exit before reading the script (unreachable host, host-key problem): an unhandled EPIPE here would crash the console.
+    child.stdin.on('error', () => {});
+    child.on('error', reject);
+    const src = fs.createReadStream(SCRIPT);
+    src.on('error', reject);
+    src.pipe(child.stdin);
   }));
 
   function cached(p, size) { return cache[keyOf(p, size)] || null; }

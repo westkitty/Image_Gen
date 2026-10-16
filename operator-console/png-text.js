@@ -8,6 +8,7 @@ const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const MAX_PNG_BYTES = 40 * 1024 * 1024;
 const MAX_CHUNKS = 4096;
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
+const MAX_TOTAL_TEXT_BYTES = 4 * 1024 * 1024;   // cumulative: thousands of small compressed chunks cannot add up to gigabytes
 
 const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 function crc32(buf) { let c = 0xffffffff; for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
@@ -37,7 +38,11 @@ function inflateLimited(data) {
 // -> [{ key, text, kind: 'tEXt'|'zTXt'|'iTXt', truncated }]
 function readTextChunks(buf) {
   const out = [];
+  let budget = MAX_TOTAL_TEXT_BYTES;
   for (const c of chunks(buf)) {
+    if (c.type !== 'tEXt' && c.type !== 'zTXt' && c.type !== 'iTXt') continue;
+    if (budget <= 0) { out.push({ key: '(text budget exhausted)', text: '', kind: c.type, truncated: true }); break; }
+    if (c.type === 'tEXt' && c.data.length > MAX_TEXT_BYTES) { out.push({ key: '(oversized chunk)', text: '', kind: 'tEXt', truncated: true }); continue; }
     try {
       if (c.type === 'tEXt') {
         const z = c.data.indexOf(0); if (z < 1) continue;
@@ -55,6 +60,8 @@ function readTextChunks(buf) {
         out.push({ key: c.data.toString('latin1', 0, z), text: (compressed ? inflateLimited(body) : body).toString('utf8'), kind: 'iTXt' });
       }
     } catch (_) { out.push({ key: '(unreadable chunk)', text: '', kind: c.type, truncated: true }); }
+    const last = out[out.length - 1];
+    if (last) budget -= last.text.length;
   }
   return out;
 }

@@ -72,6 +72,8 @@ emit_exit() {
 
 finish() {
   local rc=$?
+  # Stop the generator we started: when ssh drops (cancel, timeout) the wrapper gets HUP/TERM but its child would otherwise live on.
+  pkill -TERM -P $$ 2>/dev/null || true
   if [ "$cleaned" -ne 1 ]; then
     if clean_tmp; then
       echo "MFLUX_REMOTE_CLEANUP: OK" >&2

@@ -53,3 +53,10 @@ test('gating: axes the target ignores are refused; duplicates, limits and emptie
   assert.match(X.buildPlan({ prompt: 'x' }, { x: { type: 'seed', values: '1-70' } }).errors[0], /limit is 64/);
   assert.equal(X.buildPlan({ prompt: 'x' }, { x: { type: 'steps', values: '5,6' } }, { cfg: true }).ok, true);
 });
+
+test('queue titles never carry Prompt S/R text (they are persisted); the preview title still does', () => {
+  const p = X.buildPlan({ prompt: 'a red cat', negative_prompt: '' }, { x: { type: 'prompt_sr', values: 'red, secret words' }, y: { type: 'steps', values: '10' } });
+  assert.equal(p.cells[1].title, 'Prompt S/R #2 · Steps: 10');
+  assert.equal(p.cells[1].fullTitle, 'Prompt S/R: secret words · Steps: 10');
+  assert.doesNotMatch(JSON.stringify(p.cells.map(c => c.title)), /secret/);
+});

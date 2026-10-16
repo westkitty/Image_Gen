@@ -87,3 +87,16 @@ test('hostile input: not a PNG, truncated, zip bomb', () => {
   const r = P.readTextChunks(png([['zTXt', bomb]]));
   assert.equal(r[0].truncated, true, 'oversized decompression is refused, not allocated');
 });
+
+test('hostile infotext stays linear and many small compressed chunks stay within a total budget', () => {
+  const t0 = Date.now();
+  I.parseInfotext('a'.repeat(120000));
+  I.parseInfotext('x\n' + 'k'.repeat(300000));
+  assert.ok(Date.now() - t0 < 1500, 'no quadratic regex blow-up');
+  const chunk = Buffer.concat([Buffer.from('k\0\0'), zlib.deflateSync(Buffer.alloc(1024 * 1024, 97))]);
+  const many = png(Array.from({ length: 200 }, () => ['zTXt', chunk]));
+  const out = P.readTextChunks(many);
+  const total = out.reduce((n, c) => n + c.text.length, 0);
+  assert.ok(total <= 5 * 1024 * 1024, 'cumulative budget: ' + total);
+  assert.ok(out.some(c => c.truncated), 'the rest is reported as skipped');
+});

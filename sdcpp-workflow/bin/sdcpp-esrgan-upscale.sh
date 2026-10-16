@@ -60,6 +60,8 @@ case "$ARG_REPEATS" in *[!0-9]*|'') fail "args" "--repeats must be a positive in
 
 # ----- setup run dir ---------------------------------------------------------
 RUN_DIR="$(make_run_dir esrgan-upscale)"
+echo "SDCPP_RUN_ID: $(basename "$RUN_DIR")"   # announced early so a cancel can scope the remote stop to this run
+RUN_TAG="$(basename "$RUN_DIR")"   # remote file names carry the run id so a cancel can find this run's processes
 SDCPP_LOGFILE="$RUN_DIR/esrgan-upscale.log"; export SDCPP_LOGFILE
 NAME="${ARG_OUT_NAME:-esrgan_$(timestamp)}"
 LOCAL_PNG="$RUN_DIR/${NAME}-4x.png"
@@ -87,8 +89,8 @@ img = Image.open('$INIT_IMG_ABS')
 print(img.size[0], img.size[1])
 " 2>/dev/null)" || INPUT_W_H="unknown"
 
-REMOTE_INPUT="$REMOTE_OUTPUT_DIR/${NAME}-input.png"
-REMOTE_OUTPUT="$REMOTE_OUTPUT_DIR/${NAME}-4x.png"
+REMOTE_INPUT="$REMOTE_OUTPUT_DIR/${NAME}-${RUN_TAG}-input.png"
+REMOTE_OUTPUT="$REMOTE_OUTPUT_DIR/${NAME}-${RUN_TAG}-4x.png"
 register_remote_ephemeral "$REMOTE_INPUT" "$REMOTE_OUTPUT"
 
 # ----- metadata --------------------------------------------------------------

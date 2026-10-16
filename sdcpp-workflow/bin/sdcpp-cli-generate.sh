@@ -97,9 +97,11 @@ verify_binaries "$BUILD_DIR"
 verify_model >/dev/null
 ensure_remote_dirs
 
-REMOTE_PNG="$REMOTE_OUTPUT_DIR/$NAME.png"
+# Remote names carry the run id (SDCPP_REMOTE_RUN_TAG from hires-fix, else this run dir) so a cancel can find the process.
+RUN_TAG="${SDCPP_REMOTE_RUN_TAG:-$(basename "$RUN_DIR")}"
+REMOTE_PNG="$REMOTE_OUTPUT_DIR/${NAME}-${RUN_TAG}.png"
 register_remote_ephemeral "$REMOTE_PNG"
-REMOTE_LOG="$REMOTE_LOG_DIR/$NAME.log"
+REMOTE_LOG="$REMOTE_LOG_DIR/${NAME}-${RUN_TAG}.log"
 # Privacy-off runs must not retain the raw sd-cli prompt on Big Mac.
 [ "${SDCPP_REDACT_PROMPTS:-0}" != "1" ] || REMOTE_LOG="/dev/null"
 

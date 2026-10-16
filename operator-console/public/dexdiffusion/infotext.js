@@ -13,7 +13,9 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const RE_PARAM = /\s*(\w[\w \-/]+):\s*("(?:\\.|[^\\"])+"|[^,]*)(?:,|$)/g;
+  // Keys are bounded (A1111 keys are short): an unbounded key made a long colon-free line quadratic (80 KB took 11 s).
+  const RE_PARAM = /\s*(\w[\w \-/]{0,60}):\s*("(?:\\.|[^\\"])+"|[^,]*)(?:,|$)/g;
+  const MAX_INFOTEXT = 256 * 1024;
   const RE_IMAGESIZE = /^(\d+)x(\d+)$/;
 
   function unquote(v) {
@@ -29,7 +31,7 @@
 
   // -> { prompt, negative, params: [[key, value]...], raw }
   function parseInfotext(text) {
-    const raw = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+    const raw = String(text == null ? '' : text).slice(0, MAX_INFOTEXT).replace(/\r\n?/g, '\n');
     const lines = raw.split('\n');
     let last = lines.length ? lines[lines.length - 1] : '';
     let kv = pairs(last);

@@ -576,19 +576,8 @@ function validatePromptLoras(prompt, backend) {
       allowedNames.add(base);
     }
   }
-
-  while ((match = regex.exec(prompt)) !== null) {
-    const loraName = match[1];
-    const loraWeight = match[2];
-
-    const weightNum = Number(loraWeight);
-    if (isNaN(weightNum)) {
-      return { ok: false, error: `Invalid LoRA weight: "${loraWeight}"` };
-    }
-
-    if (!allowedNames.has(loraName)) {
-      return { ok: false, error: `LoRA "${loraName}" is not in the discovered assets allowlist.` };
-    }
+  for (const t of scan.tokens) {
+    if (!allowedNames.has(t.name)) return { ok: false, error: `LoRA "${t.name}" is not in the discovered assets allowlist.` };
   }
   return { ok: true };
 }
@@ -887,8 +876,6 @@ function prepareSource(srcPath, mode) {
   }
 }
 
-// Outpaint: blend the untouched source back over this job's own new output.
-// Runs after canonicalization (the script adopts its PNG itself), editing the
 // A1111 resize modes for an img2img source (P07): a temporary PNG sized by resize-source.py; the original is never touched.
 function resizeSource(srcPath, spec, size) {
   const out = path.join(MASK_UPLOADS_DIR, `prep-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.png`);
@@ -901,6 +888,8 @@ function resizeSource(srcPath, spec, size) {
   }
 }
 
+// Outpaint: blend the untouched source back over this job's own new output.
+// Runs after canonicalization (the script adopts its PNG itself), editing the
 // single canonical copy through an owned atomic transform before lineage is recorded.
 function compositeOutpaint(job, stdoutText) {
   const c = job.outpaintComposite;
@@ -1061,7 +1050,7 @@ setInterval(() => {
   if (!st.owner) return;
   // Image jobs live in `jobs`; voice/music jobs only in the durable job store.
   const img = jobs[st.owner.job_id], gen = jobStore.get(st.owner.job_id);
-  const imageActive = img && (['queued', 'running'].includes(img.status) || !!img.remoteOrphan);
+  const imageActive = img && (['queued', 'running'].includes(img.status) || holdsLease(img));
   const mediaActive = !img && gen && ['QUEUED', 'RUNNING', 'TRANSFERRING'].includes(gen.status);
   if (!imageActive && !mediaActive) arbiter.release(st.owner.job_id);
 }, 5000).unref();
@@ -1087,12 +1076,16 @@ function withLease(jobId, start) {
     start();
   });
 }
+// A job whose Big Mac process is not yet confirmed stopped keeps the heavy lease, for at most two minutes
+// (after that the stale hold is dropped so one failed remote cancel cannot block all heavy work forever).
+const REMOTE_ORPHAN_HOLD_MS = 2 * 60 * 1000;
+function holdsLease(job) { return !!(job && job.remoteOrphan && Date.now() - (job.remoteOrphan.at || 0) < REMOTE_ORPHAN_HOLD_MS); }
 function syncGenericTerminal(job) {
   const map = { PASS: 'COMPLETE', PARTIAL: 'COMPLETE', FAIL: 'FAILED', CANCELLED: 'CANCELLED' };
   let st = map[job.status];
   if (!st) return;
   const g = jobStore.get(job.id);
-  if (!g || TERMINAL.has(g.status)) { arbiter.release(job.id); return; }
+  if (!g || TERMINAL.has(g.status)) { if (!holdsLease(job)) arbiter.release(job.id); return; }
   const fromResults = (job.results || []).filter(r => r.imageId).map(r => r.imageId);
   const fromFields = JOB_IMAGE_FIELDS.map(field => job[field + 'Url']).filter(Boolean).map(url => decodeURIComponent(url.split('/').pop()));
   // Legacy Hi-Res/CLI/plot callers need receipts too; their images may be
@@ -1127,7 +1120,7 @@ function syncGenericTerminal(job) {
     job.status = 'FAIL'; job.firstFailedGate = job.firstFailedGate || 'job-contract-rejected';
     jobStore.transition(job.id, 'FAILED', { first_failed_gate: job.firstFailedGate, error: result.error });
   }
-  arbiter.release(job.id);
+  if (!holdsLease(job)) arbiter.release(job.id);
   try {
     const eventName = st === 'COMPLETE' ? 'job.completed' : st === 'FAILED' ? 'job.failed' : st === 'CANCELLED' ? 'job.cancelled' : 'job.interrupted';
     eventBus.publish(eventName, { id: job.id, status: st, firstFailedGate: job.firstFailedGate || null, artifactIds: arts });
@@ -1215,9 +1208,9 @@ function remoteCancelRun(runId) {
   });
 }
 async function remoteCancelJob(job) {
-  if (!REMOTE_CANCEL_ACTIONS.has(job.commandAction)) return { ok: true, verified: false, runs: [], note: `Big Mac side cannot be verified for ${job.commandAction || 'this action'}; it may finish on its own.` };
+  if (!REMOTE_CANCEL_ACTIONS.has(job.commandAction)) { delete job.remoteOrphan; return { ok: true, verified: false, runs: [], note: `Big Mac side cannot be verified for ${job.commandAction || 'this action'}; it may finish on its own.` }; }
   const ids = runIdsOf(job);
-  if (!ids.length) return { ok: true, verified: true, runs: [], note: 'no remote run had started' };
+  if (!ids.length) { delete job.remoteOrphan; return { ok: true, verified: true, runs: [], note: 'no remote run had started' }; }
   const runs = [];
   for (const id of ids) runs.push(await remoteCancelRun(id));
   const ok = runs.every(r => r.ok);
@@ -1232,9 +1225,9 @@ function markJobTimedOut(job, child, timeoutMs, label) {
   job.exitCode = null;
   job.firstFailedGate = 'timeout';
   job.stderr += `\nTimed out after ${Math.round(timeoutMs / 1000)}s waiting for ${label || job.commandAction || 'job'} to finish.`;
-  terminateChildTree(child);
   job.remoteOrphan = { pending: true, at: Date.now() };   // hold the lease until the remote side is verified stopped
-  remoteCancelJob(job).catch(err => { job.remoteOrphan = { error: err.message, at: Date.now() }; });
+  // Remote first, then the local tree (see the cancel route: ending ssh first would orphan the remote child).
+  remoteCancelJob(job).catch(err => { job.remoteOrphan = { error: err.message, at: Date.now() }; }).finally(() => terminateChildTree(child));
 }
 
 function runAction(jobId, scriptPath, args, savePrompts = false) {
@@ -1385,10 +1378,6 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
             // Effective per-image generation record (exact recall source).
             gen_schema: 1,
             sampler: spec.backend === 'mflux' ? undefined : EC.canonicalSampler(params.sampler || spec.defaultSampler),
-            vae: spec.backend === 'mflux' ? undefined : (params.vae || 'auto'),
-            preset: params.preset || undefined,
-            loras: spec.backend === 'mflux' ? [] : (params.loras || []),
-            prompt_saved: !!params.save_prompts,
             clip_skip: spec.backend === 'mflux' || params.clip_skip === '' ? undefined : params.clip_skip,
             tiling: spec.backend !== 'mflux' && params.tiling ? true : undefined,
             hires: spec.backend !== 'mflux' && hiresRequested(params)
@@ -1396,8 +1385,10 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
               : undefined,
             eta: spec.backend === 'mflux' || params.eta === '' ? undefined : params.eta,
             rng: spec.backend === 'mflux' || !params.rng ? undefined : params.rng,
-            clip_skip: spec.backend === 'mflux' || params.clip_skip === '' ? undefined : params.clip_skip,
-            tiling: spec.backend !== 'mflux' && params.tiling ? true : undefined,
+            vae: spec.backend === 'mflux' ? undefined : (params.vae || 'auto'),
+            preset: params.preset || undefined,
+            loras: spec.backend === 'mflux' ? [] : (params.loras || []),
+            prompt_saved: !!params.save_prompts,
             prompt: params.save_prompts ? EC.stripLoraTags(params.prompt) : undefined,
             negative_prompt: params.save_prompts && !(spec.backend === 'mflux' || spec.noNegativePrompt) ? params.negative_prompt : undefined,
           });
@@ -1552,10 +1543,10 @@ function normalizeControlledGenerationBody(body) {
     'clip_skip',
     'tiling',
     'restore_faces',
-    'prompt',
-    'negative_prompt',
     'eta',
     'rng',
+    'prompt',
+    'negative_prompt',
     'negativePrompt',
     'width',
     'height',
@@ -1569,10 +1560,10 @@ function normalizeControlledGenerationBody(body) {
     'hires_steps',
     'hires_denoise',
     'hires_upscaler',
-    'parent_image_id',
-    'operation',
     'hires_width',
     'hires_height',
+    'parent_image_id',
+    'operation',
     'loras'
   ]);
   for (const key of Object.keys(body || {})) {
@@ -1652,16 +1643,14 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   if (!validateSavePrompts(params.save_prompts)) return 'Invalid save_prompts';
 
   const spec = allTargetById[params.target];
-  if (params.width === undefined || params.width === null || params.width === '') params.width = spec.defaultWidth;
-  if (params.height === undefined || params.height === null || params.height === '') params.height = spec.defaultHeight;
-  const dimensionError = validateDimensions(spec, params.width, params.height);
-  if (dimensionError) return dimensionError;
   const samplingError = validateSamplingFields(spec, params);
   if (samplingError) return samplingError;
   const promptSyntaxError = PromptParity.validateForTarget(spec, params.prompt, params.negative_prompt);
   if (promptSyntaxError) return promptSyntaxError;
-  const samplingError = validateSamplingFields(spec, params);
-  if (samplingError) return samplingError;
+  if (params.width === undefined || params.width === null || params.width === '') params.width = spec.defaultWidth;
+  if (params.height === undefined || params.height === null || params.height === '') params.height = spec.defaultHeight;
+  const dimensionError = validateDimensions(spec, params.width, params.height);
+  if (dimensionError) return dimensionError;
   const steps = params.steps === undefined || params.steps === null || params.steps === ''
     ? spec.defaultSteps
     : Number(params.steps);
@@ -2676,7 +2665,9 @@ function withHeaderFacts(list) {
   return (list || []).map(a => {
     const h = a.full_path && modelInspector.cached(a.full_path, a.size_bytes);
     if (!h || h.error) return a;
-    return { ...a, header_family: familyFromArch(h.arch) === 'unknown' ? undefined : familyFromArch(h.arch), header_triggers: h.trigger_candidates || [] };
+    // FLUX.1 and FLUX.2 share the layout, so a header cannot override the filename's version for FLUX files.
+    const hf = h.arch === 'flux' ? 'unknown' : familyFromArch(h.arch);
+    return { ...a, header_family: hf === 'unknown' ? undefined : hf, header_triggers: h.trigger_candidates || [] };
   });
 }
 const ASSET_KINDS = { checkpoint: 'checkpoints', lora: 'loras', vae: 'vaes', embedding: 'embeddings' };
@@ -3296,13 +3287,13 @@ app.post('/api/actions/img2img', (req, res) => {
     return res.status(400).json({ error: 'strength must be a number between 0.01 and 0.99' });
   }
 
-  // Optional source preparation: a temporary working copy (never the canonical file).
-  let prepPath = null;
   // A1111 resize modes (P07): resize / crop / fill to a size or by a scale, with alpha flattened onto background_color.
   const resizeReq = SourceResize.normalizeResize(body);
   if (resizeReq.error) return res.status(400).json({ error: resizeReq.error, gate: 'resize' });
   if (resizeReq.spec && body.source_prep && body.source_prep !== 'none') return res.status(400).json({ error: 'Use either source_prep or resize_mode, not both', gate: 'resize' });
   const exactStepsRequested = body.exact_steps === true || body.exact_steps === 'true';
+  // Optional source preparation: a temporary working copy (never the canonical file).
+  let prepPath = null;
   if (resizeReq.spec) {
     const dims = pngSize(initImgPath);
     if (!dims) return res.status(400).json({ error: 'The source is not a readable PNG', gate: 'resize' });
@@ -3322,8 +3313,6 @@ app.post('/api/actions/img2img', (req, res) => {
   const params = normalizeGenerationBody(body);
   const genErr = validateGenerationParams(params);
   if (genErr) { if (prepPath) try { fs.unlinkSync(prepPath); } catch (_) {} return res.status(400).json({ error: genErr }); }
-
-  const args = ['--init-img', initImgPath, '--strength', String(strength), '--prompt', params.prompt];
   // "Do exactly the amount of steps": sd.cpp runs floor(steps * strength), so ask for the step count that yields the requested one.
   let stepsRequested = null;
   if (exactStepsRequested) {
@@ -3334,6 +3323,8 @@ app.post('/api/actions/img2img', (req, res) => {
     stepsRequested = requested;
     params.steps = String(cliSteps);
   }
+
+  const args = ['--init-img', initImgPath, '--strength', String(strength), '--prompt', params.prompt];
   if (params.negative_prompt) args.push('--negative', params.negative_prompt);
   if (params.steps) args.push('--steps', String(params.steps));
   if (params.width) args.push('--width', String(params.width));
@@ -3918,7 +3909,8 @@ const queueRunner = W.createQueueRunner({
 // ---- X/Y/Z plot (P10): cells are ordinary controlled generations run through the durable queue ----------
 function xyzPlanFor(body) {
   const settings = { ...(body.settings || {}) };
-  const prompt = String(settings.prompt || body.prompt || '');
+  // Wildcards are expanded ONCE for the whole plot: expanding per cell would make cells differ by more than the axes.
+  const prompt = expandWildcards(String(settings.prompt || body.prompt || ''));
   const negative = String(settings.negative_prompt || settings.negativePrompt || '');
   if (!prompt.trim()) return { status: 400, error: 'Enter a prompt first' };
   const probe0 = normalizeControlledGenerationBody({ ...settings, prompt, negative_prompt: negative });
@@ -3934,14 +3926,14 @@ function xyzPlanFor(body) {
   for (const c of plan.cells) {
     const probe = normalizeControlledGenerationBody({ ...settings, ...c.overrides, prompt: c.prompt, negative_prompt: c.negative_prompt, quantity: 1 });
     const err = validateControlledGenerationParams(probe, allTargetById);
-    if (err) return { status: 400, error: `Cell ${c.index + 1} (${c.title}): ${err}`, errors: [`Cell ${c.index + 1} (${c.title}): ${err}`] };
+    if (err) return { status: 400, error: `Cell ${c.index + 1} (${c.fullTitle}): ${err}`, errors: [`Cell ${c.index + 1} (${c.fullTitle}): ${err}`] };
   }
   return { plan, settings, negative, target, fixedSeed };
 }
 app.post('/api/xyz/plan', (req, res) => {
   const r = xyzPlanFor(req.body || {});
   if (r.error) return res.status(r.status).json({ ok: false, error: r.error, errors: r.errors || [r.error] });
-  res.json({ ok: true, total: r.plan.total, dims: r.plan.dims, axes: r.plan.axes, fixedSeed: r.fixedSeed, cells: r.plan.cells.map(c => ({ index: c.index, ix: c.ix, iy: c.iy, iz: c.iz, title: c.title })) });
+  res.json({ ok: true, total: r.plan.total, dims: r.plan.dims, axes: r.plan.axes, fixedSeed: r.fixedSeed, cells: r.plan.cells.map(c => ({ index: c.index, ix: c.ix, iy: c.iy, iz: c.iz, title: c.fullTitle })) });   // in-session preview only; queue items keep the prompt-free title
 });
 app.post('/api/xyz', (req, res) => {
   const body = req.body || {};
@@ -4477,18 +4469,23 @@ app.post('/api/jobs/:id/cancel', async (req, res) => {
   const retry = job && job.status === 'CANCELLED' && job.remoteOrphan && !job.remoteOrphan.pending;
   if (job && (job.status === 'queued' || job.status === 'running' || retry)) {
     const wasRunning = job.status === 'running' || retry;
+    const killLocal = () => {
+      for (const pid of [job.activeChildPid, job.childPid].filter(Boolean)) {
+        try { process.kill(-pid, 'SIGTERM'); } catch (_) { try { process.kill(pid, 'SIGTERM'); } catch (_) {} }
+      }
+    };
     if (!retry) {
       job.status = 'CANCELLED';
       job.completedAt = Date.now();
       job.firstFailedGate = 'user-cancelled';
       job.stderr += '\nJob cancelled by user request.';
-      for (const pid of [job.activeChildPid, job.childPid].filter(Boolean)) {
-        try { process.kill(-pid, 'SIGTERM'); } catch (_) { try { process.kill(pid, 'SIGTERM'); } catch (_) {} }
-      }
     }
     if (wasRunning) {
       job.remoteOrphan = job.remoteOrphan || { pending: true, at: Date.now() };   // lease stays held until verified
+      // Stop the Big Mac side FIRST: ending the local ssh makes the remote wrapper exit, after which its run id can no
+      // longer be matched and its child (sd-cli / MFLUX python) would be left running as an orphan.
       const remote = await remoteCancelJob(job);
+      if (!retry) killLocal();
       if (!remote.ok) {
         job.stderr += '\nRemote cancel could not be verified: ' + remote.runs.filter(r => !r.ok).map(r => r.error || `${r.left} process(es) still running`).join('; ');
         return res.status(502).json({ ok: false, gate: 'remote-cancel-failed', status: 'CANCELLED', error: 'The job was cancelled locally, but a process on Big Mac could not be confirmed stopped. The heavy-compute lease is kept; press Cancel again to retry.', remote });
@@ -4670,13 +4667,6 @@ app.post('/api/recipes/import-legacy', (req, res) => {
   res.json({ ok: true, ...result });
 });
 
-// ---- F11: Declarative Macros Endpoints ----------------------------------------
-app.get('/api/macros', (req, res) => {
-  res.json({ macros: macroStore.list() });
-});
-
-app.post('/api/macros', (req, res) => {
-  try {
 // ---- P04 S04.2: prompt styles (A1111 styles semantics; templates only, never generation records) ----------------
 app.get('/api/styles', (req, res) => res.json({ styles: stylesStore.list(), placeholder: PromptStyles.PLACEHOLDER }));
 
@@ -4715,6 +4705,13 @@ app.post('/api/styles/apply', (req, res) => {
   res.json({ ok: true, ...out, applied: chosen.map(s => s.name), syntax_error: spec ? PromptParity.validateForTarget(spec, out.prompt, out.negative_prompt) : null });
 });
 
+// ---- F11: Declarative Macros Endpoints ----------------------------------------
+app.get('/api/macros', (req, res) => {
+  res.json({ macros: macroStore.list() });
+});
+
+app.post('/api/macros', (req, res) => {
+  try {
     const m = macroStore.create(req.body || {});
     res.json({ ok: true, macro: m });
   } catch (err) {

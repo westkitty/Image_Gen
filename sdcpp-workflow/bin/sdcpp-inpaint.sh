@@ -111,6 +111,8 @@ ARG_STEPS="$STEPS"; ARG_W="$WIDTH"; ARG_H="$HEIGHT"; ARG_CFG="$CFG_SCALE"; ARG_S
 [ -n "$EX_SCHEDULER" ] && ARG_SCHEDULER="$EX_SCHEDULER"
 
 RUN_DIR="$(make_run_dir inpaint)"
+echo "SDCPP_RUN_ID: $(basename "$RUN_DIR")"   # announced early so a cancel can scope the remote stop to this run
+RUN_TAG="$(basename "$RUN_DIR")"   # remote file names carry the run id so a cancel can find this run's processes
 SDCPP_LOGFILE="$RUN_DIR/inpaint.log"; export SDCPP_LOGFILE
 NAME="${ARG_OUT_NAME:-inpaint_$(timestamp)}"
 LOCAL_PNG="$RUN_DIR/$NAME.png"
@@ -132,11 +134,11 @@ verify_binaries "$BUILD_DIR"
 verify_model >/dev/null
 ensure_remote_dirs
 
-REMOTE_INIT_IMG="$REMOTE_OUTPUT_DIR/${NAME}-init.png"
-REMOTE_MASK_IMG="$REMOTE_OUTPUT_DIR/${NAME}-mask.png"
-REMOTE_PNG="$REMOTE_OUTPUT_DIR/$NAME.png"
+REMOTE_INIT_IMG="$REMOTE_OUTPUT_DIR/${NAME}-${RUN_TAG}-init.png"
+REMOTE_MASK_IMG="$REMOTE_OUTPUT_DIR/${NAME}-${RUN_TAG}-mask.png"
+REMOTE_PNG="$REMOTE_OUTPUT_DIR/${NAME}-${RUN_TAG}.png"
 register_remote_ephemeral "$REMOTE_INIT_IMG" "$REMOTE_MASK_IMG" "$REMOTE_PNG"
-REMOTE_LOG="$REMOTE_LOG_DIR/$NAME.log"
+REMOTE_LOG="$REMOTE_LOG_DIR/${NAME}-${RUN_TAG}.log"
 # Privacy-off runs must not retain the raw sd-cli prompt on Big Mac.
 [ "${SDCPP_REDACT_PROMPTS:-0}" != "1" ] || REMOTE_LOG="/dev/null"
 

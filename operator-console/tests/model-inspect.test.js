@@ -64,6 +64,18 @@ test('header inspector flags truncated files, junk headers and metadata/layout d
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('UNet-only LoRAs are ambiguous unless metadata declares the base; SD1.x text-encoder naming is SD1.x', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'st-'));
+  const f = n => path.join(dir, n);
+  writeSafetensors(f('unet.safetensors'), { 'lora_unet_down_blocks_0.lora_down.weight': ['F16', [2]], 'lora_unet_up_blocks_0.lora_up.weight': ['F16', [2]] });
+  writeSafetensors(f('unetxl.safetensors'), { 'lora_unet_down_blocks_0.lora_down.weight': ['F16', [2]] }, { ss_base_model_version: 'sdxl_base_v1-0' });
+  writeSafetensors(f('te.safetensors'), { 'lora_te_text_model.lora_down.weight': ['F16', [2]], 'lora_unet_a.lora_up.weight': ['F16', [2]] });
+  assert.equal(inspect(f('unet.safetensors')).arch, 'unknown');
+  assert.equal(inspect(f('unetxl.safetensors')).arch, 'sdxl');
+  assert.equal(inspect(f('te.safetensors')).arch, 'sd1x');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('agreement: name vs header, SDXL-family cousins count as the same architecture', () => {
   assert.equal(agreement('sd_xl_base_1.0.safetensors', 'sdxl').state, 'match');
   assert.equal(agreement('ponyDiffusionV6XL.safetensors', 'sdxl').state, 'match');

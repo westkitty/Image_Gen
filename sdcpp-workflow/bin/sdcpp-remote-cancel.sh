@@ -25,8 +25,9 @@ marker="$1"
 # Never signal this script's own ancestry (login shell, bash -s, and - when run locally - the caller).
 skip=" "; p=$$
 while [ -n "$p" ] && [ "$p" -gt 1 ] 2>/dev/null; do skip="$skip$p "; p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"; done
-# Match on the exact run id; skip those pids, this script's own subshells (same argv: "bash -s --") and the awk doing the matching.
-list() { ps -axo pid=,command= | awk -v m="$marker" -v skip="$skip" 'index($0, m) > 0 && $2 != "awk" && index(skip, " " $1 " ") == 0 \
+# Match the exact run id as a whole token: not followed by more id characters, so a longer id that starts with it never matches
+# (the MFLUX label is "dexdiffusion-mflux-<id>", so a leading hyphen is allowed); skip those pids, this script's own subshells (same argv: "bash -s --") and the awk doing the matching.
+list() { ps -axo pid=,command= | awk -v m="$marker" -v skip="$skip" '$0 ~ ("(^|[^A-Za-z0-9_])" m "([^A-Za-z0-9_-]|$)") && $2 != "awk" && index(skip, " " $1 " ") == 0 \
   && $0 !~ /bash -s --/ { print $1 }'; }
 # A matched process (the bash -c wrapper) owns children whose own argv has no run id, e.g. the MFLUX python.
 # Take the whole subtree of every match so nothing is left running as an orphan.

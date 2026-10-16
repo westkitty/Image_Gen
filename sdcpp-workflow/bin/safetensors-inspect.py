@@ -30,13 +30,21 @@ def classify(keys, hdr):
     kind, arch = 'unknown', 'unknown'
     if contains('lora_down') or contains('lora_up') or contains('.lora_A.') or contains('.lora_B.') or has('lora_unet_') or has('lora_te'):
         kind = 'lora'
-        if has('lora_te2_') or contains('text_encoder_2') or contains('lora_unet_output_blocks_') and has('lora_te1_'):
+        hint = str(meta.get('ss_base_model_version') or '').lower()
+        if has('lora_te2_') or contains('text_encoder_2'):
             arch = 'sdxl'
-        elif has('lora_te_') or has('lora_unet_'):
-            # SD1.x/2.x kohya naming; the SDXL naming always carries te1/te2.
+        elif has('lora_te1_'):
+            arch = 'sdxl'
+        elif has('lora_te_'):
             arch = 'sd1x'
-        if contains('double_blocks') or contains('single_blocks') or contains('transformer_blocks') and not has('lora_unet_'):
-            arch = 'flux' if (contains('double_blocks') or contains('single_blocks')) else arch
+        elif hint.startswith('sdxl'):
+            arch = 'sdxl'        # UNet-only LoRA: the layout alone cannot tell SD1.x from SDXL, so trust declared metadata
+        elif hint.startswith('sd_v1') or hint.startswith('sd_v2'):
+            arch = 'sd1x'
+        else:
+            arch = 'unknown'     # UNet-only and undeclared: ambiguous, never guessed
+        if contains('double_blocks') or contains('single_blocks'):
+            arch = 'flux'
     elif 'emb_params' in hdr or ('clip_l' in hdr and 'clip_g' in hdr) or 'string_to_param' in hdr:
         kind = 'embedding'
         if 'clip_l' in hdr and 'clip_g' in hdr:

@@ -80,10 +80,12 @@ mkdir -p "$BASE_DIR"
 CREATED_AT="$(iso_now)"
 
 printf >&2 '==> Hires Fix run: %s\n' "$HIRES_RUN_ID"
+echo "SDCPP_RUN_ID: $HIRES_RUN_ID"   # announced early so a cancel can scope the remote stop to this run
 printf >&2 '    Pass 1: txt2img (%s preset) → base/base.png\n' "$PRESET"
 
 # ---- pass 1: txt2img --------------------------------------------------------
 export SDCPP_RUN_DIR_OVERRIDE="$BASE_DIR"
+export SDCPP_REMOTE_RUN_TAG="$HIRES_RUN_ID"
 
 set -- --preset "$PRESET" --out-name base
 [ -n "$ARG_PROMPT" ]   && set -- "$@" --prompt    "$ARG_PROMPT"
@@ -96,7 +98,7 @@ set -- --preset "$PRESET" --out-name base
 [ -n "$ARG_SEED" ]     && set -- "$@" --seed      "$ARG_SEED"
 
 "$HERE/sdcpp-cli-generate.sh" "$@" || fail "base-generation" "txt2img pass failed"
-unset SDCPP_RUN_DIR_OVERRIDE
+unset SDCPP_RUN_DIR_OVERRIDE SDCPP_REMOTE_RUN_TAG
 
 # ---- verify base PNG exists -------------------------------------------------
 BASE_PNG="$BASE_DIR/base.png"

@@ -113,7 +113,7 @@
     for (let iz = 0; iz < dims[2]; iz++) for (let iy = 0; iy < dims[1]; iy++) for (let ix = 0; ix < dims[0]; ix++) {
       const idx = [ix, iy, iz];
       let prompt = base.prompt || '', negative = base.negative_prompt || '';
-      const overrides = {}, labels = [];
+      const overrides = {}, labels = [], safe = [];   // safe: titles that carry no prompt text (those are persisted with queue items)
       used.forEach((u, n) => {
         if (!u) return;
         const v = u.values[idx[n]], ax = AXES[u.type];
@@ -127,8 +127,9 @@
           negative = negative.split(search).join(v);
         } else overrides[ax.field] = v;
         labels.push(fmt(u.type, v));
+        safe.push(ax.kind === 'sr' ? `${ax.label} #${idx[n] + 1}` : fmt(u.type, v));
       });
-      cells.push({ index: cells.length, ix, iy, iz, prompt, negative_prompt: negative, overrides, labels, title: labels.join(' · ') });
+      cells.push({ index: cells.length, ix, iy, iz, prompt, negative_prompt: negative, overrides, labels, title: safe.join(' · '), fullTitle: labels.join(' · ') });
     }
     const uniq = [...new Set(errors)];
     if (uniq.length) return { ok: false, errors: uniq, dims, total, cells: [] };

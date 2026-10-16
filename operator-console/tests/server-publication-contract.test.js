@@ -23,6 +23,7 @@ test('generic server completion requires a fresh canonical receipt and releases 
     JOB_IMAGE_FIELDS:['controlledOutputImage','hiresBaseImage','hiresFinalImage','upscaledImage'],RUNS_DIR:'/owned/runs',path,
     imageStore:{resolveImage:id=>id==='valid.png'?{path:'/owned/valid.png'}:null,readRunIndex:run=>run.endsWith('20261003-120000-legacy')?[{image_id:'valid.png'}]:[]},
     validateImage:()=>({sha256:'a'.repeat(64)}), arbiter:{release:()=>releases++},
+    holdsLease: load('holdsLease','function syncGenericTerminal',{Date,REMOTE_ORPHAN_HOLD_MS:120000}),
   });
   for (const id of ['missing','empty','valid']) {
     store.create({job_id:id,media_kind:'image',operation:'controlled-generate',worker_id:'mflux'});
@@ -39,6 +40,14 @@ test('generic server completion requires a fresh canonical receipt and releases 
   store.create({job_id:'legacy',media_kind:'image',operation:'cli-generate',worker_id:'sdcpp'});
   sync({id:'legacy',status:'PASS',results:[],runId:'20261003-120000-legacy'});
   assert.equal(store.get('legacy').status,'COMPLETE','legacy run-only output must receive a validated receipt');
+  // A cancelled job whose Big Mac process is not yet confirmed stopped must keep the heavy lease (a stale hold expires).
+  const before=releases;
+  store.create({job_id:'held',media_kind:'image',operation:'controlled-generate',worker_id:'mflux'});
+  sync({id:'held',status:'CANCELLED',results:[],remoteOrphan:{pending:true,at:Date.now()}});
+  assert.equal(releases,before,'lease is held while the remote stop is unconfirmed');
+  store.create({job_id:'stale',media_kind:'image',operation:'controlled-generate',worker_id:'mflux'});
+  sync({id:'stale',status:'CANCELLED',results:[],remoteOrphan:{pending:true,at:Date.now()-121000}});
+  assert.equal(releases,before+1,'a hold older than two minutes is dropped');
   store.create({job_id:'probe',media_kind:'image',operation:'probe',worker_id:'sdcpp',artifact_required:false});
   sync({id:'probe',status:'PASS',results:[]}); assert.equal(store.get('probe').status,'COMPLETE');
 });
