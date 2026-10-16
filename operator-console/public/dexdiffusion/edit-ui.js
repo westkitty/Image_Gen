@@ -39,7 +39,7 @@
     try { const v = localStorage.getItem(LAYOUT_KEY); if (v === 'studio' || v === 'compact') layout = v; } catch (_) {}
     this._snaps = this._snaps || new Map();        // imageId → in-memory sensitive snapshot (never persisted)
     this.ed = { layout, op: 'img2img', source: null, state: null, loading: null, error: null, run: { status: 'idle' }, results: [], active: 0,
-      outpaint: { left: 0, right: 128, top: 0, bottom: 0 }, prep: 'none', ext: '', maskInfo: null, assets: null, assetsFor: null, log: null,
+      outpaint: { left: 0, right: 128, top: 0, bottom: 0 }, prep: 'none', resize: { mode: '', kind: 'to', w: '', h: '', by: '', bg: '#ffffff' }, exactSteps: false, ext: '', maskInfo: null, assets: null, assetsFor: null, log: null,
       brush: { mode: 'paint', size: 40 }, openSections: {}, attempt: null, presetName: '' };
     return this.ed;
   };
@@ -466,7 +466,15 @@
       prompt: String(st.prompt || '').trim(), negative_prompt: st.negative || '', steps: +p.steps || 20, cfg_scale: +p.cfg || 7, seed,
       sampler: p.sampler, scheduler: p.scheduler, vae: p.vae || 'auto', loras: this._effectiveLoras(st.loras, catalog), save_prompts: !!this.state.savePrompts });
     if (!body.prompt) delete body.prompt;
-    if (op === 'img2img') { body.strength = +p.strength; if (ed.prep && ed.prep !== 'none') body.source_prep = ed.prep; }
+    if (op === 'img2img') {
+      body.strength = +p.strength;
+      const rz = ed.resize || {};
+      if (rz.mode) {
+        body.resize_mode = rz.mode; body.background_color = rz.bg || '#ffffff';
+        if (rz.kind === 'by') body.resize_by = +rz.by; else { body.resize_width = parseInt(rz.w, 10); body.resize_height = parseInt(rz.h, 10); }
+      } else if (ed.prep && ed.prep !== 'none') body.source_prep = ed.prep;
+      if (ed.exactSteps) body.exact_steps = true;
+    }
     if (op === 'inpaint') { body.strength = +p.strength; body.mask_data = this._maskDataUrl(); }
     if (op === 'outpaint') { const o = ed.outpaint; Object.assign(body, { left: +o.left || 0, right: +o.right || 0, top: +o.top || 0, bottom: +o.bottom || 0, strength: +(ed.outpaintStrength || 0.85) }); if (String(ed.ext || '').trim()) body.extension_prompt = ed.ext.trim(); }
     return { body, route: '/api/actions/' + op };
@@ -642,10 +650,39 @@
       h('div', { style: css.muted }, 'New canvas ≈ ' + W + '×' + H + ' (rounded up to multiples of 64). The original is kept exactly and blended over a 48 px overlap. Describe the new area, not the main subject.'));
   };
   P._edPrepBlock = function () {
-    const ed = this._ed(), src = ed.source;
-    return label('Source preparation (temporary copy; the original is never modified)', h('select', { value: ed.prep, style: css.input, onChange: e => this.edSet({ prep: e.target.value }) },
+    const ed = this._ed(), src = ed.source, R = window.DexResize, rz = ed.resize || (ed.resize = { mode: '', kind: 'to', w: '', h: '', by: '', bg: '#ffffff' });
+    // Read the current value at call time: a handler captured by an earlier render must not overwrite a newer field.
+    const setRz = patch => this.edSet({ resize: Object.assign({}, this._ed().resize, patch) });
+    const st = ed.state || {}, p = st.params || {};
+    const preview = (() => {
+      if (!rz.mode) return null;
+      const spec = rz.kind === 'by' ? { mode: rz.mode, by: +rz.by } : { mode: rz.mode, width: parseInt(rz.w, 10), height: parseInt(rz.h, 10) };
+      const check = R.normalizeResize(rz.kind === 'by' ? { resize_mode: rz.mode, resize_by: rz.by } : { resize_mode: rz.mode, resize_width: rz.w, resize_height: rz.h, background_color: rz.bg });
+      if (check.error) return { error: check.error };
+      const t = R.targetSize(check.spec, src.width, src.height);
+      return { text: src.width + '×' + src.height + ' → ' + t.width + '×' + t.height };
+    })();
+    const legacy = label('Quick preparation (temporary copy; the original is never modified)', h('select', { value: ed.prep, disabled: !!rz.mode, 'aria-label': 'Quick source preparation', style: css.input, onChange: e => this.edSet({ prep: e.target.value }) },
       h('option', { value: 'none' }, 'As is (' + src.width + '×' + src.height + ')'), h('option', { value: 'crop-square' }, 'Center crop · square'), h('option', { value: 'crop-portrait' }, 'Center crop · portrait 3:4'),
       h('option', { value: 'crop-landscape' }, 'Center crop · landscape 4:3'), h('option', { value: 'fit-square' }, 'Fit/contain · square'), h('option', { value: 'resize-512' }, 'Resize · longest side 512')));
+    const strength = +p.strength, steps = +p.steps;
+    const exactInfo = ed.exactSteps ? (R.exactSteps(steps, strength) ? ('Runs exactly ' + steps + ' sampler steps (sd-cli is asked for ' + R.exactSteps(steps, strength) + ', because it runs ⌊steps × strength⌋ + 1).') : 'Needs steps and a strength between 0 and 1.')
+      : ('Without it sd-cli runs ' + (steps && strength ? R.executedSteps(steps, strength) : '—') + ' of ' + (steps || '—') + ' steps (⌊steps × strength⌋ + 1).');
+    return h('div', { style: { display: 'grid', gap: 8 }, 'data-edit-resize': 'true' },
+      legacy,
+      label('Resize mode (A1111)', h('select', { value: rz.mode, 'data-edit-field': 'resize-mode', 'aria-label': 'Resize mode', style: css.input, onChange: e => { setRz({ mode: e.target.value }); if (e.target.value) this.edSet({ prep: 'none' }); } },
+        h('option', { value: '' }, 'Off — use the quick preparation above'), h('option', { value: 'resize' }, 'Just resize (stretch)'), h('option', { value: 'crop' }, 'Crop and resize'), h('option', { value: 'fill' }, 'Resize and fill'))),
+      rz.mode ? h('div', { style: { display: 'grid', gap: 8 } },
+        label('Size by', h('select', { value: rz.kind, 'data-edit-field': 'resize-kind', 'aria-label': 'Resize size mode', style: css.input, onChange: e => setRz({ kind: e.target.value }) }, h('option', { value: 'to' }, 'Resize to (width × height)'), h('option', { value: 'by' }, 'Resize by (scale)'))),
+        rz.kind === 'by'
+          ? label('Scale (0.25–4)', h('input', { type: 'number', min: '0.25', max: '4', step: '0.05', value: rz.by, 'data-edit-field': 'resize-by', style: css.input, onChange: e => setRz({ by: e.target.value }) }))
+          : h('div', { style: css.row }, label('Width', h('input', { type: 'number', min: '64', max: '2048', step: '8', value: rz.w, placeholder: String(src.width), 'data-edit-field': 'resize-width', style: css.input, onChange: e => setRz({ w: e.target.value }) })),
+              label('Height', h('input', { type: 'number', min: '64', max: '2048', step: '8', value: rz.h, placeholder: String(src.height), 'data-edit-field': 'resize-height', style: css.input, onChange: e => setRz({ h: e.target.value }) }))),
+        label('Transparent areas become', h('input', { type: 'color', value: rz.bg || '#ffffff', 'data-edit-field': 'resize-bg', 'aria-label': 'Background colour for transparency', style: Object.assign({}, css.input, { width: 80, padding: 2 }), onChange: e => setRz({ bg: e.target.value }) })),
+        preview ? h('div', { style: preview.error ? Object.assign({}, css.muted, { color: '#fca5a5' }) : css.muted, role: preview.error ? 'alert' : 'status', 'data-edit-field': 'resize-preview' }, preview.error || preview.text) : null) : null,
+      h('label', { style: Object.assign({}, css.row, { color: '#dbe4ee', fontSize: 12 }) }, h('input', { type: 'checkbox', checked: !!ed.exactSteps, 'data-edit-field': 'exact-steps', onChange: e => this.edSet({ exactSteps: e.target.checked }) }), 'Do exactly the amount of steps the slider specifies'),
+      h('div', { style: css.muted, 'data-edit-field': 'exact-steps-note' }, exactInfo),
+      h('div', { style: css.muted, 'data-edit-field': 'img2img-unavailable' }, 'Not available with the installed engine: Latent-upscale resize mode, image CFG scale (needs an inpaint/edit-trained checkpoint), colour correction, and batch img2img from uploads or a directory.'));
   };
   // Progress: determinate only when the backend reported real steps; else stage text + indeterminate bar.
   P._edProgress = function (run) {

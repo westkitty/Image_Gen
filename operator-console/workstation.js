@@ -124,7 +124,7 @@ const { sanitizeRecipe, RECIPE_FIELDS } = require('./public/dexdiffusion/client-
 // non-sensitive structured settings; prompt text is written ONLY when prompt saving was on
 // (prompt_saved says which), so recall can state "prompt saving was off" truthfully.
 const META_FIELDS = ['operation', 'parent', 'detailed_from', 'runId', 'target', 'seed', 'width', 'height', 'steps', 'cfg', 'scheduler', 'strength', 'queueId', 'batchNumber', 'test_artifact', 'note',
-  'gen_schema', 'sampler', 'clip_skip', 'tiling', 'eta', 'rng', 'hires', 'vae', 'preset', 'loras', 'edit_target', 'prompt_saved', 'prompt', 'negative_prompt', 'prompt_scope'];
+  'gen_schema', 'sampler', 'clip_skip', 'tiling', 'eta', 'rng', 'hires', 'resize', 'exact_steps', 'vae', 'preset', 'loras', 'edit_target', 'prompt_saved', 'prompt', 'negative_prompt', 'prompt_scope'];
 
 function createImageMetaStore(file) {
   let cache = null;

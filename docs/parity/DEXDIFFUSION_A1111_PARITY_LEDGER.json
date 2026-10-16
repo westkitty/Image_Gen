@@ -1800,8 +1800,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Preserve stable canonical source and run lifecycle",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). Real img2img jobs through the console PASS (4+1 runs above). Sd15-only today (capability flag), all other edit modes unchanged. Live (Big Mac, sd15, source 20261016-122429-controlled-sd15 512x512, strength 0.5, steps 8, seed 7, euler_a): crop 512x384 -> 512x384 (81141f1edfb2e6e8); fill 768x512 -> 768x512 (afb17a3d8d8e609f); resize by 1.5 -> 768x768 (4adab2523b0b0b6b). ",
    "runtime_receipt": null
   },
   {
@@ -1980,8 +1980,8 @@
    "baseline_status": "partial",
    "required_implementation": "Provide exact A1111 resize semantics with image tests",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). 'Just resize' (stretch, LANCZOS) LIVE_PROVEN for dimensions; pixel rule unit-tested. Live (Big Mac, sd15, source 20261016-122429-controlled-sd15 512x512, strength 0.5, steps 8, seed 7, euler_a): crop 512x384 -> 512x384 (81141f1edfb2e6e8); fill 768x512 -> 768x512 (afb17a3d8d8e609f); resize by 1.5 -> 768x768 (4adab2523b0b0b6b). ",
    "runtime_receipt": null
   },
   {
@@ -2000,8 +2000,8 @@
    "baseline_status": "partial",
    "required_implementation": "Provide deterministic source-to-target crop policy",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). 'Crop and resize' (cover + centre crop) LIVE_PROVEN for dimensions; pixel rule unit-tested. Live (Big Mac, sd15, source 20261016-122429-controlled-sd15 512x512, strength 0.5, steps 8, seed 7, euler_a): crop 512x384 -> 512x384 (81141f1edfb2e6e8); fill 768x512 -> 768x512 (afb17a3d8d8e609f); resize by 1.5 -> 768x768 (4adab2523b0b0b6b). ",
    "runtime_receipt": null
   },
   {
@@ -2020,8 +2020,8 @@
    "baseline_status": "partial",
    "required_implementation": "Provide aspect-preserving fill and fill color",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). 'Resize and fill' (fit, centre, one-pixel edge rows/columns stretched into the bands, as in A1111's images.resize_image) LIVE for dimensions; band pixels unit-tested. Algorithm ported from knowledge of the upstream function, NOT yet diffed against the pinned source (no network access in this session). Live (Big Mac, sd15, source 20261016-122429-controlled-sd15 512x512, strength 0.5, steps 8, seed 7, euler_a): crop 512x384 -> 512x384 (81141f1edfb2e6e8); fill 768x512 -> 768x512 (afb17a3d8d8e609f); resize by 1.5 -> 768x768 (4adab2523b0b0b6b). ",
    "runtime_receipt": null
   },
   {
@@ -2040,8 +2040,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Gate based on engine latent support",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). sd-cli has no latent-upscale resize mode for an img2img source (--help); the mode is rejected with 'latent upscale is not available'.",
    "runtime_receipt": null
   },
   {
@@ -2060,8 +2060,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Preserve exact requested dimensions",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). Resize-to width x height (multiples of 8, 64-2048) LIVE_PROVEN. Live (Big Mac, sd15, source 20261016-122429-controlled-sd15 512x512, strength 0.5, steps 8, seed 7, euler_a): crop 512x384 -> 512x384 (81141f1edfb2e6e8); fill 768x512 -> 768x512 (afb17a3d8d8e609f); resize by 1.5 -> 768x768 (4adab2523b0b0b6b). ",
    "runtime_receipt": null
   },
   {
@@ -2080,8 +2080,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Expose scale and display effective dimensions",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). Resize-by (0.25-4): LIVE_PROVEN 1.5x. Deviation from A1111: result truncated then rounded DOWN to a multiple of 8 because sd-cli needs it (UI preview shows the exact size). Live (Big Mac, sd15, source 20261016-122429-controlled-sd15 512x512, strength 0.5, steps 8, seed 7, euler_a): crop 512x384 -> 512x384 (81141f1edfb2e6e8); fill 768x512 -> 768x512 (afb17a3d8d8e609f); resize by 1.5 -> 768x768 (4adab2523b0b0b6b). ",
    "runtime_receipt": null
   },
   {
@@ -2100,8 +2100,8 @@
    "baseline_status": "partial",
    "required_implementation": "One-click use current source dimensions",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). Source size is read and the exact target size shown before running ('800x500 -> 1200x744'); no auto-fill of width/height fields from the source.",
    "runtime_receipt": null
   },
   {
@@ -2120,8 +2120,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Preserve current per-operation strength semantics",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). Strength 0.01-0.99 pre-existing; live runs used 0.5.",
    "runtime_receipt": null
   },
   {
@@ -2140,8 +2140,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Conditionally expose with real engine support",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). --img-cfg-scale exists in sd-cli but applies only to inpaint/edit-trained checkpoints; none is installed, so the control is not offered and the UI lists it as unavailable.",
    "runtime_receipt": null
   },
   {
@@ -2160,8 +2160,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Provide color selector with explicit compositing before encode",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). UI colour picker + background_color request + Pillow alpha flatten, unit-tested with real RGBA pixels (transparent -> chosen colour, source bytes untouched). Not live-run with a transparent source (only opaque canonical images were used).",
    "runtime_receipt": null
   },
   {
@@ -2180,8 +2180,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Gate exact color correction stage and metadata",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). A1111's colour correction is a histogram match against the original (skimage); no equivalent installed or approved. Listed as unavailable; not approximated.",
    "runtime_receipt": null
   },
   {
@@ -2200,8 +2200,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Provide step-count semantics matching A1111 where possible",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P07 2026-10-16: public/dexdiffusion/source-resize.js (shared helpers), operator-console/bin/resize-source.py (Pillow, A1111 resize_image modes 0/1/2 + alpha flatten), server.js /api/actions/img2img (resize_mode/resize_width/resize_height/resize_by/background_color/exact_steps, validation, metadata 'resize'/'exact_steps'), edit-ui.js Resize panel; tests/source-resize.test.js (6, real Pillow pixels), tests/browser/edit-img2img-parity.browser.js (4). LIVE_PROVEN. sd.cpp img2img runs floor(steps*strength)+1 steps (src/stable-diffusion.cpp:3890; live --steps 8 @0.5 -> 5/5, --steps 16 -> 9/9). exact_steps asks sd-cli for the step count that yields exactly the slider value: 8 steps @0.5 -> CLI 14 -> progress 8/8 (run 20261016-142136-img2img). An earlier formula assumed floor(steps*strength) and was corrected by this live check.",
    "runtime_receipt": null
   },
   {

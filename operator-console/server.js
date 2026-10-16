@@ -7,6 +7,7 @@ const { controlledScriptFor, buildControlledArgs, nativeBatchEligible, normalize
 const W = require('./workstation');
 const EC = require('./public/dexdiffusion/edit-core.js');
 const PromptParity = require('./public/dexdiffusion/prompt-parity.js');
+const SourceResize = require('./public/dexdiffusion/source-resize.js');
 const M = require('./media');
 const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
@@ -877,6 +878,18 @@ function prepareSource(srcPath, mode) {
 
 // Outpaint: blend the untouched source back over this job's own new output.
 // Runs after canonicalization (the script adopts its PNG itself), editing the
+// A1111 resize modes for an img2img source (P07): a temporary PNG sized by resize-source.py; the original is never touched.
+function resizeSource(srcPath, spec, size) {
+  const out = path.join(MASK_UPLOADS_DIR, `prep-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.png`);
+  try {
+    execFileSync('python3', [path.join(__dirname, 'bin', 'resize-source.py'), srcPath, out, spec.mode, String(size.width), String(size.height), spec.background_color], { timeout: 30000 });
+    return { path: out, width: size.width, height: size.height };
+  } catch (_) {
+    try { fs.unlinkSync(out); } catch (__) {}
+    return { error: 'Could not resize the source image.' };
+  }
+}
+
 // single canonical copy through an owned atomic transform before lineage is recorded.
 function compositeOutpaint(job, stdoutText) {
   const c = job.outpaintComposite;
@@ -3160,7 +3173,20 @@ app.post('/api/actions/img2img', (req, res) => {
 
   // Optional source preparation: a temporary working copy (never the canonical file).
   let prepPath = null;
-  if (body.source_prep && body.source_prep !== 'none') {
+  // A1111 resize modes (P07): resize / crop / fill to a size or by a scale, with alpha flattened onto background_color.
+  const resizeReq = SourceResize.normalizeResize(body);
+  if (resizeReq.error) return res.status(400).json({ error: resizeReq.error, gate: 'resize' });
+  if (resizeReq.spec && body.source_prep && body.source_prep !== 'none') return res.status(400).json({ error: 'Use either source_prep or resize_mode, not both', gate: 'resize' });
+  const exactStepsRequested = body.exact_steps === true || body.exact_steps === 'true';
+  if (resizeReq.spec) {
+    const dims = pngSize(initImgPath);
+    if (!dims) return res.status(400).json({ error: 'The source is not a readable PNG', gate: 'resize' });
+    const prep = resizeSource(initImgPath, resizeReq.spec, SourceResize.targetSize(resizeReq.spec, dims.width, dims.height));
+    if (prep.error) return res.status(500).json({ error: prep.error, gate: 'resize' });
+    prepPath = prep.path;
+    initImgPath = prep.path;
+    body.width = prep.width; body.height = prep.height;
+  } else if (body.source_prep && body.source_prep !== 'none') {
     const prep = prepareSource(initImgPath, String(body.source_prep));
     if (prep.error) return res.status(400).json({ error: prep.error });
     prepPath = prep.path;
@@ -3173,6 +3199,16 @@ app.post('/api/actions/img2img', (req, res) => {
   if (genErr) { if (prepPath) try { fs.unlinkSync(prepPath); } catch (_) {} return res.status(400).json({ error: genErr }); }
 
   const args = ['--init-img', initImgPath, '--strength', String(strength), '--prompt', params.prompt];
+  // "Do exactly the amount of steps": sd.cpp runs floor(steps * strength), so ask for the step count that yields the requested one.
+  let stepsRequested = null;
+  if (exactStepsRequested) {
+    const requested = Number(params.steps);
+    const cliSteps = SourceResize.exactSteps(requested, strength);
+    const stepsErr = !Number.isInteger(requested) || requested < 1 ? 'exact_steps needs a steps value' : (cliSteps === null || cliSteps > 150 ? `exact_steps would need ${cliSteps} sampler steps at strength ${strength} (maximum 150)` : null);
+    if (stepsErr) { if (prepPath) try { fs.unlinkSync(prepPath); } catch (_) {} return res.status(400).json({ error: stepsErr, gate: 'steps' }); }
+    stepsRequested = requested;
+    params.steps = String(cliSteps);
+  }
   if (params.negative_prompt) args.push('--negative', params.negative_prompt);
   if (params.steps) args.push('--steps', String(params.steps));
   if (params.width) args.push('--width', String(params.width));
@@ -3193,7 +3229,9 @@ app.post('/api/actions/img2img', (req, res) => {
   ));
   jobSensitives[jobId] = sensitives;
   jobs[jobId].sourceImageId = srcInfo.imageId || null;
-  jobs[jobId].genRecord = editGenRecord(body, params, { strength });
+  jobs[jobId].genRecord = editGenRecord(body, params, Object.assign({ strength },
+    resizeReq.spec ? { resize: resizeReq.spec.by !== undefined ? { mode: resizeReq.spec.mode, by: resizeReq.spec.by, to: `${body.width}x${body.height}` } : { mode: resizeReq.spec.mode, to: `${body.width}x${body.height}` } } : {},
+    stepsRequested ? { exact_steps: true, steps: stepsRequested } : {}));
   jobs[jobId].lineageOp = 'img2img';
   jobs[jobId].tempFiles = [prepPath, srcInfo.temp].filter(Boolean);
   runAction(jobId, 'bin/sdcpp-img2img.sh', args, params.save_prompts);
