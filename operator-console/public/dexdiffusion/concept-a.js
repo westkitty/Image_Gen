@@ -286,7 +286,7 @@
     let body = [];
     if (moduleId === 'generate') {
       heading = 'Generation context';
-      body = [row('Target', target.label || s.target), row('Status', target.status || 'UNKNOWN'), row('Canvas', (s.width || '—') + ' × ' + (s.height || '—')), row('Steps / seed', (s.steps || '—') + ' / ' + (s.seed || 'random')), row('Output', '/Users/andrew/images_made'), row('Prompt record', s.savePrompts ? 'Saved with run' : 'Params only')];
+      body = [row('Target', target.label || s.target), row('Status', target.status || 'UNKNOWN'), row('Canvas', (s.width || '—') + ' × ' + (s.height || '—')), row('Steps / seed', (s.steps || '—') + ' / ' + (s.seed || 'random')), row('Sampler', this._controls().sampler ? window.DexClient.canonicalSamplerId(s.sampler) : 'Fixed (flow-match Euler)'), row('CLIP skip / tiling', this._controls().clipSkip ? ((s.clipSkip === '' || s.clipSkip == null ? 'model default' : s.clipSkip) + ' / ' + (s.tiling ? 'VAE tiling on' : 'off')) : 'Not available for this target'), row('Output', '/Users/andrew/images_made'), row('Prompt record', s.savePrompts ? 'Saved with run' : 'Params only')];
       intro = 'Only controls supported by the selected target are sent to the existing generation path.';
     } else if (moduleId === 'edit') {
       heading = 'Edit context';

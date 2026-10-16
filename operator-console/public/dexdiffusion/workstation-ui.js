@@ -1162,6 +1162,8 @@
     vals.ctlNeg = String(!ctl.negativePrompt);
     vals.ctlCfg = String(!ctl.cfg);
     vals.ctlSched = String(!ctl.scheduler);
+    vals.ctlSampler = String(!ctl.sampler);
+    vals.samplerValue = D.canonicalSamplerId(s.sampler);
     vals.createWorkbench = this.buildCreateWorkbench(vals.modelsListDisplay);
     vals.resultStaging = this.buildResultStaging();
     vals.batchWorkspace = this.buildBatchWorkspace();

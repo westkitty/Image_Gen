@@ -123,6 +123,45 @@ async function generateOnce(page, bodies) {
       await page.close();
     });
 
+    await test('inspector shows the effective sampler, CLIP skip and tiling and follows the controls', async () => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const { errors } = await openGenerate(page, srv.base);
+      await chooseTarget(page, 'sdxl-base');
+      await page.locator('[data-dex-field="sampler"]').selectOption('heun');
+      await page.locator('[data-dex-field="clip-skip"]').fill('2');
+      await page.locator('[data-dex-field="tiling"]').check();
+      await page.waitForTimeout(400);
+      const text = await page.locator('.ca-inspector').innerText();
+      assert.match(text, /Sampler\s*heun/i);
+      assert.match(text, /CLIP skip \/ tiling\s*2 \/ VAE tiling on/i);
+      await chooseTarget(page, 'flux2-klein-4b');
+      await page.waitForTimeout(400);
+      const klein = await page.locator('.ca-inspector').innerText();
+      assert.match(klein, /Fixed \(flow-match Euler\)/);
+      assert.match(klein, /Not available for this target/);
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
+    await test('legacy V1-V3 sampler selects offer only supported ids and no unsupported A1111 aliases', async () => {
+      for (const v of ['1', '2', '3']) {
+        const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        const { errors, bodies } = await openGenerate(page, srv.base);
+        await page.locator(`[data-vbtn="${v}"]`).click();
+        await page.waitForTimeout(600);
+        const lists = await page.evaluate(() => [...document.querySelectorAll('select')]
+          .filter(s => [...s.options].some(o => o.value === 'euler_a'))
+          .map(s => ({ values: [...s.options].map(o => o.value), visible: !!s.offsetParent })));
+        assert.ok(lists.length >= 1, 'legacy sampler select present in V' + v);
+        for (const l of lists) {
+          assert.deepEqual(l.values, ['euler_a', 'euler', 'heun', 'dpm2', 'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm']);
+          assert.equal(l.values.some(x => /sde|\+/.test(x)), false);
+        }
+        assert.deepEqual(errors, []);
+        await page.close();
+      }
+    });
+
     await test('controls remain usable at 390x844', async () => {
       const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
       const { errors } = await openGenerate(page, srv.base);
