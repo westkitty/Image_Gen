@@ -29,6 +29,8 @@ const { projectOperationalJob } = require('./operational-jobs');
 const { createTimingStore } = require('./timing-store');
 const { createCollectionStore } = require('./collections-store');
 const { createRecipeStore } = require('./recipes-store');
+const { createStylesStore } = require('./styles-store');
+const PromptStyles = require('./public/dexdiffusion/prompt-styles.js');
 const { createMacroStore } = require('./macro-store');
 const { exportReproBundle, validateReproBundle, checkBundleCompatibility } = require('./repro-bundle');
 const { createThumbnailService } = require('./thumbnail-service');
@@ -65,6 +67,7 @@ const collectionStore = createCollectionStore(path.join(STATE_DIR, 'collections.
 const recipeStore = createRecipeStore(path.join(STATE_DIR, 'recipes.json'));
 const macroStore = createMacroStore(path.join(STATE_DIR, 'macros.json'));
 const thumbnailService = createThumbnailService({ cacheDir: path.join(STATE_DIR, 'thumbnails'), imageStore });
+const stylesStore = createStylesStore(process.env.DEX_STYLES_FILE || path.join(STATE_DIR, 'styles.json')); // env override: test servers must not touch the user's styles
 const libraryIndex = createLibraryIndex({ indexPath: path.join(STATE_DIR, 'library-index.json'), imageStore, imageMeta, runsDir: RUNS_DIR });
 const HEAVY_ACTIONS = new Set(['controlled-generate', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test']);
 const IMAGE_EDIT_CACHE = path.join(STATE_DIR, 'image-edit-capabilities.json');
@@ -4326,6 +4329,44 @@ app.get('/api/macros', (req, res) => {
 
 app.post('/api/macros', (req, res) => {
   try {
+// ---- P04 S04.2: prompt styles (A1111 styles semantics; templates only, never generation records) ----------------
+app.get('/api/styles', (req, res) => res.json({ styles: stylesStore.list(), placeholder: PromptStyles.PLACEHOLDER }));
+
+app.post('/api/styles', (req, res) => {
+  try { res.status(201).json({ ok: true, style: stylesStore.create(req.body || {}) }); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/styles/:id', (req, res) => {
+  try {
+    const style = stylesStore.update(req.params.id, req.body || {});
+    if (!style) return res.status(404).json({ error: 'Style not found' });
+    res.json({ ok: true, style });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/styles/:id', (req, res) => {
+  if (!stylesStore.remove(req.params.id)) return res.status(404).json({ error: 'Style not found' });
+  res.json({ ok: true });
+});
+
+// Materialise styles onto a prompt: the same function the UI uses to preview and apply. Stores nothing.
+app.post('/api/styles/apply', (req, res) => {
+  const body = req.body || {};
+  const ids = Array.isArray(body.style_ids) ? body.style_ids : [];
+  if (!ids.length || ids.length > 20 || ids.some(id => typeof id !== 'string')) return res.status(400).json({ error: 'style_ids must list 1-20 style ids' });
+  const chosen = [];
+  for (const id of ids) {
+    const style = stylesStore.get(id);
+    if (!style) return res.status(404).json({ error: `Style not found: ${id}` });
+    chosen.push(style);
+  }
+  const text = v => (typeof v === 'string' ? v : '');
+  const out = PromptStyles.applyStyles(chosen, text(body.prompt), text(body.negative_prompt));
+  if (out.prompt.length > 4000 || out.negative_prompt.length > 4000) return res.status(400).json({ error: 'The styled prompt would exceed 4000 characters' });
+  const spec = body.target ? CONTROLLED_TARGET_BY_ID[body.target] : null;
+  res.json({ ok: true, ...out, applied: chosen.map(s => s.name), syntax_error: spec ? PromptParity.validateForTarget(spec, out.prompt, out.negative_prompt) : null });
+});
+
     const m = macroStore.create(req.body || {});
     res.json({ ok: true, macro: m });
   } catch (err) {

@@ -218,6 +218,94 @@
       panel('Templates / Recipes', h('div', { className: 'ca-recipe-row' }, h('span', null, 'Use saved settings recipes from Generate.'), btn('Open Generate', () => this.caNavigate('generate'), '#38bdf8'), h('span', { className: 'ca-muted' }, 'Prompt text is governed by the existing privacy setting.')), accent));
   };
 
+  // ── Prompt styles (A1111 semantics, P04 S04.2): templates with an optional {prompt} placeholder. ──
+  P._sty = function () { const ca = this._ca(); return ca.styles || (ca.styles = { list: [], loaded: false, selected: [], editor: null, preview: null, note: '' }); };
+  P.caLoadStyles = async function () {
+    const st = this._sty();
+    const r = await this._api('/api/styles');
+    if (r.ok) { st.list = r.data.styles || []; st.selected = st.selected.filter(id => st.list.some(x => x.id === id)); st.loaded = true; }
+    else st.note = 'Could not load styles: ' + ((r.data && r.data.error) || r.status);
+    this.caSync();
+  };
+  P.caStyleNote = function (text) { this._sty().note = text; this.caSync(); };
+  P.caToggleStyle = function (id, on) {
+    const st = this._sty(); st.selected = on ? [...new Set([...st.selected, id])] : st.selected.filter(x => x !== id); st.preview = null; this.caSync();
+  };
+  P.caPreviewStyles = async function () {
+    const st = this._sty(), s = this.state;
+    if (!st.selected.length) return this.caStyleNote('Select at least one style first.');
+    const r = await this._api('/api/styles/apply', { style_ids: st.selected, prompt: s.prompt || '', negative_prompt: s.negPrompt || '', target: s.target });
+    st.preview = r.ok ? r.data : null; st.note = r.ok ? '' : 'Preview failed: ' + ((r.data && r.data.error) || r.status); this.caSync();
+  };
+  P.caApplyStyles = async function () {
+    const st = this._sty();
+    await this.caPreviewStyles();
+    if (!st.preview) return;
+    if (st.preview.syntax_error) return this.caStyleNote('Not applied: ' + st.preview.syntax_error);
+    this.setState({ prompt: st.preview.prompt, negPrompt: st.preview.negative_prompt });
+    st.preview = null; st.note = 'Applied ' + (st.selected.length) + ' style(s) to the prompt.'; this.caSync();
+  };
+  P.caOpenStyleEditor = function (style) {
+    const st = this._sty(), s = this.state;
+    st.editor = style ? { id: style.id, name: style.name, prompt: style.prompt, negative_prompt: style.negative_prompt }
+      : { id: null, name: '', prompt: '', negative_prompt: '' };
+    this.caSync();
+  };
+  // Save the current prompt/negative as a new template (explicit user action; the text is stored on disk as a style).
+  P.caStyleFromPrompt = function () {
+    const s = this.state, st = this._sty();
+    st.editor = { id: null, name: '', prompt: s.prompt || '', negative_prompt: s.negPrompt || '', fromPrompt: true }; this.caSync();
+  };
+  P.caSaveStyle = async function () {
+    const st = this._sty(), ed = st.editor; if (!ed) return;
+    const body = { name: ed.name, prompt: ed.prompt, negative_prompt: ed.negative_prompt };
+    const r = ed.id ? await this._api('/api/styles/' + encodeURIComponent(ed.id), body, 'PUT') : await this._api('/api/styles', body);
+    if (!r.ok) { ed.error = (r.data && r.data.error) || ('HTTP ' + r.status); return this.caSync(); }
+    st.editor = null; st.note = (ed.id ? 'Updated style "' : 'Saved style "') + r.data.style.name + '".';
+    await this.caLoadStyles();
+  };
+  P.caDeleteStyle = async function (style) {
+    if (!window.confirm('Delete style "' + style.name + '"? Prompts already generated are not affected.')) return;
+    const r = await this._api('/api/styles/' + encodeURIComponent(style.id), undefined, 'DELETE');
+    const st = this._sty(); st.note = r.ok ? 'Deleted style "' + style.name + '".' : 'Delete failed: ' + ((r.data && r.data.error) || r.status);
+    st.preview = null; await this.caLoadStyles();
+  };
+  P.buildStylesPanel = function () {
+    const st = this._sty();
+    // Loaded on first open (a user action): a background re-render while typing would drop focus from the prompt box.
+    const ed = st.editor;
+    const field = (label, key, extra) => h('label', { className: 'ca-field' }, h('span', null, label),
+      extra && extra.area ? h('textarea', { rows: 2, value: ed[key], 'data-dex-field': 'style-' + key, onInput: e => { ed[key] = e.target.value; } })
+        : h('input', { value: ed[key], 'data-dex-field': 'style-' + key, maxLength: 60, onInput: e => { ed[key] = e.target.value; } }));
+    const editor = ed ? h('div', { className: 'ca-stack', 'data-dex-field': 'style-editor' },
+      h('div', { className: 'ca-muted' }, (ed.id ? 'Edit style' : 'New style') + ' — use {prompt} where the current text should go; without it the template is appended after ", ".'),
+      ed.fromPrompt ? h('div', { className: 'ca-note' }, 'This saves the text below on disk as a reusable template, independent of the "Save prompts in run records" setting.') : null,
+      field('Name', 'name'), field('Prompt template', 'prompt', { area: true }), field('Negative template', 'negative_prompt', { area: true }),
+      ed.error ? h('div', { className: 'ca-note', role: 'alert', 'data-dex-field': 'style-error' }, ed.error) : null,
+      h('div', { className: 'ca-form-actions' }, h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'style-save', onClick: () => this.caSaveStyle() }, ed.id ? 'Save changes' : 'Save style'),
+        h('button', { type: 'button', className: 'ca-secondary', onClick: () => { st.editor = null; this.caSync(); } }, 'Cancel'))) : null;
+    const rows = st.list.length ? st.list.map(x => h('div', { key: x.id, className: 'ca-list-row', 'data-style-id': x.id },
+      h('label', { className: 'ca-check-row' }, h('input', { type: 'checkbox', checked: st.selected.includes(x.id), 'data-dex-field': 'style-check', onChange: e => this.caToggleStyle(x.id, e.target.checked) }), h('span', null, x.name)),
+      h('span', { className: 'ca-muted' }, [x.prompt ? '+' : '', x.negative_prompt ? '−' : ''].join(' ').trim()),
+      h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'style-edit', onClick: () => this.caOpenStyleEditor(x) }, 'Edit / rename'),
+      h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'style-delete', onClick: () => this.caDeleteStyle(x) }, 'Delete')))
+      : [h('div', { key: 'empty', className: 'ca-empty', 'data-dex-field': 'styles-empty' }, st.loaded ? 'No styles yet. Save the current prompt, or create one.' : 'Loading styles…')];
+    const pv = st.preview ? h('div', { className: 'ca-stack', 'data-dex-field': 'style-preview' },
+      h('div', { className: 'ca-muted' }, 'Result of ' + st.preview.applied.join(' + ')),
+      h('pre', { className: 'ca-code', 'data-dex-field': 'style-preview-prompt', style: { whiteSpace: 'pre-wrap', margin: 0 } }, st.preview.prompt),
+      h('pre', { className: 'ca-code', 'data-dex-field': 'style-preview-negative', style: { whiteSpace: 'pre-wrap', margin: 0 } }, st.preview.negative_prompt || '(no negative prompt)'),
+      st.preview.syntax_error ? h('div', { className: 'ca-note', role: 'alert', 'data-dex-field': 'style-syntax-error' }, st.preview.syntax_error) : null) : null;
+    return h('details', { className: 'ca-field', 'data-dex-field': 'styles-panel', open: !!st.open, onToggle: e => { st.open = e.target.open; if (st.open && !st.loaded) this.caLoadStyles(); } },
+      h('summary', null, 'Prompt styles' + (st.list.length ? ' (' + st.list.length + ')' : '')),
+      h('div', { className: 'ca-stack' }, h('div', { className: 'ca-list' }, ...rows),
+        h('div', { className: 'ca-form-actions' },
+          h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'style-preview-button', onClick: () => this.caPreviewStyles() }, 'Preview'),
+          h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'style-apply', onClick: () => this.caApplyStyles() }, 'Apply to prompt'),
+          h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'style-new', onClick: () => this.caOpenStyleEditor(null) }, 'New style'),
+          h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'style-from-prompt', onClick: () => this.caStyleFromPrompt() }, 'Save prompt as style')),
+        st.note ? h('div', { className: 'ca-muted', role: 'status', 'data-dex-field': 'style-note' }, st.note) : null, pv, editor));
+  };
+
   // Request preview: asks the server to normalise the exact body Generate would send and to build the
   // worker command with the same function the job runner uses. Nothing is queued or stored.
   P.caLoadPreview = async function () {
@@ -272,7 +360,7 @@
       ctl.scheduler ? h('label', { className: 'ca-field' }, h('span', null, 'Scheduler'), h('select', { value: s.scheduler, onChange: e => this.setState({ scheduler: e.target.value }) }, ...['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple'].map(x => h('option', { key: x }, x)))) : null);
     const generate = h('button', { type: 'button', className: 'ca-primary', onClick: () => this.onGenerate(), disabled: s.jobStatus === 'generating' }, s.jobStatus === 'generating' ? (vals.generateLabel || 'Generating…') : 'Generate Image');
     const modelPicker = vals.targetSelectV1 || targetSelect;
-    const workbench = s.screens[s.version] === 'batch' ? this.buildBatchWorkspace() : h('div', { className: 'ca-generate-form' }, panel('Prompt and target', h('div', { className: 'ca-stack' }, prompt, vals.promptTools || null, modelPicker, targetSelect, negative, samplingNote, basic, vals.createResources || null, vals.createPresets || null, h('div', { className: 'ca-form-actions' }, generate), this.buildRequestPreview()), accent), this.buildCreateWorkbench(vals.modelsListDisplay));
+    const workbench = s.screens[s.version] === 'batch' ? this.buildBatchWorkspace() : h('div', { className: 'ca-generate-form' }, panel('Prompt and target', h('div', { className: 'ca-stack' }, prompt, vals.promptTools || null, modelPicker, targetSelect, negative, samplingNote, basic, this.buildStylesPanel(), vals.createResources || null, vals.createPresets || null, h('div', { className: 'ca-form-actions' }, generate), this.buildRequestPreview()), accent), this.buildCreateWorkbench(vals.modelsListDisplay));
     return h('div', { className: 'ca-generate-layout' }, h('section', { className: 'ca-results-column' }, panel('Preview and result', this.buildResultStaging(), accent), s.screens[s.version] === 'batch' ? null : panel('Advanced workflows', h('div', { className: 'ca-muted' }, 'Batch / Sweep, prompt drafts, wildcards, enhancement, recipes, macros, and reproducibility remain available in their existing controls. Use Preview request below the form to inspect the exact request and worker command.'), accent)), h('section', { className: 'ca-main-column' }, workbench));
   };
 

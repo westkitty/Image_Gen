@@ -129,8 +129,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Add named positive/negative styles with placeholder insertion and ordering",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P04 S04.2 2026-10-16: public/dexdiffusion/prompt-styles.js (A1111 apply_styles_to_prompt semantics), styles-store.js (dexdiffusion.styles.v1), /api/styles CRUD + /api/styles/apply, Generate 'Prompt styles' panel; tests/prompt-styles.test.js (6), tests/browser/prompt-styles.browser.js (5). UI_EXPOSED+WIRED+tested: create, list, edit, rename (unique, case-insensitive), delete with confirmation, persisted atomically; positive and negative templates; {prompt} placeholder. Not LIVE_PROVEN against inference (a style only materialises text; the resulting prompt then follows the PR-08.. paths). A1111 styles.csv import/export not implemented.",
    "runtime_receipt": null
   },
   {
@@ -149,8 +149,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Apply to editable prompt without duplicating on repeated clicks",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P04 S04.2 2026-10-16: public/dexdiffusion/prompt-styles.js (A1111 apply_styles_to_prompt semantics), styles-store.js (dexdiffusion.styles.v1), /api/styles CRUD + /api/styles/apply, Generate 'Prompt styles' panel; tests/prompt-styles.test.js (6), tests/browser/prompt-styles.browser.js (5). UI_EXPOSED+WIRED+tested: Preview shows the materialised positive and negative prompt without touching the boxes; Apply writes them; a result the target cannot execute (scheduling/alternation/AND) is refused with the reason and leaves the prompt unchanged.",
    "runtime_receipt": null
   },
   {
@@ -369,8 +369,8 @@
    "baseline_status": "partial",
    "required_implementation": "Build deterministic preview of effective prompt before submission",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P04 S04.2 2026-10-16: public/dexdiffusion/prompt-styles.js (A1111 apply_styles_to_prompt semantics), styles-store.js (dexdiffusion.styles.v1), /api/styles CRUD + /api/styles/apply, Generate 'Prompt styles' panel; tests/prompt-styles.test.js (6), tests/browser/prompt-styles.browser.js (5). Styles interpolate via {prompt}; preset-based interpolation still separate (legacy presets).",
    "runtime_receipt": null
   },
   {

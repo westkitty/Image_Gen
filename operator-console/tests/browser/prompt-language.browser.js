@@ -21,6 +21,16 @@ async function open(page, base) {
   await page.waitForTimeout(300);
   return errors;
 }
+// Startup/target-switch re-renders are known to remount the form for a couple of seconds (ledger: open item);
+// typing assertions wait for the DOM to be quiet so they test the editor, not that transient.
+async function waitQuiet(page, quietMs = 700, capMs = 10000) {
+  await page.evaluate(([quiet, cap]) => new Promise(resolve => {
+    let timer = setTimeout(done, quiet); const cut = setTimeout(done, cap);
+    const mo = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(done, quiet); });
+    mo.observe(document.body, { childList: true, subtree: true });
+    function done() { mo.disconnect(); clearTimeout(timer); clearTimeout(cut); resolve(); }
+  }), [quietMs, capMs]);
+}
 async function chooseTarget(page, id) {
   const select = page.locator('select', { has: page.locator(`option[value="${id}"]`) }).first();
   await select.waitFor({ state: 'visible' });
@@ -50,6 +60,7 @@ async function chooseTarget(page, id) {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       const errors = await open(page, srv.base);
       await chooseTarget(page, 'flux2-klein-4b');
+      await waitQuiet(page);
       const box = page.locator('[data-dex-field="prompt"]');
       await box.click();
       await page.keyboard.type('a red fox ');
