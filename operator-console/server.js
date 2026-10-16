@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { controlledScriptFor, buildControlledArgs, nativeBatchEligible, normalizeSamplingFields, validateSamplingFields, SDCLI_SAMPLER } = require('./controlled-args');
 const W = require('./workstation');
 const EC = require('./public/dexdiffusion/edit-core.js');
+const PromptParity = require('./public/dexdiffusion/prompt-parity.js');
 const M = require('./media');
 const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
@@ -1559,6 +1560,10 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   if (params.height === undefined || params.height === null || params.height === '') params.height = spec.defaultHeight;
   const dimensionError = validateDimensions(spec, params.width, params.height);
   if (dimensionError) return dimensionError;
+  const samplingError = validateSamplingFields(spec, params);
+  if (samplingError) return samplingError;
+  const promptSyntaxError = PromptParity.validateForTarget(spec, params.prompt, params.negative_prompt);
+  if (promptSyntaxError) return promptSyntaxError;
   const samplingError = validateSamplingFields(spec, params);
   if (samplingError) return samplingError;
   const steps = params.steps === undefined || params.steps === null || params.steps === ''

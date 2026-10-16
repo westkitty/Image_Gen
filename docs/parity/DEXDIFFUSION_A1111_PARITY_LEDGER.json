@@ -89,8 +89,8 @@
    "baseline_status": "unverified",
    "required_implementation": "Provide model/encoder-specific count and truncation warning",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": "P04 2026-10-16: public/dexdiffusion/prompt-parity.js (scanner, support table, validation), server validateControlledGenerationParams, Generate form notes; tests/prompt-parity.test.js (9), tests/browser/prompt-language.browser.js (3), tests/redact-stream.test.js (+2). UI states 'Token count: unknown for this backend (not estimated)'. Real counts need the installed tokenizer exposed (S04.4).",
    "runtime_receipt": null
   },
   {
@@ -109,8 +109,8 @@
    "baseline_status": "unverified",
    "required_implementation": "Expose count for supported negative-prompt backends",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": "P04 2026-10-16: public/dexdiffusion/prompt-parity.js (scanner, support table, validation), server validateControlledGenerationParams, Generate form notes; tests/prompt-parity.test.js (9), tests/browser/prompt-language.browser.js (3), tests/redact-stream.test.js (+2). As PR-04.",
    "runtime_receipt": null
   },
   {
@@ -169,8 +169,8 @@
    "baseline_status": "unverified",
    "required_implementation": "Test exact A1111 weight expressions and matching backend response",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": "P04 2026-10-16: public/dexdiffusion/prompt-parity.js (scanner, support table, validation), server validateControlledGenerationParams, Generate form notes; tests/prompt-parity.test.js (9), tests/browser/prompt-language.browser.js (3), tests/redact-stream.test.js (+2). LIVE_PROVEN on SDCPP: sd-cli rev 7f0e728 ports A1111 parse_prompt_attention (src/core/util.cpp). Matched seed 7, photonic 768x768 euler_a: plain pixel sha e4f39cbb1b714ccf vs '(red:1.8)' ed44e2331c3c9f17; sd-cli log parse -> [['a ',1],['red',1.8],[' fox...',1]] (run 20261016-040609). MFLUX/FLUX.2 has no weighting: text sent literally and the UI says so. Nested/bracket forms source-verified, not individually live-run.",
    "runtime_receipt": null
   },
   {
@@ -189,8 +189,8 @@
    "baseline_status": "unverified",
    "required_implementation": "Test weighted exclusions with chosen tokenizer/engine",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": "P04 2026-10-16: public/dexdiffusion/prompt-parity.js (scanner, support table, validation), server validateControlledGenerationParams, Generate form notes; tests/prompt-parity.test.js (9), tests/browser/prompt-language.browser.js (3), tests/redact-stream.test.js (+2). WIRED, source-verified: negative prompt goes through the same tokenizer/parse (sd-cli logs a second parse for it). No dedicated live run.",
    "runtime_receipt": null
   },
   {
@@ -209,8 +209,8 @@
    "baseline_status": "unverified",
    "required_implementation": "Preserve escaped brackets and punctuation in compiled prompt",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": "P04 2026-10-16: public/dexdiffusion/prompt-parity.js (scanner, support table, validation), server validateControlledGenerationParams, Generate form notes; tests/prompt-parity.test.js (9), tests/browser/prompt-language.browser.js (3), tests/redact-stream.test.js (+2). LIVE_PROVEN on SDCPP: '\\\\(red:1.8\\\\)' parsed as literal text '(red:1.8)' (run 20261016-040840, pixel sha 4fe4c5e2e9933ac6 differs from weighted).",
    "runtime_receipt": null
   },
   {
@@ -229,8 +229,8 @@
    "baseline_status": "unverified",
    "required_implementation": "Implement step-dependent conditioning or gate engine precisely",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": "P04 2026-10-16: public/dexdiffusion/prompt-parity.js (scanner, support table, validation), server validateControlledGenerationParams, Generate form notes; tests/prompt-parity.test.js (9), tests/browser/prompt-language.browser.js (3), tests/redact-stream.test.js (+2). No installed backend has per-step conditioning; '[a:b:0.5]' would be parsed by sd-cli as bracket decay of literal text. The server now REJECTS it with offset and hint instead of mangling it. Needs a stepwise-conditioning adapter (P04 S04.3 / blueprint P14 adapter decision).",
    "runtime_receipt": null
   },
   {
@@ -249,8 +249,8 @@
    "baseline_status": "unverified",
    "required_implementation": "Implement alternating conditioning schedule or gate accurately",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": "P04 2026-10-16: public/dexdiffusion/prompt-parity.js (scanner, support table, validation), server validateControlledGenerationParams, Generate form notes; tests/prompt-parity.test.js (9), tests/browser/prompt-language.browser.js (3), tests/redact-stream.test.js (+2). Same as PR-11 for '[a|b]' alternation: rejected visibly; no backend executes it.",
    "runtime_receipt": null
   },
   {
@@ -269,8 +269,8 @@
    "baseline_status": "unverified",
    "required_implementation": "Match supported conditioning semantics, not literal plain-text passthrough",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": "P04 2026-10-16: public/dexdiffusion/prompt-parity.js (scanner, support table, validation), server validateControlledGenerationParams, Generate form notes; tests/prompt-parity.test.js (9), tests/browser/prompt-language.browser.js (3), tests/redact-stream.test.js (+2). Same for AND composable conditioning: rejected visibly (lowercase 'and' stays ordinary text).",
    "runtime_receipt": null
   },
   {
@@ -289,8 +289,8 @@
    "baseline_status": "unverified",
    "required_implementation": "Implement exact conditioning chunk behavior where backend supports it",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": "P04 2026-10-16: public/dexdiffusion/prompt-parity.js (scanner, support table, validation), server validateControlledGenerationParams, Generate form notes; tests/prompt-parity.test.js (9), tests/browser/prompt-language.browser.js (3), tests/redact-stream.test.js (+2). WIRED, source-verified for CLIP targets (conditioner.hpp:332 pads to 75-token chunks); unverified for FLUX.1 (T5); rejected on MFLUX. Not live-run.",
    "runtime_receipt": null
   },
   {
@@ -349,8 +349,8 @@
    "baseline_status": "partial",
    "required_implementation": "Validate before queueing; preserve intentionally literal text",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": "P04 2026-10-16: public/dexdiffusion/prompt-parity.js (scanner, support table, validation), server validateControlledGenerationParams, Generate form notes; tests/prompt-parity.test.js (9), tests/browser/prompt-language.browser.js (3), tests/redact-stream.test.js (+2). Scanner reports constructs with offsets and unbalanced-bracket notes; UI shows backend-specific notes, no in-editor offset highlighting yet.",
    "runtime_receipt": null
   },
   {

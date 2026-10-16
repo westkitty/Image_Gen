@@ -63,12 +63,20 @@ def main(argv):
         argv = [argv[0]] + argv[2:]
     secrets = forms(argv[1] if len(argv) > 1 else '') + forms(argv[2] if len(argv) > 2 else '')
     tok_re = re.compile(r'(to tokens\s*)\[.*\]')
+    parse_re = re.compile(r"(parse\s+)'.*?'(\s+to\s+)\[\[.*")
+    split_re = re.compile(r'(split prompt\s+)".*"(\s+to tokens)')
 
     def redact(line):
         for pat in secrets:
             line = pat.sub('[REDACTED]', line)
         if 'to tokens' in line or 'bpe_tokenizer' in line:
             line = tok_re.sub(r'\1[REDACTED]', line)
+        # sd-cli echoes the prompt AFTER its A1111-style attention parse: the (text, weight) segments and the
+        # unescaped text are not substrings of the prompt, so redact those echoes structurally, not by matching.
+        if 'conditioner.hpp' in line or ' parse ' in line:
+            line = parse_re.sub(r"\1'[REDACTED]'\2[REDACTED]", line)
+        if 'split prompt' in line:
+            line = split_re.sub(r'\1"[REDACTED]"\2', line)
         return line
 
     if json_mode:

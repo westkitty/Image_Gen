@@ -244,8 +244,20 @@
   P.buildConceptGenerate = function (vals, accent) {
     const s = this.state, ctl = this._controls(), targets = s.modelTargets || [], target = this._targetSpec() || {};
     const input = (label, value, onInput, extra) => h('label', { className: 'ca-field' }, h('span', null, label), h('input', Object.assign({ value: String(value ?? ''), onInput, onChange: onInput }, extra || {})));
-    const prompt = h('label', { className: 'ca-field' }, h('span', null, 'Prompt'), h('textarea', { rows: 6, value: s.prompt || '', placeholder: 'Describe the image. A1111 syntax supported.', onInput: e => { this.state.prompt = e.target.value; } }));
-    const negative = ctl.negativePrompt ? h('label', { className: 'ca-field' }, h('span', null, 'Negative prompt'), h('textarea', { rows: 2, value: s.negPrompt || '', onInput: e => { this.state.negPrompt = e.target.value; } })) : h('div', { className: 'ca-note' }, 'Negative prompt is unavailable for ' + (target.label || s.target) + ' and will not be sent.');
+    const DP = window.DexPrompt;
+    // Notes are written straight into the DOM while typing (no setState), so the editor never loses focus or cursor.
+    const refreshPromptNotes = e => {
+      const scope = e && e.target && e.target.closest ? e.target.closest('.ca-generate-form') : null;
+      const el = scope && scope.querySelector('[data-dex-field="prompt-notes"]'); if (!el || !DP) return;
+      const text = DP.notesForTarget(target, this.state.prompt, this.state.negPrompt).join(' ');
+      el.textContent = text; el.hidden = !text;
+    };
+    const initialNotes = DP ? DP.notesForTarget(target, s.prompt, s.negPrompt).join(' ') : '';
+    const prompt = h('label', { className: 'ca-field' }, h('span', null, 'Prompt'), h('textarea', { rows: 6, value: s.prompt || '', placeholder: 'Describe the image.', 'data-dex-field': 'prompt', onInput: e => { this.state.prompt = e.target.value; refreshPromptNotes(e); } }),
+      h('small', { className: 'ca-muted', 'data-dex-field': 'prompt-syntax-help' }, DP ? DP.syntaxHelp(target) : ''),
+      h('small', { className: 'ca-note', 'data-dex-field': 'prompt-notes', role: 'status', hidden: !initialNotes }, initialNotes),
+      h('small', { className: 'ca-muted', 'data-dex-field': 'token-count' }, 'Token count: unknown for this backend (not estimated).'));
+    const negative = ctl.negativePrompt ? h('label', { className: 'ca-field' }, h('span', null, 'Negative prompt'), h('textarea', { rows: 2, value: s.negPrompt || '', 'data-dex-field': 'negative-prompt', onInput: e => { this.state.negPrompt = e.target.value; refreshPromptNotes(e); } })) : h('div', { className: 'ca-note' }, 'Negative prompt is unavailable for ' + (target.label || s.target) + ' and will not be sent.');
     const samplingNote = !ctl.sampler ? h('div', { className: 'ca-note', 'data-dex-field': 'sampling-note' }, (target.label || s.target) + ' uses a fixed flow-match Euler sampler. Sampler, CLIP skip and VAE tiling are unavailable and will not be sent.') : null;
     const targetSelect = h('label', { className: 'ca-field' }, h('span', null, 'Model target'), h('select', { value: s.target, onChange: e => this.onSelectTarget(e.target.value) }, ...(targets.length ? targets : [{ id: s.target, label: s.target, status: 'UNKNOWN' }]).map(t => h('option', { key: t.id, value: t.id }, (t.label || t.id) + ' · ' + (t.status || 'UNKNOWN')))));
     const basic = h('div', { className: 'ca-form-grid' },

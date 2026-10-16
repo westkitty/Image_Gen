@@ -66,3 +66,32 @@ test('JSON mode preserves binary image strings even when they contain a short pr
   assert.equal(parsed.prompt, '[REDACTED]'); assert.equal(parsed.negative_prompt, '[REDACTED]');
   assert.equal(parsed.info, '[REDACTED] in a room');
 });
+
+// P04: with A1111 emphasis syntax sd-cli echoes the parsed SEGMENTS and the unescaped text, which are not
+// substrings of the prompt. Captured from real runs 20261016-040609 / -040840 (canary words substituted).
+test('redact_stream: attention-parsed segments and unescaped prompt text never survive in sd-cli echoes', () => {
+  const weighted = 'a (canaryredtoken:1.8) canaryfoxword sitting in canarysnowforest';
+  const escaped = 'a \\(canaryescapedtoken:1.8\\) canaryescfox sitting';
+  const bracket = 'a [canarybracketone] canarybracketfox ((canarynesttwo)) end';
+  const log = [
+    "[DEBUG] conditioner.hpp:319  - parse '" + weighted + "' to [['a ', 1], ['canaryredtoken', 1.8], [' canaryfoxword sitting in canarysnowforest', 1], ]",
+    '[DEBUG] bpe_tokenizer.cpp:208  - split prompt " canaryfoxword sitting in canarysnowforest" to tokens ["x</w>"]',
+    "[DEBUG] conditioner.hpp:319  - parse '" + escaped + "' to [['a (canaryescapedtoken:1.8) canaryescfox sitting', 1], ]",
+    '[DEBUG] bpe_tokenizer.cpp:208  - split prompt "a (canaryescapedtoken:1.8) canaryescfox sitting" to tokens ["x</w>"]',
+    "[DEBUG] conditioner.hpp:319  - parse '" + bracket + "' to [['a ', 1], ['canarybracketone', 0.909], [' canarybracketfox ', 1], ['canarynesttwo', 1.21], [' end', 1], ]",
+    '[INFO ] sampling using Euler A method', '',
+  ].join('\n');
+  for (const prompt of [weighted, escaped, bracket]) {
+    const out = run(log, prompt);
+    for (const w of ['canaryredtoken', 'canaryfoxword', 'canarysnowforest', 'canaryescapedtoken', 'canaryescfox', 'canarybracketone', 'canarybracketfox', 'canarynesttwo']) {
+      assert.ok(!out.includes(w), `'${w}' leaked for prompt ${JSON.stringify(prompt)}:\n${out}`);
+    }
+    assert.match(out, /sampling using Euler A method/, 'non-private lines are preserved');
+  }
+});
+
+test('redact_stream: short attention segments and ordinary log words are not mangled', () => {
+  const out = run("[INFO ] sampling using Euler A method\n[DEBUG] parse 'a (red:1.2) cat' to [['a ', 1], ['red', 1.2], [' cat', 1], ]\n", 'a (red:1.2) cat');
+  assert.match(out, /sampling using Euler A method/);
+  assert.ok(!/\bred\b|\bcat\b/.test(out), out);
+});
