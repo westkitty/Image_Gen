@@ -39,7 +39,7 @@
     try { const v = localStorage.getItem(LAYOUT_KEY); if (v === 'studio' || v === 'compact') layout = v; } catch (_) {}
     this._snaps = this._snaps || new Map();        // imageId → in-memory sensitive snapshot (never persisted)
     this.ed = { layout, op: 'img2img', source: null, state: null, loading: null, error: null, run: { status: 'idle' }, results: [], active: 0,
-      outpaint: { left: 0, right: 128, top: 0, bottom: 0 }, prep: 'none', resize: { mode: '', kind: 'to', w: '', h: '', by: '', bg: '#ffffff' }, exactSteps: false, ext: '', maskInfo: null, assets: null, assetsFor: null, log: null,
+      outpaint: { left: 0, right: 128, top: 0, bottom: 0 }, prep: 'none', resize: { mode: '', kind: 'to', w: '', h: '', by: '', bg: '#ffffff' }, exactSteps: false, inpaint: { area: 'whole', padding: 32, blur: 4, content: 'original', w: 512, h: 512 }, ext: '', maskInfo: null, assets: null, assetsFor: null, log: null,
       brush: { mode: 'paint', size: 40 }, openSections: {}, attempt: null, presetName: '' };
     return this.ed;
   };
@@ -475,7 +475,12 @@
       } else if (ed.prep && ed.prep !== 'none') body.source_prep = ed.prep;
       if (ed.exactSteps) body.exact_steps = true;
     }
-    if (op === 'inpaint') { body.strength = +p.strength; body.mask_data = this._maskDataUrl(); }
+    if (op === 'inpaint') {
+      body.strength = +p.strength; body.mask_data = this._maskDataUrl();
+      const ip = ed.inpaint || {};
+      body.inpaint_area = ip.area || 'whole'; body.mask_blur = parseInt(ip.blur, 10); body.masked_content = ip.content || 'original';
+      if (ip.area === 'only_masked') { body.inpaint_padding = parseInt(ip.padding, 10); body.width = parseInt(ip.w, 10); body.height = parseInt(ip.h, 10); }
+    }
     if (op === 'outpaint') { const o = ed.outpaint; Object.assign(body, { left: +o.left || 0, right: +o.right || 0, top: +o.top || 0, bottom: +o.bottom || 0, strength: +(ed.outpaintStrength || 0.85) }); if (String(ed.ext || '').trim()) body.extension_prompt = ed.ext.trim(); }
     return { body, route: '/api/actions/' + op };
   };
@@ -633,7 +638,24 @@
       h('div', { style: css.row }, btn('Undo', () => this.maskOp('undo'), '#94a3b8', { disabled: !mi.undo }), btn('Redo', () => this.maskOp('redo'), '#94a3b8', { disabled: !mi.redo }),
         btn('Grow', () => this.maskOp('grow'), '#94a3b8'), btn('Shrink', () => this.maskOp('shrink'), '#94a3b8'), btn('Feather', () => this.maskOp('feather'), '#94a3b8'), btn('Blur', () => this.maskOp('blur'), '#94a3b8'), btn('Invert', () => this.maskOp('invert'), '#94a3b8'), btn('Clear', () => this.maskOp('clear'), '#f87171')),
       m.viewport,
-      h('div', { style: css.muted }, 'Mask ' + src.width + '×' + src.height + ' (source pixels) · painted ' + Math.round((mi.coverage || 0) * 1000) / 10 + '%' + ((mi.coverage || 0) >= D.FULL_MASK_COVERAGE ? ' — the entire image is masked' : '') + '. Painted area is regenerated; the rest is kept exactly. Ctrl/⌘+wheel or pinch to zoom, Pan tool or Space to move.'));
+      h('div', { style: css.muted }, 'Mask ' + src.width + '×' + src.height + ' (source pixels) · painted ' + Math.round((mi.coverage || 0) * 1000) / 10 + '%' + ((mi.coverage || 0) >= D.FULL_MASK_COVERAGE ? ' — the entire image is masked' : '') + '. Painted area is regenerated; the rest is kept exactly. Ctrl/⌘+wheel or pinch to zoom, Pan tool or Space to move.'),
+      this._edInpaintOptions());
+  };
+  // A1111 inpaint options (P08): area / padding / mask blur / masked content — only what the installed engine can do.
+  P._edInpaintOptions = function () {
+    const ed = this._ed(), ip = ed.inpaint || (ed.inpaint = { area: 'whole', padding: 32, blur: 4, content: 'original', w: 512, h: 512 });
+    const setIp = patch => this.edSet({ inpaint: Object.assign({}, this._ed().inpaint, patch) });
+    const num = (key, lbl, attrs) => label(lbl, h('input', Object.assign({ type: 'number', value: String(ip[key]), style: css.input, 'data-edit-field': 'inpaint-' + key, onChange: e => setIp({ [key]: e.target.value }) }, attrs)));
+    return h('div', { style: { display: 'grid', gap: 8, borderTop: '1px solid rgba(148,163,184,.14)', paddingTop: 8 }, 'data-inpaint-options': 'true' },
+      label('Inpaint area', h('select', { value: ip.area, style: css.input, 'data-edit-field': 'inpaint-area', 'aria-label': 'Inpaint area', onChange: e => setIp({ area: e.target.value }) },
+        h('option', { value: 'whole' }, 'Whole picture'), h('option', { value: 'only_masked' }, 'Only masked (padded crop at a work size)'))),
+      ip.area === 'only_masked' ? h('div', { style: css.row },
+        num('padding', 'Only-masked padding (px)', { min: '0', max: '256', step: '4' }), num('w', 'Work width', { min: '64', max: '2048', step: '8' }), num('h', 'Work height', { min: '64', max: '2048', step: '8' })) : null,
+      ip.area === 'only_masked' ? h('div', { style: css.muted, 'data-edit-field': 'inpaint-area-note' }, 'The mask box plus padding is cropped, resized to the work size, inpainted, then pasted back into the untouched original through the mask.') : null,
+      num('blur', 'Mask blur (px) — softness of the restored edge', { min: '0', max: '64', step: '1' }),
+      label('Masked content', h('select', { value: ip.content, style: css.input, 'data-edit-field': 'inpaint-content', 'aria-label': 'Masked content', onChange: e => setIp({ content: e.target.value }) },
+        h('option', { value: 'original' }, 'Original'), h('option', { value: 'fill' }, 'Fill (colours diffused from the surroundings)'))),
+      h('div', { style: css.muted, 'data-edit-field': 'inpaint-unavailable' }, 'Not available with the installed engine: latent noise / latent nothing masked content, inpaint conditioning-mask weight (needs an inpaint-trained checkpoint) and soft inpainting.'));
   };
   P._edOutpaintBlock = function () {
     const ed = this._ed(), src = ed.source, o = ed.outpaint;

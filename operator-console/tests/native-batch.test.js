@@ -100,7 +100,7 @@ test('full-mask guard and blank-mask rejection are both enforced server-side', (
 test('outpaint/inpaint composite restores the source; outpaint never stretches it', () => {
   assert.match(SERVER, /if len\(sys\.argv\) > 7 and sys\.argv\[7\] == "fit" and s\.size != o\.size/);
   assert.match(SERVER, /outpaintComposite: \{ src: src\.path, mask: maskPath, left: plan\.left, top: plan\.top \}/);
-  assert.match(SERVER, /outpaintComposite = \{ src: initImgPath, mask: maskPath, left: 0, top: 0, blur: 4, fit: true \}/);
+  assert.match(SERVER, /outpaintComposite = \{ src: initImgPath, mask: maskPath, left: 0, top: 0, blur: inpaintOpts\.blur, fit: true \}/);
   // composite runs after canonicalization (the script adopts its own PNG)
   assert.match(SERVER, /finalizeJobImages\(job, out\);\n    if \(job\.outpaintComposite && job\.status === 'PASS'\) compositeOutpaint\(job, out\);/);
 });

@@ -8,6 +8,7 @@ const W = require('./workstation');
 const EC = require('./public/dexdiffusion/edit-core.js');
 const PromptParity = require('./public/dexdiffusion/prompt-parity.js');
 const SourceResize = require('./public/dexdiffusion/source-resize.js');
+const InpaintOptions = require('./public/dexdiffusion/inpaint-options.js');
 const M = require('./media');
 const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
@@ -903,6 +904,21 @@ function compositeOutpaint(job, stdoutText) {
   }
 }
 
+// "Only masked" inpaint (P08): the job ran on a padded crop; paste the result back into the untouched original through the mask.
+function compositePasteBack(job, stdoutText) {
+  const c = job.maskedPasteBack;
+  const m = String(stdoutText || '').match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
+  if (!m) return;
+  const runDir = path.join(RUNS_DIR, m[1]);
+  const files = imageStore.readRunIndex(runDir).map(e => imageStore.resolveImage(e.image_id)).filter(Boolean).map(i => i.path);
+  for (const f of files) {
+    try {
+      imageStore.replacePublishedImage(runDir, path.basename(f), staged => execFileSync('python3', [path.join(__dirname, 'bin', 'inpaint-region.py'), 'pasteback', staged, c.src, c.mask, ...c.box.map(String), String(c.blur)], { timeout: 30000 }));
+      job.stdout += `\n${job.lineageOp}: only-masked result pasted back into the original (${c.box.join(',')})\n`;
+    } catch (err) { job.stderr += `\npaste-back: ${err.message}`; job.status = 'FAIL'; job.firstFailedGate = 'canonicalization-failed'; }
+  }
+}
+
 function cleanupJobTempFiles(job) {
   for (const f of job.tempFiles || []) { try { fs.unlinkSync(f); } catch (_) {} }
 }
@@ -1247,6 +1263,7 @@ function runActionNow(jobId, scriptPath, args, savePrompts = false) {
     if (hiresManifestMatch) job.hiresManifest = hiresManifestMatch[1];
     finalizeJobImages(job, out);
     if (job.outpaintComposite && job.status === 'PASS') compositeOutpaint(job, out);
+    if (job.maskedPasteBack && job.status === 'PASS') compositePasteBack(job, out);
     if (job.status === 'PASS' || job.status === 'PARTIAL') recordEditResults(job, out);
     cleanupJobTempFiles(job);
     recordJobEvidence(job);
@@ -3252,6 +3269,9 @@ function handleInpaint(req, res) {
   }
 
   const body = { ...(req.body || {}) };
+  const inpaintReq = InpaintOptions.normalizeInpaintOptions(body);
+  if (inpaintReq.error) return res.status(400).json({ error: inpaintReq.error, gate: 'inpaint-options' });
+  const inpaintOpts = inpaintReq.options;
   const resErr = resolveEditResources(body);
   if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
   const srcInfo = resolveImageSource(body);
@@ -3354,9 +3374,34 @@ function handleInpaint(req, res) {
   const genErr = validateGenerationParams(params);
   if (genErr) { try { fs.unlinkSync(maskPath); } catch (_) {} return res.status(400).json({ error: genErr }); }
 
+  // P08: "Only masked" crops to the padded mask box at the work size; "fill" replaces the masked content before encoding.
+  let runInit = initImgPath, runMask = maskPath, pasteBack = null;
+  const inpaintTemps = [];
+  const regionTool = path.join(__dirname, 'bin', 'inpaint-region.py');
+  const regionTemp = suffix => { const f = path.join(MASK_UPLOADS_DIR, `inpaint-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${suffix}`); inpaintTemps.push(f); return f; };
+  if (inpaintOpts.area === 'only_masked' || inpaintOpts.content === 'fill') {
+    try {
+      if (inpaintOpts.area === 'only_masked') {
+        const workW = Number(params.width) || InpaintOptions.DEFAULTS.width, workH = Number(params.height) || InpaintOptions.DEFAULTS.height;
+        if (!validateSize(workW) || !validateSize(workH)) throw Object.assign(new Error('Work size must be multiples of 8 between 64 and 2048'), { status: 400 });
+        const ci = regionTemp('-crop.png'), cm = regionTemp('-cropmask.png');
+        const out = JSON.parse(execFileSync('python3', [regionTool, 'region', initImgPath, maskPath, ci, cm, String(inpaintOpts.padding), String(workW), String(workH), ...(inpaintOpts.content === 'fill' ? ['fill'] : [])], { timeout: 30000 }).toString().trim());
+        runInit = ci; runMask = cm; params.width = String(workW); params.height = String(workH);
+        pasteBack = { src: initImgPath, mask: maskPath, box: out.box, blur: inpaintOpts.blur };
+      } else {
+        const fi = regionTemp('-fill.png');
+        execFileSync('python3', [regionTool, 'fill', initImgPath, maskPath, fi], { timeout: 30000 });
+        runInit = fi;
+      }
+    } catch (err) {
+      for (const f of [...inpaintTemps, maskPath, srcInfo.temp].filter(Boolean)) { try { fs.unlinkSync(f); } catch (_) {} }
+      return res.status(err.status || 500).json({ error: err.status ? err.message : 'Could not prepare the inpaint region.', gate: 'inpaint-region' });
+    }
+  }
+
   const args = [
-    '--init-img', initImgPath,
-    '--mask', maskPath,
+    '--init-img', runInit,
+    '--mask', runMask,
     '--strength', String(strength),
     '--prompt', params.prompt
   ];
@@ -3380,10 +3425,11 @@ function handleInpaint(req, res) {
   ));
   jobSensitives[jobId] = sensitives;
   jobs[jobId].sourceImageId = srcInfo.imageId || null;
-  jobs[jobId].genRecord = editGenRecord(body, params, { strength });
+  jobs[jobId].genRecord = editGenRecord(body, params, { strength, inpaint: Object.assign({ area: inpaintOpts.area, blur: inpaintOpts.blur, content: inpaintOpts.content }, inpaintOpts.area === 'only_masked' ? { padding: inpaintOpts.padding, work: `${params.width}x${params.height}` } : {}) });
   jobs[jobId].lineageOp = (body.operation === 'detailer' || body.detailed_from) ? 'detailer' : 'inpaint';
-  jobs[jobId].tempFiles = [maskPath, srcInfo.temp].filter(Boolean);
-  jobs[jobId].outpaintComposite = { src: initImgPath, mask: maskPath, left: 0, top: 0, blur: 4, fit: true };
+  jobs[jobId].tempFiles = [maskPath, srcInfo.temp, ...inpaintTemps].filter(Boolean);
+  if (pasteBack) jobs[jobId].maskedPasteBack = pasteBack;
+  else jobs[jobId].outpaintComposite = { src: initImgPath, mask: maskPath, left: 0, top: 0, blur: inpaintOpts.blur, fit: true };
   runAction(jobId, 'bin/sdcpp-inpaint.sh', args, params.save_prompts);
 
   res.json({ job_id: jobId, status: jobs[jobId].status });

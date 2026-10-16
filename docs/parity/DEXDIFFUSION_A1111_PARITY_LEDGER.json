@@ -2280,8 +2280,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Expose stored exact blur radius and backend effect",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P08 2026-10-16: public/dexdiffusion/inpaint-options.js (validation + A1111 crop-region arithmetic), operator-console/bin/inpaint-region.py (region / fill / pasteback, Pillow), server.js handleInpaint + compositePasteBack, edit-ui.js 'Inpaint options' panel; tests/inpaint-options.test.js (6, incl. JS==Python crop-region parity on 60 random cases and real Pillow pixels), tests/browser/edit-inpaint-parity.browser.js (4). mask_blur 0-64 px is now a real request parameter (it was a fixed 4): LIVE_PROVEN, the restored-edge band widens with the value (bbox 167..344 at 4 -> 148..362 at 12). Live (Big Mac, sd15, source 20261016-122429-controlled-sd15 512x512, mask rect 176..336, strength 0.8, 12 steps, seed 7): whole/default 7beb37df034e2382 (changes confined to 167..344); only masked pad 32 work 512 a576cac7a0f4339a (changes 168..344, outside identical); only masked + fill 5b8fd42fee320011; whole + fill + blur 12 26e7e8370ee78198 (changes widen to 148..362). All 512x512 and pixel-identical to the source away from the mask. ",
    "runtime_receipt": null
   },
   {
@@ -2320,8 +2320,8 @@
    "baseline_status": "source/integration audit",
    "required_implementation": "Expose explicit A1111 option semantics",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P08 2026-10-16: public/dexdiffusion/inpaint-options.js (validation + A1111 crop-region arithmetic), operator-console/bin/inpaint-region.py (region / fill / pasteback, Pillow), server.js handleInpaint + compositePasteBack, edit-ui.js 'Inpaint options' panel; tests/inpaint-options.test.js (6, incl. JS==Python crop-region parity on 60 random cases and real Pillow pixels), tests/browser/edit-inpaint-parity.browser.js (4). 'Inpaint not masked' is available through the existing mask Invert tool; not re-verified in this pass.",
    "runtime_receipt": null
   },
   {
@@ -2340,8 +2340,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Implement compatible init methods per target",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P08 2026-10-16: public/dexdiffusion/inpaint-options.js (validation + A1111 crop-region arithmetic), operator-console/bin/inpaint-region.py (region / fill / pasteback, Pillow), server.js handleInpaint + compositePasteBack, edit-ui.js 'Inpaint options' panel; tests/inpaint-options.test.js (6, incl. JS==Python crop-region parity on 60 random cases and real Pillow pixels), tests/browser/edit-inpaint-parity.browser.js (4). Masked content: Original (default, unchanged) and Fill (A1111 masking.fill diffusion, ported) LIVE_PROVEN end to end. Latent noise and latent nothing are BLOCKED: sd-cli cannot initialise the masked latent with noise or nothing (rejected with that reason). Fill ported from knowledge of the upstream function, not diffed against the pinned source. Live (Big Mac, sd15, source 20261016-122429-controlled-sd15 512x512, mask rect 176..336, strength 0.8, 12 steps, seed 7): whole/default 7beb37df034e2382 (changes confined to 167..344); only masked pad 32 work 512 a576cac7a0f4339a (changes 168..344, outside identical); only masked + fill 5b8fd42fee320011; whole + fill + blur 12 26e7e8370ee78198 (changes widen to 148..362). All 512x512 and pixel-identical to the source away from the mask. ",
    "runtime_receipt": null
   },
   {
@@ -2360,8 +2360,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Implement ROI crop/reinsert pipeline with exact alignment",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P08 2026-10-16: public/dexdiffusion/inpaint-options.js (validation + A1111 crop-region arithmetic), operator-console/bin/inpaint-region.py (region / fill / pasteback, Pillow), server.js handleInpaint + compositePasteBack, edit-ui.js 'Inpaint options' panel; tests/inpaint-options.test.js (6, incl. JS==Python crop-region parity on 60 random cases and real Pillow pixels), tests/browser/edit-inpaint-parity.browser.js (4). Inpaint area Whole picture / Only masked LIVE_PROVEN: only-masked crops the padded mask box at a work size (default 512x512), inpaints, and pastes back into the untouched original. Live (Big Mac, sd15, source 20261016-122429-controlled-sd15 512x512, mask rect 176..336, strength 0.8, 12 steps, seed 7): whole/default 7beb37df034e2382 (changes confined to 167..344); only masked pad 32 work 512 a576cac7a0f4339a (changes 168..344, outside identical); only masked + fill 5b8fd42fee320011; whole + fill + blur 12 26e7e8370ee78198 (changes widen to 148..362). All 512x512 and pixel-identical to the source away from the mask. ",
    "runtime_receipt": null
   },
   {
@@ -2380,8 +2380,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Add ROI border and result round-trip",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P08 2026-10-16: public/dexdiffusion/inpaint-options.js (validation + A1111 crop-region arithmetic), operator-console/bin/inpaint-region.py (region / fill / pasteback, Pillow), server.js handleInpaint + compositePasteBack, edit-ui.js 'Inpaint options' panel; tests/inpaint-options.test.js (6, incl. JS==Python crop-region parity on 60 random cases and real Pillow pixels), tests/browser/edit-inpaint-parity.browser.js (4). Only-masked padding 0-256 px; crop-region arithmetic (get_crop_region + expand_crop_region) matches in JS and Python on 60 random cases and hand-checked values; LIVE with 32. Arithmetic is from knowledge of upstream, not diffed against the pinned source. Live (Big Mac, sd15, source 20261016-122429-controlled-sd15 512x512, mask rect 176..336, strength 0.8, 12 steps, seed 7): whole/default 7beb37df034e2382 (changes confined to 167..344); only masked pad 32 work 512 a576cac7a0f4339a (changes 168..344, outside identical); only masked + fill 5b8fd42fee320011; whole + fill + blur 12 26e7e8370ee78198 (changes widen to 148..362). All 512x512 and pixel-identical to the source away from the mask. ",
    "runtime_receipt": null
   },
   {
@@ -2400,8 +2400,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Support only backend mode consuming weight",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P08 2026-10-16: public/dexdiffusion/inpaint-options.js (validation + A1111 crop-region arithmetic), operator-console/bin/inpaint-region.py (region / fill / pasteback, Pillow), server.js handleInpaint + compositePasteBack, edit-ui.js 'Inpaint options' panel; tests/inpaint-options.test.js (6, incl. JS==Python crop-region parity on 60 random cases and real Pillow pixels), tests/browser/edit-inpaint-parity.browser.js (4). inpaint conditioning-mask strength needs an inpaint-trained checkpoint (--img-cfg-scale applies only to those); none installed. Listed as unavailable.",
    "runtime_receipt": null
   },
   {
@@ -2440,8 +2440,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Verify byte-stable unmasked pixels",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P08 2026-10-16: public/dexdiffusion/inpaint-options.js (validation + A1111 crop-region arithmetic), operator-console/bin/inpaint-region.py (region / fill / pasteback, Pillow), server.js handleInpaint + compositePasteBack, edit-ui.js 'Inpaint options' panel; tests/inpaint-options.test.js (6, incl. JS==Python crop-region parity on 60 random cases and real Pillow pixels), tests/browser/edit-inpaint-parity.browser.js (4). Original pixels outside the mask are restored (existing composite, now with the chosen blur); LIVE evidence: regions far from the mask are bit-identical to the source in all four runs. Live (Big Mac, sd15, source 20261016-122429-controlled-sd15 512x512, mask rect 176..336, strength 0.8, 12 steps, seed 7): whole/default 7beb37df034e2382 (changes confined to 167..344); only masked pad 32 work 512 a576cac7a0f4339a (changes 168..344, outside identical); only masked + fill 5b8fd42fee320011; whole + fill + blur 12 26e7e8370ee78198 (changes widen to 148..362). All 512x512 and pixel-identical to the source away from the mask. ",
    "runtime_receipt": null
   },
   {
@@ -2460,8 +2460,8 @@
    "baseline_status": "not found / verify",
    "required_implementation": "Add compatible soft mask/energy blending with regression",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "BLOCKED",
+   "implementation_receipt": " || P08 2026-10-16: public/dexdiffusion/inpaint-options.js (validation + A1111 crop-region arithmetic), operator-console/bin/inpaint-region.py (region / fill / pasteback, Pillow), server.js handleInpaint + compositePasteBack, edit-ui.js 'Inpaint options' panel; tests/inpaint-options.test.js (6, incl. JS==Python crop-region parity on 60 random cases and real Pillow pixels), tests/browser/edit-inpaint-parity.browser.js (4). soft inpainting has no sd-cli equivalent; listed as unavailable.",
    "runtime_receipt": null
   },
   {
@@ -2481,7 +2481,7 @@
    "required_implementation": "Add named algorithm mode with noise/fill/expansion controls",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "implementation_receipt": " || P08 2026-10-16: public/dexdiffusion/inpaint-options.js (validation + A1111 crop-region arithmetic), operator-console/bin/inpaint-region.py (region / fill / pasteback, Pillow), server.js handleInpaint + compositePasteBack, edit-ui.js 'Inpaint options' panel; tests/inpaint-options.test.js (6, incl. JS==Python crop-region parity on 60 random cases and real Pillow pixels), tests/browser/edit-inpaint-parity.browser.js (4). Not implemented. The existing canvas-extension outpaint is not A1111's Poor man's outpainting (different algorithm), so it is not claimed as equivalent.",
    "runtime_receipt": null
   },
   {
@@ -2501,7 +2501,7 @@
    "required_implementation": "Implement matching noise and blending mode if viable",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
    "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "implementation_receipt": " || P08 2026-10-16: public/dexdiffusion/inpaint-options.js (validation + A1111 crop-region arithmetic), operator-console/bin/inpaint-region.py (region / fill / pasteback, Pillow), server.js handleInpaint + compositePasteBack, edit-ui.js 'Inpaint options' panel; tests/inpaint-options.test.js (6, incl. JS==Python crop-region parity on 60 random cases and real Pillow pixels), tests/browser/edit-inpaint-parity.browser.js (4). Not implemented (Outpainting MK2 has no equivalent here).",
    "runtime_receipt": null
   },
   {
@@ -2520,8 +2520,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Preserve per-side extension and safety cap",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P08 2026-10-16: public/dexdiffusion/inpaint-options.js (validation + A1111 crop-region arithmetic), operator-console/bin/inpaint-region.py (region / fill / pasteback, Pillow), server.js handleInpaint + compositePasteBack, edit-ui.js 'Inpaint options' panel; tests/inpaint-options.test.js (6, incl. JS==Python crop-region parity on 60 random cases and real Pillow pixels), tests/browser/edit-inpaint-parity.browser.js (4). Existing canvas-extension outpaint (per-side pixels, rounded to multiples of 64) untouched this pass.",
    "runtime_receipt": null
   },
   {
@@ -2540,8 +2540,8 @@
    "baseline_status": "source-present / verify",
    "required_implementation": "Expose visual seam, feather and algorithm-specific parameters",
    "proof_required": "Inspect UI \u2192 validate normalized request \u2192 inspect executed worker inputs \u2192 real or deterministic behavioral test \u2192 verify artifact/metadata and unsupported-target rejection.",
-   "completion_status": "PENDING",
-   "implementation_receipt": null,
+   "completion_status": "PARTIAL",
+   "implementation_receipt": " || P08 2026-10-16: public/dexdiffusion/inpaint-options.js (validation + A1111 crop-region arithmetic), operator-console/bin/inpaint-region.py (region / fill / pasteback, Pillow), server.js handleInpaint + compositePasteBack, edit-ui.js 'Inpaint options' panel; tests/inpaint-options.test.js (6, incl. JS==Python crop-region parity on 60 random cases and real Pillow pixels), tests/browser/edit-inpaint-parity.browser.js (4). Existing outpaint uses a fixed 48 px overlap; not changed this pass.",
    "runtime_receipt": null
   },
   {
