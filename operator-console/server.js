@@ -1643,28 +1643,18 @@ function buildTxt2imgPreview(body) {
   const err = validateControlledGenerationParams(params, allTargetById);
   if (err) return { ok: false, status: 400, error: err };
   const spec = allTargetById[params.target];
-  const args = ['--target', params.target, '--prompt', params.prompt];
-  if (spec.modelPath && !CONTROLLED_TARGET_BY_ID[params.target]) args.push('--model-path', spec.modelPath);
-  if (params.negative_prompt) args.push('--negative-prompt', params.negative_prompt);
-  if (params.width) args.push('--width', String(params.width));
-  if (params.height) args.push('--height', String(params.height));
-  if (params.steps) args.push('--steps', String(params.steps));
-  if (params.cfg_scale !== undefined && params.cfg_scale !== null && params.cfg_scale !== '') args.push('--cfg', String(params.cfg_scale));
-  if (params.seed !== undefined && params.seed !== null && params.seed !== '') args.push('--seed', String(params.seed));
-  if (params.api && spec.id === 'sd15') args.push('--api', params.api);
-  if (params.scheduler) args.push('--scheduler', params.scheduler);
-  if (params.vae && params.vae !== 'auto') {
-    const vaePath = resolveVaePath(params.vae);
-    if (vaePath) args.push('--vae', vaePath);
-  }
-  args.push('--save-prompts', params.save_prompts ? 'true' : 'false');
+  // The preview is built by the very function the job runner uses, so it can never drift from execution.
+  const batchCount = nativeBatchEligible(spec, params.quantity || 1) ? params.quantity : 1;
+  const args = buildControlledArgs(spec, params, {
+    seedValue: params.seed, isDiscovered: !CONTROLLED_TARGET_BY_ID[params.target], resolveVaePath, batchCount,
+  });
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
   return {
     ok: true,
     job_type: 'txt2img',
     normalized: { ...params, target: spec.id },
     compatibility: compatibilityForTarget(spec.id),
-    preview: commandPreview('bin/sdcpp-controlled-generate.sh', args, sensitives)
+    preview: commandPreview(controlledScriptFor(spec), args, sensitives)
   };
 }
 

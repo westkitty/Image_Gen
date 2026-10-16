@@ -218,6 +218,29 @@
       panel('Templates / Recipes', h('div', { className: 'ca-recipe-row' }, h('span', null, 'Use saved settings recipes from Generate.'), btn('Open Generate', () => this.caNavigate('generate'), '#38bdf8'), h('span', { className: 'ca-muted' }, 'Prompt text is governed by the existing privacy setting.')), accent));
   };
 
+  // Request preview: asks the server to normalise the exact body Generate would send and to build the
+  // worker command with the same function the job runner uses. Nothing is queued or stored.
+  P.caLoadPreview = async function () {
+    const ca = this._ca();
+    ca.preview = { busy: true }; this.caSync();
+    const r = await this._api('/api/preview/generation', Object.assign({ job_type: 'txt2img' }, this._createBody()));
+    ca.preview = r.ok ? { ok: true, data: r.data } : { ok: false, error: (r.data && r.data.error) || ('HTTP ' + r.status) };
+    this.caSync();
+  };
+  P.buildRequestPreview = function () {
+    const pv = this._ca().preview;
+    const body = !pv ? h('div', { className: 'ca-muted' }, 'Shows the validated request and the exact worker command for the current settings. Nothing is queued.')
+      : pv.busy ? h('div', { className: 'ca-muted' }, 'Building preview…')
+      : !pv.ok ? h('div', { className: 'ca-note', 'data-dex-field': 'preview-error', role: 'alert' }, 'Preview rejected: ' + pv.error)
+      : h('div', { className: 'ca-stack' },
+          h('div', { className: 'ca-muted' }, 'Worker command (prompt text redacted)'),
+          h('pre', { className: 'ca-code', 'data-dex-field': 'preview-command', style: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 } }, pv.data.preview.command),
+          h('div', { className: 'ca-muted' }, 'Normalised request (what the server will execute)'),
+          h('pre', { className: 'ca-code', 'data-dex-field': 'preview-json', style: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 } }, JSON.stringify(pv.data.normalized, null, 2)));
+    return h('div', { className: 'ca-stack', 'data-dex-field': 'request-preview' },
+      h('div', { className: 'ca-form-actions' }, h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'preview-button', onClick: () => this.caLoadPreview() }, 'Preview request')), body);
+  };
+
   P.buildConceptGenerate = function (vals, accent) {
     const s = this.state, ctl = this._controls(), targets = s.modelTargets || [], target = this._targetSpec() || {};
     const input = (label, value, onInput, extra) => h('label', { className: 'ca-field' }, h('span', null, label), h('input', Object.assign({ value: String(value ?? ''), onInput, onChange: onInput }, extra || {})));
@@ -237,8 +260,8 @@
       ctl.scheduler ? h('label', { className: 'ca-field' }, h('span', null, 'Scheduler'), h('select', { value: s.scheduler, onChange: e => this.setState({ scheduler: e.target.value }) }, ...['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple'].map(x => h('option', { key: x }, x)))) : null);
     const generate = h('button', { type: 'button', className: 'ca-primary', onClick: () => this.onGenerate(), disabled: s.jobStatus === 'generating' }, s.jobStatus === 'generating' ? (vals.generateLabel || 'Generating…') : 'Generate Image');
     const modelPicker = vals.targetSelectV1 || targetSelect;
-    const workbench = s.screens[s.version] === 'batch' ? this.buildBatchWorkspace() : h('div', { className: 'ca-generate-form' }, panel('Prompt and target', h('div', { className: 'ca-stack' }, prompt, vals.promptTools || null, modelPicker, targetSelect, negative, samplingNote, basic, vals.createResources || null, vals.createPresets || null, h('div', { className: 'ca-form-actions' }, generate)), accent), this.buildCreateWorkbench(vals.modelsListDisplay));
-    return h('div', { className: 'ca-generate-layout' }, h('section', { className: 'ca-results-column' }, panel('Preview and result', this.buildResultStaging(), accent), s.screens[s.version] === 'batch' ? null : panel('Advanced workflows', h('div', { className: 'ca-muted' }, 'Batch, sweeps, prompt drafts, wildcards, enhancement, command preview, recipes, macros, and reproducibility remain available in the existing Advanced controls above.'), accent)), h('section', { className: 'ca-main-column' }, workbench));
+    const workbench = s.screens[s.version] === 'batch' ? this.buildBatchWorkspace() : h('div', { className: 'ca-generate-form' }, panel('Prompt and target', h('div', { className: 'ca-stack' }, prompt, vals.promptTools || null, modelPicker, targetSelect, negative, samplingNote, basic, vals.createResources || null, vals.createPresets || null, h('div', { className: 'ca-form-actions' }, generate), this.buildRequestPreview()), accent), this.buildCreateWorkbench(vals.modelsListDisplay));
+    return h('div', { className: 'ca-generate-layout' }, h('section', { className: 'ca-results-column' }, panel('Preview and result', this.buildResultStaging(), accent), s.screens[s.version] === 'batch' ? null : panel('Advanced workflows', h('div', { className: 'ca-muted' }, 'Batch / Sweep, prompt drafts, wildcards, enhancement, recipes, macros, and reproducibility remain available in their existing controls. Use Preview request below the form to inspect the exact request and worker command.'), accent)), h('section', { className: 'ca-main-column' }, workbench));
   };
 
   P.buildConceptSettings = function (vals, accent) {

@@ -162,6 +162,46 @@ async function generateOnce(page, bodies) {
       }
     });
 
+    await test('Preview request shows the same effective request and worker command that Generate sends', async () => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const { errors, bodies } = await openGenerate(page, srv.base);
+      await chooseTarget(page, 'sdxl-base');
+      await page.locator('.ca-generate-form textarea').first().fill('a secret fox prompt');
+      await page.locator('[data-dex-field="sampler"]').selectOption('heun');
+      await page.locator('[data-dex-field="clip-skip"]').fill('2');
+      await page.locator('[data-dex-field="tiling"]').check();
+      await page.locator('[data-dex-field="preview-button"]').click();
+      await page.locator('[data-dex-field="preview-command"]').waitFor({ state: 'visible' });
+      const command = await page.locator('[data-dex-field="preview-command"]').innerText();
+      const json = JSON.parse(await page.locator('[data-dex-field="preview-json"]').innerText());
+      assert.match(command, /sdcpp-controlled-generate\.sh/);
+      assert.match(command, /--sampler heun/);
+      assert.match(command, /--clip-skip 2/);
+      assert.match(command, /--tiling/);
+      assert.doesNotMatch(command, /secret fox/, 'command preview redacts the prompt');
+      const sent = await generateOnce(page, bodies);
+      for (const k of ['target', 'steps', 'width', 'height', 'sampler', 'clip_skip', 'tiling']) assert.equal(String(json[k]), String(sent[k]), k);
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
+    await test('Preview request for MFLUX names the MFLUX worker and carries no SD-only flags; invalid input is rejected visibly', async () => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const { errors } = await openGenerate(page, srv.base);
+      await chooseTarget(page, 'flux2-klein-4b');
+      await page.locator('[data-dex-field="preview-button"]').click();
+      await page.locator('[data-dex-field="preview-error"]').waitFor({ state: 'visible' });
+      assert.match(await page.locator('[data-dex-field="preview-error"]').innerText(), /Invalid prompt/);
+      await page.locator('.ca-generate-form textarea').first().fill('a red fox');
+      await page.locator('[data-dex-field="preview-button"]').click();
+      await page.locator('[data-dex-field="preview-command"]').waitFor({ state: 'visible' });
+      const command = await page.locator('[data-dex-field="preview-command"]').innerText();
+      assert.match(command, /mflux-controlled-generate\.sh/);
+      for (const f of ['--sampler', '--clip-skip', '--tiling', '--cfg', '--scheduler', '--negative-prompt', '--vae']) assert.equal(command.includes(f), false, f);
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
     await test('controls remain usable at 390x844', async () => {
       const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
       const { errors } = await openGenerate(page, srv.base);
