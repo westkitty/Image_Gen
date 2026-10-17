@@ -64,7 +64,7 @@
       brush: saved.brush || { mode: 'paint', size: 40 }, maskZoom: 1, maskInfo: null,
       out: { left: 0, right: 128, top: 0, bottom: 0, strength: 0.85 }, outStatus: 'idle',
       enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2, refEdit: { prompt: '', steps: 4, seed: -1 }, pnginfo: { busy: false, name: '', result: null, error: null }, fileCheck: { busy: false, items: [], error: null }, xyz: { x: { type: 'steps', values: '10, 20' }, y: { type: 'cfg_scale', values: '5, 7' }, z: { type: 'none', values: '' }, keepRandom: false, legend: true, margin: 0, plan: null, error: null, grid: null }, extras: { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5, max_side: 0 },
-      lib: { filter: 'all', items: [], total: 0, selectedId: null, selected: null, loading: false },
+      lib: Object.assign({ filter: 'all', items: [], total: 0, selectedId: null, selected: null, loading: false, offset: 0, sort: 'desc', error: null }, D.loadLibPrefs ? D.loadLibPrefs() : {}),
       compareIds: Array.isArray(saved.compareIds) ? saved.compareIds.slice(0, 4) : [], compareItems: [], compareZoom: 1,
       doctor: null, doctorBusy: false, activeJobId: saved.activeJobId || null, recovered: false,
       detailer: saved.detailer || { open: false, imageId: null, mode: 'face', threshold: 0.3, padding: 0.2, feather: 8.0, strength: 0.45, prompt: '', maskPreview: null, loading: false, targetSelection: 'largest', dilate: 0, note: '' },
@@ -511,12 +511,67 @@
   };
 
   // ── Library: images, lineage, keepers, compare ──────────────────
-  P.loadLibraryImages = async function (filter) {
-    const ws = this._ws();
-    const f = filter || ws.lib.filter;
-    this.wsSet({ lib: Object.assign({}, ws.lib, { filter: f, loading: true }) });
-    const r = await this._api('/api/library/images?filter=' + encodeURIComponent(f), undefined);
-    this.wsSet({ lib: Object.assign({}, this._ws().lib, { items: r.ok ? r.data.items : [], total: r.ok ? r.data.total : 0, loading: false }) });
+  // Library browsing preferences (view/rows/columns/density/sort) are non-sensitive and live in localStorage.
+  const LIB_PREF_KEY = 'dexdiffusion.library.prefs.v1';
+  const libDefaults = { view: 'grid', rows: 4, cols: 0, density: 'comfortable', sort: 'desc' };
+  D.loadLibPrefs = function () {
+    try { const p = JSON.parse(localStorage.getItem(LIB_PREF_KEY) || '{}') || {}; return D.cleanLibPrefs(p); } catch (_) { return D.cleanLibPrefs({}); }
+  };
+  D.cleanLibPrefs = function (p) {
+    const n = (v, lo, hi, d) => { v = parseInt(v, 10); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+    return { view: p.view === 'list' ? 'list' : 'grid', rows: n(p.rows, 1, 50, libDefaults.rows), cols: n(p.cols, 0, 12, libDefaults.cols),
+      density: ['compact', 'comfortable', 'large'].includes(p.density) ? p.density : libDefaults.density, sort: p.sort === 'asc' ? 'asc' : 'desc' };
+  };
+  const LIB_MIN = { compact: 72, comfortable: 108, large: 160 };
+  // Columns are clamped to what the viewport can hold at the chosen density; the effective value is shown to the user.
+  P._libLayout = function (lib) {
+    // Prefer the measured width of the real grid container; fall back to a viewport estimate before first paint.
+    const vw = (typeof window !== 'undefined' && window.innerWidth) || 1024, avail = this._libWidth > 0 ? this._libWidth : Math.max(120, Math.min(vw, 1400) - 56), min = LIB_MIN[lib.density] || 108;
+    const fit = Math.max(1, Math.floor((avail + 6) / (min + 6)));
+    const cols = lib.view === 'list' ? 1 : (lib.cols > 0 ? Math.min(lib.cols, fit) : fit);
+    return { cols, fit, clamped: lib.view === 'grid' && lib.cols > 0 && lib.cols > fit, pageSize: Math.max(1, (lib.view === 'list' ? 1 : cols) * lib.rows) };
+  };
+  // Called from a ref on the grid/list container: when the usable width changes the effective column count (and so the page size) is recomputed.
+  P._libMeasure = function (w) {
+    if (!(w > 0) || Math.abs(w - (this._libWidth || 0)) <= 8) return;
+    const before = this._libLayout(this._ws().lib); this._libWidth = w;
+    const after = this._libLayout(this._ws().lib);
+    if (before.pageSize === after.pageSize && before.cols === after.cols) return;
+    clearTimeout(this._libMeasureT); this._libMeasureT = setTimeout(() => this.loadLibraryImages(), 120);
+  };
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function' && !window.__dexLibResize) {
+    window.__dexLibResize = true;
+    window.addEventListener('resize', () => { const app = window.__dex; if (!app || !app._ws || !app._ws().lib) return; clearTimeout(app._libResizeT); app._libResizeT = setTimeout(() => {
+      const el = document.querySelector('[data-lib-grid],[data-lib-list]'); if (el) app._libMeasure(el.clientWidth); }, 150); });
+  }
+  P.setLibPrefs = function (patch) {
+    const lib = Object.assign({}, this._ws().lib, patch), prefs = D.cleanLibPrefs(lib);
+    try { localStorage.setItem(LIB_PREF_KEY, JSON.stringify(prefs)); } catch (_) {}
+    Object.assign(lib, prefs);
+    // Layout changes never reset each other; only a page-size change re-pages from the same first item.
+    this.wsSet({ lib });
+    if ('rows' in patch || 'cols' in patch || 'view' in patch || 'sort' in patch) this.loadLibraryImages(undefined, 'offset' in patch ? patch.offset : this._ws().lib.offset);
+  };
+  P.loadLibraryImages = async function (filter, offset) {
+    const ws = this._ws(), f = filter || ws.lib.filter, lay = this._libLayout(ws.lib);
+    const off = filter && filter !== ws.lib.filter ? 0 : Math.max(0, offset == null ? ws.lib.offset : offset);
+    this.wsSet({ lib: Object.assign({}, ws.lib, { filter: f, loading: true, offset: off, error: null }) });
+    const r = await this._api('/api/library/images?filter=' + encodeURIComponent(f) + '&sort=' + ws.lib.sort + '&limit=' + lay.pageSize + '&offset=' + off, undefined);
+    this.wsSet({ lib: Object.assign({}, this._ws().lib, { items: r.ok ? r.data.items : [], total: r.ok ? r.data.total : 0, loading: false, error: r.ok ? null : 'Could not load the Library' }) });
+  };
+  // Full-size viewer over the ACTIVE (filtered + sorted) collection, not just the visible page.
+  P.openLibraryViewer = async function (id) {
+    const ws = this._ws(), base = this.state.backendUrl;
+    let items = ws.lib.items, index = items.findIndex(x => x.id === id);
+    const r = await this._api('/api/library/images?filter=' + encodeURIComponent(ws.lib.filter) + '&sort=' + ws.lib.sort + '&limit=500&offset=0', undefined);
+    if (r.ok && r.data.items.some(x => x.id === id)) { items = r.data.items; index = items.findIndex(x => x.id === id); }
+    if (index < 0) return;
+    const self = this;
+    window.DexLightbox.open({
+      collection: { index, items: items.map(it => ({ id: it.id, src: base + it.url, caption: it.id, downloadUrl: base + (it.downloadUrl || '/api/images/' + encodeURIComponent(it.id) + '/export'), downloadName: it.id })),
+        actionsFor: iid => (self.lightboxActions ? self.lightboxActions(iid) : []), onIndex: (i, c) => { self._libLastViewed = c.id; } },
+      onClose: () => { const last = self._libLastViewed; if (!last) return; setTimeout(() => { const el = document.querySelector('[data-lib-thumb="' + (window.CSS && CSS.escape ? CSS.escape(last) : last) + '"] img'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' }); }, 0); },
+    });
   };
   P.selectLibraryImage = async function (id) {
     const m = await this._imageMeta(id);
@@ -561,6 +616,58 @@
       h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1' }) }, h('input', { type: 'checkbox', checked: !!ex.sidecar, 'data-export-field': 'sidecar', onChange: e => set({ sidecar: e.target.checked }) }), 'Sidecar .txt'),
       btn(ws.exportBusy ? 'Exporting…' : (ids.length > 1 ? 'Export ' + ids.length + ' as ZIP' : 'Export copy'), () => this.runExport(ids), '#65d66e', { disabled: !!ws.exportBusy, 'data-export-run': String(ids.length) }));
   };
+  // ── Library controls, grid/list, pager ───────────────────────────
+  P.buildLibraryControls = function () {
+    const lib = this._ws().lib, lay = this._libLayout(lib), set = p => this.setLibPrefs(p);
+    const sel = (label, key, opts, val, onChange) => h('label', { style: { display: 'grid', gap: 2, fontSize: 11, color: '#94a3b8' } }, label,
+      h('select', { value: String(val), 'aria-label': label, 'data-lib-control': key, style: Object.assign({}, css.input, { minHeight: 34 }), onChange: e => onChange(e.target.value) },
+        ...opts.map(([v, l]) => h('option', { key: v, value: String(v) }, l))));
+    const rowOpts = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 50].map(n => [n, String(n)]);
+    const colOpts = [[0, 'Auto'], ...[1, 2, 3, 4, 5, 6, 8, 10, 12].map(n => [n, String(n)])];
+    return h('div', { 'data-lib-controls': 'true', style: Object.assign({}, css.row, { marginBottom: 8, alignItems: 'end' }) },
+      h('div', { role: 'group', 'aria-label': 'View mode', style: css.row },
+        btn('Grid', () => set({ view: 'grid' }), lib.view === 'grid' ? '#38bdf8' : '#94a3b8', { 'aria-pressed': String(lib.view === 'grid'), 'data-lib-view': 'grid' }),
+        btn('List', () => set({ view: 'list' }), lib.view === 'list' ? '#38bdf8' : '#94a3b8', { 'aria-pressed': String(lib.view === 'list'), 'data-lib-view': 'list' })),
+      sel('Rows', 'rows', rowOpts, lib.rows, v => set({ rows: v, offset: 0 })),
+      lib.view === 'grid' ? sel('Columns', 'cols', colOpts, lib.cols, v => set({ cols: v })) : null,
+      sel('Density', 'density', [['compact', 'Compact'], ['comfortable', 'Comfortable'], ['large', 'Large']], lib.density, v => set({ density: v })),
+      sel('Sort', 'sort', [['desc', 'Newest first'], ['asc', 'Oldest first']], lib.sort, v => set({ sort: v, offset: 0 })),
+      lib.view === 'grid' ? h('span', { 'data-lib-effective': lay.cols + 'x' + lib.rows, style: css.muted }, lay.cols + ' × ' + lib.rows + (lay.clamped ? ' (limited by screen width)' : '')) : null);
+  };
+  P.buildLibraryItems = function () {
+    const lib = this._ws().lib, base = this.state.backendUrl, lay = this._libLayout(lib), min = LIB_MIN[lib.density] || 108;
+    if (lib.view === 'list') {
+      return h('div', { role: 'list', 'data-lib-list': 'true', ref: el => { if (el) this._libMeasure(el.clientWidth); }, style: { display: 'grid', gap: 4 } }, ...lib.items.map(it => {
+        const m = it.meta || {}, sel = lib.selectedId === it.id;
+        return h('div', { key: it.id, role: 'listitem', 'data-lib-thumb': it.id, style: { display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr) auto', gap: 10, alignItems: 'center', padding: 4, border: '1px solid ' + (sel ? '#38bdf8' : 'rgba(148,163,184,.14)'), borderRadius: 8 } },
+          h('button', { type: 'button', 'aria-label': 'Open ' + it.id + ' full size', onClick: () => this.openLibraryViewer(it.id), style: { padding: 0, border: 0, background: '#0a0e14', borderRadius: 6, cursor: 'zoom-in', width: min * 0.7, height: min * 0.7, overflow: 'hidden' } },
+            h('img', { src: base + (it.thumbnailUrl || it.url), alt: '', loading: 'lazy', decoding: 'async', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } })),
+          h('div', { style: { minWidth: 0 } }, h('div', { style: Object.assign({}, css.mono, { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }) }, (it.keeper ? '★ ' : '') + it.id),
+            h('div', { style: css.muted }, [it.width && it.height ? it.width + '×' + it.height : null, m.operation, m.target, m.seed != null ? 'seed ' + m.seed : null].filter(Boolean).join(' · '))),
+          h('div', { style: css.row }, btn('Details', () => this.selectLibraryImage(it.id), '#94a3b8'),
+            h('a', { href: base + (it.downloadUrl || '/api/images/' + encodeURIComponent(it.id) + '/export'), download: it.id, 'data-lib-download': it.id, style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 6px' } }, 'Download')));
+      }));
+    }
+    return h('div', { 'data-lib-grid': 'true', ref: el => { if (el) this._libMeasure(el.clientWidth); }, style: { display: 'grid', gridTemplateColumns: 'repeat(' + lay.cols + ',minmax(0,1fr))', gap: 6 } }, ...lib.items.map(it => {
+      const m = it.meta || {}, sel = lib.selectedId === it.id;
+      return h('div', { key: it.id, 'data-lib-thumb': it.id, style: { position: 'relative', border: '2px solid ' + (sel ? '#38bdf8' : 'rgba(148,163,184,.16)'), borderRadius: 8, overflow: 'hidden', background: '#0a0e14', aspectRatio: '1 / 1' } },
+        h('img', { src: base + (it.thumbnailUrl || it.url), alt: it.id, loading: 'lazy', decoding: 'async', tabIndex: 0, role: 'button', 'aria-label': 'Open ' + it.id + ' full size',
+          onClick: () => this.openLibraryViewer(it.id), onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.openLibraryViewer(it.id); } },
+          style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'zoom-in' } }),
+        h('button', { type: 'button', 'aria-label': 'Select ' + it.id + ' for details', title: 'Details, lineage and actions', onClick: () => this.selectLibraryImage(it.id),
+          style: { position: 'absolute', top: 3, right: 3, minWidth: lib.density === 'compact' ? 24 : 30, minHeight: lib.density === 'compact' ? 24 : 30, padding: 0, borderRadius: 15, border: '1px solid rgba(148,163,184,.5)', background: 'rgba(4,8,14,.85)', color: '#e2e8f0', cursor: 'pointer', fontSize: 13 } }, 'ⓘ'),
+        lib.density !== 'compact' ? h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, background: 'rgba(4,8,14,.78)', color: '#dbe4ee', fontSize: 10, padding: '3px 5px', pointerEvents: 'none', fontFamily: "'IBM Plex Mono',monospace", overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' } },
+          (it.keeper ? '★ ' : '') + (m.operation || '') + (m.seed != null ? ' ' + m.seed : '')) : null);
+    }));
+  };
+  P.buildLibraryPager = function () {
+    const lib = this._ws().lib, lay = this._libLayout(lib), size = lay.pageSize, from = lib.total ? lib.offset + 1 : 0, to = Math.min(lib.total, lib.offset + lib.items.length);
+    const go = off => this.loadLibraryImages(undefined, off);
+    return h('div', { 'data-lib-pager': 'true', style: Object.assign({}, css.row, { marginTop: 8 }) },
+      btn('◀ Previous page', () => go(Math.max(0, lib.offset - size)), '#94a3b8', { disabled: lib.offset <= 0 || lib.loading, 'data-lib-page': 'prev' }),
+      h('span', { 'data-lib-range': from + '-' + to + '/' + lib.total, 'aria-live': 'polite', style: css.muted }, 'Showing ' + from + '–' + to + ' of ' + lib.total),
+      btn('Next page ▶', () => go(lib.offset + size), '#94a3b8', { disabled: lib.offset + lib.items.length >= lib.total || lib.loading, 'data-lib-page': 'next' }));
+  };
   P.buildLibraryWorkbench = function () {
     const ws = this._ws(), lib = ws.lib, base = this.state.backendUrl;
     if (!lib.loadedOnce) { lib.loadedOnce = true; setTimeout(() => this.loadLibraryImages(), 0); }
@@ -591,9 +698,11 @@
       h('div', { style: css.panel },
         h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Images'), h('span', { style: css.muted }, lib.loading ? 'loading…' : lib.total + ' images'), h('div', { style: { flex: 1 } }), lib.items.length > 1 ? btn('Save all shown (' + lib.items.length + ') as ZIP', () => this.runExport(lib.items.map(it => it.id)), '#94a3b8', { 'data-export-all': String(lib.items.length), disabled: !!ws.exportBusy }) : null, btn('Refresh', () => this.loadLibraryImages(), '#94a3b8')),
         h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, ...filters.map(([k, l]) => btn(l, () => this.loadLibraryImages(k), lib.filter === k ? '#38bdf8' : '#94a3b8'))),
-        lib.items.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(96px,1fr))', gap: 6, maxHeight: 420, overflowY: 'auto' } },
-          ...lib.items.map(it => this._libThumb(it, lib.selectedId === it.id)))
+        this.buildLibraryControls(),
+        lib.error ? h('div', { role: 'alert', style: Object.assign({}, css.muted, { color: '#fca5a5' }) }, lib.error) : null,
+        lib.items.length ? this.buildLibraryItems()
           : h('div', { style: css.muted }, lib.loading ? '' : 'No images for this filter.'),
+        this.buildLibraryPager(),
         detail),
       this.buildCompareWorkspace(),
       this.buildDetailerModal());

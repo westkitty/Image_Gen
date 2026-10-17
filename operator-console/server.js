@@ -4183,7 +4183,13 @@ app.get('/api/library/images', (req, res) => {
   else if (filter !== 'all') ids = ids.filter(id => all[id].operation === filter || all[id].target === filter);
   // Canonical ids start with the run timestamp, so id order is creation order.
   ids.sort((a, b) => b.localeCompare(a));
-  res.json({ filter, total: ids.length, items: ids.slice(0, 200).map(imageView) });
+  if (String(req.query.sort || 'desc') === 'asc') ids.reverse();
+  // Server-side paging keeps the grid bounded; the default window stays 200 for older clients.
+  const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 200));
+  const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+  const items = ids.slice(offset, offset + limit).map(imageView).filter(Boolean)
+    .map(v => ({ ...v, thumbnailUrl: `/api/thumbnails/${encodeURIComponent(v.id)}`, downloadUrl: `/api/images/${encodeURIComponent(v.id)}/export` }));
+  res.json({ filter, total: ids.length, offset, limit, items });
 });
 
 // ---- Numbered Batch: parse preview + backend-owned queue ----------------------
