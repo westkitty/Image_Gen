@@ -23,7 +23,7 @@ async function openGenerate(page, base) {
   await page.goto(base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
   if (!(await page.locator('.ca-shell').count())) await page.locator('[data-vbtn="4"]').click();
   await page.waitForSelector('.ca-shell');
-  await page.locator('.ca-nav-item', { hasText: 'Generate' }).click();
+  await page.locator('.ca-nav-item', { hasText: 'Create' }).click();
   await page.waitForSelector('.ca-shell[data-ca-module="generate"]');
   await page.waitForTimeout(300);
   return { errors, bodies };

@@ -1,0 +1,15 @@
+{
+  "name": "DexDiffusion",
+  "short_name": "DexDiffusion",
+  "description": "Local image, voice and 3D workstation. Generation runs on the home network's compute machine.",
+  "id": "/dexdiffusion/",
+  "start_url": "/dexdiffusion/",
+  "scope": "/dexdiffusion/",
+  "display": "standalone",
+  "background_color": "#080c12",
+  "theme_color": "#080c12",
+  "icons": [
+    { "src": "pwa/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "pwa/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

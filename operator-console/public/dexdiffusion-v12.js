@@ -94,6 +94,7 @@
 
       es.addEventListener('job.completed', function(e) {
         fetchSnapshot();
+        try { var d = JSON.parse(e.data || '{}'); var st = String(d.status || 'COMPLETE').toUpperCase(); if (window.DexNotify && !/FAIL|CANCEL|INTERRUPT|ERROR/.test(st)) window.DexNotify.completed(d); } catch (_) {}
         // Trigger library refresh if user is in library
         if (window.__dex && typeof window.__dex.refreshLibrary === 'function') {
           window.__dex.refreshLibrary();
@@ -458,8 +459,8 @@
   // ---- 4. Global Command Palette (Cmd/Ctrl + K) ------------------------------
   const COMMANDS = [
     { id: 'nav_workstation', group: 'NAVIGATE', title: 'Go to Workstation', action: () => navigateTo('workstation') },
-    { id: 'nav_create', group: 'NAVIGATE', title: 'Go to Generate', action: () => navigateTo('create') },
-    { id: 'nav_library', group: 'NAVIGATE', title: 'Go to Media', action: () => navigateTo('library') },
+    { id: 'nav_create', group: 'NAVIGATE', title: 'Go to Create', action: () => navigateTo('create') },
+    { id: 'nav_library', group: 'NAVIGATE', title: 'Go to Library', action: () => navigateTo('library') },
     { id: 'nav_batch', group: 'NAVIGATE', title: 'Go to Batch', action: () => navigateTo('batch') },
     { id: 'nav_edit', group: 'NAVIGATE', title: 'Go to Edit', action: () => navigateTo('edit') },
     { id: 'nav_enhance', group: 'NAVIGATE', title: 'Go to Enhance', action: () => navigateTo('enhance') },
@@ -469,7 +470,10 @@
     { id: 'nav_world', group: 'NAVIGATE', title: 'Go to World Viewer', action: () => navigateTo('world') },
     { id: 'nav_drama', group: 'NAVIGATE', title: 'Go to Drama', action: () => navigateTo('drama') },
     { id: 'nav_models', group: 'NAVIGATE', title: 'Go to Models / Capabilities', action: () => navigateTo('models') },
-    { id: 'nav_system', group: 'NAVIGATE', title: 'Go to Settings / Help', action: () => navigateTo('system') },
+    { id: 'nav_system', group: 'NAVIGATE', title: 'Go to System', action: () => navigateTo('system') },
+    { id: 'op_sound', group: 'OPERATIONS', title: 'Toggle completion sound', action: () => { if (!window.DexNotify) return; const m = !window.DexNotify.prefs().muted; window.DexNotify.setMuted(m); if (window.__dex && window.__dex.toast) window.__dex.toast(m ? 'Completion sound muted' : 'Completion sound on', '#94a3b8'); } },
+    { id: 'op_sound_vol', group: 'OPERATIONS', title: 'Set completion sound volume (low / medium / high)', action: () => { if (!window.DexNotify) return; const cur = window.DexNotify.prefs().volume, next = cur < 0.25 ? 0.35 : cur < 0.5 ? 0.7 : 0.15; window.DexNotify.setVolume(next); window.DexNotify.setMuted(false); window.DexNotify._ding(next); if (window.__dex && window.__dex.toast) window.__dex.toast('Completion volume ' + Math.round(next * 100) + '%', '#94a3b8'); } },
+    { id: 'op_os_notify', group: 'OPERATIONS', title: 'Enable desktop notifications when jobs finish', action: () => { if (window.DexNotify) window.DexNotify.enableOs().then(r => { if (window.__dex && window.__dex.toast) window.__dex.toast(r === 'granted' ? 'Desktop notifications on' : 'Desktop notifications: ' + r, '#94a3b8'); }); } },
     { id: 'op_jobs', group: 'OPERATIONS', title: 'Toggle Job Center', shortcut: '⌘⇧J', action: () => toggleJobCenter() },
     { id: 'op_generate', group: 'OPERATIONS', title: 'Primary Generate', shortcut: '⌘Enter', action: () => triggerGenerate() },
     { id: 'op_doctor', group: 'OPERATIONS', title: 'Run System Doctor', action: () => runDoctor() },

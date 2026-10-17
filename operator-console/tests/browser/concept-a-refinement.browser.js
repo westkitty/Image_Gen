@@ -31,7 +31,7 @@ async function openConcept(page, base) {
       assert.equal(await page.locator('.ca-nav-item .ca-svg-icon').count(), 10);
       assert.ok(await page.locator('.ca-brand img[src*="grok_image_1775521844329.jpg"]').count());
       assert.equal(await page.locator('.ca-shell[data-ca-module="workstation"]').count(), 1);
-      await page.locator('.ca-nav-item', { hasText: 'Generate' }).click();
+      await page.locator('.ca-nav-item', { hasText: 'Create' }).click();
       await page.waitForSelector('.ca-shell[data-ca-module="generate"]');
       // Startup re-renders can detach the button between lookup and read (computed style of a detached node is ''); wait for a
       // connected primary action, then require its accent colour.
@@ -44,7 +44,7 @@ async function openConcept(page, base) {
     await test('contextual inspector and Generate result remain live surfaces', async () => {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       const errors = await openConcept(page, srv.base);
-      await page.locator('.ca-nav-item', { hasText: 'Generate' }).click();
+      await page.locator('.ca-nav-item', { hasText: 'Create' }).click();
       await page.waitForSelector('.ca-shell[data-ca-module="generate"]');
       assert.equal(await page.locator('.ca-inspector').count(), 1);
       assert.match(await page.locator('.ca-inspector').innerText(), /Target|Output|Prompt record/);
@@ -57,7 +57,7 @@ async function openConcept(page, base) {
     await test('Help provides step cards, FAQ disclosure, and full tutorial routing', async () => {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       const errors = await openConcept(page, srv.base);
-      await page.locator('.ca-nav-item', { hasText: 'Generate' }).click();
+      await page.locator('.ca-nav-item', { hasText: 'Create' }).click();
       await page.waitForSelector('.ca-shell[data-ca-module="generate"]');
       await page.locator('[data-ca-open-help="generate"]').first().click();
       await page.waitForSelector('[data-ca-help-dialog]');
@@ -145,7 +145,7 @@ async function openConcept(page, base) {
       await page.waitForSelector('#v12-palette-overlay', { state: 'visible' });
       await page.waitForFunction(() => document.activeElement?.id === 'v12-palette-input');
       const paletteText = await page.locator('#v12-palette-results').innerText();
-      for (const label of ['Workstation', 'Generate', 'Edit', 'Media', 'Voice', 'Music', '3D Assets', 'World Viewer', 'Drama', 'Settings / Help']) {
+      for (const label of ['Workstation', 'Create', 'Edit', 'Voice', 'Drama', 'Music', '3D Assets', 'World Viewer', 'Library', 'System']) {
         assert.match(paletteText, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
       }
       await page.fill('#v12-palette-input', 'World Viewer');
@@ -188,7 +188,7 @@ async function openConcept(page, base) {
       const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
       const errors = await openConcept(page, srv.base);
       assert.equal(await page.locator('.ca-nav').isVisible(), true);
-      await page.locator('.ca-nav-item', { hasText: 'Generate' }).click();
+      await page.locator('.ca-nav-item', { hasText: 'Create' }).click();
       await page.waitForSelector('.ca-shell[data-ca-module="generate"]');
       const geometry = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, shell: document.querySelector('.ca-shell').getBoundingClientRect().width }));
       assert.ok(geometry.scrollWidth <= geometry.width + 2, JSON.stringify(geometry));

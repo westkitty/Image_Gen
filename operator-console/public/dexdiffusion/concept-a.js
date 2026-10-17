@@ -25,17 +25,18 @@
     drama: 'M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm3 4h8M8 12h8M8 16h5',
     settings: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0-6v3m0 14v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M2 12h3m14 0h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1',
   };
+  // Order follows the product map: image tools (orange), audio (subdued blue), 3D/world (green), system (pale red).
   const MODULES = [
     { id: 'workstation', label: 'Workstation', icon: 'workstation', accent: '#ef6f61', desc: 'Start, resume, and see what needs attention.' },
-    { id: 'generate', label: 'Generate', icon: 'generate', accent: '#38bdf8', desc: 'Create images from prompts and references.' },
-    { id: 'edit', label: 'Edit', icon: 'edit', accent: '#a78bfa', desc: 'Transform, inpaint, and enhance image assets.' },
-    { id: 'media', label: 'Media', icon: 'media', accent: '#f59e0b', desc: 'Browse the canonical creative asset library.' },
-    { id: 'voice', label: 'Voice', icon: 'voice', accent: '#22d3ee', desc: 'Create and manage narration and voice assets.' },
-    { id: 'music', label: 'Music', icon: 'music', accent: '#14b8a6', desc: 'Generate songs and instrumental audio.' },
+    { id: 'generate', label: 'Create', icon: 'generate', accent: '#f59e0b', desc: 'Create images from prompts and references.' },
+    { id: 'edit', label: 'Edit', icon: 'edit', accent: '#fb923c', desc: 'Transform, inpaint, and enhance image assets.' },
+    { id: 'voice', label: 'Voice', icon: 'voice', accent: '#60a5fa', desc: 'Create and manage narration and voice assets.' },
+    { id: 'drama', label: 'Drama', icon: 'drama', accent: '#7aa7e6', desc: 'Turn scripts and assets into audio drama.' },
+    { id: 'music', label: 'Music', icon: 'music', accent: '#6b9bd6', desc: 'Generate songs and instrumental audio.' },
     { id: 'assets3d', label: '3D Assets', icon: 'assets3d', accent: '#65d66e', desc: 'Create and inspect individual 3D assets.' },
-    { id: 'world', label: 'World Viewer', icon: 'world', accent: '#818cf8', desc: 'Assemble environments, cameras, and renders.' },
-    { id: 'drama', label: 'Drama', icon: 'drama', accent: '#e11d68', desc: 'Turn scripts and assets into audio drama.' },
-    { id: 'settings', label: 'Settings / Help', icon: 'settings', accent: '#94a3b8', desc: 'Preferences, capability truth, and tutorials.' },
+    { id: 'world', label: 'World Viewer', icon: 'world', accent: '#4ade80', desc: 'Assemble environments, cameras, and renders.' },
+    { id: 'media', label: 'Library', icon: 'media', accent: '#f59e0b', desc: 'Browse the canonical creative asset library.' },
+    { id: 'settings', label: 'System', icon: 'settings', accent: '#fca5a5', desc: 'Preferences, capability truth, and tutorials.' },
   ];
   function moduleIcon(id, size) {
     return h('svg', { className: 'ca-svg-icon', width: size || 18, height: size || 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true', focusable: 'false' }, h('path', { d: ICON_PATHS[id] || ICON_PATHS.settings }));

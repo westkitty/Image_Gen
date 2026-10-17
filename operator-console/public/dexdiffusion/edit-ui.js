@@ -199,8 +199,16 @@
     this._pickers = this._pickers || {};
     if (this._pickers[ctx]) return this._pickers[ctx];
     const self = this;
-    const q = { open: false, query: '', family: 'all', readyOnly: false };
+    const q = { open: false, query: '', family: 'all', readyOnly: false, favOnly: false };
     const props = { targets: [], cards: [], activeId: null, onPick: () => {}, ctx };
+    // Favourite models (several at once) persist per browser; the set is shared by Create and Edit pickers.
+    const FAV_KEY = 'dexdiffusion.model.favorites.v1';
+    const favs = () => { try { const a = JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); return new Set(Array.isArray(a) ? a.filter(x => typeof x === 'string') : []); } catch (_) { return new Set(); } };
+    const saveFavs = set => { try { localStorage.setItem(FAV_KEY, JSON.stringify([...set])); } catch (_) {} };
+    // A distinct local icon per model: monogram on a hue derived from the id. No remote images, nothing hotlinked.
+    const iconFor = (id, label) => { let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; const initials = (String(label || id).match(/[A-Za-z0-9]+/g) || ['?']).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+      const n = document.createElement('span'); n.setAttribute('aria-hidden', 'true'); n.setAttribute('data-model-icon', id); n.textContent = initials;
+      n.style.cssText = `flex:0 0 auto;width:30px;height:30px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font:800 11px DM Sans,sans-serif;color:#0b1420;background:hsl(${h % 360} 60% 62%);`; return n; };
     const root = document.createElement('div'); root.style.cssText = 'position:relative;min-width:0;'; root.setAttribute('data-model-picker', ctx);
     const trigger = document.createElement('button'); trigger.type = 'button'; trigger.setAttribute('aria-haspopup', 'listbox');
     trigger.style.cssText = 'width:100%;text-align:left;border:1px solid rgba(148,163,184,.25);background:#0b1420;color:#e8f0f7;border-radius:8px;padding:8px 10px;min-height:42px;cursor:pointer;display:flex;gap:8px;align-items:center;font:600 13px DM Sans,system-ui,sans-serif;';
@@ -216,18 +224,24 @@
     const chipEl = (text, active, fn) => { const b = mk('button', `border:1px solid ${active ? '#38bdf8' : 'rgba(148,163,184,.25)'};background:${active ? 'rgba(56,189,248,.16)' : 'transparent'};color:${active ? '#7dd3fc' : '#a8b6c8'};border-radius:999px;padding:3px 10px;min-height:28px;font:700 11px DM Sans,sans-serif;cursor:pointer;`, text); b.type = 'button'; b.addEventListener('click', fn); return b; };
     function draw() {
       const g = E.groupModels(props.targets, props.cards, { query: q.query, family: q.family, readyOnly: q.readyOnly, activeId: props.activeId });
-      chips.replaceChildren(chipEl('All', q.family === 'all', () => { q.family = 'all'; draw(); }), ...g.families.map(f => chipEl(f.label, q.family === f.family, () => { q.family = f.family; draw(); })), chipEl('Ready only', q.readyOnly, () => { q.readyOnly = !q.readyOnly; draw(); }));
+      const fv = favs();
+      if (q.favOnly) { g.groups = g.groups.map(gr => Object.assign({}, gr, { items: gr.items.filter(it => fv.has(it.id)) })).filter(gr => gr.items.length); g.shown = g.groups.reduce((n, gr) => n + gr.items.length, 0); }
+      chips.replaceChildren(chipEl('All', q.family === 'all', () => { q.family = 'all'; draw(); }), ...g.families.map(f => chipEl(f.label, q.family === f.family, () => { q.family = f.family; draw(); })), chipEl('★ Favorites', q.favOnly, () => { q.favOnly = !q.favOnly; draw(); }), chipEl('Ready only', q.readyOnly, () => { q.readyOnly = !q.readyOnly; draw(); }));
       list.replaceChildren(...(g.groups.length ? g.groups.flatMap(gr => [mk('div', 'font:800 10px DM Sans,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#7f8ca8;padding:8px 4px 3px;', gr.label + ' · ' + gr.items.length),
         ...gr.items.map(it => { const row = mk('button', `display:grid;gap:2px;width:100%;text-align:left;border:1px solid ${it.active ? '#65d66e' : 'transparent'};background:${it.active ? 'rgba(101,214,110,.08)' : 'transparent'};color:#e2e8f0;border-radius:7px;padding:7px 8px;min-height:44px;cursor:pointer;font:13px DM Sans,sans-serif;`);
           row.type = 'button'; row.setAttribute('role', 'option'); row.setAttribute('aria-selected', String(it.active)); row.setAttribute('data-model-id', it.id);
-          const top = mk('div', 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;'); top.append(mk('b', 'font-weight:700;', it.label), ...(it.primary ? [mk('span', 'font-size:10px;color:#fbbf24;', '★ primary')] : []),
+          const top = mk('div', 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;'); top.append(iconFor(it.id, it.label), mk('b', 'font-weight:700;', it.label), ...(it.primary ? [mk('span', 'font-size:10px;color:#fbbf24;', '★ primary')] : []),
             mk('span', `font-size:10px;font-weight:700;border:1px solid ${it.readiness.ok ? '#65d66e55' : '#f8717155'};color:${it.readiness.ok ? '#86efac' : '#fca5a5'};border-radius:5px;padding:1px 6px;`, it.readiness.label), mk('span', 'font-size:10px;color:#7f8ca8;', it.backend.toUpperCase()));
           row.append(top, mk('div', 'font-size:11px;color:#8193a8;line-height:1.35;', it.blurb)); row.disabled = !it.readiness.ok && it.readiness.key !== 'available';
           row.addEventListener('click', () => {
             close(); trigger.focus();   // synchronously: the option that had focus was just hidden, so focus would otherwise sit on <body> until the next frame
             const done = props.onPick(it.id); requestAnimationFrame(() => trigger.focus());
             guardFocus(done);
-          }); return row; })]) : [mk('div', 'color:#8193a8;font-size:12px;padding:10px;', 'No models match.')]));
+          });
+          const star = mk('button', `flex:0 0 auto;min-width:40px;min-height:44px;border:1px solid transparent;background:transparent;color:${fv.has(it.id) ? '#fbbf24' : '#64748b'};font-size:18px;cursor:pointer;border-radius:7px;`, fv.has(it.id) ? '★' : '☆');
+          star.type = 'button'; star.setAttribute('data-model-fav', it.id); star.setAttribute('aria-pressed', String(fv.has(it.id))); star.setAttribute('aria-label', (fv.has(it.id) ? 'Remove ' : 'Add ') + it.label + (fv.has(it.id) ? ' from favorites' : ' to favorites'));
+          star.addEventListener('click', ev => { ev.stopPropagation(); const f2 = favs(); if (f2.has(it.id)) f2.delete(it.id); else f2.add(it.id); saveFavs(f2); draw(); });
+          const wrap = mk('div', 'display:flex;gap:2px;align-items:stretch;'); row.style.flex = '1 1 auto'; row.style.minWidth = '0'; wrap.append(row, star); return wrap; })]) : [mk('div', 'color:#8193a8;font-size:12px;padding:10px;', 'No models match.')]));
       foot.textContent = g.shown + ' of ' + g.total + ' models';
       const a = props.targets.find(t => t.id === props.activeId), c = props.cards.find(x => x.id === props.activeId), fam = a ? E.familyOf(c && c.family ? { family: c.family, id: a.id } : a) : '';
       const rd = E.readinessOf(a);
