@@ -44,6 +44,7 @@ const { exportReproBundle, validateReproBundle, checkBundleCompatibility } = req
 const { createThumbnailService } = require('./thumbnail-service');
 const { createCancellationManager } = require('./cancellation');
 const { createLibraryIndex } = require('./library-index');
+const { reconcileInterruptedPublications } = require('./publication-recovery');
 
 const app = express();
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
@@ -52,7 +53,7 @@ const APP_VERSION = 'image-gen-console-2026-06-22-render-wrapper';
 
 const WORKFLOW_ROOT = path.resolve(__dirname, '../sdcpp-workflow');
 const RUNS_DIR = path.join(WORKFLOW_ROOT, 'runs');
-const imageStore = createImageStore();
+const imageStore = createImageStore({ root: process.env.DEX_IMAGES_ROOT_OVERRIDE || undefined, runsRoot: RUNS_DIR });
 imageStore.ensureRoot();
 const CONFIG_DIR = path.join(WORKFLOW_ROOT, 'config');
 // DEX_STATE_DIR: test-only override so browser-suite servers never read or rewrite the live console's jobs, queues or media records.
@@ -63,6 +64,12 @@ const imageMeta = W.createImageMetaStore(path.join(STATE_DIR, 'image-meta.json')
 // Media-neutral core (media.js): durable generic jobs, heavy-compute lease,
 // worker registry, non-image media store and secure temporary staging.
 const jobStore = M.createJobStore(path.join(STATE_DIR, 'jobs.json'), { onChange: (kind, job) => genericJobEvent(kind, job) });
+const publicationRecoveryState = { blocked: false, journal: { inspected: 0, repaired: 0, unresolved: [] }, jobs: { inspected: 0, recovered: 0, unresolved: [] } };
+try {
+  publicationRecoveryState.journal = imageStore.recoverPendingPublications();
+  if (publicationRecoveryState.journal.unresolved.length) publicationRecoveryState.blocked = true;
+  if (publicationRecoveryState.journal.repaired || publicationRecoveryState.journal.unresolved.length) console.log('Canonical publication recovery:', JSON.stringify(publicationRecoveryState.journal));
+} catch (err) { publicationRecoveryState.blocked = true; publicationRecoveryState.journal.unresolved.push({ reason: err.message }); console.error('Canonical publication recovery failed:', err.message); }
 const mediaStore = M.createMediaStore({ registryFile: path.join(STATE_DIR, 'media-artifacts.json') });
 try { mediaStore.ensureRoots(); } catch (_) {}
 const worldStore = createWorldStore({ root: path.join(STATE_DIR, 'world-projects') });
@@ -80,7 +87,12 @@ const stylesStore = createStylesStore(process.env.DEX_STYLES_FILE || path.join(S
 const macroStore = createMacroStore(path.join(STATE_DIR, 'macros.json'));
 const thumbnailService = createThumbnailService({ cacheDir: path.join(STATE_DIR, 'thumbnails'), imageStore });
 const libraryIndex = createLibraryIndex({ indexPath: path.join(STATE_DIR, 'library-index.json'), imageStore, imageMeta, runsDir: RUNS_DIR });
-const HEAVY_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test', 'sd-upscale', 'loopback', 'outpaint-poor', 'outpaint-mk2']);
+try {
+  publicationRecoveryState.jobs = reconcileInterruptedPublications({ jobStore, runsRoot: RUNS_DIR, imageStore, validateImage });
+  if (publicationRecoveryState.jobs.unresolved.some(x => x.reason !== 'no-exact-owned-published-artifact')) publicationRecoveryState.blocked = true;
+  if (publicationRecoveryState.jobs.recovered || publicationRecoveryState.jobs.unresolved.length) console.log('Interrupted publication reconciliation:', JSON.stringify(publicationRecoveryState.jobs));
+} catch (err) { publicationRecoveryState.blocked = true; publicationRecoveryState.jobs.unresolved.push({ reason: err.message }); console.error('Interrupted publication reconciliation failed:', err.message); }
+const HEAVY_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test', 'sd-upscale', 'loopback', 'outpaint-poor', 'outpaint-mk2', 'hires-2pass']);
 const IMAGE_EDIT_CACHE = path.join(STATE_DIR, 'image-edit-capabilities.json');
 const UPSCALE_CACHE = path.join(STATE_DIR, 'upscale-capabilities.json');
 const MODEL_STAGE_CACHE = path.join(STATE_DIR, 'model-stage-cache.json');
@@ -1041,7 +1053,16 @@ function createJob(action, summary, requestParams = {}) {
 // Heavy Big Mac jobs wait (status 'queued') until they own the lease; it is
 // released when the job reaches any terminal state (see recordJobEvidence and
 // the sweep below, which also covers failure paths).
+// OP-7: durable remote-worker registry (state/remote-workers.json). Quarantined records block every heavy grant until
+// reconciliation proves the Big Mac work stopped; nothing time-based ever releases them.
+const RemoteWorkers = require('./remote-workers');
+const { successfulPassAfterCancelSignal } = require('./cancellation-completion');
+const remoteWorkers = RemoteWorkers.createRemoteWorkerRegistry({
+  file: path.join(STATE_DIR, 'remote-workers.json'),
+  onChange: r => { try { eventBus.publish('remote.worker', { job_id: r.job_id, state: r.state, action: r.action }); } catch (_) {} },
+});
 const arbiter = M.createResourceArbiter({
+  quarantineCheck: () => publicationRecoveryState.blocked ? 'canonical publication recovery unresolved' : remoteWorkers.quarantineReason(),
   externalProbe: () => new Promise(resolve => {
     require('child_process').execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=6', SSH_TARGET_NAME, 'ollama ps 2>/dev/null; printf "\nPROBE_DONE\n"'],
       { timeout: 12000, encoding: 'utf8' }, (err, out) => resolve(String(out || '').includes('PROBE_DONE') ? M.parseOllamaPs(out.split('PROBE_DONE')[0]) : { occupied: false, detail: null }));
@@ -1083,6 +1104,7 @@ function withLease(jobId, start) {
     job.waitingForLease = false;
     if (!r.granted || job.status !== 'queued') return;
     jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+    try { remoteWorkers.start(jobId, { action: job.commandAction, kind: workerKind(job), target: (job.requestParams && job.requestParams.target) || null }); } catch (_) {}
     try {
       job.startedAt = Date.now();
       eventBus.publish('job.started', { id: jobId, status: 'running' });
@@ -1091,11 +1113,35 @@ function withLease(jobId, start) {
     start();
   });
 }
-// A job whose Big Mac process is not yet confirmed stopped keeps the heavy lease, for at most two minutes
-// (after that the stale hold is dropped so one failed remote cancel cannot block all heavy work forever).
-const REMOTE_ORPHAN_HOLD_MS = 2 * 60 * 1000;
-function holdsLease(job) { return !!(job && job.remoteOrphan && Date.now() - (job.remoteOrphan.at || 0) < REMOTE_ORPHAN_HOLD_MS); }
+// OP-7: a job whose Big Mac side is not verified stopped keeps compute protected. Protection ends only with evidence
+// (remote-workers.js): there is deliberately no expiry — elapsed time never proves a remote process stopped. Even when the
+// lease itself is released, the arbiter's quarantine gate keeps every new heavy job waiting (and survives restarts).
+function holdsLease(job) { return !!(job && (remoteWorkers.isQuarantined(job.id) || (job.remoteOrphan && job.remoteOrphan.pending))); }
+function canonicalControlledOutput(job) {
+  if (!job || !job.runId || !job.controlledOutputImage) return null;
+  const runDir = path.join(RUNS_DIR, job.runId);
+  const reported = path.resolve(job.controlledOutputImage);
+  const relative = path.relative(runDir, reported);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  let owner = null;
+  try { owner = JSON.parse(fs.readFileSync(path.join(runDir, 'job-owner.json'), 'utf8')); } catch (_) {}
+  const entry = imageStore.readRunIndex(runDir).find(e => e.run_file === path.basename(reported)
+    || path.basename(String(e.run_file || '')) === path.basename(reported)) || null;
+  if (!owner || owner.job_id !== job.id || owner.run_id !== job.runId || !entry
+    || entry.job_id !== job.id || entry.run_id !== job.runId) return null;
+  const image = imageStore.resolveImage(entry.image_id);
+  if (!image) return null;
+  const measured = validateImage(image.path);
+  if (!measured || measured.sha256 !== entry.sha256) return null;
+  return { entry, image, measured };
+}
 function syncGenericTerminal(job) {
+  // Cancellation owns the terminal decision until its remote-stop check settles.
+  // Let a successful completion through (it wins the race); defer a failure caused
+  // by the local signal so the cancel route can persist CANCELLED consistently.
+  if (job.cancelInFlight && job.status !== 'PASS' && job.status !== 'PARTIAL') return;
+  // A natural end resolves the worker record; during a cancel the registry keeps the quarantine (a local exit is not a remote stop).
+  if (job.status !== 'CANCELLED') { try { syncRemoteRunIds(job); remoteWorkers.finished(job.id, job.status); } catch (_) {} }
   const map = { PASS: 'COMPLETE', PARTIAL: 'COMPLETE', FAIL: 'FAILED', CANCELLED: 'CANCELLED' };
   let st = map[job.status];
   if (!st) return;
@@ -1113,9 +1159,9 @@ function syncGenericTerminal(job) {
   const ids = [...new Set([...fromResults, ...fromFields, ...fromRuns])];
   const arts = ids;
   let receipt = null;
-  if (st === 'COMPLETE') {
+  if (st === 'COMPLETE' || st === 'CANCELLED') {
     try {
-      if (g.artifact_required && !ids.length) throw new Error('completed generation has no canonical artifact');
+      if (st === 'COMPLETE' && g.artifact_required && !ids.length) throw new Error('completed generation has no canonical artifact');
       if (ids.length) receipt = artifactReceipt(ids.map(artifact_id => {
         const image = imageStore.resolveImage(artifact_id);
         if (!image) throw new Error('canonical artifact missing: ' + artifact_id);
@@ -1128,12 +1174,19 @@ function syncGenericTerminal(job) {
   }
   if (g.status === 'QUEUED') jobStore.transition(job.id, 'RUNNING');
   const result = jobStore.transition(job.id, st, {
-    artifacts: st === 'COMPLETE' ? ids : [], artifact_validation: receipt,
+    artifacts: st === 'COMPLETE' || st === 'CANCELLED' ? ids : [], artifact_validation: receipt,
     first_failed_gate: job.firstFailedGate || null, error: st === 'FAILED' ? `failed at gate ${job.firstFailedGate || 'unknown'}` : null,
   });
   if (result && result.error && !TERMINAL.has(result.status)) {
     job.status = 'FAIL'; job.firstFailedGate = job.firstFailedGate || 'job-contract-rejected';
     jobStore.transition(job.id, 'FAILED', { first_failed_gate: job.firstFailedGate, error: result.error });
+  }
+  // A terminal API state and its artifact receipt are one durable jobs.json
+  // write. Flush before releasing compute or reporting the terminal event.
+  try { jobStore.flush(); } catch (err) { job.stderr += `\ngeneric-job-flush: ${err.message}`; }
+  if ((st === 'COMPLETE' || st === 'CANCELLED') && ids.length) {
+    const acknowledged = imageStore.acknowledgePublication(job.id, ids);
+    if (acknowledged.unresolved.length) console.error('Publication receipt acknowledgement unresolved:', JSON.stringify({ job_id: job.id, ...acknowledged }));
   }
   if (!holdsLease(job)) arbiter.release(job.id);
   try {
@@ -1147,7 +1200,11 @@ function syncGenericTerminal(job) {
     // Update library index with new canonical artifacts
     if (st === 'COMPLETE' && libraryIndex) {
       for (const aId of arts) {
-        libraryIndex.upsertItem({ id: aId, target: (job.requestParams && job.requestParams.target) || null, operation: job.commandAction });
+        // Per-image metadata wins over the job request: multi-pass workflows (hires-2pass) produce images
+        // from different checkpoints and sizes within one job.
+        const m = imageMeta.get(aId) || {};
+        libraryIndex.upsertItem({ id: aId, target: m.target || (job.requestParams && job.requestParams.target) || null, operation: m.operation || job.commandAction,
+          width: m.width || null, height: m.height || null, dimensions: m.width && m.height ? `${m.width}x${m.height}` : null, seed: m.seed != null ? m.seed : undefined });
       }
       eventBus.publish('library.changed', { count: arts.length });
     }
@@ -1207,7 +1264,7 @@ function terminateChildTree(child) {
 // These actions put their run id on the remote command line (output paths or the MFLUX label), so the remote stop can be
 // scoped to the run. batch-generate and xyz-plot talk to the shared sd-server and are not in the set: they are reported
 // as unverified rather than assumed stopped.
-const REMOTE_CANCEL_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'sd-upscale', 'loopback', 'outpaint-poor', 'outpaint-mk2']);
+const REMOTE_CANCEL_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'sd-upscale', 'loopback', 'outpaint-poor', 'outpaint-mk2', 'hires-2pass']);
 function runIdsOf(job) {
   const text = String(job.stdout || '');
   const ids = [...new Set([...text.matchAll(/(?:SDCPP_RUN_ID:\s*|runs\/)(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/g)].map(m => m[1]))];
@@ -1223,17 +1280,116 @@ function remoteCancelRun(runId) {
     });
   });
 }
-async function remoteCancelJob(job) {
-  if (!REMOTE_CANCEL_ACTIONS.has(job.commandAction)) { delete job.remoteOrphan; return { ok: true, verified: false, runs: [], note: `Big Mac side cannot be verified for ${job.commandAction || 'this action'}; it may finish on its own.` }; }
-  const ids = runIdsOf(job);
-  if (!ids.length) { delete job.remoteOrphan; return { ok: true, verified: true, runs: [], note: 'no remote run had started' }; }
-  const runs = [];
-  for (const id of ids) runs.push(await remoteCancelRun(id));
-  const ok = runs.every(r => r.ok);
-  job.remoteCancel = { at: new Date().toISOString(), ok, runs };
-  if (ok) delete job.remoteOrphan; else job.remoteOrphan = { runs: ids, at: Date.now() };
-  return { ok, verified: true, runs };
+// OP-7 worker kinds (see remote-workers.js). per-run: the remote command line carries the run id. batch-generate is
+// per-run only in its default cli mode; its server mode, server-generate and the legacy xyz-plot run inside the shared
+// sd-server. Anything else heavy without a run identity is 'unknown'.
+function workerKind(job) {
+  const a = job && job.commandAction, mode = job && job.requestParams && job.requestParams.mode;
+  if (REMOTE_CANCEL_ACTIONS.has(a) || a === 'cli-generate' || (a === 'batch-generate' && mode !== 'server')) return 'per-run';
+  if (a === 'server-generate' || a === 'xyz-plot' || (a === 'batch-generate' && mode === 'server')) return 'shared-server';
+  return 'unknown';
 }
+function allRunIdsOf(job) {
+  const text = String(job.stdout || '');
+  return [...new Set([...text.matchAll(/SDCPP_RUN_ID:\s*(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/g)].map(m => m[1]))];
+}
+function syncRemoteRunIds(job) { for (const id of allRunIdsOf(job)) remoteWorkers.addRun(job.id, id); }
+setInterval(() => { for (const r of remoteWorkers.list()) if (r.state === 'running' && jobs[r.job_id]) { try { syncRemoteRunIds(jobs[r.job_id]); } catch (_) {} } }, 1000).unref();
+
+function remoteCheckRun(runId) {
+  return new Promise((resolve, reject) => {
+    execFile(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-remote-cancel.sh'), ['--check-only', '--run-id', runId], { cwd: WORKFLOW_ROOT, timeout: 45000, encoding: 'utf8' }, (err, stdout) => {
+      const m = /REMOTE_CHECK: run=\S+ alive=(\d+)/.exec(String(stdout || ''));
+      if (!m) return reject(new Error(err ? String(err.message).split('\n')[0].slice(0, 160) : 'no liveness result'));
+      resolve({ alive: +m[1] });
+    });
+  });
+}
+function remoteStopRun(runId) { return remoteCancelRun(runId).then(r => { if (r.left === undefined) throw new Error(r.error || 'no stop result'); return r; }); }
+function remoteScanOwned() {
+  return new Promise((resolve, reject) => {
+    execFile(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-remote-cancel.sh'), ['--scan-owned'], { cwd: WORKFLOW_ROOT, timeout: 45000, encoding: 'utf8' }, (err, stdout) => {
+      const out = String(stdout || '');
+      if (!/REMOTE_SCAN: done/.test(out)) return reject(new Error(err ? String(err.message).split('\n')[0].slice(0, 160) : 'no scan result'));
+      const sd = /REMOTE_SDSERVER: running=(\d+)/.exec(out);
+      resolve({ runs: [...out.matchAll(/REMOTE_OWNED: run=(\S+)/g)].map(m => m[1]), sdServer: sd ? +sd[1] : NaN });
+    });
+  });
+}
+const reconciler = RemoteWorkers.createReconciler({ registry: remoteWorkers, checkRun: remoteCheckRun, stopRun: remoteStopRun, scanOwned: remoteScanOwned, log: m => console.log('[op7] ' + m) });
+async function reconcileNow() {
+  const out = await reconciler.tick();
+  for (const r of remoteWorkers.list()) if (r.state === 'cancelled_verified' || r.state === 'released_by_operator') { const j = jobs[r.job_id]; if (j && j.remoteOrphan) delete j.remoteOrphan; try { arbiter.release(r.job_id); } catch (_) {} }
+  arbiter.poke();
+  return out;
+}
+
+const waitFor = (pred, ms) => new Promise(resolve => { const t0 = Date.now(); const tick = () => (pred() || Date.now() - t0 > ms ? resolve(pred()) : setTimeout(tick, 100)); tick(); });
+function localGone(job) {
+  if (job.exitCode !== null && job.exitCode !== undefined) return true;
+  for (const pid of [job.activeChildPid, job.childPid].filter(Boolean)) { try { process.kill(pid, 0); return false; } catch (_) {} }
+  return true;
+}
+function killLocalTree(job) {
+  for (const pid of [job.activeChildPid, job.childPid].filter(Boolean)) {
+    try { process.kill(-pid, 'SIGTERM'); } catch (_) { try { process.kill(pid, 'SIGTERM'); } catch (_) {} }
+  }
+}
+// Stop a running heavy job and decide, from evidence only, whether its Big Mac side stopped. Order matters: the remote
+// processes are stopped by run id BEFORE the local ssh ends (ending ssh first would orphan the remote child), then the
+// local tree is stopped and drained (an id announced late is caught), then every id gets an identity-scoped liveness check.
+async function stopAndVerify(job, why) {
+  const kind = workerKind(job);
+  if (!remoteWorkers.get(job.id) || remoteWorkers.get(job.id).state === 'completed') remoteWorkers.start(job.id, { action: job.commandAction, kind });
+  syncRemoteRunIds(job);
+  remoteWorkers.cancelRequested(job.id, why);
+  job.remoteOrphan = { pending: true, at: Date.now() };
+  try {
+    if (kind === 'per-run') {
+      const first = remoteWorkers.get(job.id).run_ids.slice();
+      if (first.length) remoteWorkers.stopDispatched(job.id, first);
+      for (const id of first) { try { const r = await remoteStopRun(id); remoteWorkers.note(job.id, 'stop-result', `${id}: found ${r.found}, left ${r.left}`); } catch (e) { remoteWorkers.note(job.id, 'stop-error', `${id}: ${e.message}`); } }
+      killLocalTree(job);
+      await waitFor(() => localGone(job), 6000);
+      await new Promise(r => setTimeout(r, 200));   // let the last stdout chunk land
+      syncRemoteRunIds(job);
+      const ids = remoteWorkers.get(job.id).run_ids.slice();
+      for (const id of ids.filter(x => !first.includes(x))) { remoteWorkers.stopDispatched(job.id, [id]); try { const r = await remoteStopRun(id); remoteWorkers.note(job.id, 'stop-result', `${id}: found ${r.found}, left ${r.left}`); } catch (e) { remoteWorkers.note(job.id, 'stop-error', `${id}: ${e.message}`); } }
+      if (!ids.length) {
+        if (!localGone(job)) remoteWorkers.unverified(job.id, 'local worker did not stop and no run id was announced');
+        else remoteWorkers.verified(job.id, 'no run id was announced before the local worker stopped (the workers announce it before any remote generation)');
+      } else {
+        remoteWorkers.stopPending(job.id, 'awaiting identity-scoped liveness check');
+        await reconciler.reconcileOne(remoteWorkers.get(job.id));
+        const st = remoteWorkers.get(job.id).state;
+        if (st === 'stop_pending' || st === 'stop_dispatched') await reconciler.reconcileOne(remoteWorkers.get(job.id));   // one re-check after a re-sent stop
+        if (['stop_pending', 'stop_dispatched'].includes(remoteWorkers.get(job.id).state)) remoteWorkers.unverified(job.id, 'processes still alive after the stop; quarantined for reconciliation');
+      }
+    } else {
+      killLocalTree(job);
+      await waitFor(() => localGone(job), 6000);
+      remoteWorkers.unverified(job.id, kind === 'shared-server'
+        ? 'the request runs inside the shared sd-server, which cannot stop one request without stopping the server'
+        : 'this job carries no remote run identity');
+      try { await reconciler.reconcileOne(remoteWorkers.get(job.id)); } catch (e) { remoteWorkers.note(job.id, 'reconcile-error', e.message); }
+    }
+  } catch (e) {
+    remoteWorkers.unverified(job.id, 'stop could not be verified: ' + e.message);
+  }
+  const rec = remoteWorkers.get(job.id);
+  const ok = rec.state === 'cancelled_verified';
+  if (ok || rec.state === 'completed') delete job.remoteOrphan;
+  else job.remoteOrphan = { pending: false, at: Date.now(), quarantined: true };
+  job.remoteStop = rec.state;
+  return { verified: ok, record: rec };
+}
+
+// Startup: anything the previous console left running or stopping is suspected to still run on Big Mac (quarantined), then
+// reconciled now and every 30 s while any quarantine remains (this also covers SSH reconnection: failures retry).
+remoteWorkers.adoptAfterRestart();
+setTimeout(() => { if (remoteWorkers.quarantined().length) reconcileNow().catch(() => {}); }, 5000).unref();
+setInterval(() => { if (remoteWorkers.quarantined().length) reconcileNow().catch(() => {}); }, 30000).unref();
+
 function markJobTimedOut(job, child, timeoutMs, label) {
   if (!job || job.status !== 'running') return;
   job.status = 'FAIL';
@@ -1243,7 +1399,8 @@ function markJobTimedOut(job, child, timeoutMs, label) {
   job.stderr += `\nTimed out after ${Math.round(timeoutMs / 1000)}s waiting for ${label || job.commandAction || 'job'} to finish.`;
   job.remoteOrphan = { pending: true, at: Date.now() };   // hold the lease until the remote side is verified stopped
   // Remote first, then the local tree (see the cancel route: ending ssh first would orphan the remote child).
-  remoteCancelJob(job).catch(err => { job.remoteOrphan = { error: err.message, at: Date.now() }; }).finally(() => terminateChildTree(child));
+  stopAndVerify(job, 'timeout').then(r => { if (r.verified) { try { arbiter.release(job.id); } catch (_) {} arbiter.poke(); } })
+    .catch(err => { remoteWorkers.unverified(job.id, 'timeout stop failed: ' + err.message); }).finally(() => terminateChildTree(child));
 }
 
 function runAction(jobId, scriptPath, args, savePrompts = false) {
@@ -1254,9 +1411,10 @@ function runActionNow(jobId, scriptPath, args, savePrompts = false) {
   job.status = 'running';
   job.startedRunningAt = Date.now();
   if (jobStore.get(jobId) && jobStore.get(jobId).status === 'QUEUED') jobStore.transition(jobId, 'RUNNING');
-  const env = { ...process.env, SDCPP_REDACT_PROMPTS: savePrompts ? '0' : '1' };
+  const env = { ...process.env, SDCPP_REDACT_PROMPTS: savePrompts ? '0' : '1', DEXDIFFUSION_JOB_ID: jobId };
   const child = spawn(scriptPath, args, { cwd: WORKFLOW_ROOT, shell: false, env, detached: true });
   job.childPid = child.pid;
+  job.childClosed = new Promise(resolve => child.once('close', resolve));
   const sensitives = jobSensitives[jobId] || [];
   const timeoutTimer = setTimeout(() => markJobTimedOut(job, child, JOB_TIMEOUT_MS, scriptPath), JOB_TIMEOUT_MS);
   timeoutTimer.unref();
@@ -1276,15 +1434,29 @@ function runActionNow(jobId, scriptPath, args, savePrompts = false) {
   });
   child.on('close', code => {
     clearTimeout(timeoutTimer);
-    // A user cancel is not a failure: keep CANCELLED (it must not be recorded as capability evidence against the model).
-    if (job.status === 'CANCELLED') { job.exitCode = code; cleanupJobTempFiles(job); try { syncGenericTerminal(job); } catch (_) {} return; }
-    if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, job.stdout); cleanupJobTempFiles(job); recordJobEvidence(job); return; }
-    job.exitCode = code;
-    job.completedAt = Date.now();
     const out = job.stdout;
     const errOut = job.stderr;
     const combined = out + errOut;
-    if (code !== 0 || combined.includes('SDCPP_REMOTE_CLEANUP: FAIL')) job.status = 'FAIL';
+    const completedBeforeCancelSignal = successfulPassAfterCancelSignal({
+      cancelInFlight: job.cancelInFlight, exitCode: code, stdout: out, stderr: errOut
+    });
+    // A user cancel is not a failure: keep CANCELLED (it must not be recorded as capability evidence against the model).
+    if (job.status === 'CANCELLED') { job.exitCode = code; cleanupJobTempFiles(job); try { syncGenericTerminal(job); } catch (_) {} return; }
+    // The cancel route owns this nonzero exit unless the worker already emitted
+    // complete pass evidence. Do not record a cancellation signal as backend
+    // capability failure while remote-stop verification is still in flight.
+    if (job.cancelInFlight && code !== 0 && !completedBeforeCancelSignal) {
+      job.exitCode = code;
+      cleanupJobTempFiles(job);
+      return;
+    }
+    if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, job.stdout); cleanupJobTempFiles(job); recordJobEvidence(job); return; }
+    job.exitCode = code;
+    job.completedAt = Date.now();
+    if (completedBeforeCancelSignal) {
+      job.stdout += '\nNatural completion evidence: run-scoped PASS marker and remote cleanup succeeded before the cancel signal.';
+    }
+    if ((code !== 0 && !completedBeforeCancelSignal) || combined.includes('SDCPP_REMOTE_CLEANUP: FAIL')) job.status = 'FAIL';
     else if (out.includes('==== PASS ====')) job.status = 'PASS';
     else if (out.includes('status: PARTIAL') || out.includes('==== PARTIAL ====')) job.status = 'PARTIAL';
     else if (combined.includes('==== FAIL ====')) job.status = 'FAIL';
@@ -1348,7 +1520,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
   job.status = 'running';
   if (jobStore.get(jobId) && jobStore.get(jobId).status === 'QUEUED') jobStore.transition(jobId, 'RUNNING');
   job.results = job.results || [];
-  const env = { ...process.env, SDCPP_REDACT_PROMPTS: params.save_prompts ? '0' : '1' };
+  const env = { ...process.env, SDCPP_REDACT_PROMPTS: params.save_prompts ? '0' : '1', DEXDIFFUSION_JOB_ID: jobId };
   const sensitives = jobSensitives[jobId] || [];
   const native = opts.native !== undefined ? opts.native : nativeBatchEligible(spec, quantity);
   const seeds = opts.seeds || W.planSeeds(params.seed, quantity, { consecutive: native });
@@ -1364,14 +1536,18 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
     if (opts.onDone) { try { opts.onDone(job); } catch (_) {} }
   };
 
-  function pushResults(runStdout, runIndex) {
+  function pushResults(runStdout, runIndex, { requireOwner = false } = {}) {
     const runMatch = runStdout.match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
     const runId = runMatch ? runMatch[1] : null;
     const reported = native
       ? [...runStdout.matchAll(/CONTROLLED_BATCH_IMAGE:\s*(\S+)/g)].map(m => m[1])
       : [(runStdout.match(/CONTROLLED_OUTPUT_IMAGE:\s*(\S+)/) || [])[1]].filter(Boolean);
     reported.forEach((p, k) => {
-      const c = canonicalForReportedPath(p);
+      let c = canonicalForReportedPath(p);
+      if (c && requireOwner) {
+        const owned = runId && imageStore.findIndexEntry(path.join(RUNS_DIR, runId), path.basename(p));
+        if (!owned || owned.job_id !== jobId || owned.run_id !== runId || owned.image_id !== c.id) c = null;
+      }
       const seed = native ? seeds[k] : seeds[runIndex];
       const dims = (c && pngSize(c.path)) || {};
       const item = {
@@ -1427,6 +1603,8 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
 
     const child = spawn(controlledScript, args, { cwd: WORKFLOW_ROOT, shell: false, env, detached: true });
     job.activeChildPid = child.pid;
+    job.activeRunId = null;
+    job.activeChildClosed = new Promise(resolve => child.once('close', resolve));
     let runStdout = '';
     let runStderr = '';
     // Cold checkpoint loading is not included in the warm generation estimate.
@@ -1442,6 +1620,8 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
       const redacted = redactSensitiveText(data.toString(), sensitives);
       job.stdout += redacted;
       runStdout += redacted;
+      const activeRun = runStdout.match(/SDCPP_RUN_ID:\s*(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/) || runStdout.match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
+      if (activeRun) job.activeRunId = activeRun[1];
     });
     child.stderr.on('data', data => {
       const redacted = redactSensitiveText(data.toString(), sensitives);
@@ -1462,7 +1642,51 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
       clearTimeout(timeoutTimer);
       clearInterval(progressTimer);
       job.activeChildPid = null;
-      if (job.status === 'CANCELLED') { job.exitCode = code; updateSequentialProgress(job, { currentRunPercent: 100 }); finish(); return; }
+      if (job.cancelInFlight || job.status === 'CANCELLED') {
+        job.exitCode = code;
+        const runMatch = runStdout.match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
+        const targetMatch = runStdout.match(/CONTROLLED_TARGET:\s*(\S+)/);
+        const imageMatch = runStdout.match(/CONTROLLED_OUTPUT_IMAGE:\s*(\S+)/);
+        const manifestMatch = runStdout.match(/CONTROLLED_MANIFEST:\s*(\S+)/);
+        const runId = runMatch && runMatch[1];
+        if (runId) job.runId = runId;
+        if (targetMatch) job.controlledTarget = targetMatch[1];
+        if (imageMatch) job.controlledOutputImage = imageMatch[1];
+        if (manifestMatch) job.controlledManifest = manifestMatch[1];
+        let publishedPass = false;
+        if (runId && imageMatch) {
+          try {
+            const runDir = path.join(RUNS_DIR, runId);
+            const owner = JSON.parse(fs.readFileSync(path.join(runDir, 'job-owner.json'), 'utf8'));
+            const manifest = JSON.parse(fs.readFileSync(path.join(runDir, 'controlled-manifest.json'), 'utf8'));
+            const reported = path.resolve(imageMatch[1]);
+            const relative = path.relative(runDir, reported);
+            const entry = imageStore.findIndexEntry(runDir, path.basename(reported));
+            const canonical = entry && imageStore.resolveImage(entry.image_id);
+            if (owner.job_id === jobId && owner.run_id === runId && manifest.status === 'PASS' && manifest.run_id === runId
+              && path.resolve(manifest.local_png) === reported && relative && !relative.startsWith('..') && !path.isAbsolute(relative)
+              && entry && entry.job_id === jobId && entry.run_id === runId && canonical) {
+              const measured = validateImage(canonical.path);
+              publishedPass = measured.sha256 === entry.sha256;
+            }
+          } catch (_) {}
+        }
+        if (publishedPass) pushResults(runStdout, runIndex, { requireOwner: true });
+        if (job.cancelInFlight && publishedPass && quantity === 1 && job.results.some(r => r.status === 'DONE')) {
+          // The run manifest and run-owned canonical index prove publication
+          // completed before child close, even if cancellation killed the shell
+          // before it could print the post-publication PASS marker.
+          job.status = 'PASS';
+          job.completedAt = Date.now();
+          finish();
+        } else if (job.cancelInFlight && publishedPass && job.results.some(r => r.status === 'DONE')) {
+          // A batch can keep verified prior output while cancellation stops the
+          // remaining run(s); the cancel route commits CANCELLED with receipts.
+          job.cancelledAfterPublication = true;
+        }
+        updateSequentialProgress(job, { currentRunPercent: 100 });
+        return;
+      }
       if (job.firstFailedGate === 'timeout') { finalizeJobImages(job, runStdout); finish(); return; }
       job.exitCode = code;
       const combined = runStdout + runStderr;
@@ -4069,6 +4293,19 @@ app.post('/api/xyz/:id/grid', (req, res) => {
 });
 
 // ---- A1111 Prompt matrix + Prompts from file or textbox (SC-16..SC-19): same validated queue cells as the X/Y/Z plot ----
+// OP-4A independent second-pass Hires (pixel space): base pass through its own backend, then an img2img refinement with its
+// own prompt / checkpoint / sampler / scheduler. Both images canonical and linked (hires-2pass.js).
+const { canonicalSampler } = require('./controlled-args');
+require('./hires-2pass').mount(app, { WORKFLOW_ROOT, RUNS_DIR, MASK_UPLOADS_DIR, JOB_TIMEOUT_MS, jobs, jobStore, jobSensitives, createJob, withLease,
+  normalizeControlledGenerationBody, validateControlledGenerationParams, allControlledTargets, CONTROLLED_TARGET_BY_ID, TARGET_MODELS,
+  buildControlledArgs, controlledScriptFor, resolveVaePath, canonicalForReportedPath, pngSize, imageMeta, imageStore, EC, SDCLI_SAMPLER, canonicalSampler,
+  validateSecondPassSampling: (spec, { sampler, scheduler }) => {
+    const c = canonicalSampler(sampler);
+    if (!SDCLI_SAMPLER[c]) return `sampler "${sampler}" is not supported by the installed sd-cli`;
+    return validateSamplingFields(spec, { sampler: c }) || (scheduler && !validateScheduler(scheduler) ? `Unknown scheduler "${scheduler}"` : null);
+  },
+  sanitizeRequestParams, redactSensitiveText, updateSequentialProgress, finalizeJobImages, recordJobEvidence, syncGenericTerminal,
+  runStamp: () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; } });
 // Multi-pass stock scripts (SD upscale, Loopback, Poor man's / mk2 outpainting): one leased job, one sd-cli pass per step.
 require('./script-chains').mount(app, { WORKFLOW_ROOT, RUNS_DIR, MASK_UPLOADS_DIR, JOB_TIMEOUT_MS, jobs, jobStore, jobSensitives, createJob, withLease,
   resolveImageSource, resolveEditResources, pngSize, normalizeGenerationBody, validateGenerationParams, sanitizeRequestParams, editGenRecord,
@@ -4568,46 +4805,126 @@ app.get('/api/operations/snapshot', (req, res) => {
 app.post('/api/jobs/:id/cancel', async (req, res) => {
   const jobId = req.params.id;
   const reason = (req.body && req.body.reason) || 'Cancelled by user';
-
-  // In-memory image job: stop the local process group, then verify the Big Mac side is really stopped.
   const job = jobs[jobId];
-  // A second Cancel while the first is still verifying the Big Mac side must not fall through and release the lease early.
-  if (job && job.status === 'CANCELLED' && job.remoteOrphan && job.remoteOrphan.pending) return res.status(409).json({ ok: false, gate: 'cancel-in-progress', error: 'A cancel is already stopping this job on Big Mac; wait for it to finish.' });
-  const retry = job && job.status === 'CANCELLED' && job.remoteOrphan && !job.remoteOrphan.pending;
-  if (job && (job.status === 'queued' || job.status === 'running' || retry)) {
-    const wasRunning = job.status === 'running' || retry;
-    const killLocal = () => {
-      for (const pid of [job.activeChildPid, job.childPid].filter(Boolean)) {
-        try { process.kill(-pid, 'SIGTERM'); } catch (_) { try { process.kill(pid, 'SIGTERM'); } catch (_) {} }
-      }
-    };
-    if (!retry) {
-      job.status = 'CANCELLED';
-      job.completedAt = Date.now();
-      job.firstFailedGate = 'user-cancelled';
-      job.stderr += '\nJob cancelled by user request.';
-    }
-    if (wasRunning) {
-      job.remoteOrphan = job.remoteOrphan || { pending: true, at: Date.now() };   // lease stays held until verified
-      // Stop the Big Mac side FIRST: ending the local ssh makes the remote wrapper exit, after which its run id can no
-      // longer be matched and its child (sd-cli / MFLUX python) would be left running as an orphan.
-      const remote = await remoteCancelJob(job);
-      if (!retry) killLocal();
-      if (!remote.ok) {
-        job.stderr += '\nRemote cancel could not be verified: ' + remote.runs.filter(r => !r.ok).map(r => r.error || `${r.left} process(es) still running`).join('; ');
-        return res.status(502).json({ ok: false, gate: 'remote-cancel-failed', status: 'CANCELLED', error: 'The job was cancelled locally, but a process on Big Mac could not be confirmed stopped. The heavy-compute lease is kept; press Cancel again to retry.', remote });
-      }
-      if (retry || remote.runs.length) job.stderr += '\nRemote processes stopped (' + remote.runs.map(r => `${r.runId}: killed ${r.killed}`).join(', ') + ').';
-      // The Big Mac side is verified stopped: release the lease and announce. (cancelJob may report "already terminal"
-      // because the child's close handler has already synced the durable record; that is the outcome we want.)
-      try { arbiter.release(jobId); } catch (_) {}
-      await cancelManager.cancelJob(jobId, { reason });
-      return res.json({ ok: true, status: 'CANCELLED', remote });
-    }
+  // OP-7 contract: a cancel request is not evidence. The response says whether the Big Mac side is VERIFIED stopped;
+  // when it is not, the job is CANCELLED locally, its worker record is quarantined and heavy work stays paused.
+  if (job && job.cancelInFlight) return res.status(409).json({ ok: false, gate: 'cancel-in-progress', status: job.status, remote_stop: 'stopping', error: 'A cancel is already stopping this job on Big Mac; wait for it to finish.' });
+  const rec0 = remoteWorkers.get(jobId);
+  const retry = job && job.status === 'CANCELLED' && rec0 && remoteWorkers.isQuarantined(jobId);
+  if (job && job.status === 'queued' && !job.startedRunningAt) {
+    // Never started: nothing reached Big Mac. Leave the lease queue and record why.
+    job.status = 'CANCELLED'; job.completedAt = Date.now(); job.firstFailedGate = 'user-cancelled'; job.stderr += '\nJob cancelled before it started.';
+    if (rec0 && !rec0.run_ids.length) remoteWorkers.verified(jobId, 'cancelled before execution');
+    try { arbiter.release(jobId); } catch (_) {}
+    await cancelManager.cancelJob(jobId, { reason });
+    return res.json({ ok: true, status: 'CANCELLED', remote_stop: 'not_started' });
   }
-
+  if (job && (job.status === 'running' || job.status === 'queued' || retry)) {
+    if (!retry) job.stderr += '\nJob cancellation requested; waiting for the worker result and remote-stop check.';
+    job.cancelInFlight = true;
+    let out;
+    try {
+      let publicationWon = false;
+      if (!retry && job.activeRunId) {
+        const decision = imageStore.requestPublicationCancellation(path.join(RUNS_DIR, job.activeRunId), jobId);
+        publicationWon = decision.decision === 'publish';
+      }
+      if (retry) out = (await reconcileNow(), { verified: remoteWorkers.get(jobId).state === 'cancelled_verified', record: remoteWorkers.get(jobId) });
+      else if (publicationWon) {
+        // The canonicalizer atomically claimed publication before this cancel.
+        // Let its local transaction finish; stopping the local process tree here
+        // could kill it between the canonical link and receipt reconciliation.
+        const childClosed = job.activeChildClosed || job.childClosed;
+        if (childClosed) await childClosed;
+        // A late cancel can resume as soon as the child's close promise settles,
+        // while its close handler is still reconciling the run. Re-read the
+        // exact run-owned publication after that boundary so a PASS image is
+        // not downgraded to CANCELLED or exposed through its transient path.
+        const canonical = canonicalControlledOutput(job);
+        let manifestPass = false;
+        if (canonical && job.requestParams && Number(job.requestParams.quantity || 1) === 1) {
+          try {
+            const manifest = JSON.parse(fs.readFileSync(path.join(RUNS_DIR, job.runId, 'controlled-manifest.json'), 'utf8'));
+            manifestPass = manifest.status === 'PASS' && manifest.run_id === job.runId
+              && path.resolve(manifest.local_png) === path.resolve(job.controlledOutputImage);
+          } catch (_) {}
+        }
+        if (canonical && manifestPass && /SDCPP_REMOTE_CLEANUP: OK/.test(job.stdout || '')) {
+          if (!(job.results || []).some(r => r.imageId === canonical.entry.image_id)) {
+            const [width, height] = canonical.measured.dimensions || [];
+            job.results = [...(job.results || []), {
+              index: (job.results || []).length, status: 'DONE', imageId: canonical.entry.image_id,
+              imageUrl: imageStore.imageUrl(canonical.entry.image_id), seed: canonical.entry.seed,
+              runId: job.runId, target: job.controlledTarget, width, height,
+              operation: (job.requestParams && job.requestParams.operation) || 'txt2img',
+            }];
+          }
+          job.status = 'PASS';
+          job.completedAt = Date.now();
+        }
+        const finishedPass = /SDCPP_REMOTE_CLEANUP: OK/.test(job.stdout || '')
+          && ((job.status === 'PASS' || job.status === 'PARTIAL') || (job.results || []).some(r => r.status === 'DONE'));
+        if (finishedPass) {
+          if (job.status !== 'PASS' && job.status !== 'PARTIAL') remoteWorkers.finished(jobId, 'COMPLETE');
+          out = { verified: false, completedNaturally: true, record: remoteWorkers.get(jobId) };
+        } else out = await stopAndVerify(job, 'user');
+      } else out = await stopAndVerify(job, 'user');
+      // stopAndVerify owns remote evidence. After it returns, await the actual
+      // local child close callback so publication and its run index are consumed
+      // before cancellation can commit a terminal state.
+      const childClosed = job && (job.activeChildClosed || job.childClosed);
+      if (childClosed) await childClosed;
+    } finally { job.cancelInFlight = false; }
+    const rec = out.record;
+    const genericAfterStop = jobStore.get(jobId);
+    if (job.status === 'PASS' || job.status === 'PARTIAL' || (genericAfterStop && genericAfterStop.status === 'COMPLETE')) {
+      // A completed image and its finalization receipt outrank a racing cancel.
+      if (!genericAfterStop || genericAfterStop.status !== 'COMPLETE') syncGenericTerminal(job);
+      try { arbiter.release(jobId); } catch (_) {}
+      arbiter.poke();
+      return res.json({ ok: true, status: 'COMPLETE', remote_stop: 'completed_naturally', worker: rec });
+    }
+    if (!retry) { job.status = 'CANCELLED'; job.completedAt = Date.now(); job.firstFailedGate = 'user-cancelled'; job.stderr += '\nJob cancelled by user request.'; }
+    syncGenericTerminal(job);
+    if (out.completedNaturally) {
+      try { arbiter.release(jobId); } catch (_) {}
+      arbiter.poke();
+      await cancelManager.cancelJob(jobId, { reason });
+      return res.json({ ok: true, status: 'CANCELLED', remote_stop: 'completed_naturally', worker: rec });
+    }
+    if (out.verified) {
+      job.stderr += '\nBig Mac side verified stopped (' + (rec.evidence.filter(e => e.kind === 'verified').map(e => e.detail).pop() || 'verified') + ').';
+      try { arbiter.release(jobId); } catch (_) {}
+      arbiter.poke();
+      await cancelManager.cancelJob(jobId, { reason });
+      return res.json({ ok: true, status: 'CANCELLED', remote_stop: 'verified', worker: rec });
+    }
+    job.stderr += '\nRemote stop NOT verified: ' + (rec.evidence.filter(e => e.kind === 'unverified').map(e => e.detail).pop() || rec.state);
+    try { await cancelManager.cancelJob(jobId, { reason }); } catch (_) {}
+    return res.status(202).json({ ok: false, status: 'CANCELLED', remote_stop: 'unverified', quarantine: true, gate: 'remote-stop-unverified', worker: rec,
+      error: 'Cancelled locally, but the Big Mac side could not be verified stopped. Heavy work is paused (quarantine) until reconciliation proves it stopped; retry the check or release it explicitly.' });
+  }
   const result = await cancelManager.cancelJob(jobId, { reason });
   res.json(result);
+});
+
+// OP-7 operator surface: unresolved remote workers, a reconcile-now trigger, and an explicit (labelled) release.
+app.get('/api/remote-workers', (req, res) => {
+  res.json({ quarantine: remoteWorkers.quarantineReason(), workers: remoteWorkers.list().slice(0, 50) });
+});
+app.post('/api/remote-workers/reconcile', async (req, res) => {
+  try { const out = await reconcileNow(); res.json({ ok: true, ...out, quarantine: remoteWorkers.quarantineReason(), workers: remoteWorkers.quarantined() }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post('/api/remote-workers/:id/release', (req, res) => {
+  const b = req.body || {};
+  if (b.acknowledge !== 'unverified') return res.status(400).json({ error: 'Releasing a quarantine is an unverified decision: send {"acknowledge":"unverified"} to confirm.' });
+  const r = remoteWorkers.operatorRelease(req.params.id, 'released by the operator without verification' + (typeof b.note === 'string' ? ': ' + b.note.slice(0, 120) : ''));
+  if (!r) return res.status(404).json({ error: 'No quarantined worker with that job id.' });
+  const j = jobs[req.params.id]; if (j) { delete j.remoteOrphan; j.remoteStop = r.state; }
+  try { arbiter.release(req.params.id); } catch (_) {}
+  arbiter.poke();
+  res.json({ ok: true, worker: r, quarantine: remoteWorkers.quarantineReason() });
 });
 
 // ---- F04: Indexed Library Endpoints ------------------------------------------
@@ -4940,7 +5257,7 @@ app.get('/api/jobs/:jobId', (req, res) => {
     const g = jobStore.get(req.params.jobId);
     if (!g) return res.status(404).json({ error: 'Job not found' });
     const legacy = { COMPLETE: 'PASS', FAILED: 'FAIL', INTERRUPTED: 'INTERRUPTED', CANCELLED: 'CANCELLED' }[g.status] || g.status.toLowerCase();
-    return res.json({ id: g.job_id, commandAction: g.operation, status: legacy, generic: g, firstFailedGate: g.first_failed_gate,
+    return res.json({ id: g.job_id, commandAction: g.operation, status: legacy, generic: g, firstFailedGate: g.first_failed_gate, remoteStop: (remoteWorkers.get(g.job_id) || {}).state || null,
       results: g.artifacts.map((a, i) => {
         const seedMatch = String(a).match(/-s(\d+)-/);
         const seed = seedMatch ? Number(seedMatch[1]) : (g.params && g.params.seed >= 0 ? g.params.seed : null);
@@ -4967,7 +5284,10 @@ app.get('/api/jobs/:jobId', (req, res) => {
     exitCode: job.exitCode,
     firstFailedGate: job.firstFailedGate,
     runId: job.runId,
-    remoteCancel: job.remoteCancel || null,
+    // OP-7: remoteStop is the worker record's state (cancel_requested | stop_dispatched | stop_pending | cancelled_verified |
+    // stop_unverified | orphan_suspect | released_by_operator | ...); remoteCancel.ok is true ONLY for a verified stop.
+    remoteStop: (remoteWorkers.get(job.id) || {}).state || null,
+    remoteCancel: remoteWorkers.get(job.id) && job.status === 'CANCELLED' ? { ok: remoteWorkers.get(job.id).state === 'cancelled_verified', state: remoteWorkers.get(job.id).state } : null,
     upscaledImage: job.upscaledImage || null,
     upscaleManifest: job.upscaleManifest || null,
     controlledTarget: job.controlledTarget || null,
@@ -4997,17 +5317,18 @@ app.get('/api/jobs/:jobId', (req, res) => {
         operation: r.operation
       }));
       if (items.length === 0 && (job.controlledOutputImage || job.controlledOutputImageUrl)) {
-        const imgId = job.controlledOutputImage || (job.controlledOutputImageUrl && decodeURIComponent(job.controlledOutputImageUrl.split('/').pop()));
+        const canonical = canonicalControlledOutput(job);
+        const imgId = canonical ? canonical.entry.image_id : (job.controlledOutputImage || (job.controlledOutputImageUrl && decodeURIComponent(job.controlledOutputImageUrl.split('/').pop())));
         if (imgId) {
           items.push({
             image_id: imgId,
-            url: job.controlledOutputImageUrl || imageStore.imageUrl(imgId),
-            thumbnail_url: job.controlledOutputImageUrl || imageStore.imageUrl(imgId),
+            url: canonical ? imageStore.imageUrl(imgId) : (job.controlledOutputImageUrl || imageStore.imageUrl(imgId)),
+            thumbnail_url: canonical ? imageStore.imageUrl(imgId) : (job.controlledOutputImageUrl || imageStore.imageUrl(imgId)),
             seed: (job.seeds && job.seeds[0]) || (job.requestParams && job.requestParams.seed),
             index: 0,
             run_id: job.runId,
             target: job.controlledTarget,
-            status: job.status === 'PASS' || job.status === 'DONE' ? 'DONE' : job.status,
+            status: canonical ? 'DONE' : (job.status === 'PASS' || job.status === 'DONE' ? 'DONE' : job.status),
             operation: (job.requestParams && job.requestParams.operation) || 'txt2img'
           });
         }
@@ -5034,6 +5355,9 @@ app.get('/api/jobs/:jobId/log', (req, res) => {
 
 app.get('/api/version', (req, res) => {
   res.json(getBuildInfo());
+});
+app.get('/api/publication-recovery', (req, res) => {
+  res.json({ status: publicationRecoveryState.blocked ? 'BLOCKED' : 'CLEAR', ...publicationRecoveryState });
 });
 
 // Read-only operational metadata (access URLs, primary engine, storage,

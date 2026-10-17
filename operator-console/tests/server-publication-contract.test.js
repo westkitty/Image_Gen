@@ -21,9 +21,10 @@ test('generic server completion requires a fresh canonical receipt and releases 
   const sync=load('syncGenericTerminal','function updateSequentialProgress',{
     jobStore:store, TERMINAL:J.TERMINAL, artifactReceipt:J.artifactReceipt,
     JOB_IMAGE_FIELDS:['controlledOutputImage','hiresBaseImage','hiresFinalImage','upscaledImage'],RUNS_DIR:'/owned/runs',path,
-    imageStore:{resolveImage:id=>id==='valid.png'?{path:'/owned/valid.png'}:null,readRunIndex:run=>run.endsWith('20261003-120000-legacy')?[{image_id:'valid.png'}]:[]},
+    imageStore:{resolveImage:id=>id==='valid.png'?{path:'/owned/valid.png'}:null,readRunIndex:run=>run.endsWith('20261003-120000-legacy')?[{image_id:'valid.png'}]:[],acknowledgePublication:()=>({acknowledged:0,unresolved:[]})},
     validateImage:()=>({sha256:'a'.repeat(64)}), arbiter:{release:()=>releases++},
-    holdsLease: load('holdsLease','function syncGenericTerminal',{Date,REMOTE_ORPHAN_HOLD_MS:120000}),
+    holdsLease: load('holdsLease','function syncGenericTerminal',{Date,remoteWorkers:{isQuarantined:id=>id==='quarantined'}}),
+    remoteWorkers:{finished:()=>{}}, syncRemoteRunIds:()=>{},
   });
   for (const id of ['missing','empty','valid']) {
     store.create({job_id:id,media_kind:'image',operation:'controlled-generate',worker_id:'mflux'});
@@ -40,14 +41,58 @@ test('generic server completion requires a fresh canonical receipt and releases 
   store.create({job_id:'legacy',media_kind:'image',operation:'cli-generate',worker_id:'sdcpp'});
   sync({id:'legacy',status:'PASS',results:[],runId:'20261003-120000-legacy'});
   assert.equal(store.get('legacy').status,'COMPLETE','legacy run-only output must receive a validated receipt');
-  // A cancelled job whose Big Mac process is not yet confirmed stopped must keep the heavy lease (a stale hold expires).
+  // A cancelled job whose Big Mac process is not yet confirmed stopped keeps the heavy lease. OP-7: age is not evidence.
   const before=releases;
   store.create({job_id:'held',media_kind:'image',operation:'controlled-generate',worker_id:'mflux'});
   sync({id:'held',status:'CANCELLED',results:[],remoteOrphan:{pending:true,at:Date.now()}});
   assert.equal(releases,before,'lease is held while the remote stop is unconfirmed');
   store.create({job_id:'stale',media_kind:'image',operation:'controlled-generate',worker_id:'mflux'});
-  sync({id:'stale',status:'CANCELLED',results:[],remoteOrphan:{pending:true,at:Date.now()-121000}});
-  assert.equal(releases,before+1,'a hold older than two minutes is dropped');
+  sync({id:'stale',status:'CANCELLED',results:[],remoteOrphan:{pending:true,at:Date.now()-24*3600e3}});
+  assert.equal(releases,before,'an old unverified hold is NOT dropped: elapsed time never proves a remote stop');
+  store.create({job_id:'quarantined',media_kind:'image',operation:'xyz-plot',worker_id:'sdcpp'});
+  sync({id:'quarantined',status:'CANCELLED',results:[]});
+  assert.equal(releases,before,'a quarantined worker record keeps the lease even without an in-memory hold (restart)');
   store.create({job_id:'probe',media_kind:'image',operation:'probe',worker_id:'sdcpp',artifact_required:false});
   sync({id:'probe',status:'PASS',results:[]}); assert.equal(store.get('probe').status,'COMPLETE');
+});
+
+test('a canonical output committed before terminal cancellation is retained with an API artifact receipt', () => {
+  const store=M.createJobStore(null);
+  const sync=load('syncGenericTerminal','function updateSequentialProgress',{
+    jobStore:store, TERMINAL:J.TERMINAL, artifactReceipt:J.artifactReceipt,
+    JOB_IMAGE_FIELDS:['controlledOutputImage','hiresBaseImage','hiresFinalImage','upscaledImage'],
+    RUNS_DIR:'/owned/runs',path,
+    imageStore:{resolveImage:id=>id==='published.png'?{path:'/owned/published.png'}:null,readRunIndex:()=>[],acknowledgePublication:()=>({acknowledged:0,unresolved:[]})},
+    validateImage:()=>({sha256:'b'.repeat(64)}), arbiter:{release:()=>{}},
+    holdsLease:()=>false, remoteWorkers:{finished:()=>{}}, syncRemoteRunIds:()=>{},
+    eventBus:{publish:()=>{}}, timingStore:null, libraryIndex:null, imageMeta:{get:()=>null},
+  });
+  store.create({job_id:'cancel-after-commit',media_kind:'image',operation:'controlled-generate',worker_id:'sdcpp'});
+  const job={id:'cancel-after-commit',status:'CANCELLED',results:[{imageId:'published.png'}],stderr:''};
+  sync(job);
+  const durable=store.get(job.id);
+  assert.equal(durable.status,'CANCELLED');
+  assert.deepEqual(Array.from(durable.artifacts),['published.png']);
+  assert.equal(durable.artifact_validation.validated,true);
+  assert.equal(durable.artifact_validation.artifacts[0].sha256,'b'.repeat(64));
+});
+
+test('late-cancel API projection resolves a controlled run path to its exact owned canonical artifact', () => {
+  const resolve = load('canonicalControlledOutput','function syncGenericTerminal', {
+    RUNS_DIR:'/owned/runs', path,
+    fs:{readFileSync:(file)=>{
+      assert.equal(file,'/owned/runs/20261017-072630-controlled-sd15/job-owner.json');
+      return JSON.stringify({job_id:'job-1',run_id:'20261017-072630-controlled-sd15'});
+    }},
+    imageStore:{
+      readRunIndex:()=>[{job_id:'job-1',run_id:'20261017-072630-controlled-sd15',run_file:'controlled-sd15.png',image_id:'canonical.png',sha256:'c'.repeat(64)}],
+      resolveImage:id=>id==='canonical.png'?{path:'/owned/images/canonical.png'}:null,
+    },
+    validateImage:()=>({sha256:'c'.repeat(64),dimensions:[512,512]}),
+  });
+  const record=resolve({id:'job-1',runId:'20261017-072630-controlled-sd15',controlledOutputImage:'/owned/runs/20261017-072630-controlled-sd15/controlled-sd15.png'});
+  assert.equal(record.entry.image_id,'canonical.png');
+  assert.equal(record.image.path,'/owned/images/canonical.png');
+  assert.equal(resolve({id:'other',runId:'20261017-072630-controlled-sd15',controlledOutputImage:'/owned/runs/20261017-072630-controlled-sd15/controlled-sd15.png'}),null);
+  assert.equal(resolve({id:'job-1',runId:'20261017-072630-controlled-sd15',controlledOutputImage:'/tmp/foreign.png'}),null);
 });

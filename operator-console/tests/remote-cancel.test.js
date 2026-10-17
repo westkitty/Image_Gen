@@ -113,18 +113,37 @@ test('malformed run ids are refused before anything is sent', async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('server contract: verified remote stop gates the lease, timeouts use it, MFLUX carries the run id', () => {
-  assert.match(SERVER, /remoteCancelJob\(job\)/);
+test('server contract (OP-7): only verified evidence releases compute; no timer, no "ok but unverified" release', () => {
+  assert.match(SERVER, /async function stopAndVerify\(job, why\)/);
   assert.match(SERVER, /const imageActive = img && \(\['queued', 'running'\]\.includes\(img\.status\) \|\| holdsLease\(img\)\)/, 'the sweeper keeps the lease while a remote process is unconfirmed');
-  // the CANCELLED close paths call syncGenericTerminal, which must not release a held lease (review finding: it did)
-  const sync = SERVER.slice(SERVER.indexOf('function syncGenericTerminal'), SERVER.indexOf('function syncGenericTerminal') + 3500);
-  assert.equal((sync.match(/arbiter\.release\(job\.id\)/g) || []).length, 2);
+  const sync = SERVER.slice(SERVER.indexOf('function syncGenericTerminal'), SERVER.indexOf('function syncGenericTerminal') + 3800);
   assert.equal((sync.match(/if \(!holdsLease\(job\)\) arbiter\.release\(job\.id\)/g) || []).length, 2, 'both release sites honour the hold');
-  assert.match(SERVER, /REMOTE_ORPHAN_HOLD_MS = 2 \* 60 \* 1000/, 'a failed remote cancel cannot hold the lease forever');
-  assert.match(SERVER, /if \(!REMOTE_CANCEL_ACTIONS\.has\(job\.commandAction\)\) \{ delete job\.remoteOrphan;/, 'unverifiable actions clear the hold');
-  assert.match(SERVER, /gate: 'remote-cancel-failed'/);
+  assert.doesNotMatch(SERVER, /REMOTE_ORPHAN_HOLD_MS/, 'elapsed time must never release a protected lease');
+  assert.match(SERVER, /function holdsLease\(job\) \{ return !!\(job && \(remoteWorkers\.isQuarantined\(job\.id\)/);
+  assert.match(SERVER, /quarantineCheck: \(\) => publicationRecoveryState\.blocked \? '[^']+' : remoteWorkers\.quarantineReason\(\)/, 'the arbiter honors both recovery and remote-stop quarantine');
+  assert.match(SERVER, /remote_stop: 'unverified', quarantine: true, gate: 'remote-stop-unverified'/);
+  assert.match(SERVER, /remote_stop: 'verified'/);
   assert.match(SERVER, /gate: 'cancel-in-progress'/, 'a second Cancel cannot release the lease while the first is verifying');
   assert.match(SERVER, /job\.childPid = child\.pid/);
+  // the cancel route releases the lease only on the verified branch
+  const route = SERVER.slice(SERVER.indexOf("app.post('/api/jobs/:id/cancel'"), SERVER.indexOf("app.get('/api/remote-workers'"));
+  const verifiedBranch = route.slice(route.indexOf('if (out.verified) {'), route.indexOf("remote_stop: 'verified'"));
+  assert.equal((route.match(/arbiter\.release\(jobId\)/g) || []).length, 4, 'released only when never started, remotely verified, or a successful natural completion won the race');
+  assert.match(verifiedBranch, /arbiter\.release\(jobId\)/);
+  const activeCancel = route.slice(route.indexOf("if (job && (job.status === 'running'"));
+  assert.ok(activeCancel.indexOf('requestPublicationCancellation') < activeCancel.indexOf("job.status = 'CANCELLED'"),
+    'the running job remains eligible to finalize until stop and completion race are resolved');
+  assert.match(activeCancel, /remote_stop: 'completed_naturally'/, 'a successful finalization wins the racing cancellation');
+  assert.match(SERVER, /if \(job\.cancelInFlight && job\.status !== 'PASS' && job\.status !== 'PARTIAL'\) return;/,
+    'signal-induced local failure is deferred until the cancel route persists its terminal state');
+  assert.match(SERVER, /successfulPassAfterCancelSignal\(\{[\s\S]{0,180}cancelInFlight: job\.cancelInFlight/,
+    'a pass marker plus successful remote cleanup can beat a local signal delivered after completion');
+  assert.match(SERVER, /if \(job\.cancelInFlight && code !== 0 && !completedBeforeCancelSignal\) \{[\s\S]{0,240}cleanupJobTempFiles\(job\);\s+return;/,
+    'a verified cancel exit is not persisted as a capability failure');
+  assert.match(activeCancel, /if \(childClosed\) await childClosed/,
+    'the cancel decision awaits the actual child close event before terminalizing');
+  assert.match(SERVER, /publicationWon = decision\.decision === 'publish'/,
+    'an already claimed publication is allowed to drain before cancellation terminalizes');
   const mflux = fs.readFileSync(path.join(ROOT, 'sdcpp-workflow', 'bin', 'mflux-controlled-generate.sh'), 'utf8');
   assert.match(mflux, /dexdiffusion-mflux-\$RUN_ID/);
 });

@@ -4,7 +4,7 @@ Append-only. Controlling documents (local copies, retrieved read-only from Drive
 `docs/parity/DEXDIFFUSION_COMPLETE_UI_IMPLEMENTATION_PLAN.md`, `docs/parity/DEXDIFFUSION_A1111_PARITY_LEDGER.json` (258 provisional rows; schema `dexdiffusion.a1111.parity-ledger.v1`).
 Upstream pin: AUTOMATIC1111 `82a973c04367123ae98bd9abdf80d9eda9b910e2`. Exclusions: training, checkpoint merging.
 
-## Verdict: PARTIAL — 266 rows: 75 COMPLETE, 62 PARTIAL, 38 PENDING, 89 BLOCKED, 2 EXCLUDED (computed from the v2 ledger by `docs/parity/tools/reconcile_ledger.py`; enforced by `operator-console/tests/parity-ledger.test.js`). Superseded headline (P15, 2026-10-16): "258 rows: 0 COMPLETE, 81 PARTIAL, 64 BLOCKED, 113 PENDING" — it disagreed with the JSON (77/64/117) and is kept here only as history.
+## Verdict: PARTIAL — 266 rows: 80 COMPLETE, 62 PARTIAL, 38 PENDING, 84 BLOCKED, 2 EXCLUDED (computed from the v2 ledger by `docs/parity/tools/reconcile_ledger.py`; enforced by `operator-console/tests/parity-ledger.test.js`). OP-4A's independent pixel-space second-pass prompt, negative prompt, checkpoint, sampler and scheduler rows are included; latent handoff and mid-loop refiner remain OP-4B blockers. Superseded headline (P15, 2026-10-16): "258 rows: 0 COMPLETE, 81 PARTIAL, 64 BLOCKED, 113 PENDING" — it disagreed with the JSON (77/64/117) and is kept here only as history.
 
 ## P00 preflight (2026-10-16)
 - Host MacBook-Air.local / user andrew; repo `/Users/andrew/Image_Gen`, branch `main`, origin `git@github.com:westkitty/Image_Gen.git`, HEAD `483cb5e` (above the blueprint's `169ad07` baseline).

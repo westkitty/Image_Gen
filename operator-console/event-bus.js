@@ -26,6 +26,7 @@ const ALLOWED_EVENT_CLASSES = new Set([
   'queue.changed',
   'resource.changed',
   'library.changed',
+  'remote.worker',   // OP-7: { job_id, state, action } — never prompt text
   'heartbeat'
 ]);
 

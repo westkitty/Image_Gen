@@ -1,0 +1,585 @@
+{
+ "schema": "dexdiffusion.engine-contract.v1",
+ "probed_at": "2026-10-17",
+ "rules": {
+  "PROVEN": "engine mechanism exists AND at least one cited ledger row is LIVE_PROVEN (a real generation on Big Mac)",
+  "ENGINE_AVAILABLE": "every cited flag exists in the pinned binary, but no live proof (wiring or assets missing). Never shown as working.",
+  "ENGINE_ABSENT": "the pinned engine has no mechanism; must name an approval-gated packet",
+  "drift": "if the live binary hash differs from the pin, every PROVEN row for that engine is suspended until re-proven"
+ },
+ "engines": [
+  {
+   "id": "sd-cli",
+   "path": "~/stable-diffusion.cpp/build/bin/sd-cli",
+   "rev": "7f0e728",
+   "sha256": "ee1bc2fe07d48a787e17a7d0c5505fd7bb07241af09d9993294772dcefbba9bb",
+   "bytes": 56620648,
+   "flags": [
+    "--audio-vae",
+    "--backend",
+    "--batch-count",
+    "--cache-mode",
+    "--cache-option",
+    "--canny",
+    "--cfg-scale",
+    "--chroma-disable-dit-mask",
+    "--chroma-enable-t5-mask",
+    "--chroma-t5-mask-pad",
+    "--circular",
+    "--circularx",
+    "--circulary",
+    "--clip",
+    "--clip-on-cpu",
+    "--clip-skip",
+    "--color",
+    "--control-image",
+    "--control-net",
+    "--control-net-cpu",
+    "--control-strength",
+    "--control-video",
+    "--convert-name",
+    "--diffusion-conv-direct",
+    "--diffusion-fa",
+    "--diffusion-model",
+    "--disable-auto-resize-ref-image",
+    "--disable-image-metadata",
+    "--embd-dir",
+    "--embeddings-connectors",
+    "--end-img",
+    "--eta",
+    "--extra-sample-args",
+    "--extra-tiling-args",
+    "--fa",
+    "--flow-shift",
+    "--force-sdxl-vae-conv-scale",
+    "--fps",
+    "--guidance",
+    "--height",
+    "--help",
+    "--high-noise-cfg-scale",
+    "--high-noise-diffusion-model",
+    "--high-noise-eta",
+    "--high-noise-guidance",
+    "--high-noise-img-cfg-scale",
+    "--high-noise-sampling-method",
+    "--high-noise-skip-layer-end",
+    "--high-noise-skip-layer-start",
+    "--high-noise-skip-layers",
+    "--high-noise-slg-scale",
+    "--high-noise-steps",
+    "--hires",
+    "--hires-denoising-strength",
+    "--hires-height",
+    "--hires-scale",
+    "--hires-sigmas",
+    "--hires-steps",
+    "--hires-upscale-tile-size",
+    "--hires-upscaler",
+    "--hires-upscalers-dir",
+    "--hires-width",
+    "--image",
+    "--img-cfg-scale",
+    "--increase-ref-index",
+    "--init-img",
+    "--llm",
+    "--lora-apply-mode",
+    "--lora-model-dir",
+    "--mask",
+    "--max-vram",
+    "--metadata-all",
+    "--metadata-brief",
+    "--metadata-format",
+    "--metadata-raw",
+    "--mmap",
+    "--mode",
+    "--model",
+    "--moe-boundary",
+    "--negative-prompt",
+    "--offload-to-cpu",
+    "--output",
+    "--output-begin-idx",
+    "--params-backend",
+    "--photo-maker",
+    "--pm-id-embed-path",
+    "--pm-id-images-dir",
+    "--pm-style-strength",
+    "--prediction",
+    "--preview",
+    "--preview-interval",
+    "--preview-noisy",
+    "--preview-path",
+    "--prompt",
+    "--pulid-id-embedding",
+    "--pulid-id-weight",
+    "--pulid-weights",
+    "--qwen-image-zero-cond-t",
+    "--qwen2vl",
+    "--ref-image",
+    "--rng",
+    "--rpc-servers",
+    "--sampler-rng",
+    "--sampling-method",
+    "--scheduler",
+    "--scm-mask",
+    "--scm-policy",
+    "--seed",
+    "--sigmas",
+    "--skip-layer-end",
+    "--skip-layer-start",
+    "--skip-layers",
+    "--slg-scale",
+    "--steps",
+    "--stream-layers",
+    "--strength",
+    "--t5xxl",
+    "--tae",
+    "--taesd",
+    "--taesd-preview-only",
+    "--temporal-tiling",
+    "--tensor-type-rules",
+    "--threads",
+    "--timestep-shift",
+    "--type",
+    "--uncond-diffusion-model",
+    "--upscale-model",
+    "--upscale-repeats",
+    "--upscale-tile-size",
+    "--vace-strength",
+    "--vae",
+    "--vae-conv-direct",
+    "--vae-format",
+    "--vae-on-cpu",
+    "--vae-relative-tile-size",
+    "--vae-tile-overlap",
+    "--vae-tile-size",
+    "--vae-tiling",
+    "--verbose",
+    "--video-frames",
+    "--width"
+   ]
+  },
+  {
+   "id": "sd-server",
+   "path": "~/stable-diffusion.cpp/build/bin/sd-server",
+   "rev": "7f0e728",
+   "sha256": "443d924a173cea7fd9dc68e0c8cdf24aea23a5615cb8784889a2f9efa7651cfb",
+   "bytes": 57346072,
+   "flags": [],
+   "note": "shared server; cannot stop one request (OP-7: unverified stop unless a scan shows it idle)"
+  },
+  {
+   "id": "mflux",
+   "path": "~/Library/Caches/DexDiffusion/mflux/venv",
+   "version": "0.20.0",
+   "flags": [],
+   "note": "protected runtime"
+  },
+  {
+   "id": "orchestration",
+   "path": "operator-console (MacBook)",
+   "flags": [],
+   "note": "multi-invocation workflows composed from pinned engines; flags are sd-cli's"
+  }
+ ],
+ "features": [
+  {
+   "id": "txt2img-core",
+   "engine": "sd-cli",
+   "flags": [
+    "--prompt",
+    "--negative-prompt",
+    "--steps",
+    "--cfg-scale",
+    "--width",
+    "--height",
+    "--seed"
+   ],
+   "ledger_rows": [
+    "PR-01",
+    "GN-04",
+    "GN-05",
+    "GN-07",
+    "GN-08",
+    "SD-01",
+    "SD-02"
+   ],
+   "state": "PROVEN",
+   "packet": null,
+   "note": "controlled-generate per-run sd-cli"
+  },
+  {
+   "id": "sampler-subset",
+   "engine": "sd-cli",
+   "flags": [
+    "--sampling-method"
+   ],
+   "ledger_rows": [
+    "GN-02"
+   ],
+   "state": "PROVEN",
+   "packet": "OP-3",
+   "note": "17 sd-cli samplers; A1111 LMS, DPM2 a, DPM++ SDE family, DPM fast/adaptive, PLMS, UniPC and Restart have no sd-cli equivalent"
+  },
+  {
+   "id": "scheduler-subset",
+   "engine": "sd-cli",
+   "flags": [
+    "--scheduler"
+   ],
+   "ledger_rows": [
+    "GN-03",
+    "ST-05"
+   ],
+   "state": "PROVEN",
+   "packet": "OP-3",
+   "note": "discrete, karras, exponential, ays, sgm_uniform, simple, kl_optimal wired; Polyexponential and Beta are absent but could be supplied as an explicit --sigmas list (see OP-3)"
+  },
+  {
+   "id": "eta",
+   "engine": "sd-cli",
+   "flags": [
+    "--eta"
+   ],
+   "ledger_rows": [
+    "SD-14",
+    "SD-15",
+    "ST-01"
+   ],
+   "state": "PROVEN",
+   "packet": null,
+   "note": null
+  },
+  {
+   "id": "rng-source",
+   "engine": "sd-cli",
+   "flags": [
+    "--rng",
+    "--sampler-rng"
+   ],
+   "ledger_rows": [
+    "SD-13"
+   ],
+   "state": "PROVEN",
+   "packet": null,
+   "note": "cuda = sd-webui compatible stream per sd-cli --help"
+  },
+  {
+   "id": "custom-sigmas",
+   "engine": "sd-cli",
+   "flags": [
+    "--sigmas",
+    "--hires-sigmas"
+   ],
+   "ledger_rows": [
+    "SD-20",
+    "SD-21",
+    "SD-22"
+   ],
+   "state": "ENGINE_AVAILABLE",
+   "packet": "OP-3",
+   "note": "flag present in the pinned binary; not wired; candidate route for sigma min/max/rho and Polyexponential/Beta schedules without an engine patch"
+  },
+  {
+   "id": "tiling",
+   "engine": "sd-cli",
+   "flags": [
+    "--circular"
+   ],
+   "ledger_rows": [
+    "GN-13"
+   ],
+   "state": "PROVEN",
+   "packet": null,
+   "note": null
+  },
+  {
+   "id": "clip-skip",
+   "engine": "sd-cli",
+   "flags": [
+    "--clip-skip"
+   ],
+   "ledger_rows": [
+    "ST-02"
+   ],
+   "state": "PROVEN",
+   "packet": null,
+   "note": null
+  },
+  {
+   "id": "native-hires",
+   "engine": "sd-cli",
+   "flags": [
+    "--hires",
+    "--hires-scale",
+    "--hires-width",
+    "--hires-height",
+    "--hires-steps",
+    "--hires-denoising-strength",
+    "--hires-upscaler"
+   ],
+   "ledger_rows": [
+    "HR-01",
+    "HR-02",
+    "HR-03",
+    "HR-04",
+    "HR-06",
+    "HR-07",
+    "HR-13"
+   ],
+   "state": "PROVEN",
+   "packet": null,
+   "note": "reuses first-pass prompt/sampler/checkpoint by design"
+  },
+  {
+   "id": "hires-independent-second-pass",
+   "engine": "orchestration",
+   "flags": [
+    "--init-img",
+    "--strength",
+    "--model",
+    "--sampling-method"
+   ],
+   "ledger_rows": [
+    "HR-08",
+    "HR-09",
+    "HR-10",
+    "HR-11",
+    "HR-12"
+   ],
+   "state": "PROVEN",
+   "packet": null,
+   "note": "OP-4A: txt2img then pixel upscale then img2img with its own settings; live jobs 99e7abb3 and 47fc3fcd 2026-10-17"
+  },
+  {
+   "id": "latent-hires-and-refiner",
+   "engine": "sd-cli",
+   "flags": [],
+   "ledger_rows": [
+    "HR-14",
+    "HR-15",
+    "HR-16",
+    "HR-17",
+    "ED-13",
+    "RS-17"
+   ],
+   "state": "ENGINE_ABSENT",
+   "packet": "OP-4B",
+   "note": "needs latent hand-off and a mid-loop UNet swap; --high-noise-* is Wan-style and not equivalent"
+  },
+  {
+   "id": "img2img",
+   "engine": "sd-cli",
+   "flags": [
+    "--init-img",
+    "--strength"
+   ],
+   "ledger_rows": [
+    "ED-01",
+    "ED-17",
+    "ED-21"
+   ],
+   "state": "PROVEN",
+   "packet": null,
+   "note": null
+  },
+  {
+   "id": "inpaint",
+   "engine": "sd-cli",
+   "flags": [
+    "--mask",
+    "--init-img"
+   ],
+   "ledger_rows": [
+    "ED-03",
+    "IP-06",
+    "IP-08"
+   ],
+   "state": "PROVEN",
+   "packet": null,
+   "note": null
+  },
+  {
+   "id": "masked-latent-modes",
+   "engine": "sd-cli",
+   "flags": [],
+   "ledger_rows": [
+    "IP-10",
+    "IP-13"
+   ],
+   "state": "ENGINE_ABSENT",
+   "packet": "OP-5",
+   "note": null
+  },
+  {
+   "id": "variation-seed",
+   "engine": "sd-cli",
+   "flags": [],
+   "ledger_rows": [
+    "SD-04",
+    "SD-05",
+    "SD-06",
+    "SD-07",
+    "SD-08",
+    "SD-09",
+    "SD-10"
+   ],
+   "state": "ENGINE_ABSENT",
+   "packet": "OP-2",
+   "note": "no subseed flags in the pinned binary"
+  },
+  {
+   "id": "prompt-schedule-alternation-and",
+   "engine": "sd-cli",
+   "flags": [],
+   "ledger_rows": [
+    "PR-11",
+    "PR-12",
+    "PR-13"
+   ],
+   "state": "ENGINE_ABSENT",
+   "packet": "OP-1A",
+   "note": null
+  },
+  {
+   "id": "sigma-noise-knobs",
+   "engine": "sd-cli",
+   "flags": [],
+   "ledger_rows": [
+    "SD-16",
+    "SD-17",
+    "SD-18",
+    "SD-19",
+    "SD-26",
+    "SD-28",
+    "SD-29"
+   ],
+   "state": "ENGINE_ABSENT",
+   "packet": "OP-3",
+   "note": "s_churn/tmin/tmax/noise and noise multipliers have no flag"
+  },
+  {
+   "id": "controlnet-single",
+   "engine": "sd-cli",
+   "flags": [
+    "--control-net",
+    "--control-image",
+    "--control-strength",
+    "--canny"
+   ],
+   "ledger_rows": [
+    "CN-01",
+    "CN-02",
+    "CN-03",
+    "CN-04"
+   ],
+   "state": "ENGINE_AVAILABLE",
+   "packet": "MODELS",
+   "note": "flags present; no ControlNet weights installed (APPROVAL_PACKET_MODELS item 1)"
+  },
+  {
+   "id": "controlnet-timing-multi",
+   "engine": "sd-cli",
+   "flags": [],
+   "ledger_rows": [
+    "CN-05",
+    "CN-09"
+   ],
+   "state": "ENGINE_ABSENT",
+   "packet": "OP-6",
+   "note": null
+  },
+  {
+   "id": "taesd",
+   "engine": "sd-cli",
+   "flags": [
+    "--taesd",
+    "--preview"
+   ],
+   "ledger_rows": [
+    "ST-04"
+   ],
+   "state": "ENGINE_AVAILABLE",
+   "packet": "MODELS",
+   "note": "needs TAESD weights"
+  },
+  {
+   "id": "vae-override",
+   "engine": "sd-cli",
+   "flags": [
+    "--vae"
+   ],
+   "ledger_rows": [
+    "GN-16",
+    "RS-09"
+   ],
+   "state": "ENGINE_AVAILABLE",
+   "packet": "MODELS",
+   "note": "needs an approved VAE file"
+  },
+  {
+   "id": "lora-embeddings",
+   "engine": "sd-cli",
+   "flags": [
+    "--lora-model-dir",
+    "--embd-dir"
+   ],
+   "ledger_rows": [
+    "RS-04",
+    "RS-07"
+   ],
+   "state": "ENGINE_AVAILABLE",
+   "packet": "MODELS",
+   "note": "no approved LoRA/embedding installed"
+  },
+  {
+   "id": "instruct-pix2pix",
+   "engine": "sd-cli",
+   "flags": [
+    "--img-cfg-scale"
+   ],
+   "ledger_rows": [
+    "GN-06",
+    "ED-18"
+   ],
+   "state": "ENGINE_AVAILABLE",
+   "packet": "MODELS",
+   "note": "checkpoint support unverified"
+  },
+  {
+   "id": "esrgan-upscale",
+   "engine": "sd-cli",
+   "flags": [
+    "--upscale-model"
+   ],
+   "ledger_rows": [
+    "EX-08",
+    "HR-05"
+   ],
+   "state": "PROVEN",
+   "packet": null,
+   "note": "capability upscale-esrgan"
+  },
+  {
+   "id": "flux2-klein-txt2img",
+   "engine": "mflux",
+   "flags": [],
+   "ledger_rows": [
+    "GN-01"
+   ],
+   "state": "PROVEN",
+   "packet": null,
+   "note": "primary target"
+  },
+  {
+   "id": "flux2-reference-edit",
+   "engine": "mflux",
+   "flags": [],
+   "ledger_rows": [
+    "CN-12"
+   ],
+   "state": "PROVEN",
+   "packet": null,
+   "note": null
+  }
+ ]
+}

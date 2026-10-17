@@ -10,7 +10,10 @@ function artifactReceipt(records) {
 }
 function validateTransition(job, status, patch = {}) {
   if (!STATES.includes(status)) return 'unknown state ' + status;
-  if (job.status !== status && !(NEXT[job.status] || []).includes(status)) return `illegal transition ${job.status} -> ${status}`;
+  const recoveringPublication = job.status === 'INTERRUPTED'
+    && patch.recovery_identity === job.job_id
+    && ['INTERRUPTED', 'COMPLETE', 'CANCELLED'].includes(status);
+  if (job.status !== status && !(NEXT[job.status] || []).includes(status) && !recoveringPublication) return `illegal transition ${job.status} -> ${status}`;
   if (TERMINAL.has(status) && patch.resource_lease != null) return 'terminal job cannot retain a resource lease';
   const progress = patch.progress;
   if (progress && progress.percent != null) {
@@ -23,7 +26,16 @@ function validateTransition(job, status, patch = {}) {
       if (!ids.length || !receipt || receipt.validated !== true || receipt.canonical !== true || !Array.isArray(receipt.artifacts) || receipt.artifacts.length !== ids.length || !ids.every(id => receipt.artifacts.some(a => a.artifact_id === id && /^[a-f0-9]{64}$/.test(a.sha256)))) return 'completed requires validated canonical artifacts';
     }
   }
-  if (TERMINAL.has(job.status)) {
+  if (status === 'CANCELLED') {
+    const ids = patch.artifacts || job.artifacts || [], receipt = patch.artifact_validation || job.artifact_validation;
+    if (ids.length) {
+      const valid = receipt && receipt.validated === true && receipt.canonical === true && Array.isArray(receipt.artifacts)
+        && receipt.artifacts.length === ids.length && ids.every(id => receipt.artifacts.some(a => a.artifact_id === id && /^[a-f0-9]{64}$/.test(a.sha256)));
+      if (!valid) return 'cancelled partial output requires validated canonical artifacts';
+    }
+    if (!ids.length && receipt && Array.isArray(receipt.artifacts) && receipt.artifacts.length) return 'cancelled receipt has no artifact ids';
+  }
+  if (TERMINAL.has(job.status) && !recoveringPublication) {
     for (const k of ['artifacts', 'artifact_validation', 'error', 'first_failed_gate']) if (patch[k] !== undefined && JSON.stringify(patch[k]) !== JSON.stringify(job[k])) return 'terminal outcome is immutable';
   }
   return null;

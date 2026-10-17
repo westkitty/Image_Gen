@@ -1,0 +1,78 @@
+{
+ "schema": "dexdiffusion.perf.v1",
+ "at": "2026-10-17T07:37:56-0400",
+ "engine": "sd-cli 7f0e728 (per-run worker)",
+ "conditions": {
+  "target": "sd15",
+  "prompt": "<fixed neutral test string>",
+  "width": 512,
+  "height": 512,
+  "steps": 8,
+  "cfg_scale": 7,
+  "seed": 7001,
+  "sampler": "euler"
+ },
+ "runs": [
+  {
+   "run": 1,
+   "kind": "first-process-start",
+   "job": "2d074be7-2862-406f-aed4-7e2075d2c7b3",
+   "status": "pass",
+   "wall_s": 27.17,
+   "queue_s": 0.03,
+   "bigmac_load1": "1.96",
+   "image": "20261017-073635-controlled-sd15-s7001-controlled-sd15.png",
+   "run_dir": "20261017-073635-controlled-sd15",
+   "load_s": 1.13,
+   "condition_s": 0.28,
+   "sampling_s": 10.97,
+   "decode_s": 3.5,
+   "generate_s": 14.76,
+   "overhead_s": 12.38
+  },
+  {
+   "run": 2,
+   "kind": "repeat",
+   "job": "29a9fb92-bd66-43f0-adc3-506f1d7b6a7c",
+   "status": "pass",
+   "wall_s": 25.95,
+   "queue_s": 0.01,
+   "bigmac_load1": "2.70",
+   "image": "20261017-073703-controlled-sd15-s7001-controlled-sd15.png",
+   "run_dir": "20261017-073703-controlled-sd15",
+   "load_s": 1.22,
+   "condition_s": 0.26,
+   "sampling_s": 10.95,
+   "decode_s": 3.6,
+   "generate_s": 14.82,
+   "overhead_s": 11.12
+  },
+  {
+   "run": 3,
+   "kind": "repeat",
+   "job": "1b425df5-7220-47a6-bac0-64f5b3196c97",
+   "status": "pass",
+   "wall_s": 25.52,
+   "queue_s": 0.01,
+   "bigmac_load1": "2.74",
+   "image": "20261017-073730-controlled-sd15-s7001-controlled-sd15.png",
+   "run_dir": "20261017-073730-controlled-sd15",
+   "load_s": 1.3,
+   "condition_s": 0.27,
+   "sampling_s": 11.03,
+   "decode_s": 3.6,
+   "generate_s": 14.91,
+   "overhead_s": 10.6
+  }
+ ],
+ "warm_median": {
+  "wall_s": 25.73,
+  "load_s": 1.26,
+  "condition_s": 0.27,
+  "sampling_s": 10.99,
+  "decode_s": 3.6,
+  "generate_s": 14.87,
+  "overhead_s": 10.86
+ },
+ "note": "load_s on warm runs is the per-run model reload cost a resident engine would avoid; not compared against sd-server (not running)."
+}

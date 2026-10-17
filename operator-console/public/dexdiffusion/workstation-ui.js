@@ -169,7 +169,10 @@
     }
     this.wsSet({ lastBody: body, results: [], activeIndex: 0 });
     this.setState({ jobStatus: 'generating', progress: null, jobStage: null, currentImageSrc: null, errorMsg: '', lastGenerationParams: Object.assign({}, body, { preset: this.state.preset }) });
-    const r = await this._api('/api/actions/generate-controlled', body);
+    const second = this._ws().second && this._ws().second.on && !this._ws().hires;
+    if (second) { for (const k of Object.keys(body)) if (/^hires_/.test(k)) delete body[k]; delete body.quantity; }
+    const r = second ? await this._api('/api/actions/hires-2pass', Object.assign({}, body, { second_pass: this._secondPassBody() }))
+      : await this._api('/api/actions/generate-controlled', body);
     if (!r.ok) {
       this.setState({ jobStatus: 'error', errorMsg: r.data.error || 'rejected' });
       this.toast(r.data.error || 'Generate failed', '#ef4444');
@@ -194,8 +197,10 @@
       setTimeout(() => this.loadRuns(), 1200);
     } else if (job.status === 'CANCELLED') {
       this.setState({ jobStatus: 'idle', progress: 0, errorMsg: '' });
-      const rc = job.remoteCancel;
-      this.toast('Generation interrupted' + (rc ? (rc.ok ? ' · Big Mac confirmed stopped' : ' · Big Mac NOT confirmed stopped') : ''), rc && !rc.ok ? '#ef4444' : '#fbbf24');
+      // OP-7: only a verified worker record counts as "stopped"; anything else is said plainly.
+      const st = job.remoteStop;
+      const msg = st === 'cancelled_verified' ? ' · Big Mac stop verified' : st === 'stop_unverified' || st === 'orphan_suspect' ? ' · unable to verify the Big Mac stop — heavy work paused' : st ? ' · stopping on Big Mac…' : '';
+      this.toast('Generation interrupted' + msg, st && st !== 'cancelled_verified' ? '#ef4444' : '#fbbf24');
     } else {
       this.setState({ jobStatus: 'error', progress: 0, errorMsg: this._failText(job) });
       this.toast('Generation failed · ' + (job.firstFailedGate || job.status), '#ef4444');
@@ -205,10 +210,12 @@
   P.interruptGeneration = async function () {
     const id = this._ws().activeJobId;
     if (!id || this._ws().interrupting) return;
-    this.wsSet({ interrupting: true });
+    this.wsSet({ interrupting: true, interruptState: 'requested' });
     const r = await this._api('/api/jobs/' + encodeURIComponent(id) + '/cancel', { reason: 'Interrupted from Create' });
-    this.wsSet({ interrupting: false });
-    if (!r.ok) this.toast(r.data.error || 'Interrupt failed', '#ef4444');
+    const rs = r.data && r.data.remote_stop;
+    this.wsSet({ interrupting: false, interruptState: rs || (r.ok ? 'verified' : 'error') });
+    if (rs === 'unverified') this.toast('Cancelled, but the Big Mac stop could not be verified — heavy work is paused until it is (Job Center)', '#ef4444');
+    else if (!r.ok && r.status !== 202) this.toast(r.data.error || 'Interrupt failed', '#ef4444');
   };
 
   P.selectResult = function (i) {
@@ -1050,7 +1057,40 @@
             h('label', { style: css.muted }, 'Denoise'), numInput(ws.hiresDenoise, v => this.wsSet({ hiresDenoise: v }), { min: '0.05', max: '0.95', step: '0.05' }),
             h('select', { value: ws.hiresUpscaler, 'data-dex-field': 'hires-upscaler', 'aria-label': 'Hires upscaler', onChange: e => this.wsSet({ hiresUpscaler: e.target.value }), style: Object.assign({}, css.input, { width: 'auto' }) },
               ...D.HIRES_UPSCALERS.map(u => h('option', { key: u, value: u }, u)))),
-          h('div', { style: css.muted, 'data-dex-field': 'hires-unavailable' }, 'Not available with the installed stable-diffusion.cpp (no option exists): a separate second-pass prompt, sampler, scheduler or checkpoint, and a refiner model with a switch point. Only the first-pass settings are used for the second pass.')) : null) : null);
+          h('div', { style: css.muted, 'data-dex-field': 'hires-unavailable' }, 'This in-engine pass reuses the first-pass prompt, sampler, scheduler and checkpoint. For separate second-pass settings use “Independent second pass” below; a refiner switch point (latent handoff) is not available with the installed engine.')) : null) : null,
+      this._secondPassPanel(spec));
+  };
+  // OP-4A: independent pixel-space second pass (base → upscale → img2img with its own settings). Blank = inherit from the base pass.
+  P._secondPassPanel = function (spec) {
+    const ws = this._ws(), sp = ws.second || {};
+    const set = patch => this.wsSet({ second: Object.assign({}, this._ws().second, patch) });
+    const lbl = (t, el) => h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, t, el);
+    const sel = (key, t, opts) => lbl(t, h('select', { value: sp[key] || '', style: css.input, 'data-second-field': key, 'aria-label': 'Second pass ' + t, onChange: e => set({ [key]: e.target.value }) }, ...opts.map(([v, l]) => h('option', { key: v, value: v }, l))));
+    const num = (key, t, attrs) => lbl(t, h('input', Object.assign({ type: 'number', value: sp[key] == null ? '' : String(sp[key]), placeholder: 'same as base', style: Object.assign({}, css.input, { width: 110 }), 'data-second-field': key, onChange: e => set({ [key]: e.target.value }) }, attrs)));
+    const targets = (this.state.modelTargets || []).filter(t => (t.backend || 'sdcpp') !== 'mflux' && t.id !== 'flux-fp8' && !t.aliasOf && String(t.status).toLowerCase() !== 'broken');
+    const conflict = !!ws.hires;
+    return h('div', { 'data-second-pass': 'true', style: { borderTop: '1px solid rgba(148,163,184,.12)', marginTop: 8, paddingTop: 8, display: 'grid', gap: 6 } },
+      h('label', { style: Object.assign({}, css.row, { color: '#dbe4ee', fontSize: 12 }) },
+        h('input', { type: 'checkbox', checked: !!sp.on, disabled: conflict, 'data-second-field': 'on', onChange: e => set({ on: e.target.checked }) }),
+        'Independent second pass (upscale + img2img with its own prompt, checkpoint, sampler) — keeps the base image too'),
+      conflict ? h('div', { style: css.muted }, 'Turn off High-Res Refine to use the independent second pass (they are different operations).') : null,
+      sp.on && !conflict ? h('div', { style: { display: 'grid', gap: 6 } },
+        h('textarea', { rows: 2, value: sp.prompt || '', placeholder: 'Second-pass prompt (blank = same as the base prompt)', 'data-second-field': 'prompt', 'data-prompt-edit': 'true', style: Object.assign({}, css.input, { resize: 'vertical' }), onChange: e => set({ prompt: e.target.value }) }),
+        h('input', { type: 'text', value: sp.negative_prompt || '', placeholder: 'Second-pass negative prompt (blank = same as base)', 'data-second-field': 'negative_prompt', style: css.input, onChange: e => set({ negative_prompt: e.target.value }) }),
+        h('div', { style: Object.assign({}, css.row, { alignItems: 'end' }) },
+          sel('target', 'Checkpoint', [['', spec && spec.backend === 'mflux' ? 'choose (MFLUX cannot refine)' : 'same as base']].concat(targets.map(t => [t.id, t.label || t.id]))),
+          sel('sampler', 'Sampler', [['', 'same as base']].concat(D.SAMPLER_CHOICES.map(c => [c[0], c[1] || c[0]]))),
+          sel('scheduler', 'Scheduler', [['', 'same as base']].concat(D.SCHEDULER_CHOICES)),
+          num('steps', 'Steps', { min: '1', max: '150' }), num('cfg_scale', 'CFG', { min: '1', max: '30', step: '0.5' }),
+          num('denoise', 'Denoise (default 0.45)', { min: '0.01', max: '0.99', step: '0.05' }), num('scale', 'Scale (default 1.5)', { min: '1', max: '4', step: '0.25' }),
+          sel('upscaler', 'Upscaler', [['', 'Lanczos'], ['nearest', 'Nearest'], ['bicubic', 'Bicubic'], ['bilinear', 'Bilinear']])),
+        h('div', { style: css.muted, 'data-second-field': 'note' }, 'Pixel-space refinement: the base image is kept as its own result, upscaled, then re-rendered on the chosen SDCPP checkpoint. Not the same as an SDXL refiner switch or latent hires handoff (those need engine changes).')) : null);
+  };
+  P._secondPassBody = function () {
+    const sp = this._ws().second || {}, out = {};
+    for (const k of ['prompt', 'negative_prompt', 'target', 'sampler', 'scheduler', 'upscaler']) if (sp[k]) out[k] = sp[k];
+    for (const k of ['steps', 'cfg_scale', 'denoise', 'scale']) if (sp[k] !== undefined && sp[k] !== '' && sp[k] !== null) out[k] = Number(sp[k]);
+    return out;
   };
 
   // ── Detailer (Apple Vision Face / Hand / Person) ──────────────

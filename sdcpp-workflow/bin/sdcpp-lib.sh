@@ -58,8 +58,10 @@ fail() {
 
 pass_banner() {
   # pass_banner <message...>
+  # PASS is consumed by callers as terminal evidence. Emit it only after the
+  # canonical image transaction has committed its run index successfully.
+  canonicalize_session_images || { printf 'Canonical image publication failed; run is not PASS.\n' >&2; exit 1; }
   printf '\n==== PASS ====\n%s\n' "$*"
-  canonicalize_session_images
 }
 
 # ----- canonical image finalization -------------------------------------------
@@ -83,6 +85,15 @@ record_run_dir() {
   case "$d" in
     "$SDCPP_RUNS_DIR"/*/*) rel="${d#"$SDCPP_RUNS_DIR"/}"; d="$SDCPP_RUNS_DIR/${rel%%/*}" ;;
   esac
+  if [[ "${DEXDIFFUSION_JOB_ID:-}" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+    local owner="$d/job-owner.json" owner_tmp="$d/.job-owner.$$.tmp" run_id
+    run_id="$(basename "$d")"
+    if [ ! -e "$owner" ]; then
+      printf '{"schema":"dexdiffusion.run_owner.v1","job_id":"%s","run_id":"%s"}\n' "$DEXDIFFUSION_JOB_ID" "$run_id" > "$owner_tmp"
+      mv -n "$owner_tmp" "$owner"
+      rm -f -- "$owner_tmp"
+    fi
+  fi
   [ -n "${DEX_RUN_DIRS_FILE:-}" ] && printf '%s\n' "$d" >> "$DEX_RUN_DIRS_FILE" 2>/dev/null || true
 }
 
@@ -94,11 +105,10 @@ canonicalize_session_images() {
   rm -f -- "$DEX_RUN_DIRS_FILE"
   [ "${#dirs[@]}" -gt 0 ] || return 0
   if ! command -v node >/dev/null 2>&1; then
-    printf 'WARN: node not found; images not canonicalized in: %s\n' "${dirs[*]}" >&2
-    return 0
+    printf 'ERROR: node not found; images not canonicalized in: %s\n' "${dirs[*]}" >&2
+    return 1
   fi
-  DEX_IMAGES_ROOT_OVERRIDE="${DEX_IMAGES_ROOT_OVERRIDE:-}" node "$DEX_CANONICALIZE_JS" "${dirs[@]}" >&2 \
-    || printf 'WARN: canonical image finalization reported an error\n' >&2
+  DEX_IMAGES_ROOT_OVERRIDE="${DEX_IMAGES_ROOT_OVERRIDE:-}" node "$DEX_CANONICALIZE_JS" "${dirs[@]}" >&2
 }
 
 # ----- config -----------------------------------------------------------------

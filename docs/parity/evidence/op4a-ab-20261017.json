@@ -1,0 +1,169 @@
+{
+ "schema": "dexdiffusion.live-evidence.v1",
+ "at": "2026-10-17",
+ "what": "OP-4A deterministic A/B: one variable changed per case in the independent second pass",
+ "engine": "sd-cli 7f0e728 on Big Mac",
+ "conditions": {
+  "base": "sd15 512x512, 8 steps, cfg 7, seed 5101, euler",
+  "second_pass": "sd15 768x768, 8 steps, denoise 0.5, lanczos, scheduler karras unless stated, inherited seed"
+ },
+ "varied": {
+  "A": "reference",
+  "A-repeat": "identical request (determinism)",
+  "B-prompt": "second-pass prompt only",
+  "C-negative": "second-pass negative prompt only",
+  "D-scheduler": "second-pass scheduler exponential"
+ },
+ "pixel_hash": "sha256 of decoded RGB pixels, first 16 hex",
+ "results": [
+  {
+   "case": "A",
+   "job": "9b4c5825-9355-4239-b76b-f40dc954777a",
+   "status": "PASS",
+   "gate": null,
+   "base": {
+    "id": "20261017-025022-controlled-sd15-s5101-controlled-sd15.png",
+    "pix": "debcbb152354734e",
+    "size": [
+     512,
+     512
+    ]
+   },
+   "second": {
+    "id": "20261017-025155-hires-2pass-hires-2pass.png",
+    "pix": "1ab83ea2ce7514ea",
+    "size": [
+     768,
+     768
+    ]
+   },
+   "second_pass_run": "20261017-025059-img2img"
+  },
+  {
+   "case": "A-repeat",
+   "job": "356278e4-3dff-4625-aeea-1d2df7e21fa1",
+   "status": "PASS",
+   "gate": null,
+   "base": {
+    "id": "20261017-025156-controlled-sd15-s5101-controlled-sd15.png",
+    "pix": "debcbb152354734e",
+    "size": [
+     512,
+     512
+    ]
+   },
+   "second": {
+    "id": "20261017-025330-hires-2pass-hires-2pass.png",
+    "pix": "1ab83ea2ce7514ea",
+    "size": [
+     768,
+     768
+    ]
+   },
+   "second_pass_run": "20261017-025233-img2img"
+  },
+  {
+   "case": "B-prompt",
+   "job": "30282849-d776-4f85-8f3e-a8d6f67a04f1",
+   "status": "PASS",
+   "gate": null,
+   "base": {
+    "id": "20261017-025330-controlled-sd15-s5101-controlled-sd15.png",
+    "pix": "debcbb152354734e",
+    "size": [
+     512,
+     512
+    ]
+   },
+   "second": {
+    "id": "20261017-025502-hires-2pass-hires-2pass.png",
+    "pix": "114a24d09f27c957",
+    "size": [
+     768,
+     768
+    ]
+   },
+   "second_pass_run": "20261017-025410-img2img"
+  },
+  {
+   "case": "C-negative",
+   "job": "c06188a1-4ac8-448f-82f0-3222ff1e78ec",
+   "status": "PASS",
+   "gate": null,
+   "base": {
+    "id": "20261017-025503-controlled-sd15-s5101-controlled-sd15.png",
+    "pix": "debcbb152354734e",
+    "size": [
+     512,
+     512
+    ]
+   },
+   "second": {
+    "id": "20261017-025633-hires-2pass-hires-2pass.png",
+    "pix": "31df6bf4021eb8a6",
+    "size": [
+     768,
+     768
+    ]
+   },
+   "second_pass_run": "20261017-025540-img2img"
+  },
+  {
+   "case": "D-scheduler",
+   "job": "18e814fc-3bcb-448c-b431-2dc261067f56",
+   "status": "PASS",
+   "gate": null,
+   "base": {
+    "id": "20261017-025633-controlled-sd15-s5101-controlled-sd15.png",
+    "pix": "debcbb152354734e",
+    "size": [
+     512,
+     512
+    ]
+   },
+   "second": {
+    "id": "20261017-025804-hires-2pass-hires-2pass.png",
+    "pix": "ddbd25cb9fed9af2",
+    "size": [
+     768,
+     768
+    ]
+   },
+   "second_pass_run": "20261017-025711-img2img"
+  }
+ ],
+ "log_lines": {
+  "all": [
+   "loading model from '\u2026/sd15/v1-5-pruned-emaonly.safetensors'",
+   "sampling using Euler method",
+   "strength: 0.5"
+  ],
+  "A..C": "scheduler: karras",
+  "D": "scheduler: exponential"
+ },
+ "conclusions": [
+  "all five base images are pixel-identical (debcbb152354734e): the base pass is unaffected by second-pass settings",
+  "A == A-repeat refined (1ab83ea2ce7514ea): deterministic",
+  "B, C, D refined hashes each differ from A: the second-pass prompt, negative prompt and scheduler each reach the engine",
+  "prompt texts: absent from every run folder file (redacted); proof is by pixel difference, not by log text"
+ ],
+ "privacy": "test prompts only; save_prompts=false; no prompt text in state/ or logs",
+ "geometry_live": {
+  "job": "fc384bb3-fefb-45fd-a62d-33ac9e302ecd",
+  "request": "base 512x512 -> second pass 768x576 (different aspect)",
+  "base": {
+   "id": "20261017-025922-controlled-sd15-s5101-controlled-sd15.png",
+   "pix": "debcbb152354734e"
+  },
+  "refined": {
+   "id": "20261017-030045-hires-2pass-hires-2pass.png",
+   "size": [
+    768,
+    576
+   ],
+   "pix": "2f9c0f1550422948"
+  },
+  "check": "mean abs channel diff of refined vs locally rebuilt init: cover+centre-crop 16.36, plain stretch 30.54 -> the A1111 cover-and-crop geometry was used",
+  "lab_fixtures": "docs/parity/lab hires-geometry-* (the pre-fix stretch would fail these)"
+ }
+}

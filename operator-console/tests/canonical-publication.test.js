@@ -7,11 +7,12 @@ const path = require('path');
 const crypto = require('crypto');
 const { createImageStore } = require('../image-store');
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGMU0QhgYGBgYgADAAZ+AJD85S7OAAAAAElFTkSuQmCC', 'base64');
-function fixture(t, fault) {
+function fixture(t, fault, { owner = false } = {}) {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-publication-'));
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
   const run = path.join(base, 'runs', 'owned-run'); fs.mkdirSync(run, { recursive: true });
-  const store = createImageStore({ root: path.join(base, 'images'), fault });
+  if (owner) fs.writeFileSync(path.join(run, 'job-owner.json'), JSON.stringify({ schema: 'dexdiffusion.run_owner.v1', job_id: '11111111-1111-4111-8111-111111111111', run_id: 'owned-run' }));
+  const store = createImageStore({ root: path.join(base, 'images'), runsRoot: path.join(base, 'runs'), fault });
   const src = path.join(run, 'sample.png'); fs.writeFileSync(src, PNG);
   return { base, run, store, src };
 }
@@ -44,6 +45,19 @@ test('collision, successful digest and pending visibility do not overwrite unrel
   assert.ok(store.resolveImage(entry.image_id)); assert.ok(!fs.existsSync(src));
   const journal = path.join(store.root, '.pending-owned.json'); fs.writeFileSync(journal, JSON.stringify({ image_ids: [entry.image_id] }));
   assert.equal(store.resolveImage(entry.image_id), null); assert.equal(store.inspectIntegrity({ runsRoot: path.dirname(run) }).counts.pending, 1);
+});
+test('job-owned publication journal stays recoverable until its exact durable receipt is acknowledged', t => {
+  const { run, store } = fixture(t, undefined, { owner: true });
+  const [entry] = store.finalizeRun(run);
+  const journal = fs.readdirSync(store.root).find(n => /^\.pending-.*\.json$/.test(n));
+  assert.ok(journal);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(store.root, journal), 'utf8')).phase, 'run-index-committed');
+  assert.equal(store.resolveImage(entry.image_id).id, entry.image_id, 'index-committed bytes are visible while API receipt is pending');
+  assert.equal(store.acknowledgePublication('22222222-2222-4222-8222-222222222222', [entry.image_id]).acknowledged, 0);
+  assert.ok(fs.existsSync(path.join(store.root, journal)), 'wrong job cannot close the publication journal');
+  const acknowledged = store.acknowledgePublication('11111111-1111-4111-8111-111111111111', [entry.image_id]);
+  assert.equal(acknowledged.acknowledged, 1);
+  assert.equal(fs.existsSync(path.join(store.root, journal)), false);
 });
 test('owned transformed canonical copy preserves original on metadata failure', t => {
   const { run, store } = fixture(t); const [entry] = store.finalizeRun(run);
@@ -100,13 +114,29 @@ test('process death after link leaves explicit hidden pending publication, never
   assert.equal(store.inspectIntegrity({ runsRoot: path.dirname(run) }).counts.pending, 1);
 });
 
-test('interruption after metadata commit preserves canonical bytes and explicit pending visibility', t => {
+test('restart reconciliation repairs only the exact job-owned publication after death between link and run index', t => {
+  const { run, store, src } = fixture(t, undefined, { owner: true });
+  const child = require('child_process').spawnSync(process.execPath, ['-e', `const {createImageStore}=require(${JSON.stringify(path.resolve(__dirname, '../image-store'))});createImageStore({root:process.argv[1],runsRoot:process.argv[2],fault:p=>{if(p==='after-publication')process.exit(73)}}).finalizeRun(process.argv[3])`, store.root, path.dirname(run), run], { timeout: 30000 });
+  assert.equal(child.status, 73);
+  assert.equal(typeof store.recoverPendingPublications, 'function');
+  const recovered = store.recoverPendingPublications();
+  assert.equal(recovered.repaired, 1);
+  const [entry] = store.readRunIndex(run);
+  assert.equal(entry.job_id, '11111111-1111-4111-8111-111111111111');
+  assert.equal(entry.run_id, 'owned-run');
+  assert.equal(entry.run_file, 'sample.png');
+  assert.equal(store.resolveImage(entry.image_id).id, entry.image_id);
+  assert.ok(fs.existsSync(src), 'recovery preserves the crash-time source until separate run cleanup');
+  assert.equal(fs.readdirSync(store.root).some(n => /^\.pending-.*\.json$/.test(n)), false);
+});
+
+test('interruption after metadata commit preserves visible canonical bytes and a receipt-recovery journal', t => {
   const { run, store } = fixture(t, point => { if (point === 'after-metadata') throw new Error('post-commit interruption'); });
   assert.throws(() => store.finalizeRun(run), /post-commit interruption/);
   const [entry] = store.readRunIndex(run); assert.ok(entry);
   assert.deepEqual(fs.readFileSync(entry.image_path), PNG);
-  assert.equal(store.resolveImage(entry.image_id), null);
-  assert.equal(store.inspectIntegrity({ runsRoot: path.dirname(run) }).counts.pending, 1);
+  assert.equal(store.resolveImage(entry.image_id).id, entry.image_id);
+  assert.equal(store.inspectIntegrity({ runsRoot: path.dirname(run) }).counts.pending, 0);
 });
 test('pending identity never hides a collision belonging to another inode', t => {
   const { store } = fixture(t); store.ensureRoot();

@@ -3,6 +3,7 @@
 // server bootstrap on a private port, and hermetic API fixtures routed into the page.
 const zlib = require('zlib');
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 const { spawn } = require('child_process');
 
@@ -129,7 +130,10 @@ async function startServer(preferred) {
   // DEX_SUITE_SHARED_STATE=1 restores the old shared-state behaviour for a deliberate live run only.
   const stateDir = process.env.DEX_SUITE_SHARED_STATE === '1' ? LIVE_STATE_DIR : (process.env.DEX_STATE_DIR || createSuiteStateDir());
   const stateEnv = stateDir === LIVE_STATE_DIR ? {} : { DEX_STATE_DIR: stateDir };
-  const sup = spawn(process.execPath, [path.join(__dirname, 'server-supervisor.js'), String(process.pid), path.join(__dirname, '..', '..')], { env: Object.assign({}, process.env, stateEnv, { OPERATOR_CONSOLE_PORT: String(port) }), stdio: 'ignore' });
+  const imagesRoot = stateDir === LIVE_STATE_DIR ? null : path.join(stateDir, 'images');
+  if (imagesRoot) fs.mkdirSync(imagesRoot, { recursive: true });
+  const imagesEnv = imagesRoot ? { DEX_IMAGES_ROOT_OVERRIDE: imagesRoot } : {};
+  const sup = spawn(process.execPath, [path.join(__dirname, 'server-supervisor.js'), String(process.pid), path.join(__dirname, '..', '..')], { env: Object.assign({}, process.env, stateEnv, imagesEnv, { OPERATOR_CONSOLE_PORT: String(port) }), stdio: 'ignore' });
   const exited = new Promise(r => sup.on('exit', r));
   const stop = () => { try { sup.kill('SIGTERM'); } catch (_) {} return Promise.race([exited, new Promise(r => setTimeout(r, 6000))]); };
   onCleanup(stop);

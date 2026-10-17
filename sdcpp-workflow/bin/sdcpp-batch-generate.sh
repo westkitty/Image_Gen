@@ -175,7 +175,11 @@ while [ "$i" -le "$COUNT" ]; do
   [ -n "$ARG_VAE" ]       && extra_args+=("--vae"       "$ARG_VAE")
 
   if [ "$MODE" = "cli" ]; then
-    SDCPP_RUN_DIR_OVERRIDE="$cell" "$HERE/sdcpp-cli-generate.sh" \
+    # OP-7: each cell's remote sd-cli carries a UNIQUE run tag (batch run id + cell), announced on this script's stdout
+    # (the child's stdout goes to the cell log) so a cancel can stop exactly this cell. "image-NN" alone repeats across batches.
+    cell_tag="$(basename "$RUN_DIR")-image-$idx"
+    printf 'SDCPP_RUN_ID: %s\n' "$cell_tag"
+    SDCPP_REMOTE_RUN_TAG="$cell_tag" SDCPP_RUN_DIR_OVERRIDE="$cell" "$HERE/sdcpp-cli-generate.sh" \
       --preset "$PRESET" --seed "$seed" --prompt "$ARG_PROMPT" --negative "$ARG_NEG" \
       "${extra_args[@]}" \
       >"$cell/stdout.log" 2>&1 || true

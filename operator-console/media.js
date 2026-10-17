@@ -35,6 +35,8 @@ function atomicWriteJson(file, data) {
   const fd = fs.openSync(tmp, 'w', 0o600);
   try { fs.writeSync(fd, JSON.stringify(data, null, 1) + '\n'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
   fs.renameSync(tmp, file);
+  const dirFd = fs.openSync(path.dirname(file), 'r');
+  try { fs.fsyncSync(dirFd); } finally { fs.closeSync(dirFd); }
 }
 
 // ---- Generic jobs ----------------------------------------------------------
@@ -106,13 +108,22 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
     if (!j) return { error: 'unknown job' };
     const invalid = JobContract.validateTransition(j, status, patch);
     if (invalid) return { error: invalid };
+    const before = { ...j, params: { ...(j.params || {}) }, artifacts: [...(j.artifacts || [])], artifact_validation: j.artifact_validation && JSON.parse(JSON.stringify(j.artifact_validation)) };
     const prev = j.status;
     j.status = status; j.stage_id = JobContract.STAGES[status];
     if (status === 'RUNNING' && !j.started_at) j.started_at = now();
     if (TERMINAL.has(status)) { if (!j.completed_at) j.completed_at = now(); j.resource_lease = null; }
     for (const k of ['progress', 'artifacts', 'artifact_validation', 'first_failed_gate', 'error', 'resource_lease', 'model_id']) if (patch[k] !== undefined) j[k] = patch[k];
     if (patch.error) j.error = String(patch.error).slice(0, 300);
-    schedule();
+    if (TERMINAL.has(status) && file) {
+      clearTimeout(timer); timer = null;
+      try { persist(); }
+      catch (err) {
+        for (const key of Object.keys(j)) if (!Object.prototype.hasOwnProperty.call(before, key)) delete j[key];
+        Object.assign(j, before);
+        return { error: 'terminal state was not persisted: ' + err.message, status: j.status };
+      }
+    } else schedule();
     if (prev !== status) notify(KIND[status] || 'progress', j); else if (patch.progress !== undefined) notify('progress', j);
     return j;
   }
@@ -146,13 +157,14 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
 
 // ---- Resource arbiter --------------------------------------------------------
 // One exclusive group for heavyweight Big Mac inference (32 GB unified memory).
-function createResourceArbiter({ group = 'bigmac-heavy-inference', capacity = 1, externalProbe = null, now = () => Date.now() } = {}) {
+// quarantineCheck: () => reason | null. OP-7: while a remote stop is unverified no heavy work is granted, whoever asks.
+function createResourceArbiter({ group = 'bigmac-heavy-inference', capacity = 1, externalProbe = null, quarantineCheck = () => null, now = () => Date.now() } = {}) {
   const holders = new Map(); // jobId -> { since, label }
   const waiting = []; // { jobId, label, resolve, since }
   let external = { occupied: false, detail: null, checkedAt: null };
 
   function grantNext() {
-    while (holders.size < capacity && waiting.length && !external.occupied) {
+    while (holders.size < capacity && waiting.length && !external.occupied && !quarantineCheck()) {
       const w = waiting.shift();
       holders.set(w.jobId, { since: now(), label: w.label });
       w.resolve({ granted: true, waitedMs: now() - w.since });
@@ -187,16 +199,17 @@ function createResourceArbiter({ group = 'bigmac-heavy-inference', capacity = 1,
   function position(jobId) { const i = waiting.findIndex(w => w.jobId === jobId); return i < 0 ? null : i + 1; }
   function state() {
     const [owner] = [...holders.entries()];
+    const quarantine = quarantineCheck();
     return {
       group, capacity,
       owner: owner ? { job_id: owner[0], label: owner[1].label, since: owner[1].since } : null,
       waiting: waiting.map((w, i) => ({ job_id: w.jobId, label: w.label, position: i + 1, since: w.since })),
-      external,
-      blocked_reason: external.occupied ? `external heavy workload on Big Mac: ${external.detail}`
+      external, quarantine,
+      blocked_reason: quarantine ? quarantine : external.occupied ? `external heavy workload on Big Mac: ${external.detail}`
         : owner ? `Waiting for Big Mac — ${owner[1].label || 'another job'} currently owns heavy compute` : null,
     };
   }
-  return { acquire, release, state, position, setExternal, refreshExternal, holds: id => holders.has(id) };
+  return { acquire, release, state, position, setExternal, refreshExternal, holds: id => holders.has(id), poke: grantNext };
 }
 
 // Read-only external heavy-load detection: an Ollama model loaded on Big Mac

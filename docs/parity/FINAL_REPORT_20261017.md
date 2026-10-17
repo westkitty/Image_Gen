@@ -1,32 +1,32 @@
 # DexDiffusion A1111 parity — final report (2026-10-17)
 
-**VERDICT: PARTIAL** — the gate is green and everything feasible without new weights or engine changes was implemented and proven; mandatory rows remain open (below).
+**VERDICT: PARTIAL for full A1111 parity; COMPLETE for the bounded application-level cancellation, hires, and atomic-publication closure.** The release implements and verifies scoped application behavior. Engine features that need unapproved weights or engine changes remain gated; this report does not claim complete A1111 parity.
 
-- Repository: `/Users/andrew/Image_Gen` (github westkitty/Image_Gen), branch `main`, HEAD `9de6f546c1455b0616744c332291b441d9c5975a` (= entry HEAD; **all work is uncommitted**, nothing pushed).
-- Running console: pid 79466, 127.0.0.1:31337, cwd `operator-console`, gitHead `9de6f54`, version `image-gen-console-2026-06-22-render-wrapper`.
-- Native app: `/Applications/DexDiffusion.app`, bundle `local.image-gen.wrapper`, CFBundleShortVersionString 2.0, stamp `DexDiffusionSourceHead 2272fae` (not rebuilt; UI is served live). Launch rendered the live console (`output/release-gate/20261017-native-wrapper.jpg`).
+- Repository: `/Users/andrew/Image_Gen` (GitHub `westkitty/Image_Gen`). Starting parity commit: `ecf8e9fcffbaf446df8f44f73d0384538685cc6`; the final published commit is recorded in the current closure receipt in `OPERATIONAL_STATE.md` and the Git history.
+- Branch, remote SHA, working-tree, publication and CI state are time-sensitive; use the current closure receipt and GitHub checks rather than the historical runtime identifiers below.
 
-## Requirements (schema v2, `docs/parity/DEXDIFFUSION_A1111_PARITY_LEDGER.json`)
-Total 266 · COMPLETE 75 (LIVE_PROVEN 62, other verified 13) · PARTIAL 62 · PENDING 38 · BLOCKED 89 · EXCLUDED 2 (PR-16, PR-19: not stock).
-Upstream inventory: 612 items at 82a973c0, 0 unmapped (`docs/parity/A1111_UPSTREAM_INVENTORY.json`).
+## Completed application-level scope
 
-Still open — PARTIAL: PR-02 06 07 08 09 10 14 17 18 · GN-02 03 11 · SD-11 12 13 · HR-05 · ED-01 · IP-07 · EX-08 09 11 15 22 · SC-01..06 08 10..14 16..19 25 · RS-02 03 05 13 · MT-05 09 10 11 12 18 19 · JO-02 04 10 14 15 · ST-01 05 16 · CN-10 11 12.
-PENDING: PR-03 15 20 · GN-09 10 15 18 20 · SD-03 · ED-02 04..09 20 22 · IP-05 11 · EX-02 03 21 24 25 · SC-07 26 · RS-06 11 15 · MT-20 · JO-03 05 08 09 · ST-14 15 · CN-15.
-BLOCKED (engine or weights): PR-04 05 11 12 13 21 22 · GN-06 12 14 16 17 · SD-04..10 16..29 · HR-08..12 14..18 · ED-13 18 · IP-10 13 · EX-12 16..20 23 · SC-09 22 23 24(policy) · RS-04 07 08 09 10 16 17 · ST-03 04 06..13 17 18 19 · CN-01..09 13 14.
+- **OP-7 cancellation:** run-scoped worker identity, verified remote stop, compute lease/quarantine handling, restart reconciliation, and completion/cancellation race behavior are implemented and covered by tests. Browser interrupt suite passed 2/2.
+- **OP-4A pixel-space hires:** independent second-pass options, cover-and-center-crop resize geometry, base/refined canonical artifacts and lineage, unsupported-setting rejection, and mutual exclusion with in-engine hires are implemented. Hires browser suite passed 5/5.
+- **Atomic publication:** publication journals, exact job/run ownership, digest validation, durable idempotent receipts, and restart recovery are implemented. Live publication cases A–C and deterministic fault-injection case D are recorded in `OPERATIONAL_STATE.md`.
+- **API/history agreement:** canonical image projection uses the owned run index and receipt; regression coverage verifies that API output and history identify the same canonical artifact.
+- **Performance:** matched warm-path measurements are preserved in `docs/parity/perf/`. The latest measured median is 25.73 seconds versus 26.07 seconds previously; this small difference is not presented as a causal speedup. Stage-level attribution remains incomplete.
+- **Current automated validation:** `npm run check`, `npm test` (844/844), atomic-publication/cancellation/recovery tests within the full suite, browser interrupt (2/2), browser hires/OP-4A (5/5), shell syntax for changed SDCPP scripts, Node syntax, and whitespace checks are recorded in the closure receipt.
 
-## Tests (actual)
-`npm run test:release` → **PASS 23/23** (`output/release-gate/20261017-final-3/release-gate.json`): syntax OK; unit **806/806**; browser suites all PASS incl. interaction matrix 180/180, edit-workbench 24/24, edit-scripts 5/5, puppet-master 6/6, voice-drama 8/8, drama-studio 9/9. Earlier runs in this session failed on intermittent pre-existing races (concept-a startup read, drama-studio "Direct:", inpaint fill); each was reproduced with the pre-session code too and is documented in EXECUTION_LEDGER (two hardened, one product fix).
+## Full parity status
 
-## Real inference receipts (Big Mac, SD1.5)
-Loopback `20261016-212926-loopback`; SD upscale `20261016-213425-sd-upscale`; Poor man's `20261016-213554-outpaint-poor`; mk2 `20261016-213646-outpaint-mk2` (+ pass runs listed in EXECUTION_LEDGER). Earlier-session receipts verified present on disk (all cited run ids resolve).
+The schema-v2 ledger `docs/parity/DEXDIFFUSION_A1111_PARITY_LEDGER.json` covers 266 requirements. Its full-parity verdict remains `PARTIAL`; the ledger is the detailed authority for row-level status. Engine work including OP-2, OP-1A, OP-1B, OP-6, OP-5, OP-3 and OP-4B remains subject to each row's evidence and approval status. Do not treat UI controls, unit tests, or a passing application workflow as proof of unsupported engine capabilities.
 
-## Privacy
-Prompts off: no prompt text in `server.log`, `sdcpp-workflow/state/`, the nine live run folders, published PNG text chunks, or exported ZIP/JPEG/sidecars. Browser suites run on isolated state; live jobs/queues/media files byte-identical after runs.
+## Retained limitations
 
-## User approvals needed
-1. Model weights: `docs/parity/APPROVAL_PACKET_MODELS.md` (ControlNet SD1.5 canny + openpose fp16, TAESD, VAE, a LoRA/embedding, optional InstructPix2Pix).
-2. Engine work (stable-diffusion.cpp changes): `docs/parity/OPUS_TASK_PACKETS.md`.
-3. Whether to commit/push this working tree, and whether to relabel the nine mislabelled 2026-10-16 edit records.
+- Nine older interrupted jobs remain unresolved because no exact owned published artifact was found.
+- Historical missing image references remain recorded; current integrity and historical-reference counts are distinct.
+- Provenance of the older `op4a_ab.py` driver remains unresolved.
+- Remaining performance overhead lacks independent stage-level attribution.
+- No pre-restart baseline exists for the unrelated `:443` listener; DEX//REACH remains separate and untouched.
+- Engine/weight approval gates and all other PARTIAL, PENDING, BLOCKED, or EXCLUDED ledger rows remain as recorded in the ledger.
 
-## Resume point
-Next slices without approval: JO-08 live preview (`--preview proj`), Real-ESRGAN inside Extras/SD upscale, batch/directory img2img + Extras (ED-06..09, EX-02/03), uploaded mask / save mask (ED-05, IP-11), live receipts for the new X/Y/Z axes and Prompt Matrix, OP-7 cancel for shared sd-server paths, inpaint blur-order parity.
+## Historical evidence
+
+Earlier full release-gate results, inference receipts, privacy checks, and browser artifacts remain in the local operational evidence area. Their original scope and limitations are retained in `docs/parity/EXECUTION_LEDGER.md` and `OPERATIONAL_STATE.md`; they are not silently upgraded to proof for later code revisions.

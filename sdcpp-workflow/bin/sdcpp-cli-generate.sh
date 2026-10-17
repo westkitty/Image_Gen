@@ -99,6 +99,8 @@ ensure_remote_dirs
 
 # Remote names carry the run id (SDCPP_REMOTE_RUN_TAG from hires-fix, else this run dir) so a cancel can find the process.
 RUN_TAG="${SDCPP_REMOTE_RUN_TAG:-$(basename "$RUN_DIR")}"
+# OP-7: announce the run-scoped identity before any remote generation starts, so Cancel can stop exactly this run.
+printf '%s' "$RUN_TAG" | grep -Eq '^20[0-9]{6}-[0-9]{6}-[A-Za-z0-9_-]{1,80}$' && printf 'SDCPP_RUN_ID: %s\n' "$RUN_TAG"
 REMOTE_PNG="$REMOTE_OUTPUT_DIR/${NAME}-${RUN_TAG}.png"
 register_remote_ephemeral "$REMOTE_PNG"
 REMOTE_LOG="$REMOTE_LOG_DIR/${NAME}-${RUN_TAG}.log"

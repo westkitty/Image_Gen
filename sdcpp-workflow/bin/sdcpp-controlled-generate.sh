@@ -9,6 +9,18 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 load_config
 
+# Reuse the configured Big Mac SSH connection across the serial preflight
+# checks and generation dispatch. The private socket and bounded persistence
+# mirror the already-used MFLUX transport; no server, key or route changes.
+# Set DEX_SSH_MUX=0 to retain one fresh SSH connection per operation.
+if [ "${DEX_SSH_MUX:-1}" != "0" ]; then
+  MUX_DIR="$HOME/.ssh/dexdiffusion-cm"
+  if mkdir -p "$MUX_DIR" 2>/dev/null && chmod 700 "$MUX_DIR" 2>/dev/null; then
+    SDCPP_SSH_EXTRA_OPTS="${SDCPP_SSH_EXTRA_OPTS:-} -o ControlMaster=auto -o ControlPath=$MUX_DIR/%C -o ControlPersist=120"
+    export SDCPP_SSH_EXTRA_OPTS
+  fi
+fi
+
 : "${MODEL_STAGE_ROOT:=/Volumes/wc2tb/ImageGen}"
 export MODEL_STAGE_ROOT
 # SDXL-class checkpoints live on Big Mac's internal SSD (expanded remotely). The wc2tb

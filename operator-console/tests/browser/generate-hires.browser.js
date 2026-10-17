@@ -42,6 +42,32 @@ const enable = page => page.locator('label', { hasText: 'High-Res Refine' }).loc
   const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer();
   const browser = await launchBrowser(chromium);
   try {
+    await test('OP-4A independent second pass: sends exactly the chosen second-pass fields to hires-2pass; blanks inherit; exclusive with in-engine hires', async () => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const { errors } = await open(page, srv.base);
+      const sent = [];
+      await page.route('**/api/actions/hires-2pass', route => { sent.push(JSON.parse(route.request().postData() || '{}')); route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'intercepted by test' }) }); });
+      await chooseTarget(page, 'sd15');
+      const f = k => page.locator('[data-second-pass] [data-second-field="' + k + '"]');
+      await f('on').check();
+      await f('prompt').fill('a detailed red fox'); await page.keyboard.press('Tab');
+      await f('target').selectOption('sdxl-photonic');
+      await f('sampler').selectOption('heun');
+      await f('denoise').fill('0.35'); await page.keyboard.press('Tab');
+      await page.locator('.ca-generate-form textarea').first().fill('a red fox in snow');
+      await page.locator('.ca-generate-form .ca-primary').click();
+      for (let i = 0; i < 40 && !sent.length; i++) await page.waitForTimeout(100);
+      assert.equal(sent.length, 1, 'one hires-2pass request');
+      assert.deepEqual(sent[0].second_pass, { prompt: 'a detailed red fox', target: 'sdxl-photonic', sampler: 'heun', denoise: 0.35 }, 'only explicitly chosen fields; the rest inherit server-side');
+      assert.equal(sent[0].target, 'sd15'); assert.equal(sent[0].prompt, 'a red fox in snow');
+      assert.ok(!Object.keys(sent[0]).some(k => /^hires_/.test(k)) && !('quantity' in sent[0]));
+      await enable(page);
+      await page.waitForSelector('[data-second-pass] [data-second-field="on"]:disabled', { timeout: 3000 });
+      assert.equal(await f('on').isDisabled(), true, 'cannot combine with in-engine High-Res Refine');
+      assert.equal(await f('prompt').count(), 0, 'second-pass fields hidden while High-Res Refine is on');
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
     await test('scale mode: panel, final-size preview, request carries scale and the chosen upscaler', async () => {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       const { errors, bodies } = await open(page, srv.base);
@@ -50,7 +76,7 @@ const enable = page => page.locator('label', { hasText: 'High-Res Refine' }).loc
       await enable(page);
       await page.locator('[data-dex-field="hires-panel"]').waitFor({ state: 'visible' });
       assert.deepEqual(await page.locator('[data-dex-field="hires-upscaler"] option').evaluateAll(o => o.map(x => x.value)), UPSCALERS);
-      assert.match(await page.locator('[data-dex-field="hires-unavailable"]').innerText(), /second-pass prompt, sampler, scheduler or checkpoint, and a refiner model/);
+      assert.match(await page.locator('[data-dex-field="hires-unavailable"]').innerText(), /reuses the first-pass prompt, sampler, scheduler and checkpoint\. For separate second-pass settings use “Independent second pass”/);
       await page.locator('[data-dex-field="hires-scale"]').fill('1.5');
       await page.keyboard.press('Tab');
       await page.locator('[data-dex-field="hires-upscaler"]').selectOption('Latent (bicubic)');

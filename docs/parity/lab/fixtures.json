@@ -1,0 +1,1308 @@
+{
+ "schema": "dexdiffusion.parity-lab.v1",
+ "a1111_commit": "82a973c04367123ae98bd9abdf80d9eda9b910e2",
+ "reference": "docs/parity/lab/a1111_reference.py",
+ "assumptions": {
+  "A-1": "A1111 scale-mode hires: hr_upscale_to = int(w*scale); the VAE latent is that //8, so the final pixel size is floor(int(w*s)/8)*8. Not verified against a live A1111 run (no PyTorch runtime allowed)."
+ },
+ "kinds": {
+  "unit-differential": "oracle and DexDiffusion subject both run in the unit test; must agree within tolerance",
+  "oracle-selfcheck+live-pending": "oracle is checked against the upstream doctest value; the subject is the engine and needs a live run",
+  "pending": "expected values pinned now; becomes executable when the named packet lands"
+ },
+ "fixtures": [
+  {
+   "id": "resize-resize-640x480-to-512x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-10"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     640,
+     480
+    ],
+    "target": [
+     512,
+     512
+    ],
+    "mode": "resize",
+    "a1111_mode": 0
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-crop-640x480-to-512x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-11"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     640,
+     480
+    ],
+    "target": [
+     512,
+     512
+    ],
+    "mode": "crop",
+    "a1111_mode": 1
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-fill-640x480-to-512x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-12"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     640,
+     480
+    ],
+    "target": [
+     512,
+     512
+    ],
+    "mode": "fill",
+    "a1111_mode": 2
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-resize-480x640-to-512x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-10"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     480,
+     640
+    ],
+    "target": [
+     512,
+     512
+    ],
+    "mode": "resize",
+    "a1111_mode": 0
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-crop-480x640-to-512x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-11"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     480,
+     640
+    ],
+    "target": [
+     512,
+     512
+    ],
+    "mode": "crop",
+    "a1111_mode": 1
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-fill-480x640-to-512x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-12"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     480,
+     640
+    ],
+    "target": [
+     512,
+     512
+    ],
+    "mode": "fill",
+    "a1111_mode": 2
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-resize-512x512-to-768x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-10"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     512,
+     512
+    ],
+    "target": [
+     768,
+     512
+    ],
+    "mode": "resize",
+    "a1111_mode": 0
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-crop-512x512-to-768x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-11"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     512,
+     512
+    ],
+    "target": [
+     768,
+     512
+    ],
+    "mode": "crop",
+    "a1111_mode": 1
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-fill-512x512-to-768x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-12"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     512,
+     512
+    ],
+    "target": [
+     768,
+     512
+    ],
+    "mode": "fill",
+    "a1111_mode": 2
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-resize-512x512-to-512x768",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-10"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     512,
+     512
+    ],
+    "target": [
+     512,
+     768
+    ],
+    "mode": "resize",
+    "a1111_mode": 0
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-crop-512x512-to-512x768",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-11"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     512,
+     512
+    ],
+    "target": [
+     512,
+     768
+    ],
+    "mode": "crop",
+    "a1111_mode": 1
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-fill-512x512-to-512x768",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-12"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     512,
+     512
+    ],
+    "target": [
+     512,
+     768
+    ],
+    "mode": "fill",
+    "a1111_mode": 2
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-resize-300x200-to-512x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-10"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     300,
+     200
+    ],
+    "target": [
+     512,
+     512
+    ],
+    "mode": "resize",
+    "a1111_mode": 0
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-crop-300x200-to-512x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-11"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     300,
+     200
+    ],
+    "target": [
+     512,
+     512
+    ],
+    "mode": "crop",
+    "a1111_mode": 1
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-fill-300x200-to-512x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-12"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     300,
+     200
+    ],
+    "target": [
+     512,
+     512
+    ],
+    "mode": "fill",
+    "a1111_mode": 2
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-resize-1000x250-to-768x384",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-10"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     1000,
+     250
+    ],
+    "target": [
+     768,
+     384
+    ],
+    "mode": "resize",
+    "a1111_mode": 0
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-crop-1000x250-to-768x384",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-11"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     1000,
+     250
+    ],
+    "target": [
+     768,
+     384
+    ],
+    "mode": "crop",
+    "a1111_mode": 1
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-fill-1000x250-to-768x384",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-12"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     1000,
+     250
+    ],
+    "target": [
+     768,
+     384
+    ],
+    "mode": "fill",
+    "a1111_mode": 2
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-resize-512x512-to-512x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-10"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     512,
+     512
+    ],
+    "target": [
+     512,
+     512
+    ],
+    "mode": "resize",
+    "a1111_mode": 0
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-crop-512x512-to-512x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-11"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     512,
+     512
+    ],
+    "target": [
+     512,
+     512
+    ],
+    "mode": "crop",
+    "a1111_mode": 1
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "resize-fill-512x512-to-512x512",
+   "category": "img2img-resize",
+   "ledger_rows": [
+    "ED-12"
+   ],
+   "kind": "unit-differential",
+   "oracle": "images.resize_image",
+   "subject": "operator-console/bin/resize-source.py resize_image",
+   "input": {
+    "src": [
+     512,
+     512
+    ],
+    "target": [
+     512,
+     512
+    ],
+    "mode": "fill",
+    "a1111_mode": 2
+   },
+   "tolerance": {
+    "metric": "max_abs_channel_diff",
+    "max": 0
+   }
+  },
+  {
+   "id": "hires-geometry-512x512-x1.5",
+   "category": "hires-geometry",
+   "ledger_rows": [
+    "HR-02",
+    "HR-03",
+    "HR-04",
+    "HR-13"
+   ],
+   "kind": "unit-differential",
+   "oracle": "processing.calculate_target_resolution + sample_hr_pass truncation (L1427)",
+   "subject": "operator-console/hires-2pass.js hiresGeometry",
+   "input": {
+    "base": [
+     512,
+     512
+    ],
+    "scale": 1.5,
+    "resize": [
+     0,
+     0
+    ]
+   },
+   "tolerance": {
+    "metric": "exact final size and crop box; scale mode: final = floor(int(w*s)/8)*8 (A1111 latent floor, assumption A-1)",
+    "max": 0
+   }
+  },
+  {
+   "id": "hires-geometry-512x768-x2",
+   "category": "hires-geometry",
+   "ledger_rows": [
+    "HR-02",
+    "HR-03",
+    "HR-04",
+    "HR-13"
+   ],
+   "kind": "unit-differential",
+   "oracle": "processing.calculate_target_resolution + sample_hr_pass truncation (L1427)",
+   "subject": "operator-console/hires-2pass.js hiresGeometry",
+   "input": {
+    "base": [
+     512,
+     768
+    ],
+    "scale": 2,
+    "resize": [
+     0,
+     0
+    ]
+   },
+   "tolerance": {
+    "metric": "exact final size and crop box; scale mode: final = floor(int(w*s)/8)*8 (A1111 latent floor, assumption A-1)",
+    "max": 0
+   }
+  },
+  {
+   "id": "hires-geometry-512x512-to1024x768",
+   "category": "hires-geometry",
+   "ledger_rows": [
+    "HR-02",
+    "HR-03",
+    "HR-04",
+    "HR-13"
+   ],
+   "kind": "unit-differential",
+   "oracle": "processing.calculate_target_resolution + sample_hr_pass truncation (L1427)",
+   "subject": "operator-console/hires-2pass.js hiresGeometry",
+   "input": {
+    "base": [
+     512,
+     512
+    ],
+    "scale": 0,
+    "resize": [
+     1024,
+     768
+    ]
+   },
+   "tolerance": {
+    "metric": "exact final size and crop box; scale mode: final = floor(int(w*s)/8)*8 (A1111 latent floor, assumption A-1)",
+    "max": 0
+   }
+  },
+  {
+   "id": "hires-geometry-512x768-to768x768",
+   "category": "hires-geometry",
+   "ledger_rows": [
+    "HR-02",
+    "HR-03",
+    "HR-04",
+    "HR-13"
+   ],
+   "kind": "unit-differential",
+   "oracle": "processing.calculate_target_resolution + sample_hr_pass truncation (L1427)",
+   "subject": "operator-console/hires-2pass.js hiresGeometry",
+   "input": {
+    "base": [
+     512,
+     768
+    ],
+    "scale": 0,
+    "resize": [
+     768,
+     768
+    ]
+   },
+   "tolerance": {
+    "metric": "exact final size and crop box; scale mode: final = floor(int(w*s)/8)*8 (A1111 latent floor, assumption A-1)",
+    "max": 0
+   }
+  },
+  {
+   "id": "hires-geometry-768x512-to1024x1024",
+   "category": "hires-geometry",
+   "ledger_rows": [
+    "HR-02",
+    "HR-03",
+    "HR-04",
+    "HR-13"
+   ],
+   "kind": "unit-differential",
+   "oracle": "processing.calculate_target_resolution + sample_hr_pass truncation (L1427)",
+   "subject": "operator-console/hires-2pass.js hiresGeometry",
+   "input": {
+    "base": [
+     768,
+     512
+    ],
+    "scale": 0,
+    "resize": [
+     1024,
+     1024
+    ]
+   },
+   "tolerance": {
+    "metric": "exact final size and crop box; scale mode: final = floor(int(w*s)/8)*8 (A1111 latent floor, assumption A-1)",
+    "max": 0
+   }
+  },
+  {
+   "id": "hires-geometry-512x512-to768x768",
+   "category": "hires-geometry",
+   "ledger_rows": [
+    "HR-02",
+    "HR-03",
+    "HR-04",
+    "HR-13"
+   ],
+   "kind": "unit-differential",
+   "oracle": "processing.calculate_target_resolution + sample_hr_pass truncation (L1427)",
+   "subject": "operator-console/hires-2pass.js hiresGeometry",
+   "input": {
+    "base": [
+     512,
+     512
+    ],
+    "scale": 0,
+    "resize": [
+     768,
+     768
+    ]
+   },
+   "tolerance": {
+    "metric": "exact final size and crop box; scale mode: final = floor(int(w*s)/8)*8 (A1111 latent floor, assumption A-1)",
+    "max": 0
+   }
+  },
+  {
+   "id": "hires-geometry-640x384-to1024x576",
+   "category": "hires-geometry",
+   "ledger_rows": [
+    "HR-02",
+    "HR-03",
+    "HR-04",
+    "HR-13"
+   ],
+   "kind": "unit-differential",
+   "oracle": "processing.calculate_target_resolution + sample_hr_pass truncation (L1427)",
+   "subject": "operator-console/hires-2pass.js hiresGeometry",
+   "input": {
+    "base": [
+     640,
+     384
+    ],
+    "scale": 0,
+    "resize": [
+     1024,
+     576
+    ]
+   },
+   "tolerance": {
+    "metric": "exact final size and crop box; scale mode: final = floor(int(w*s)/8)*8 (A1111 latent floor, assumption A-1)",
+    "max": 0
+   }
+  },
+  {
+   "id": "infotext-1",
+   "category": "infotext-parse",
+   "ledger_rows": [
+    "MT-01",
+    "MT-02"
+   ],
+   "kind": "unit-differential",
+   "oracle": "infotext_utils.parse_generation_parameters (core split)",
+   "subject": "operator-console/public/dexdiffusion/infotext.js parseInfotext",
+   "input": {
+    "text": "a red fox\nNegative prompt: blurry, lowres\nSteps: 20, Sampler: Euler a, CFG scale: 7, Seed: 965400086, Size: 512x512, Model hash: 45dee52b"
+   },
+   "tolerance": {
+    "metric": "exact prompt, negative and key/value map",
+    "max": 0
+   }
+  },
+  {
+   "id": "infotext-2",
+   "category": "infotext-parse",
+   "ledger_rows": [
+    "MT-01",
+    "MT-02"
+   ],
+   "kind": "unit-differential",
+   "oracle": "infotext_utils.parse_generation_parameters (core split)",
+   "subject": "operator-console/public/dexdiffusion/infotext.js parseInfotext",
+   "input": {
+    "text": "line one\nline two\nNegative prompt: bad\nmore negative\nSteps: 8, Sampler: DPM++ 2M, Schedule type: Karras, CFG scale: 5.5, Seed: 1, Size: 768x512"
+   },
+   "tolerance": {
+    "metric": "exact prompt, negative and key/value map",
+    "max": 0
+   }
+  },
+  {
+   "id": "infotext-3",
+   "category": "infotext-parse",
+   "ledger_rows": [
+    "MT-01",
+    "MT-02"
+   ],
+   "kind": "unit-differential",
+   "oracle": "infotext_utils.parse_generation_parameters (core split)",
+   "subject": "operator-console/public/dexdiffusion/infotext.js parseInfotext",
+   "input": {
+    "text": "a cat, sitting\nSteps: 30, Sampler: Heun, CFG scale: 7, Seed: 2, Size: 1024x1024, Hires upscale: 1.5, Hires steps: 10, Denoising strength: 0.45, Hires prompt: \"a cat, detailed, sharp\", Hires sampler: Euler"
+   },
+   "tolerance": {
+    "metric": "exact prompt, negative and key/value map",
+    "max": 0
+   }
+  },
+  {
+   "id": "infotext-4",
+   "category": "infotext-parse",
+   "ledger_rows": [
+    "MT-01",
+    "MT-02"
+   ],
+   "kind": "unit-differential",
+   "oracle": "infotext_utils.parse_generation_parameters (core split)",
+   "subject": "operator-console/public/dexdiffusion/infotext.js parseInfotext",
+   "input": {
+    "text": "just a prompt with: colons, and commas"
+   },
+   "tolerance": {
+    "metric": "exact prompt, negative and key/value map",
+    "max": 0
+   }
+  },
+  {
+   "id": "infotext-5",
+   "category": "infotext-parse",
+   "ledger_rows": [
+    "MT-01",
+    "MT-02"
+   ],
+   "kind": "unit-differential",
+   "oracle": "infotext_utils.parse_generation_parameters (core split)",
+   "subject": "operator-console/public/dexdiffusion/infotext.js parseInfotext",
+   "input": {
+    "text": "prompt\nSteps: 20, Sampler: Euler, Lora hashes: \"fox: abc123, cat: def456\", Seed: 3, Size: 512x768"
+   },
+   "tolerance": {
+    "metric": "exact prompt, negative and key/value map",
+    "max": 0
+   }
+  },
+  {
+   "id": "attention-1",
+   "category": "prompt-attention",
+   "ledger_rows": [
+    "PR-08",
+    "PR-09",
+    "PR-10"
+   ],
+   "kind": "oracle-selfcheck+live-pending",
+   "oracle": "prompt_parser.parse_prompt_attention (upstream doctest, verbatim expected value)",
+   "subject": "sd-cli 7f0e728 parse_prompt_attention (engine side; compare via a verbose live run with a test prompt)",
+   "input": {
+    "text": "normal text"
+   },
+   "expected": [
+    [
+     "normal text",
+     1.0
+    ]
+   ],
+   "tolerance": {
+    "metric": "abs weight diff",
+    "max": 1e-06
+   },
+   "pending": {
+    "packet": null,
+    "reason": "engine-side subject: needs a live sd-cli run with debug parse logging; not run in unit tests"
+   }
+  },
+  {
+   "id": "attention-2",
+   "category": "prompt-attention",
+   "ledger_rows": [
+    "PR-08",
+    "PR-09",
+    "PR-10"
+   ],
+   "kind": "oracle-selfcheck+live-pending",
+   "oracle": "prompt_parser.parse_prompt_attention (upstream doctest, verbatim expected value)",
+   "subject": "sd-cli 7f0e728 parse_prompt_attention (engine side; compare via a verbose live run with a test prompt)",
+   "input": {
+    "text": "an (important) word"
+   },
+   "expected": [
+    [
+     "an ",
+     1.0
+    ],
+    [
+     "important",
+     1.1
+    ],
+    [
+     " word",
+     1.0
+    ]
+   ],
+   "tolerance": {
+    "metric": "abs weight diff",
+    "max": 1e-06
+   },
+   "pending": {
+    "packet": null,
+    "reason": "engine-side subject: needs a live sd-cli run with debug parse logging; not run in unit tests"
+   }
+  },
+  {
+   "id": "attention-3",
+   "category": "prompt-attention",
+   "ledger_rows": [
+    "PR-08",
+    "PR-09",
+    "PR-10"
+   ],
+   "kind": "oracle-selfcheck+live-pending",
+   "oracle": "prompt_parser.parse_prompt_attention (upstream doctest, verbatim expected value)",
+   "subject": "sd-cli 7f0e728 parse_prompt_attention (engine side; compare via a verbose live run with a test prompt)",
+   "input": {
+    "text": "(unbalanced"
+   },
+   "expected": [
+    [
+     "unbalanced",
+     1.1
+    ]
+   ],
+   "tolerance": {
+    "metric": "abs weight diff",
+    "max": 1e-06
+   },
+   "pending": {
+    "packet": null,
+    "reason": "engine-side subject: needs a live sd-cli run with debug parse logging; not run in unit tests"
+   }
+  },
+  {
+   "id": "attention-4",
+   "category": "prompt-attention",
+   "ledger_rows": [
+    "PR-08",
+    "PR-09",
+    "PR-10"
+   ],
+   "kind": "oracle-selfcheck+live-pending",
+   "oracle": "prompt_parser.parse_prompt_attention (upstream doctest, verbatim expected value)",
+   "subject": "sd-cli 7f0e728 parse_prompt_attention (engine side; compare via a verbose live run with a test prompt)",
+   "input": {
+    "text": "(unnecessary)(parens)"
+   },
+   "expected": [
+    [
+     "unnecessaryparens",
+     1.1
+    ]
+   ],
+   "tolerance": {
+    "metric": "abs weight diff",
+    "max": 1e-06
+   },
+   "pending": {
+    "packet": null,
+    "reason": "engine-side subject: needs a live sd-cli run with debug parse logging; not run in unit tests"
+   }
+  },
+  {
+   "id": "attention-5",
+   "category": "prompt-attention",
+   "ledger_rows": [
+    "PR-08",
+    "PR-09",
+    "PR-10"
+   ],
+   "kind": "oracle-selfcheck+live-pending",
+   "oracle": "prompt_parser.parse_prompt_attention (upstream doctest, verbatim expected value)",
+   "subject": "sd-cli 7f0e728 parse_prompt_attention (engine side; compare via a verbose live run with a test prompt)",
+   "input": {
+    "text": "a (((house:1.3)) [on] a (hill:0.5), sun, (((sky)))."
+   },
+   "expected": [
+    [
+     "a ",
+     1.0
+    ],
+    [
+     "house",
+     1.5730000000000004
+    ],
+    [
+     " ",
+     1.1
+    ],
+    [
+     "on",
+     1.0
+    ],
+    [
+     " a ",
+     1.1
+    ],
+    [
+     "hill",
+     0.55
+    ],
+    [
+     ", sun, ",
+     1.1
+    ],
+    [
+     "sky",
+     1.4641000000000006
+    ],
+    [
+     ".",
+     1.1
+    ]
+   ],
+   "tolerance": {
+    "metric": "abs weight diff",
+    "max": 1e-06
+   },
+   "pending": {
+    "packet": null,
+    "reason": "engine-side subject: needs a live sd-cli run with debug parse logging; not run in unit tests"
+   }
+  },
+  {
+   "id": "schedule-1",
+   "category": "prompt-schedule",
+   "ledger_rows": [
+    "PR-11",
+    "PR-12"
+   ],
+   "kind": "pending",
+   "oracle": "prompt_parser.get_learned_conditioning_prompt_schedules (upstream doctest, verbatim)",
+   "subject": "none yet (sd-cli 7f0e728 has no schedule)",
+   "input": {
+    "text": "test",
+    "steps": 10
+   },
+   "expected": [
+    [
+     10,
+     "test"
+    ]
+   ],
+   "tolerance": {
+    "metric": "exact",
+    "max": 0
+   },
+   "pending": {
+    "packet": "OP-1A",
+    "reason": "engine mechanism absent"
+   }
+  },
+  {
+   "id": "schedule-2",
+   "category": "prompt-schedule",
+   "ledger_rows": [
+    "PR-11",
+    "PR-12"
+   ],
+   "kind": "pending",
+   "oracle": "prompt_parser.get_learned_conditioning_prompt_schedules (upstream doctest, verbatim)",
+   "subject": "none yet (sd-cli 7f0e728 has no schedule)",
+   "input": {
+    "text": "a [b:3]",
+    "steps": 10
+   },
+   "expected": [
+    [
+     3,
+     "a "
+    ],
+    [
+     10,
+     "a b"
+    ]
+   ],
+   "tolerance": {
+    "metric": "exact",
+    "max": 0
+   },
+   "pending": {
+    "packet": "OP-1A",
+    "reason": "engine mechanism absent"
+   }
+  },
+  {
+   "id": "schedule-3",
+   "category": "prompt-schedule",
+   "ledger_rows": [
+    "PR-11",
+    "PR-12"
+   ],
+   "kind": "pending",
+   "oracle": "prompt_parser.get_learned_conditioning_prompt_schedules (upstream doctest, verbatim)",
+   "subject": "none yet (sd-cli 7f0e728 has no schedule)",
+   "input": {
+    "text": "a [b:.5] c",
+    "steps": 10
+   },
+   "expected": [
+    [
+     5,
+     "a  c"
+    ],
+    [
+     10,
+     "a b c"
+    ]
+   ],
+   "tolerance": {
+    "metric": "exact",
+    "max": 0
+   },
+   "pending": {
+    "packet": "OP-1A",
+    "reason": "engine mechanism absent"
+   }
+  },
+  {
+   "id": "schedule-4",
+   "category": "prompt-schedule",
+   "ledger_rows": [
+    "PR-11",
+    "PR-12"
+   ],
+   "kind": "pending",
+   "oracle": "prompt_parser.get_learned_conditioning_prompt_schedules (upstream doctest, verbatim)",
+   "subject": "none yet (sd-cli 7f0e728 has no schedule)",
+   "input": {
+    "text": "a[b:[c:d:2]:1]e",
+    "steps": 10
+   },
+   "expected": [
+    [
+     1,
+     "abe"
+    ],
+    [
+     2,
+     "ace"
+    ],
+    [
+     10,
+     "ade"
+    ]
+   ],
+   "tolerance": {
+    "metric": "exact",
+    "max": 0
+   },
+   "pending": {
+    "packet": "OP-1A",
+    "reason": "engine mechanism absent"
+   }
+  },
+  {
+   "id": "schedule-5",
+   "category": "prompt-schedule",
+   "ledger_rows": [
+    "PR-11",
+    "PR-12"
+   ],
+   "kind": "pending",
+   "oracle": "prompt_parser.get_learned_conditioning_prompt_schedules (upstream doctest, verbatim)",
+   "subject": "none yet (sd-cli 7f0e728 has no schedule)",
+   "input": {
+    "text": "[fe|]male",
+    "steps": 10
+   },
+   "expected": [
+    [
+     1,
+     "female"
+    ],
+    [
+     2,
+     "male"
+    ],
+    [
+     3,
+     "female"
+    ],
+    [
+     4,
+     "male"
+    ],
+    [
+     5,
+     "female"
+    ],
+    [
+     6,
+     "male"
+    ],
+    [
+     7,
+     "female"
+    ],
+    [
+     8,
+     "male"
+    ],
+    [
+     9,
+     "female"
+    ],
+    [
+     10,
+     "male"
+    ]
+   ],
+   "tolerance": {
+    "metric": "exact",
+    "max": 0
+   },
+   "pending": {
+    "packet": "OP-1A",
+    "reason": "engine mechanism absent"
+   }
+  },
+  {
+   "id": "variation-identity",
+   "category": "variation-noise",
+   "ledger_rows": [
+    "SD-04",
+    "SD-05"
+   ],
+   "kind": "pending",
+   "oracle": "processing.create_random_tensors + rng.slerp",
+   "subject": "none yet",
+   "input": {
+    "seed": 5101,
+    "subseed": 77,
+    "strengths": [
+     0,
+     0.5,
+     1
+    ]
+   },
+   "expected": {
+    "strength_0": "pixels == plain seed run",
+    "strength_1": "pixels == subseed run",
+    "strength_0_5": "differs from both; repeat-identical"
+   },
+   "tolerance": {
+    "metric": "pixel sha256 equality for 0 and 1",
+    "max": 0
+   },
+   "pending": {
+    "packet": "OP-2",
+    "reason": "no subseed flags in the pinned binary"
+   }
+  },
+  {
+   "id": "sigmas-karras-sd15-20",
+   "category": "sigma-schedule",
+   "ledger_rows": [
+    "GN-03",
+    "SD-20",
+    "SD-21"
+   ],
+   "kind": "pending",
+   "oracle": "k_diffusion.sampling.get_sigmas_karras(n=20, sigma_min=0.0292, sigma_max=14.6146, rho=7)",
+   "subject": "sd-cli --scheduler karras sigma table (needs a debug sigma dump)",
+   "input": {
+    "n": 20
+   },
+   "tolerance": {
+    "metric": "max relative sigma diff",
+    "max": 0.0001
+   },
+   "pending": {
+    "packet": "OP-3",
+    "reason": "sd-cli does not print its sigma table; a --sigmas round-trip probe is proposed in OP-3"
+   }
+  },
+  {
+   "id": "refiner-switch-0.8",
+   "category": "refiner",
+   "ledger_rows": [
+    "HR-16",
+    "HR-17"
+   ],
+   "kind": "pending",
+   "oracle": "sd_samplers_common / processing refiner switch at 0.8 of model timesteps",
+   "subject": "none yet",
+   "input": {
+    "switch_at": 0.8,
+    "steps": 20
+   },
+   "tolerance": {
+    "metric": "switch step index exact",
+    "max": 0
+   },
+   "pending": {
+    "packet": "OP-4B",
+    "reason": "needs mid-loop UNet swap"
+   }
+  }
+ ]
+}

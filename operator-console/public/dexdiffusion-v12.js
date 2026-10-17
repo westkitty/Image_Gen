@@ -108,6 +108,10 @@
         fetchSnapshot();
       });
 
+      es.addEventListener('remote.worker', function(e) {
+        fetchRemoteWorkers();
+      });
+
       es.addEventListener('resource.changed', function(e) {
         fetchSnapshot();
       });
@@ -143,6 +147,36 @@
         applySnapshot(snap);
       }
     } catch (_) {}
+    fetchRemoteWorkers();
+  }
+  // OP-7: unresolved remote stops (quarantine) are shown in the Job Center with what is known and what can be done.
+  V12.remoteWorkers = { quarantine: null, workers: [] };
+  async function fetchRemoteWorkers() {
+    try {
+      const res = await fetch('/api/remote-workers');
+      if (res.ok) { V12.remoteWorkers = await res.json(); if (typeof renderJobCenterContent === 'function') renderJobCenterContent(); }
+    } catch (_) {}
+  }
+  V12.reconcileRemote = async function () {
+    try { await fetch('/api/remote-workers/reconcile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); } catch (_) {}
+    fetchSnapshot();
+  };
+  V12.releaseRemote = async function (jobId) {
+    if (!confirm('Release this quarantine WITHOUT verification?\n\nDexDiffusion could not prove the Big Mac work stopped. If it is still running, a new heavy job may compete with it for memory.')) return;
+    try { await fetch('/api/remote-workers/' + encodeURIComponent(jobId) + '/release', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acknowledge: 'unverified', note: 'Job Center' }) }); } catch (_) {}
+    fetchSnapshot();
+  };
+  function renderQuarantine() {
+    const q = (V12.remoteWorkers.workers || []).filter(w => ['cancel_requested', 'stop_dispatched', 'stop_pending', 'stop_unverified', 'orphan_suspect'].includes(w.state));
+    if (!q.length) return '';
+    const label = { cancel_requested: 'Cancel requested', stop_dispatched: 'Stopping', stop_pending: 'Stopping — awaiting check', stop_unverified: 'Unable to verify remote stop', orphan_suspect: 'Left running by a console restart — checking' };
+    return `<div data-quarantine="true" role="alert" style="border:1px solid rgba(248,113,113,.55);background:rgba(248,113,113,.10);border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#fecaca;">
+      <div style="font-weight:800;margin-bottom:6px;">Heavy work paused: a Big Mac stop is not verified</div>
+      ${q.map(w => { const last = (w.evidence || []).slice(-1)[0]; return `<div data-quarantine-job="${escapeHtml(w.job_id)}" style="margin:4px 0;">
+        <b>${escapeHtml(label[w.state] || w.state)}</b> · ${escapeHtml(w.action || 'job')} · ${escapeHtml(w.job_id.slice(0, 8))}${last ? ` — ${escapeHtml(last.detail)}` : ''}
+        <button type="button" onclick="window.__DEX_V12.reconcileRemote()" style="margin-left:6px;background:#334155;border:none;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;">Retry check</button>
+        <button type="button" onclick="window.__DEX_V12.releaseRemote('${escapeHtml(w.job_id)}')" style="margin-left:4px;background:#7f1d1d;border:none;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;">Release (unverified)</button></div>`; }).join('')}
+    </div>`;
   }
 
   function applySnapshot(snap) {
@@ -309,7 +343,7 @@
     const queue = snap.queue || [];
     const recent = snap.recent || [];
 
-    let html = '';
+    let html = renderQuarantine();
 
     // Section 1: ACTIVE
     html += `<div style="font-size:12px;font-weight:700;color:#38bdf8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Active (${active.length})</div>`;
@@ -410,6 +444,9 @@
       const data = await res.json();
       if (data.ok) {
         fetchSnapshot();
+      } else if (data.remote_stop === 'unverified') {
+        fetchSnapshot();
+        alert('Cancelled locally, but the Big Mac stop could not be verified. Heavy work is paused until a check proves it stopped (see the Job Center banner).');
       } else {
         alert(`Cancellation error: ${data.error || 'Failed'}`);
       }

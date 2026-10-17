@@ -19,9 +19,12 @@ async function newPage(browser, base, cancelReply) {
   await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: [], vaes: [], embeddings: { count: 0, items: [] } } }));
   await page.route('**/api/models/secondary/activate', r => r.fulfill({ json: { ok: true, activeSecondaryModel: 'sd15', modelState: {} } }));
   await page.route('**/api/actions/generate-controlled', r => r.fulfill({ json: { job_id: 'job-int-1', status: 'running', seeds: [11], quantity: 1 } }));
-  await page.route('**/api/jobs/job-int-1/cancel', r => { cancels.push(r.request().postDataJSON()); if (cancelReply.ok) cancelled = true; r.fulfill(cancelReply.ok ? { json: { ok: true, status: 'CANCELLED', remote: { ok: true, verified: true, runs: [] } } } : { status: 502, json: { ok: false, gate: 'remote-cancel-failed', error: cancelReply.error } }); });
+  // OP-7 contract: 200 + remote_stop 'verified' only for a verified stop; 202 + remote_stop 'unverified' (quarantine) otherwise.
+  await page.route('**/api/jobs/job-int-1/cancel', r => { cancels.push(r.request().postDataJSON()); cancelled = true; r.fulfill(cancelReply.ok
+    ? { json: { ok: true, status: 'CANCELLED', remote_stop: 'verified' } }
+    : { status: 202, json: { ok: false, status: 'CANCELLED', remote_stop: 'unverified', quarantine: true, gate: 'remote-stop-unverified', error: cancelReply.error } }); });
   await page.route('**/api/jobs/job-int-1', r => r.fulfill({ json: cancelled
-    ? { id: 'job-int-1', status: 'CANCELLED', firstFailedGate: 'user-cancelled', remoteCancel: { ok: true, runs: [] }, results: [] }
+    ? { id: 'job-int-1', status: 'CANCELLED', firstFailedGate: 'user-cancelled', remoteStop: cancelReply.ok ? 'cancelled_verified' : 'stop_unverified', remoteCancel: { ok: !!cancelReply.ok }, results: [] }
     : { id: 'job-int-1', status: 'running', commandAction: 'controlled-generate', progress: null, results: [] } }));
   await page.goto(base + '/dexdiffusion/');
   await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
@@ -42,18 +45,22 @@ const toasts = page => page.evaluate(() => __dex.state.toasts.map(t => t.msg));
       await page.click('[data-interrupt]');
       await page.waitForFunction(() => __dex.state.jobStatus === 'idle');
       assert.equal(cancels.length, 1);
-      assert.ok((await toasts(page)).some(t => /interrupted · Big Mac confirmed stopped/i.test(t)), JSON.stringify(await toasts(page)));
+      assert.ok((await toasts(page)).some(t => /interrupted · Big Mac stop verified/i.test(t)), JSON.stringify(await toasts(page)));
       assert.equal(await page.locator('[data-interrupt]').count(), 0);
       assert.equal(await page.locator('button.ca-primary').isDisabled(), false, 'Generate is available again');
       assert.deepEqual(errors, []);
       await ctx.close();
     });
-    await test('an unconfirmed remote stop is reported as an error, not as success', async () => {
-      const { page, ctx } = await newPage(browser, srv.base, { ok: false, error: 'The job was cancelled locally, but a process on Big Mac could not be confirmed stopped.' });
+    await test('an unverified remote stop is reported as such (heavy work paused), never as success', async () => {
+      const { page, ctx } = await newPage(browser, srv.base, { ok: false, error: 'Cancelled locally, but the Big Mac side could not be verified stopped.' });
       await page.click('button.ca-primary');
       await page.waitForSelector('[data-interrupt]');
       await page.click('[data-interrupt]');
-      await page.waitForFunction(() => __dex.state.toasts.some(t => /could not be confirmed stopped/.test(t.msg)));
+      await page.waitForFunction(() => __dex.state.toasts.some(t => /could not be verified/.test(t.msg)));
+      await page.waitForFunction(() => __dex.state.jobStatus === 'idle');
+      const all = await toasts(page);
+      assert.ok(!all.some(t => /stop verified|confirmed stopped/i.test(t)), JSON.stringify(all));
+      assert.ok(all.some(t => /unable to verify the Big Mac stop — heavy work paused/.test(t)), JSON.stringify(all));
       await ctx.close();
     });
   } finally {
