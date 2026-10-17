@@ -185,6 +185,31 @@ const counter = page => page.locator('[data-lightbox-count]').innerText();
       assert.match(await page.locator('[data-lib-pager]').innerText(), /of 84/, 'library state intact after the viewer closes');
       await ctx.close();
     });
+
+    await test('large library (5000 images): DOM and requests stay bounded to the page; paging reaches the end', async () => {
+      const { page, ctx, reqs } = await newPage(browser, srv.base);
+      const T = 5000, mk = i => ({ id: `20261017-${String(900000 + i)}-big-${i}.png`, url: '/api/images/big-' + i + '.png', thumbnailUrl: '/api/thumbnails/big-' + i + '.png', width: 64, height: 64, keeper: false, meta: { operation: 'txt2img', seed: i } });
+      await page.unroute('**/api/library/images**');
+      await page.route('**/api/library/images**', r => { const u = new URL(r.request().url()), limit = Math.min(500, +u.searchParams.get('limit') || 200), off = +u.searchParams.get('offset') || 0;
+        r.fulfill({ json: { filter: 'all', total: T, offset: off, limit, items: Array.from({ length: Math.max(0, Math.min(limit, T - off)) }, (_, i) => mk(off + i)) } }); });
+      await pick(page, 'rows', 20); await pick(page, 'cols', 6);
+      await page.waitForFunction(() => document.querySelectorAll('[data-lib-grid] [data-lib-thumb]').length === 120);
+      assert.match(await page.locator('[data-lib-pager]').innerText(), /Showing 1–120 of 5000/);
+      const nodes = await page.evaluate(() => document.querySelectorAll('img').length);
+      assert.ok(nodes <= 140, 'img elements bounded: ' + nodes);
+      // page to the end, waiting for each page to land (the Next button is disabled while a page loads)
+      for (let i = 0; i < 60; i++) {
+        const cur = await page.locator('[data-lib-range]').getAttribute('data-lib-range');
+        if (/-5000\/5000$/.test(cur)) break;
+        await page.waitForFunction(() => !document.querySelector('[data-lib-page="next"]').disabled, null, { timeout: 8000 });
+        await page.click('[data-lib-page="next"]');
+        await page.waitForFunction(b => document.querySelector('[data-lib-range]').getAttribute('data-lib-range') !== b, cur, { timeout: 8000 });
+      }
+      assert.equal(await page.locator('[data-lib-range]').getAttribute('data-lib-range'), '4921-5000/5000');
+      assert.equal(await page.locator('[data-lib-page="next"]').isDisabled(), true, 'last page has no Next');
+      assert.equal(reqs.full, 0, 'no full-resolution image fetched while browsing');
+      await ctx.close();
+    });
   } finally { await srv.stop(); }
   process.exit(exitCode());
 })();
