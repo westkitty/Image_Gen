@@ -2774,22 +2774,7 @@ app.get('/api/model-compatibility', (req, res) => {
   res.json(readSchemaFile(MODEL_COMPATIBILITY_REGISTRY));
 });
 
-// The project endpoint is 11436; the shared Big Mac tunnel agent has also been seen forwarding 11435. A refused connection
-// (not an HTTP error) on the primary falls back to the next candidate and the working one is remembered. An explicit
-// OLLAMA_BASE_URL/OLLAMA_HOST disables the fallback.
-const OLLAMA_CANDIDATES = (process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST) ? [OLLAMA_BASE_URL] : [OLLAMA_BASE_URL, 'http://127.0.0.1:11435'];
-let ollamaActiveBase = OLLAMA_BASE_URL;
 async function ollamaRequest(route, body = null, timeoutMs = 90000) {
-  const order = [ollamaActiveBase, ...OLLAMA_CANDIDATES.filter(u => u !== ollamaActiveBase)];
-  let last = null;
-  for (const base of order) {
-    const r = await ollamaRequestOnce(base, route, body, timeoutMs);
-    if (r.ok || r.status !== 502 || /timed out/.test(r.error || '')) { if (r.ok) ollamaActiveBase = base; return r; }
-    last = r;
-  }
-  return last;
-}
-async function ollamaRequestOnce(baseUrl, route, body = null, timeoutMs = 90000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -2799,7 +2784,7 @@ async function ollamaRequestOnce(baseUrl, route, body = null, timeoutMs = 90000)
       options.headers = { 'Content-Type': 'application/json' };
       options.body = JSON.stringify(body);
     }
-    const response = await fetch(new URL(route, baseUrl), options);
+    const response = await fetch(new URL(route, OLLAMA_BASE_URL), options);
     const text = await response.text();
     let json = null;
     try { json = text ? JSON.parse(text) : null; } catch (_) { json = { raw: text }; }
@@ -3094,9 +3079,9 @@ app.post('/api/detailer/run', async (req, res) => {
 
 app.get('/api/ollama/status', async (req, res) => {
   const result = await ollamaRequest('/api/tags', null, 10000);
-  if (!result.ok) return res.status(result.status).json({ error: result.error, baseUrl: ollamaActiveBase });
+  if (!result.ok) return res.status(result.status).json({ error: result.error, baseUrl: OLLAMA_BASE_URL });
   const models = result.json && Array.isArray(result.json.models) ? result.json.models : [];
-  res.json({ baseUrl: ollamaActiveBase, models: models.map(model => ({ name: model.name, modified_at: model.modified_at, size: model.size })) });
+  res.json({ baseUrl: OLLAMA_BASE_URL, models: models.map(model => ({ name: model.name, modified_at: model.modified_at, size: model.size })) });
 });
 
 app.post('/api/ollama/enhance', async (req, res) => {
