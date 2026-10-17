@@ -7,7 +7,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var statusLabel: NSTextField!
     private var consoleProcess: Process?
 
-    private let projectRoot = ProcessInfo.processInfo.environment["IMAGE_GEN_ROOT"] ?? "/Users/andrew/Image_Gen"
+    private let projectRoot: String = {
+        if let env = ProcessInfo.processInfo.environment["IMAGE_GEN_ROOT"], !env.isEmpty {
+            return env
+        }
+        if let plistRoot = Bundle.main.object(forInfoDictionaryKey: "DexDiffusionProjectRoot") as? String, !plistRoot.isEmpty {
+            return plistRoot
+        }
+        return "/Users/andrew/Image_Gen"
+    }()
     private let serverBaseURL = URL(string: "http://127.0.0.1:31337")!
     private let consoleURL = URL(string: "http://127.0.0.1:31337/dexdiffusion/")!
 
@@ -40,13 +48,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     private func showMainWindow() {
-        if window == nil {
+        let isNewWindow = (window == nil)
+        if isNewWindow {
             buildWindow()
         }
-        window.makeKeyAndOrderFront(nil)
+        window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         // Give WKWebView first-responder status so paste targets the active DOM element.
-        if let wv = webView { window.makeFirstResponder(wv) }
+        if let wv = webView { window?.makeFirstResponder(wv) }
+        if isNewWindow || webView?.url == nil {
+            loadConsole()
+        }
+    }
+
+    private func loadConsole() {
+        guard let wv = webView else { return }
+        setStatus("Loading DexDiffusion at \(consoleURL.absoluteString)...")
+        var request = URLRequest(url: consoleURL)
+        request.cachePolicy = .useProtocolCachePolicy
+        wv.load(request)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -57,9 +77,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     // MARK: - Menu actions
 
     @objc private func showAbout() {
+        let head = Bundle.main.object(forInfoDictionaryKey: "DexDiffusionSourceHead") as? String ?? "unknown"
         let alert = NSAlert()
         alert.messageText = "DexDiffusion"
-        alert.informativeText = "Local image generation UI (FLUX.2 Klein 4B via MFLUX on Big Mac)\nApp URL: \(consoleURL.absoluteString)\nImages: /Users/andrew/images_made\nProject: \(projectRoot)\nDocs: \(projectRoot)/DEXDIFFUSION.md"
+        alert.informativeText = "Local image generation UI (FLUX.2 Klein 4B via MFLUX on Big Mac)\nRevision: HEAD \(head)\nApp URL: \(consoleURL.absoluteString)\nImages: /Users/andrew/images_made\nProject: \(projectRoot)\nDocs: \(projectRoot)/DEXDIFFUSION.md"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
@@ -381,6 +402,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         appendLog("media-download: failed: \(error.localizedDescription)")
     }
 
+    // MARK: - Navigation delegate lifecycle and error recovery
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        setStatus("Connecting to DexDiffusion...")
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        let head = Bundle.main.object(forInfoDictionaryKey: "DexDiffusionSourceHead") as? String ?? "unknown"
+        setStatus("Connected to DexDiffusion at \(consoleURL.absoluteString) · HEAD \(head)")
+        appendLog("webView didFinish loading: \(consoleURL.absoluteString)")
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        setStatus("Failed to load: \(error.localizedDescription) · View → Reload (⌘R) to retry")
+        appendLog("webView didFail: \(error.localizedDescription)")
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        let nsError = error as NSError
+        appendLog("webView didFailProvisionalNavigation (code \(nsError.code)): \(error.localizedDescription)")
+        if nsError.domain == NSURLErrorDomain && (nsError.code == NSURLErrorCannotConnectToHost || nsError.code == NSURLErrorNetworkConnectionLost) {
+            setStatus("DexDiffusion backend unreachable. Attempting startup and reconnecting...")
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else { return }
+                self.ensureOperatorConsoleViaHelper()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    guard let wv = self.webView else { return }
+                    self.setStatus("Retrying connection to \(self.consoleURL.absoluteString)...")
+                    var req = URLRequest(url: self.consoleURL)
+                    req.cachePolicy = .useProtocolCachePolicy
+                    wv.load(req)
+                }
+            }
+        } else {
+            setStatus("Could not load DexDiffusion: \(error.localizedDescription) · View → Reload (⌘R) to retry")
+        }
+    }
+
     @objc private func copyErrorReport() {
         var parts: [String] = []
         parts.append("=== DexDiffusion Error Report ===")
@@ -561,8 +620,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             self.ensureOperatorConsoleViaHelper()
             DispatchQueue.main.async {
                 self.showMainWindow()
-                self.setStatus("Loading DexDiffusion at \(self.consoleURL.absoluteString)")
-                self.webView.load(URLRequest(url: self.consoleURL))
+                self.loadConsole()
             }
         }
     }

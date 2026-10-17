@@ -143,15 +143,34 @@ t=[x for x in json.load(sys.stdin).get("modelTargets",[]) if x.get("primary")]
 print("%s [%s, %s]" % (t[0]["label"], t[0]["id"], t[0]["status"]) if t else "none designated")' 2>/dev/null || echo unknown)"
   fi
 
-  local app="MISSING" icon="-" dock="MISSING"
+  local app="MISSING" icon="-" dock="MISSING" app_rev="-" app_build="-" app_root="-"
+  local repo_head; repo_head="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+  local swift_fp; swift_fp="$(shasum -a 256 "$ROOT/native/macos/Image_Gen/ImageGenApp.swift" 2>/dev/null | cut -d' ' -f1 || true)"
   if [ -f "$APP_PATH/Contents/Info.plist" ]; then
-    app="PRESENT ($(plutil -extract CFBundleIdentifier raw "$APP_PATH/Contents/Info.plist" 2>/dev/null))"
+    local bid; bid="$(plutil -extract CFBundleIdentifier raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || printf 'unknown')"
+    app="PRESENT ($bid)"
+    local ahead; ahead="$(plutil -extract DexDiffusionSourceHead raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || printf 'unknown')"
+    local afp; afp="$(plutil -extract DexDiffusionSourceFingerprint raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || printf 'unknown')"
+    app_root="$(plutil -extract DexDiffusionProjectRoot raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || printf 'unknown')"
+    if [ "$ahead" = "$repo_head" ]; then
+      app_rev="HEAD $ahead (UP TO DATE vs repo $repo_head)"
+    else
+      app_rev="HEAD $ahead (OUTDATED vs repo $repo_head — run scripts/install-macos-app.sh)"
+    fi
+    local arch; arch="$(file "$APP_PATH/Contents/MacOS/DexDiffusion" 2>/dev/null | grep -o 'arm64' || printf 'unknown')"
+    if [ -n "$afp" ] && [ -n "$swift_fp" ] && [ "$afp" = "$swift_fp" ]; then
+      app_build="$arch (source fingerprint MATCHES)"
+    elif [ -n "$afp" ] && [ "$afp" != "unknown" ]; then
+      app_build="$arch (SOURCE DRIFT: Swift file modified since install)"
+    else
+      app_build="$arch"
+    fi
     local iconf; iconf="$(plutil -extract CFBundleIconFile raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
     [ -n "$iconf" ] && [ -f "$APP_PATH/Contents/Resources/${iconf%.icns}.icns" ] && icon="OK (${iconf%.icns}.icns)" || icon="MISSING"
   fi
   local dockdump; dockdump="$(defaults read com.apple.dock persistent-apps 2>/dev/null || true)"
   local n; n="$(printf '%s' "$dockdump" | grep -c "file://$APP_PATH/" || true)"
-  if [ "$n" = "1" ]; then dock="INSTALLED (1 entry)"; elif [ "${n:-0}" -gt 1 ] 2>/dev/null; then dock="DUPLICATE ($n entries)"; fi
+  if [ "$n" = "1" ]; then dock="INSTALLED (1 entry, file://$APP_PATH/)"; elif [ "${n:-0}" -gt 1 ] 2>/dev/null; then dock="DUPLICATE ($n entries)"; fi
   printf '%s' "$dockdump" | grep -q "Image_Gen.app/\|Image_Gen%20Launcher.app/" && dock="$dock; STALE Image_Gen entry present"
 
   local ssh_state="DOWN" mflux="unknown" model="unknown"
@@ -187,6 +206,9 @@ Web
 
 Launcher
   app:       $APP_PATH — $app
+  revision:  $app_rev
+  build:     $app_build
+  root:      $app_root
   icon:      $icon
   dock:      $dock
 

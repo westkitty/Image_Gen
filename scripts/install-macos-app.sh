@@ -42,13 +42,29 @@ LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchS
 command -v swiftc >/dev/null 2>&1 || { echo "ERROR: swiftc not found. Install Xcode command line tools." >&2; exit 1; }
 python3 -c 'import PIL' 2>/dev/null || { echo "ERROR: python3 Pillow (PIL) is required to build the icon." >&2; exit 1; }
 
+# ---- preflight safety checks ------------------------------------------------
+avail_kb="$(df -k /Applications 2>/dev/null | awk 'NR==2 {print $4}')"
+if [ -n "$avail_kb" ] && [ "$avail_kb" -lt 500000 ]; then
+  echo "ERROR: Insufficient disk space in /Applications ($((avail_kb / 1024)) MB available, need at least 500 MB)." >&2
+  exit 1
+fi
+
+if curl -fsS --max-time 2 http://127.0.0.1:31337/api/resources 2>/dev/null | grep -q '"owner":".\+"'; then
+  echo "WARN: An inference job is currently active on Big Mac. Proceeding with caution (backend will not be interrupted)."
+fi
+
+if pgrep -x "$EXE_NAME" >/dev/null 2>&1; then
+  echo "Notice: $EXE_NAME is currently running; bundle replacement will take effect on next launch or restart."
+fi
+
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/dexdiffusion-app.XXXXXX")"
 trap 'rm -rf -- "$WORK"' EXIT
 
 # ---- build into a staging bundle, then swap into place -----------------------
 STAGE="$WORK/DexDiffusion.app"
 mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources"
-swiftc -O -framework Cocoa -framework WebKit "$SRC" -o "$STAGE/Contents/MacOS/$EXE_NAME"
+SWIFT_FINGERPRINT="$(shasum -a 256 "$SRC" | cut -d' ' -f1)"
+swiftc -O -target arm64-apple-macos12.0 -framework Cocoa -framework WebKit "$SRC" -o "$STAGE/Contents/MacOS/$EXE_NAME"
 chmod 755 "$STAGE/Contents/MacOS/$EXE_NAME"
 
 ICONSET="$WORK/AppIcon.iconset"
@@ -104,6 +120,8 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
   <string>$ROOT</string>
   <key>DexDiffusionSourceHead</key>
   <string>$GIT_HEAD</string>
+  <key>DexDiffusionSourceFingerprint</key>
+  <string>$SWIFT_FINGERPRINT</string>
   <key>LSMinimumSystemVersion</key>
   <string>12.0</string>
   <key>NSHighResolutionCapable</key>
@@ -118,6 +136,7 @@ codesign --force --deep --sign - "$STAGE" >/dev/null 2>&1 || echo "WARN: ad-hoc 
 mkdir -p "$RETIRED"
 if [ -e "$APP" ]; then
   mv "$APP" "$RETIRED/DexDiffusion-previous-$STAMP.app"
+  echo "Preserved previous app for rollback: $RETIRED/DexDiffusion-previous-$STAMP.app"
 fi
 # Archived bundles share the bundle id; keep Launch Services pointed only at $APP.
 for b in "$RETIRED"/*.app; do
@@ -170,18 +189,15 @@ for t in apps:
         if placed:
             changed = True          # drop duplicate / extra legacy tile
             continue
-        td0 = t.get("tile-data") or {}
-        stale_book = b"DexDiffusion.app" not in (td0.get("book") or b"DexDiffusion.app")
-        if u != want or td0.get("file-label") != "DexDiffusion" or stale_book:
-            td = t.setdefault("tile-data", {})
-            # The cached bookmark/mod-dates point at the old bundle (and its old
-            # icon); drop them so the Dock re-resolves the tile from the URL.
-            for k in ("book", "file-mod-date", "parent-mod-date"):
-                td.pop(k, None)
-            td["file-data"] = {"_CFURLString": want, "_CFURLStringType": 15}
-            td["file-label"] = "DexDiffusion"
-            td["bundle-identifier"] = "local.image-gen.wrapper"
+        td = t.setdefault("tile-data", {})
+        had_cache = any(k in td for k in ("book", "file-mod-date", "parent-mod-date"))
+        for k in ("book", "file-mod-date", "parent-mod-date"):
+            td.pop(k, None)
+        if u != want or td.get("file-label") != "DexDiffusion" or td.get("bundle-identifier") != "local.image-gen.wrapper" or had_cache:
             changed = True
+        td["file-data"] = {"_CFURLString": want, "_CFURLStringType": 15}
+        td["file-label"] = "DexDiffusion"
+        td["bundle-identifier"] = "local.image-gen.wrapper"
         placed = True
     out.append(t)
 if not placed:
