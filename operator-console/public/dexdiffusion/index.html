@@ -181,11 +181,11 @@
                 <div style="margin-bottom:12px;border:1px solid rgba(148,163,184,.12);border-radius:9px;padding:9px;background:rgba(9,20,32,.35);">
                   <button onClick="{{ onTogglePrompt }}" style="width:100%;border:none;background:transparent;padding:0;display:flex;align-items:center;justify-content:space-between;color:#92a4b8;cursor:pointer;font-family:'DM Sans',sans-serif;">
                     <span style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;">Prompt</span>
-                    <span style="font-size:10px;color:#6090a8;">{{ promptLen }} chars · {{ promptToggleLabel }} {{ promptChevron }}</span>
+                    <span style="font-size:10px;color:#6090a8;">{{ promptToggleLabel }} {{ promptChevron }}</span>
                   </button>
                   <div style="display:{{ promptPanelDisplay }};margin-top:8px;">
                   <textarea rows="5" value="{{ prompt }}" onChange="{{ onPromptChange }}" placeholder="Describe the image. A1111 syntax supported." style="width:100%;border:1px solid rgba(148,163,184,.16);background:#141418;color:#e8f0f7;border-radius:8px;padding:10px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;line-height:1.5;display:block;"></textarea>
-                  <div data-prompt-tools-row style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-top:6px;"><span style="font-size:10px;color:#6090a8;">{{ promptLen }} chars</span>{{ promptTools }}</div>
+                  <div data-prompt-tools-row style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-top:6px;"><span data-prompt-counter title="Characters in the prompt. 1000 is interface guidance, not a backend hard limit." style="font-size:10px;color:#6090a8;">{{ promptLen }} / 1000</span>{{ promptTools }}</div>
                   </div>
                 </div>
                 <div style="margin-bottom:12px;">
@@ -389,11 +389,11 @@
         <div style="margin-bottom:14px;border:1px solid rgba(245,158,11,.16);border-radius:9px;padding:9px;background:rgba(17,10,30,.55);">
           <button onClick="{{ onTogglePrompt }}" style="width:100%;border:none;background:transparent;padding:0;display:flex;align-items:center;justify-content:space-between;color:#f59e0b;cursor:pointer;font-family:'DM Sans',sans-serif;">
             <span style="font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;">Prompt</span>
-            <span style="font-size:10px;color:#8888b0;">{{ promptLen }} chars · {{ promptToggleLabel }} {{ promptChevron }}</span>
+            <span style="font-size:10px;color:#8888b0;">{{ promptToggleLabel }} {{ promptChevron }}</span>
           </button>
           <div style="display:{{ promptPanelDisplay }};margin-top:9px;">
             <div style="margin-bottom:5px;"><textarea rows="5" value="{{ prompt }}" onChange="{{ onPromptChange }}" placeholder="Describe the image. A1111 syntax supported." style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:9px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;line-height:1.5;display:block;"></textarea></div>
-            <div data-prompt-tools-row style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;"><span style="font-size:10px;color:#8888b0;">{{ promptLen }} chars</span>{{ promptTools }}<button style="border:none;background:none;color:#f59e0b;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;">Save style ↗</button></div>
+            <div data-prompt-tools-row style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;"><span data-prompt-counter title="Characters in the prompt. 1000 is interface guidance, not a backend hard limit." style="font-size:10px;color:#8888b0;">{{ promptLen }} / 1000</span>{{ promptTools }}<button style="border:none;background:none;color:#f59e0b;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;">Save style ↗</button></div>
             <div><textarea rows="2" value="{{ negPrompt }}" onChange="{{ onNegChange }}" data-ctl-off="{{ ctlNeg }}" placeholder="Negative: what to avoid…" style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:9px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;display:block;"></textarea></div>
           </div>
         </div>
@@ -530,10 +530,10 @@
         <div style="border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px;background:rgba(20,20,24,.55);">
           <button onClick="{{ onTogglePrompt }}" style="width:100%;border:none;background:transparent;padding:0;display:flex;align-items:center;justify-content:space-between;color:#a78bfa;cursor:pointer;font-family:'Space Grotesk',sans-serif;">
             <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;">Prompt</span>
-            <span style="font-size:10px;color:#7070a0;">{{ promptLen }} chars · {{ promptToggleLabel }} {{ promptChevron }}</span>
+            <span style="font-size:10px;color:#7070a0;">{{ promptToggleLabel }} {{ promptChevron }}</span>
           </button>
           <div style="display:{{ promptPanelDisplay }};margin-top:9px;">
-            <div data-prompt-tools-row style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><span style="font-size:10px;color:#7070a0;">{{ promptLen }} chars</span>{{ promptTools }}</div>
+            <div data-prompt-tools-row style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><span data-prompt-counter title="Characters in the prompt. 1000 is interface guidance, not a backend hard limit." style="font-size:10px;color:#7070a0;">{{ promptLen }} / 1000</span>{{ promptTools }}</div>
             <textarea rows="5" value="{{ prompt }}" onChange="{{ onPromptChange }}" placeholder="Describe the image…" style="width:100%;border:1px solid rgba(255,255,255,.09);background:#141418;color:#f4f4f8;border-radius:6px;padding:10px;outline:none;font-size:13px;font-family:'Space Grotesk',sans-serif;line-height:1.5;display:block;margin-top:6px;"></textarea>
             <button style="border:none;background:none;color:#8b5cf6;font-size:11px;cursor:pointer;text-align:right;padding:2px 0 0;font-family:'Space Grotesk',sans-serif;display:block;margin-left:auto;">Save style ↗</button>
           </div>

@@ -359,7 +359,8 @@
       el.textContent = text; el.hidden = !text;
     };
     const initialNotes = DP ? DP.notesForTarget(target, s.prompt, s.negPrompt).join(' ') : '';
-    const prompt = h('label', { className: 'ca-field' }, h('span', null, 'Prompt'), h('textarea', { rows: 6, value: s.prompt || '', placeholder: 'Describe the image.', 'data-dex-field': 'prompt', onInput: e => { this.state.prompt = e.target.value; refreshPromptNotes(e); } }),
+    const prompt = h('label', { className: 'ca-field' }, h('span', null, 'Prompt'), h('textarea', { rows: 6, value: s.prompt || '', placeholder: 'Describe the image.', 'data-dex-field': 'prompt', onInput: e => { this.state.prompt = e.target.value; refreshPromptNotes(e); const c = e.target.closest('label') && e.target.closest('label').querySelector('[data-prompt-counter]'); if (c) c.textContent = e.target.value.length + ' / 1000'; } }),
+      h('small', { className: 'ca-muted', 'data-prompt-counter': 'true', title: 'Characters in the prompt. 1000 is interface guidance, not a backend hard limit.' }, (s.prompt || '').length + ' / 1000'),
       h('small', { className: 'ca-muted', 'data-dex-field': 'prompt-syntax-help' }, DP ? DP.syntaxHelp(target) : ''),
       h('small', { className: 'ca-note', 'data-dex-field': 'prompt-notes', role: 'status', hidden: !initialNotes }, initialNotes),
       h('small', { className: 'ca-muted', 'data-dex-field': 'token-count' }, 'Token count: unknown for this backend (not estimated).'));
