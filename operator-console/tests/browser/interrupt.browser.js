@@ -45,7 +45,7 @@ const toasts = page => page.evaluate(() => __dex.state.toasts.map(t => t.msg));
       await page.click('[data-interrupt]');
       await page.waitForFunction(() => __dex.state.jobStatus === 'idle');
       assert.equal(cancels.length, 1);
-      assert.ok((await toasts(page)).some(t => /interrupted · Big Mac stop verified/i.test(t)), JSON.stringify(await toasts(page)));
+      assert.ok((await toasts(page)).some(t => /cancelled · Big Mac stop verified/i.test(t)), JSON.stringify(await toasts(page)));
       assert.equal(await page.locator('[data-interrupt]').count(), 0);
       assert.equal(await page.locator('button.ca-primary').isDisabled(), false, 'Generate is available again');
       assert.deepEqual(errors, []);

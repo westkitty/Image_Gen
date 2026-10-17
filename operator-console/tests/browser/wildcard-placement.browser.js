@@ -48,6 +48,18 @@ const { test, exitCode } = runner('wildcard-placement');
       s = await prompts();
       assert.equal(s.n, 'blurry'); assert.match(s.p, /__aa__/);
     });
+    await test('seed: Random checkbox, dice and reuse controls', async () => {
+      await page.evaluate(() => __dex.setState({ seed: '-1', lastSeed: 4242 }));
+      await page.waitForSelector('[data-dex-field="seed-random"]');
+      assert.equal(await page.locator('[data-dex-field="seed-random"]').isChecked(), true, 'new seed entries default to random (-1)');
+      await page.click('[data-dex-field="seed-reuse"]');
+      await page.waitForFunction(() => __dex.state.seed === '4242');
+      await page.waitForFunction(() => document.querySelector('[data-dex-field="seed-random"]').checked === false);
+      await page.click('[data-dex-field="seed-random"]');
+      await page.waitForFunction(() => __dex.state.seed === '-1');
+      await page.click('[data-dex-field="seed-dice"]');
+      await page.waitForFunction(() => /^\d+$/.test(String(__dex.state.seed)) && Number(__dex.state.seed) >= 0);
+    });
     assert.deepEqual(errors, []);
     await ctx.close();
   } finally { await srv.stop(); }

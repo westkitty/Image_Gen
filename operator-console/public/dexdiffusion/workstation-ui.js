@@ -200,7 +200,7 @@
       // OP-7: only a verified worker record counts as "stopped"; anything else is said plainly.
       const st = job.remoteStop;
       const msg = st === 'cancelled_verified' ? ' · Big Mac stop verified' : st === 'stop_unverified' || st === 'orphan_suspect' ? ' · unable to verify the Big Mac stop — heavy work paused' : st ? ' · stopping on Big Mac…' : '';
-      this.toast('Generation interrupted' + msg, st && st !== 'cancelled_verified' ? '#ef4444' : '#fbbf24');
+      this.toast('Generation cancelled' + msg, st && st !== 'cancelled_verified' ? '#ef4444' : '#fbbf24');
     } else {
       this.setState({ jobStatus: 'error', progress: 0, errorMsg: this._failText(job) });
       this.toast('Generation failed · ' + (job.firstFailedGate || job.status), '#ef4444');
@@ -211,11 +211,11 @@
     const id = this._ws().activeJobId;
     if (!id || this._ws().interrupting) return;
     this.wsSet({ interrupting: true, interruptState: 'requested' });
-    const r = await this._api('/api/jobs/' + encodeURIComponent(id) + '/cancel', { reason: 'Interrupted from Create' });
+    const r = await this._api('/api/jobs/' + encodeURIComponent(id) + '/cancel', { reason: 'Cancelled from Create' });
     const rs = r.data && r.data.remote_stop;
     this.wsSet({ interrupting: false, interruptState: rs || (r.ok ? 'verified' : 'error') });
     if (rs === 'unverified') this.toast('Cancelled, but the Big Mac stop could not be verified — heavy work is paused until it is (Job Center)', '#ef4444');
-    else if (!r.ok && r.status !== 202) this.toast(r.data.error || 'Interrupt failed', '#ef4444');
+    else if (!r.ok && r.status !== 202) this.toast(r.data.error || 'Cancel failed', '#ef4444');
   };
 
   P.selectResult = function (i) {
