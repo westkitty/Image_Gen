@@ -103,6 +103,13 @@ ARG_STEPS="$STEPS"; ARG_W="$WIDTH"; ARG_H="$HEIGHT"; ARG_CFG="$CFG_SCALE"; ARG_S
 [ -n "$EX_H" ] && ARG_H="$EX_H"
 [ -n "$EX_CFG" ] && ARG_CFG="$EX_CFG"
 [ -n "$EX_SAMPLER" ] && ARG_SAMPLER="$EX_SAMPLER"
+# UI sampler id -> sd-cli --sampling-method name (sd-cli rejects dpmpp2m and prints its usage text; see controlled-args.js SDCLI_SAMPLER).
+case "$ARG_SAMPLER" in
+  dpmpp2s_a) ARG_SAMPLER_CLI="dpm++2s_a" ;;
+  dpmpp2m)   ARG_SAMPLER_CLI="dpm++2m" ;;
+  dpmpp2mv2) ARG_SAMPLER_CLI="dpm++2mv2" ;;
+  *)         ARG_SAMPLER_CLI="$ARG_SAMPLER" ;;
+esac
 [ -n "$EX_SCHEDULER" ] && ARG_SCHEDULER="$EX_SCHEDULER"
 
 RUN_DIR="$(make_run_dir img2img)"
@@ -213,9 +220,9 @@ fi
 
 START_EPOCH="$(now_epoch)"
 if [ "${SDCPP_REDACT_PROMPTS:-0}" = "1" ]; then
-  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -i \"$REMOTE_INIT_IMG\" --strength $ARG_STRENGTH -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG ${SCHEDULER_FRAG:-} ${VAE_FRAG:-} ${LORA_FRAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" 2>&1 | python3 "$HERE/redact_stream.py" "$ARG_PROMPT" "$ARG_NEG" > "$RUN_DIR/remote-stdout.log" || true
+  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -i \"$REMOTE_INIT_IMG\" --strength $ARG_STRENGTH -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER_CLI $SEED_FRAG ${SCHEDULER_FRAG:-} ${VAE_FRAG:-} ${LORA_FRAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" 2>&1 | python3 "$HERE/redact_stream.py" "$ARG_PROMPT" "$ARG_NEG" > "$RUN_DIR/remote-stdout.log" || true
 else
-  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -i \"$REMOTE_INIT_IMG\" --strength $ARG_STRENGTH -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER $SEED_FRAG ${SCHEDULER_FRAG:-} ${VAE_FRAG:-} ${LORA_FRAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" > "$RUN_DIR/remote-stdout.log" 2>&1 || true
+  ssh_remote "cd \"$REMOTE_REPO\" && \"$BUILD_DIR/bin/sd-cli\" -m \"$REMOTE_MODEL\" -p $Q_PROMPT -n $Q_NEG -i \"$REMOTE_INIT_IMG\" --strength $ARG_STRENGTH -W $ARG_W -H $ARG_H --steps $ARG_STEPS --cfg-scale $ARG_CFG --sampling-method $ARG_SAMPLER_CLI $SEED_FRAG ${SCHEDULER_FRAG:-} ${VAE_FRAG:-} ${LORA_FRAG:-} --diffusion-fa -o \"$REMOTE_PNG\" -v 2>&1 | tee \"$REMOTE_LOG\"" > "$RUN_DIR/remote-stdout.log" 2>&1 || true
 fi
 END_EPOCH="$(now_epoch)"
 ELAPSED="$(elapsed_seconds "$START_EPOCH" "$END_EPOCH")"
