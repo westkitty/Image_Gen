@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Puppet Master harness</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>body{margin:0;padding:12px;background:#0b1020;color:#e2e8f0;font:13px system-ui,sans-serif}button,select{font:inherit}</style>
+</head>
+<body>
+  <div id="host"></div>
+  <!-- Framework-light: puppet-master-ui.js is plain DOM, so dc-runtime.js is deliberately not loaded here. -->
+  <script src="/dexdiffusion/a11y.js"></script>
+  <script src="/dexdiffusion/puppet-pose.js"></script>
+  <script src="/dexdiffusion/puppet-master-ui.js"></script>
+  <script>
+    window.__exports = [];
+    window.__pm = DexPuppetMaster.mount(document.getElementById('host'), {
+      width: 512, height: 512, plan: 'openpose18', download: false,
+      onExport: async function (e) {
+        const buf = new Uint8Array(await e.png.arrayBuffer());
+        let bin = ''; for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+        window.__exports.push({ plan: e.plan, openpose: e.openpose, pngType: e.png.type, jsonType: e.json.type, pngB64: btoa(bin), jsonText: await e.json.text() });
+      }
+    });
+  </script>
+</body>
+</html>

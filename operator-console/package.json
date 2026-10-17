@@ -15,7 +15,8 @@
     "test:browser:voice": "node tests/browser/voice-drama.browser.js",
     "test:browser:studio": "node tests/browser/drama-studio.browser.js",
     "test:browser:matrix": "node tests/browser/interaction-matrix.browser.js",
-    "test:browser:concept-a": "node tests/browser/concept-a-refinement.browser.js"
+    "test:browser:concept-a": "node tests/browser/concept-a-refinement.browser.js",
+    "test:release": "node tests/release-gate.js"
   },
   "keywords": [],
   "author": "",

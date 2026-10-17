@@ -55,7 +55,8 @@ const RUNS_DIR = path.join(WORKFLOW_ROOT, 'runs');
 const imageStore = createImageStore();
 imageStore.ensureRoot();
 const CONFIG_DIR = path.join(WORKFLOW_ROOT, 'config');
-const STATE_DIR = path.join(WORKFLOW_ROOT, 'state');
+// DEX_STATE_DIR: test-only override so browser-suite servers never read or rewrite the live console's jobs, queues or media records.
+const STATE_DIR = process.env.DEX_STATE_DIR ? path.resolve(process.env.DEX_STATE_DIR) : path.join(WORKFLOW_ROOT, 'state');
 const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
 // Lineage + Keepers, keyed by canonical image id (metadata only, never prompts).
 const imageMeta = W.createImageMetaStore(path.join(STATE_DIR, 'image-meta.json'));
@@ -79,7 +80,7 @@ const stylesStore = createStylesStore(process.env.DEX_STYLES_FILE || path.join(S
 const macroStore = createMacroStore(path.join(STATE_DIR, 'macros.json'));
 const thumbnailService = createThumbnailService({ cacheDir: path.join(STATE_DIR, 'thumbnails'), imageStore });
 const libraryIndex = createLibraryIndex({ indexPath: path.join(STATE_DIR, 'library-index.json'), imageStore, imageMeta, runsDir: RUNS_DIR });
-const HEAVY_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test']);
+const HEAVY_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test', 'sd-upscale', 'loopback', 'outpaint-poor', 'outpaint-mk2']);
 const IMAGE_EDIT_CACHE = path.join(STATE_DIR, 'image-edit-capabilities.json');
 const UPSCALE_CACHE = path.join(STATE_DIR, 'upscale-capabilities.json');
 const MODEL_STAGE_CACHE = path.join(STATE_DIR, 'model-stage-cache.json');
@@ -607,9 +608,17 @@ function resolveEditResources(body) {
   return null;
 }
 // Effective generation record kept per canonical output (privacy-gated text).
+// The edit workers (sdcpp-img2img.sh / sdcpp-inpaint.sh, and every chain built on them) always load REMOTE_MODEL from
+// sdcpp.env — NOT the secondary slot. Lineage must name that model; the slot target was recorded before (2026-10-16 audit:
+// nine live SD1.5 edits were labelled sdxl-photonic).
+function editWorkerTarget() {
+  const file = path.basename(readSdcppEnv('REMOTE_MODEL', '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors'));
+  const t = CONTROLLED_TARGETS.find(x => x.modelFile === file && !x.aliasOf) || CONTROLLED_TARGETS.find(x => x.modelFile === file);
+  return t ? (t.aliasOf || t.id) : null;   // a same-checkpoint alias names its canonical target
+}
 function editGenRecord(body, params, extra = {}) {
   const save = !!params.save_prompts;
-  const active = assetCache && assetCache.activeSecondaryModel || null;
+  const active = editWorkerTarget() || (assetCache && assetCache.activeSecondaryModel) || null;
   return {
     gen_schema: 1,
     loras: body.__loras || [],
@@ -775,6 +784,8 @@ function cleanupRejectedSource(res, source) {
 }
 
 function resolveImageSource(body) {
+  // __initPath is an internal hand-off set below; a client must never choose the local file a worker reads.
+  delete body.__initPath;
   if (typeof body.staged_id === 'string' && body.staged_id) {
     const w = stagedToWorkingPng(body.staged_id);
     if (w.error) return { error: w.error };
@@ -1196,7 +1207,7 @@ function terminateChildTree(child) {
 // These actions put their run id on the remote command line (output paths or the MFLUX label), so the remote stop can be
 // scoped to the run. batch-generate and xyz-plot talk to the shared sd-server and are not in the set: they are reported
 // as unverified rather than assumed stopped.
-const REMOTE_CANCEL_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix']);
+const REMOTE_CANCEL_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'sd-upscale', 'loopback', 'outpaint-poor', 'outpaint-mk2']);
 function runIdsOf(job) {
   const text = String(job.stdout || '');
   const ids = [...new Set([...text.matchAll(/(?:SDCPP_RUN_ID:\s*|runs\/)(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/g)].map(m => m[1]))];
@@ -2393,6 +2404,7 @@ app.get('/api/capabilities', (req, res) => {
   }));
 
   res.json({
+    editWorkerTarget: editWorkerTarget(),   // the model Img2Img / Inpaint / Outpaint / scripts actually run (sdcpp.env REMOTE_MODEL)
     app: { name: 'SDCPP Workbench', version: 'a1111-workbench-2026-06-22' },
     backend: { type: 'stable-diffusion.cpp workflow bridge', workflowRoot: WORKFLOW_ROOT, runsDir: RUNS_DIR, localTunnelPort: localPort },
     assetCache: { present: !!assets, cacheAgeMinutes, discoveredAt: assets ? assets.discovered_at_iso : null },
@@ -3821,6 +3833,13 @@ app.get('/api/images/:id/meta', (req, res) => {
 // ---- PNG Info / reproducibility (P12) ----------------------------------------------------------------------------
 // Generated images carry no metadata by design (prompt privacy); settings live in the library record. These routes
 // (1) read A1111/ComfyUI metadata from any uploaded PNG and map it onto Create, and (2) write A1111 infotext on export.
+// A1111 infotext "Model:" is the checkpoint name. sd15's file is named on its same-checkpoint alias, so resolve through it.
+function infotextModelName(targetId) {
+  const spec = CONTROLLED_TARGETS.find(t => t.id === targetId) || allControlledTargets()[targetId] || null;
+  if (!spec) return targetId || '';
+  const alias = !spec.modelFile && CONTROLLED_TARGETS.find(t => t.aliasOf === spec.id && t.modelFile);
+  return spec.modelFile || (alias && alias.modelFile) || spec.label || spec.id;
+}
 function infotextFor(id, { withPrompt }) {
   const v = imageView(id);
   if (!v) return null;
@@ -3829,7 +3848,7 @@ function infotextFor(id, { withPrompt }) {
   const hasText = typeof meta.prompt === 'string' && meta.prompt.length > 0;
   const text = Infotext.formatInfotext(meta, {
     prompt: withPrompt && hasText ? meta.prompt : '', negative: withPrompt && hasText ? (meta.negative_prompt || '') : '',
-    modelName: spec ? (spec.modelFile || spec.label) : (meta.target || ''),
+    modelName: infotextModelName(meta.target),
   });
   return { text, promptIncluded: !!(withPrompt && hasText), recorded: !!(meta.target || meta.steps || meta.seed != null || meta.gen_schema) };
 }
@@ -3883,6 +3902,34 @@ app.get('/api/images/:id/export', (req, res) => {
     }
   } catch (err) { return res.status(500).json({ error: 'Could not prepare the export: ' + err.message }); }
   res.set({ 'Content-Type': 'image/png', 'Content-Disposition': `attachment; filename="${req.params.id.replace(/[^A-Za-z0-9._-]/g, '_')}"`, 'X-Dex-Prompt-Included': info && info.promptIncluded ? '1' : '0', 'Cache-Control': 'no-store' }).send(buf);
+});
+// MT-07/13/14/15/16: multi-image export as PNG / JPEG / WebP with optional infotext, sidecar .txt, filename pattern and ZIP.
+// Every output is a new buffer (bin/encode-image.py reads the canonical file read-only); prompt text appears only when the
+// image record saved it AND the request asks for it (save_prompts !== false). One export runs at a time (one python per image).
+const ExportService = require('./export-service');
+let exportBusy = false;
+app.post('/api/images/export', async (req, res) => {
+  const b = req.body || {};
+  const allowed = new Set(['ids', 'format', 'quality', 'lossless', 'metadata', 'pattern', 'sidecar', 'zip', 'save_prompts']);
+  for (const k of Object.keys(b)) if (!allowed.has(k)) return res.status(400).json({ error: `Unexpected field: ${k}` });
+  if (!Array.isArray(b.ids) || !b.ids.length || b.ids.length > ExportService.LIMITS.maxImages || !b.ids.every(x => typeof x === 'string'))
+    return res.status(400).json({ error: `ids must be 1–${ExportService.LIMITS.maxImages} image ids` });
+  if (b.pattern != null && (typeof b.pattern !== 'string' || b.pattern.length > ExportService.LIMITS.maxPatternLength)) return res.status(400).json({ error: 'pattern must be a string up to 256 characters' });
+  if (b.metadata != null && !['none', 'infotext'].includes(b.metadata)) return res.status(400).json({ error: 'metadata must be none or infotext' });
+  const views = [];
+  for (const id of b.ids) { const v = imageView(id); if (!v) return res.status(404).json({ error: `Image not found: ${id}` }); views.push(v); }
+  if (exportBusy) return res.status(429).json({ error: 'Another export is running; try again when it finishes.' });
+  exportBusy = true;
+  try {
+    const out = await ExportService.exportImages(views, {
+      format: b.format, quality: b.quality, lossless: !!b.lossless, metadata: b.metadata || 'infotext', pattern: b.pattern,
+      sidecar: !!b.sidecar, zip: !!b.zip, savePrompts: b.save_prompts !== false,
+      modelName: v => infotextModelName(v.meta.target),
+    });
+    res.set({ 'Content-Type': out.contentType, 'Content-Disposition': `attachment; filename="${out.filename.replace(/["\\\r\n]/g, '_')}"`, 'X-Dex-Prompt-Included': out.promptsIncluded ? '1' : '0', 'X-Dex-Export-Count': String(out.count), 'Cache-Control': 'no-store' }).send(out.buffer);
+  } catch (err) {
+    res.status(/size limit/.test(err.message) ? 413 : 400).json({ error: err.message });
+  } finally { exportBusy = false; }
 });
 app.post('/api/images/:id/keeper', (req, res) => {
   if (!imageStore.resolveImage(req.params.id)) return res.status(404).json({ error: 'Image not found' });
@@ -3956,12 +4003,16 @@ function xyzPlanFor(body) {
   const probe0 = normalizeControlledGenerationBody({ ...settings, prompt, negative_prompt: negative });
   const target = allControlledTargets()[probe0.target] || CONTROLLED_TARGETS.find(t => t.id === probe0.target);
   if (!target) return { status: 400, error: `Unknown target: ${probe0.target}` };
-  const plan = XyzPlot.buildPlan({ prompt, negative_prompt: negative }, { x: body.x, y: body.y, z: body.z }, targetCapabilities(target));
-  if (!plan.ok) return { status: 400, error: plan.errors[0], errors: plan.errors };
-  // Like A1111, a random base seed (-1) is fixed once so cells differ only by the axes — unless the user keeps random seeds.
-  const seedAxis = plan.axes.some(a => a && a.type === 'seed');
+  // Like A1111, a random base seed (-1) is fixed once (before planning, so "vary seeds" offsets have a base) and cells differ
+  // only by the axes — unless the user keeps random seeds. A Seed axis's own -1 values are resolved inside buildPlan.
+  const axesIn = { x: body.x, y: body.y, z: body.z };
+  const seedAxis = Object.values(axesIn).some(a => a && a.type === 'seed');
   const fixedSeed = Number(settings.seed) >= 0 ? Number(settings.seed) : (body.keep_random_seed || seedAxis ? null : crypto.randomInt(0, W.MAX_SEED));
   if (fixedSeed !== null) settings.seed = fixedSeed;
+  const vary = body.vary_seeds && typeof body.vary_seeds === 'object' ? { x: !!body.vary_seeds.x, y: !!body.vary_seeds.y, z: !!body.vary_seeds.z } : undefined;
+  const plan = XyzPlot.buildPlan({ prompt, negative_prompt: negative, hires: hiresRequested(probe0), seed: fixedSeed === null ? undefined : fixedSeed }, axesIn,
+    targetCapabilities(target), { varySeeds: vary, keepRandomSeeds: !!body.keep_random_seed });
+  if (!plan.ok) return { status: 400, error: plan.errors[0], errors: plan.errors };
   const allTargetById = allControlledTargets();
   for (const c of plan.cells) {
     const probe = normalizeControlledGenerationBody({ ...settings, ...c.overrides, prompt: c.prompt, negative_prompt: c.negative_prompt, quantity: 1 });
@@ -3986,7 +4037,8 @@ app.post('/api/xyz', (req, res) => {
   delete settings.prompt; delete settings.negative_prompt; delete settings.negativePrompt;
   const probe = normalizeControlledGenerationBody({ ...settings, prompt: 'x', quantity: 1 });
   const view = queueRunner.create({
-    entries: r.plan.cells.map(c => ({ number: String(c.index + 1), title: c.title, prompt: c.prompt, negative: c.negative_prompt, overrides: c.overrides, xyz: { ix: c.ix, iy: c.iy, iz: c.iz } })),
+    // Queue order follows A1111's processing order (costliest axis outermost); grid positions come from xyz, not order.
+    entries: (r.plan.order || r.plan.cells.map((_, i) => i)).map(i => r.plan.cells[i]).map(c => ({ number: String(c.index + 1), title: c.title, prompt: c.prompt, negative: c.negative_prompt, overrides: c.overrides, xyz: { ix: c.ix, iy: c.iy, iz: c.iz } })),
     settings: { target: probe.target, quantity: 1, width: probe.width, height: probe.height, steps: probe.steps, seed: probe.seed, save_prompts: probe.save_prompts, kind: 'xyz', body: { ...settings, quantity: 1 },
       private: { negative_prompt: r.negative, xyz: { dims: r.plan.dims, axes: r.plan.axes } } },
   });
@@ -4017,6 +4069,11 @@ app.post('/api/xyz/:id/grid', (req, res) => {
 });
 
 // ---- A1111 Prompt matrix + Prompts from file or textbox (SC-16..SC-19): same validated queue cells as the X/Y/Z plot ----
+// Multi-pass stock scripts (SD upscale, Loopback, Poor man's / mk2 outpainting): one leased job, one sd-cli pass per step.
+require('./script-chains').mount(app, { WORKFLOW_ROOT, RUNS_DIR, MASK_UPLOADS_DIR, JOB_TIMEOUT_MS, jobs, jobStore, jobSensitives, createJob, withLease,
+  resolveImageSource, resolveEditResources, pngSize, normalizeGenerationBody, validateGenerationParams, sanitizeRequestParams, editGenRecord,
+  redactSensitiveText, updateSequentialProgress, finalizeJobImages, recordEditResults, recordJobEvidence, syncGenericTerminal,
+  runStamp: () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; } });
 require('./prompt-scripts').mount(app, { expandWildcards, normalizeControlledGenerationBody, validateControlledGenerationParams, allControlledTargets, CONTROLLED_TARGETS, targetCapabilities, queueRunner, W, LARGE_REQUEST_IMAGES, crypto });
 
 app.post('/api/queues', (req, res) => {

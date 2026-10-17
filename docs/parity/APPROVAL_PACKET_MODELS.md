@@ -1,0 +1,24 @@
+# DexDiffusion parity — approval packet for model weights (2026-10-16)
+
+**Status: REQUEST. Nothing listed here has been downloaded or installed.** Sizes are the exact byte counts reported by the Hugging Face model API on 2026-10-16. Each item is independent; approve any subset. Every install is a plain file copy into a model directory on Big Mac — no new runtime, daemon, listener, cloud service, or privilege change, and no change to the protected FLUX.2 Klein 4B runtime.
+
+Runtime facts this packet relies on (checked on Big Mac 2026-10-16): stable-diffusion.cpp at `~/stable-diffusion.cpp` rev `7f0e728` (the `sd-cli` used by every SDCPP target); README: "Control Net support with SD 1.5"; `sd-cli --help` lists `--control-net`, `--control-image`, `--control-strength`, `--canny`, `--taesd`, `--preview none|proj|tae|vae`, `--vae`, `--embd-dir`, `--lora-model-dir`, `--upscale-model`, `--upscale-tile-size`. Big Mac internal free space 29 GiB; `wc2tb` 274 GiB free but intermittently unreadable to SSH-launched workers (see OPERATIONAL_STATE 2026-10-09), so the proposed destination is the **internal** staging tree unless you prefer `wc2tb`.
+
+| # | Item (exact file) | Source · licence | Bytes | Destination (Big Mac) | Backend / Metal | Memory (est.) | Unlocks | Rollback |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `control_v11p_sd15_canny_fp16.safetensors` | `huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors` (fp16 conversion of `lllyasviel/ControlNet-v1-1`, CreativeML OpenRAIL-M) | 722,601,100 | `~/sdcpp-staging/models/controlnet/` | sd-cli `--control-net` with the sd15 target, Metal (ggml) | sd15 ≈ 3–4 GB + ≈ 0.8 GB | CN-01, CN-02, CN-03 (built-in `--canny`), CN-04, CN-06, CN-07, CN-08 | delete the file; no config other than one allowlist entry |
+| 2 | `control_v11p_sd15_openpose_fp16.safetensors` | same repo · OpenRAIL-M | 722,601,100 | same | same | same | CN-13 (pose maps come from the Puppet Master editor, so no PyTorch pose detector is needed), CN-14 handling for non-humanoid poses, CN-15 | delete the file |
+| 3 | `taesd/diffusion_pytorch_model.safetensors` and `taesdxl/diffusion_pytorch_model.safetensors` | `madebyollin/taesd`, `madebyollin/taesdxl` · MIT | 9,793,292 each | `~/sdcpp-staging/models/taesd/` | sd-cli `--taesd` / `--preview tae` | < 0.1 GB | ST-04 (TAESD decode), ST-15 / JO-08 `tae` preview option (the `proj` and `vae` preview methods need no weights and are being implemented without this item) | delete the files |
+| 4 | `vae-ft-mse-840000-ema-pruned.safetensors` | `stabilityai/sd-vae-ft-mse-original` · MIT | 334,641,190 | `~/sdcpp-staging/models/vae/` | sd-cli `--vae` (sd15) | +0.3 GB | GN-16, RS-09 (VAE override with live proof) | delete the file |
+| 5 | One SD1.5 LoRA and one SD1.5 textual-inversion embedding of your choice | your choice (licence per file) | typically 10–150 MB | `~/sdcpp-staging/models/lora/`, `…/embeddings/` | sd-cli `--lora-model-dir`, `--embd-dir` | small | RS-04, RS-05, RS-07, RS-11, RS-13 live proofs | delete the files |
+| 6 | `instruct-pix2pix-00-22000.safetensors` | `timbrooks/instruct-pix2pix` · MIT | 7,703,416,451 | `wc2tb` preferred (size) | sd-cli `--img-cfg-scale` with an instruct model — **must be verified with one probe run before any UI exposure**; sd.cpp support for this checkpoint is not documented in `docs/` | ≈ 4–5 GB | GN-06, ED-18 | delete the file |
+
+## Deliberately not requested (would need a material runtime install)
+- **GFPGAN / CodeFormer face restoration, LDSR / SwinIR / ScuNET / DAT upscalers, CLIP/BLIP/DeepBooru interrogation** (GN-14, EX-16…20, EX-23, PR-21, PR-22, SC-22): all require a PyTorch environment on Big Mac (≈ 1–2 GB venv plus weights; CodeFormer's S-Lab licence is non-commercial). These stay BLOCKED. If you want them, the next packet would be one isolated venv under `~/Library/Caches/DexDiffusion/torch/` with pinned versions — say so and it will be specified separately.
+- **Engine-level features** (prompt scheduling/alternation/AND, variation seeds, sigma/noise knobs, UniPC and other A1111 samplers, hires second-pass prompt/sampler/checkpoint, SDXL refiner switch, soft inpainting, latent masked-content modes, Img2img Alternative): no weights fix these; they need a stable-diffusion.cpp change or a separate approved sampler adapter. See `docs/parity/OPUS_TASK_PACKETS.md`.
+
+## Procedure after approval (per item)
+1. Download on Big Mac into a `.partial` name, verify the byte count above and compute SHA-256, then rename.
+2. Header-read with the existing `safetensors-inspect.py` (architecture/precision must match the claim).
+3. One probe run through the console (sd15, 512², 12 steps, fixed seed) with and without the resource; record the run id, pixel hashes and sd-cli log lines in the ledger row.
+4. Only then expose the control in the UI; until step 3 passes the row stays BLOCKED.

@@ -23,8 +23,18 @@
   const tone = UI.tone || { ok: '#65d66e', warn: '#fbbf24', bad: '#f87171', info: '#38bdf8', off: '#94a3b8' };
   const btn = UI.btn, chip = UI.chip;
   const LAYOUT_KEY = 'dex_edit_layout';
+  const SCRIPTS_KEY = 'dex_edit_scripts';
   const OPS = [['img2img', 'img2img'], ['inpaint', 'Inpaint'], ['outpaint', 'Outpaint']];
   const OP_LABEL = { img2img: 'img2img', inpaint: 'Inpaint', outpaint: 'Outpaint' };
+  // Stock A1111 scripts available per operation (script-chains.js). Each runs one real sd-cli pass per tile / loop / direction.
+  const SCRIPT_OP = { 'sd-upscale': 'img2img', loopback: 'img2img', 'outpaint-poor': 'outpaint', 'outpaint-mk2': 'outpaint' };
+  const SCRIPT_LABEL = { 'sd-upscale': 'SD upscale', loopback: 'Loopback', 'outpaint-poor': "Poor man's outpainting", 'outpaint-mk2': 'Outpainting mk2' };
+  const SCRIPT_DEFAULTS = {
+    'sd-upscale': { scale: 2, overlap: 64, tile_width: 512, tile_height: 512, upscaler: 'lanczos' },
+    loopback: { loops: 4, final_strength: 0.5, curve: 'Linear' },
+    'outpaint-poor': { pixels: 128, mask_blur: 4, masked_content: 'fill', directions: ['left', 'right', 'up', 'down'] },
+    'outpaint-mk2': { pixels: 128, mask_blur: 8, noise_q: 1, color_variation: 0.05, directions: ['left', 'right', 'up', 'down'] },
+  };
   const SAMPLERS = ['euler_a', 'euler', 'heun', 'dpm2', 'dpm2_a', 'lms', 'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm'];
   const SCHEDULERS = ['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple'];
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -45,8 +55,12 @@
   };
   P.edSet = function (patch) { Object.assign(this._ed(), typeof patch === 'function' ? patch(this._ed()) : patch); this.setState({ _edTick: (this.state._edTick || 0) + 1 }); };
   P.edQuiet = function (patch) { Object.assign(this._ed(), patch); }; // state write without a re-render
+  // Edit runs on the model the edit worker actually loads (server: editWorkerTarget = sdcpp.env REMOTE_MODEL), never the
+  // secondary slot: offering other checkpoints here made the choice a silent no-op and mislabelled the results.
   P._editTargets = function () {
-    return (this.state.modelTargets || []).filter(t => (t.backend || 'sdcpp') !== 'mflux' && !['model-missing', 'dormant'].includes(t.runtime) && String(t.status).toLowerCase() !== 'broken');
+    const usable = (this.state.modelTargets || []).filter(t => (t.backend || 'sdcpp') !== 'mflux' && !['model-missing', 'dormant'].includes(t.runtime) && String(t.status).toLowerCase() !== 'broken');
+    const worker = this.state.capabilityData && this.state.capabilityData.editWorkerTarget;
+    return worker ? usable.filter(t => t.id === worker) : usable;
   };
   P._activeSecondary = function () { return (this.state.modelState && this.state.modelState.activeSecondaryModel) || (this.state.systemInfo && this.state.systemInfo.modelState && this.state.systemInfo.modelState.activeSecondaryModel) || null; };
   P._rememberSnapshot = function (imageId, body, seed) {
@@ -74,7 +88,7 @@
     }
     const view = r.data;
     const recall = view.recall || E.buildRecall(view);
-    const st = E.applyRecallToEdit(recall, { snapshot: this._snaps && this._snaps.get(imageId), op, targets: this._editTargets().concat(this.state.modelTargets || []), activeSecondary: this._activeSecondary() });
+    const st = E.applyRecallToEdit(recall, { snapshot: this._snaps && this._snaps.get(imageId), op, targets: this._editTargets().concat(this.state.modelTargets || []), activeSecondary: this._activeSecondary(), editWorker: this.state.capabilityData && this.state.capabilityData.editWorkerTarget });
     const url = this.state.backendUrl + view.url;
     const loaded = await new Promise(res => { const im = new Image(); im.onload = () => res(true); im.onerror = () => res(false); im.src = url; });
     if (!loaded) {
@@ -115,7 +129,7 @@
     const d = await r.json().catch(() => ({ error: r.statusText }));
     if (!r.ok) { this.toast(d.error || 'Import rejected', '#ef4444'); return; }
     const recall = { schema: E.RECALL_SCHEMA, imageId: 'staged:' + d.id, recorded: false, params: { loras: [] }, missing: [], prompt: { available: false, reason: 'Imported images carry no generation record' } };
-    const st = E.applyRecallToEdit(recall, { op: this._ed().op, targets: this._editTargets(), activeSecondary: this._activeSecondary() });
+    const st = E.applyRecallToEdit(recall, { op: this._ed().op, targets: this._editTargets(), activeSecondary: this._activeSecondary(), editWorker: this.state.capabilityData && this.state.capabilityData.editWorkerTarget });
     const src = { key: 'staged:' + d.id, imageId: null, staged: true, stagedId: d.id, url: d.url, width: d.width, height: d.height, meta: { operation: 'imported (temporary)' }, recall };
     this._maskFor(src, true);
     this.wsSet({ editSourceId: 'staged:' + d.id, editSource: Object.assign({ id: d.id, stagedId: d.id, staged: true, meta: src.meta }, { url: d.url, width: d.width, height: d.height }), editOriginalId: 'staged:' + d.id });
@@ -466,6 +480,13 @@
       prompt: String(st.prompt || '').trim(), negative_prompt: st.negative || '', steps: +p.steps || 20, cfg_scale: +p.cfg || 7, seed,
       sampler: p.sampler, scheduler: p.scheduler, vae: p.vae || 'auto', loras: this._effectiveLoras(st.loras, catalog), save_prompts: !!this.state.savePrompts });
     if (!body.prompt) delete body.prompt;
+    // A1111 img2img "Script" dropdown: a chosen stock script reroutes Run to /api/scripts/<kind> with the same prompt and sampling.
+    const sc = ed.script || {};
+    if (sc.kind && SCRIPT_OP[sc.kind] === op) {
+      body.strength = op === 'outpaint' ? +(ed.outpaintStrength || 0.8) : +p.strength;
+      body.script = this._edScriptOptions(sc);
+      return { body, route: '/api/scripts/' + sc.kind };
+    }
     if (op === 'img2img') {
       body.strength = +p.strength;
       const rz = ed.resize || {};
@@ -496,7 +517,10 @@
     this.edSet({ attempt: null, run: { status: 'running', op, startedAt: t0, stage: { key: 'validating', label: 'Validating request', percent: null, determinate: false }, error: null } });
     try {
       const st = ed.state, target = st.editModel, active = this._activeSecondary();
-      if (target && target !== active) {
+      // The edit worker loads its own configured model (editWorkerTarget), not the secondary slot: switching the slot would
+      // only cost ~5 s and replace the user's loaded model for nothing.
+      const worker = this.state.capabilityData && this.state.capabilityData.editWorkerTarget;
+      if (target && target !== active && target !== worker) {
         setRun({ stage: { key: 'switching-model', label: 'Switching edit model to ' + target + ' (Big Mac)', percent: null, determinate: false } });
         const sw = await this._api('/api/models/secondary/activate', { target });
         if (!sw.ok) throw Object.assign(new Error(sw.data.error || 'model switch rejected'), { stage: 'switching-model' });
@@ -578,7 +602,7 @@
     const bits = [['model', st.sourceModel || '—'], ['seed', p.seed], ['size', (src.width || p.width) + '×' + (src.height || p.height)], ['steps', p.steps], ['CFG', p.cfg], ['sampler', p.sampler], ['scheduler', p.scheduler], ['VAE', p.vae === 'auto' ? 'default' : p.vae], ['LoRAs', st.loras.length]];
     return h('div', { 'data-recall-banner': '1', role: 'status', style: { border: '1px solid ' + (rc.recorded ? 'rgba(101,214,110,.35)' : 'rgba(251,191,36,.4)'), background: rc.recorded ? 'rgba(101,214,110,.06)' : 'rgba(251,191,36,.07)', borderRadius: 9, padding: '8px 10px', display: 'grid', gap: 5, minWidth: 0 } },
       h('div', { style: css.row }, h('b', { style: { color: rc.recorded ? '#86efac' : '#fde68a', fontSize: 12 } }, rc.recorded ? '✓ Recalled this image’s recorded settings' : '⚠ No recorded settings for this image'),
-        h('div', { style: { flex: 1 } }), btn('Re-apply source settings', () => { const r = src.recall; this.edSet({ state: E.applyRecallToEdit(r, { snapshot: this._snaps && this._snaps.get(src.imageId), op: ed.op, targets: this._editTargets().concat(this.state.modelTargets || []), activeSecondary: this._activeSecondary() }) }); this.loadEditAssets(); }, '#94a3b8')),
+        h('div', { style: { flex: 1 } }), btn('Re-apply source settings', () => { const r = src.recall; this.edSet({ state: E.applyRecallToEdit(r, { snapshot: this._snaps && this._snaps.get(src.imageId), op: ed.op, targets: this._editTargets().concat(this.state.modelTargets || []), activeSecondary: this._activeSecondary(), editWorker: this.state.capabilityData && this.state.capabilityData.editWorkerTarget }) }); this.loadEditAssets(); }, '#94a3b8')),
       h('div', { style: css.row }, ...bits.map(([k, v]) => h('span', { key: k, style: pillStyle('#94a3b8') }, k + ' ' + v))),
       !st.promptStatus.available ? h('div', { 'data-prompt-unavailable': '1', style: { color: '#fde68a', fontSize: 12 } }, '🔒 ' + st.promptStatus.message + '. Enter the prompt you want for this edit.') : st.promptStatus.session ? h('div', { style: css.muted }, 'Prompt restored from this session (not stored on disk — prompt saving is off).') : null,
       ...st.notes.map(n => h('div', { key: n, style: { color: '#fde68a', fontSize: 11 } }, '• ' + n)),
@@ -605,7 +629,8 @@
     const sOut = h('span', { style: { color: '#38bdf8', fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, minWidth: 36 } }, Number(strength).toFixed(2));
     return h('div', { style: { display: 'grid', gap: 8 } },
       h('div', { style: { display: 'grid', gap: 4, minWidth: 0 } }, h('span', { style: css.label }, 'Edit model'), this.buildModelPicker('edit', targets, st.editModel, id => { this.edSet({ state: Object.assign({}, st, { editModel: id }), assetsFor: null }); this.loadEditAssets(); })),
-      st.editModel && st.editModel !== this._activeSecondary() ? h('div', { style: { color: '#fde68a', fontSize: 11 } }, 'Switching to ' + st.editModel + ' happens when you press Run (the Big Mac secondary slot is replaced).') : null,
+      this.state.capabilityData && this.state.capabilityData.editWorkerTarget ? h('div', { style: css.muted, 'data-edit-worker-model': this.state.capabilityData.editWorkerTarget }, 'Img2Img, Inpaint, Outpaint and the scripts run on ' + this.state.capabilityData.editWorkerTarget + ' (the edit worker\'s configured model); other checkpoints are not used by Edit.') : null,
+      st.editModel && st.editModel !== this._activeSecondary() && !(this.state.capabilityData && this.state.capabilityData.editWorkerTarget === st.editModel) ? h('div', { style: { color: '#fde68a', fontSize: 11 } }, 'Switching to ' + st.editModel + ' happens when you press Run (the Big Mac secondary slot is replaced).') : null,
       h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,92px),1fr))', gap: 8 } },
         label('Steps', numField(this, 'steps', { min: '1', max: '150', step: '1' })), label('CFG', numField(this, 'cfg', { min: '1', max: '30', step: '0.5' })),
         label('Seed (−1 = random)', numField(this, 'seed', { step: '1' })),
@@ -771,6 +796,65 @@
       h('div', { style: { padding: '0 12px 12px' } }, body));
   };
 
+  // CN-10/11 Puppet Master: pose authoring (OpenPose-18 PNG/JSON export; quadruped/winged plans labelled non-OpenPose).
+  // A persistent DOM widget (like the model picker) so a re-render never interrupts a drag; one editor per source image.
+  // No ControlNet model is installed, so exported poses are files for later use and never condition a generation here.
+  P._edPuppet = function () {
+    const ed = this._ed(), src = ed.source;
+    if (!window.DexPuppetMaster || !src) return h('div', { style: css.muted }, 'Puppet Master is not loaded.');
+    const key = src.imageId || src.url;
+    if (this._puppet && this._puppet.key === key) return this._puppet.root;
+    if (this._puppet) { try { this._puppet.api.destroy(); } catch (_) {} if (this._puppet.blobUrl) URL.revokeObjectURL(this._puppet.blobUrl); }
+    const root = document.createElement('div'); root.setAttribute('data-puppet-master', key);
+    const w = Number(src.width || (ed.state && ed.state.params && ed.state.params.width) || 512), hh = Number(src.height || (ed.state && ed.state.params && ed.state.params.height) || 512);
+    const clamp = v => Math.max(64, Math.min(2048, Math.round(v)));
+    const api = window.DexPuppetMaster.mount(root, { width: clamp(w), height: clamp(hh), plan: 'openpose18' });
+    const holder = this._puppet = { key, root, api, blobUrl: null };
+    fetch(this.state.backendUrl + src.url).then(r => r.ok ? r.blob() : null).then(b => {
+      if (!b || this._puppet !== holder) return;
+      holder.blobUrl = URL.createObjectURL(b); api.setBackground(holder.blobUrl);   // blob: only — the editor refuses remote URLs
+    }).catch(() => {});
+    return root;
+  };
+  P._edScriptOptions = function (sc) {
+    const o = Object.assign({}, SCRIPT_DEFAULTS[sc.kind], sc.opts && sc.opts[sc.kind]);
+    const num = k => (o[k] === '' || o[k] === undefined ? undefined : Number(o[k]));
+    if (sc.kind === 'sd-upscale') return { scale: num('scale'), overlap: num('overlap'), tile_width: num('tile_width'), tile_height: num('tile_height'), upscaler: o.upscaler };
+    if (sc.kind === 'loopback') return { loops: num('loops'), final_strength: num('final_strength'), curve: o.curve };
+    if (sc.kind === 'outpaint-poor') return { pixels: num('pixels'), mask_blur: num('mask_blur'), masked_content: o.masked_content, directions: o.directions };
+    return { pixels: num('pixels'), mask_blur: num('mask_blur'), noise_q: num('noise_q'), color_variation: num('color_variation'), directions: o.directions };
+  };
+  P._edScriptBlock = function () {
+    const ed = this._ed(), op = ed.op;
+    if (!ed.script) { let saved = null; try { saved = JSON.parse(localStorage.getItem(SCRIPTS_KEY) || 'null'); } catch (_) {} ed.script = { kind: saved && SCRIPT_OP[saved.kind] ? saved.kind : '', opts: (saved && saved.opts && typeof saved.opts === 'object') ? saved.opts : {} }; }
+    const sc = ed.script;
+    // SC-25: script choice and options persist per browser (A1111 keeps script settings in ui-config.json). No prompt text.
+    const persist = cur => { try { localStorage.setItem(SCRIPTS_KEY, JSON.stringify({ kind: cur.kind, opts: cur.opts })); } catch (_) {} };
+    const kinds = Object.keys(SCRIPT_OP).filter(k => SCRIPT_OP[k] === op);
+    if (!kinds.length) return null;
+    const active = sc.kind && SCRIPT_OP[sc.kind] === op ? sc.kind : '';
+    const o = active ? Object.assign({}, SCRIPT_DEFAULTS[active], sc.opts[active]) : {};
+    // Merge into the CURRENT options (not this render's snapshot): a handler bound in an earlier render must not undo newer edits.
+    const curO = () => Object.assign({}, SCRIPT_DEFAULTS[active], this._ed().script.opts[active]);
+    const setO = patch => { const cur = this._ed().script; cur.opts[active] = Object.assign(curO(), patch); cur.preview = null; persist(cur); this.edSet({ script: cur }); };
+    const field = (k, t, attrs) => label(t, h('input', Object.assign({ type: 'number', value: String(o[k]), style: css.input, 'data-script-field': k, onChange: e => setO({ [k]: e.target.value }) }, attrs)));
+    const choice = (k, t, list) => label(t, h('select', { value: o[k], style: css.input, 'data-script-field': k, 'aria-label': t, onChange: e => setO({ [k]: e.target.value }) }, ...list.map(v => h('option', { key: v, value: v }, v))));
+    const dirs = () => h('div', { style: css.row, 'data-script-field': 'directions' }, h('span', { style: css.label }, 'Outpainting direction'),
+      ...['left', 'right', 'up', 'down'].map(d => h('label', { key: d, style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1' }) }, h('input', { type: 'checkbox', checked: (o.directions || []).includes(d), onChange: e => setO({ directions: ['left', 'right', 'up', 'down'].filter(x => x === d ? e.target.checked : (curO().directions || []).includes(x)) }) }), d)));
+    const fields = active === 'sd-upscale' ? [field('scale', 'Scale factor (1–4)', { min: '1', max: '4', step: '0.05' }), field('overlap', 'Tile overlap (0–256, step 16)', { min: '0', max: '256', step: '16' }), field('tile_width', 'Tile width', { step: '8' }), field('tile_height', 'Tile height', { step: '8' }), choice('upscaler', 'Upscaler', ['lanczos', 'nearest', 'bicubic', 'bilinear', 'none'])]
+      : active === 'loopback' ? [field('loops', 'Loops (1–32)', { min: '1', max: '32' }), field('final_strength', 'Final denoising strength', { min: '0', max: '1', step: '0.01' }), choice('curve', 'Denoising strength curve', ['Aggressive', 'Linear', 'Lazy'])]
+      : active === 'outpaint-poor' ? [field('pixels', 'Pixels to expand', { min: '8', max: '256', step: '8' }), field('mask_blur', 'Mask blur', { min: '0', max: '64' }), choice('masked_content', 'Masked content', ['fill', 'original']), dirs()]
+      : active === 'outpaint-mk2' ? [field('pixels', 'Pixels to expand', { min: '8', max: '256', step: '8' }), field('mask_blur', 'Mask blur', { min: '0', max: '64' }), field('noise_q', 'Fall-off exponent (lower = higher detail)', { min: '0', max: '4', step: '0.01' }), field('color_variation', 'Color variation', { min: '0', max: '1', step: '0.01' }), dirs()] : [];
+    const preview = async () => { const req = this._editRequest(); const r = await this._api(req.route, Object.assign({}, req.body, { dry_run: true })); const cur = this._ed().script; cur.preview = r.ok ? r.data : { error: r.data.error || ('HTTP ' + r.status) }; this.edSet({ script: cur }); };
+    const pv = sc.preview;
+    return h('div', { 'data-edit-scripts': op, style: { display: 'grid', gap: 6, borderTop: '1px solid rgba(148,163,184,.12)', paddingTop: 8, marginTop: 8 } },
+      label('Script (A1111)', h('select', { value: active, style: css.input, 'data-script-field': 'kind', 'aria-label': 'Stock A1111 script', onChange: e => { const cur = this._ed().script; cur.kind = e.target.value; cur.preview = null; persist(cur); this.edSet({ script: cur }); } },
+        h('option', { value: '' }, 'None'), ...kinds.map(k => h('option', { key: k, value: k }, SCRIPT_LABEL[k])))),
+      active ? h('div', { style: Object.assign({}, css.row, { alignItems: 'end' }) }, ...fields) : null,
+      active ? h('div', { style: css.muted }, 'Run uses this script: every ' + (active === 'loopback' ? 'loop' : active === 'sd-upscale' ? 'tile' : active === 'outpaint-mk2' ? 'direction' : 'tile') + ' is a separate real sd-cli pass on Big Mac (one model load each); only the final image is saved. Strength outside sd-cli\'s 0.01–0.99 is clamped and recorded.' + (active === 'outpaint-mk2' || active === 'outpaint-poor' ? ' Latent noise / latent nothing are not offered: sd-cli cannot initialise the masked latent.' : '')) : null,
+      active ? h('div', { style: css.row }, btn('Preview passes', preview, '#38bdf8', { 'data-script-preview': 'true' }),
+        pv ? h('span', { style: pv.error ? { color: tone.bad, fontSize: 12 } : css.mono, 'data-script-plan': 'true' }, pv.error ? pv.error : (pv.passes + ' pass(es) → ' + pv.result_size)) : null) : null);
+  };
   P.buildEditWorkbench = function () {
     const ed = this._ed(), ws = this._ws();
     const frame = (...kids) => h('div', { 'data-edit-workbench': ed.layout, style: { display: 'grid', gap: 12, maxWidth: ed.layout === 'studio' ? 1280 : 860, minWidth: 0 } }, ...kids);
@@ -787,8 +871,8 @@
       ed.results.length ? this._edResults() : null);
     const st = ed.state, op = ed.op;
     const preset = this.buildPresetBar(op, r => this.applyEditRecipe(r), () => this.editPresetSettings());
-    const opPanel = op === 'inpaint' ? this._edMaskBlock() : op === 'outpaint' ? this._edOutpaintBlock() : h('div', { style: css.muted }, 'img2img re-renders the whole source image guided by the prompt and strength. Use Inpaint to change only part of it.');
-    const adv = [accordion(this, 'prep', 'Source preparation', this._edPrepBlock(), false), accordion(this, 'presets', 'Presets', preset, false), accordion(this, 'recall', 'Recalled record (raw)', h('pre', { style: Object.assign({}, css.mono, { whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'auto', margin: 0 }) }, JSON.stringify({ recall: ed.source.recall, edit: { op, editModel: st.editModel, params: st.params, loras: st.loras } }, null, 1)), false)];
+    const opPanel = h('div', null, op === 'inpaint' ? this._edMaskBlock() : op === 'outpaint' ? this._edOutpaintBlock() : h('div', { style: css.muted }, 'img2img re-renders the whole source image guided by the prompt and strength. Use Inpaint to change only part of it.'), this._edScriptBlock());
+    const adv = [accordion(this, 'prep', 'Source preparation', this._edPrepBlock(), false), accordion(this, 'presets', 'Presets', preset, false), accordion(this, 'pose', 'Puppet Master · pose (OpenPose export)', h('div', { 'data-edit-puppet': 'true' }, this._ed().puppetOn ? this._edPuppet() : btn('Start pose editor', () => this.edSet({ puppetOn: true }), '#a78bfa', { 'data-puppet-start': 'true' })), !!this._ed().puppetOn), accordion(this, 'recall', 'Recalled record (raw)', h('pre', { style: Object.assign({}, css.mono, { whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'auto', margin: 0 }) }, JSON.stringify({ recall: ed.source.recall, edit: { op, editModel: st.editModel, params: st.params, loras: st.loras } }, null, 1)), false)];
     if (op !== 'img2img') adv.shift();
     const run = this._edRunBar(), results = this._edResults();
     const head = h('div', { style: css.row }, h('div', { style: css.title }, 'Edit'), h('div', { style: { flex: 1 } }), this._edLayoutSwitch());
@@ -797,7 +881,7 @@
       return frame(head, this._edRecallBanner(), this._edOpSwitch(),
         h('div', { className: 'dex-ed-studio' },
           h('div', { style: { display: 'grid', gap: 12, minWidth: 0, alignContent: 'start' } }, h('div', { style: css.panel }, stage), results ? h('div', { style: css.panel }, results) : null),
-          h('div', { style: { display: 'grid', gap: 12, minWidth: 0, alignContent: 'start' } }, h('div', { style: css.panel }, this._edSourceCard()), h('div', { style: css.panel }, this._edPromptBlock(), this._edParams()), this._edResources(), h('div', { className: 'dex-ed-run', style: Object.assign({}, css.panel, { marginBottom: 0 }) }, run), ...adv.slice(0, 3))));
+          h('div', { style: { display: 'grid', gap: 12, minWidth: 0, alignContent: 'start' } }, h('div', { style: css.panel }, this._edSourceCard()), h('div', { style: css.panel }, this._edPromptBlock(), this._edParams(), this._edScriptBlock()), this._edResources(), h('div', { className: 'dex-ed-run', style: Object.assign({}, css.panel, { marginBottom: 0 }) }, run), ...adv.slice(0, 3))));
     }
     return frame(head, this._edRecallBanner(), h('div', { style: css.panel }, this._edSourceCard()), this._edOpSwitch(), h('div', { style: css.panel }, this._edPromptBlock(), this._edParams()), this._edResources(),
       h('div', { style: css.panel }, h('div', { style: Object.assign({}, css.title, { marginBottom: 8 }) }, OP_LABEL[op] + ' settings'), opPanel),

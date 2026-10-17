@@ -174,7 +174,7 @@ const { results, test, phase, exitCode } = runner('voice-drama');
       // privacy: unsaved → not on disk → save → saved
       assert.equal((await api('GET', '/api/drama/projects')).projects.find(p => p.id === pid).saved, false);
       await page.click('[data-drama-save]'); await page.waitForSelector('[data-drama-privacy="saved"]');
-      assert.ok(fs.existsSync(path.join(__dirname, '..', '..', '..', 'sdcpp-workflow', 'state', 'drama', pid + '.json')));
+      assert.ok(fs.existsSync(path.join(srv.stateDir || path.join(__dirname, '..', '..', '..', 'sdcpp-workflow', 'state'), 'drama', pid + '.json')));
       assert.match(await page.innerText('[data-drama-privacy="saved"]'), /still never copied into job logs/);
       // assemble without takes → visible refusal naming lines
       await page.click('[data-stage="export"]'); await page.waitForSelector('[data-assemble-project]');
@@ -183,7 +183,7 @@ const { results, test, phase, exitCode } = runner('voice-drama');
       assert.deepEqual(errors, []);
       await page.screenshot({ path: outPath('drama.png'), fullPage: false });
       await page.once('dialog', d => d.accept()); await page.click('[data-drama-unsave]'); await page.waitForSelector('[data-drama-privacy="unsaved"]');
-      assert.equal(fs.existsSync(path.join(__dirname, '..', '..', '..', 'sdcpp-workflow', 'state', 'drama', pid + '.json')), false);
+      assert.equal(fs.existsSync(path.join(srv.stateDir || path.join(__dirname, '..', '..', '..', 'sdcpp-workflow', 'state'), 'drama', pid + '.json')), false);
       await ctx.close();
     });
 

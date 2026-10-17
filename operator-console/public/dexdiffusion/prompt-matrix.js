@@ -9,8 +9,8 @@
 // Prompt matrix (A1111 behaviour kept): the prompt is split on "|"; the first segment is the base, every other segment is an
 // optional part; the matrix has 2^N combinations, bit n of the cell number switches part n on. Enabled parts are stripped of
 // whitespace and surrounding commas and joined with ", " (or a space), base first ("Put variable parts at start of prompt"
-// puts them before the base). The grid splits the parts the way A1111 does: boundary = ceil((N+1)/2), the first
-// boundary-1 optional parts run across (X), the rest down (Y); cell number = x + y * columns.
+// puts them before the base). The grid splits the parts the way A1111 does: the first ceil(N/2) optional parts run
+// across (X), the rest down (Y); cell number = x + y * columns.
 // Differences (deliberate): empty parts ("a||b", trailing "|") are an error instead of silently producing a duplicate
 // cell; the base is trimmed of whitespace and surrounding commas; N is capped at 6 (64 cells); a matrix on the negative prompt is a "target" option here.
 //
@@ -81,8 +81,9 @@
     parts.forEach((p, i) => { if (!clean(p)) errors.push(`Optional part ${i + 1} is empty (check for "||" or a trailing "|")`); });
     if (errors.length) return { ok: false, errors, dims: [1, 1, 1], total: 0, cells: [], axes: [null, null, null], parts };
 
-    const N = parts.length, boundary = Math.ceil((N + 1) / 2);
-    const nh = boundary - 1, nv = N - nh;                     // optional parts across / down
+    // images.draw_prompt_matrix (82a973c0): prompts = parts[1:], boundary = ceil(len(prompts)/2) parts across, the rest down;
+    // prompt_matrix.py lays the grid out with rows = 1 << ((len(parts)-1)//2), i.e. 2^floor(N/2) rows.
+    const N = parts.length, nh = Math.ceil(N / 2), nv = N - nh;   // optional parts across / down
     const nx = 1 << nh, ny = 1 << nv, total = nx * ny;
     const sep = o.joiner === 'space' ? ' ' : ', ';
     const names = parts.map(clean);
@@ -234,8 +235,12 @@
 
   // text: the textbox / file contents.  base: { prompt, negative_prompt }.  opts: { iterateSeed }.  caps: targetCapabilities().
   // -> { ok, errors, total, skipped, cells[] }.  A cell is the exact normalised job before server validation (the dry run).
+  // opts.position 'start' | 'end' (A1111 "Insert prompts at the", default start): when the Create prompt is not empty a line's
+  // prompt is joined to it with a space (line + ' ' + base, or base + ' ' + line); the same applies to negative prompts.
   function buildLines(text, base, opts, caps, limits) {
-    const o = Object.assign({ iterateSeed: false }, opts);
+    const o = Object.assign({ iterateSeed: false, position: 'start' }, opts);
+    if (o.position !== 'start' && o.position !== 'end') return { ok: false, errors: ['Insert position must be start or end'], total: 0, skipped: 0, cells: [] };
+    const join = (line, b) => !b ? line : (o.position === 'start' ? line + ' ' + b : b + ' ' + line);
     const lim = Object.assign({ maxCells: MAX_CELLS }, limits);
     const rows = String(text == null ? '' : text).split(/\r\n|\r|\n/);
     const errors = [], cells = [];
@@ -247,8 +252,8 @@
       if (!r.ok) { errors.push(...r.errors); return; }
       const n = i + 1, index = cells.length;
       const usesBasePrompt = r.prompt === null;
-      const prompt = usesBasePrompt ? String(base.prompt || '') : r.prompt;
-      const negative = r.negative !== null ? r.negative : String(base.negative_prompt || '');
+      const prompt = usesBasePrompt ? String(base.prompt || '') : join(r.prompt, String(base.prompt || ''));
+      const negative = r.negative !== null ? join(r.negative, String(base.negative_prompt || '')) : String(base.negative_prompt || '');
       const flagText = Object.keys(r.overrides).map(k => `${k} ${r.overrides[k]}`);
       cells.push({
         index, line: n, prompt, negative_prompt: negative, overrides: r.overrides,

@@ -37,7 +37,7 @@ const field = (page, k) => page.locator('[data-extras-field="' + k + '"]');
       for (let i = 0; i < 30 && !posts.length; i++) await page.waitForTimeout(100);
       assert.equal(posts.length, 1);
       assert.equal(posts[0].image_id, 'fx-landscape.png');
-      assert.deepEqual(posts[0].extras, { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5 });
+      assert.deepEqual(posts[0].extras, { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5, max_side: 0 });
       assert.deepEqual(errors, []);
       await ctx.close();
     });
@@ -47,12 +47,12 @@ const field = (page, k) => page.locator('[data-extras-field="' + k + '"]');
       await field(page, 'width').fill('1024'); await field(page, 'height').fill('1024'); await page.keyboard.press('Tab');
       await previewMatches(page, /800×500 → 1024×1024/);
       await field(page, 'crop').uncheck();
-      await previewMatches(page, /→ 1638×1024/);
+      await previewMatches(page, /→ 1632×1024/);   // A1111 upscaler.py: int((800*2.048)//8*8) = 1632
       await field(page, 'upscaler2').selectOption('nearest');
       await field(page, 'visibility').fill('0.25'); await page.keyboard.press('Tab');
       await page.click('[data-extras-card] button:has-text("Run Extras")');
       for (let i = 0; i < 30 && !posts.length; i++) await page.waitForTimeout(100);
-      assert.deepEqual(posts[0].extras, { mode: 'to', scale: 2, width: 1024, height: 1024, crop: false, upscaler: 'lanczos', upscaler2: 'nearest', visibility: 0.25 });
+      assert.deepEqual(posts[0].extras, { mode: 'to', scale: 2, width: 1024, height: 1024, crop: false, upscaler: 'lanczos', upscaler2: 'nearest', visibility: 0.25, max_side: 0 });
       await ctx.close();
     });
     await test('invalid input blocks Run with the reason; face restoration is stated unavailable', async () => {

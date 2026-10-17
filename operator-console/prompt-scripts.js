@@ -27,13 +27,16 @@ function mount(app, deps) {
     const base = { prompt, negative_prompt: negative };
     const plan = kind === 'matrix'
       ? PromptMatrix.buildMatrix(base, { target: body.target === 'negative' ? 'negative' : (body.target || 'positive'), putAtStart: !!body.put_at_start, joiner: body.joiner || 'comma', differentSeeds: !!body.different_seeds }, caps)
-      : PromptMatrix.buildLines(expandWildcards(typeof body.text === 'string' ? body.text : ''), base, { iterateSeed: !!body.iterate_seed }, caps);
+      : PromptMatrix.buildLines(expandWildcards(typeof body.text === 'string' ? body.text : ''), base, { iterateSeed: !!body.iterate_seed, position: body.prompt_position || 'start' }, caps);
     if (!plan.ok) return { status: 400, error: plan.errors[0], errors: plan.errors };
     // Like A1111 (and the X/Y/Z plot) a random base seed (-1) is fixed once so cells differ only by the script's variation,
     // unless the user keeps random seeds. Per-cell seed offsets (different seed per image / iterate seed) need a fixed base.
     const explicitSeedLines = kind === 'lines' && plan.cells.every(c => c.overrides.seed !== undefined);
+    // Prompts from file (prompts_from_file.py): a random base seed is fixed only for "Iterate seed every line" or "Use same random
+    // seed for all lines" (same_seed); otherwise every line draws its own seed, as in A1111. keep_random_seed (older clients) wins.
+    const linesFix = kind !== 'lines' || !!body.iterate_seed || !!body.same_seed;
     const fixedSeed = Number(settings.seed) >= 0 ? Number(settings.seed)
-      : (body.keep_random_seed || explicitSeedLines ? null : crypto.randomInt(0, W.MAX_SEED));
+      : (body.keep_random_seed || explicitSeedLines || !linesFix ? null : crypto.randomInt(0, W.MAX_SEED));
     if (fixedSeed !== null) settings.seed = fixedSeed;
     const allTargetById = allControlledTargets();
     const jobs = [];

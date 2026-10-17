@@ -1,0 +1,7783 @@
+{
+ "schema": "dexdiffusion.a1111.upstream-inventory.v1",
+ "source_root_files": [
+  "modules/ui.py",
+  "modules/ui_toprow.py",
+  "modules/ui_postprocessing.py",
+  "modules/ui_common.py",
+  "modules/ui_extra_networks.py",
+  "scripts/custom_code.py",
+  "scripts/img2imgalt.py",
+  "scripts/loopback.py",
+  "scripts/outpainting_mk_2.py",
+  "scripts/poor_mans_outpainting.py",
+  "scripts/postprocessing_codeformer.py",
+  "scripts/postprocessing_gfpgan.py",
+  "scripts/postprocessing_upscale.py",
+  "scripts/prompt_matrix.py",
+  "scripts/prompts_from_file.py",
+  "scripts/sd_upscale.py",
+  "scripts/xyz_grid.py",
+  "modules/processing_scripts/comments.py",
+  "modules/processing_scripts/refiner.py",
+  "modules/processing_scripts/sampler.py",
+  "modules/processing_scripts/seed.py",
+  "extensions-builtin/LDSR/scripts/ldsr_model.py",
+  "extensions-builtin/Lora/scripts/lora_script.py",
+  "extensions-builtin/ScuNET/scripts/scunet_model.py",
+  "extensions-builtin/SwinIR/scripts/swinir_model.py",
+  "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+  "extensions-builtin/extra-options-section/scripts/extra_options_section.py",
+  "extensions-builtin/hypertile/scripts/hypertile_script.py",
+  "extensions-builtin/postprocessing-for-training/scripts/postprocessing_autosized_crop.py",
+  "extensions-builtin/postprocessing-for-training/scripts/postprocessing_caption.py",
+  "extensions-builtin/postprocessing-for-training/scripts/postprocessing_create_flipped_copies.py",
+  "extensions-builtin/postprocessing-for-training/scripts/postprocessing_focal_crop.py",
+  "extensions-builtin/postprocessing-for-training/scripts/postprocessing_split_oversized.py",
+  "extensions-builtin/soft-inpainting/scripts/soft_inpainting.py"
+ ],
+ "items": [
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 242,
+   "component": "Dropdown",
+   "label": "Override settings",
+   "elem_id": "{}_override_settings",
+   "maps_to": [
+    "ST-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 877,
+   "component": "Image",
+   "label": "Source",
+   "elem_id": "pnginfo_image",
+   "maps_to": [
+    "ED-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 998,
+   "component": "Gallery",
+   "label": "Output",
+   "elem_id": "ti_gallery",
+   "maps_to": [
+    "MT-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 907,
+   "component": "Textbox",
+   "label": "Name",
+   "elem_id": "train_new_embedding_name",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 908,
+   "component": "Textbox",
+   "label": "Initialization text",
+   "elem_id": "train_initialization_text",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 909,
+   "component": "Slider",
+   "label": "Number of vectors per token",
+   "elem_id": "train_nvpt",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 910,
+   "component": "Checkbox",
+   "label": "Overwrite Old Embedding",
+   "elem_id": "train_overwrite_old_embedding",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 920,
+   "component": "Textbox",
+   "label": "Name",
+   "elem_id": "train_new_hypernetwork_name",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 921,
+   "component": "CheckboxGroup",
+   "label": "Modules",
+   "elem_id": "train_new_hypernetwork_sizes",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 922,
+   "component": "Textbox",
+   "label": "Enter hypernetwork layer structure",
+   "elem_id": "train_new_hypernetwork_layer_structure",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 923,
+   "component": "Dropdown",
+   "label": "Select activation function of hypernetwork. Recommended : Swish / Linear(none)",
+   "elem_id": "train_new_hypernetwork_activation_func",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 924,
+   "component": "Dropdown",
+   "label": "Select Layer weights initialization. Recommended: Kaiming for relu-like, Xavier for sigmoid-like, Normal otherwise",
+   "elem_id": "train_new_hypernetwork_initialization_option",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 925,
+   "component": "Checkbox",
+   "label": "Add layer normalization",
+   "elem_id": "train_new_hypernetwork_add_layer_norm",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 926,
+   "component": "Checkbox",
+   "label": "Use dropout",
+   "elem_id": "train_new_hypernetwork_use_dropout",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 927,
+   "component": "Textbox",
+   "label": "Enter hypernetwork Dropout structure (or empty). Recommended : 0~0.35 incrementing sequence: 0, 0.05, 0.15",
+   "elem_id": null,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 928,
+   "component": "Checkbox",
+   "label": "Overwrite Old Hypernetwork",
+   "elem_id": "train_overwrite_old_hypernetwork",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 961,
+   "component": "Textbox",
+   "label": "Dataset directory",
+   "elem_id": "train_dataset_directory",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 962,
+   "component": "Textbox",
+   "label": "Log directory",
+   "elem_id": "train_log_directory",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 968,
+   "component": "Slider",
+   "label": "Width",
+   "elem_id": "train_training_width",
+   "maps_to": [
+    "GN-07",
+    "GN-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 969,
+   "component": "Slider",
+   "label": "Height",
+   "elem_id": "train_training_height",
+   "maps_to": [
+    "GN-07",
+    "GN-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 970,
+   "component": "Checkbox",
+   "label": "Do not resize images",
+   "elem_id": "train_varsize",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 971,
+   "component": "Number",
+   "label": "Max steps",
+   "elem_id": "train_steps",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 977,
+   "component": "Checkbox",
+   "label": "Use PNG alpha channel as loss weight",
+   "elem_id": "use_weight",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 979,
+   "component": "Checkbox",
+   "label": "Save images with embedding in PNG chunks",
+   "elem_id": "train_save_image_with_stored_embedding",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 980,
+   "component": "Checkbox",
+   "label": "Read parameters (prompt, etc...) from txt2img tab when making previews",
+   "elem_id": "train_preview_from_txt2img",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 982,
+   "component": "Checkbox",
+   "label": "Shuffle tags by ',' when creating prompts.",
+   "elem_id": "train_shuffle_tags",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 983,
+   "component": "Slider",
+   "label": "Drop out tags when creating prompts.",
+   "elem_id": "train_tag_drop_out",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 985,
+   "component": "Radio",
+   "label": "Choose latent sampling method",
+   "elem_id": "train_latent_sampling_method",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 943,
+   "component": "Dropdown",
+   "label": "Embedding",
+   "elem_id": "train_embedding",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 946,
+   "component": "Dropdown",
+   "label": "Hypernetwork",
+   "elem_id": "train_hypernetwork",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 950,
+   "component": "Textbox",
+   "label": "Embedding Learning rate",
+   "elem_id": "train_embedding_learn_rate",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 951,
+   "component": "Textbox",
+   "label": "Hypernetwork Learning rate",
+   "elem_id": "train_hypernetwork_learn_rate",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 954,
+   "component": "Dropdown",
+   "label": "Gradient Clipping",
+   "elem_id": null,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 958,
+   "component": "Number",
+   "label": "Batch size",
+   "elem_id": "train_batch_size",
+   "maps_to": [
+    "GN-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 959,
+   "component": "Number",
+   "label": "Gradient accumulation steps",
+   "elem_id": "train_gradient_step",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 965,
+   "component": "Dropdown",
+   "label": "Prompt template",
+   "elem_id": "train_template_file",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 974,
+   "component": "Number",
+   "label": "Save an image to log directory every N steps, 0 to disable",
+   "elem_id": "train_create_image_every",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 975,
+   "component": "Number",
+   "label": "Save a copy of embedding to log directory every N steps, 0 to disable",
+   "elem_id": "train_save_embedding_every",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 988,
+   "component": "Button",
+   "label": "Train Embedding",
+   "elem_id": "train_train_embedding",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 989,
+   "component": "Button",
+   "label": "Interrupt",
+   "elem_id": "train_interrupt_training",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 990,
+   "component": "Button",
+   "label": "Train Hypernetwork",
+   "elem_id": "train_train_hypernetwork",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 618,
+   "component": "Radio",
+   "label": "Resize mode",
+   "elem_id": "resize_mode",
+   "maps_to": [
+    "ED-10",
+    "ED-11",
+    "ED-12",
+    "ED-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 917,
+   "component": "Button",
+   "label": "Create embedding",
+   "elem_id": "train_create_embedding",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 935,
+   "component": "Button",
+   "label": "Create hypernetwork",
+   "elem_id": "train_create_hypernetwork",
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:Train tab (training is excluded)"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 541,
+   "component": "Image",
+   "label": "Image for img2img",
+   "elem_id": "img2img_image",
+   "maps_to": [
+    "ED-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 545,
+   "component": "Image",
+   "label": "Image for img2img",
+   "elem_id": "img2img_sketch",
+   "maps_to": [
+    "ED-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 549,
+   "component": "Image",
+   "label": "Image for inpainting with mask",
+   "elem_id": "img2maskimg",
+   "maps_to": [
+    "ED-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 553,
+   "component": "Image",
+   "label": "Color sketch inpainting",
+   "elem_id": "inpaint_sketch",
+   "maps_to": [
+    "ED-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 567,
+   "component": "Image",
+   "label": "Image for img2img",
+   "elem_id": "img_inpaint_base",
+   "maps_to": [
+    "ED-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 568,
+   "component": "Image",
+   "label": "Mask",
+   "elem_id": "img_inpaint_mask",
+   "maps_to": [
+    "ED-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 663,
+   "component": "Slider",
+   "label": "Denoising strength",
+   "elem_id": "img2img_denoising_strength",
+   "maps_to": [
+    "ED-17",
+    "HR-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 290,
+   "component": "Slider",
+   "label": "Width",
+   "elem_id": "txt2img_width",
+   "maps_to": [
+    "GN-07",
+    "GN-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 291,
+   "component": "Slider",
+   "label": "Height",
+   "elem_id": "txt2img_height",
+   "maps_to": [
+    "GN-07",
+    "GN-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 303,
+   "component": "Slider",
+   "label": "CFG Scale",
+   "elem_id": "txt2img_cfg_scale",
+   "maps_to": [
+    "GN-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 589,
+   "component": "Checkbox",
+   "label": "Append png info to prompts",
+   "elem_id": "img2img_batch_use_png_info",
+   "maps_to": [
+    "ED-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 590,
+   "component": "Textbox",
+   "label": "PNG info directory",
+   "elem_id": "img2img_batch_png_info_dir",
+   "maps_to": [
+    "ED-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 591,
+   "component": "CheckboxGroup",
+   "label": "Parameters to take from png info",
+   "elem_id": null,
+   "maps_to": [
+    "ED-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 298,
+   "component": "Slider",
+   "label": "Batch count",
+   "elem_id": "txt2img_batch_count",
+   "maps_to": [
+    "GN-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 299,
+   "component": "Slider",
+   "label": "Batch size",
+   "elem_id": "txt2img_batch_size",
+   "maps_to": [
+    "GN-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 583,
+   "component": "Textbox",
+   "label": "Input directory",
+   "elem_id": "img2img_batch_input_dir",
+   "maps_to": [
+    "ED-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 584,
+   "component": "Textbox",
+   "label": "Output directory",
+   "elem_id": "img2img_batch_output_dir",
+   "maps_to": [
+    "ED-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 585,
+   "component": "Textbox",
+   "label": "Inpaint batch mask directory (required for inpaint batch processing only)",
+   "elem_id": "img2img_batch_inpaint_mask_dir",
+   "maps_to": [
+    "ED-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 659,
+   "component": "Slider",
+   "label": "Batch count",
+   "elem_id": "img2img_batch_count",
+   "maps_to": [
+    "GN-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 660,
+   "component": "Slider",
+   "label": "Batch size",
+   "elem_id": "img2img_batch_size",
+   "maps_to": [
+    "GN-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 667,
+   "component": "Slider",
+   "label": "CFG Scale",
+   "elem_id": "img2img_cfg_scale",
+   "maps_to": [
+    "GN-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 668,
+   "component": "Slider",
+   "label": "Image CFG Scale",
+   "elem_id": "img2img_image_cfg_scale",
+   "maps_to": [
+    "GN-06",
+    "ED-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 636,
+   "component": "Slider",
+   "label": "Scale",
+   "elem_id": "img2img_scale",
+   "maps_to": [
+    "ED-15"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 311,
+   "component": "InputAccordion",
+   "label": "Hires. fix",
+   "elem_id": "txt2img_hr",
+   "maps_to": [
+    "HR-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 640,
+   "component": "Slider",
+   "label": "Unused",
+   "elem_id": "img2img_unused_scale_by_slider",
+   "maps_to": null,
+   "classification": "NOT_A_CONTROL:hidden placeholder slider in img2img resize tab"
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 316,
+   "component": "Dropdown",
+   "label": "Upscaler",
+   "elem_id": "txt2img_hr_upscaler",
+   "maps_to": [
+    "HR-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 317,
+   "component": "Slider",
+   "label": "Hires steps",
+   "elem_id": "txt2img_hires_steps",
+   "maps_to": [
+    "HR-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 318,
+   "component": "Slider",
+   "label": "Denoising strength",
+   "elem_id": "txt2img_denoising_strength",
+   "maps_to": [
+    "ED-17",
+    "HR-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 321,
+   "component": "Slider",
+   "label": "Upscale by",
+   "elem_id": "txt2img_hr_scale",
+   "maps_to": [
+    "HR-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 322,
+   "component": "Slider",
+   "label": "Resize width to",
+   "elem_id": "txt2img_hr_resize_x",
+   "maps_to": [
+    "HR-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 323,
+   "component": "Slider",
+   "label": "Resize height to",
+   "elem_id": "txt2img_hr_resize_y",
+   "maps_to": [
+    "HR-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 327,
+   "component": "Dropdown",
+   "label": "Checkpoint",
+   "elem_id": "hr_checkpoint",
+   "maps_to": [
+    "HR-10"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 330,
+   "component": "Dropdown",
+   "label": "Hires sampling method",
+   "elem_id": "hr_sampler",
+   "maps_to": [
+    "HR-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 331,
+   "component": "Dropdown",
+   "label": "Hires schedule type",
+   "elem_id": "hr_scheduler",
+   "maps_to": [
+    "HR-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 346,
+   "component": "Slider",
+   "label": "Batch count",
+   "elem_id": "txt2img_batch_count",
+   "maps_to": [
+    "GN-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 347,
+   "component": "Slider",
+   "label": "Batch size",
+   "elem_id": "txt2img_batch_size",
+   "maps_to": [
+    "GN-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 629,
+   "component": "Slider",
+   "label": "Width",
+   "elem_id": "img2img_width",
+   "maps_to": [
+    "GN-07",
+    "GN-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 630,
+   "component": "Slider",
+   "label": "Height",
+   "elem_id": "img2img_height",
+   "maps_to": [
+    "GN-07",
+    "GN-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 681,
+   "component": "Slider",
+   "label": "Batch count",
+   "elem_id": "img2img_batch_count",
+   "maps_to": [
+    "GN-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 682,
+   "component": "Slider",
+   "label": "Batch size",
+   "elem_id": "img2img_batch_size",
+   "maps_to": [
+    "GN-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 336,
+   "component": "Textbox",
+   "label": "Hires prompt",
+   "elem_id": "hires_prompt",
+   "maps_to": [
+    "HR-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 339,
+   "component": "Textbox",
+   "label": "Hires negative prompt",
+   "elem_id": "hires_neg_prompt",
+   "maps_to": [
+    "HR-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 695,
+   "component": "Slider",
+   "label": "Mask blur",
+   "elem_id": "img2img_mask_blur",
+   "maps_to": [
+    "IP-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 696,
+   "component": "Slider",
+   "label": "Mask transparency",
+   "elem_id": "img2img_mask_alpha",
+   "maps_to": [
+    "IP-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 699,
+   "component": "Radio",
+   "label": "Mask mode",
+   "elem_id": "img2img_mask_mode",
+   "maps_to": [
+    "IP-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 702,
+   "component": "Radio",
+   "label": "Masked content",
+   "elem_id": "img2img_inpainting_fill",
+   "maps_to": [
+    "IP-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 706,
+   "component": "Radio",
+   "label": "Inpaint area",
+   "elem_id": "img2img_inpaint_full_res",
+   "maps_to": [
+    "IP-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui.py",
+   "line": 709,
+   "component": "Slider",
+   "label": "Only masked padding, pixels",
+   "elem_id": "img2img_inpaint_full_res_padding",
+   "maps_to": [
+    "IP-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_toprow.py",
+   "line": 100,
+   "component": "Button",
+   "label": "Interrupt",
+   "elem_id": "{}_interrupt",
+   "maps_to": [
+    "JO-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_toprow.py",
+   "line": 101,
+   "component": "Button",
+   "label": "Skip",
+   "elem_id": "{}_skip",
+   "maps_to": [
+    "JO-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_toprow.py",
+   "line": 102,
+   "component": "Button",
+   "label": "Interrupting...",
+   "elem_id": "{}_interrupting",
+   "maps_to": [
+    "JO-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_toprow.py",
+   "line": 103,
+   "component": "Button",
+   "label": "Generate",
+   "elem_id": "{}_generate",
+   "maps_to": [
+    "JO-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_toprow.py",
+   "line": 83,
+   "component": "Textbox",
+   "label": "Prompt",
+   "elem_id": "{}_prompt",
+   "maps_to": [
+    "PR-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_toprow.py",
+   "line": 87,
+   "component": "Textbox",
+   "label": "Negative prompt",
+   "elem_id": "{}_neg_prompt",
+   "maps_to": [
+    "PR-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_toprow.py",
+   "line": 125,
+   "component": "ToolButton",
+   "label": "📎",
+   "elem_id": "interrogate",
+   "maps_to": [
+    "PR-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_toprow.py",
+   "line": 126,
+   "component": "ToolButton",
+   "label": "📦",
+   "elem_id": "deepbooru",
+   "maps_to": [
+    "PR-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_postprocessing.py",
+   "line": 15,
+   "component": "Image",
+   "label": "Source",
+   "elem_id": "extras_image",
+   "maps_to": [
+    "EX-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_postprocessing.py",
+   "line": 21,
+   "component": "Textbox",
+   "label": "Input directory",
+   "elem_id": "extras_batch_input_dir",
+   "maps_to": [
+    "EX-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_postprocessing.py",
+   "line": 22,
+   "component": "Textbox",
+   "label": "Output directory",
+   "elem_id": "extras_batch_output_dir",
+   "maps_to": [
+    "EX-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_postprocessing.py",
+   "line": 23,
+   "component": "Checkbox",
+   "label": "Show result images",
+   "elem_id": "extras_show_extras_results",
+   "maps_to": [
+    "EX-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_common.py",
+   "line": 187,
+   "component": "Gallery",
+   "label": "Output",
+   "elem_id": "{}_gallery",
+   "maps_to": [
+    "MT-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_common.py",
+   "line": 193,
+   "component": "ToolButton",
+   "label": "💾",
+   "elem_id": "save_{}",
+   "maps_to": [
+    "MT-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_common.py",
+   "line": 194,
+   "component": "ToolButton",
+   "label": "🗃️",
+   "elem_id": "save_zip_{}",
+   "maps_to": [
+    "MT-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_common.py",
+   "line": 197,
+   "component": "ToolButton",
+   "label": "🖼️",
+   "elem_id": "{}_send_to_img2img",
+   "maps_to": [
+    "MT-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_common.py",
+   "line": 198,
+   "component": "ToolButton",
+   "label": "🎨️",
+   "elem_id": "{}_send_to_inpaint",
+   "maps_to": [
+    "MT-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_common.py",
+   "line": 199,
+   "component": "ToolButton",
+   "label": "📐",
+   "elem_id": "{}_send_to_extras",
+   "maps_to": [
+    "MT-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_common.py",
+   "line": 203,
+   "component": "ToolButton",
+   "label": "✨",
+   "elem_id": "{}_upscale",
+   "maps_to": [
+    "HR-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_extra_networks.py",
+   "line": 758,
+   "component": "Button",
+   "label": "Save preview",
+   "elem_id": "{}_save_preview",
+   "maps_to": [
+    "RS-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/ui_extra_networks.py",
+   "line": 779,
+   "component": "Button",
+   "label": "Refresh",
+   "elem_id": "{}_{}_extra_refresh_internal",
+   "maps_to": [
+    "RS-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/custom_code.py",
+   "line": 59,
+   "component": "Number",
+   "label": "Indent level",
+   "elem_id": null,
+   "maps_to": [
+    "SC-24"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/img2imgalt.py",
+   "line": 136,
+   "component": "Checkbox",
+   "label": "Override `Sampling method` to Euler?(this method is built for it)",
+   "elem_id": null,
+   "maps_to": [
+    "SC-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/img2imgalt.py",
+   "line": 138,
+   "component": "Checkbox",
+   "label": "Override `prompt` to the same value as `original prompt`?(and `negative prompt`)",
+   "elem_id": null,
+   "maps_to": [
+    "SC-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/img2imgalt.py",
+   "line": 139,
+   "component": "Textbox",
+   "label": "Original prompt",
+   "elem_id": null,
+   "maps_to": [
+    "SC-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/img2imgalt.py",
+   "line": 140,
+   "component": "Textbox",
+   "label": "Original negative prompt",
+   "elem_id": null,
+   "maps_to": [
+    "SC-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/img2imgalt.py",
+   "line": 142,
+   "component": "Checkbox",
+   "label": "Override `Sampling Steps` to the same value as `Decode steps`?",
+   "elem_id": null,
+   "maps_to": [
+    "SC-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/img2imgalt.py",
+   "line": 143,
+   "component": "Slider",
+   "label": "Decode steps",
+   "elem_id": null,
+   "maps_to": [
+    "SC-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/img2imgalt.py",
+   "line": 145,
+   "component": "Checkbox",
+   "label": "Override `Denoising strength` to 1?",
+   "elem_id": null,
+   "maps_to": [
+    "SC-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/img2imgalt.py",
+   "line": 147,
+   "component": "Slider",
+   "label": "Decode CFG scale",
+   "elem_id": null,
+   "maps_to": [
+    "SC-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/img2imgalt.py",
+   "line": 148,
+   "component": "Slider",
+   "label": "Randomness",
+   "elem_id": null,
+   "maps_to": [
+    "SC-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/img2imgalt.py",
+   "line": 149,
+   "component": "Checkbox",
+   "label": "Sigma adjustment for finding noise for image",
+   "elem_id": null,
+   "maps_to": [
+    "SC-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/loopback.py",
+   "line": 18,
+   "component": "Slider",
+   "label": "Loops",
+   "elem_id": null,
+   "maps_to": [
+    "SC-20"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/loopback.py",
+   "line": 19,
+   "component": "Slider",
+   "label": "Final denoising strength",
+   "elem_id": null,
+   "maps_to": [
+    "SC-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/loopback.py",
+   "line": 20,
+   "component": "Dropdown",
+   "label": "Denoising strength curve",
+   "elem_id": null,
+   "maps_to": [
+    "SC-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/loopback.py",
+   "line": 21,
+   "component": "Dropdown",
+   "label": "Append interrogated prompt at each iteration",
+   "elem_id": null,
+   "maps_to": [
+    "SC-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/outpainting_mk_2.py",
+   "line": 134,
+   "component": "Slider",
+   "label": "Pixels to expand",
+   "elem_id": null,
+   "maps_to": [
+    "IP-15",
+    "IP-16",
+    "IP-17"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/outpainting_mk_2.py",
+   "line": 135,
+   "component": "Slider",
+   "label": "Mask blur",
+   "elem_id": null,
+   "maps_to": [
+    "IP-15",
+    "IP-16",
+    "IP-17"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/outpainting_mk_2.py",
+   "line": 136,
+   "component": "CheckboxGroup",
+   "label": "Outpainting direction",
+   "elem_id": null,
+   "maps_to": [
+    "IP-15",
+    "IP-16",
+    "IP-17"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/outpainting_mk_2.py",
+   "line": 137,
+   "component": "Slider",
+   "label": "Fall-off exponent (lower=higher detail)",
+   "elem_id": null,
+   "maps_to": [
+    "IP-15",
+    "IP-16",
+    "IP-17"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/outpainting_mk_2.py",
+   "line": 138,
+   "component": "Slider",
+   "label": "Color variation",
+   "elem_id": null,
+   "maps_to": [
+    "IP-15",
+    "IP-16",
+    "IP-17"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/poor_mans_outpainting.py",
+   "line": 23,
+   "component": "Slider",
+   "label": "Pixels to expand",
+   "elem_id": null,
+   "maps_to": [
+    "IP-14",
+    "IP-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/poor_mans_outpainting.py",
+   "line": 24,
+   "component": "Slider",
+   "label": "Mask blur",
+   "elem_id": null,
+   "maps_to": [
+    "IP-14",
+    "IP-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/poor_mans_outpainting.py",
+   "line": 25,
+   "component": "Radio",
+   "label": "Masked content",
+   "elem_id": null,
+   "maps_to": [
+    "IP-14",
+    "IP-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/poor_mans_outpainting.py",
+   "line": 26,
+   "component": "CheckboxGroup",
+   "label": "Outpainting direction",
+   "elem_id": null,
+   "maps_to": [
+    "IP-14",
+    "IP-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_codeformer.py",
+   "line": 13,
+   "component": "InputAccordion",
+   "label": "CodeFormer",
+   "elem_id": null,
+   "maps_to": [
+    "EX-18",
+    "EX-19"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_codeformer.py",
+   "line": 15,
+   "component": "Slider",
+   "label": "Visibility",
+   "elem_id": "extras_codeformer_visibility",
+   "maps_to": [
+    "EX-18",
+    "EX-19"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_codeformer.py",
+   "line": 16,
+   "component": "Slider",
+   "label": "Weight (0 = maximum effect, 1 = minimum effect)",
+   "elem_id": "extras_codeformer_weight",
+   "maps_to": [
+    "EX-20"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_gfpgan.py",
+   "line": 13,
+   "component": "InputAccordion",
+   "label": "GFPGAN",
+   "elem_id": null,
+   "maps_to": [
+    "EX-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_gfpgan.py",
+   "line": 14,
+   "component": "Slider",
+   "label": "Visibility",
+   "elem_id": "extras_gfpgan_visibility",
+   "maps_to": [
+    "EX-17"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_upscale.py",
+   "line": 33,
+   "component": "InputAccordion",
+   "label": "Upscale",
+   "elem_id": "extras_upscale",
+   "maps_to": [
+    "EX-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_upscale.py",
+   "line": 175,
+   "component": "Dropdown",
+   "label": "Upscaler",
+   "elem_id": null,
+   "maps_to": [
+    "EX-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_upscale.py",
+   "line": 176,
+   "component": "Slider",
+   "label": "Upscale by",
+   "elem_id": null,
+   "maps_to": [
+    "EX-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_upscale.py",
+   "line": 35,
+   "component": "Dropdown",
+   "label": "Upscaler 1",
+   "elem_id": "extras_upscaler_1",
+   "maps_to": [
+    "EX-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_upscale.py",
+   "line": 38,
+   "component": "Dropdown",
+   "label": "Upscaler 2",
+   "elem_id": "extras_upscaler_2",
+   "maps_to": [
+    "EX-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_upscale.py",
+   "line": 39,
+   "component": "Slider",
+   "label": "Upscaler 2 visibility",
+   "elem_id": "extras_upscaler_2_visibility",
+   "maps_to": [
+    "EX-10"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_upscale.py",
+   "line": 46,
+   "component": "Slider",
+   "label": "Resize",
+   "elem_id": "extras_upscaling_resize",
+   "maps_to": [
+    "EX-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_upscale.py",
+   "line": 48,
+   "component": "Number",
+   "label": "Max side length",
+   "elem_id": "extras_upscale_max_side_length",
+   "maps_to": [
+    "EX-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_upscale.py",
+   "line": 53,
+   "component": "Slider",
+   "label": "Width",
+   "elem_id": "extras_upscaling_resize_w",
+   "maps_to": [
+    "EX-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_upscale.py",
+   "line": 54,
+   "component": "Slider",
+   "label": "Height",
+   "elem_id": "extras_upscaling_resize_h",
+   "maps_to": [
+    "EX-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/postprocessing_upscale.py",
+   "line": 57,
+   "component": "Checkbox",
+   "label": "Crop to fit",
+   "elem_id": "extras_upscaling_crop",
+   "maps_to": [
+    "EX-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/prompt_matrix.py",
+   "line": 48,
+   "component": "Checkbox",
+   "label": "Put variable parts at start of prompt",
+   "elem_id": null,
+   "maps_to": [
+    "SC-17"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/prompt_matrix.py",
+   "line": 49,
+   "component": "Checkbox",
+   "label": "Use different seed for each picture",
+   "elem_id": null,
+   "maps_to": [
+    "SC-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/prompt_matrix.py",
+   "line": 51,
+   "component": "Radio",
+   "label": "Select prompt",
+   "elem_id": null,
+   "maps_to": [
+    "SC-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/prompt_matrix.py",
+   "line": 52,
+   "component": "Radio",
+   "label": "Select joining char",
+   "elem_id": null,
+   "maps_to": [
+    "SC-17"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/prompt_matrix.py",
+   "line": 54,
+   "component": "Slider",
+   "label": "Grid margins (px)",
+   "elem_id": null,
+   "maps_to": [
+    "SC-17"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/prompts_from_file.py",
+   "line": 115,
+   "component": "Checkbox",
+   "label": "Iterate seed every line",
+   "elem_id": null,
+   "maps_to": [
+    "SC-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/prompts_from_file.py",
+   "line": 116,
+   "component": "Checkbox",
+   "label": "Use same random seed for all lines",
+   "elem_id": null,
+   "maps_to": [
+    "SC-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/prompts_from_file.py",
+   "line": 117,
+   "component": "Radio",
+   "label": "Insert prompts at the",
+   "elem_id": null,
+   "maps_to": [
+    "SC-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/prompts_from_file.py",
+   "line": 119,
+   "component": "Textbox",
+   "label": "List of prompt inputs",
+   "elem_id": null,
+   "maps_to": [
+    "SC-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/prompts_from_file.py",
+   "line": 120,
+   "component": "File",
+   "label": "Upload prompt inputs",
+   "elem_id": null,
+   "maps_to": [
+    "SC-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/sd_upscale.py",
+   "line": 21,
+   "component": "Slider",
+   "label": "Tile overlap",
+   "elem_id": null,
+   "maps_to": [
+    "EX-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/sd_upscale.py",
+   "line": 22,
+   "component": "Slider",
+   "label": "Scale Factor",
+   "elem_id": null,
+   "maps_to": [
+    "EX-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/sd_upscale.py",
+   "line": 23,
+   "component": "Radio",
+   "label": "Upscaler",
+   "elem_id": null,
+   "maps_to": [
+    "EX-15"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 458,
+   "component": "Button",
+   "label": "Swap X/Y axes",
+   "elem_id": "xy_grid_swap_axes_button",
+   "maps_to": [
+    "SC-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 459,
+   "component": "Button",
+   "label": "Swap Y/Z axes",
+   "elem_id": "yz_grid_swap_axes_button",
+   "maps_to": [
+    "SC-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 460,
+   "component": "Button",
+   "label": "Swap X/Z axes",
+   "elem_id": "xz_grid_swap_axes_button",
+   "maps_to": [
+    "SC-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 444,
+   "component": "Checkbox",
+   "label": "Draw legend",
+   "elem_id": null,
+   "maps_to": [
+    "SC-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 445,
+   "component": "Checkbox",
+   "label": "Keep -1 for seeds",
+   "elem_id": null,
+   "maps_to": [
+    "SC-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 451,
+   "component": "Checkbox",
+   "label": "Include Sub Images",
+   "elem_id": null,
+   "maps_to": [
+    "SC-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 452,
+   "component": "Checkbox",
+   "label": "Include Sub Grids",
+   "elem_id": null,
+   "maps_to": [
+    "SC-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 453,
+   "component": "Checkbox",
+   "label": "Use text inputs instead of dropdowns",
+   "elem_id": null,
+   "maps_to": [
+    "SC-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 455,
+   "component": "Slider",
+   "label": "Grid margins (px)",
+   "elem_id": null,
+   "maps_to": [
+    "SC-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 425,
+   "component": "Dropdown",
+   "label": "X type",
+   "elem_id": null,
+   "maps_to": [
+    "SC-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 426,
+   "component": "Textbox",
+   "label": "X values",
+   "elem_id": null,
+   "maps_to": [
+    "SC-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 427,
+   "component": "Dropdown",
+   "label": "X values",
+   "elem_id": null,
+   "maps_to": [
+    "SC-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 431,
+   "component": "Dropdown",
+   "label": "Y type",
+   "elem_id": null,
+   "maps_to": [
+    "SC-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 432,
+   "component": "Textbox",
+   "label": "Y values",
+   "elem_id": null,
+   "maps_to": [
+    "SC-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 433,
+   "component": "Dropdown",
+   "label": "Y values",
+   "elem_id": null,
+   "maps_to": [
+    "SC-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 437,
+   "component": "Dropdown",
+   "label": "Z type",
+   "elem_id": null,
+   "maps_to": [
+    "SC-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 438,
+   "component": "Textbox",
+   "label": "Z values",
+   "elem_id": null,
+   "maps_to": [
+    "SC-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 439,
+   "component": "Dropdown",
+   "label": "Z values",
+   "elem_id": null,
+   "maps_to": [
+    "SC-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 447,
+   "component": "Checkbox",
+   "label": "Vary seeds for X",
+   "elem_id": null,
+   "maps_to": [
+    "SC-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 448,
+   "component": "Checkbox",
+   "label": "Vary seeds for Y",
+   "elem_id": null,
+   "maps_to": [
+    "SC-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "scripts/xyz_grid.py",
+   "line": 449,
+   "component": "Checkbox",
+   "label": "Vary seeds for Z",
+   "elem_id": null,
+   "maps_to": [
+    "SC-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/refiner.py",
+   "line": 23,
+   "component": "InputAccordion",
+   "label": "Refiner",
+   "elem_id": null,
+   "maps_to": [
+    "HR-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/refiner.py",
+   "line": 25,
+   "component": "Dropdown",
+   "label": "Checkpoint",
+   "elem_id": null,
+   "maps_to": [
+    "HR-15"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/refiner.py",
+   "line": 28,
+   "component": "Slider",
+   "label": "Switch at",
+   "elem_id": null,
+   "maps_to": [
+    "HR-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/sampler.py",
+   "line": 25,
+   "component": "Dropdown",
+   "label": "Sampling method",
+   "elem_id": "{}_sampling",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/sampler.py",
+   "line": 26,
+   "component": "Dropdown",
+   "label": "Schedule type",
+   "elem_id": "{}_scheduler",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/sampler.py",
+   "line": 27,
+   "component": "Slider",
+   "label": "Sampling steps",
+   "elem_id": "{}_steps",
+   "maps_to": [
+    "GN-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/sampler.py",
+   "line": 30,
+   "component": "Slider",
+   "label": "Sampling steps",
+   "elem_id": "{}_steps",
+   "maps_to": [
+    "GN-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/sampler.py",
+   "line": 31,
+   "component": "Radio",
+   "label": "Sampling method",
+   "elem_id": "{}_sampling",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/sampler.py",
+   "line": 32,
+   "component": "Dropdown",
+   "label": "Schedule type",
+   "elem_id": "{}_scheduler",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/seed.py",
+   "line": 37,
+   "component": "Checkbox",
+   "label": "Extra",
+   "elem_id": null,
+   "maps_to": [
+    "SD-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/seed.py",
+   "line": 30,
+   "component": "Textbox",
+   "label": "Seed",
+   "elem_id": null,
+   "maps_to": [
+    "SD-01",
+    "SD-02",
+    "SD-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/seed.py",
+   "line": 32,
+   "component": "Number",
+   "label": "Seed",
+   "elem_id": null,
+   "maps_to": [
+    "SD-01",
+    "SD-02",
+    "SD-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/seed.py",
+   "line": 41,
+   "component": "Number",
+   "label": "Variation seed",
+   "elem_id": null,
+   "maps_to": [
+    "SD-04",
+    "SD-06",
+    "SD-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/seed.py",
+   "line": 44,
+   "component": "Slider",
+   "label": "Variation strength",
+   "elem_id": null,
+   "maps_to": [
+    "SD-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/seed.py",
+   "line": 47,
+   "component": "Slider",
+   "label": "Resize seed from width",
+   "elem_id": null,
+   "maps_to": [
+    "SD-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "modules/processing_scripts/seed.py",
+   "line": 48,
+   "component": "Slider",
+   "label": "Resize seed from height",
+   "elem_id": null,
+   "maps_to": [
+    "SD-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "extensions-builtin/soft-inpainting/scripts/soft_inpainting.py",
+   "line": 511,
+   "component": "Slider",
+   "label": "<mask_blend_power>",
+   "elem_id": null,
+   "maps_to": [
+    "IP-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "extensions-builtin/soft-inpainting/scripts/soft_inpainting.py",
+   "line": 519,
+   "component": "Slider",
+   "label": "<mask_blend_scale>",
+   "elem_id": null,
+   "maps_to": [
+    "IP-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "extensions-builtin/soft-inpainting/scripts/soft_inpainting.py",
+   "line": 527,
+   "component": "Slider",
+   "label": "<inpaint_detail_preservation>",
+   "elem_id": null,
+   "maps_to": [
+    "IP-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "extensions-builtin/soft-inpainting/scripts/soft_inpainting.py",
+   "line": 541,
+   "component": "Slider",
+   "label": "<composite_mask_influence>",
+   "elem_id": null,
+   "maps_to": [
+    "IP-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "extensions-builtin/soft-inpainting/scripts/soft_inpainting.py",
+   "line": 550,
+   "component": "Slider",
+   "label": "<composite_difference_threshold>",
+   "elem_id": null,
+   "maps_to": [
+    "IP-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "component",
+   "file": "extensions-builtin/soft-inpainting/scripts/soft_inpainting.py",
+   "line": 559,
+   "component": "Slider",
+   "label": "<composite_difference_contrast>",
+   "elem_id": null,
+   "maps_to": [
+    "IP-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 35,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "samples_save",
+   "label": "Always save all generated images",
+   "excluded": false,
+   "maps_to": [
+    "MT-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 36,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "samples_format",
+   "label": "File format for images",
+   "excluded": false,
+   "maps_to": [
+    "MT-15"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 37,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "samples_filename_pattern",
+   "label": "Images filename pattern",
+   "excluded": false,
+   "maps_to": [
+    "MT-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 38,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "save_images_add_number",
+   "label": "Add number to filename when saving",
+   "excluded": false,
+   "maps_to": [
+    "MT-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 39,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "save_images_replace_action",
+   "label": "Saving the image to an existing file",
+   "excluded": false,
+   "maps_to": [
+    "MT-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 40,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "grid_save",
+   "label": "Always save all generated image grids",
+   "excluded": false,
+   "maps_to": [
+    "MT-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 41,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "grid_format",
+   "label": "File format for grids",
+   "excluded": false,
+   "maps_to": [
+    "MT-15"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 42,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "grid_extended_filename",
+   "label": "Add extended info (seed, prompt) to filename when saving grid",
+   "excluded": false,
+   "maps_to": [
+    "MT-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 43,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "grid_only_if_multiple",
+   "label": "Do not save grids consisting of one picture",
+   "excluded": false,
+   "maps_to": [
+    "MT-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 44,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "grid_prevent_empty_spots",
+   "label": "Prevent empty spots in grid (when set to autodetect)",
+   "excluded": false,
+   "maps_to": [
+    "MT-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 45,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "grid_zip_filename_pattern",
+   "label": "Archive filename pattern",
+   "excluded": false,
+   "maps_to": [
+    "MT-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 46,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "n_rows",
+   "label": "Grid row count; use -1 for autodetect and 0 for it to be same as batch size",
+   "excluded": false,
+   "maps_to": [
+    "MT-10"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 47,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "font",
+   "label": "Font for image grids that have text",
+   "excluded": false,
+   "maps_to": [
+    "MT-10"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 48,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "grid_text_active_color",
+   "label": "Text color for image grids",
+   "excluded": false,
+   "maps_to": [
+    "MT-10"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 49,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "grid_text_inactive_color",
+   "label": "Inactive text color for image grids",
+   "excluded": false,
+   "maps_to": [
+    "MT-10"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 50,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "grid_background_color",
+   "label": "Background color for image grids",
+   "excluded": false,
+   "maps_to": [
+    "MT-10"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 52,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "save_images_before_face_restoration",
+   "label": "Save a copy of image before doing face restoration.",
+   "excluded": false,
+   "maps_to": [
+    "EX-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 53,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "save_images_before_highres_fix",
+   "label": "Save a copy of image before applying highres fix.",
+   "excluded": false,
+   "maps_to": [
+    "EX-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 54,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "save_images_before_color_correction",
+   "label": "Save a copy of image before applying color correction to img2img results",
+   "excluded": false,
+   "maps_to": [
+    "EX-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 55,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "save_mask",
+   "label": "For inpainting, save a copy of the greyscale mask",
+   "excluded": false,
+   "maps_to": [
+    "IP-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 56,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "save_mask_composite",
+   "label": "For inpainting, save a masked composite",
+   "excluded": false,
+   "maps_to": [
+    "IP-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 57,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "jpeg_quality",
+   "label": "Quality for saved jpeg and avif images",
+   "excluded": false,
+   "maps_to": [
+    "MT-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 58,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "webp_lossless",
+   "label": "Use lossless compression for webp images",
+   "excluded": false,
+   "maps_to": [
+    "MT-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 59,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "export_for_4chan",
+   "label": "Save copy of large images as JPG",
+   "excluded": false,
+   "maps_to": [
+    "MT-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 60,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "img_downscale_threshold",
+   "label": "File size limit for the above option, MB",
+   "excluded": false,
+   "maps_to": [
+    "MT-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 61,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "target_side_length",
+   "label": "Width/height limit for the above option, in pixels",
+   "excluded": false,
+   "maps_to": [
+    "MT-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 62,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "img_max_size_mp",
+   "label": "Maximum image size",
+   "excluded": false,
+   "maps_to": [
+    "GN-19"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 64,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "use_original_name_batch",
+   "label": "Use original name for output filename during batch process in extras tab",
+   "excluded": false,
+   "maps_to": [
+    "MT-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 65,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "use_upscaler_name_as_suffix",
+   "label": "Use upscaler name as filename suffix in the extras tab",
+   "excluded": false,
+   "maps_to": [
+    "MT-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 66,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "save_selected_only",
+   "label": "When using 'Save' button, only save a single selected image",
+   "excluded": false,
+   "maps_to": [
+    "MT-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 67,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "save_write_log_csv",
+   "label": "Write log.csv when saving images using 'Save' button",
+   "excluded": false,
+   "maps_to": [
+    "MT-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 68,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "save_init_img",
+   "label": "Save init images when using img2img",
+   "excluded": false,
+   "maps_to": [
+    "MT-20"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 70,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "temp_dir",
+   "label": "Directory for temporary images; leave empty for default",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:temporary-file housekeeping; DexDiffusion owns staging under state/"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 71,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "clean_temp_dir_at_start",
+   "label": "Cleanup non-default temporary directory when starting webui",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:temporary-file housekeeping; DexDiffusion owns staging under state/"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 73,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "save_incomplete_images",
+   "label": "Save incomplete images",
+   "excluded": false,
+   "maps_to": [
+    "MT-19"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 75,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "notification_audio",
+   "label": "Play notification sound after image generation",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:notification sound"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 76,
+   "section": "saving-images",
+   "section_title": "Saving images/grids",
+   "key": "notification_volume",
+   "label": "Notification sound volume",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:notification sound"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 80,
+   "section": "saving-paths",
+   "section_title": "Paths for saving",
+   "key": "outdir_samples",
+   "label": "Output directory for images; if empty, defaults to three directories below",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 81,
+   "section": "saving-paths",
+   "section_title": "Paths for saving",
+   "key": "outdir_txt2img_samples",
+   "label": "Output directory for txt2img images",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 82,
+   "section": "saving-paths",
+   "section_title": "Paths for saving",
+   "key": "outdir_img2img_samples",
+   "label": "Output directory for img2img images",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 83,
+   "section": "saving-paths",
+   "section_title": "Paths for saving",
+   "key": "outdir_extras_samples",
+   "label": "Output directory for images from extras tab",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 84,
+   "section": "saving-paths",
+   "section_title": "Paths for saving",
+   "key": "outdir_grids",
+   "label": "Output directory for grids; if empty, defaults to two directories below",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 85,
+   "section": "saving-paths",
+   "section_title": "Paths for saving",
+   "key": "outdir_txt2img_grids",
+   "label": "Output directory for txt2img grids",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 86,
+   "section": "saving-paths",
+   "section_title": "Paths for saving",
+   "key": "outdir_img2img_grids",
+   "label": "Output directory for img2img grids",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 87,
+   "section": "saving-paths",
+   "section_title": "Paths for saving",
+   "key": "outdir_save",
+   "label": "Directory for saving images using the Save button",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 88,
+   "section": "saving-paths",
+   "section_title": "Paths for saving",
+   "key": "outdir_init_images",
+   "label": "Directory for saving init images when using img2img",
+   "excluded": false,
+   "maps_to": [
+    "MT-20"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 92,
+   "section": "saving-to-dirs",
+   "section_title": "Saving to a directory",
+   "key": "save_to_dirs",
+   "label": "Save images to a subdirectory",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 93,
+   "section": "saving-to-dirs",
+   "section_title": "Saving to a directory",
+   "key": "grid_save_to_dirs",
+   "label": "Save grids to a subdirectory",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 94,
+   "section": "saving-to-dirs",
+   "section_title": "Saving to a directory",
+   "key": "use_save_to_dirs_for_ui",
+   "label": "When using \"Save\" button, save images to a subdirectory",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 95,
+   "section": "saving-to-dirs",
+   "section_title": "Saving to a directory",
+   "key": "directories_filename_pattern",
+   "label": "Directory name pattern",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 96,
+   "section": "saving-to-dirs",
+   "section_title": "Saving to a directory",
+   "key": "directories_max_prompt_words",
+   "label": "Max prompt words for [prompt_words] pattern",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "SUPERSEDED_BY_CANONICAL_STORE:A1111 output directory layout; DexDiffusion stores every original once under /Users/andrew/images_made (protected invariant). Export naming is MT-14"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 100,
+   "section": "upscaling",
+   "section_title": "Upscaling",
+   "key": "ESRGAN_tile",
+   "label": "Tile size for ESRGAN upscalers.",
+   "excluded": false,
+   "maps_to": [
+    "EX-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 101,
+   "section": "upscaling",
+   "section_title": "Upscaling",
+   "key": "ESRGAN_tile_overlap",
+   "label": "Tile overlap for ESRGAN upscalers.",
+   "excluded": false,
+   "maps_to": [
+    "EX-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 102,
+   "section": "upscaling",
+   "section_title": "Upscaling",
+   "key": "realesrgan_enabled_models",
+   "label": "Select which Real-ESRGAN models to show in the web UI.",
+   "excluded": false,
+   "maps_to": [
+    "EX-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 103,
+   "section": "upscaling",
+   "section_title": "Upscaling",
+   "key": "dat_enabled_models",
+   "label": "Select which DAT models to show in the web UI.",
+   "excluded": false,
+   "maps_to": [
+    "EX-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 104,
+   "section": "upscaling",
+   "section_title": "Upscaling",
+   "key": "DAT_tile",
+   "label": "Tile size for DAT upscalers.",
+   "excluded": false,
+   "maps_to": [
+    "EX-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 105,
+   "section": "upscaling",
+   "section_title": "Upscaling",
+   "key": "DAT_tile_overlap",
+   "label": "Tile overlap for DAT upscalers.",
+   "excluded": false,
+   "maps_to": [
+    "EX-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 106,
+   "section": "upscaling",
+   "section_title": "Upscaling",
+   "key": "upscaler_for_img2img",
+   "label": "Upscaler for img2img",
+   "excluded": false,
+   "maps_to": [
+    "ED-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 107,
+   "section": "upscaling",
+   "section_title": "Upscaling",
+   "key": "set_scale_by_when_changing_upscaler",
+   "label": "Automatically set the Scale by factor based on the name of the selected Upscaler.",
+   "excluded": false,
+   "maps_to": [
+    "EX-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 111,
+   "section": "face-restoration",
+   "section_title": "Face restoration",
+   "key": "face_restoration",
+   "label": "Restore faces",
+   "excluded": false,
+   "maps_to": [
+    "GN-14",
+    "EX-16",
+    "EX-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 112,
+   "section": "face-restoration",
+   "section_title": "Face restoration",
+   "key": "face_restoration_model",
+   "label": "Face restoration model",
+   "excluded": false,
+   "maps_to": [
+    "GN-14",
+    "EX-16",
+    "EX-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 113,
+   "section": "face-restoration",
+   "section_title": "Face restoration",
+   "key": "code_former_weight",
+   "label": "CodeFormer weight",
+   "excluded": false,
+   "maps_to": [
+    "EX-20"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 114,
+   "section": "face-restoration",
+   "section_title": "Face restoration",
+   "key": "face_restoration_unload",
+   "label": "Move face restoration model from VRAM into RAM after processing",
+   "excluded": false,
+   "maps_to": [
+    "GN-14",
+    "EX-16",
+    "EX-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 118,
+   "section": "system",
+   "section_title": "System",
+   "key": "auto_launch_browser",
+   "label": "Automatically open webui in browser on startup",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 119,
+   "section": "system",
+   "section_title": "System",
+   "key": "enable_console_prompts",
+   "label": "Print prompts to console when generating with txt2img and img2img.",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 120,
+   "section": "system",
+   "section_title": "System",
+   "key": "show_warnings",
+   "label": "Show warnings in console.",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 121,
+   "section": "system",
+   "section_title": "System",
+   "key": "show_gradio_deprecation_warnings",
+   "label": "Show gradio deprecation warnings in console.",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 122,
+   "section": "system",
+   "section_title": "System",
+   "key": "memmon_poll_rate",
+   "label": "VRAM usage polls per second during generation.",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 123,
+   "section": "system",
+   "section_title": "System",
+   "key": "samples_log_stdout",
+   "label": "Always print all generation info to standard output",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 124,
+   "section": "system",
+   "section_title": "System",
+   "key": "multiple_tqdm",
+   "label": "Add a second progress bar to the console that shows progress for an entire job.",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 125,
+   "section": "system",
+   "section_title": "System",
+   "key": "enable_upscale_progressbar",
+   "label": "Show a progress bar in the console for tiled upscaling.",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 126,
+   "section": "system",
+   "section_title": "System",
+   "key": "print_hypernet_extra",
+   "label": "Print extra hypernetwork information to console.",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 127,
+   "section": "system",
+   "section_title": "System",
+   "key": "list_hidden_files",
+   "label": "Load models/files in hidden directories",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 128,
+   "section": "system",
+   "section_title": "System",
+   "key": "disable_mmap_load_safetensors",
+   "label": "Disable memmapping for loading .safetensors files.",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 129,
+   "section": "system",
+   "section_title": "System",
+   "key": "hide_ldm_prints",
+   "label": "Prevent Stability-AI's ldm/sgm modules from printing noise to console.",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 130,
+   "section": "system",
+   "section_title": "System",
+   "key": "dump_stacks_on_signal",
+   "label": "Print stack traces before exiting the program with ctrl+c.",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 134,
+   "section": "profiler",
+   "section_title": "Profiler",
+   "key": "profiling_explanation",
+   "label": null,
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 141,
+   "section": "profiler",
+   "section_title": "Profiler",
+   "key": "profiling_enable",
+   "label": "Enable profiling",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 142,
+   "section": "profiler",
+   "section_title": "Profiler",
+   "key": "profiling_activities",
+   "label": "Activities",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 143,
+   "section": "profiler",
+   "section_title": "Profiler",
+   "key": "profiling_record_shapes",
+   "label": "Record shapes",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 144,
+   "section": "profiler",
+   "section_title": "Profiler",
+   "key": "profiling_profile_memory",
+   "label": "Profile memory",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 145,
+   "section": "profiler",
+   "section_title": "Profiler",
+   "key": "profiling_with_stack",
+   "label": "Include python stack",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 146,
+   "section": "profiler",
+   "section_title": "Profiler",
+   "key": "profiling_filename",
+   "label": "Profile filename",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 150,
+   "section": "API",
+   "section_title": "API",
+   "key": "api_enable_requests",
+   "label": "Allow http:// and https:// URLs for input images in API",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 151,
+   "section": "API",
+   "section_title": "API",
+   "key": "api_forbid_local_requests",
+   "label": "Forbid URLs to local resources",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 152,
+   "section": "API",
+   "section_title": "API",
+   "key": "api_useragent",
+   "label": "User agent for requests",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:console/profiling/API transport setting"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 156,
+   "section": "training",
+   "section_title": "Training",
+   "key": "unload_models_when_training",
+   "label": "Move VAE and CLIP to RAM when training if possible. Saves VRAM.",
+   "excluded": true,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:training section"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 157,
+   "section": "training",
+   "section_title": "Training",
+   "key": "pin_memory",
+   "label": "Turn on pin_memory for DataLoader. Makes training slightly faster but can increase memory usage.",
+   "excluded": true,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:training section"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 158,
+   "section": "training",
+   "section_title": "Training",
+   "key": "save_optimizer_state",
+   "label": "Saves Optimizer state as separate *.optim file. Training of embedding or HN can be resumed with the matching optim file.",
+   "excluded": true,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:training section"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 159,
+   "section": "training",
+   "section_title": "Training",
+   "key": "save_training_settings_to_txt",
+   "label": "Save textual inversion and hypernet settings to a text file whenever training starts.",
+   "excluded": true,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:training section"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 160,
+   "section": "training",
+   "section_title": "Training",
+   "key": "dataset_filename_word_regex",
+   "label": "Filename word regex",
+   "excluded": true,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:training section"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 161,
+   "section": "training",
+   "section_title": "Training",
+   "key": "dataset_filename_join_string",
+   "label": "Filename join string",
+   "excluded": true,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:training section"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 162,
+   "section": "training",
+   "section_title": "Training",
+   "key": "training_image_repeats_per_epoch",
+   "label": "Number of repeats for a single input image per epoch; used only for displaying epoch number",
+   "excluded": true,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:training section"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 163,
+   "section": "training",
+   "section_title": "Training",
+   "key": "training_write_csv_every",
+   "label": "Save an csv containing the loss to log directory every N steps, 0 to disable",
+   "excluded": true,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:training section"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 164,
+   "section": "training",
+   "section_title": "Training",
+   "key": "training_xattention_optimizations",
+   "label": "Use cross attention optimizations while training",
+   "excluded": true,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:training section"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 165,
+   "section": "training",
+   "section_title": "Training",
+   "key": "training_enable_tensorboard",
+   "label": "Enable tensorboard logging.",
+   "excluded": true,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:training section"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 166,
+   "section": "training",
+   "section_title": "Training",
+   "key": "training_tensorboard_save_images",
+   "label": "Save generated images within tensorboard.",
+   "excluded": true,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:training section"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 167,
+   "section": "training",
+   "section_title": "Training",
+   "key": "training_tensorboard_flush_every",
+   "label": "How often, in seconds, to flush the pending tensorboard events and summaries to disk.",
+   "excluded": true,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:training section"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 171,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "sd_model_checkpoint",
+   "label": "Stable Diffusion checkpoint",
+   "excluded": false,
+   "maps_to": [
+    "GN-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 172,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "sd_checkpoints_limit",
+   "label": "Maximum number of checkpoints loaded at the same time",
+   "excluded": false,
+   "maps_to": [
+    "ST-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 173,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "sd_checkpoints_keep_in_cpu",
+   "label": "Only keep one model on device",
+   "excluded": false,
+   "maps_to": [
+    "ST-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 174,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "sd_checkpoint_cache",
+   "label": "Checkpoints to cache in RAM",
+   "excluded": false,
+   "maps_to": [
+    "ST-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 175,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "sd_unet",
+   "label": "SD Unet",
+   "excluded": false,
+   "maps_to": [
+    "GN-17",
+    "RS-10"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 176,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "enable_quantization",
+   "label": "Enable quantization in K samplers for sharper and cleaner results. This may change existing seeds",
+   "excluded": false,
+   "maps_to": [
+    "ST-17"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 177,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "emphasis",
+   "label": "Emphasis mode",
+   "excluded": false,
+   "maps_to": [
+    "ST-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 178,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "enable_batch_seeds",
+   "label": "Make K-diffusion samplers produce same images in a batch as when making a single image",
+   "excluded": false,
+   "maps_to": [
+    "SD-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 179,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "comma_padding_backtrack",
+   "label": "Prompt word wrap length limit",
+   "excluded": false,
+   "maps_to": [
+    "PR-15"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 180,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "sdxl_clip_l_skip",
+   "label": "Clip skip SDXL",
+   "excluded": false,
+   "maps_to": [
+    "ST-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 181,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "CLIP_stop_at_last_layers",
+   "label": "Clip skip",
+   "excluded": false,
+   "maps_to": [
+    "ST-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 182,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "upcast_attn",
+   "label": "Upcast cross attention layer to float32",
+   "excluded": false,
+   "maps_to": [
+    "RS-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 183,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "randn_source",
+   "label": "Random number generator source.",
+   "excluded": false,
+   "maps_to": [
+    "SD-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 184,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "tiling",
+   "label": "Tiling",
+   "excluded": false,
+   "maps_to": [
+    "GN-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 185,
+   "section": "sd",
+   "section_title": "Stable Diffusion",
+   "key": "hires_fix_refiner_pass",
+   "label": "Hires fix: which pass to enable refiner for",
+   "excluded": false,
+   "maps_to": [
+    "HR-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 189,
+   "section": "sdxl",
+   "section_title": "Stable Diffusion XL",
+   "key": "sdxl_crop_top",
+   "label": "crop top coordinate",
+   "excluded": false,
+   "maps_to": [
+    "ST-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 190,
+   "section": "sdxl",
+   "section_title": "Stable Diffusion XL",
+   "key": "sdxl_crop_left",
+   "label": "crop left coordinate",
+   "excluded": false,
+   "maps_to": [
+    "ST-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 191,
+   "section": "sdxl",
+   "section_title": "Stable Diffusion XL",
+   "key": "sdxl_refiner_low_aesthetic_score",
+   "label": "SDXL low aesthetic score",
+   "excluded": false,
+   "maps_to": [
+    "ST-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 192,
+   "section": "sdxl",
+   "section_title": "Stable Diffusion XL",
+   "key": "sdxl_refiner_high_aesthetic_score",
+   "label": "SDXL high aesthetic score",
+   "excluded": false,
+   "maps_to": [
+    "ST-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 196,
+   "section": "sd3",
+   "section_title": "Stable Diffusion 3",
+   "key": "sd3_enable_t5",
+   "label": "Enable T5",
+   "excluded": false,
+   "maps_to": [
+    "ST-19"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 200,
+   "section": "vae",
+   "section_title": "VAE",
+   "key": "sd_vae_explanation",
+   "label": null,
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_A_CONTROL:explanatory HTML"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 206,
+   "section": "vae",
+   "section_title": "VAE",
+   "key": "sd_vae_checkpoint_cache",
+   "label": "VAE Checkpoints to cache in RAM",
+   "excluded": false,
+   "maps_to": [
+    "ST-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 207,
+   "section": "vae",
+   "section_title": "VAE",
+   "key": "sd_vae",
+   "label": "SD VAE",
+   "excluded": false,
+   "maps_to": [
+    "GN-16",
+    "RS-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 208,
+   "section": "vae",
+   "section_title": "VAE",
+   "key": "sd_vae_overrides_per_model_preferences",
+   "label": "Selected VAE overrides per-model preferences",
+   "excluded": false,
+   "maps_to": [
+    "GN-16",
+    "RS-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 209,
+   "section": "vae",
+   "section_title": "VAE",
+   "key": "auto_vae_precision_bfloat16",
+   "label": "Automatically convert VAE to bfloat16",
+   "excluded": false,
+   "maps_to": [
+    "ST-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 210,
+   "section": "vae",
+   "section_title": "VAE",
+   "key": "auto_vae_precision",
+   "label": "Automatically revert VAE to 32-bit floats",
+   "excluded": false,
+   "maps_to": [
+    "ST-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 211,
+   "section": "vae",
+   "section_title": "VAE",
+   "key": "sd_vae_encode_method",
+   "label": "VAE type for encode",
+   "excluded": false,
+   "maps_to": [
+    "ST-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 212,
+   "section": "vae",
+   "section_title": "VAE",
+   "key": "sd_vae_decode_method",
+   "label": "VAE type for decode",
+   "excluded": false,
+   "maps_to": [
+    "ST-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 216,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "inpainting_mask_weight",
+   "label": "Inpainting conditioning mask strength",
+   "excluded": false,
+   "maps_to": [
+    "IP-10"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 217,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "initial_noise_multiplier",
+   "label": "Noise multiplier for img2img",
+   "excluded": false,
+   "maps_to": [
+    "SD-28"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 218,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "img2img_extra_noise",
+   "label": "Extra noise multiplier for img2img and hires fix",
+   "excluded": false,
+   "maps_to": [
+    "SD-29"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 219,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "img2img_color_correction",
+   "label": "Apply color correction to img2img results to match original colors.",
+   "excluded": false,
+   "maps_to": [
+    "ED-20"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 220,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "img2img_fix_steps",
+   "label": "With img2img, do exactly the amount of steps the slider specifies.",
+   "excluded": false,
+   "maps_to": [
+    "ED-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 221,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "img2img_background_color",
+   "label": "With img2img, fill transparent parts of the input image with this color.",
+   "excluded": false,
+   "maps_to": [
+    "ED-19"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 222,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "img2img_editor_height",
+   "label": "Height of the image editor",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:editor/gallery display size"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 223,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "img2img_sketch_default_brush_color",
+   "label": "Sketch initial brush color",
+   "excluded": false,
+   "maps_to": [
+    "ED-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 224,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "img2img_inpaint_mask_brush_color",
+   "label": "Inpaint mask brush color",
+   "excluded": false,
+   "maps_to": [
+    "IP-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 225,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "img2img_inpaint_sketch_default_brush_color",
+   "label": "Inpaint sketch initial brush color",
+   "excluded": false,
+   "maps_to": [
+    "ED-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 226,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "return_mask",
+   "label": "For inpainting, include the greyscale mask in results for web",
+   "excluded": false,
+   "maps_to": [
+    "IP-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 227,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "return_mask_composite",
+   "label": "For inpainting, include masked composite in results for web",
+   "excluded": false,
+   "maps_to": [
+    "IP-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 228,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "img2img_batch_show_results_limit",
+   "label": "Show the first N batch img2img results in UI",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:editor/gallery display size"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 229,
+   "section": "img2img",
+   "section_title": "img2img",
+   "key": "overlay_inpaint",
+   "label": "Overlay original for inpaint",
+   "excluded": false,
+   "maps_to": [
+    "IP-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 233,
+   "section": "optimizations",
+   "section_title": "Optimizations",
+   "key": "cross_attention_optimization",
+   "label": "Cross attention optimization",
+   "excluded": false,
+   "maps_to": [
+    "RS-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 234,
+   "section": "optimizations",
+   "section_title": "Optimizations",
+   "key": "s_min_uncond",
+   "label": "Negative Guidance minimum sigma",
+   "excluded": false,
+   "maps_to": [
+    "SD-25"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 235,
+   "section": "optimizations",
+   "section_title": "Optimizations",
+   "key": "s_min_uncond_all",
+   "label": "Negative Guidance minimum sigma all steps",
+   "excluded": false,
+   "maps_to": [
+    "SD-25"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 236,
+   "section": "optimizations",
+   "section_title": "Optimizations",
+   "key": "token_merging_ratio",
+   "label": "Token merging ratio",
+   "excluded": false,
+   "maps_to": [
+    "ST-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 237,
+   "section": "optimizations",
+   "section_title": "Optimizations",
+   "key": "token_merging_ratio_img2img",
+   "label": "Token merging ratio for img2img",
+   "excluded": false,
+   "maps_to": [
+    "ST-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 238,
+   "section": "optimizations",
+   "section_title": "Optimizations",
+   "key": "token_merging_ratio_hr",
+   "label": "Token merging ratio for high-res pass",
+   "excluded": false,
+   "maps_to": [
+    "ST-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 239,
+   "section": "optimizations",
+   "section_title": "Optimizations",
+   "key": "pad_cond_uncond",
+   "label": "Pad prompt/negative prompt",
+   "excluded": false,
+   "maps_to": [
+    "ST-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 240,
+   "section": "optimizations",
+   "section_title": "Optimizations",
+   "key": "pad_cond_uncond_v0",
+   "label": "Pad prompt/negative prompt (v0)",
+   "excluded": false,
+   "maps_to": [
+    "ST-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 241,
+   "section": "optimizations",
+   "section_title": "Optimizations",
+   "key": "persistent_cond_cache",
+   "label": "Persistent cond cache",
+   "excluded": false,
+   "maps_to": [
+    "ST-10"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 242,
+   "section": "optimizations",
+   "section_title": "Optimizations",
+   "key": "batch_cond_uncond",
+   "label": "Batch cond/uncond",
+   "excluded": false,
+   "maps_to": [
+    "ST-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 243,
+   "section": "optimizations",
+   "section_title": "Optimizations",
+   "key": "fp8_storage",
+   "label": "FP8 weight",
+   "excluded": false,
+   "maps_to": [
+    "ST-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 244,
+   "section": "optimizations",
+   "section_title": "Optimizations",
+   "key": "cache_fp16_weight",
+   "label": "Cache FP16 weight for LoRA",
+   "excluded": false,
+   "maps_to": [
+    "RS-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 248,
+   "section": "compatibility",
+   "section_title": "Compatibility",
+   "key": "auto_backcompat",
+   "label": "Automatic backward compatibility",
+   "excluded": false,
+   "maps_to": [
+    "ST-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 249,
+   "section": "compatibility",
+   "section_title": "Compatibility",
+   "key": "use_old_emphasis_implementation",
+   "label": "Use old emphasis implementation. Can be useful to reproduce old seeds.",
+   "excluded": false,
+   "maps_to": [
+    "ST-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 250,
+   "section": "compatibility",
+   "section_title": "Compatibility",
+   "key": "use_old_karras_scheduler_sigmas",
+   "label": "Use old karras scheduler sigmas (0.1 to 10).",
+   "excluded": false,
+   "maps_to": [
+    "ST-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 251,
+   "section": "compatibility",
+   "section_title": "Compatibility",
+   "key": "no_dpmpp_sde_batch_determinism",
+   "label": "Do not make DPM++ SDE deterministic across different batch sizes.",
+   "excluded": false,
+   "maps_to": [
+    "ST-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 252,
+   "section": "compatibility",
+   "section_title": "Compatibility",
+   "key": "use_old_hires_fix_width_height",
+   "label": "For hires fix, use width/height sliders to set final resolution rather than first pass (disables Upscale by, Resize width/height to).",
+   "excluded": false,
+   "maps_to": [
+    "HR-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 253,
+   "section": "compatibility",
+   "section_title": "Compatibility",
+   "key": "hires_fix_use_firstpass_conds",
+   "label": "For hires fix, calculate conds of second pass using extra networks of first pass.",
+   "excluded": false,
+   "maps_to": [
+    "HR-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 254,
+   "section": "compatibility",
+   "section_title": "Compatibility",
+   "key": "use_old_scheduling",
+   "label": "Use old prompt editing timelines.",
+   "excluded": false,
+   "maps_to": [
+    "PR-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 255,
+   "section": "compatibility",
+   "section_title": "Compatibility",
+   "key": "use_downcasted_alpha_bar",
+   "label": "Downcast model alphas_cumprod to fp16 before sampling. For reproducing old seeds.",
+   "excluded": false,
+   "maps_to": [
+    "ST-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 256,
+   "section": "compatibility",
+   "section_title": "Compatibility",
+   "key": "refiner_switch_by_sample_steps",
+   "label": "Switch to refiner by sampling steps instead of model timesteps. Old behavior for refiner.",
+   "excluded": false,
+   "maps_to": [
+    "HR-17"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 260,
+   "section": "interrogate",
+   "section_title": "Interrogate",
+   "key": "interrogate_keep_models_in_memory",
+   "label": "Keep models in VRAM",
+   "excluded": false,
+   "maps_to": [
+    "PR-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 261,
+   "section": "interrogate",
+   "section_title": "Interrogate",
+   "key": "interrogate_return_ranks",
+   "label": "Include ranks of model tags matches in results.",
+   "excluded": false,
+   "maps_to": [
+    "PR-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 262,
+   "section": "interrogate",
+   "section_title": "Interrogate",
+   "key": "interrogate_clip_num_beams",
+   "label": "BLIP: num_beams",
+   "excluded": false,
+   "maps_to": [
+    "PR-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 263,
+   "section": "interrogate",
+   "section_title": "Interrogate",
+   "key": "interrogate_clip_min_length",
+   "label": "BLIP: minimum description length",
+   "excluded": false,
+   "maps_to": [
+    "PR-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 264,
+   "section": "interrogate",
+   "section_title": "Interrogate",
+   "key": "interrogate_clip_max_length",
+   "label": "BLIP: maximum description length",
+   "excluded": false,
+   "maps_to": [
+    "PR-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 265,
+   "section": "interrogate",
+   "section_title": "Interrogate",
+   "key": "interrogate_clip_dict_limit",
+   "label": "CLIP: maximum number of lines in text file",
+   "excluded": false,
+   "maps_to": [
+    "PR-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 266,
+   "section": "interrogate",
+   "section_title": "Interrogate",
+   "key": "interrogate_clip_skip_categories",
+   "label": "CLIP: skip inquire categories",
+   "excluded": false,
+   "maps_to": [
+    "PR-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 267,
+   "section": "interrogate",
+   "section_title": "Interrogate",
+   "key": "interrogate_deepbooru_score_threshold",
+   "label": "deepbooru: score threshold",
+   "excluded": false,
+   "maps_to": [
+    "PR-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 268,
+   "section": "interrogate",
+   "section_title": "Interrogate",
+   "key": "deepbooru_sort_alpha",
+   "label": "deepbooru: sort tags alphabetically",
+   "excluded": false,
+   "maps_to": [
+    "PR-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 269,
+   "section": "interrogate",
+   "section_title": "Interrogate",
+   "key": "deepbooru_use_spaces",
+   "label": "deepbooru: use spaces in tags",
+   "excluded": false,
+   "maps_to": [
+    "PR-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 270,
+   "section": "interrogate",
+   "section_title": "Interrogate",
+   "key": "deepbooru_escape",
+   "label": "deepbooru: escape (\\) brackets",
+   "excluded": false,
+   "maps_to": [
+    "PR-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 271,
+   "section": "interrogate",
+   "section_title": "Interrogate",
+   "key": "deepbooru_filter_tags",
+   "label": "deepbooru: filter out those tags",
+   "excluded": false,
+   "maps_to": [
+    "PR-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 275,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_show_hidden_directories",
+   "label": "Show hidden directories",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 276,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_dir_button_function",
+   "label": "Add a '/' to the beginning of directory buttons",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 277,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_hidden_models",
+   "label": "Show cards for models in hidden directories",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 278,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_default_multiplier",
+   "label": "Default multiplier for extra networks",
+   "excluded": false,
+   "maps_to": [
+    "RS-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 279,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_card_width",
+   "label": "Card width for Extra Networks",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 280,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_card_height",
+   "label": "Card height for Extra Networks",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 281,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_card_text_scale",
+   "label": "Card text scale",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 282,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_card_show_desc",
+   "label": "Show description on card",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 283,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_card_description_is_html",
+   "label": "Treat card description as HTML",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 284,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_card_order_field",
+   "label": "Default order field for Extra Networks cards",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 285,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_card_order",
+   "label": "Default order for Extra Networks cards",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 286,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_tree_view_style",
+   "label": "Extra Networks directory view style",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 287,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_tree_view_default_enabled",
+   "label": "Show the Extra Networks directory view by default",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 288,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_tree_view_default_width",
+   "label": "Default width for the Extra Networks directory tree view",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 289,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "extra_networks_add_text_separator",
+   "label": "Extra networks separator",
+   "excluded": false,
+   "maps_to": [
+    "RS-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 290,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "ui_extra_networks_tab_reorder",
+   "label": "Extra networks tab order",
+   "excluded": false,
+   "maps_to": [
+    "RS-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 291,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "textual_inversion_print_at_load",
+   "label": "Print a list of Textual Inversion embeddings when loading model",
+   "excluded": false,
+   "maps_to": [
+    "RS-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 292,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "textual_inversion_add_hashes_to_infotext",
+   "label": "Add Textual Inversion hashes to infotext",
+   "excluded": false,
+   "maps_to": [
+    "MT-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 293,
+   "section": "extra_networks",
+   "section_title": "Extra Networks",
+   "key": "sd_hypernetwork",
+   "label": "Add hypernetwork to prompt",
+   "excluded": false,
+   "maps_to": [
+    "RS-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 297,
+   "section": "ui_prompt_editing",
+   "section_title": "Prompt editing",
+   "key": "keyedit_precision_attention",
+   "label": "Precision for (attention:1.1) when editing the prompt with Ctrl+up/down",
+   "excluded": false,
+   "maps_to": [
+    "PR-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 298,
+   "section": "ui_prompt_editing",
+   "section_title": "Prompt editing",
+   "key": "keyedit_precision_extra",
+   "label": "Precision for <extra networks:0.9> when editing the prompt with Ctrl+up/down",
+   "excluded": false,
+   "maps_to": [
+    "PR-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 299,
+   "section": "ui_prompt_editing",
+   "section_title": "Prompt editing",
+   "key": "keyedit_delimiters",
+   "label": "Word delimiters when editing the prompt with Ctrl+up/down",
+   "excluded": false,
+   "maps_to": [
+    "PR-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 300,
+   "section": "ui_prompt_editing",
+   "section_title": "Prompt editing",
+   "key": "keyedit_delimiters_whitespace",
+   "label": "Ctrl+up/down whitespace delimiters",
+   "excluded": false,
+   "maps_to": [
+    "PR-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 301,
+   "section": "ui_prompt_editing",
+   "section_title": "Prompt editing",
+   "key": "keyedit_move",
+   "label": "Alt+left/right moves prompt elements",
+   "excluded": false,
+   "maps_to": [
+    "PR-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 302,
+   "section": "ui_prompt_editing",
+   "section_title": "Prompt editing",
+   "key": "disable_token_counters",
+   "label": "Disable prompt token counters",
+   "excluded": false,
+   "maps_to": [
+    "PR-04",
+    "PR-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 303,
+   "section": "ui_prompt_editing",
+   "section_title": "Prompt editing",
+   "key": "include_styles_into_token_counters",
+   "label": "Count tokens of enabled styles",
+   "excluded": false,
+   "maps_to": [
+    "PR-04",
+    "PR-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 307,
+   "section": "ui_gallery",
+   "section_title": "Gallery",
+   "key": "return_grid",
+   "label": "Show grid in gallery",
+   "excluded": false,
+   "maps_to": [
+    "MT-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 308,
+   "section": "ui_gallery",
+   "section_title": "Gallery",
+   "key": "do_not_show_images",
+   "label": "Do not show any images in gallery",
+   "excluded": false,
+   "maps_to": [
+    "MT-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 309,
+   "section": "ui_gallery",
+   "section_title": "Gallery",
+   "key": "js_modal_lightbox",
+   "label": "Full page image viewer: enable",
+   "excluded": false,
+   "maps_to": [
+    "MT-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 310,
+   "section": "ui_gallery",
+   "section_title": "Gallery",
+   "key": "js_modal_lightbox_initially_zoomed",
+   "label": "Full page image viewer: show images zoomed in by default",
+   "excluded": false,
+   "maps_to": [
+    "MT-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 311,
+   "section": "ui_gallery",
+   "section_title": "Gallery",
+   "key": "js_modal_lightbox_gamepad",
+   "label": "Full page image viewer: navigate with gamepad",
+   "excluded": false,
+   "maps_to": [
+    "MT-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 312,
+   "section": "ui_gallery",
+   "section_title": "Gallery",
+   "key": "js_modal_lightbox_gamepad_repeat",
+   "label": "Full page image viewer: gamepad repeat period",
+   "excluded": false,
+   "maps_to": [
+    "MT-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 313,
+   "section": "ui_gallery",
+   "section_title": "Gallery",
+   "key": "sd_webui_modal_lightbox_icon_opacity",
+   "label": "Full page image viewer: control icon unfocused opacity",
+   "excluded": false,
+   "maps_to": [
+    "MT-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 314,
+   "section": "ui_gallery",
+   "section_title": "Gallery",
+   "key": "sd_webui_modal_lightbox_toolbar_opacity",
+   "label": "Full page image viewer: tool bar opacity",
+   "excluded": false,
+   "maps_to": [
+    "MT-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 315,
+   "section": "ui_gallery",
+   "section_title": "Gallery",
+   "key": "gallery_height",
+   "label": "Gallery height",
+   "excluded": false,
+   "maps_to": [
+    "MT-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 316,
+   "section": "ui_gallery",
+   "section_title": "Gallery",
+   "key": "open_dir_button_choice",
+   "label": "What directory the [📂] button opens",
+   "excluded": false,
+   "maps_to": [
+    "MT-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 320,
+   "section": "ui_alternatives",
+   "section_title": "UI alternatives",
+   "key": "compact_prompt_box",
+   "label": "Compact prompt layout",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:layout alternative; DexDiffusion layout is governed by Concept A"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 321,
+   "section": "ui_alternatives",
+   "section_title": "UI alternatives",
+   "key": "samplers_in_dropdown",
+   "label": "Use dropdown for sampler selection instead of radio group",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:layout alternative; DexDiffusion layout is governed by Concept A"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 322,
+   "section": "ui_alternatives",
+   "section_title": "UI alternatives",
+   "key": "dimensions_and_batch_together",
+   "label": "Show Width/Height and Batch sliders in same row",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:layout alternative; DexDiffusion layout is governed by Concept A"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 323,
+   "section": "ui_alternatives",
+   "section_title": "UI alternatives",
+   "key": "sd_checkpoint_dropdown_use_short",
+   "label": "Checkpoint dropdown: use filenames without paths",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:layout alternative; DexDiffusion layout is governed by Concept A"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 324,
+   "section": "ui_alternatives",
+   "section_title": "UI alternatives",
+   "key": "hires_fix_show_sampler",
+   "label": "Hires fix: show hires checkpoint and sampler selection",
+   "excluded": false,
+   "maps_to": [
+    "HR-10",
+    "HR-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 325,
+   "section": "ui_alternatives",
+   "section_title": "UI alternatives",
+   "key": "hires_fix_show_prompts",
+   "label": "Hires fix: show hires prompt and negative prompt",
+   "excluded": false,
+   "maps_to": [
+    "HR-08",
+    "HR-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 326,
+   "section": "ui_alternatives",
+   "section_title": "UI alternatives",
+   "key": "txt2img_settings_accordion",
+   "label": "Settings in txt2img hidden under Accordion",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:layout alternative; DexDiffusion layout is governed by Concept A"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 327,
+   "section": "ui_alternatives",
+   "section_title": "UI alternatives",
+   "key": "img2img_settings_accordion",
+   "label": "Settings in img2img hidden under Accordion",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:layout alternative; DexDiffusion layout is governed by Concept A"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 328,
+   "section": "ui_alternatives",
+   "section_title": "UI alternatives",
+   "key": "interrupt_after_current",
+   "label": "Don't Interrupt in the middle",
+   "excluded": false,
+   "maps_to": [
+    "JO-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 332,
+   "section": "ui",
+   "section_title": "User interface",
+   "key": "localization",
+   "label": "Localization",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:shell preference (theme, localization, tab order, reload)"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 333,
+   "section": "ui",
+   "section_title": "User interface",
+   "key": "quicksettings_list",
+   "label": "Quicksettings list",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:shell preference (theme, localization, tab order, reload)"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 334,
+   "section": "ui",
+   "section_title": "User interface",
+   "key": "ui_tab_order",
+   "label": "UI tab order",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:shell preference (theme, localization, tab order, reload)"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 335,
+   "section": "ui",
+   "section_title": "User interface",
+   "key": "hidden_tabs",
+   "label": "Hidden UI tabs",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:shell preference (theme, localization, tab order, reload)"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 336,
+   "section": "ui",
+   "section_title": "User interface",
+   "key": "ui_reorder_list",
+   "label": "UI item order for txt2img/img2img tabs",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:shell preference (theme, localization, tab order, reload)"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 337,
+   "section": "ui",
+   "section_title": "User interface",
+   "key": "gradio_theme",
+   "label": "Gradio theme",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:shell preference (theme, localization, tab order, reload)"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 338,
+   "section": "ui",
+   "section_title": "User interface",
+   "key": "gradio_themes_cache",
+   "label": "Cache gradio themes locally",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:shell preference (theme, localization, tab order, reload)"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 339,
+   "section": "ui",
+   "section_title": "User interface",
+   "key": "show_progress_in_title",
+   "label": "Show generation progress in window title.",
+   "excluded": false,
+   "maps_to": [
+    "JO-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 340,
+   "section": "ui",
+   "section_title": "User interface",
+   "key": "send_seed",
+   "label": "Send seed when sending prompt or image to other interface",
+   "excluded": false,
+   "maps_to": [
+    "MT-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 341,
+   "section": "ui",
+   "section_title": "User interface",
+   "key": "send_size",
+   "label": "Send size when sending prompt or image to another interface",
+   "excluded": false,
+   "maps_to": [
+    "MT-11"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 342,
+   "section": "ui",
+   "section_title": "User interface",
+   "key": "enable_reloading_ui_scripts",
+   "label": "Reload UI scripts when using Reload UI option",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:shell preference (theme, localization, tab order, reload)"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 348,
+   "section": "infotext",
+   "section_title": "Infotext",
+   "key": "infotext_explanation",
+   "label": null,
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_A_CONTROL:explanatory HTML"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 352,
+   "section": "infotext",
+   "section_title": "Infotext",
+   "key": "enable_pnginfo",
+   "label": "Write infotext to metadata of the generated image",
+   "excluded": false,
+   "maps_to": [
+    "MT-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 353,
+   "section": "infotext",
+   "section_title": "Infotext",
+   "key": "save_txt",
+   "label": "Create a text file with infotext next to every generated image",
+   "excluded": false,
+   "maps_to": [
+    "MT-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 355,
+   "section": "infotext",
+   "section_title": "Infotext",
+   "key": "add_model_name_to_info",
+   "label": "Add model name to infotext",
+   "excluded": false,
+   "maps_to": [
+    "MT-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 356,
+   "section": "infotext",
+   "section_title": "Infotext",
+   "key": "add_model_hash_to_info",
+   "label": "Add model hash to infotext",
+   "excluded": false,
+   "maps_to": [
+    "MT-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 357,
+   "section": "infotext",
+   "section_title": "Infotext",
+   "key": "add_vae_name_to_info",
+   "label": "Add VAE name to infotext",
+   "excluded": false,
+   "maps_to": [
+    "MT-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 358,
+   "section": "infotext",
+   "section_title": "Infotext",
+   "key": "add_vae_hash_to_info",
+   "label": "Add VAE hash to infotext",
+   "excluded": false,
+   "maps_to": [
+    "MT-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 359,
+   "section": "infotext",
+   "section_title": "Infotext",
+   "key": "add_user_name_to_info",
+   "label": "Add user name to infotext when authenticated",
+   "excluded": false,
+   "maps_to": [
+    "MT-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 360,
+   "section": "infotext",
+   "section_title": "Infotext",
+   "key": "add_version_to_infotext",
+   "label": "Add program version to infotext",
+   "excluded": false,
+   "maps_to": [
+    "MT-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 361,
+   "section": "infotext",
+   "section_title": "Infotext",
+   "key": "disable_weights_auto_swap",
+   "label": "Disregard checkpoint information from pasted infotext",
+   "excluded": false,
+   "maps_to": [
+    "MT-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 362,
+   "section": "infotext",
+   "section_title": "Infotext",
+   "key": "infotext_skip_pasting",
+   "label": "Disregard fields from pasted infotext",
+   "excluded": false,
+   "maps_to": [
+    "MT-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 363,
+   "section": "infotext",
+   "section_title": "Infotext",
+   "key": "infotext_styles",
+   "label": "Infer styles from prompts of pasted infotext",
+   "excluded": false,
+   "maps_to": [
+    "MT-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 373,
+   "section": "ui",
+   "section_title": "Live previews",
+   "key": "show_progressbar",
+   "label": "Show progressbar",
+   "excluded": false,
+   "maps_to": [
+    "JO-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 374,
+   "section": "ui",
+   "section_title": "Live previews",
+   "key": "live_previews_enable",
+   "label": "Show live previews of the created image",
+   "excluded": false,
+   "maps_to": [
+    "ST-15",
+    "JO-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 375,
+   "section": "ui",
+   "section_title": "Live previews",
+   "key": "live_previews_image_format",
+   "label": "Live preview file format",
+   "excluded": false,
+   "maps_to": [
+    "ST-15",
+    "JO-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 376,
+   "section": "ui",
+   "section_title": "Live previews",
+   "key": "show_progress_grid",
+   "label": "Show previews of all images generated in a batch as a grid",
+   "excluded": false,
+   "maps_to": [
+    "ST-15",
+    "JO-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 377,
+   "section": "ui",
+   "section_title": "Live previews",
+   "key": "show_progress_every_n_steps",
+   "label": "Live preview display period",
+   "excluded": false,
+   "maps_to": [
+    "ST-15",
+    "JO-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 378,
+   "section": "ui",
+   "section_title": "Live previews",
+   "key": "show_progress_type",
+   "label": "Live preview method",
+   "excluded": false,
+   "maps_to": [
+    "ST-15",
+    "JO-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 379,
+   "section": "ui",
+   "section_title": "Live previews",
+   "key": "live_preview_allow_lowvram_full",
+   "label": "Allow Full live preview method with lowvram/medvram",
+   "excluded": false,
+   "maps_to": [
+    "ST-15",
+    "JO-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 380,
+   "section": "ui",
+   "section_title": "Live previews",
+   "key": "live_preview_content",
+   "label": "Live preview subject",
+   "excluded": false,
+   "maps_to": [
+    "ST-15",
+    "JO-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 381,
+   "section": "ui",
+   "section_title": "Live previews",
+   "key": "live_preview_refresh_period",
+   "label": "Progressbar and preview update period",
+   "excluded": false,
+   "maps_to": [
+    "JO-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 382,
+   "section": "ui",
+   "section_title": "Live previews",
+   "key": "live_preview_fast_interrupt",
+   "label": "Return image with chosen live preview method on interrupt",
+   "excluded": false,
+   "maps_to": [
+    "ST-15",
+    "JO-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 383,
+   "section": "ui",
+   "section_title": "Live previews",
+   "key": "js_live_preview_in_modal_lightbox",
+   "label": "Show Live preview in full page image viewer",
+   "excluded": false,
+   "maps_to": [
+    "ST-15",
+    "JO-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 384,
+   "section": "ui",
+   "section_title": "Live previews",
+   "key": "prevent_screen_sleep_during_generation",
+   "label": "Prevent screen sleep during generation",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:shell preference (theme, localization, tab order, reload)"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 388,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "hide_samplers",
+   "label": "Hide samplers in user interface",
+   "excluded": false,
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 389,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "eta_ddim",
+   "label": "Eta for DDIM",
+   "excluded": false,
+   "maps_to": [
+    "SD-14"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 390,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "eta_ancestral",
+   "label": "Eta for k-diffusion samplers",
+   "excluded": false,
+   "maps_to": [
+    "SD-15"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 391,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "ddim_discretize",
+   "label": "img2img DDIM discretize",
+   "excluded": false,
+   "maps_to": [
+    "ST-05",
+    "SD-24"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 392,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "s_churn",
+   "label": "sigma churn",
+   "excluded": false,
+   "maps_to": [
+    "SD-17"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 393,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "s_tmin",
+   "label": "sigma tmin",
+   "excluded": false,
+   "maps_to": [
+    "SD-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 394,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "s_tmax",
+   "label": "sigma tmax",
+   "excluded": false,
+   "maps_to": [
+    "SD-18"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 395,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "s_noise",
+   "label": "sigma noise",
+   "excluded": false,
+   "maps_to": [
+    "SD-19"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 396,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "sigma_min",
+   "label": "sigma min",
+   "excluded": false,
+   "maps_to": [
+    "SD-20"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 397,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "sigma_max",
+   "label": "sigma max",
+   "excluded": false,
+   "maps_to": [
+    "SD-20"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 398,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "rho",
+   "label": "rho",
+   "excluded": false,
+   "maps_to": [
+    "SD-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 399,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "eta_noise_seed_delta",
+   "label": "Eta noise seed delta",
+   "excluded": false,
+   "maps_to": [
+    "SD-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 400,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "always_discard_next_to_last_sigma",
+   "label": "Always discard next-to-last sigma",
+   "excluded": false,
+   "maps_to": [
+    "SD-27"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 401,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "sgm_noise_multiplier",
+   "label": "SGM noise multiplier",
+   "excluded": false,
+   "maps_to": [
+    "SD-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 402,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "uni_pc_variant",
+   "label": "UniPC variant",
+   "excluded": false,
+   "maps_to": [
+    "SD-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 403,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "uni_pc_skip_type",
+   "label": "UniPC skip type",
+   "excluded": false,
+   "maps_to": [
+    "SD-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 404,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "uni_pc_order",
+   "label": "UniPC order",
+   "excluded": false,
+   "maps_to": [
+    "SD-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 405,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "uni_pc_lower_order_final",
+   "label": "UniPC lower order final",
+   "excluded": false,
+   "maps_to": [
+    "SD-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 406,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "sd_noise_schedule",
+   "label": "Noise schedule for sampling",
+   "excluded": false,
+   "maps_to": [
+    "ST-05",
+    "SD-24"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 407,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "skip_early_cond",
+   "label": "Ignore negative prompt during early sampling",
+   "excluded": false,
+   "maps_to": [
+    "SD-25"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 408,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "beta_dist_alpha",
+   "label": "Beta scheduler - alpha",
+   "excluded": false,
+   "maps_to": [
+    "SD-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 409,
+   "section": "sampler-params",
+   "section_title": "Sampler parameters",
+   "key": "beta_dist_beta",
+   "label": "Beta scheduler - beta",
+   "excluded": false,
+   "maps_to": [
+    "SD-22"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 413,
+   "section": "postprocessing",
+   "section_title": "Postprocessing",
+   "key": "postprocessing_enable_in_main_ui",
+   "label": "Enable postprocessing operations in txt2img and img2img tabs",
+   "excluded": false,
+   "maps_to": [
+    "EX-25"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 414,
+   "section": "postprocessing",
+   "section_title": "Postprocessing",
+   "key": "postprocessing_disable_in_extras",
+   "label": "Disable postprocessing operations in extras tab",
+   "excluded": false,
+   "maps_to": [
+    "EX-25"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 415,
+   "section": "postprocessing",
+   "section_title": "Postprocessing",
+   "key": "postprocessing_operation_order",
+   "label": "Postprocessing operation order",
+   "excluded": false,
+   "maps_to": [
+    "EX-21"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 416,
+   "section": "postprocessing",
+   "section_title": "Postprocessing",
+   "key": "upscaling_max_images_in_cache",
+   "label": "Maximum number of images in upscaling cache",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:in-memory cache size"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 417,
+   "section": "postprocessing",
+   "section_title": "Postprocessing",
+   "key": "postprocessing_existing_caption_action",
+   "label": "Action for existing captions",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "EXCLUDED_TRAINING:caption files for training datasets"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 421,
+   "section": null,
+   "section_title": "Hidden options",
+   "key": "disabled_extensions",
+   "label": "Disable these extensions",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:extension management / config-state restore"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 422,
+   "section": null,
+   "section_title": "Hidden options",
+   "key": "disable_all_extensions",
+   "label": "Disable all extensions (preserves the list of disabled extensions)",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:extension management / config-state restore"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 423,
+   "section": null,
+   "section_title": "Hidden options",
+   "key": "restore_config_state_file",
+   "label": "Config state file to restore from, under 'config-states/' folder",
+   "excluded": false,
+   "maps_to": null,
+   "classification": "NOT_GENERATION_AFFECTING:extension management / config-state restore"
+  },
+  {
+   "kind": "setting",
+   "file": "modules/shared_options.py",
+   "line": 424,
+   "section": null,
+   "section_title": "Hidden options",
+   "key": "sd_checkpoint_hash",
+   "label": "SHA256 hash of the current checkpoint",
+   "excluded": false,
+   "maps_to": [
+    "MT-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/LDSR/scripts/ldsr_model.py",
+   "line": 64,
+   "section": "extension:LDSR",
+   "section_title": "LDSR",
+   "key": "ldsr_steps",
+   "label": "LDSR processing steps. Lower = faster",
+   "excluded": false,
+   "maps_to": [
+    "EX-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/LDSR/scripts/ldsr_model.py",
+   "line": 65,
+   "section": "extension:LDSR",
+   "section_title": "LDSR",
+   "key": "ldsr_cached",
+   "label": "Cache LDSR model in memory",
+   "excluded": false,
+   "maps_to": [
+    "EX-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/Lora/scripts/lora_script.py",
+   "line": 36,
+   "section": "extension:Lora",
+   "section_title": "Lora",
+   "key": "sd_lora",
+   "label": "Add network to prompt",
+   "excluded": false,
+   "maps_to": [
+    "RS-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/Lora/scripts/lora_script.py",
+   "line": 37,
+   "section": "extension:Lora",
+   "section_title": "Lora",
+   "key": "lora_preferred_name",
+   "label": "When adding to prompt, refer to Lora by",
+   "excluded": false,
+   "maps_to": [
+    "RS-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/Lora/scripts/lora_script.py",
+   "line": 38,
+   "section": "extension:Lora",
+   "section_title": "Lora",
+   "key": "lora_add_hashes_to_infotext",
+   "label": "Add Lora hashes to infotext",
+   "excluded": false,
+   "maps_to": [
+    "MT-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/Lora/scripts/lora_script.py",
+   "line": 39,
+   "section": "extension:Lora",
+   "section_title": "Lora",
+   "key": "lora_bundled_ti_to_infotext",
+   "label": "Add Lora name as TI hashes for bundled Textual Inversion",
+   "excluded": false,
+   "maps_to": [
+    "MT-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/Lora/scripts/lora_script.py",
+   "line": 40,
+   "section": "extension:Lora",
+   "section_title": "Lora",
+   "key": "lora_show_all",
+   "label": "Always show all networks on the Lora page",
+   "excluded": false,
+   "maps_to": [
+    "RS-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/Lora/scripts/lora_script.py",
+   "line": 41,
+   "section": "extension:Lora",
+   "section_title": "Lora",
+   "key": "lora_hide_unknown_for_versions",
+   "label": "Hide networks of unknown versions for model versions",
+   "excluded": false,
+   "maps_to": [
+    "RS-13"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/Lora/scripts/lora_script.py",
+   "line": 42,
+   "section": "extension:Lora",
+   "section_title": "Lora",
+   "key": "lora_in_memory_limit",
+   "label": "Number of Lora networks to keep cached in memory",
+   "excluded": false,
+   "maps_to": [
+    "RS-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/Lora/scripts/lora_script.py",
+   "line": 43,
+   "section": "extension:Lora",
+   "section_title": "Lora",
+   "key": "lora_not_found_warning_console",
+   "label": "Lora not found warning in console",
+   "excluded": false,
+   "maps_to": [
+    "RS-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/Lora/scripts/lora_script.py",
+   "line": 44,
+   "section": "extension:Lora",
+   "section_title": "Lora",
+   "key": "lora_not_found_gradio_warning",
+   "label": "Lora not found warning popup in webui",
+   "excluded": false,
+   "maps_to": [
+    "RS-12"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/Lora/scripts/lora_script.py",
+   "line": 49,
+   "section": "extension:Lora",
+   "section_title": "Lora",
+   "key": "lora_functional",
+   "label": "Lora/Networks: use old method that takes longer when you have multiple Loras active and produces same results as kohya-ss/sd-webui-additional-networks extension",
+   "excluded": false,
+   "maps_to": [
+    "RS-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/ScuNET/scripts/scunet_model.py",
+   "line": 70,
+   "section": "extension:ScuNET",
+   "section_title": "ScuNET",
+   "key": "SCUNET_tile",
+   "label": "Tile size for SCUNET upscalers.",
+   "excluded": false,
+   "maps_to": [
+    "EX-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/ScuNET/scripts/scunet_model.py",
+   "line": 71,
+   "section": "extension:ScuNET",
+   "section_title": "ScuNET",
+   "key": "SCUNET_tile_overlap",
+   "label": "Tile overlap for SCUNET upscalers.",
+   "excluded": false,
+   "maps_to": [
+    "EX-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/SwinIR/scripts/swinir_model.py",
+   "line": 90,
+   "section": "extension:SwinIR",
+   "section_title": "SwinIR",
+   "key": "SWIN_tile",
+   "label": "Tile size for all SwinIR.",
+   "excluded": false,
+   "maps_to": [
+    "EX-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/SwinIR/scripts/swinir_model.py",
+   "line": 91,
+   "section": "extension:SwinIR",
+   "section_title": "SwinIR",
+   "key": "SWIN_tile_overlap",
+   "label": "Tile overlap, in pixels for SwinIR. Low values = visible seam.",
+   "excluded": false,
+   "maps_to": [
+    "EX-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/SwinIR/scripts/swinir_model.py",
+   "line": 92,
+   "section": "extension:SwinIR",
+   "section_title": "SwinIR",
+   "key": "SWIN_torch_compile",
+   "label": "Use torch.compile to accelerate SwinIR.",
+   "excluded": false,
+   "maps_to": [
+    "EX-23"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+   "line": 5,
+   "section": "extension:canvas-zoom-and-pan",
+   "section_title": "canvas-zoom-and-pan",
+   "key": "canvas_hotkey_zoom",
+   "label": "Zoom canvas",
+   "excluded": false,
+   "maps_to": [
+    "IP-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+   "line": 6,
+   "section": "extension:canvas-zoom-and-pan",
+   "section_title": "canvas-zoom-and-pan",
+   "key": "canvas_hotkey_adjust",
+   "label": "Adjust brush size",
+   "excluded": false,
+   "maps_to": [
+    "IP-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+   "line": 7,
+   "section": "extension:canvas-zoom-and-pan",
+   "section_title": "canvas-zoom-and-pan",
+   "key": "canvas_hotkey_shrink_brush",
+   "label": "Shrink the brush size",
+   "excluded": false,
+   "maps_to": [
+    "IP-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+   "line": 8,
+   "section": "extension:canvas-zoom-and-pan",
+   "section_title": "canvas-zoom-and-pan",
+   "key": "canvas_hotkey_grow_brush",
+   "label": "Enlarge the brush size",
+   "excluded": false,
+   "maps_to": [
+    "IP-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+   "line": 9,
+   "section": "extension:canvas-zoom-and-pan",
+   "section_title": "canvas-zoom-and-pan",
+   "key": "canvas_hotkey_move",
+   "label": "Moving the canvas",
+   "excluded": false,
+   "maps_to": [
+    "IP-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+   "line": 10,
+   "section": "extension:canvas-zoom-and-pan",
+   "section_title": "canvas-zoom-and-pan",
+   "key": "canvas_hotkey_fullscreen",
+   "label": "Fullscreen Mode, maximizes the picture so that it fits into the screen and stretches it to its full width ",
+   "excluded": false,
+   "maps_to": [
+    "IP-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+   "line": 11,
+   "section": "extension:canvas-zoom-and-pan",
+   "section_title": "canvas-zoom-and-pan",
+   "key": "canvas_hotkey_reset",
+   "label": "Reset zoom and canvas position",
+   "excluded": false,
+   "maps_to": [
+    "IP-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+   "line": 12,
+   "section": "extension:canvas-zoom-and-pan",
+   "section_title": "canvas-zoom-and-pan",
+   "key": "canvas_hotkey_overlap",
+   "label": "Toggle overlap",
+   "excluded": false,
+   "maps_to": [
+    "IP-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+   "line": 13,
+   "section": "extension:canvas-zoom-and-pan",
+   "section_title": "canvas-zoom-and-pan",
+   "key": "canvas_show_tooltip",
+   "label": "Enable tooltip on the canvas",
+   "excluded": false,
+   "maps_to": [
+    "IP-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+   "line": 14,
+   "section": "extension:canvas-zoom-and-pan",
+   "section_title": "canvas-zoom-and-pan",
+   "key": "canvas_auto_expand",
+   "label": "Automatically expands an image that does not fit completely in the canvas area, similar to manually pressing the S and R buttons",
+   "excluded": false,
+   "maps_to": [
+    "IP-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+   "line": 15,
+   "section": "extension:canvas-zoom-and-pan",
+   "section_title": "canvas-zoom-and-pan",
+   "key": "canvas_blur_prompt",
+   "label": "Take the focus off the prompt when working with a canvas",
+   "excluded": false,
+   "maps_to": [
+    "IP-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/canvas-zoom-and-pan/scripts/hotkey_config.py",
+   "line": 16,
+   "section": "extension:canvas-zoom-and-pan",
+   "section_title": "canvas-zoom-and-pan",
+   "key": "canvas_disabled_functions",
+   "label": "Disable function that you don't use",
+   "excluded": false,
+   "maps_to": [
+    "IP-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/extra-options-section/scripts/extra_options_section.py",
+   "line": 76,
+   "section": "extension:extra-options-section",
+   "section_title": "extra-options-section",
+   "key": "extra_options_txt2img",
+   "label": "Settings for txt2img",
+   "excluded": false,
+   "maps_to": [
+    "ST-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/extra-options-section/scripts/extra_options_section.py",
+   "line": 77,
+   "section": "extension:extra-options-section",
+   "section_title": "extra-options-section",
+   "key": "extra_options_img2img",
+   "label": "Settings for img2img",
+   "excluded": false,
+   "maps_to": [
+    "ST-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/extra-options-section/scripts/extra_options_section.py",
+   "line": 78,
+   "section": "extension:extra-options-section",
+   "section_title": "extra-options-section",
+   "key": "extra_options_cols",
+   "label": "Number of columns for added settings",
+   "excluded": false,
+   "maps_to": [
+    "ST-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/extra-options-section/scripts/extra_options_section.py",
+   "line": 79,
+   "section": "extension:extra-options-section",
+   "section_title": "extra-options-section",
+   "key": "extra_options_accordion",
+   "label": "Place added settings into an accordion",
+   "excluded": false,
+   "maps_to": [
+    "ST-16"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/hypertile/scripts/hypertile_script.py",
+   "line": 90,
+   "section": "extension:hypertile",
+   "section_title": "hypertile",
+   "key": "hypertile_enable_unet",
+   "label": "Enable Hypertile U-Net",
+   "excluded": false,
+   "maps_to": [
+    "ST-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/hypertile/scripts/hypertile_script.py",
+   "line": 91,
+   "section": "extension:hypertile",
+   "section_title": "hypertile",
+   "key": "hypertile_enable_unet_secondpass",
+   "label": "Enable Hypertile U-Net for hires fix second pass",
+   "excluded": false,
+   "maps_to": [
+    "ST-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/hypertile/scripts/hypertile_script.py",
+   "line": 92,
+   "section": "extension:hypertile",
+   "section_title": "hypertile",
+   "key": "hypertile_max_depth_unet",
+   "label": "Hypertile U-Net max depth",
+   "excluded": false,
+   "maps_to": [
+    "ST-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/hypertile/scripts/hypertile_script.py",
+   "line": 93,
+   "section": "extension:hypertile",
+   "section_title": "hypertile",
+   "key": "hypertile_max_tile_unet",
+   "label": "Hypertile U-Net max tile size",
+   "excluded": false,
+   "maps_to": [
+    "ST-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/hypertile/scripts/hypertile_script.py",
+   "line": 94,
+   "section": "extension:hypertile",
+   "section_title": "hypertile",
+   "key": "hypertile_swap_size_unet",
+   "label": "Hypertile U-Net swap size",
+   "excluded": false,
+   "maps_to": [
+    "ST-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/hypertile/scripts/hypertile_script.py",
+   "line": 95,
+   "section": "extension:hypertile",
+   "section_title": "hypertile",
+   "key": "hypertile_enable_vae",
+   "label": "Enable Hypertile VAE",
+   "excluded": false,
+   "maps_to": [
+    "ST-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/hypertile/scripts/hypertile_script.py",
+   "line": 96,
+   "section": "extension:hypertile",
+   "section_title": "hypertile",
+   "key": "hypertile_max_depth_vae",
+   "label": "Hypertile VAE max depth",
+   "excluded": false,
+   "maps_to": [
+    "ST-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/hypertile/scripts/hypertile_script.py",
+   "line": 97,
+   "section": "extension:hypertile",
+   "section_title": "hypertile",
+   "key": "hypertile_max_tile_vae",
+   "label": "Hypertile VAE max tile size",
+   "excluded": false,
+   "maps_to": [
+    "ST-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "setting",
+   "file": "extensions-builtin/hypertile/scripts/hypertile_script.py",
+   "line": 98,
+   "section": "extension:hypertile",
+   "section_title": "hypertile",
+   "key": "hypertile_swap_size_vae",
+   "label": "Hypertile VAE swap size ",
+   "excluded": false,
+   "maps_to": [
+    "ST-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 12,
+   "label": "DPM++ 2M",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 13,
+   "label": "DPM++ SDE",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 14,
+   "label": "DPM++ 2M SDE",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 15,
+   "label": "DPM++ 2M SDE Heun",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 16,
+   "label": "DPM++ 2S a",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 17,
+   "label": "DPM++ 3M SDE",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 18,
+   "label": "Euler a",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 19,
+   "label": "Euler",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 20,
+   "label": "LMS",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 21,
+   "label": "Heun",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 22,
+   "label": "DPM2",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 23,
+   "label": "DPM2 a",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 24,
+   "label": "DPM fast",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 25,
+   "label": "DPM adaptive",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_kdiffusion.py",
+   "line": 26,
+   "label": "Restart",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_timesteps.py",
+   "line": 12,
+   "label": "DDIM",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_timesteps.py",
+   "line": 13,
+   "label": "DDIM CFG++",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_timesteps.py",
+   "line": 14,
+   "label": "PLMS",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_timesteps.py",
+   "line": 15,
+   "label": "UniPC",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "sampler",
+   "file": "modules/sd_samplers_lcm.py",
+   "line": 100,
+   "label": "LCM",
+   "maps_to": [
+    "GN-02"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "scheduler",
+   "file": "modules/sd_schedulers.py",
+   "line": 131,
+   "key": "automatic",
+   "label": "Automatic",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "scheduler",
+   "file": "modules/sd_schedulers.py",
+   "line": 132,
+   "key": "uniform",
+   "label": "Uniform",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "scheduler",
+   "file": "modules/sd_schedulers.py",
+   "line": 133,
+   "key": "karras",
+   "label": "Karras",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "scheduler",
+   "file": "modules/sd_schedulers.py",
+   "line": 134,
+   "key": "exponential",
+   "label": "Exponential",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "scheduler",
+   "file": "modules/sd_schedulers.py",
+   "line": 135,
+   "key": "polyexponential",
+   "label": "Polyexponential",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "scheduler",
+   "file": "modules/sd_schedulers.py",
+   "line": 136,
+   "key": "sgm_uniform",
+   "label": "SGM Uniform",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "scheduler",
+   "file": "modules/sd_schedulers.py",
+   "line": 137,
+   "key": "kl_optimal",
+   "label": "KL Optimal",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "scheduler",
+   "file": "modules/sd_schedulers.py",
+   "line": 138,
+   "key": "align_your_steps",
+   "label": "Align Your Steps",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "scheduler",
+   "file": "modules/sd_schedulers.py",
+   "line": 139,
+   "key": "simple",
+   "label": "Simple",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "scheduler",
+   "file": "modules/sd_schedulers.py",
+   "line": 140,
+   "key": "normal",
+   "label": "Normal",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "scheduler",
+   "file": "modules/sd_schedulers.py",
+   "line": 141,
+   "key": "ddim",
+   "label": "DDIM",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "scheduler",
+   "file": "modules/sd_schedulers.py",
+   "line": 142,
+   "key": "beta",
+   "label": "Beta",
+   "maps_to": [
+    "GN-03"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 239,
+   "label": "Nothing",
+   "mode": "both",
+   "maps_to": [
+    "SC-01"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 240,
+   "label": "Seed",
+   "mode": "both",
+   "maps_to": [
+    "SC-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 241,
+   "label": "Var. seed",
+   "mode": "both",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 242,
+   "label": "Var. strength",
+   "mode": "both",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 243,
+   "label": "Steps",
+   "mode": "both",
+   "maps_to": [
+    "SC-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 244,
+   "label": "Hires steps",
+   "mode": "txt2img",
+   "maps_to": [
+    "SC-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 245,
+   "label": "CFG Scale",
+   "mode": "both",
+   "maps_to": [
+    "SC-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 246,
+   "label": "Image CFG Scale",
+   "mode": "img2img",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 247,
+   "label": "Prompt S/R",
+   "mode": "both",
+   "maps_to": [
+    "SC-05"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 248,
+   "label": "Prompt order",
+   "mode": "both",
+   "maps_to": [
+    "SC-06"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 249,
+   "label": "Sampler",
+   "mode": "txt2img",
+   "maps_to": [
+    "SC-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 250,
+   "label": "Hires sampler",
+   "mode": "txt2img",
+   "maps_to": [
+    "SC-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 251,
+   "label": "Sampler",
+   "mode": "img2img",
+   "maps_to": [
+    "SC-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 252,
+   "label": "Checkpoint name",
+   "mode": "both",
+   "maps_to": [
+    "SC-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 253,
+   "label": "Negative Guidance minimum sigma",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 254,
+   "label": "Sigma Churn",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 255,
+   "label": "Sigma min",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 256,
+   "label": "Sigma max",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 257,
+   "label": "Sigma noise",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 258,
+   "label": "Schedule type",
+   "mode": "both",
+   "maps_to": [
+    "SC-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 259,
+   "label": "Schedule min sigma",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 260,
+   "label": "Schedule max sigma",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 261,
+   "label": "Schedule rho",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 262,
+   "label": "Beta schedule alpha",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 263,
+   "label": "Beta schedule beta",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 264,
+   "label": "Eta",
+   "mode": "both",
+   "maps_to": [
+    "SC-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 265,
+   "label": "Clip skip",
+   "mode": "both",
+   "maps_to": [
+    "SC-04"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 266,
+   "label": "Denoising",
+   "mode": "both",
+   "maps_to": [
+    "SC-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 267,
+   "label": "Initial noise multiplier",
+   "mode": "both",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 268,
+   "label": "Extra noise",
+   "mode": "both",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 269,
+   "label": "Hires upscaler",
+   "mode": "txt2img",
+   "maps_to": [
+    "SC-08"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 270,
+   "label": "Cond. Image Mask Weight",
+   "mode": "img2img",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 271,
+   "label": "VAE",
+   "mode": "both",
+   "maps_to": [
+    "SC-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 272,
+   "label": "Styles",
+   "mode": "both",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 273,
+   "label": "UniPC Order",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 274,
+   "label": "Face restore",
+   "mode": "both",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 275,
+   "label": "Token merging ratio",
+   "mode": "both",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 276,
+   "label": "Token merging ratio high-res",
+   "mode": "both",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 277,
+   "label": "Always discard next-to-last sigma",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 278,
+   "label": "SGM noise multiplier",
+   "mode": "both",
+   "maps_to": [
+    "SC-09"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 279,
+   "label": "Refiner checkpoint",
+   "mode": "both",
+   "maps_to": [
+    "SC-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 280,
+   "label": "Refiner switch at",
+   "mode": "both",
+   "maps_to": [
+    "SC-07"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 281,
+   "label": "RNG source",
+   "mode": "both",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 282,
+   "label": "FP8 mode",
+   "mode": "both",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  },
+  {
+   "kind": "xyz_axis",
+   "file": "scripts/xyz_grid.py",
+   "line": 283,
+   "label": "Size",
+   "mode": "both",
+   "maps_to": [
+    "SC-26"
+   ],
+   "classification": null
+  }
+ ],
+ "commit": "82a973c04367123ae98bd9abdf80d9eda9b910e2",
+ "generated_by": "docs/parity/tools/enumerate_a1111.py + reconcile_ledger.py",
+ "unmapped": 0,
+ "counts": {
+  "items": 612,
+  "mapped": 498,
+  "classified": {
+   "EXCLUDED_TRAINING": 50,
+   "NOT_A_CONTROL": 3,
+   "NOT_GENERATION_AFFECTING": 48,
+   "SUPERSEDED_BY_CANONICAL_STORE": 13
+  }
+ }
+}

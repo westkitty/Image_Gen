@@ -33,7 +33,10 @@ async function openConcept(page, base) {
       assert.equal(await page.locator('.ca-shell[data-ca-module="workstation"]').count(), 1);
       await page.locator('.ca-nav-item', { hasText: 'Generate' }).click();
       await page.waitForSelector('.ca-shell[data-ca-module="generate"]');
-      assert.match(await page.locator('.ca-primary').first().evaluate(e => getComputedStyle(e).backgroundColor), /rgb/);
+      // Startup re-renders can detach the button between lookup and read (computed style of a detached node is ''); wait for a
+      // connected primary action, then require its accent colour.
+      const accent = await page.waitForFunction(() => { const e = document.querySelector('.ca-primary'); const bg = e && e.isConnected ? getComputedStyle(e).backgroundColor : ''; return /rgb/.test(bg) ? bg : null; }, null, { timeout: 5000 }).then(h => h.jsonValue()).catch(() => '');
+      assert.match(accent, /rgb/);
       assert.deepEqual(errors, []);
       await page.close();
     });

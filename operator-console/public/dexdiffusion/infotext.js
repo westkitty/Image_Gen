@@ -129,6 +129,17 @@
       if (n !== null) { settings.hires.denoise = n; const f = fields.find(x => x.key.toLowerCase() === 'denoising strength'); if (f) { f.state = 'restorable'; delete f.reason; f.note = 'applied as the Hires fix denoise'; } }
     }
     if (scheduleFromSampler && !settings.scheduler) settings.scheduler = scheduleFromSampler;
+    // infotext_utils.parse_generation_parameters (82a973c0) fills keys a pasted infotext omits with A1111's defaults, so pasting
+    // resets the form instead of keeping stale values. Only for real infotext (≥3 parameters); prompt-only text keeps the form.
+    if (parsed.params.length >= 3) {
+      const defaulted = [];
+      if (!kv.has('clip skip')) { settings.clipSkip = ''; defaulted.push('Clip skip 1 (model default)'); }
+      if (!kv.has('schedule type') && !settings.scheduler) { settings.scheduler = ''; defaulted.push('Schedule type Automatic (target default)'); }
+      if (!kv.has('eta')) { settings.eta = ''; defaulted.push('Eta (sampler default)'); }
+      // Hires fix is on only when the infotext has Denoising strength and a Hires upscale / upscaler / resize key (enable_hr paste rule).
+      if (!settings.hires) { settings.hires = { enabled: false }; defaulted.push('Hires fix off'); }
+      if (defaulted.length) add('Defaults for missing keys', defaulted.join('; '), 'restorable', { note: 'A1111 applies these when a key is absent' });
+    }
     return { fields, settings, warnings };
   }
 
@@ -139,7 +150,8 @@
     if (o.prompt) lines.push(o.prompt);
     if (o.negative) lines.push('Negative prompt: ' + o.negative);
     const p = [];
-    const q = v => (/[,:\n"]/.test(String(v)) ? JSON.stringify(String(v)) : String(v));
+    // infotext_utils.quote: only text containing ',', ':' or a newline is quoted.
+    const q = v => (/[,:\n]/.test(String(v)) ? JSON.stringify(String(v)) : String(v));
     if (m.steps != null) p.push('Steps: ' + m.steps);
     if (m.sampler) p.push('Sampler: ' + (SAMPLER_OUT[m.sampler] || m.sampler));
     if (m.scheduler && SCHEDULE_OUT[m.scheduler]) p.push('Schedule type: ' + SCHEDULE_OUT[m.scheduler]);
@@ -147,17 +159,18 @@
     if (m.seed != null && m.seed !== '') p.push('Seed: ' + m.seed);
     if (m.width && m.height) p.push(`Size: ${m.width}x${m.height}`);
     if (o.modelName) p.push('Model: ' + q(o.modelName));
-    if (m.clip_skip != null && m.clip_skip !== '') p.push('Clip skip: ' + m.clip_skip);
-    if (m.eta != null && m.eta !== '') p.push('Eta: ' + m.eta);
+    // processing.create_infotext order: … Model, Denoising strength, Clip skip (omitted when ≤ 1), then extra params (hires, Eta).
+    if (m.hires && m.hires.denoise != null) p.push('Denoising strength: ' + m.hires.denoise);
+    else if ((m.operation === 'img2img' || m.operation === 'inpaint') && m.strength != null) p.push('Denoising strength: ' + m.strength);
+    if (m.clip_skip != null && m.clip_skip !== '' && Number(m.clip_skip) > 1) p.push('Clip skip: ' + m.clip_skip);
     if (m.hires) {
       const h = m.hires;
-      if (h.denoise != null) p.push('Denoising strength: ' + h.denoise);
-      if (h.scale != null) p.push('Hires upscale: ' + h.scale);
-      if (h.width && h.height) p.push(`Hires resize: ${h.width}x${h.height}`);
+      // Upstream writes either "Hires resize" (resize-to) or "Hires upscale" (scale-by), never both.
+      if (h.width && h.height) p.push(`Hires resize: ${h.width}x${h.height}`); else if (h.scale != null) p.push('Hires upscale: ' + h.scale);
       if (h.steps) p.push('Hires steps: ' + h.steps);
       if (h.upscaler) p.push('Hires upscaler: ' + q(h.upscaler));
     }
-    if (m.operation === 'img2img' || m.operation === 'inpaint') { if (m.strength != null) p.push('Denoising strength: ' + m.strength); }
+    if (m.eta != null && m.eta !== '') p.push('Eta: ' + m.eta);
     p.push('Version: ' + (o.version || 'DexDiffusion'));
     lines.push(p.join(', '));
     return lines.join('\n');

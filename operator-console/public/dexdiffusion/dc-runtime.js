@@ -90,6 +90,7 @@
     if (v.props) {
       if ('value' in v.props) {
         el.value = v.props.value;
+        el.__dexRendered = el.value;   // what state put there; a different live value is the user's uncommitted typing
       }
       if ('checked' in v.props) {
         el.checked = v.props.checked;
@@ -129,7 +130,10 @@
       const text = typeof ae.selectionStart === 'number' && /^(TEXTAREA|INPUT)$/.test(ae.tagName);
       let sel = null;
       try { if (text) sel = { start: ae.selectionStart, end: ae.selectionEnd, dir: ae.selectionDirection }; } catch (_) { sel = null; }
-      return { el: ae, textEntry, root: r, path, sig: fieldSignature(ae), sel, scrollTop: ae.scrollTop, scrollLeft: ae.scrollLeft };
+      // Fields that commit on 'change' (blur/Enter) hold typed-but-uncommitted text only in the DOM; remember it so a
+      // background re-render cannot silently revert what the user is typing.
+      const pending = /^(TEXTAREA|INPUT)$/.test(ae.tagName) && ae.__dexRendered !== undefined && ae.value !== ae.__dexRendered ? { value: ae.value, rendered: ae.__dexRendered } : null;
+      return { el: ae, textEntry, root: r, path, sig: fieldSignature(ae), sel, scrollTop: ae.scrollTop, scrollLeft: ae.scrollLeft, pending };
     }
     return null;
   }
@@ -158,6 +162,8 @@
       if (matches.length === 1) target = matches[0];
     }
     if (!target || target.disabled || document.activeElement === target) return;
+    // Carry uncommitted typing over only when state did not change this field in the meantime (same rendered value).
+    if (cap.pending && target.__dexRendered === cap.pending.rendered && target.value !== cap.pending.value) { try { target.value = cap.pending.value; } catch (_) {} }
     try { target.focus({ preventScroll: true }); } catch (_) { return; }
     if (cap.sel) { try { target.setSelectionRange(cap.sel.start, cap.sel.end, cap.sel.dir || 'none'); } catch (_) {} }
     if (cap.scrollTop) target.scrollTop = cap.scrollTop;

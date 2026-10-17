@@ -102,15 +102,39 @@ function runner(name, { testMs = Number(process.env.DEX_BROWSER_TEST_MS) || 1200
 }
 
 // Starts the console on a free private port. The server runs under a supervisor that kills it if this process dies.
+// Read-only catalogue/evidence files a suite server needs to describe the real models. They are COPIED into the
+// suite's own state directory; jobs, queues, media/image records, styles, recipes, voice and drama data are never
+// shared with the live console (its startup reconcile would otherwise mark the live console's running jobs INTERRUPTED).
+const SEEDED_STATE_FILES = ['assets-cache.json', 'capability-evidence.json', '3d-capability-evidence.json', 'current-ports.env',
+  'flux-smoke-cache.json', 'image-edit-capabilities.json', 'model-inventory-cache.json', 'model-stage-cache.json', 'model-headers.json',
+  'sdxl-smoke-cache.json', 'sdxl-turbo-smoke-cache.json', 'upscale-capabilities.json', 'media-evidence.json', 'world-panorama-evidence.json', 'timing-stats.json'];
+const LIVE_STATE_DIR = path.join(__dirname, '..', '..', '..', 'sdcpp-workflow', 'state');
+function createSuiteStateDir() {
+  const fs = require('fs'), os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-suite-state-'));
+  for (const name of SEEDED_STATE_FILES) { try { fs.copyFileSync(path.join(LIVE_STATE_DIR, name), path.join(dir, name)); } catch (e) { if (e.code !== 'ENOENT') throw e; } }
+  // Image records (settings/lineage only) let validator suites address a real canonical image. Prompt text is never copied.
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(LIVE_STATE_DIR, 'image-meta.json'), 'utf8'));
+    for (const rec of Object.values(meta.images || {})) { delete rec.prompt; delete rec.negative_prompt; delete rec.negativePrompt; if ('prompt_saved' in rec) rec.prompt_saved = false; }
+    fs.writeFileSync(path.join(dir, 'image-meta.json'), JSON.stringify(meta));
+  } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  onCleanup(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
+
 async function startServer(preferred) {
   const net = require('net');
   const port = await new Promise((resolve, reject) => { const srv = net.createServer(); srv.listen(0, '127.0.0.1', () => { const p = srv.address().port; srv.close(() => resolve(p)); }); srv.on('error', reject); });
-  const sup = spawn(process.execPath, [path.join(__dirname, 'server-supervisor.js'), String(process.pid), path.join(__dirname, '..', '..')], { env: Object.assign({}, process.env, { OPERATOR_CONSOLE_PORT: String(port) }), stdio: 'ignore' });
+  // DEX_SUITE_SHARED_STATE=1 restores the old shared-state behaviour for a deliberate live run only.
+  const stateDir = process.env.DEX_SUITE_SHARED_STATE === '1' ? LIVE_STATE_DIR : (process.env.DEX_STATE_DIR || createSuiteStateDir());
+  const stateEnv = stateDir === LIVE_STATE_DIR ? {} : { DEX_STATE_DIR: stateDir };
+  const sup = spawn(process.execPath, [path.join(__dirname, 'server-supervisor.js'), String(process.pid), path.join(__dirname, '..', '..')], { env: Object.assign({}, process.env, stateEnv, { OPERATOR_CONSOLE_PORT: String(port) }), stdio: 'ignore' });
   const exited = new Promise(r => sup.on('exit', r));
   const stop = () => { try { sup.kill('SIGTERM'); } catch (_) {} return Promise.race([exited, new Promise(r => setTimeout(r, 6000))]); };
   onCleanup(stop);
   await waitHttp(`http://127.0.0.1:${port}/api/version`, 60000);
-  return { base: `http://127.0.0.1:${port}`, stop };
+  return { base: `http://127.0.0.1:${port}`, stop, stateDir };   // stateDir: where this suite's server keeps jobs/media/voice/drama state
 }
 
 // Read-only real catalogue fixture, captured once per suite/base. UI tests do

@@ -59,15 +59,29 @@ const commit = page => page.keyboard.press('Tab');
       await ctx.close();
     });
 
+    // Playwright's fill (select-all, then insert) can interleave with a re-render landing between the two steps and append
+    // instead of replace (pre-existing ~1-in-5 flake, identical with the pre-session Edit UI). Verify the value and refill.
+    const setField = async (page, key, value) => {
+      const loc = page.locator('[data-edit-field="' + key + '"]');
+      for (let i = 0; i < 3; i++) {
+        await loc.evaluate(el => { el.__probe = 1; });
+        await loc.fill(value);
+        const diag = await loc.evaluate(el => ({ same: el.__probe === 1, v: el.value, active: document.activeElement === el }));
+        if (process.env.DEX_DIAG) console.log('DIAG', key, JSON.stringify(diag));
+        if (await loc.inputValue() === value) break;
+      }
+      assert.equal(await loc.inputValue(), value, key);
+      await commit(page);
+    };
     await test('only masked: padding and work size appear, are sent, and the options persist across re-renders', async () => {
       const { page, ctx, errors, posts } = await newPage(browser, srv.base);
       await openInpaint(page);
       await page.locator('[data-edit-field="inpaint-area"]').selectOption('only_masked');
       await page.locator('[data-edit-field="inpaint-padding"]').waitFor({ state: 'visible' });
-      await page.locator('[data-edit-field="inpaint-padding"]').fill('16'); await commit(page);
-      await page.locator('[data-edit-field="inpaint-w"]').fill('512'); await commit(page);
-      await page.locator('[data-edit-field="inpaint-h"]').fill('384'); await commit(page);
-      await page.locator('[data-edit-field="inpaint-blur"]').fill('9'); await commit(page);
+      await setField(page, 'inpaint-padding', '16');
+      await setField(page, 'inpaint-w', '512');
+      await setField(page, 'inpaint-h', '384');
+      await setField(page, 'inpaint-blur', '9');
       await page.locator('[data-edit-field="inpaint-content"]').selectOption('fill');
       await page.waitForTimeout(250);
       assert.match(await page.locator('[data-edit-field="inpaint-area-note"]').innerText(), /pasted back into the untouched original/);

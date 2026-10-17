@@ -26,17 +26,18 @@ test('matrix: 3 parts -> 8 cells in A1111 bit order, base first, joined with ", 
   assert.equal(p.cells[5].queueTitle, 'Matrix 6/8 · parts 1, 3', 'persisted title carries part numbers, not text');
 });
 
-test('matrix: grid layout splits parts like A1111 (boundary = ceil((N+1)/2)), cell = x + y*columns', () => {
+test('matrix: grid layout splits parts like A1111 draw_prompt_matrix (ceil(N/2) parts across), cell = x + y*columns', () => {
   const two = P.buildMatrix(B('base | a | b'));
   assert.deepEqual(two.dims, [2, 2, 1]);
   assert.deepEqual(two.axes[0].values, ['base only', 'a']); assert.deepEqual(two.axes[1].values, ['base only', 'b']);
   assert.deepEqual(two.cells.map(c => [c.ix, c.iy]), [[0, 0], [1, 0], [0, 1], [1, 1]]);
   assert.equal(two.cells[2].prompt, 'base, b');
   const one = P.buildMatrix(B('base | a'));
-  assert.deepEqual(one.dims, [1, 2, 1]); assert.equal(one.axes[0], null); assert.deepEqual(one.axes[1].values, ['base only', 'a']);
+  assert.deepEqual(one.dims, [2, 1, 1], 'upstream: 1 optional part -> 2 columns x 1 row'); assert.deepEqual(one.axes[0].values, ['base only', 'a']); assert.equal(one.axes[1], null);
   const three = P.buildMatrix(B('base | a | b | c'));
-  assert.deepEqual(three.dims, [2, 4, 1]);
-  assert.deepEqual(three.axes[0].values, ['base only', 'a']); assert.deepEqual(three.axes[1].values, ['base only', 'b', 'c', 'b + c']);
+  assert.deepEqual(three.dims, [4, 2, 1], 'upstream: 3 parts -> 4 columns x 2 rows (rows = 1 << (3 // 2))');
+  assert.deepEqual(three.axes[0].values, ['base only', 'a', 'b', 'a + b']); assert.deepEqual(three.axes[1].values, ['base only', 'c']);
+  assert.deepEqual(P.buildMatrix(B('base | a | b | c | d | e')).dims, [8, 4, 1], '5 parts -> 8 x 4');
   const six = P.buildMatrix(B('base | a | b | c | d | e | f'));
   assert.equal(six.total, 64); assert.deepEqual(six.dims, [8, 8, 1]);
   for (const c of six.cells) assert.equal(c.index, c.ix + c.iy * 8);
@@ -95,7 +96,7 @@ test('lines: plain prompts, blanks skipped, physical line numbers kept', () => {
 
 test('lines: A1111 flag syntax, quoting, sampler names and per-line negative', () => {
   const text = '--prompt "a red cat" --steps 20 --cfg_scale 7.5 --seed 5 --width 512 --height 640 --sampler_name "Euler a" --negative_prompt "ugly, bad hands"';
-  const p = P.buildLines(text, B('ignored'));
+  const p = P.buildLines(text, B(''));
   assert.equal(p.ok, true, JSON.stringify(p.errors));
   const c = p.cells[0];
   assert.equal(c.prompt, 'a red cat'); assert.equal(c.negative_prompt, 'ugly, bad hands');
@@ -105,7 +106,7 @@ test('lines: A1111 flag syntax, quoting, sampler names and per-line negative', (
   // unquoted multi-word prompt runs to the next flag; canonical ids and case-insensitive names
   const q = P.buildLines('--prompt a green dog --sampler_name DPM++ 2M --steps 8', B('x'));
   assert.equal(q.ok, false, 'an unquoted two-word sampler is two tokens: "2M" is not a flag');
-  const q2 = P.buildLines('--prompt a green dog --sampler_name "DPM++ 2M" --steps 8', B('x'));
+  const q2 = P.buildLines('--prompt a green dog --sampler_name "DPM++ 2M" --steps 8', B(''));
   assert.equal(q2.cells[0].prompt, 'a green dog'); assert.equal(q2.cells[0].overrides.sampler, 'dpmpp2m');
   assert.equal(P.buildLines('--prompt x --sampler_name dpmpp2m', B('')).cells[0].overrides.sampler, 'dpmpp2m');
   // a quoted "--word" is text, not a flag
@@ -182,4 +183,15 @@ test('review hardening: long whitespace runs stay linear, inherited flag names a
   }
   const bad = Array.from({ length: 5000 }, () => 'x --nope 1').join('\n');
   assert.ok(P.buildLines(bad, { prompt: 'b' }, {}, null, {}).errors.length <= 21, 'errors are capped');
+});
+
+test('lines: A1111 "Insert prompts at the" start/end joins a line to a non-empty Create prompt (prompts_from_file.py)', () => {
+  const start = P.buildLines('--prompt "red cat" --negative_prompt "blurry"\nplain line', B('photo', 'ugly'));
+  assert.equal(start.ok, true, JSON.stringify(start.errors));
+  assert.equal(start.cells[0].prompt, 'red cat photo'); assert.equal(start.cells[0].negative_prompt, 'blurry ugly');
+  assert.equal(start.cells[1].prompt, 'plain line photo'); assert.equal(start.cells[1].negative_prompt, 'ugly');
+  const end = P.buildLines('plain line', B('photo'), { position: 'end' });
+  assert.equal(end.cells[0].prompt, 'photo plain line');
+  assert.equal(P.buildLines('x', B(''), { position: 'end' }).cells[0].prompt, 'x', 'empty Create prompt: the line alone');
+  assert.match(P.buildLines('x', B('p'), { position: 'middle' }).errors[0], /start or end/);
 });

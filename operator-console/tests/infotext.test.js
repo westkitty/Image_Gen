@@ -23,7 +23,7 @@ test('parseInfotext: multi-line prompt, negative, key/value line, quoted values'
 
 test('toCreateSettings: restorable, unavailable and unverified fields are all kept with reasons', () => {
   const r = I.toCreateSettings(I.parseInfotext(A1111), { targets: [{ id: 'sd15', label: 'SD1.5 standard', filename: 'v1-5-pruned-emaonly.safetensors' }] });
-  assert.deepEqual(r.settings, { prompt: 'a red fox, snow\nsecond line', negPrompt: 'blurry, lowres', steps: 20, sampler: 'dpmpp2m', scheduler: 'karras', cfg: 7, seed: 12345, width: 512, height: 768, target: 'sd15', clipSkip: 2 });
+  assert.deepEqual(r.settings, { prompt: 'a red fox, snow\nsecond line', negPrompt: 'blurry, lowres', steps: 20, sampler: 'dpmpp2m', scheduler: 'karras', cfg: 7, seed: 12345, width: 512, height: 768, target: 'sd15', clipSkip: 2, eta: '', hires: { enabled: false } });
   const by = k => r.fields.find(f => f.key === k);
   assert.equal(by('Model').state, 'restorable'); assert.match(by('Model').note, /SD1\.5/);
   assert.equal(by('Model hash').state, 'unverified'); assert.match(by('Model hash').reason, /not recomputed/);
@@ -106,4 +106,17 @@ test('a whitespace-padded parameters line stays linear (second review: the leadi
   I.parseInfotext('p\nSteps: 1,' + ' '.repeat(30000) + '!');
   I.parseInfotext('p\n' + ' '.repeat(30000) + 'x');
   assert.ok(Date.now() - t0 < 800, 'linear');
+});
+
+test('upstream parse defaults: a pasted infotext without Clip skip / Schedule type / Hires resets those fields (infotext_utils 82a973c0)', () => {
+  const { parseInfotext, toCreateSettings, formatInfotext } = require('../public/dexdiffusion/infotext.js');
+  const st = toCreateSettings(parseInfotext('a cat\nSteps: 20, Sampler: Euler a, CFG scale: 7, Seed: 1, Size: 512x512'), {}).settings;
+  assert.equal(st.clipSkip, ''); assert.equal(st.scheduler, ''); assert.deepEqual(st.hires, { enabled: false });
+  const promptOnly = toCreateSettings(parseInfotext('just a prompt'), {}).settings;
+  assert.equal(promptOnly.clipSkip, undefined, 'prompt-only text keeps the form');
+  const txt = formatInfotext({ steps: 20, seed: 1, clip_skip: 1, hires: { scale: 2, width: 1024, height: 1024, denoise: 0.5 }, eta: 0.3 }, { modelName: 'my "model"' });
+  assert.ok(!/Clip skip/.test(txt), 'Clip skip 1 is omitted like upstream');
+  assert.match(txt, /Hires resize: 1024x1024/); assert.ok(!/Hires upscale/.test(txt), 'resize-to wins; never both');
+  assert.match(txt, /Model: my "model"/, 'quote() only for , : or newline');
+  assert.ok(txt.indexOf('Denoising strength') < txt.indexOf('Hires resize') && txt.indexOf('Hires resize') < txt.indexOf('Eta'));
 });

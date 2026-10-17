@@ -63,7 +63,7 @@
       editSourceId: saved.editSourceId || null, editOriginalId: saved.editOriginalId || null, editSource: null, editResults: [], editStatus: 'idle', prep: 'none',
       brush: saved.brush || { mode: 'paint', size: 40 }, maskZoom: 1, maskInfo: null,
       out: { left: 0, right: 128, top: 0, bottom: 0, strength: 0.85 }, outStatus: 'idle',
-      enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2, refEdit: { prompt: '', steps: 4, seed: -1 }, pnginfo: { busy: false, name: '', result: null, error: null }, fileCheck: { busy: false, items: [], error: null }, xyz: { x: { type: 'steps', values: '10, 20' }, y: { type: 'cfg_scale', values: '5, 7' }, z: { type: 'none', values: '' }, keepRandom: false, legend: true, margin: 0, plan: null, error: null, grid: null }, extras: { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5 },
+      enhSourceId: saved.enhSourceId || null, enhSource: null, enhResults: [], enhStatus: 'idle', lanczosScale: 2, refEdit: { prompt: '', steps: 4, seed: -1 }, pnginfo: { busy: false, name: '', result: null, error: null }, fileCheck: { busy: false, items: [], error: null }, xyz: { x: { type: 'steps', values: '10, 20' }, y: { type: 'cfg_scale', values: '5, 7' }, z: { type: 'none', values: '' }, keepRandom: false, legend: true, margin: 0, plan: null, error: null, grid: null }, extras: { mode: 'by', scale: 2, width: 1024, height: 1024, crop: true, upscaler: 'lanczos', upscaler2: 'none', visibility: 0.5, max_side: 0 },
       lib: { filter: 'all', items: [], total: 0, selectedId: null, selected: null, loading: false },
       compareIds: Array.isArray(saved.compareIds) ? saved.compareIds.slice(0, 4) : [], compareItems: [], compareZoom: 1,
       doctor: null, doctorBusy: false, activeJobId: saved.activeJobId || null, recovered: false,
@@ -322,7 +322,8 @@
     if (st.seed !== undefined) put('seed', String(st.seed));
     if (st.sampler) put('sampler', st.sampler);
     this.setState(patch);
-    if (st.hires) {
+    if (st.hires && st.hires.enabled === false) { this.wsSet({ hires: false }); applied.push('hires'); }
+    else if (st.hires) {
       const h2 = st.hires, w = { hires: true };
       if (h2.width && h2.height) Object.assign(w, { hiresMode: 'size', hiresW: String(h2.width), hiresH: String(h2.height) }); else if (h2.scale) Object.assign(w, { hiresMode: 'scale', hiresScale: h2.scale });
       if (h2.steps !== undefined) w.hiresSteps = String(h2.steps);
@@ -428,8 +429,9 @@
     const setEx = patch => this.wsSet({ extras: Object.assign({}, this._ws().extras, patch) });
     const lbl = (t, el) => h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, t, el);
     const num = (key, t, attrs) => lbl(t, h('input', Object.assign({ type: 'number', value: String(ex[key]), style: css.input, 'data-extras-field': key, onChange: e => setEx({ [key]: e.target.value }) }, attrs)));
-    const sel = (key, t) => lbl(t, h('select', { value: ex[key], style: css.input, 'data-extras-field': key, 'aria-label': t, onChange: e => setEx({ [key]: e.target.value }) },
-      ...X.UPSCALERS.map(u => h('option', { value: u }, u === 'none' ? 'None' : u[0].toUpperCase() + u.slice(1)))));
+    // Upscaler 1 has no "None": in A1111 that makes the whole upscale a no-op (upscaler 2 and crop are skipped too).
+    const sel = (key, t, list) => lbl(t, h('select', { value: ex[key], style: css.input, 'data-extras-field': key, 'aria-label': t, onChange: e => setEx({ [key]: e.target.value }) },
+      ...(list || X.UPSCALERS).map(u => h('option', { value: u }, u === 'none' ? 'None' : u[0].toUpperCase() + u.slice(1)))));
     const chk = X.normalizeExtras(ex);
     const plan = chk.options ? X.plan(src.width, src.height, chk.options) : null;
     const tooBig = chk.options ? X.validateForSource(src.width, src.height, chk.options) : null;
@@ -439,12 +441,12 @@
       h('div', { style: css.muted }, 'A1111 Extras resize: deterministic Pillow resampling on the MacBook. Adds no detail.'),
       h('div', { style: css.row },
         lbl('Resize', h('select', { value: ex.mode, style: css.input, 'data-extras-field': 'mode', 'aria-label': 'Extras resize mode', onChange: e => setEx({ mode: e.target.value }) }, h('option', { value: 'by' }, 'Scale by'), h('option', { value: 'to' }, 'Scale to size'))),
-        ex.mode === 'by' ? num('scale', 'Factor (1–8)', { min: '1', max: '8', step: '0.25' }) : [num('width', 'Width', { min: '64', max: '4096', step: '8' }), num('height', 'Height', { min: '64', max: '4096', step: '8' }),
+        ex.mode === 'by' ? [num('scale', 'Factor (1–8)', { min: '1', max: '8', step: '0.25' }), num('max_side', 'Max side length (0 = no limit)', { min: '0', max: '4096', step: '8' })] : [num('width', 'Width', { min: '64', max: '4096', step: '8' }), num('height', 'Height', { min: '64', max: '4096', step: '8' }),
           lbl('Crop to fit', h('input', { type: 'checkbox', checked: !!ex.crop, 'data-extras-field': 'crop', 'aria-label': 'Crop to fit', onChange: e => setEx({ crop: e.target.checked }) }))]),
-      h('div', { style: css.row }, sel('upscaler', 'Upscaler 1'), sel('upscaler2', 'Upscaler 2'),
+      h('div', { style: css.row }, sel('upscaler', 'Upscaler 1', X.UPSCALERS.filter(u => u !== 'none')), sel('upscaler2', 'Upscaler 2'),
         ex.upscaler2 !== 'none' ? num('visibility', 'Upscaler 2 visibility (0–1)', { min: '0', max: '1', step: '0.05' }) : null),
       h('div', { style: css.muted, 'data-extras-field': 'face-note' }, 'GFPGAN / CodeFormer face restoration and model upscalers other than Real-ESRGAN are not available: no weights or PyTorch runtime are installed.'),
-      h('div', { style: css.mono, 'data-extras-field': 'preview' }, err ? err : ('method: extras · ' + src.width + '×' + src.height + ' → ' + plan.out.w + '×' + plan.out.h)),
+      h('div', { style: css.mono, 'data-extras-field': 'preview' }, err ? err : ('method: extras · ' + src.width + '×' + src.height + ' → ' + plan.out.w + '×' + plan.out.h + (plan.limited ? ' (limited by max side length)' : ''))),
       btn('Run Extras', () => { if (!err) this._runEnhance('/api/actions/upscale', { image_id: src.id, extras: chk.options }, 'Extras'); }, err ? '#64748b' : '#f59e0b'));
   };
   // FLUX.2 Klein reference editing (MFLUX): the image + a prompt -> a new image that keeps the scene. Not ControlNet.
@@ -523,6 +525,35 @@
       h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, background: 'rgba(4,8,14,.78)', color: '#dbe4ee', fontSize: 10, padding: '3px 5px', pointerEvents: 'none', fontFamily: "'IBM Plex Mono',monospace" } },
         (it.keeper ? '★ ' : '') + ((it.meta && it.meta.operation) || it.operation || '') + (it.meta && it.meta.seed != null ? ' ' + it.meta.seed : '')));
   };
+  // MT-07/13/14/15/16 export: PNG / JPEG / WebP copies (canonical files untouched), A1111 filename pattern, optional
+  // infotext + sidecar .txt, one ZIP for several images. Prompt text is included only when prompt saving is on.
+  P.runExport = async function (ids) {
+    const ws = this._ws(), ex = ws.exportOpts || (ws.exportOpts = { format: 'png', quality: 90, metadata: 'infotext', pattern: '[basename]', sidecar: false });
+    if (!ids.length) return;
+    this.wsSet({ exportBusy: true });
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/images/export', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, format: ex.format, quality: Number(ex.quality), metadata: ex.metadata, pattern: ex.pattern, sidecar: !!ex.sidecar, zip: ids.length > 1, save_prompts: !!this.state.savePrompts }) });
+      if (!r.ok) { this.toast((await r.json().catch(() => ({}))).error || 'Export failed', '#ef4444'); return; }
+      const name = (/filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '') || [])[1] || 'export';
+      const url = URL.createObjectURL(await r.blob());
+      const a = document.createElement('a'); a.href = url; a.download = name; a.setAttribute('data-export-download', name); document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      this.toast('Exported ' + name + (r.headers.get('X-Dex-Prompt-Included') === '1' ? ' (with prompts)' : ' (settings only, no prompt text)'), '#65d66e');
+    } finally { this.wsSet({ exportBusy: false }); }
+  };
+  P.buildExportPanel = function (ids) {
+    const ws = this._ws(), ex = ws.exportOpts || (ws.exportOpts = { format: 'png', quality: 90, metadata: 'infotext', pattern: '[basename]', sidecar: false });
+    const set = patch => this.wsSet({ exportOpts: Object.assign({}, this._ws().exportOpts, patch) });
+    const lbl = (t, el) => h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, t, el);
+    return h('div', { 'data-export-panel': 'true', style: Object.assign({}, css.row, { alignItems: 'end' }) },
+      lbl('Format', h('select', { value: ex.format, style: css.input, 'data-export-field': 'format', 'aria-label': 'Export format', onChange: e => set({ format: e.target.value }) }, h('option', { value: 'png' }, 'PNG'), h('option', { value: 'jpeg' }, 'JPEG'), h('option', { value: 'webp' }, 'WebP'))),
+      ex.format !== 'png' ? lbl('Quality (1–100)', h('input', { type: 'number', min: '1', max: '100', value: String(ex.quality), style: Object.assign({}, css.input, { width: 70 }), 'data-export-field': 'quality', onChange: e => set({ quality: e.target.value }) })) : null,
+      lbl('Metadata', h('select', { value: ex.metadata, style: css.input, 'data-export-field': 'metadata', 'aria-label': 'Embedded metadata', onChange: e => set({ metadata: e.target.value }) }, h('option', { value: 'infotext' }, 'A1111 parameters'), h('option', { value: 'none' }, 'None'))),
+      lbl('Filename pattern', h('input', { value: ex.pattern, style: Object.assign({}, css.input, { width: 180 }), 'data-export-field': 'pattern', 'aria-label': 'Filename pattern, e.g. [seed]-[steps]', onChange: e => set({ pattern: e.target.value }) })),
+      h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1' }) }, h('input', { type: 'checkbox', checked: !!ex.sidecar, 'data-export-field': 'sidecar', onChange: e => set({ sidecar: e.target.checked }) }), 'Sidecar .txt'),
+      btn(ws.exportBusy ? 'Exporting…' : (ids.length > 1 ? 'Export ' + ids.length + ' as ZIP' : 'Export copy'), () => this.runExport(ids), '#65d66e', { disabled: !!ws.exportBusy, 'data-export-run': String(ids.length) }));
+  };
   P.buildLibraryWorkbench = function () {
     const ws = this._ws(), lib = ws.lib, base = this.state.backendUrl;
     if (!lib.loadedOnce) { lib.loadedOnce = true; setTimeout(() => this.loadLibraryImages(), 0); }
@@ -542,6 +573,7 @@
           btn('Copy infotext', async () => { const r = await fetch(base + '/api/images/' + encodeURIComponent(sel.id) + '/infotext'); if (r.ok) this.copyInfotext(await r.text()); else this.toast((await r.json().catch(() => ({}))).error || 'No recorded settings', '#fbbf24'); }, '#94a3b8'),
           h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export?metadata=1', download: sel.id, 'data-export-link': 'metadata', style: { color: '#94a3b8', fontSize: 12, textDecoration: 'underline', padding: '6px 8px' } }, 'Export PNG with parameters'),
           h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export', download: sel.id, 'data-export-link': 'plain', style: { color: '#94a3b8', fontSize: 12, textDecoration: 'underline', padding: '6px 8px' } }, 'Export plain PNG')),
+        this.buildExportPanel([sel.id]),
         h('div', { style: css.row }, h('span', { style: css.label }, 'Lineage'),
           sel.ancestors.length ? lineageChip(sel.ancestors[sel.ancestors.length - 1], '⇤ Original') : null,
           sel.parent ? lineageChip(sel.parent, '↑ Parent') : h('span', { style: css.muted }, 'no parent'),
@@ -550,7 +582,7 @@
     return h('div', null,
       this.buildPngInfoPanel(),
       h('div', { style: css.panel },
-        h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Images'), h('span', { style: css.muted }, lib.loading ? 'loading…' : lib.total + ' images'), h('div', { style: { flex: 1 } }), btn('Refresh', () => this.loadLibraryImages(), '#94a3b8')),
+        h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Images'), h('span', { style: css.muted }, lib.loading ? 'loading…' : lib.total + ' images'), h('div', { style: { flex: 1 } }), lib.items.length > 1 ? btn('Save all shown (' + lib.items.length + ') as ZIP', () => this.runExport(lib.items.map(it => it.id)), '#94a3b8', { 'data-export-all': String(lib.items.length), disabled: !!ws.exportBusy }) : null, btn('Refresh', () => this.loadLibraryImages(), '#94a3b8')),
         h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, ...filters.map(([k, l]) => btn(l, () => this.loadLibraryImages(k), lib.filter === k ? '#38bdf8' : '#94a3b8'))),
         lib.items.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(96px,1fr))', gap: 6, maxHeight: 420, overflowY: 'auto' } },
           ...lib.items.map(it => this._libThumb(it, lib.selectedId === it.id)))
@@ -693,7 +725,8 @@
   // ── X/Y/Z plot (A1111 script): axes + values -> validated cells -> durable queue -> legend grid ──
   P._xyzBody = function () {
     const x = this._ws().xyz;
-    return { settings: this._createBody({ quantity: 1 }), x: x.x, y: x.y, z: x.z, keep_random_seed: !!x.keepRandom, confirm_large: !!this._ws().confirmLarge };
+    const v = x.vary || {};
+    return { settings: this._createBody({ quantity: 1 }), x: x.x, y: x.y, z: x.z, keep_random_seed: !!x.keepRandom, vary_seeds: { x: !!v.x, y: !!v.y, z: !!v.z }, confirm_large: !!this._ws().confirmLarge };
   };
   P.xyzCheck = async function () {
     const r = await this._api('/api/xyz/plan', this._xyzBody());
@@ -726,9 +759,12 @@
     const axisRow = k => h('div', { key: k, style: css.row },
       h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, k.toUpperCase() + ' axis',
         h('select', { value: x[k].type, style: css.input, 'data-xyz-field': k + '-type', 'aria-label': k.toUpperCase() + ' axis type', onChange: e => setAxis(k, { type: e.target.value }) },
-          h('option', { value: 'none' }, 'Nothing'), ...Object.keys(X.AXES).map(t => h('option', { key: t, value: t }, X.AXES[t].label)))),
+          h('option', { value: 'none' }, 'Nothing'), ...Object.keys(X.AXES).map(t => h('option', { key: t, value: t }, X.AXES[t].label)),
+          // Stock A1111 axes the installed engines cannot honour stay listed (disabled) with the reason, never silently missing.
+          ...Object.keys(X.ABSENT_AXES || {}).map(t => h('option', { key: t, value: t, disabled: true, title: X.ABSENT_AXES[t].reason }, X.ABSENT_AXES[t].label + ' — not available')))),
+      h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1' }) }, h('input', { type: 'checkbox', checked: !!(x.vary && x.vary[k]), 'data-xyz-field': 'vary-' + k, onChange: e => setX({ vary: Object.assign({}, this._ws().xyz.vary, { [k]: e.target.checked }) }) }), 'Vary seeds for ' + k.toUpperCase()),
       x[k].type !== 'none' ? h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1', flex: 1, minWidth: 160 } }, k.toUpperCase() + ' values',
-        h('input', { type: 'text', value: x[k].values, style: css.input, 'data-xyz-field': k + '-values', 'aria-label': k.toUpperCase() + ' axis values', placeholder: X.AXES[x[k].type].kind === 'sr' ? 'search, replacement 1, replacement 2' : '10, 20 or 10-30 (+10) or 1-5 [3]', onChange: e => setAxis(k, { values: e.target.value }) })) : null);
+        h('input', { type: 'text', value: x[k].values, style: css.input, 'data-xyz-field': k + '-values', 'aria-label': k.toUpperCase() + ' axis values', placeholder: ({ sr: 'search, replacement 1, replacement 2', order: 'fragment a, fragment b, fragment c', size: '512x512, 512x768', text: 'value 1, value 2' })[X.AXES[x[k].type].kind] || '10, 20 or 10-30 (+10) or 1-5 [3]', onChange: e => setAxis(k, { values: e.target.value }) })) : null);
     const running = q && q.settings && q.settings.kind === 'xyz' && q.status === 'RUNNING';
     const isXyz = q && q.settings && q.settings.kind === 'xyz';
     const plan = x.plan;
@@ -736,8 +772,9 @@
       h('div', { style: Object.assign({}, css.title, { marginBottom: 4 }) }, 'X/Y/Z plot'),
       h('div', { style: Object.assign({}, css.muted, { marginBottom: 8 }) }, 'Runs the Create settings once per cell, changing only the chosen axes (A1111 script). A random seed is fixed once so cells differ only by the axes.'),
       h('div', { style: { display: 'grid', gap: 8 } }, axisRow('x'), axisRow('y'), axisRow('z')),
-      h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1', margin: '6px 0' }) }, h('input', { type: 'checkbox', checked: !!x.keepRandom, 'data-xyz-field': 'keep-random', onChange: e => setX({ keepRandom: e.target.checked }) }), 'Keep random seeds in the X/Y/Z plot (every cell draws its own seed)'),
-      h('div', { style: css.muted, 'data-xyz-field': 'unavailable' }, 'Not available with the installed engines: Checkpoint / VAE / Refiner axes (a model-slot swap per cell), prompt-order permutations, [a:b:n] scheduling, Hires and denoising axes, noise/sigma axes.'),
+      h('div', { style: css.row, 'data-xyz-field': 'swap' }, ...['xy', 'yz', 'xz'].map(pr => btn('Swap ' + pr[0].toUpperCase() + '/' + pr[1].toUpperCase(), () => { const cur = this._ws().xyz, sw = X.swapAxes({ x: cur.x, y: cur.y, z: cur.z }, pr); setX({ x: sw.x, y: sw.y, z: sw.z }); }, '#94a3b8', { 'data-xyz-swap': pr }))),
+      h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1', margin: '6px 0' }) }, h('input', { type: 'checkbox', checked: !!x.keepRandom, 'data-xyz-field': 'keep-random', onChange: e => setX({ keepRandom: e.target.checked }) }), 'Keep -1 for seeds (every cell draws its own random seed)'),
+      h('div', { style: css.muted, 'data-xyz-field': 'unavailable' }, 'Not available with the installed engines (listed disabled in the axis menus): Checkpoint / VAE / Refiner (a model-slot swap per cell), variation seeds, noise/sigma axes and the other entries marked "not available". Hires steps / upscaler / Denoising need High-Res Refine turned on.'),
       h('div', { style: Object.assign({}, css.row, { margin: '8px 0' }) },
         btn('Check plot', () => this.xyzCheck(), '#38bdf8'),
         btn(running ? 'Plot running…' : 'Start plot', () => this.xyzStart(), '#65d66e', { disabled: !!running })),
@@ -792,7 +829,7 @@
   };
   P._plines = function () {
     const ws = this._ws();
-    if (!ws.plines) ws.plines = { text: '', iterateSeed: false, keepRandom: false, plan: null, error: null, needsConfirm: false };
+    if (!ws.plines) ws.plines = { text: '', iterateSeed: false, sameSeed: false, position: 'start', plan: null, error: null, needsConfirm: false };
     return ws.plines;
   };
   P._pmxBody = function () {
@@ -801,7 +838,7 @@
   };
   P._plinesBody = function () {
     const m = this._plines();
-    return { settings: this._createBody({ quantity: 1 }), text: m.text, iterate_seed: !!m.iterateSeed, keep_random_seed: !!m.keepRandom, confirm_large: !!this._ws().confirmLarge };
+    return { settings: this._createBody({ quantity: 1 }), text: m.text, iterate_seed: !!m.iterateSeed, same_seed: !!m.sameSeed, prompt_position: m.position === 'end' ? 'end' : 'start', confirm_large: !!this._ws().confirmLarge };
   };
   P.pmxCheck = async function () {
     const r = await this._api('/api/promptmatrix/plan', this._pmxBody());
@@ -911,7 +948,10 @@
           onChange: e => { const f = e.target.files && e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => setM({ text: String(rd.result || '') }); rd.readAsText(f); e.target.value = ''; } }))),
       h('div', { style: { display: 'grid', gap: 4, margin: '6px 0' } },
         chk('iterate-seed', m.iterateSeed, v => setM({ iterateSeed: v }), 'Iterate seed every line (base seed + line index; a --seed on a line wins)'),
-        chk('keep-random', m.keepRandom, v => setM({ keepRandom: v }), 'Keep random seeds (every line draws its own seed; otherwise one random seed is fixed for all lines)')),
+        chk('same-seed', m.sameSeed, v => setM({ sameSeed: v }), 'Use same random seed for all lines (otherwise every line draws its own seed)'),
+        h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1', margin: '6px 0' }) }, 'Insert prompts at the',
+          h('select', { value: m.position === 'end' ? 'end' : 'start', style: css.input, 'data-plines-field': 'position', 'aria-label': 'Insert prompts at the start or end of the Create prompt', onChange: e => setM({ position: e.target.value }) },
+            h('option', { value: 'start' }, 'start'), h('option', { value: 'end' }, 'end')), ' of the Create prompt (when it is not empty)')),
       h('div', { style: css.muted, 'data-plines-field': 'unavailable' }, 'Not available (refused by name, never ignored): --sd_model, --outpath_samples/--outpath_grids, --styles, --subseed/--subseed_strength, --seed_resize_from_w/h, --sampler_index, --batch_size, --n_iter, --restore_faces, --tiling, --do_not_save_samples/--do_not_save_grid, --prompt_for_display. No combined grid of the lines. Options a target ignores (for example --cfg_scale on FLUX.2) are refused.'),
       h('div', { style: Object.assign({}, css.row, { margin: '8px 0' }) },
         btn('Dry run', () => this.plinesCheck(), '#38bdf8'),

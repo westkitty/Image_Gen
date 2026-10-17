@@ -77,6 +77,27 @@ async function chooseTarget(page, id) {
       await page.close();
     });
 
+    await test('PR-23: Ctrl+Up/Down weights the word at the caret and Alt+Right moves an element; the form state follows', async () => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const errors = await open(page, srv.base);
+      await chooseTarget(page, 'sd15');
+      await waitQuiet(page);
+      const box = page.locator('[data-dex-field="prompt"]');
+      await box.fill('a red fox, snow, forest');
+      await box.evaluate(el => el.setSelectionRange(3, 3));   // caret inside "red"
+      await page.keyboard.press('Control+ArrowUp');
+      assert.equal(await box.inputValue(), 'a (red:1.1) fox, snow, forest');
+      await page.keyboard.press('Control+ArrowUp');
+      assert.equal(await box.inputValue(), 'a (red:1.2) fox, snow, forest');
+      await page.waitForTimeout(150);
+      assert.equal(await page.evaluate(() => __dex.state.prompt), 'a (red:1.2) fox, snow, forest', 'component state follows the edit');
+      await box.evaluate(el => el.setSelectionRange(20, 20));  // inside "snow"
+      await page.keyboard.press('Alt+ArrowRight');
+      assert.equal(await box.inputValue(), 'a (red:1.2) fox, forest, snow');
+      assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('[data-dex-field="prompt"]')), true, 'focus retained');
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
     await test('the server rejects schedule/alternation/AND with offset and hint, and accepts supported emphasis', async () => {
       const post = async body => {
         const r = await fetch(srv.base + '/api/preview/generation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ job_type: 'txt2img', target: 'sdxl-base', steps: 20 }, body)) });
