@@ -25,10 +25,11 @@ const CATALOG = [
   { id: 'l3', name: 'extra', filename: 'extra.safetensors', family: 'sdxl', compatibility: 'Compatible', default_weight: 0.5, trigger_words: [] },
 ];
 
-async function newPage(browser, base, { width = 1280, height = 900, legacyRecipes } = {}) {
+async function newPage(browser, base, { width = 1280, height = 900, legacyRecipes, savedTarget } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height } });
   const page = await ctx.newPage();
   await page.addInitScript(() => { window.__unhandledRejections = []; addEventListener('unhandledrejection', e => window.__unhandledRejections.push(String(e.reason))); });
+  if (savedTarget) await page.addInitScript(id => localStorage.setItem('dex_target', id), savedTarget);
   await installModelSnapshots(page, base);
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
@@ -79,6 +80,13 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
   const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer(31911);
   const browser = await launchBrowser(chromium);
   try {
+    await test('startup restores saved secondary target without activating it', async () => {
+      const { page, ctx, posts } = await newPage(browser, srv.base, { savedTarget: 'sdxl-base' });
+      await page.waitForFunction(() => __dex.state.target === 'sdxl-base' && __dex.state.modelTargets?.length);
+      assert.equal(await page.evaluate(() => localStorage.getItem('dex_target')), 'sdxl-base');
+      assert.equal(posts.length, 0, 'startup preference restoration must not POST model activation');
+      await ctx.close();
+    });
     await test('provenance: Edit carries the SELECTED image\'s parameters, not the Create form', async () => {
       const { page, ctx, errors } = await newPage(browser, srv.base);
       await page.evaluate(() => __dex.setState({ steps: 99, cfg: 21, seed: '424242', width: 1024, height: 768, prompt: 'CREATE-FORM-PROMPT', negPrompt: 'CREATE-NEG', scheduler: 'exponential', target: 'flux2-klein-4b' }));

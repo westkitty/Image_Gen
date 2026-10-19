@@ -844,7 +844,9 @@ class Component extends DCLogic {
         let saved = null;
         try { saved = localStorage.getItem('dex_target'); } catch {}
         const initial = DexClient.chooseInitialTarget(targets, saved, this.state.target);
-        if (initial && initial !== this.state.target) await this.onSelectTarget(initial, { quiet: true });
+        // Startup restores the remembered picker state only. Remote worker
+        // activation requires an explicit user action.
+        if (initial && initial !== this.state.target) await this.onSelectTarget(initial, { quiet: true, restoreOnly: true });
       }
       if (modelsRes.status === 'fulfilled' && modelsRes.value.ok) {
         const data = await modelsRes.value.json();
@@ -939,7 +941,7 @@ class Component extends DCLogic {
   async onSelectTarget(id, options = {}) {
     const target = (this.state.modelTargets || []).find(t => t.id === id);
     if (!target) return;
-    if ((target.backend || 'sdcpp') !== 'mflux') {
+    if (!options.restoreOnly && (target.backend || 'sdcpp') !== 'mflux') {
       if (!options.quiet) this.toast('Switching secondary model…', '#fbbf24');
       try {
         const response = await fetch(this.state.backendUrl + '/api/models/secondary/activate', {

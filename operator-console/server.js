@@ -2746,6 +2746,7 @@ app.post('/api/models/secondary/activate', async (req, res) => {
   const source = TARGET_MODELS[targetId] || spec.modelPath;
   if (!source) return res.status(409).json({ error: 'No approved checkpoint path exists for this target' });
   const lease = arbiter.state();
+  if (lease.quarantine) return res.status(409).json({ error: `Model switch is blocked by resource quarantine: ${lease.quarantine}`, modelState: modelStateView() });
   if (lease.owner || lease.waiting.length || lease.external.occupied) return res.status(409).json({ error: 'Model switch is busy while heavy compute is active', modelState: modelStateView() });
   const switchId = `model-switch-${crypto.randomUUID()}`;
   const granted = await arbiter.acquire(switchId, `model switch to ${targetId}`);
