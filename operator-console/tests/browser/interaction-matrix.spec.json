@@ -1,7 +1,7 @@
 {
   "version": 1,
   "screens": ["Create", "Library", "Batch", "Edit Compact", "Edit Studio", "Enhance", "Voice", "Drama", "Music", "Video", "Models", "System"],
-  "viewports": [[375,812],[390,844],[768,1024],[1280,800],[1440,900]],
+  "viewports": [[360,780],[375,812],[390,844],[768,1024],[1024,768],[1280,800],[1440,900]],
   "shells": [1,2,3],
   "contracts": ["layout", "controls", "keyboard", "forms", "dialogs", "popovers", "typography"],
   "minimumControlHeight": {"mobile":44,"desktop":32},

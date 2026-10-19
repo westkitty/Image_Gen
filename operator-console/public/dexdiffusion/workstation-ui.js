@@ -285,14 +285,16 @@
     const meta = img || {};
     const over = { seed: -1, quantity: 1, operation: 'variation', parent_image_id: meta.imageId || undefined };
     if (meta.target && (this.state.modelTargets || []).some(t => t.id === meta.target)) over.target = meta.target;
-    this.setScreen('create');
+    if (this.setScreen('create') === false) return false;
     this.onGenerate(over);
+    return true;
   };
   P.openSeedLab = function (img) {
+    if (this.setScreen('create') === false) return false;
     const ws = this._ws();
     if (img && img.seed != null) this.setState({ seed: String(img.seed) });
     this.wsSet({ seedLab: Object.assign({}, ws.seedLab, { open: true, base: img ? img.seed : null, parent: img ? img.imageId : null }) });
-    this.setScreen('create');
+    return true;
   };
   P.runSeedLab = function () {
     const ws = this._ws(), lab = ws.seedLab;
@@ -359,13 +361,22 @@
     }
     return applied;
   };
+  P._confirmCreateDraftReplacement = function () {
+    const dirty = this._unsavedWorkspaceWork && this._unsavedWorkspaceWork();
+    if (!dirty || dirty.workspace !== 'generate') return true;
+    return window.confirm('Replace the unsaved Create prompt with settings from this image? Choose Cancel to keep the current prompt and settings.');
+  };
   P.reuseSettings = async function (id) {
     const r = await this._api('/api/pnginfo', { image_id: id });
-    if (!r.ok) { this.toast(r.data.error || 'Could not load settings', '#ef4444'); return; }
+    if (!r.ok) { this.toast(r.data.error || 'Could not load settings', '#ef4444'); return false; }
+    if (!this._confirmCreateDraftReplacement()) return false;
+    // Resolve navigation protection before changing prompt/model/operation fields.
+    if (this.setScreen('create') === false) return false;
     const applied = this.applyCreateSettings(r.data.create.settings);
-    this.setScreen('create');
+    this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'image', id });
     const seed = r.data.create.settings.seed;
     this.toast('Restored ' + applied.length + ' settings' + (seed !== undefined ? ' · seed ' + seed : '') + (r.data.create.settings.prompt ? '' : ' · prompt was not saved'), '#38bdf8');
+    return true;
   };
   // PNG Info: read A1111 / ComfyUI metadata from any PNG (nothing is stored) and send it to Create.
   P.readPngInfo = async function (file) {
@@ -397,7 +408,7 @@
           h('span', { style: { color: tone3[f.state], fontWeight: 700 } }, f.key),
           h('span', { style: { color: '#cbd5e1', overflowWrap: 'anywhere' } }, String(f.value).slice(0, 300), (f.reason || f.note) ? h('span', { style: css.muted }, '  — ' + (f.reason || f.note)) : null)))) : null,
         res.create.fields.length ? h('div', { style: css.row },
-          btn('Send to Create', () => { const a = this.applyCreateSettings(res.create.settings); this.setScreen('create'); this.toast('Restored ' + a.length + ' settings', '#38bdf8'); }, '#65d66e'),
+          btn('Send to Create', () => { if (!this._confirmCreateDraftReplacement() || this.setScreen('create') === false) return; const a = this.applyCreateSettings(res.create.settings); this.toast('Restored ' + a.length + ' settings', '#38bdf8'); }, '#65d66e'),
           btn('Copy infotext', () => this.copyInfotext(res.infotext), '#94a3b8')) : null) : null);
   };
 
@@ -424,8 +435,9 @@
     this.wsSet({ compareItems: items });
   };
   P.showInLibrary = function (id) {
-    this.setScreen('library');
+    if (this.setScreen('library') === false) return false;
     this.selectLibraryImage(id);
+    return true;
   };
 
   // Edit (img2img / inpaint / outpaint) lives in edit-ui.js: one authoritative openImageInEdit,
@@ -434,9 +446,11 @@
   // ── Enhance ─────────────────────────────────────────────────────
   P.sendToEnhance = async function (id) {
     const m = await this._imageMeta(id);
-    if (!m) return;
+    if (!m) return false;
+    if (this.setScreen('enhance') === false) return false;
     this.wsSet({ enhSourceId: id, enhSource: m });
-    this.setScreen('enhance');
+    this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'image', id: m.id || id });
+    return true;
   };
   P._runEnhance = async function (route, body, method) {
     this.wsSet({ enhStatus: 'running', enhMethodRunning: method });
@@ -515,14 +529,14 @@
         card('Real-ESRGAN x4', 'AI super-resolution (RealESRGAN_x4plus on Big Mac)', 'Model-based upscaling; sharpens and invents fine texture.', (src.width * 4) + '×' + (src.height * 4),
           this._gate('realEsrgan') ? btn('Run Real-ESRGAN', () => this._runEnhance('/api/actions/upscale-esrgan', { image_id: src.id }, 'Real-ESRGAN'), '#f59e0b') : h('div', { style: css.muted }, 'Unavailable (gate closed).'), this._gate('realEsrgan')),
         card('High-Res Refine', 'diffusion second pass (sd-cli --hires, SDCPP)', 'A generation-time second pass: it re-renders the image at higher resolution with denoising. It needs the original prompt and seed, so it runs from Create.', '×1.1–2.0',
-          btn('Set up in Create', () => { this.reuseSettings(src.id); this.wsSet({ hires: true }); }, '#f59e0b'), this._gate('hiresRefine'))),
+          btn('Set up in Create', async () => { if (await this.reuseSettings(src.id)) this.wsSet({ hires: true }); }, '#f59e0b'), this._gate('hiresRefine'))),
       ws.enhStatus === 'running' ? h('div', { style: { color: tone.info, fontSize: 12, marginTop: 8 } }, (ws.enhMethodRunning || 'Enhance') + ' running…') : null,
       ws.enhStatus === 'error' ? h('div', { style: { color: tone.bad, fontSize: 12, marginTop: 8 } }, ws.enhError || 'failed') : null,
       ws.enhResults.length ? h('div', { style: { marginTop: 10, display: 'grid', gap: 8 } },
         ...ws.enhResults.slice(0, 4).map(r => h('div', { key: r.imageId, style: { display: 'grid', gridTemplateColumns: 'minmax(90px,140px) 1fr', gap: 10 } },
           thumb(base + r.imageUrl, false, () => openFull(this, r.imageId, base + r.imageUrl), r.imageId, r.method + ' · ' + r.width + '×' + r.height),
           h('div', { style: css.row },
-            btn('Compare', () => { this.wsSet({ compareIds: [src.id, r.imageId] }); this.loadCompare(); this.setScreen('library'); }, '#38bdf8'),
+            btn('Compare', () => { if (this.setScreen('library') === false) return; this.wsSet({ compareIds: [src.id, r.imageId] }); this.loadCompare(); }, '#38bdf8'),
             this._gate('img2img') ? btn('Img2Img', () => this.sendToEdit(r.imageId, 'img2img'), '#a78bfa') : null,
             this._gate('inpaint') ? btn('Inpaint', () => this.sendToEdit(r.imageId, 'inpaint'), '#a78bfa') : null,
             btn('Use as Source', () => this.sendToEnhance(r.imageId), '#f59e0b'),
@@ -594,7 +608,10 @@
   };
   P.selectLibraryImage = async function (id) {
     const m = await this._imageMeta(id);
+    if (!m) return false;
     this.wsSet({ lib: Object.assign({}, this._ws().lib, { selectedId: id, selected: m }) });
+    this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'image', id: m.id || id });
+    return true;
   };
   // Library thumbnail: click = fullscreen (with Edit actions in the viewer); the corner "ⓘ" selects it for details/lineage.
   P._libThumb = function (it, selected) {
@@ -1642,7 +1659,12 @@
             p.imageId ? h('div', { style: css.row }, btn('Compare', () => this.toggleCompare(p.imageId), '#38bdf8'), btn('Keeper', () => this.toggleKeeper(p.imageId, !p.keeper, p), '#fbbf24')) : null))) : null,
         ab.held ? h('div', { style: css.mono }, 'Held constant: ' + Object.entries(ab.held).map(([k, v]) => k + '=' + v).join(' · ') + ' · Changed: prompt only') : null) : null);
 
-    if (!res.length && !lab.open) return h('div', { style: { marginTop: 8 } }, abPanel, detailerPanel);
+    if (!res.length && !lab.open) return h('div', { style: { marginTop: 8 } },
+      h('section', { 'aria-label': 'Image results', className: 'ca-empty-result', style: { border: '1px dashed rgba(148,163,184,.24)', borderRadius: 10, padding: 18, marginBottom: 10, background: 'rgba(16,27,39,.55)' } },
+        h('h3', { style: { fontSize: 14, fontWeight: 700, color: '#dbe7f3', margin: 0 } }, 'No image result in this workspace yet'),
+        h('p', { style: { color: '#91a2b4', fontSize: 12, lineHeight: 1.5, margin: '6px 0 12px' } }, 'Generated images appear here with their existing review, edit, compare, and export actions. No sample result is shown.'),
+        btn('Generate Image', () => this.onGenerate(), '#ef6f61')),
+      abPanel, detailerPanel);
     return h('div', { 'data-results-anchor': '1', style: Object.assign({}, css.panel, { marginTop: 10 }) },
       res.length ? h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) },
         h('div', { style: css.title }, 'Workspace Results'),

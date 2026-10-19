@@ -33,6 +33,12 @@
     this.setState({ _dmTick: (this.state._dmTick || 0) + 1 });
   };
   P._dmApi = function (route, body, method) { return this._vpApi(route, body, method); };
+  P._confirmDramaDraftDiscard = function (action) {
+    const dm = this._dm(), text = this._dmText || {};
+    const dirty = !!((dm.current && !dm.current.saved) || Object.keys(dm.pending || {}).length || String(text.script || '').trim() || String(text.title || '').trim());
+    if (!dirty) return true;
+    return window.confirm(`Discard the current unsaved Drama script/project changes and ${action}? No script text will be saved automatically.`);
+  };
 
   P.loadDramaProjects = async function () {
     const r = await this._dmApi('/api/drama/projects');
@@ -41,12 +47,15 @@
     if (dm.currentId && !dm.current) this.openDramaProject(dm.currentId, true);
   };
   P.openDramaProject = async function (id, quiet) {
+    const dm = this._dm();
+    if (!quiet && dm.currentId !== id && !this._confirmDramaDraftDiscard('open another project')) { this.dmSet({}); return false; }
     const r = await this._dmApi('/api/drama/projects/' + id);
     if (!r.ok) { try { sessionStorage.removeItem(KEY); } catch (_) {} this.dmSet({ current: null, currentId: null }); if (!quiet) this.toast(r.data.error || 'Project not found', '#ef4444'); return; }
     try { sessionStorage.setItem(KEY, id); } catch (_) {}
     if (!this._vp().profiles) this.loadVoiceProfiles();
     this._dmText = { script: '', title: '' };
     this.dmSet({ current: r.data.project, currentId: id, assembled: null, run: null, parseResult: null });
+    this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'drama-project', id: r.data.project.id });
     if (r.data.project.active_run) this._followDramaRun(r.data.project.active_run);
   };
   P._dmSetProject = function (project) { this.dmSet({ current: project }, { skipIfTyping: true }); };
@@ -61,6 +70,7 @@
     this._dmText = { script: '', title: '' };
     try { sessionStorage.setItem(KEY, r.data.project.id); } catch (_) {}
     this.dmSet({ current: r.data.project, currentId: r.data.project.id, parseResult: { ok: true, mode: r.data.mode }, assembled: null });
+    this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'drama-project', id: r.data.project.id });
     if (!this._vp().profiles) this.loadVoiceProfiles();
     this.toast('Parsed ' + r.data.project.scenes.reduce((n, s) => n + s.lines.length, 0) + ' lines · review below before rendering', '#65d66e');
   };
@@ -73,13 +83,23 @@
     this.dmSet({ current: r.data.project, parseResult: { ok: true } });
   };
   P.dramaSave = async function (save) {
-    const dm = this._dm(); if (!dm.current) return;
-    await this._dmFlush();
-    if (!save && !window.confirm('Remove the saved project file? The script stays in memory until the console restarts.')) return;
-    const r = await this._dmApi('/api/drama/projects/' + dm.current.id + (save ? '/save' : '/unsave'), {});
-    if (!r.ok) { this.toast(r.data.error || 'Save failed', '#ef4444'); return; }
-    this.dmSet({ current: r.data.project }); this.loadDramaProjects();
-    this.toast(save ? 'Project saved — script and dialogue are now stored on this MacBook' : 'Project file removed (working copy kept in memory)', save ? '#65d66e' : '#fbbf24');
+    if (this._dramaSavePromise) return this._dramaSavePromise;
+    const dm = this._dm(); if (!dm.current) return false;
+    const projectId = dm.current.id;
+    const work = async () => {
+      if (await this._dmFlush() === false) return false;
+      if (!save && !window.confirm('Remove the saved project file? The script stays in memory until the console restarts.')) return false;
+      let r;
+      try { r = await this._dmApi('/api/drama/projects/' + projectId + (save ? '/save' : '/unsave'), {}); }
+      catch (e) { this.toast('Save failed: ' + (e && e.message || 'request failed'), '#ef4444'); return false; }
+      if (!r.ok) { this.toast(r.data.error || 'Save failed', '#ef4444'); return false; }
+      if (this._dm().currentId !== projectId) return false;
+      this.dmSet({ current: r.data.project }); this.loadDramaProjects();
+      this.toast(save ? 'Project saved — script and dialogue are now stored on this MacBook' : 'Project file removed (working copy kept in memory)', save ? '#65d66e' : '#fbbf24');
+      return true;
+    };
+    this._dramaSavePromise = work().finally(() => { this._dramaSavePromise = null; });
+    return this._dramaSavePromise;
   };
   P.dramaDelete = async function () {
     const dm = this._dm(); if (!dm.current) return;
@@ -96,11 +116,32 @@
   };
   P._dmFlush = async function () {
     clearTimeout(this._dmTimer);
-    const dm = this._dm(), pend = dm.pending; dm.pending = {};
-    for (const [lid, patch] of Object.entries(pend)) {
-      const r = await this._dmApi(`/api/drama/projects/${dm.current.id}/lines/${lid}`, patch, 'PATCH');
-      if (!r.ok) this.toast(r.data.error || 'Edit failed', '#ef4444'); else this._dmSetProject(r.data.project);
-    }
+    if (this._dmFlushPromise) return this._dmFlushPromise;
+    const run = async () => {
+      const dm = this._dm(), projectId = dm.current && dm.current.id;
+      if (!projectId) return Object.keys(dm.pending || {}).length === 0;
+      while (Object.keys(dm.pending || {}).length) {
+        const batch = dm.pending; dm.pending = {};
+        const entries = Object.entries(batch);
+        for (let i = 0; i < entries.length; i++) {
+          const [lid, patch] = entries[i];
+          let r;
+          try { r = await this._dmApi(`/api/drama/projects/${projectId}/lines/${lid}`, patch, 'PATCH'); }
+          catch (e) { r = { ok: false, data: { error: e && e.message || 'request failed' } }; }
+          if (!r.ok) {
+            const retry = Object.fromEntries(entries.slice(i));
+            for (const [id, newer] of Object.entries(dm.pending)) retry[id] = Object.assign({}, retry[id] || {}, newer);
+            dm.pending = retry;
+            this.toast(r.data.error || 'Edit failed; changes remain pending', '#ef4444');
+            return false;
+          }
+          if (dm.currentId === projectId) this._dmSetProject(r.data.project);
+        }
+      }
+      return true;
+    };
+    this._dmFlushPromise = run().finally(() => { this._dmFlushPromise = null; });
+    return this._dmFlushPromise;
   };
   P.dramaLine = async function (lineId, patch) {
     await this._dmFlush();
@@ -309,9 +350,9 @@
     if (!dm.loadedOnce) { dm.loadedOnce = true; setTimeout(() => this.loadDramaProjects(), 0); }
     const t = this._dmText, p = dm.current, base = this.state.backendUrl;
     const speakers = p ? [...new Set(p.scenes.flatMap(s => s.lines.map(l => l.speaker)))] : [];
-    const projectList = h('div', { style: css.row }, h('span', { style: css.muted }, 'Projects'), h('select', { 'aria-label': 'Open project', value: dm.currentId || '', style: Object.assign({}, css.input, { width: 'auto', minWidth: 200 }), onChange: e => e.target.value ? this.openDramaProject(e.target.value) : this.dmSet({ current: null, currentId: null }) },
+    const projectList = h('div', { style: css.row }, h('span', { style: css.muted }, 'Projects'), h('select', { 'aria-label': 'Open project', value: dm.currentId || '', style: Object.assign({}, css.input, { width: 'auto', minWidth: 200 }), onChange: e => { if (e.target.value) this.openDramaProject(e.target.value); else if (this._confirmDramaDraftDiscard('leave the current project')) { try { sessionStorage.removeItem(KEY); } catch (_) {} this.dmSet({ current: null, currentId: null }); this.setActiveAssetSelection && this.setActiveAssetSelection(null); } else this.dmSet({}); } },
       h('option', { value: '' }, (dm.projects && dm.projects.length ? '— open a project (' + dm.projects.length + ') —' : '— no projects yet —')), ...((dm.projects || []).map(x => h('option', { key: x.id, value: x.id }, (x.saved ? '💾 ' : '🕒 ') + x.title + ' · ' + x.lines + ' lines')))),
-      p ? btn('＋ New from script', () => { try { sessionStorage.removeItem(KEY); } catch (_) {} this.dmSet({ current: null, currentId: null }); }, '#94a3b8') : null);
+      p ? btn('＋ New from script', () => { if (!this._confirmDramaDraftDiscard('start a new script')) return; try { sessionStorage.removeItem(KEY); } catch (_) {} this.dmSet({ current: null, currentId: null }); this.setActiveAssetSelection && this.setActiveAssetSelection(null); }, '#94a3b8') : null);
     const scriptPanel = h('div', { 'data-drama-script': '1', style: css.panel },
       h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, p ? 'Script (original — authoritative)' : 'Paste a script'), h('div', { style: { flex: 1 } }),
         ...[['deterministic', 'Deterministic parser'], ['llm', 'Local model (Ollama) parser']].map(([k, l]) => btn(l, () => this.dmSet({ mode: k }, { skipIfTyping: false }), dm.mode === k ? '#a78bfa' : '#94a3b8', { 'data-parse-mode': k }))),
@@ -364,5 +405,10 @@
     return vals;
   };
   const _setScreen = P.setScreen;
-  P.setScreen = function (s) { _setScreen.call(this, s); if (s === 'drama') { this._dm(); this.loadDramaProjects && !this._dm().projects && this.loadDramaProjects(); this.loadWorkers && this.loadWorkers(); } };
+  P.setScreen = function (s, opts) {
+    const accepted = _setScreen.call(this, s, opts);
+    if (accepted === false) return false;
+    if (s === 'drama') { this._dm(); this.loadDramaProjects && !this._dm().projects && this.loadDramaProjects(); this.loadWorkers && this.loadWorkers(); }
+    return accepted;
+  };
 })();

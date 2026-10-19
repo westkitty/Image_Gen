@@ -74,17 +74,19 @@
   }
 
   // vnode | string | number | Node -> DOM Node (or null)
-  function renderVNode(v) {
+  function renderVNode(v, namespace) {
     if (v == null || v === false) return null;
     if (v instanceof Node) return v;
     if (typeof v === 'string' || typeof v === 'number') {
       return document.createTextNode(String(v));
     }
     if (!v.__vnode) return document.createTextNode(String(v));
-    const el = document.createElement(v.type);
+    const svgNamespace = 'http://www.w3.org/2000/svg';
+    const inSvg = v.type === 'svg' || namespace === svgNamespace;
+    const el = inSvg ? document.createElementNS(svgNamespace, v.type) : document.createElement(v.type);
     applyVNodeProps(el, v.props);
     for (const child of v.children) {
-      const n = renderVNode(child);
+      const n = renderVNode(child, inSvg ? svgNamespace : null);
       if (n) el.appendChild(n);
     }
     if (v.props) {
@@ -121,7 +123,7 @@
     // Any other focused element (buttons, custom widgets) is only re-focused if the very same DOM node survives the
     // rebuild — persistent Node-valued widgets such as the model picker are moved into the new tree, and a detached
     // node loses focus even though it is back in the document a moment later.
-    const textEntry = !!(ae.matches && ae.matches('input:not([type=button]):not([type=submit]):not([type=reset]):not([type=checkbox]):not([type=radio]):not([type=file]),textarea,select,[contenteditable="true"]'));
+    const textEntry = !!(ae.matches && ae.matches('input:not([type=button]):not([type=submit]):not([type=reset]):not([type=checkbox]):not([type=radio]):not([type=file]),textarea,select,[contenteditable="true"],button[data-dex-field]'));
     for (let r = 0; r < roots.length; r++) {
       const root = roots[r];
       if (!(root instanceof Element) || !root.contains(ae)) continue;
@@ -473,9 +475,15 @@
     inst.__render = render;
     render();
     if (typeof inst.componentDidMount === 'function') inst.componentDidMount();
-    window.addEventListener('beforeunload', () => {
+    // beforeunload can be cancelled by the browser's unsaved-work prompt; unmounting
+    // there would leave a live page with its timers/listeners stopped. pagehide fires
+    // only after the document actually leaves, and persisted pages keep their instance.
+    const onPageHide = event => {
+      if (event.persisted) return;
       if (typeof inst.componentWillUnmount === 'function') inst.componentWillUnmount();
-    });
+      window.removeEventListener('pagehide', onPageHide);
+    };
+    window.addEventListener('pagehide', onPageHide);
     return inst;
   }
 

@@ -128,14 +128,58 @@
     if (this.ca) return this.ca;
     let autoHelp = true;
     try { autoHelp = localStorage.getItem('dex_concept_help_auto') !== 'false'; } catch (_) {}
-    this.ca = { help: { open: false, module: 'workstation', tab: 'quick', opener: null }, autoHelp, settingsTab: 'general', queueOpen: false, helpQuery: '', faqOpen: {} };
+    this.ca = { help: { open: false, module: 'workstation', tab: 'quick', opener: null }, autoHelp, settingsTab: 'general', queueOpen: false, helpQuery: '', faqOpen: {}, inspectorOpen: false, inspectorOpener: null, promptSelection: null, libraryView: 'images' };
     return this.ca;
   };
   P.caSync = function () { this.setState({ _caTick: (this.state._caTick || 0) + 1 }); };
+  P.caSetLibraryView = function (view) {
+    this._ca().libraryView = view === 'media' ? 'media' : 'images';
+    this.caSync();
+    requestAnimationFrame(() => document.querySelector('[data-ca-library-tab="' + this._ca().libraryView + '"]')?.focus());
+  };
   P.caModule = function () { return moduleFor(this.state.screens[this.state.version]); };
   P.caNavigate = function (id) {
     const target = id === 'workstation' ? 'workstation' : id === 'generate' ? 'create' : id === 'edit' ? 'edit' : id === 'media' ? 'library' : id === 'assets3d' ? '3d' : id === 'settings' ? 'system' : id;
-    this.setScreen(target);
+    if (this.setScreen(target) === false) return false;
+    if (target === 'create' && this._ca().promptSelection) {
+      const selection = this._ca().promptSelection;
+      const focusStartedAt = performance.now();
+      const focusPrompt = () => {
+        if (this.state.screens[this.state.version] !== 'create' || performance.now() - focusStartedAt > 3000) return;
+        const prompt = document.querySelector('[data-dex-field="prompt"]');
+        if (!prompt) { requestAnimationFrame(focusPrompt); return; }
+        const active = document.activeElement;
+        if (active !== document.body && active !== prompt && !active?.closest('.ca-workstation')) return;
+        if (active !== prompt) {
+          prompt.focus({ preventScroll: true });
+          try { prompt.setSelectionRange(selection.start, selection.end, selection.direction || 'none'); } catch (_) {}
+        }
+        requestAnimationFrame(focusPrompt);
+      };
+      requestAnimationFrame(() => requestAnimationFrame(focusPrompt));
+    }
+    return true;
+  };
+  P.caOpenInspector = function (event) {
+    const ca = this._ca(); ca.inspectorOpen = true; ca.inspectorOpener = event && event.currentTarget || document.activeElement;
+    this.caSync();
+    const focusClose = () => document.querySelector('.ca-inspector-close')?.focus();
+    requestAnimationFrame(() => requestAnimationFrame(focusClose));
+    setTimeout(focusClose, 80);
+  };
+  P.caCloseInspector = function () {
+    const ca = this._ca(), opener = ca.inspectorOpener;
+    ca.inspectorOpen = false; ca.inspectorOpener = null;
+    this.caSync();
+    const restoreFocus = () => {
+      const active = document.activeElement;
+      if (active !== document.body && active !== opener && !active?.classList.contains('ca-inspector-close')) return;
+      const currentOpener = document.querySelector('.ca-inspector-open');
+      const target = currentOpener && currentOpener.getClientRects().length ? currentOpener : opener;
+      if (target && target.isConnected && typeof target.focus === 'function') target.focus({ preventScroll: true });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(restoreFocus));
+    setTimeout(restoreFocus, 80);
   };
   P.caOpenHelp = function (moduleId, event) {
     if (event) event.__dexConceptHelpHandled = true;
@@ -189,13 +233,18 @@
 
   P.buildConceptWorkstation = function (vals, accent) {
     const runs = (this.state.runs || []).slice(0, 8), v12 = window.__DEX_V12 || {}, snap = v12.snapshot || {};
-    const runCard = r => h('button', { key: r.id, type: 'button', className: 'ca-asset-card', onClick: () => this.showInLibrary(r.id), title: 'Open ' + r.id },
-      r.fullUrl ? h('img', { src: r.fullUrl, alt: r.id, loading: 'lazy' }) : h('div', { className: 'ca-asset-placeholder' }, 'No preview'),
-      h('span', null, r.model + ' · ' + r.size), h('small', null, r.badge || 'RUN'));
+    const latest = runs[0] || null;
+    const runCard = r => {
+      const model = r.model && r.model !== 'controlled' ? r.model : null, size = r.size && r.size !== '—' ? r.size : null;
+      const metadata = [model, size].filter(Boolean).join(' · ') || 'Image run';
+      return h('button', { key: r.id, type: 'button', className: 'ca-asset-card', onClick: () => this.showInLibrary(r.id), title: 'Open ' + r.id },
+        h('div', { className: 'ca-asset-preview', style: { width: '100%', aspectRatio: '1 / 1', display: 'grid', placeItems: 'center', overflow: 'hidden', background: '#0d1823', color: '#91a2b4', fontSize: 10 } },
+          r.fullUrl ? h('img', { src: r.fullUrl, alt: 'Preview of ' + r.id, loading: 'lazy', onError: e => { const preview = e.currentTarget && e.currentTarget.parentElement; if (!preview) return; preview.textContent = 'Preview unavailable'; preview.setAttribute('role', 'img'); preview.setAttribute('aria-label', 'Preview unavailable for ' + r.id); } }) : 'Preview unavailable'),
+        h('span', null, metadata), h('small', null, r.badge || 'RUN'));
+    };
     const quick = [
-      ['Generate an image', 'Prompt → canonical image', 'generate'], ['Edit an image', 'Img2img or Inpaint', 'edit'], ['Open Media', 'Search and reuse assets', 'media'],
-      ['Create voice', 'Narration and profiles', 'voice'], ['Open 3D Assets', 'Individual GLB assets', 'assets3d'], ['Open World Viewer', 'Scene and camera work', 'world'],
-      ['Open Music', 'Song or instrumental audio', 'music'], ['Open Drama', 'Script and voice assembly', 'drama'],
+      ['Create image', 'Prompt and generate', 'generate'], ['Edit image', 'Transform a source', 'edit'], ['Design voice', 'Profiles and narration', 'voice'],
+      ['Produce drama', 'Script, cast, and direct', 'drama'], ['Create music', 'Song or instrumental', 'music'], ['Build 3D asset', 'Individual 3D output', 'assets3d'],
     ].map(([title, desc, id]) => h('button', { key: id, type: 'button', className: 'ca-quick-card', onClick: () => this.caNavigate(id) }, h('span', { className: 'ca-quick-icon', style: { color: MODULES.find(m => m.id === id)?.accent || accent } }, moduleIcon(id, 20)), h('span', null, h('b', null, title), h('small', null, desc))));
     const projects = (this.state.worldProjects || []).slice(0, 4);
     const projectBody = projects.length ? h('div', { className: 'ca-list' }, ...projects.map(p => {
@@ -206,17 +255,28 @@
       ...(snap.queue || []).slice(0, 3).map(j => h('div', { key: j.id, className: 'ca-list-row' }, h('b', null, j.label || j.operation || 'Queued job'), status('QUEUED', '#f59e0b')))];
     if (!activeItems.length) activeItems.push(h('div', { className: 'ca-empty', key: 'none' }, 'No active or queued jobs.'));
     const promptComposer = h('div', { className: 'ca-stack' },
-      h('label', { className: 'ca-field' }, h('span', null, 'Prompt'), h('textarea', { rows: 4, value: this.state.prompt || '', placeholder: 'Describe the image. A1111 syntax supported.', onInput: e => { this.state.prompt = e.target.value; } })),
+      h('label', { className: 'ca-field' }, h('span', null, 'Prompt'), h('textarea', { rows: 4, value: this.state.prompt || '', placeholder: 'Describe the image. A1111 syntax supported.', 'data-dex-quick-prompt': 'true', onInput: e => { this.state.prompt = e.target.value; this._ca().promptSelection = { start: e.target.selectionStart, end: e.target.selectionEnd, direction: e.target.selectionDirection }; }, onSelect: e => { this._ca().promptSelection = { start: e.target.selectionStart, end: e.target.selectionEnd, direction: e.target.selectionDirection }; } })),
       vals.promptTools || null,
       this.buildCreateResources(),
-      h('div', { className: 'ca-form-actions' }, btn('Open Generate', () => this.caNavigate('generate'), '#38bdf8'))
+      h('div', { className: 'ca-form-actions' }, btn('Continue in Create', () => this.caNavigate('generate'), '#ef6f61'))
     );
+    const jobCount = (snap.active || []).length, queuedCount = (snap.queue || []).length;
+    const heroAction = latest
+      ? h('button', { type: 'button', className: 'ca-primary', onClick: () => this.showInLibrary(latest.id), 'aria-label': 'Continue with latest image ' + latest.id }, 'Continue with latest image')
+      : h('button', { type: 'button', className: 'ca-primary', onClick: () => this.caNavigate('generate') }, 'Create your first image');
+    const activity = jobCount ? jobCount + ' active job' + (jobCount === 1 ? '' : 's') : queuedCount ? queuedCount + ' queued job' + (queuedCount === 1 ? '' : 's') : 'No active work';
     return h('div', { className: 'ca-workstation' },
-      panel('Quick prompt', promptComposer, accent),
-      panel('Quick Start', h('div', { className: 'ca-quick-grid' }, ...quick), accent),
-      h('div', { className: 'ca-columns-2' }, panel('Recent Projects', projectBody, accent), panel('Active Jobs', h('div', { className: 'ca-list' }, ...activeItems), accent)),
+      h('section', { className: 'ca-home-hero', 'aria-labelledby': 'ca-home-title' },
+        h('img', { className: 'ca-home-mascot', src: 'uploads/grok_image_1775521844329.jpg', alt: 'Dexter at his keyboard' }),
+        h('div', { className: 'ca-home-copy' }, h('span', { className: 'ca-home-eyebrow' }, 'DEXTER STUDIO · PRIVATE CREATIVE WORKSPACE'), h('h2', { id: 'ca-home-title' }, 'Your work, ready to continue.'),
+          h('p', null, latest ? 'Latest image · ' + [latest.model && latest.model !== 'controlled' ? latest.model : null, latest.size && latest.size !== '—' ? latest.size : null, latest.id].filter(Boolean).join(' · ') : 'Create, refine, and organize images, audio, drama, and 3D work from one place.'),
+          h('div', { className: 'ca-home-actions' }, heroAction, h('button', { type: 'button', className: 'ca-secondary', onClick: () => this.caToggleJobs() }, 'Open Job Center')),
+          h('div', { className: 'ca-home-live', role: 'status' }, h('span', { className: jobCount ? 'is-working' : '' }), activity + ' · Event stream ' + (v12.connected ? 'connected' : 'reconnecting')))),
+      panel('Active Jobs', h('div', { className: 'ca-list' }, ...activeItems), accent),
+      panel('Create something', h('div', { className: 'ca-quick-grid' }, ...quick), accent),
       panel('Recent Assets', runs.length ? h('div', { className: 'ca-asset-grid' }, ...runs.map(runCard)) : h('div', { className: 'ca-empty' }, 'No indexed image runs yet. Generate an image to create the first canonical asset.'), accent),
-      panel('Templates / Recipes', h('div', { className: 'ca-recipe-row' }, h('span', null, 'Use saved settings recipes from Generate.'), btn('Open Generate', () => this.caNavigate('generate'), '#38bdf8'), h('span', { className: 'ca-muted' }, 'Prompt text is governed by the existing privacy setting.')), accent));
+      panel('Start with a prompt', promptComposer, accent),
+      h('div', { className: 'ca-columns-2' }, panel('Recent Projects', projectBody, accent), panel('Templates / Recipes', h('div', { className: 'ca-recipe-row' }, h('span', null, 'Use saved settings recipes from Generate.'), btn('Open Generate', () => this.caNavigate('generate'), '#38bdf8'), h('span', { className: 'ca-muted' }, 'Prompt text is governed by the existing privacy setting.')), accent)));
   };
 
   // ── Prompt styles (A1111 semantics, P04 S04.2): templates with an optional {prompt} placeholder. ──
@@ -446,6 +506,7 @@
     const row = (label, value) => h('div', { className: 'ca-inspector-row', key: label }, h('span', null, label), h('b', null, value == null || value === '' ? '—' : String(value)));
     const empty = text => h('div', { className: 'ca-empty' }, text);
     const ed = this._ed ? (this._ed() || {}) : {};
+    const activeAsset = s.activeAssetSelection;
     let heading = 'Live module context', intro = 'This panel follows the current module state and does not create a second record or job store.';
     let body = [];
     if (moduleId === 'generate') {
@@ -485,13 +546,19 @@
       heading = 'Drama context'; body = [row('Project', p && (p.title || p.id)), row('Scenes', p && p.scenes && p.scenes.length), row('Actors', p && p.actors && p.actors.length), row('Unresolved', p && p.unresolved && p.unresolved.length), row('Stage', dm.stage), row('Plan', p && p.plan && (p.plan.ready ? (p.plan.work_required ? 'work required' : 'up to date') : 'blocked')), row('Production', (dm.production && dm.production.status) || (run && run.status)), row('Master', p && p.project_master && p.project_master.artifact_id)];
       intro = p ? 'Script, cast, production and proof state are owned by the Drama workspace.' : 'Open or create a Drama project through its existing parser contract.';
     } else if (moduleId === 'settings') {
-      heading = 'System context'; body = [row('Target count', (s.modelTargets || []).length), row('V12 connection', v12.connected ? 'LIVE' : 'CONNECTING'), row('Active jobs', (snap.active || []).length), row('Queued jobs', (snap.queue || []).length), row('Prompt privacy', s.savePrompts ? 'Save enabled' : 'Params only')];
+      heading = 'System context'; body = [row('Event stream', v12.connected ? 'Connected' : 'Reconnecting'), row('Target count', (s.modelTargets || []).length), row('Active jobs', (snap.active || []).length), row('Queued jobs', (snap.queue || []).length), row('Prompt privacy', s.savePrompts ? 'Save enabled' : 'Params only')];
       intro = 'Settings exposes live capability and system truth; it does not silently enable unavailable features.';
     } else {
       heading = 'Workstation context'; body = [row('Recent runs', (s.runs || []).length), row('World projects', (s.worldProjects || []).length), row('Active jobs', (snap.active || []).length), row('Queued jobs', (snap.queue || []).length)];
     }
     const helpButton = moduleId === 'settings' ? null : h('button', { type: 'button', className: 'ca-secondary', 'data-ca-open-help': moduleId, onClick: e => this.caOpenHelp(moduleId, e) }, 'How to use ' + (MODULES.find(m => m.id === moduleId)?.label || 'this section'));
-    return h('aside', { className: 'ca-inspector', 'aria-label': 'Contextual inspector' }, panel(heading, h('div', { className: 'ca-inspector-context' }, h('div', { className: 'ca-note' }, intro), ...body, helpButton, (snap.active || []).length ? h('div', { className: 'ca-note' }, (snap.active || []).length + ' active job' + ((snap.active || []).length === 1 ? '' : 's') + ' · background work continues while you navigate.') : null), accent));
+    const ca = this._ca();
+    if (activeAsset) body.unshift(row('Active asset · ' + activeAsset.kind, activeAsset.id));
+    return h(React.Fragment, null,
+      ca.inspectorOpen ? h('button', { type: 'button', tabIndex: -1, 'aria-hidden': 'true', className: 'ca-inspector-backdrop', onClick: () => this.caCloseInspector() }) : null,
+      h('aside', { className: 'ca-inspector' + (ca.inspectorOpen ? ' is-open' : ''), 'aria-label': 'Contextual inspector', role: ca.inspectorOpen ? 'dialog' : undefined, 'aria-modal': ca.inspectorOpen ? 'true' : undefined, 'aria-hidden': String(!ca.inspectorOpen && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1100px)').matches) },
+        h('div', { className: 'ca-inspector-mobile-head' }, h('b', null, 'Context'), h('button', { type: 'button', className: 'ca-icon-button ca-inspector-close', 'data-dex-field': 'inspector-close', 'aria-label': 'Close contextual inspector', onClick: () => this.caCloseInspector() }, '×')),
+        panel(heading, h('div', { className: 'ca-inspector-context' }, h('div', { className: 'ca-note' }, intro), ...body, helpButton, (snap.active || []).length ? h('div', { className: 'ca-note' }, (snap.active || []).length + ' active job' + ((snap.active || []).length === 1 ? '' : 's') + ' · background work continues while you navigate.') : null), accent)));
   };
 
   P.buildConceptQueue = function () {
@@ -520,14 +587,31 @@
 
   P.buildConceptShell = function (vals) {
     const ca = this._ca(), moduleId = this.caModule(), mod = MODULES.find(m => m.id === moduleId) || MODULES[0], accent = mod.accent, screen = this.state.screens[this.state.version];
-    const nav = MODULES.map(m => h('button', { key: m.id, type: 'button', className: 'ca-nav-item' + (m.id === moduleId ? ' is-active' : ''), 'data-nav': 'true', 'data-active': m.id === moduleId ? 'true' : 'false', 'aria-current': m.id === moduleId ? 'page' : undefined, title: m.label, onClick: () => this.caNavigate(m.id), style: { '--ca-accent': m.accent } }, h('span', { className: 'ca-nav-icon', 'aria-hidden': 'true' }, moduleIcon(m.icon, 17)), h('span', { className: 'ca-nav-label' }, m.label)));
+    const resource = (window.__DEX_V12 && window.__DEX_V12.snapshot && window.__DEX_V12.snapshot.resources) || {};
+    const resourceBusy = !!(resource.occupied || resource.owner);
+    const resourceText = resourceBusy ? 'Big Mac · ' + ((resource.owner && resource.owner.label) || 'compute in use') : 'Big Mac · free';
+    const navItem = m => h('button', { key: m.id, type: 'button', className: 'ca-nav-item' + (m.id === moduleId ? ' is-active' : ''), 'data-nav': 'true', 'data-active': m.id === moduleId ? 'true' : 'false', 'aria-current': m.id === moduleId ? 'page' : undefined, title: m.label, onClick: () => this.caNavigate(m.id), style: { '--ca-accent': m.accent } }, h('span', { className: 'ca-nav-icon', 'aria-hidden': 'true' }, moduleIcon(m.icon, 17)), h('span', { className: 'ca-nav-label' }, m.label));
+    const nav = [
+      ['HOME', ['workstation']], ['CREATE', ['generate', 'edit']], ['AUDIO', ['voice', 'drama', 'music']],
+      ['SPATIAL', ['assets3d', 'world']], ['MANAGE', ['media', 'settings']],
+    ].map(([label, ids]) => h('div', { key: label, className: 'ca-nav-group' }, h('span', { className: 'ca-nav-group-label' }, label), ...ids.map(id => navItem(MODULES.find(m => m.id === id)))));
     const tabs = moduleId === 'generate' ? [['create', 'Text to Image', true], ['batch', 'Batch / Sweep', true]] : moduleId === 'edit' ? [['edit', 'Img2Img / Inpaint', true], ['enhance', 'Upscale / Enhance', true]] : moduleId === 'music' ? [['music-song', 'Song', true], ['music-instrumental', 'Instrumental', true], ['planned-stems', 'Stems · Planned', false], ['planned-mastering', 'Mastering · Planned', false]] : moduleId === 'drama' ? [] : moduleId === 'settings' ? [['general', 'General', true], ['capabilities', 'Capabilities', true], ['help', 'Help / Tutorials', true], ['system', 'System', true]] : [];
     const headerTabs = tabs.length ? h('div', { className: 'ca-tabs ca-header-tabs', role: 'tablist' }, ...tabs.map(([id, label, enabled], i) => { const selected = id === screen || (moduleId === 'settings' && ca.settingsTab === id) || (id === 'music-song' && !this._mws().instrumental) || (id === 'music-instrumental' && !!this._mws().instrumental) || (moduleId === 'drama' && i === 0); return h('button', { key: label, type: 'button', role: 'tab', className: 'ca-tab' + (selected ? ' is-selected' : ''), 'aria-selected': String(selected), disabled: !enabled, onClick: () => { if (id === 'general' || id === 'capabilities' || id === 'help' || id === 'system') { ca.settingsTab = id; this.caSync(); } else if (id === 'music-song' || id === 'music-instrumental') this.mSet({ instrumental: id === 'music-instrumental' }); else if (id === 'edit' || id === 'enhance' || id === 'create' || id === 'batch') this.setScreen(id); } }, label); })) : null;
     let canvas;
     if (moduleId === 'workstation') canvas = this.buildConceptWorkstation(vals, accent);
     else if (moduleId === 'generate') canvas = this.buildConceptGenerate(vals, accent);
     else if (moduleId === 'edit') canvas = screen === 'enhance' ? this.buildEnhanceWorkbench() : this.buildEditWorkbench();
-    else if (moduleId === 'media') canvas = h('div', { className: 'ca-media-stack' }, this.buildLibraryWorkbench(), this.buildMediaLibraryPanel());
+    else if (moduleId === 'media') {
+      const libraryView = ca.libraryView === 'media' ? 'media' : 'images';
+      const libraryTabs = h('div', { className: 'ca-library-tabs', role: 'tablist', 'aria-label': 'Library views', style: { display: 'flex', gap: 4, paddingBottom: 8, borderBottom: '1px solid rgba(148,163,184,.16)' }, onKeyDown: e => {
+        const keys = { ArrowLeft: libraryView === 'media' ? 'images' : 'media', ArrowRight: libraryView === 'images' ? 'media' : 'images', Home: 'images', End: 'media' };
+        if (keys[e.key]) { e.preventDefault(); this.caSetLibraryView(keys[e.key]); }
+      } },
+        ...[['images', 'Image library'], ['media', 'Audio & video index']].map(([id, label]) => h('button', { key: id, type: 'button', role: 'tab', className: 'ca-tab' + (libraryView === id ? ' is-selected' : ''), 'data-ca-library-tab': id, 'aria-selected': String(libraryView === id), 'aria-controls': 'ca-library-view-' + id, tabIndex: libraryView === id ? 0 : -1, onClick: () => this.caSetLibraryView(id) }, label)));
+      const imagePanel = h('div', { id: 'ca-library-view-images', role: 'tabpanel', 'aria-label': 'Image library', tabIndex: 0, hidden: libraryView !== 'images' }, libraryView === 'images' ? this.buildLibraryWorkbench() : null);
+      const mediaPanel = h('div', { id: 'ca-library-view-media', role: 'tabpanel', 'aria-label': 'Audio and video index', tabIndex: 0, hidden: libraryView !== 'media' }, libraryView === 'media' ? this.buildMediaLibraryPanel() : null);
+      canvas = h('div', { className: 'ca-media-stack' }, libraryTabs, imagePanel, mediaPanel);
+    }
     else if (moduleId === 'voice') canvas = this.buildVoiceWorkspace();
     else if (moduleId === 'music') canvas = this.buildMusicWorkspace();
     else if (moduleId === 'assets3d') canvas = this.buildAsset3dWorkspace();
@@ -535,12 +619,12 @@
     else if (moduleId === 'drama') canvas = this.buildDramaWorkspace();
     else canvas = this.buildConceptSettings(vals, accent);
     return h('div', { className: 'ca-shell', 'data-ca-module': moduleId, style: { '--ca-accent': accent } },
-      h('aside', { className: 'ca-nav', 'aria-label': 'Primary modules' }, h('div', { className: 'ca-brand' }, h('img', { src: 'uploads/grok_image_1775521844329.jpg', alt: 'DexDiffusion' }), h('div', null, h('b', null, 'DexDiffusion'), h('small', null, 'Single-Canvas Workstation'))), h('nav', null, ...nav), h('button', { type: 'button', className: 'ca-nav-jobs', onClick: () => this.caToggleJobs() }, '▤  Jobs', status(String((window.__DEX_V12?.activeJobCount || 0) + (window.__DEX_V12?.queuedJobCount || 0)), '#38bdf8'))),
-      h('header', { className: 'ca-topbar' }, h('div', { className: 'ca-topbar-context' }, h('span', { className: 'ca-kicker' }, 'DEXDIFFUSION'), h('b', null, 'Local creative workstation')), h('button', { type: 'button', className: 'ca-search', onClick: () => this.caTogglePalette() }, '⌘K  Search commands and navigation'), h('div', { className: 'ca-topbar-actions' }, h('span', { className: 'ca-live' }, window.__DEX_V12?.connected ? 'LIVE' : 'CONNECTING'), h('button', { type: 'button', className: 'ca-topbar-job', onClick: () => this.caToggleJobs() }, 'Jobs ' + ((window.__DEX_V12?.activeJobCount || 0) + (window.__DEX_V12?.queuedJobCount || 0))), h('button', { type: 'button', className: 'ca-icon-button', 'aria-label': 'Open help', 'data-ca-open-help': moduleId, onClick: e => this.caOpenHelp(moduleId, e) }, '?'))),
+      h('aside', { className: 'ca-nav', 'aria-label': 'Primary modules' }, h('button', { type: 'button', className: 'ca-brand', onClick: () => this.caNavigate('workstation'), 'aria-label': 'Dexter Studio home · Workstation' }, h('img', { src: 'uploads/grok_image_1775521844329.jpg', alt: '' }), h('span', { className: 'ca-brand-copy' }, h('b', null, 'DexDiffusion'), h('small', null, 'DEXTER STUDIO'))), h('nav', { 'aria-label': 'Workspaces' }, ...nav), h('button', { type: 'button', className: 'ca-nav-jobs', onClick: () => this.caToggleJobs() }, 'Jobs', status(String((window.__DEX_V12?.activeJobCount || 0) + (window.__DEX_V12?.queuedJobCount || 0)), '#e32636'))),
+      h('header', { className: 'ca-topbar' }, h('div', { className: 'ca-topbar-context' }, h('span', { className: 'ca-kicker' }, 'DEXTER STUDIO'), h('b', null, 'Private creative workstation')), h('button', { type: 'button', className: 'ca-search', onClick: () => this.caTogglePalette(), 'aria-label': 'Search commands and navigation' }, h('span', { className: 'ca-search-short' }, 'Search'), h('span', { className: 'ca-search-hint' }, '⌘K  Search commands and navigation')), h('div', { className: 'ca-topbar-actions' }, h('span', { className: 'ca-live ' + (window.__DEX_V12?.connected ? 'is-connected' : 'is-disconnected'), role: 'status' }, 'Event stream ' + (window.__DEX_V12?.connected ? 'connected' : 'reconnecting')), h('button', { type: 'button', className: 'ca-topbar-job', onClick: () => this.caToggleJobs() }, 'Jobs ' + ((window.__DEX_V12?.activeJobCount || 0) + (window.__DEX_V12?.queuedJobCount || 0))), h('button', { type: 'button', className: 'ca-icon-button ca-inspector-open', 'aria-label': 'Open contextual inspector', 'aria-expanded': String(ca.inspectorOpen), onClick: e => this.caOpenInspector(e) }, 'Details'), h('button', { type: 'button', className: 'ca-icon-button', 'aria-label': 'Open help', 'data-ca-open-help': moduleId, onClick: e => this.caOpenHelp(moduleId, e) }, '?'))),
       h('header', { className: 'ca-module-header', style: { borderLeftColor: accent } }, h('div', { className: 'ca-module-title' }, h('span', { className: 'ca-module-icon', style: { color: accent } }, moduleIcon(mod.icon, 22)), h('div', null, h('h1', null, mod.label), h('p', null, mod.desc))), headerTabs, h('button', { type: 'button', className: 'ca-help-button', 'data-ca-open-help': moduleId, onClick: e => this.caOpenHelp(moduleId, e) }, '?  How to use this section')),
       h('main', { className: 'ca-canvas', 'data-ca-module': moduleId }, canvas),
       this.buildConceptInspector(moduleId, accent),
-      h('footer', { className: 'ca-queue-bar' }, h('div', null, h('b', null, 'Queue / History'), h('span', null, (window.__DEX_V12?.activeJobCount || 0) + ' active · ' + (window.__DEX_V12?.queuedJobCount || 0) + ' queued · recent results retained')), h('div', { className: 'ca-form-actions' }, h('button', { type: 'button', className: 'ca-secondary', 'aria-expanded': String(ca.queueOpen), onClick: () => this.caToggleQueue() }, ca.queueOpen ? 'Collapse dock' : 'Expand dock'), h('button', { type: 'button', className: 'ca-secondary', onClick: () => this.caToggleJobs() }, 'Open Global Job Center  ⌘⇧J'))),
+      h('footer', { className: 'ca-queue-bar' }, h('div', { className: 'ca-job-summary' }, h('b', null, 'Queue / History'), h('span', { className: 'ca-queue-count' }, (window.__DEX_V12?.activeJobCount || 0) + ' active · ' + (window.__DEX_V12?.queuedJobCount || 0) + ' queued · recent results retained'), h('span', { className: 'ca-resource-status ' + (resourceBusy ? 'is-busy' : 'is-free'), role: 'status' }, resourceText)), h('div', { className: 'ca-form-actions' }, h('button', { type: 'button', className: 'ca-secondary', 'aria-expanded': String(ca.queueOpen), onClick: () => this.caToggleQueue() }, ca.queueOpen ? 'Collapse dock' : 'Expand dock'), h('button', { type: 'button', className: 'ca-secondary', onClick: () => this.caToggleJobs() }, 'Open Global Job Center  ⌘⇧J'))),
       this.buildConceptQueue(),
       this.buildConceptHelp());
   };
@@ -558,6 +642,16 @@
         else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { e.preventDefault(); first?.focus(); }
       }
       return;
+    }
+    if (ca.inspectorOpen) {
+      const drawer = document.querySelector('.ca-inspector.is-open');
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.caCloseInspector(); return; }
+      if (e.key === 'Tab' && drawer) {
+        const controls = [...drawer.querySelectorAll('button,input,select,textarea,a,[tabindex]:not([tabindex="-1"])')].filter(x => !x.disabled && x.getClientRects().length);
+        const first = controls[0], last = controls[controls.length - 1];
+        if (e.shiftKey && (document.activeElement === first || !drawer.contains(document.activeElement))) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && (document.activeElement === last || !drawer.contains(document.activeElement))) { e.preventDefault(); first?.focus(); }
+      }
     }
     if (oldKeydown) oldKeydown.call(this, e);
   };

@@ -47,7 +47,7 @@
   // Persistent media elements: the runtime rebuilds vnodes each render, so a
   // cached real <audio>/<video> node keeps playback position across renders.
   // slot separates places that show the same file (a DOM node can live in one place only).
-  P._mediaEl = function (url, kind, slot) {
+  P._mediaEl = function (url, kind, slot, selection) {
     this._mediaEls = this._mediaEls || new Map();
     const key = (slot || '') + '|' + url;
     let el = this._mediaEls.get(key);
@@ -56,6 +56,10 @@
       el.src = url; el.controls = true; el.preload = 'metadata';
       el.style.cssText = 'width:100%;min-height:40px;display:block;border-radius:8px;';
       el.setAttribute('aria-label', kind + ' player');
+      if (selection && selection.kind === 'audio' && selection.id) {
+        const self = this;
+        el.addEventListener('play', () => self.setActiveAssetSelection && self.setActiveAssetSelection(selection));
+      }
       this._mediaEls.set(key, el);
     }
     return el;
@@ -194,7 +198,10 @@
     const reason = this._disabledReason(w);
     const enabled = !!(w && w.enabled) && !busy;
     const label = busy ? this._jobLabel(j) : reason ? 'Generate — ' + reason : 'Generate';
-    return h('div', { style: Object.assign({}, css.row, { marginTop: 10 }) },
+    const keepActionVisible = this.state.version === 4 && (kind === 'voice' || kind === 'music');
+    return h('div', { className: keepActionVisible ? 'ca-media-action-bar' : undefined, 'data-media-generate-bar': keepActionVisible ? kind : undefined, style: Object.assign({}, css.row, keepActionVisible
+      ? { marginTop: 10, position: 'sticky', bottom: 4, zIndex: 5, background: 'rgba(16,27,39,.98)', padding: 8, border: '1px solid rgba(148,163,184,.2)', borderRadius: 9, boxShadow: '0 8px 24px rgba(0,0,0,.38)' }
+      : { marginTop: 10 }) },
       h('button', { type: 'button', disabled: !enabled, 'aria-disabled': String(!enabled), 'aria-busy': String(!!busy), title: label,
         style: { flex: '1 1 220px', minHeight: 44, borderRadius: 9, border: 0, fontWeight: 800, fontSize: 14, cursor: enabled ? 'pointer' : 'not-allowed',
           background: enabled ? 'linear-gradient(90deg,#8b5cf6,#22d3ee)' : busy ? 'rgba(56,189,248,.18)' : 'rgba(148,163,184,.12)', color: enabled ? '#06060a' : busy ? '#7dd3fc' : '#94a3b8' },
@@ -255,7 +262,7 @@
         j.worker_id ? chip(j.worker_id, '#a78bfa') : null, h('span', { style: css.mono }, String(j.job_id).slice(0, 8))),
       !TERMINAL.includes(j.status) ? h('div', { role: 'status', style: { color: tone.info, fontSize: 12 } }, this._jobLabel(j)) : null,
       j.status === 'FAILED' || j.status === 'INTERRUPTED' ? h('div', { role: 'alert', style: { color: tone.bad, fontSize: 12 } }, 'Failed at gate ' + (j.first_failed_gate || '?') + (j.error ? ' — ' + j.error : '')) : null,
-      art && art.url ? h('div', { style: { display: 'grid', gap: 6 } }, this._mediaEl(base + art.url, 'audio', 'job'),
+      art && art.url ? h('div', { style: { display: 'grid', gap: 6 } }, this._mediaEl(base + art.url, 'audio', 'job-' + art.artifact_id, { kind: 'audio', id: art.artifact_id }),
         h('div', { style: css.muted }, [art.artifact_id, fmtTime(art.duration), art.seed != null ? 'seed ' + art.seed : null, art.sha256 ? 'sha256 ' + art.sha256.slice(0, 12) + '…' : null].filter(Boolean).join(' · ')),
         h('div', { style: css.row }, btn('Open in Library', () => { this.setScreen('library'); this.loadMediaLibrary(kind); }, '#38bdf8'),
           h('a', { href: base + art.download_url, style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 4px' } }, 'Download'))) : null);
@@ -364,7 +371,7 @@
       h('div', { style: css.row }, chip(i.kind, i.kind === 'voice' ? '#a78bfa' : i.kind === 'music' ? '#22d3ee' : '#f59e0b'), h('span', { style: css.mono }, i.artifact_id),
         h('span', { style: css.muted }, [fmtTime(i.duration), i.worker || i.model, i.operation, i.seed != null ? 'seed ' + i.seed : null,
           i.created_at ? new Date(i.created_at).toLocaleString() : null, i.reference_used ? 'from reference audio' : null].filter(Boolean).join(' · '))),
-      this._mediaEl(base + i.url, i.kind === 'video' ? 'video' : 'audio'),
+      this._mediaEl(base + i.url, i.kind === 'video' ? 'video' : 'audio', 'library-' + i.artifact_id, i.kind === 'video' ? null : { kind: 'audio', id: i.artifact_id }),
       h('div', { style: css.row }, btn(i.keeper ? '★ Keeper' : '☆ Keeper', () => this.toggleMediaKeeper(i.artifact_id, !i.keeper), '#fbbf24'),
         h('a', { href: base + i.download_url, style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 4px' } }, 'Download')));
   };
@@ -421,11 +428,13 @@
   P.componentWillUnmount = function () { clearInterval(this._resTimer); _unmount.call(this); };
 
   const _setScreen = P.setScreen;
-  P.setScreen = function (s) {
-    _setScreen.call(this, s);
+  P.setScreen = function (s, opts) {
+    const accepted = _setScreen.call(this, s, opts);
+    if (accepted === false) return false;
     if (s === 'library') this.loadMediaLibrary();
     if (['voice', 'music', 'video', 'system', 'models'].includes(s)) this.loadWorkers();
     if (['voice', 'music'].includes(s)) this.loadMediaLibrary(s);
+    return accepted;
   };
 
   const _renderVals = P.renderVals;

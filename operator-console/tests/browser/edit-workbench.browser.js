@@ -28,6 +28,7 @@ const CATALOG = [
 async function newPage(browser, base, { width = 1280, height = 900, legacyRecipes } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height } });
   const page = await ctx.newPage();
+  await page.addInitScript(() => { window.__unhandledRejections = []; addEventListener('unhandledrejection', e => window.__unhandledRejections.push(String(e.reason))); });
   await installModelSnapshots(page, base);
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
@@ -100,10 +101,143 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
     await test('privacy on: stored prompt is recalled; different image → its own values', async () => {
       const { page, ctx } = await newPage(browser, srv.base);
       await openEdit(page, 'fx-portrait.png', 'img2img');
-      assert.equal(await page.inputValue('[data-edit-prompt]'), 'a saved prompt');
+      await page.waitForFunction(() => document.querySelector('[data-edit-prompt]')?.value === 'a saved prompt');
       assert.equal(await page.inputValue('[data-edit-negative]'), 'saved negative');
       assert.equal(await page.evaluate(() => __dex.ed.state.params.seed), 2222);
       await ctx.close();
+    });
+
+    await test('dirty Edit draft survives cancelled navigation and source replacement; accepted replacement restores exact source metadata', async () => {
+      const { page, ctx } = await newPage(browser, srv.base);
+      try {
+      await openEdit(page, 'fx-landscape.png', 'inpaint');
+      const prompt = page.locator('[data-edit-prompt]');
+      await prompt.fill('unsaved edit prompt must survive');
+      await prompt.evaluate(e => e.setSelectionRange(4, 13, 'forward'));
+      await page.evaluate(() => { __dex.ed.state.params.steps = 47; __dex._maskFillRect(12, 14, 30, 24); });
+      const before = await page.evaluate(() => ({
+        id: __dex.ed.source.imageId, prompt: __dex.ed.state.prompt, steps: __dex.ed.state.params.steps,
+        mask: __dex._maskDataUrl(), selection: __dex.state.activeAssetSelection,
+      }));
+      assert.equal(before.id, 'fx-landscape.png');
+      assert.equal(before.mask.includes('base64,'), true);
+      assert.equal(before.selection.kind, 'image');
+
+      let dialogPromise = page.waitForEvent('dialog');
+      const leavePromise = page.evaluate(() => __dex.setScreen('library'));
+      let dialog = await dialogPromise; assert.match(dialog.message(), /unsaved Edit changes/); await dialog.dismiss();
+      await leavePromise;
+      assert.equal(await page.evaluate(() => __dex.state.screens[__dex.state.version]), 'edit');
+      assert.equal(await page.evaluate(() => __dex.state.screens[__dex.state.version]), 'edit');
+      assert.deepEqual(await page.evaluate(() => ({ id: __dex.ed.source.imageId, prompt: __dex.ed.state.prompt, steps: __dex.ed.state.params.steps, mask: __dex._maskDataUrl() })), {
+        id: before.id, prompt: before.prompt, steps: before.steps, mask: before.mask,
+      });
+      assert.deepEqual(await prompt.evaluate(e => ({ focused: document.activeElement === e, start: e.selectionStart, end: e.selectionEnd, direction: e.selectionDirection })), { focused: true, start: 4, end: 13, direction: 'forward' });
+      await page.screenshot({ path: outPath('dirty-edit-navigation-cancelled.png') });
+
+      dialogPromise = page.waitForEvent('dialog');
+      const declinedOpen = page.evaluate(() => __dex.openImageInEdit('fx-portrait.png', 'img2img'));
+      dialog = await dialogPromise; assert.match(dialog.message(), /Discard unsaved Edit changes/); await dialog.dismiss();
+      assert.equal(await declinedOpen, false);
+      assert.equal(await page.evaluate(() => __dex.ed.source.imageId), 'fx-landscape.png');
+      assert.equal(await page.inputValue('[data-edit-prompt]'), before.prompt);
+
+      dialogPromise = page.waitForEvent('dialog');
+      const acceptedOpen = page.evaluate(() => __dex.openImageInEdit('fx-portrait.png', 'img2img'));
+      dialog = await dialogPromise; await dialog.accept();
+      assert.equal(await acceptedOpen, true);
+      const loaded = await page.evaluate(() => ({ source: __dex.ed.source.imageId, parent: __dex.ed.source.parent, width: __dex.ed.source.width, height: __dex.ed.source.height, seed: __dex.ed.state.params.seed, selection: __dex.state.activeAssetSelection }));
+      assert.deepEqual(loaded, { source: 'fx-portrait.png', parent: null, width: 400, height: 800, seed: 2222, selection: { kind: 'image', id: 'fx-portrait.png' } });
+      assert.equal(await page.inputValue('[data-edit-prompt]'), 'a saved prompt');
+      assert.equal(await page.evaluate(() => __dex._editDraftIsDirty()), false);
+      } finally { await ctx.close(); }
+    });
+
+    await test('browser Back and reload use the native unsaved-work guard without clearing Edit state', async () => {
+      const { page, ctx } = await newPage(browser, srv.base);
+      try {
+        await openEdit(page, 'fx-landscape.png', 'img2img');
+        await page.fill('[data-edit-prompt]', 'keep this draft across a declined browser exit');
+        const dialogPromise = page.waitForEvent('dialog', { timeout: 4000 });
+        const backPromise = page.goBack({ timeout: 4000 }).catch(() => null);
+        const dialog = await dialogPromise;
+        assert.equal(dialog.type(), 'beforeunload');
+        await dialog.dismiss(); await backPromise;
+        await page.waitForTimeout(100);
+        assert.match(page.url(), /\/dexdiffusion\//);
+        assert.equal(await page.inputValue('[data-edit-prompt]'), 'keep this draft across a declined browser exit');
+        assert.equal(await page.evaluate(() => __dex.ed.source.imageId), 'fx-landscape.png');
+
+        const reloadDialogPromise = page.waitForEvent('dialog', { timeout: 4000 });
+        const reloadPromise = page.reload({ timeout: 4000 }).catch(() => null);
+        const reloadDialog = await reloadDialogPromise;
+        assert.equal(reloadDialog.type(), 'beforeunload');
+        await reloadDialog.dismiss(); await reloadPromise;
+        await page.waitForTimeout(100);
+        assert.equal(await page.inputValue('[data-edit-prompt]'), 'keep this draft across a declined browser exit');
+      } finally { await ctx.close(); }
+    });
+
+    await test('stale asynchronous source selection cannot override the newest canonical asset', async () => {
+      const { page, ctx } = await newPage(browser, srv.base);
+      try {
+        let release, startedResolve;
+        const started = new Promise(resolve => { startedResolve = resolve; });
+        const held = new Promise(resolve => { release = resolve; });
+        await page.route('**/api/images/fx-landscape.png/meta', async route => { startedResolve(); await held; await route.continue(); });
+        const stale = page.evaluate(() => __dex.openImageInEdit('fx-landscape.png', 'img2img'));
+        await started;
+        const latest = page.evaluate(() => __dex.openImageInEdit('fx-portrait.png', 'img2img'));
+        assert.equal(await latest, true);
+        release();
+        assert.equal(await stale, false, 'superseded source request is discarded');
+        const state = await page.evaluate(() => ({ id: __dex.ed.source.imageId, selection: __dex.state.activeAssetSelection, seed: __dex.ed.state.params.seed }));
+        assert.deepEqual(state, { id: 'fx-portrait.png', selection: { kind: 'image', id: 'fx-portrait.png' }, seed: 2222 });
+        assert.deepEqual(await page.evaluate(() => window.__unhandledRejections), []);
+      } finally { await ctx.close(); }
+    });
+
+    await test('Library/Create/Edit/Compare/Reuse Settings keep the exact typed asset and guard prompt replacement', async () => {
+      const { page, ctx } = await newPage(browser, srv.base);
+      try {
+        await page.evaluate(() => __dex.setScreen('library'));
+        await page.waitForSelector('[aria-label="Select fx-landscape.png for details"]');
+        await page.getByRole('button', { name: 'Select fx-landscape.png for details' }).click();
+        await page.waitForFunction(() => __dex.state.activeAssetSelection?.id === 'fx-landscape.png');
+        assert.equal(await page.evaluate(() => __dex.sendToEdit('fx-landscape.png', 'inpaint')), true, 'Library to Edit handoff should succeed');
+        await page.waitForFunction(() => __dex.ed.source?.imageId === 'fx-landscape.png');
+        assert.deepEqual(await page.evaluate(() => ({ selection: __dex.state.activeAssetSelection, dimensions: [__dex.ed.source.width, __dex.ed.source.height], parent: __dex.ed.source.parent })), {
+          selection: { kind: 'image', id: 'fx-landscape.png' }, dimensions: [800, 500], parent: null,
+        });
+
+        assert.equal(await page.evaluate(() => __dex.setScreen('library')), true, 'clean Edit to Library navigation should succeed');
+        await page.evaluate(async () => { __dex.toggleCompare('fx-landscape.png'); __dex.toggleCompare('fx-portrait.png'); await __dex.loadCompare(); });
+        await page.waitForFunction(() => __dex._ws().compareItems.length === 2);
+        assert.deepEqual(await page.evaluate(() => __dex._ws().compareItems.map(i => i.id)), ['fx-landscape.png', 'fx-portrait.png']);
+
+        await page.evaluate(() => { __dex.wsSet({ results: [{ imageId: 'fx-portrait.png', imageUrl: '/api/images/fx-portrait.png', seed: 2222, target: 'sd15' }], activeIndex: 0 }); __dex.setScreen('create'); });
+        assert.equal(await page.evaluate(() => __dex.sendActiveResultToEdit('img2img')), true, 'Create result to Edit handoff should succeed');
+        await page.waitForFunction(() => __dex.ed.source?.imageId === 'fx-portrait.png');
+        assert.deepEqual(await page.evaluate(() => __dex.state.activeAssetSelection), { kind: 'image', id: 'fx-portrait.png' });
+
+        await page.evaluate(() => { __dex.setScreen('create'); __dex.setState({ prompt: 'keep this unsaved Create prompt', target: 'flux2-klein-4b', seed: '8080' }); });
+        await page.route('**/api/pnginfo', route => route.fulfill({ json: { create: { settings: { target: 'sd15', prompt: 'restored source prompt', negPrompt: 'restored negative', steps: 33, cfg: 5.8, width: 640, height: 512, seed: 9090, sampler: 'euler_a' } } } }));
+        let dialogPromise = page.waitForEvent('dialog');
+        const refused = page.evaluate(() => __dex.reuseSettings('fx-portrait.png'));
+        const dialog = await dialogPromise; assert.match(dialog.message(), /Replace the unsaved Create prompt/); await dialog.dismiss();
+        assert.equal(await refused, false);
+        assert.deepEqual(await page.evaluate(() => ({ prompt: __dex.state.prompt, target: __dex.state.target, seed: __dex.state.seed, selection: __dex.state.activeAssetSelection })), {
+          prompt: 'keep this unsaved Create prompt', target: 'flux2-klein-4b', seed: '8080', selection: { kind: 'image', id: 'fx-portrait.png' },
+        });
+
+        dialogPromise = page.waitForEvent('dialog');
+        const accepted = page.evaluate(() => __dex.reuseSettings('fx-portrait.png'));
+        const acceptedDialog = await dialogPromise; await acceptedDialog.accept();
+        assert.equal(await accepted, true, 'accepted Reuse Settings should apply');
+        assert.deepEqual(await page.evaluate(() => ({ screen: __dex.state.screens[__dex.state.version], prompt: __dex.state.prompt, negative: __dex.state.negPrompt, target: __dex.state.target, seed: __dex.state.seed, steps: __dex.state.steps, size: [__dex.state.width, __dex.state.height], selection: __dex.state.activeAssetSelection })), {
+          screen: 'create', prompt: 'restored source prompt', negative: 'restored negative', target: 'sd15', seed: '9090', steps: 33, size: [640, 512], selection: { kind: 'image', id: 'fx-portrait.png' },
+        });
+      } finally { await ctx.close(); }
     });
 
     await test('img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result', async () => {
@@ -215,6 +349,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       assert.equal(await page.$('[data-lightbox]'), null, 'painting click must not open fullscreen');
       assert.ok((await page.evaluate(() => __dex.ed.maskInfo && __dex.ed.maskInfo.coverage)) > 0, 'but it painted');
       // library thumbnail
+      page.on('dialog', dialog => dialog.accept()); // This journey intentionally accepts leaving the dirty Edit draft.
       await page.evaluate(() => __dex.setScreen('library')); await page.waitForSelector('[data-lib-thumb] img');
       await page.click('[data-lib-thumb="fx-landscape.png"] img'); await page.waitForSelector('[data-lightbox]');
       assert.ok((await page.innerText('[data-lightbox]')).includes('→ Inpaint'), 'viewer offers Edit actions for this exact image');

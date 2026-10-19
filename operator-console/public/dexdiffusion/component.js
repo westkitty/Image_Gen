@@ -7,6 +7,7 @@ class Component extends DCLogic {
   state = {
     version: (() => { const v = Number(localStorage.getItem('dex_version')); return v === 1 || v === 2 || v === 3 || v === 4 ? v : 4; })(),
     screens: (() => { let s = 'create'; try { s = sessionStorage.getItem('dex_screen') || 'create'; } catch {} let ca = 'workstation'; try { ca = sessionStorage.getItem('dex_concept_screen') || 'workstation'; } catch {} return { 1: s, 2: s, 3: s, 4: ca }; })(),
+    activeAssetSelection: null,
     // Create
     target: 'sd15',
     prompt: '', negPrompt: '',
@@ -63,7 +64,7 @@ class Component extends DCLogic {
     runs: (() => { try { return JSON.parse(localStorage.getItem('dex_runs') || '[]'); } catch { return []; } })(),
     selectedRunId: '', selectedRunDetail: null, loadingRunDetail: false, runSearch: '',
     worldProjects: [], worldLoading: false, worldSourceArtifact: '', worldWorkerStatus: null,
-    asset3dWorkerStatus: null, asset3dSourceArtifact: '', asset3dMode: 'mesh', asset3dLoading: false, asset3dJob: null,
+    asset3dWorkerStatus: null, asset3dSourceArtifact: '', asset3dPreviewFailedId: '', asset3dMode: 'mesh', asset3dLoading: false, asset3dJob: null,
     assetQuery: '', serverStatusSummary: '', lastValidation: '',
     savePrompts: localStorage.getItem('dex_save_prompts') === 'true',
     toasts: [],
@@ -74,7 +75,13 @@ class Component extends DCLogic {
 
   componentDidMount() {
     this._keyHandler = (e) => this.onKeydown(e);
+    this._beforeUnloadHandler = (e) => {
+      if (!this._hasUnsavedWorkspaceWork()) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
     window.addEventListener('keydown', this._keyHandler);
+    window.addEventListener('beforeunload', this._beforeUnloadHandler);
     this.pingBackend();
     this._pingTimer = setInterval(() => this.pingBackend(), 20000);
     this.loadRuns();
@@ -92,6 +99,110 @@ class Component extends DCLogic {
     for (const controller of this._jobWaitControllers || []) controller.abort();
     this._detailerDetectController?.abort();
     window.removeEventListener('keydown', this._keyHandler);
+    window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+  }
+
+  _workspaceForScreen(screen) {
+    if (screen === 'create' || screen === 'batch') return 'generate';
+    if (screen === 'edit' || screen === 'enhance') return 'edit';
+    if (screen === 'library') return 'media';
+    if (screen === 'models' || screen === 'system') return 'settings';
+    return screen || 'workstation';
+  }
+
+  _unsavedWorkspaceWork() {
+    const edDirty = typeof this._editDraftIsDirty === 'function' && this._editDraftIsDirty();
+    if (edDirty) return { workspace: 'edit', label: 'unsaved Edit changes' };
+    const dm = typeof this._dm === 'function' ? this._dm() : null;
+    const dmText = this._dmText || {};
+    if (dm && ((dm.current && !dm.current.saved) || Object.keys(dm.pending || {}).length || this._dmFlushPromise || this._dramaSavePromise || String(dmText.script || '').trim() || String(dmText.title || '').trim())) {
+      return { workspace: 'drama', label: 'Drama project or script' };
+    }
+    const prompt = String(this.state.prompt || '').trim() || String(this.state.negPrompt || '').trim();
+    if (prompt) return { workspace: 'generate', label: 'Create prompt' };
+    return null;
+  }
+
+  _hasUnsavedWorkspaceWork() { return !!this._unsavedWorkspaceWork(); }
+
+  _confirmWorkspaceLeave(targetScreen) {
+    const current = this.state.screens[this.state.version];
+    const dirty = this._unsavedWorkspaceWork();
+    if (!dirty || this._workspaceForScreen(current) !== dirty.workspace || this._workspaceForScreen(current) === this._workspaceForScreen(targetScreen)) return true;
+    if (dirty.workspace === 'drama' && this._canSaveDramaBeforeLeaving()) {
+      this._showDramaLeaveDialog(targetScreen);
+      return false;
+    }
+    return window.confirm(`${dirty.label} are not saved to a durable project. Switch workspaces? This draft stays in memory while DexDiffusion remains open; closing or reloading the page loses it.`);
+  }
+
+  _canSaveDramaBeforeLeaving() {
+    const dm = this.dm, text = this._dmText || {};
+    if (!dm || !dm.current || !dm.current.id || typeof this.dramaSave !== 'function') return false;
+    // Save project persists parsed project state. A modified script/title still in
+    // the text editor has not been applied to that project and must not be implied saved.
+    return (!String(text.script || '').trim() || text.script === dm.current.source_script) &&
+      (!String(text.title || '').trim() || text.title === dm.current.title);
+  }
+
+  _showDramaLeaveDialog(targetScreen) {
+    if (this._pendingWorkspaceNavigation) return;
+    const opener = document.activeElement;
+    const dialog = document.createElement('section');
+    dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'dex-leave-title'); dialog.dataset.workspaceLeaveDialog = 'drama';
+    Object.assign(dialog.style, { position: 'fixed', zIndex: '2147483000', inset: '0', display: 'grid', placeItems: 'center', margin: '0', width: '100vw', height: '100vh', padding: '16px', boxSizing: 'border-box', border: '0', background: '#020617c9', color: '#e5e7eb', font: '14px system-ui' });
+    const panel = document.createElement('div');
+    Object.assign(panel.style, { width: 'min(460px, calc(100vw - 32px))', padding: '22px', borderRadius: '14px', border: '1px solid rgba(148,163,184,.35)', background: '#111827', boxShadow: '0 24px 80px #000b' });
+    const title = document.createElement('h2'); title.id = 'dex-leave-title'; title.textContent = 'Unsaved Drama project';
+    const message = document.createElement('p'); message.textContent = 'Save and continue waits for the project save to succeed. You can also stay here or leave the draft in memory without saving it.';
+    const error = document.createElement('p'); error.setAttribute('role', 'alert'); error.hidden = true; Object.assign(error.style, { color: '#fca5a5' });
+    const actions = document.createElement('div'); Object.assign(actions.style, { display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'flex-end', marginTop: '18px' });
+    const button = (label, action, primary) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; Object.assign(b.style, { minHeight: '40px', padding: '8px 12px', borderRadius: '8px', border: '1px solid #64748b', background: primary ? '#65d66e' : '#1f2937', color: primary ? '#07120a' : '#e5e7eb', fontWeight: '700', cursor: 'pointer' }); b.addEventListener('click', action); return b; };
+    const stay = button('Stay', () => this._finishDramaLeaveDialog(false), false);
+    const leave = button('Leave draft in memory', () => this._finishDramaLeaveDialog(true), false);
+    const save = button('Save and continue', async () => {
+      if (this._pendingWorkspaceNavigation?.saving) return;
+      this._pendingWorkspaceNavigation.saving = true; [stay, leave, save].forEach(b => b.disabled = true);
+      let ok = false;
+      try { ok = await this.dramaSave(true); } catch (e) { error.textContent = 'Save did not complete: ' + (e && e.message || 'unexpected error') + '. The current workspace and draft are unchanged.'; error.hidden = false; }
+      if (ok) { this._pendingWorkspaceNavigation.saving = false; this._finishDramaLeaveDialog(true); return; }
+      if (!this._pendingWorkspaceNavigation) return;
+      this._pendingWorkspaceNavigation.saving = false; [stay, leave, save].forEach(b => b.disabled = false);
+      error.textContent = 'Save did not complete. The current workspace and draft are unchanged. Resolve the error and retry, or stay.'; error.hidden = false;
+      save.focus();
+    }, true);
+    actions.append(stay, leave, save); panel.append(title, message, error, actions); dialog.append(panel);
+    this._pendingWorkspaceNavigation = { targetScreen, opener, dialog };
+    dialog.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !this._pendingWorkspaceNavigation?.saving) { e.preventDefault(); this._finishDramaLeaveDialog(false); return; }
+      if (e.key === 'Tab') {
+        const controls = [stay, leave, save].filter(b => !b.disabled), first = controls[0], last = controls[controls.length - 1];
+        if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { e.preventDefault(); first?.focus(); }
+      }
+    });
+    document.body.appendChild(dialog); save.focus();
+  }
+
+  _finishDramaLeaveDialog(continueNavigation) {
+    const pending = this._pendingWorkspaceNavigation;
+    if (!pending || pending.saving) return false;
+    this._pendingWorkspaceNavigation = null;
+    pending.dialog.remove();
+    if (continueNavigation) this.setScreen(pending.targetScreen, { skipUnsavedGuard: true });
+    else if (pending.opener && pending.opener.isConnected) pending.opener.focus();
+    return true;
+  }
+
+  /** @param {{kind:'image'|'audio'|'voice-profile'|'drama-project'|'asset3d'|'world-project',id:string}|null} selection */
+  setActiveAssetSelection(selection) {
+    if (selection == null) { this.setState({ activeAssetSelection: null }); return true; }
+    const kinds = new Set(['image', 'audio', 'voice-profile', 'drama-project', 'asset3d', 'world-project']);
+    const kind = String(selection.kind || ''), id = String(selection.id || '').trim();
+    if (!kinds.has(kind) || !id) return false;
+    this.setState({ activeAssetSelection: Object.freeze({ kind, id }) });
+    return true;
   }
 
   onKeydown(e) {
@@ -231,6 +342,7 @@ class Component extends DCLogic {
       const result = await r.json().catch(() => ({}));
       if (!r.ok) { this.toast(result.error || '3D request rejected', '#ef4444'); this.setState({ asset3dLoading: false }); return; }
       this.setState({ asset3dLoading: false, asset3dJob: result });
+      if (mode !== 'quick3d' && result.artifacts_detail && result.artifacts_detail[0] && result.artifacts_detail[0].artifact_id) this.setActiveAssetSelection({ kind: 'asset3d', id: result.artifacts_detail[0].artifact_id });
       this.toast(mode === 'quick3d' ? 'Quick Geometry queued' : (mode === 'textured' ? 'Textured Asset queued' : 'Mesh queued'), '#38bdf8');
       await this.loadWorldProjects();
       if (result.job_id) this.pollAsset3dJob(result.job_id);
@@ -253,7 +365,7 @@ class Component extends DCLogic {
     }, 1200);
   }
 
-  openAsset3dViewer(artifactId) { window.open('/dexdiffusion/asset3d-viewer.html?artifact=' + encodeURIComponent(artifactId), '_blank', 'noopener'); }
+  openAsset3dViewer(artifactId) { this.setActiveAssetSelection({ kind: 'asset3d', id: artifactId }); window.open('/dexdiffusion/asset3d-viewer.html?artifact=' + encodeURIComponent(artifactId), '_blank', 'noopener'); }
 
   openAsset3dInBlender(artifactId) {
     fetch(this.state.backendUrl + '/api/3d/open-in-blender', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ artifact_id: artifactId }) })
@@ -269,6 +381,7 @@ class Component extends DCLogic {
       const r = await fetch(this.state.backendUrl + '/api/world/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, sourceArtifactId: source, parameters: { seed: 42 } }) });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { this.toast(body.error || 'World request rejected', '#ef4444'); this.setState({ worldLoading: false }); return; }
+      if (body.id) this.setActiveAssetSelection({ kind: 'world-project', id: body.id });
       this.setScreen('world');
       this.toast(mode === 'quick3d' ? 'Quick 3D queued' : 'Complete 360 recorded as blocked', mode === 'quick3d' ? '#38bdf8' : '#fbbf24');
       await this.loadWorldProjects();
@@ -292,7 +405,7 @@ class Component extends DCLogic {
     }, 1200);
   }
 
-  openWorldViewer(projectId) { window.open('/dexdiffusion/world-viewer.html?project=' + encodeURIComponent(projectId), '_blank', 'noopener'); }
+  openWorldViewer(projectId) { this.setActiveAssetSelection({ kind: 'world-project', id: projectId }); window.open('/dexdiffusion/world-viewer.html?project=' + encodeURIComponent(projectId), '_blank', 'noopener'); }
 
   buildWorldWorkspace() {
     const h = React.createElement;
@@ -348,8 +461,10 @@ class Component extends DCLogic {
         h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(260px,1fr) minmax(180px,280px)', gap: 14, alignItems: 'start' } },
           h('div', null,
             h('div', { style: { color: '#6090a8', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 5 } }, 'Source · canonical image'),
-            h('select', { value: selected, onChange: e => this.setState({ asset3dSourceArtifact: e.target.value }), style: { width: '100%', border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
-            sourcePreview ? h('img', { src: sourcePreview, alt: 'Selected canonical source', style: { width: 150, height: 150, objectFit: 'cover', borderRadius: 8, marginTop: 10, border: '1px solid rgba(148,163,184,.16)' } }) : null
+            h('select', { value: selected, onChange: e => this.setState({ asset3dSourceArtifact: e.target.value, asset3dPreviewFailedId: '' }), style: { width: '100%', border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
+            sourcePreview ? (s.asset3dPreviewFailedId === selected
+              ? h('div', { role: 'status', style: { display: 'grid', placeItems: 'center', width: 150, height: 150, boxSizing: 'border-box', marginTop: 10, padding: 12, border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, background: '#0d1823', color: '#91a2b4', fontSize: 11, lineHeight: 1.45, textAlign: 'center' } }, 'Source preview unavailable. Verify the canonical image in Library before starting a 3D job.')
+              : h('img', { src: sourcePreview, alt: 'Selected canonical source preview', onError: () => this.setState({ asset3dPreviewFailedId: selected }), style: { width: 150, height: 150, objectFit: 'cover', borderRadius: 8, marginTop: 10, border: '1px solid rgba(148,163,184,.16)' } })) : null
           ),
           h('div', null,
             h('div', { style: { color: '#6090a8', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 5 } }, 'Mode'),
@@ -699,7 +814,14 @@ class Component extends DCLogic {
   }
 
   setVersion(v) { try { localStorage.setItem('dex_version', String(v)); } catch {} this.setState({ version: v }); }
-  setScreen(s) { const { version, screens } = this.state; try { sessionStorage.setItem(version === 4 ? 'dex_concept_screen' : 'dex_screen', s); } catch {} this.setState({ screens: { ...screens, [version]: s } }); }
+  setScreen(s, opts) {
+    if (this._pendingWorkspaceNavigation && !(opts && opts.skipUnsavedGuard)) return false;
+    if (!(opts && opts.skipUnsavedGuard) && !this._confirmWorkspaceLeave(s)) return false;
+    const { version, screens } = this.state;
+    try { sessionStorage.setItem(version === 4 ? 'dex_concept_screen' : 'dex_screen', s); } catch {}
+    this.setState({ screens: { ...screens, [version]: s } });
+    return true;
+  }
 
   // ── Models — load from /api/capabilities & /api/models ───────
   async loadModels() {
@@ -729,7 +851,8 @@ class Component extends DCLogic {
         this.setState({ modelCards: data.models || [] });
       }
       this.setState({ loadingCheckpoints: false, loadingModelCards: false });
-      this.toast('Loaded models & capabilities', '#38bdf8');
+      // Successful discovery is already reflected in the model controls. Keep
+      // the transient toast for failures and user actions, not routine startup.
     } catch(e) {
       this.setState({ loadingCheckpoints: false, loadingModelCards: false });
       this.toast('Cannot reach backend', '#ef4444');

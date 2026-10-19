@@ -19,7 +19,7 @@ async function newPage(browser, base, ctxOpts) {
   const ctx = await browser.newContext(Object.assign({ viewport: { width: 1280, height: 900 } }, ctxOpts));
   const page = await ctx.newPage();
   const errors = []; page.on('pageerror', e => errors.push(String(e)));
-  const reqs = { thumbs: 0, full: 0, list: [] };
+  const reqs = { thumbs: 0, thumbIds: [], full: 0, list: [] };
   await installModelSnapshots(page, base);
   await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: [], vaes: [], embeddings: { count: 0, items: [] } } }));
   await page.route('**/api/library/images**', r => {
@@ -30,7 +30,7 @@ async function newPage(browser, base, ctxOpts) {
     reqs.list.push(u.search);
     r.fulfill({ json: { filter, total: ids.length, offset, limit, items: ids.slice(offset, offset + limit) } });
   });
-  await page.route(/\/api\/thumbnails\/[^/]+$/, r => { reqs.thumbs++; r.fulfill({ contentType: 'image/png', body: PNG }); });
+  await page.route(/\/api\/thumbnails\/[^/]+$/, r => { reqs.thumbs++; reqs.thumbIds.push(decodeURIComponent(new URL(r.request().url()).pathname.split('/').pop())); r.fulfill({ contentType: 'image/png', body: PNG }); });
   await page.route(/\/api\/images\/[^/]+$/, r => { if (decodeURIComponent(r.request().url()).includes(BAD)) return r.fulfill({ status: 404, body: 'gone' }); reqs.full++; r.fulfill({ contentType: 'image/png', body: PNG }); });
   await page.route(/\/api\/images\/[^/]+\/export$/, r => r.fulfill({ contentType: 'image/png', headers: { 'Content-Disposition': 'attachment; filename="x.png"' }, body: PNG }));
   await page.route(/\/api\/images\/[^/]+\/meta$/, r => r.fulfill({ status: 404, json: { error: 'n/a' } }));
@@ -100,7 +100,9 @@ const counter = page => page.locator('[data-lightbox-count]').innerText();
       const { page, ctx, reqs } = await newPage(browser, srv.base);
       await pick(page, 'rows', 4); await page.waitForTimeout(400);
       assert.ok(reqs.thumbs > 0 && reqs.thumbs <= 60, 'thumbnails fetched: ' + reqs.thumbs);
+      assert.equal(new Set(reqs.thumbIds).size, reqs.thumbs, 'each visible first-page image requests its thumbnail once');
       assert.equal(reqs.full, 0, 'no full-size fetch before a viewer is opened');
+      console.log('Library thumbnail trace:', JSON.stringify({ count: reqs.thumbs, ids: reqs.thumbIds }));
       await ctx.close();
     });
 

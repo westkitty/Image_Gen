@@ -70,6 +70,36 @@
     while (this._snaps.size > 200) this._snaps.delete(this._snaps.keys().next().value);
   };
 
+  // A private, in-memory comparison baseline. Prompt text and mask bytes are never
+  // written to storage by this guard.
+  P._editDraftSnapshot = function () {
+    const ed = this._ed();
+    if (!ed.source) return null;
+    const clone = value => value == null ? value : JSON.parse(JSON.stringify(value));
+    const snapshot = {
+      source: ed.source.key || ed.source.imageId || ed.source.stagedId || null,
+      operation: ed.op,
+      state: clone(ed.state),
+      outpaint: clone(ed.outpaint), outpaintStrength: ed.outpaintStrength, ext: ed.ext,
+      prep: ed.prep, resize: clone(ed.resize), exactSteps: ed.exactSteps,
+      inpaint: clone(ed.inpaint), script: clone(ed.script || { kind: '', opts: {} }),
+      mask: this._mask && this._mask.key === ed.source.key ? this._maskDataUrl() : null,
+    };
+    const stable = value => Array.isArray(value) ? value.map(stable)
+      : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]))
+      : value;
+    return JSON.stringify(stable(snapshot));
+  };
+  P._editDraftIsDirty = function () {
+    if (!this._ed().source || this._editDraftBaseline == null) return false;
+    return this._editDraftSnapshot() !== this._editDraftBaseline;
+  };
+  P._confirmEditDraftDiscard = function (nextAction) {
+    if (!this._editDraftIsDirty()) return true;
+    const source = this._ed().source;
+    return window.confirm(`Discard unsaved Edit changes for ${source.imageId || 'this temporary source'} and ${nextAction}? The source image itself remains unchanged.`);
+  };
+
   // ── authoritative entry point ─────────────────────────────────────────
   // Resolve the exact image, load ITS generation record, populate the shared Edit
   // state, make sure the pixels load, then show what was recalled. Fails visibly.
@@ -77,12 +107,16 @@
     const o = opts || {};
     const ed = this._ed();
     const op = OPS.some(x => x[0] === mode) ? mode : (ed.op || 'img2img');
-    if (!o.quiet) this.setScreen('edit');
-    this.edSet({ loading: imageId, error: null, op, run: { status: 'idle' }, attempt: null });
+    const replacing = !!(ed.source && (ed.source.imageId || ed.source.key) !== imageId);
+    if (replacing && !this._confirmEditDraftDiscard('open ' + imageId)) return false;
+    if (!o.quiet && !this._confirmWorkspaceLeave('edit')) return false;
+    const acceptedDraft = replacing ? this._editDraftSnapshot() : null;
+    const requestId = this._editOpenRequestId = (this._editOpenRequestId || 0) + 1;
     const r = await this._api('/api/images/' + encodeURIComponent(imageId) + '/meta');
+    if (requestId !== this._editOpenRequestId) return false;
     if (!r.ok) {
-      const message = 'Could not load the source image record (' + (r.data && r.data.error || ('HTTP ' + r.status)) + '). Nothing was substituted.';
-      this.edSet({ loading: null, error: { stage: 'load-source', message, imageId } });
+      const message = 'Could not load the source image record (' + (r.data && r.data.error || ('HTTP ' + r.status)) + '). The current Edit draft was preserved.';
+      if (!ed.source) this.edSet({ error: { stage: 'load-source', message, imageId } });
       this.toast(message, '#ef4444');
       return false;
     }
@@ -91,9 +125,14 @@
     const st = E.applyRecallToEdit(recall, { snapshot: this._snaps && this._snaps.get(imageId), op, targets: this._editTargets().concat(this.state.modelTargets || []), activeSecondary: this._activeSecondary(), editWorker: this.state.capabilityData && this.state.capabilityData.editWorkerTarget });
     const url = this.state.backendUrl + view.url;
     const loaded = await new Promise(res => { const im = new Image(); im.onload = () => res(true); im.onerror = () => res(false); im.src = url; });
+    if (requestId !== this._editOpenRequestId) return false;
     if (!loaded) {
-      this.edSet({ loading: null, error: { stage: 'load-pixels', message: 'The source image file could not be loaded: ' + view.id, imageId } });
+      if (!ed.source) this.edSet({ error: { stage: 'load-pixels', message: 'The source image file could not be loaded: ' + view.id, imageId } });
       this.toast('Source image failed to load', '#ef4444');
+      return false;
+    }
+    if (acceptedDraft !== null && this._editDraftSnapshot() !== acceptedDraft) {
+      this.toast('Edit changed while the new source was loading. The current draft was kept; review it and retry the source change.', '#fbbf24');
       return false;
     }
     const src = { key: imageId, imageId, staged: false, url: view.url, width: view.width, height: view.height, meta: view.meta, parent: view.parent, keeper: view.keeper, recall };
@@ -101,6 +140,9 @@
     const ws = this._ws();
     this.wsSet({ editSourceId: imageId, editSource: view, editOriginalId: o.chain && ws.editOriginalId ? ws.editOriginalId : imageId, editFocusChain: !!o.chain });
     this.edSet({ loading: null, error: null, source: src, state: st, op, run: { status: 'idle' }, log: null, maskInfo: null });
+    this._editDraftBaseline = this._editDraftSnapshot();
+    this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'image', id: imageId });
+    if (!o.quiet) this.setScreen('edit', { skipUnsavedGuard: true });
     this.loadEditAssets();
     if (!o.quiet) this.toast('Loaded ' + short(imageId) + (st.recalledFrom.recorded ? ' with its recorded settings' : ' (no recorded settings)'), '#a78bfa');
     return true;
@@ -111,7 +153,7 @@
   P.sendActiveResultToEdit = function (op) {
     const a = this._activeResult && this._activeResult();
     if (!a || !a.imageId) { this.toast('Generate or select an image first — nothing to send to Edit yet.', '#fbbf24'); return; }
-    this.openImageInEdit(a.imageId, op || 'img2img');
+    return this.openImageInEdit(a.imageId, op || 'img2img');
   };
   P._ensureEditSource = async function () {
     const ed = this._ed(), ws = this._ws();
@@ -125,6 +167,7 @@
   P.importEditSource = async function (file) {
     if (!file) return;
     if (file.size > 25 * 1024 * 1024) { this.toast('Image too large (25 MB max)', '#ef4444'); return; }
+    if (!this._confirmEditDraftDiscard('import this image') || !this._confirmWorkspaceLeave('edit')) return false;
     const r = await fetch(this.state.backendUrl + '/api/staging?accept=image', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
     const d = await r.json().catch(() => ({ error: r.statusText }));
     if (!r.ok) { this.toast(d.error || 'Import rejected', '#ef4444'); return; }
@@ -134,8 +177,10 @@
     this._maskFor(src, true);
     this.wsSet({ editSourceId: 'staged:' + d.id, editSource: Object.assign({ id: d.id, stagedId: d.id, staged: true, meta: src.meta }, { url: d.url, width: d.width, height: d.height }), editOriginalId: 'staged:' + d.id });
     st.params.width = d.width; st.params.height = d.height;
-    this.setScreen('edit');
+    this._editDraftBaseline = null;
+    this.setScreen('edit', { skipUnsavedGuard: true });
     this.edSet({ source: src, state: st, loading: null, error: null, run: { status: 'idle' }, maskInfo: null });
+    this._editDraftBaseline = this._editDraftSnapshot();
     this.toast('Imported ' + d.width + '×' + d.height + ' as a temporary source', '#a78bfa');
   };
 
@@ -609,7 +654,7 @@
         h('div', { style: css.row },
           ws.editOriginalId && src.imageId && ws.editOriginalId !== src.imageId ? btn('Return to original', () => this.returnToOriginal(), '#94a3b8') : null,
           src.parent ? btn('View parent', () => this.openImageInEdit(src.parent, ed.op, { chain: true }), '#94a3b8') : null,
-          btn('Clear', () => { if (src.staged) fetch(base + '/api/staging/' + src.stagedId, { method: 'DELETE' }); this._mask = null; this.wsSet({ editSourceId: null, editSource: null, editOriginalId: null }); this.edSet({ source: null, state: null, run: { status: 'idle' }, results: ed.results }); }, '#94a3b8'))));
+          btn('Clear', () => { if (!this._confirmEditDraftDiscard('clear the source')) return; if (src.staged) fetch(base + '/api/staging/' + src.stagedId, { method: 'DELETE' }); this._mask = null; this._editDraftBaseline = null; this.wsSet({ editSourceId: null, editSource: null, editOriginalId: null }); this.edSet({ source: null, state: null, run: { status: 'idle' }, results: ed.results }); this.setActiveAssetSelection && this.setActiveAssetSelection(null); }, '#94a3b8'))));
   };
   P._edRecallBanner = function () {
     const ed = this._ed(), st = ed.state, rc = st.recalledFrom, p = st.params, src = ed.source;
@@ -809,7 +854,7 @@
       h('img', { src: base + a.imageUrl, alt: 'Edit result', 'data-fullscreen': 'only', 'data-fullscreen-image-id': a.imageId, 'data-fullscreen-caption': a.imageId, style: { width: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: 8, background: '#030710', border: '1px solid rgba(148,163,184,.2)', cursor: 'zoom-in' } }),
       rs.length > 1 ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(70px,96px))', gap: 6 } }, ...rs.map((r, i) => h('button', { key: r.imageId, type: 'button', title: r.imageId + (i === ed.active ? ' (click again for fullscreen)' : ''), onClick: () => (i === ed.active ? window.DexLightbox.open({ src: base + r.imageUrl, caption: r.imageId, actions: this.lightboxActions(r.imageId) }) : this.edSet({ active: i })),
         style: { padding: 0, border: '2px solid ' + (i === ed.active ? '#38bdf8' : 'rgba(148,163,184,.2)'), borderRadius: 7, overflow: 'hidden', cursor: 'pointer', background: '#0a0e14', aspectRatio: '1 / 1' } }, h('img', { src: base + r.imageUrl, alt: r.imageId, style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } })))) : null,
-      h('div', { style: css.row }, btn('Use as new source', () => this.useAsNewSource(a.imageId), '#a78bfa'), btn('Compare to source', () => { this.wsSet({ compareIds: [a.sourceId || ed.source.imageId, a.imageId].filter(Boolean) }); this.loadCompare(); this.setScreen('library'); }, '#38bdf8'),
+      h('div', { style: css.row }, btn('Use as new source', () => this.useAsNewSource(a.imageId), '#a78bfa'), btn('Compare to source', () => { if (this.setScreen('library') === false) return; this.wsSet({ compareIds: [a.sourceId || ed.source.imageId, a.imageId].filter(Boolean) }); this.loadCompare(); }, '#38bdf8'),
         btn('Another variation', () => { const s = this._ed().state; s.params.seed = -1; this.runEdit(); }, '#65d66e'), btn('Enhance', () => this.sendToEnhance(a.imageId), '#f59e0b'), btn('Keeper', () => this.toggleKeeper(a.imageId, !a.keeper, a), '#fbbf24')));
   };
   P._edLayoutSwitch = function () {

@@ -20,6 +20,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
   const api = async (m, r, b) => { const x = await fetch(srv.base + r, { method: m, signal: AbortSignal.timeout(20000), headers: { 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); return x.json(); };
   const open = async (opts = {}) => {
     const ctx = await browser.newContext({ viewport: { width: opts.width || 1280, height: opts.height || 900 }, reducedMotion: opts.reducedMotion || 'no-preference', acceptDownloads: true }), page = await ctx.newPage();
+    await page.addInitScript(() => { window.__unhandledRejections = []; addEventListener('unhandledrejection', e => window.__unhandledRejections.push(String(e.reason))); });
     await installModelSnapshots(page, srv.base);
     const errors = []; page.on('pageerror', e => errors.push(String(e)));
     // the studio must never reach Big Mac from a browser test
@@ -57,6 +58,105 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       await page.click('[data-reparse-apply]'); await page.waitForFunction(() => !document.querySelector('[data-reparse-preview]'));
       assert.match((await api('GET', '/api/drama/projects/' + pid)).project.source_script, /light/); assert.equal((await api('GET', '/api/drama/projects/' + pid)).project.source.rev, 2);
       assert.deepEqual(errors, []); await page.screenshot({ path: outPath('studio-script.png') }); await ctx.close();
+    });
+
+    await test('Save and Continue waits for durable Drama save and reads the saved project back', async () => {
+      const { ctx, page, errors } = await open();
+      try {
+        await page.evaluate(async id => { await __dex.openDramaProject(id, true); __dex.dm.current.saved = false; __dex.setScreen('drama', { skipUnsavedGuard: true }); }, pid);
+        await page.waitForSelector('[data-drama-stages]');
+        assert.equal(await page.evaluate(() => __dex.dm.current.saved), false);
+        await page.locator('.ca-nav-item', { hasText: 'Voice' }).click();
+        await page.waitForSelector('[data-workspace-leave-dialog="drama"]');
+        await page.screenshot({ path: outPath('studio-save-and-continue-dialog.png') });
+        await page.getByRole('button', { name: 'Save and continue' }).click();
+        await page.waitForSelector('.ca-shell[data-ca-module="voice"]');
+        const saved = await proj(pid);
+        assert.equal(saved.saved, true, 'server readback confirms explicit durable save');
+        assert.equal(await page.evaluate(() => __dex.state.activeAssetSelection?.kind), 'drama-project');
+        assert.deepEqual(errors, []);
+      } finally { await ctx.close(); }
+    });
+
+    await test('browser Back during an unsaved Drama script is declined by beforeunload and preserves the draft', async () => {
+      const { ctx, page, errors } = await open();
+      try {
+        await page.evaluate(() => { __dex.setScreen('drama', { skipUnsavedGuard: true }); __dex._dmText.script = 'private unsaved browser-history draft'; });
+        const dialogPromise = page.waitForEvent('dialog', { timeout: 4000 });
+        const backPromise = page.goBack({ timeout: 4000 }).catch(() => null);
+        const dialog = await dialogPromise;
+        assert.equal(dialog.type(), 'beforeunload');
+        await dialog.dismiss(); await backPromise;
+        await page.waitForTimeout(100);
+        assert.match(page.url(), /\/dexdiffusion\//);
+        assert.equal(await page.evaluate(() => __dex._dmText.script), 'private unsaved browser-history draft');
+        assert.deepEqual(errors, []);
+      } finally { await ctx.close(); }
+    });
+
+    await test('unparsed Drama script offers no fake Save action and remains in memory when switching modules', async () => {
+      const { ctx, page, errors } = await open();
+      try {
+        const draftState = await page.evaluate(() => { __dex.setScreen('drama', { skipUnsavedGuard: true }); __dex._dmText.script = 'draft not yet parsed into a saveable project'; return { screen: __dex.state.screens[__dex.state.version], dirty: __dex._unsavedWorkspaceWork() }; });
+        assert.equal(draftState.screen, 'drama'); assert.equal(draftState.dirty.workspace, 'drama');
+        const navigation = await page.evaluate(() => { window.__confirmMessage = ''; window.confirm = message => { window.__confirmMessage = message; return true; }; return __dex.setScreen('voice'); });
+        assert.equal(navigation, true);
+        assert.match(await page.evaluate(() => window.__confirmMessage), /Drama project or script/);
+        assert.equal(await page.locator('[data-workspace-leave-dialog]').count(), 0, 'unparsed private script has no save handler to offer');
+        await page.waitForSelector('.ca-shell[data-ca-module="voice"]');
+        assert.equal(await page.evaluate(() => __dex._dmText.script), 'draft not yet parsed into a saveable project');
+        assert.deepEqual(errors, []);
+      } finally { await ctx.close(); }
+    });
+
+    await test('Save failure keeps Drama draft and pending navigation; delayed save accepts one continuation only', async () => {
+      const { ctx, page, errors } = await open();
+      try {
+        await page.evaluate(async id => { await __dex.openDramaProject(id, true); __dex.dm.current.saved = false; __dex.setScreen('drama', { skipUnsavedGuard: true }); }, pid);
+        await page.waitForSelector('[data-drama-stages]');
+        await page.locator('.ca-nav-item', { hasText: 'Voice' }).click();
+        await page.waitForSelector('[data-workspace-leave-dialog="drama"]');
+        await page.getByRole('button', { name: 'Stay' }).click();
+        assert.equal(await page.evaluate(() => document.activeElement?.textContent.trim()), 'Voice', 'Stay restores focus to the navigation control that opened the guard');
+        const lineId = await page.evaluate(() => __dex.dm.current.scenes.flatMap(s => s.lines).find(l => l.kind === 'dialogue').id);
+        const lineRoute = `**/api/drama/projects/${pid}/lines/${lineId}`;
+        await page.evaluate(line => { __dex.dm.pending[line] = { text: 'fixture unsaved line' }; }, lineId);
+        await page.route(lineRoute, route => route.fulfill({ status: 503, json: { error: 'fixture line-save failure' } }));
+        assert.equal(await page.evaluate(async () => __dex._dmFlush()), false);
+        assert.equal(await page.evaluate(line => __dex.dm.pending[line]?.text, lineId), 'fixture unsaved line');
+        await page.unroute(lineRoute);
+        await page.evaluate(() => { __dex.dm.pending = {}; });
+        await page.route(`**/api/drama/projects/${pid}/save`, route => route.fulfill({ status: 503, json: { error: 'fixture durable-save failure' } }));
+        await page.locator('.ca-nav-item', { hasText: 'Voice' }).click();
+        await page.waitForSelector('[data-workspace-leave-dialog="drama"]');
+        await page.getByRole('button', { name: 'Save and continue' }).click();
+        await page.waitForSelector('[data-workspace-leave-dialog="drama"] [role="alert"]:not([hidden])');
+        assert.equal(await page.evaluate(() => __dex.state.screens[__dex.state.version]), 'drama');
+        assert.equal(await page.evaluate(() => __dex.dm.current.id), pid);
+        assert.equal(await page.evaluate(() => document.activeElement?.textContent.trim()), 'Save and continue', 'failed save returns focus to its retry action');
+        assert.equal(await page.evaluate(() => __dex.setScreen('system')), false);
+        assert.equal(await page.locator('[data-workspace-leave-dialog="drama"]').count(), 1, 'competing navigation cannot create a second decision');
+        await page.unroute(`**/api/drama/projects/${pid}/save`);
+
+        let release, startedResolve, calls = 0;
+        const started = new Promise(resolve => { startedResolve = resolve; });
+        const held = new Promise(resolve => { release = resolve; });
+        await page.route(`**/api/drama/projects/${pid}/save`, async route => { calls++; startedResolve(); await held; await route.continue(); });
+        await page.evaluate(() => { const original = __dex.dramaSave.bind(__dex); __dex.dramaSave = async (...args) => { const result = await original(...args); window.__dramaSaveResult = result; return result; }; });
+        await page.getByRole('button', { name: 'Save and continue' }).click();
+        await started;
+        assert.equal(await page.evaluate(() => __dex.setScreen('music')), false);
+        assert.equal(await page.evaluate(() => __dex.state.screens[__dex.state.version]), 'drama');
+        assert.equal(await page.locator('[data-workspace-leave-dialog="drama"]').count(), 1);
+        release();
+        await page.waitForFunction(() => window.__dramaSaveResult !== undefined, null, { timeout: 5000 }).catch(() => {});
+        const state = await page.evaluate(() => ({ screen: __dex.state.screens[__dex.state.version], saveResult: window.__dramaSaveResult, pending: __dex._pendingWorkspaceNavigation && { target: __dex._pendingWorkspaceNavigation.targetScreen, saving: __dex._pendingWorkspaceNavigation.saving }, saved: __dex.dm.current && __dex.dm.current.saved, toast: __dex.state.toasts.map(t => t.msg) }));
+        assert.equal(state.screen, 'voice', JSON.stringify(state)); // first requested destination owns the pending decision
+        assert.equal(calls, 1, 'pending save was submitted once');
+        assert.equal((await proj(pid)).saved, true);
+        assert.deepEqual(errors, []);
+        assert.deepEqual(await page.evaluate(() => window.__unhandledRejections), []);
+      } finally { await ctx.close(); }
     });
 
     await test('Cast Bible: voices, role, pronunciation, FX rack, optional pacing; unsupported controls are disabled with the engine evidence', async () => {
@@ -177,6 +277,9 @@ const { results, test, phase, exitCode } = runner('drama-studio');
           assert.ok(o.doc <= 1 && !o.bad.length, `${stage}: ${JSON.stringify(o)}`);
           if (width === 375) await page.screenshot({ path: outPath(`studio-${stage}-375.png`) });
         }
+        // The fixture project may be an unsaved Drama draft. This responsive
+        // journey intentionally accepts leaving it; the app keeps it in memory.
+        page.once('dialog', dialog => dialog.accept());
         await page.evaluate(() => { __dex.vpSet({ tab: 'designer' }); __dex.setScreen('voice'); }); await page.waitForSelector('[data-voice-designer]'); await page.waitForTimeout(400);
         const o = await page.evaluate(() => { const bad = []; document.querySelectorAll('[data-scroll-pane]').forEach(p => { if (p.scrollWidth > p.clientWidth + 1) bad.push(p.scrollWidth + '>' + p.clientWidth); }); return { doc: document.documentElement.scrollWidth - innerWidth, bad }; });
         assert.ok(o.doc <= 1 && !o.bad.length, `designer: ${JSON.stringify(o)}`); assert.deepEqual(errors, []); await ctx.close();

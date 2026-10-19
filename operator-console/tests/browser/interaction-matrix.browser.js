@@ -25,6 +25,10 @@ async function configure(page, base, screen, shell) {
   const initial=page.url()==='about:blank';
   if(initial){
   const pending={count:0,last:Date.now()};network.set(page,pending);
+  // The Voice workspace saves these controls through a PUT. Keep that state
+  // inside this browser cell so the matrix exercises the real handler without
+  // writing the user's persistent director preferences.
+  let directorPreferences = {};
   const isEventStream = request => { try { return new URL(request.url()).pathname === '/api/events'; } catch (_) { return false; } };
   page.on('request',request=>{if(isEventStream(request))return;pending.count++;pending.last=Date.now();});
   const finish=request=>{if(isEventStream(request))return;pending.count=Math.max(0,pending.count-1);pending.last=Date.now();};
@@ -37,6 +41,15 @@ async function configure(page, base, screen, shell) {
   await page.route('**/api/run-index**', r => r.fulfill({json:{items:[],total:0,hasMore:false}}));
   // Blocks accidental write/generation from any keyboard probe; read-only endpoints remain real.
   await page.route('**/api/**', async r => {
+    const requestUrl = new URL(r.request().url());
+    if (requestUrl.pathname === '/api/voice/director-preferences') {
+      if (r.request().method() === 'GET') return r.fulfill({ json: { preferences: directorPreferences } });
+      if (r.request().method() === 'PUT') {
+        directorPreferences = Object.assign({}, directorPreferences, r.request().postDataJSON() || {});
+        return r.fulfill({ json: { preferences: directorPreferences } });
+      }
+      if (r.request().method() === 'DELETE') { directorPreferences = {}; return r.fulfill({ json: { preferences: directorPreferences } }); }
+    }
     if(r.request().method()==='POST' && new URL(r.request().url()).pathname==='/api/models/secondary/activate')return r.fulfill({json:{ok:true,activeSecondaryModel:r.request().postDataJSON().target,modelState:{activeSecondaryModel:r.request().postDataJSON().target}}});
     if (!['GET', 'HEAD'].includes(r.request().method())) return r.fulfill({ status: 409, json: { error: 'Matrix is read-only', stage: 'test-read-only' } });
     const url=new URL(r.request().url()),key=url.pathname+url.search;
@@ -49,7 +62,17 @@ async function configure(page, base, screen, shell) {
   });
   await page.addInitScript(v => localStorage.setItem('dex_version', String(v)), shell);
   await page.goto(base + '/dexdiffusion/', {timeout:30000});
-  await page.waitForFunction(() => window.__dex && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
+  await page.waitForFunction(() => window.__dex && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData, null, { timeout: 30000 }).catch(async error => {
+    const state = await page.evaluate(() => ({
+      dexMounted: !!window.__dex,
+      version: window.__dex && __dex.state.version,
+      targets: window.__dex && (__dex.state.modelTargets || []).length,
+      hasCapabilityData: !!(window.__dex && __dex.state.capabilityData),
+      loading: window.__dex && { checkpoints: __dex.state.loadingCheckpoints, modelState: __dex.state.modelState },
+      errors: window.__dex && (__dex.state.toasts || []).map(t => t.msg),
+    })).catch(() => ({ pageUnavailable: true }));
+    throw new Error('Initial model discovery did not settle: ' + JSON.stringify(state) + ' (' + error.message.split('\n')[0] + ')');
+  });
   }
   const key = screen.startsWith('Edit') ? 'edit' : screen.toLowerCase();
   if (key === 'edit') {
@@ -204,9 +227,33 @@ async function popovers(page) {
 
 async function modelDisabledContract(page){
   const failures=[], original=await page.evaluate(()=>__dex.state.target),picker=page.locator('[data-model-picker="create"]'),trigger=picker.locator(':scope > button');
-  for(const target of ['sd15',original]){
-    await trigger.focus();await page.keyboard.press('Enter');const option=picker.locator(`[data-model-id="${target}"]`);await option.focus();await page.keyboard.press('Enter');
-    await page.waitForFunction(t=>__dex.state.target===t,target,{timeout:30000}); // a real secondary-model activation (~8 ssh round trips, 5-6 s here) is part of this stepawait page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  // Model rows are present in the closed picker DOM, so inspect the truthful
+  // disabled state without opening it or perturbing its keyboard focus cycle.
+  const firstOptions=await picker.locator('[role="option"]').evaluateAll(nodes=>nodes.map(n=>({id:n.getAttribute('data-model-id'),disabled:n.disabled,label:n.innerText.trim().slice(0,100)})));
+  const sd15=firstOptions.find(x=>x.id==='sd15');
+  const other=firstOptions.find(x=>x.id!==original&&!x.disabled);
+  // The fixture's current capability catalogue may correctly gate SD1.5.
+  // Record that state, then exercise an actually selectable alternate and the
+  // original target instead of asking the UI to activate a disabled option.
+  const targets=[...new Set([other&&other.id,original].filter(Boolean))];
+  for(const target of targets){
+    await trigger.focus();await page.keyboard.press('Enter');
+    const search=picker.locator('input[aria-label="Search models"]');
+    // Opening the picker intentionally moves focus to its search field on the
+    // next task. Wait for that focus before driving the list, or the delayed
+    // autofocus can steal Enter from the option and leave the matrix waiting
+    // for a selection that was never made.
+    await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search models');
+    await search.fill(target);
+    const option=picker.locator(`[data-model-id="${target}"]`);
+    await option.waitFor({state:'visible'});
+    if(await option.isDisabled())throw new Error('Matrix target lost selectable state: '+target);
+    await option.focus();await page.keyboard.press('Enter');
+    await page.waitForFunction(t=>__dex.state.target===t,target,{timeout:30000}).catch(async error=>{
+      const state=await page.evaluate(t=>({target:__dex.state.target,requested:t,version:__dex.state.version,picker:document.querySelector('[data-model-picker="create"]')?.outerHTML.slice(0,1800),toasts:__dex.state.toasts.map(x=>x.msg)}),target).catch(()=>({pageUnavailable:true}));
+      throw new Error('Model picker did not select '+target+': '+JSON.stringify(state)+' ('+error.message.split('\n')[0]+')');
+    }); // Read-only fixture activation is part of this accessibility contract.
+    await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
     // The a11y sweep that mirrors data-ctl-off onto disabled runs from a MutationObserver -> rAF chain, so its frame can
     // land after the two frames above. Allow it up to 2 s to converge; a field that never converges still fails below.
     await page.waitForFunction(()=>[...document.querySelectorAll('[data-ctl-off]')].filter(n=>['INPUT','SELECT','TEXTAREA'].includes(n.tagName)).every(n=>(n.getAttribute('data-ctl-off')==='true')===n.disabled),null,{timeout:2000}).catch(()=>{});
@@ -216,7 +263,7 @@ async function modelDisabledContract(page){
   }
   const preserved=await page.evaluate(()=>{const n=document.createElement('input');n.type='hidden';n.disabled=true;n.setAttribute('data-ctl-off','true');document.body.append(n);DexA11y.sweep();n.setAttribute('data-ctl-off','false');DexA11y.sweep();const yes=n.disabled;n.remove();return yes;});
   if(!preserved)failures.push('Model synchronization enabled independently disabled field');
-  return{failures,measures:{targets:['sd15',original],preservesIndependentDisabled:preserved,keyboardSelections:2}};
+  return{failures,measures:{targets,initialTarget:original,sd15Selectable:sd15? !sd15.disabled:null,sd15State:sd15&&sd15.label,preservesIndependentDisabled:preserved,keyboardSelections:targets.length}};
 }
 
 async function navigationLabelContract(page){
