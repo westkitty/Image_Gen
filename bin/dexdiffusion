@@ -6,7 +6,7 @@
 #   bin/dexdiffusion stop      stop ONLY the project-owned console process
 #   bin/dexdiffusion restart   stop + start
 #   bin/dexdiffusion status    read-only health report (never repairs anything)
-#   bin/dexdiffusion open      start if needed, then open the local UI
+#   bin/dexdiffusion open      start if needed, then activate the native app
 #   bin/dexdiffusion doctor    read-only PASS/WARN/FAIL health check (via /api/doctor; never generates)
 #
 # Ownership rule: a listener on 31337 is "ours" only if its /api/version
@@ -144,18 +144,20 @@ print("%s [%s, %s]" % (t[0]["label"], t[0]["id"], t[0]["status"]) if t else "non
   fi
 
   local app="MISSING" icon="-" dock="MISSING" app_rev="-" app_build="-" app_root="-"
-  local repo_head; repo_head="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+  local repo_head; repo_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || printf 'unknown')"
   local swift_fp; swift_fp="$(shasum -a 256 "$ROOT/native/macos/Image_Gen/ImageGenApp.swift" 2>/dev/null | cut -d' ' -f1 || true)"
+  local icon_source_fp; icon_source_fp="$(shasum -a 256 "$ROOT/operator-console/public/dexdiffusion/uploads/grok_image_1775521844329.jpg" 2>/dev/null | cut -d' ' -f1 || true)"
   if [ -f "$APP_PATH/Contents/Info.plist" ]; then
     local bid; bid="$(plutil -extract CFBundleIdentifier raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || printf 'unknown')"
     app="PRESENT ($bid)"
     local ahead; ahead="$(plutil -extract DexDiffusionSourceHead raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || printf 'unknown')"
     local afp; afp="$(plutil -extract DexDiffusionSourceFingerprint raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || printf 'unknown')"
+    local installed_icon_fp; installed_icon_fp="$(plutil -extract DexDiffusionIconFingerprint raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || printf 'unknown')"
     app_root="$(plutil -extract DexDiffusionProjectRoot raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || printf 'unknown')"
-    if [ "$ahead" = "$repo_head" ]; then
-      app_rev="HEAD $ahead (UP TO DATE vs repo $repo_head)"
+    if [[ "$ahead" = "$repo_head" || ( "${#ahead}" -ge 7 && "$repo_head" = "$ahead"* ) ]]; then
+      app_rev="HEAD $ahead (UP TO DATE vs repo ${repo_head:0:12})"
     else
-      app_rev="HEAD $ahead (OUTDATED vs repo $repo_head — run scripts/install-macos-app.sh)"
+      app_rev="HEAD $ahead (OUTDATED vs repo ${repo_head:0:12} — run scripts/install-macos-app.sh)"
     fi
     local arch; arch="$(file "$APP_PATH/Contents/MacOS/DexDiffusion" 2>/dev/null | grep -o 'arm64' || printf 'unknown')"
     if [ -n "$afp" ] && [ -n "$swift_fp" ] && [ "$afp" = "$swift_fp" ]; then
@@ -166,7 +168,15 @@ print("%s [%s, %s]" % (t[0]["label"], t[0]["id"], t[0]["status"]) if t else "non
       app_build="$arch"
     fi
     local iconf; iconf="$(plutil -extract CFBundleIconFile raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
-    [ -n "$iconf" ] && [ -f "$APP_PATH/Contents/Resources/${iconf%.icns}.icns" ] && icon="OK (${iconf%.icns}.icns)" || icon="MISSING"
+    if [ -n "$iconf" ] && [ -f "$APP_PATH/Contents/Resources/${iconf%.icns}.icns" ]; then
+      if [ -n "$icon_source_fp" ] && [ "$installed_icon_fp" = "$icon_source_fp" ]; then
+        icon="OK (${iconf%.icns}; source artwork MATCHES)"
+      else
+        icon="PRESENT (${iconf%.icns}; source artwork DRIFT)"
+      fi
+    else
+      icon="MISSING"
+    fi
   fi
   local dockdump; dockdump="$(defaults read com.apple.dock persistent-apps 2>/dev/null || true)"
   local n; n="$(printf '%s' "$dockdump" | grep -c "file://$APP_PATH/" || true)"
@@ -253,7 +263,16 @@ case "${1:-status}" in
   stop) cmd_stop ;;
   restart) cmd_stop; cmd_start ;;
   status) cmd_status ;;
-  open) cmd_start >/dev/null && open "$LOCAL_URL" && echo "Opened $LOCAL_URL" ;;
+  open)
+    cmd_start >/dev/null
+    if [ ! -d "$APP_PATH" ]; then
+      echo "ERROR: native DexDiffusion app is missing: $APP_PATH" >&2
+      echo "       Build and install it with: scripts/install-macos-app.sh" >&2
+      exit 1
+    fi
+    /usr/bin/open -a "$APP_PATH"
+    echo "Activated native DexDiffusion app: $APP_PATH"
+    ;;
   doctor) cmd_doctor ;;
   -h|--help|help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) echo "usage: bin/dexdiffusion {start|stop|restart|status|open|doctor}" >&2; exit 2 ;;

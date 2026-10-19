@@ -78,8 +78,12 @@ must show `https://macbook-air.tailafb7e8.ts.net:8443 (tailnet only)` →
 **What clicking it does:** the app is a native WebKit **wrapper window** (not a
 browser tab). On launch it runs `bin/dexdiffusion start`, which reuses a healthy
 project-owned console or starts one detached, then loads
-`http://127.0.0.1:31337/dexdiffusion/` in its window. It never starts a second
-server. Big Mac is not contacted at launch; it is only needed when you generate.
+`http://127.0.0.1:31337/dexdiffusion/` in its window. The CLI command
+`bin/dexdiffusion open` activates `/Applications/DexDiffusion.app`; it never
+opens the URL in the default browser. The app never starts a second server.
+Big Mac is not contacted at launch; it is only needed when you generate.
+The wrapper does not offer an “Open in Browser” menu action. `bin/dexdiffusion start`
+remains headless and only starts or reuses the project-owned backend.
 Quitting the app **does not** stop the console, so tailnet users keep access. Use
 `bin/dexdiffusion stop` for that. On startup failure the window's status line shows
 the log path; *Help → Copy Error Report* and *File → Open Logs* are available.
@@ -94,6 +98,9 @@ scripts/install-macos-app.sh
 It compiles the Swift wrapper and builds the icon from the source artwork (needs
 `swiftc` and python3 Pillow). It installs `/Applications/DexDiffusion.app` (the
 previous build is moved to the archive) and registers it with Launch Services. It
+makes the full Git `HEAD`, Swift source fingerprint, and icon-artwork fingerprint
+available in the bundle metadata. `bin/dexdiffusion status` compares full
+revisions while recognizing existing short revision stamps. It
 makes sure the Dock has **exactly one** DexDiffusion tile: legacy Image_Gen tiles are
 rewritten in place with stale bookmark data dropped, otherwise one tile is appended.
 It backs up Dock prefs first to

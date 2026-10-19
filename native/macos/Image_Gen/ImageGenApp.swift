@@ -318,10 +318,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
     }
 
-    @objc private func openInBrowser() {
-        NSWorkspace.shared.open(consoleURL)
-    }
-
     @objc private func closeWindow() {
         window?.close()
     }
@@ -504,7 +500,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let fileItem = NSMenuItem()
         let fileMenu = NSMenu(title: "File")
         fileMenu.addItem(NSMenuItem(title: "Open Logs", action: #selector(openLogs), keyEquivalent: "l"))
-        fileMenu.addItem(NSMenuItem(title: "Open in Browser", action: #selector(openInBrowser), keyEquivalent: "b"))
         fileMenu.addItem(.separator())
         fileMenu.addItem(NSMenuItem(title: "Close Window", action: #selector(closeWindow), keyEquivalent: "w"))
         fileItem.submenu = fileMenu
@@ -555,7 +550,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         helpMenu.addItem(NSMenuItem(title: "Copy Error Report", action: #selector(copyErrorReport), keyEquivalent: "e"))
         helpMenu.addItem(.separator())
         helpMenu.addItem(NSMenuItem(title: "Open Logs", action: #selector(openLogs), keyEquivalent: ""))
-        helpMenu.addItem(NSMenuItem(title: "Open in Browser", action: #selector(openInBrowser), keyEquivalent: ""))
         helpItem.submenu = helpMenu
         NSApp.helpMenu = helpMenu
         mainMenu.addItem(helpItem)

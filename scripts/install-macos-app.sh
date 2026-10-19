@@ -33,7 +33,8 @@ PLIST="$CONTENTS/Info.plist"
 ICON="$RESOURCES/DexDiffusion.icns"
 SUPPORT="$HOME/Library/Application Support/DexDiffusion"
 RETIRED="$SUPPORT/retired-launchers"
-GIT_HEAD="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+GIT_HEAD="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || printf 'unknown')"
+ICON_FINGERPRINT="$(shasum -a 256 "$ICON_SRC" | cut -d' ' -f1)"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
@@ -122,6 +123,8 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
   <string>$GIT_HEAD</string>
   <key>DexDiffusionSourceFingerprint</key>
   <string>$SWIFT_FINGERPRINT</string>
+  <key>DexDiffusionIconFingerprint</key>
+  <string>$ICON_FINGERPRINT</string>
   <key>LSMinimumSystemVersion</key>
   <string>12.0</string>
   <key>NSHighResolutionCapable</key>
@@ -224,4 +227,5 @@ echo "  bundle id:  $BUNDLE_ID"
 echo "  executable: $APP/Contents/MacOS/$EXE_NAME"
 echo "  icon:       $APP/Contents/Resources/DexDiffusion.icns (from $ICON_SRC)"
 echo "  source:     $ROOT (HEAD $GIT_HEAD)"
+echo "  icon hash:  $ICON_FINGERPRINT"
 echo "Verify with: bin/dexdiffusion status"
