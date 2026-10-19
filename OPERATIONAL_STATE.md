@@ -1,5 +1,10 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## DexDiffusion wrapper release acceptance — 2026-10-18
+
+- **Owner visual acceptance:** Andrew confirmed that the rendered DexDiffusion Dock icon matches the intended artwork. This closes the Dock icon visual acceptance gate; no new screenshot was requested or needed.
+- **Release baseline:** `main` at `145f40c8c1b5aafbd9270b59a71450eee86cd1cc` was synchronized with `origin/main`. The installed arm64 native wrapper at `/Applications/DexDiffusion.app` was stamped with that revision. Prior verification at this baseline confirmed the single canonical Dock entry, native Dock and CLI launch, wrapper window recovery, backend cold-start, and matching live console identity. This documentation-only update changes the final source SHA, so reinstall the wrapper to update its source revision stamp; no Dock launch test is repeated.
+
 ## Contract continuation — 2026-10-17 (later the same day)
 
 **Shipped on `main`:** Create shows **Cancel** beside Generate (same `/api/jobs/:id/cancel` path as Jobs); seed row with Random checkbox, 🎲 and ↻; one `N / 1000` prompt counter (1000 is UI guidance, not a backend limit); wildcard chips reorder (◀ ▶) and move between positive/negative; nav order/labels Create, Edit, Voice, Drama, Music, 3D Assets, World Viewer, Library, System with family accents (orange image, blue audio, green 3D/world, pale-red system); model picker favourites (multi-select, persisted `dexdiffusion.model.favorites.v1`) and a deterministic local icon per model; `notify.js` completion ding (deduped per job id, never for failed/cancelled, mute/volume/OS-notification via the ⌘K palette); PWA manifest, static-only service worker (never `/api`), offline notice. `sdcpp-img2img/inpaint/cli-generate.sh` now map `dpmpp2m`-style ids to sd-cli names (the real cause of the `img2img-remote-png` / `inpaint-remote-png` failures; not a VAE fault).
