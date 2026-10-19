@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var webView: WKWebView!
     private var statusLabel: NSTextField!
     private var consoleProcess: Process?
+    private var serviceStartupInProgress = false
 
     private let projectRoot: String = {
         if let env = ProcessInfo.processInfo.environment["IMAGE_GEN_ROOT"], !env.isEmpty {
@@ -33,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showMainWindow()
+        ensureServicesThenLoad()
         return true
     }
 
@@ -606,6 +607,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     // MARK: - Service startup
 
     private func ensureServicesThenLoad() {
+        guard !serviceStartupInProgress else { return }
+        serviceStartupInProgress = true
+        if window == nil { buildWindow() }
         setStatus("Starting DexDiffusion...")
         DispatchQueue.global(qos: .userInitiated).async {
             // bin/dexdiffusion start reuses a healthy project-owned console or
@@ -614,6 +618,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             // needed when a generation runs. SDCPP is dormant, so no tunnel.
             self.ensureOperatorConsoleViaHelper()
             DispatchQueue.main.async {
+                self.serviceStartupInProgress = false
                 self.showMainWindow()
                 self.loadConsole()
             }

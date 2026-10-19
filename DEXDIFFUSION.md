@@ -80,7 +80,9 @@ browser tab). On launch it runs `bin/dexdiffusion start`, which reuses a healthy
 project-owned console or starts one detached, then loads
 `http://127.0.0.1:31337/dexdiffusion/` in its window. The CLI command
 `bin/dexdiffusion open` activates `/Applications/DexDiffusion.app`; it never
-opens the URL in the default browser. The app never starts a second server.
+opens the URL in the default browser. Reopening the Dock app after closing its
+window checks/starts the backend before reloading the native window. The app
+never starts a second server.
 Big Mac is not contacted at launch; it is only needed when you generate.
 The wrapper does not offer an “Open in Browser” menu action. `bin/dexdiffusion start`
 remains headless and only starts or reuses the project-owned backend.
@@ -188,11 +190,12 @@ bin/dexdiffusion stop      # stop ONLY the project-owned console (never pkill/ki
 bin/dexdiffusion restart
 bin/dexdiffusion status    # read-only report: web, launcher, Dock, Big Mac, MFLUX, model, storage, SDCPP
 bin/dexdiffusion doctor    # read-only PASS/WARN/FAIL health check (same as System → DexDiffusion Doctor); never generates
-bin/dexdiffusion open      # start if needed, open the local URL in the default browser
+bin/dexdiffusion open      # start if needed, activate the native wrapper
 ```
 
-The console is detached (`nohup node server.js`, log `operator-console/server.log`,
-pid in `operator-console/dexdiffusion.pid`). It survives terminal and app quit. It
+The console is detached by `scripts/detach-process.py` (log
+`operator-console/server.log`, pid in `operator-console/dexdiffusion.pid`). It
+survives terminal and app quit. It
 does **not** start at login; the Dock app or `start` brings it up. `stop` never
 touches Tailscale or its Serve configuration. First-time setup only:
 `(cd operator-console && npm install)`.
