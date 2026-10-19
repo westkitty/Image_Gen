@@ -52,7 +52,25 @@ function createSceneRenderer({ mediaStore, derived, tools = Tools, mixer = Mixer
         const st = await derived.ensure(['pace.v1', c.source_sha256, c.tempo], { ext: 'wav', kind: 'pace-wav', lineage: { source_artifact_id: c.artifact_id, source_sha256: c.source_sha256, tempo: c.tempo, op: 'atempo' } }, async dest => { const r = await tools.timeStretch(art.path, dest, c.tempo); return { duration: r.duration }; });
         srcArt = { path: st.path };
       }
-      const d = await conformed([CONFORM_VERSION, c.source_sha256, c.fx_identity, c.tempo || 1], srcArt, { source_artifact_id: c.artifact_id, source_sha256: c.source_sha256, fx_identity: c.fx_identity, tempo: c.tempo || 1, fx_chain: c.fx, filter: compiled.filter || null, conform: CONFORM_VERSION }, compiled.filter || null);
+      let effectSource = srcArt, filter = compiled.filter || null, processorMethods = [];
+      if ((compiled.stages || []).some(s => s.type !== 'ffmpeg')) {
+        const availability = tools.available ? tools.available() : {};
+        if ((compiled.stages || []).some(s => s.type === 'rubberband-formant-pitch') && !availability.rubberband) throw new Error('formant-preserving pitch is unavailable: Rubber Band CLI was not detected');
+        for (let i = 0; i < compiled.stages.length; i++) {
+          const stage = compiled.stages[i]; if (stage.type === 'ffmpeg' && !stage.filter) continue;
+          const prior = effectSource;
+          if (stage.type === 'ffmpeg') {
+            const d = await derived.ensure(['fx-stage.v1', c.source_sha256, c.fx_identity, i, stage.filter], { ext: 'wav', kind: 'fx-filter-wav', lineage: { source_artifact_id: c.artifact_id, source_sha256: c.source_sha256, fx_identity: c.fx_identity, stage: i, filter: stage.filter } }, async dest => tools.filterToWav(prior.path, dest, stage.filter));
+            effectSource = { path: d.path };
+          } else if (stage.type === 'rubberband-formant-pitch') {
+            const method = `Rubber Band ${availability.rubberband_version || 'unknown'} R3 --formant`;
+            const d = await derived.ensure(['fx-stage.v1', c.source_sha256, c.fx_identity, i, stage.type, stage.semitones], { ext: 'wav', kind: 'fx-formant-pitch-wav', lineage: { source_artifact_id: c.artifact_id, source_sha256: c.source_sha256, fx_identity: c.fx_identity, stage: i, processor: stage.type, semitones: stage.semitones, method, formant_preserved: true } }, async dest => tools.formantPitch(prior.path, dest, stage.semitones));
+            effectSource = { path: d.path }; processorMethods.push({ method, semitones: stage.semitones, formant_preserved: true });
+          }
+        }
+        filter = null;
+      }
+      const d = await conformed([CONFORM_VERSION, c.source_sha256, c.fx_identity, c.tempo || 1], effectSource, { source_artifact_id: c.artifact_id, source_sha256: c.source_sha256, fx_identity: c.fx_identity, tempo: c.tempo || 1, fx_chain: c.fx, filter, processors: processorMethods, conform: CONFORM_VERSION }, filter);
       const avail = Math.max(0, d.frames - c.src_offset_frames), frames = Math.min(c.frames, avail);
       let gain = TL.dbToLin(c.gain_db), leveling = null;
       if (typeof levelTarget === 'number') { const r = activeRmsDb(d.path, c.src_offset_frames, frames); if (r != null) { leveling = clamp(levelTarget - r, -6, 6); gain *= TL.dbToLin(leveling); } }

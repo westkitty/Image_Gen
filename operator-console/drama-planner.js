@@ -28,7 +28,8 @@ function lineFingerprint(project, line, ctx) {
   if (ctx.engineAvailable) { const a = ctx.engineAvailable(engineId); if (a && a.ok === false) { out.problem = { reason: 'engine-unavailable', errors: [a.reason || 'engine unavailable'] }; return out; } }
   out.language = (actor && actor.language) || (project.settings && project.settings.default_language) || profile.language || 'en';
   out.direction = line.direction || (actor && actor.default_direction) || '';
-  out.fp = F.speechFingerprint({ line, actor, profile, engineId, language: out.language, direction: out.direction });
+  try { out.fp = F.speechFingerprint({ line, actor, profile, engineId, language: out.language, direction: out.direction, performanceScore: line.performance_score || null }); }
+  catch (e) { out.problem = { reason: 'performance-score-invalid', errors: [e.message] }; }
   return out;
 }
 
@@ -52,7 +53,7 @@ function planProduction(project, ctx) {
     }
     const takes = (line.takes || []);
     const running = takes.find(t => (t.status === 'rendering' || t.status === 'queued') && t.fingerprint && t.fingerprint.inputs_sha === info.fp.inputs_sha);
-    const complete = takes.filter(t => t.status === 'complete');
+    const complete = takes.filter(t => t.status === 'complete' && !t.rejected);
     const current = complete.filter(t => t.fingerprint && t.fingerprint.inputs_sha === info.fp.inputs_sha);
     const usable = [];
     for (const t of current) {
@@ -60,7 +61,7 @@ function planProduction(project, ctx) {
       else assetProblems.push({ code: 'take-audio-missing', line_id: line.id, scene_id: scene.id, take_id: t.id, artifact_id: t.artifact_id || null });
     }
     // Prefer the user's active take; otherwise the newest eligible one.
-    const pinId = ((project.timeline && project.timeline.clip_overrides && project.timeline.clip_overrides[line.id]) || {}).pinned_take_id;
+    const pinId = line.pinned_take_id || ((project.timeline && project.timeline.clip_overrides && project.timeline.clip_overrides[line.id]) || {}).pinned_take_id;
     if (pinId && !usable.some(t => t.id === pinId) && complete.some(t => t.id === pinId)) review.push({ code: 'pinned-take-outdated', line_id: line.id, take_id: pinId, detail: 'the take pinned for this clip no longer matches the line; it is ignored' });
     let pick = usable.find(t => t.id === pinId) || usable.find(t => t.id === line.active_take_id) || usable.slice().sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0] || null;
     for (const t of complete) if (t.legacy && !t.adopted_legacy && !(t.fingerprint)) review.push({ code: 'legacy-take-unverified', line_id: line.id, take_id: t.id, detail: 'recorded before fingerprints existed; regenerate it or explicitly adopt it as matching the current text' });

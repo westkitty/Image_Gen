@@ -325,6 +325,16 @@
         h('div', { className: 'ca-muted', 'data-dex-field': 'unavailable-sampling' }, 'Not available with the installed stable-diffusion.cpp (no matching option): variation seed and strength, seed resize, S churn / tmin / tmax / noise, UniPC variant and order, beta schedule, zero-terminal-SNR, sigma min/max/rho.')));
   };
 
+  // "What do these settings do?" — truthful descriptions locked to the implementation by tests/settings-help.test.js.
+  P.buildSettingsGuide = function () {
+    const H = window.DexSettingsHelp; if (!H) return null;
+    const ca = this._ca();
+    return h('details', { className: 'ca-field', 'data-dex-field': 'settings-guide', open: !!ca.guide },
+      h('summary', { onClick: e => { e.preventDefault(); ca.guide = !ca.guide; this.caSync(); } }, 'What do these settings do?'),
+      h('div', { className: 'ca-stack' }, ...H.GROUPS.map(g => h('section', { key: g.id, 'data-guide-group': g.id, className: 'ca-stack' },
+        h('b', null, g.title), ...g.items.map(([name, text]) => h('div', { key: name, className: 'ca-muted' }, h('b', null, name + ': '), text))))));
+  };
+
   // Request preview: asks the server to normalise the exact body Generate would send and to build the
   // worker command with the same function the job runner uses. Nothing is queued or stored.
   P.caLoadPreview = async function () {
@@ -383,6 +393,7 @@
             onClick: () => { if (s.lastSeed != null) this.setState({ seed: String(s.lastSeed) }); } }, '↻'))),
       input('Width', s.width, e => { this.state.width = e.target.value; }, { type: 'number', min: 256, step: 8 }),
       input('Height', s.height, e => { this.state.height = e.target.value; }, { type: 'number', min: 256, step: 8 }),
+      h('div', { className: 'ca-muted', 'data-dex-field': 'pixel-size', role: 'status' }, (parseInt(s.width, 10) || 0) + ' × ' + (parseInt(s.height, 10) || 0) + ' px · ' + (((parseInt(s.width, 10) || 0) * (parseInt(s.height, 10) || 0)) / 1e6).toFixed(2) + ' MP · ' + ((parseInt(s.width, 10) || 0) === (parseInt(s.height, 10) || 0) ? 'square' : (parseInt(s.width, 10) || 0) > (parseInt(s.height, 10) || 0) ? 'landscape' : 'portrait')),
       ctl.sampler ? h('label', { className: 'ca-field' }, h('span', null, 'Sampler'), h('select', { value: window.DexClient.canonicalSamplerId(s.sampler), 'data-dex-field': 'sampler', onChange: e => this.setState({ sampler: e.target.value }) }, ...window.DexClient.SAMPLER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null,
       ctl.clipSkip ? input('CLIP skip (blank = model default)', s.clipSkip, e => { this.state.clipSkip = e.target.value; }, { type: 'number', min: 1, max: 12, step: 1, 'data-dex-field': 'clip-skip' }) : null,
       ctl.tiling ? h('label', { className: 'ca-check-row' }, h('input', { type: 'checkbox', checked: !!s.tiling, 'data-dex-field': 'tiling', onChange: e => this.setState({ tiling: e.target.checked }) }), h('span', null, 'VAE tiling (lower memory for large images)')) : null,
@@ -390,7 +401,7 @@
     const generate = h('button', { type: 'button', className: 'ca-primary', onClick: () => this.onGenerate(), disabled: s.jobStatus === 'generating' }, s.jobStatus === 'generating' ? (vals.generateLabel || 'Generating…') : 'Generate Image');
     const interrupt = s.jobStatus === 'generating' && this._ws().activeJobId ? h('button', { type: 'button', className: 'ca-secondary', 'data-interrupt': 'true', onClick: () => this.interruptGeneration(), disabled: !!this._ws().interrupting, title: 'Cancel this generation and confirm the Big Mac process has stopped', 'aria-label': 'Cancel generation' }, this._ws().interrupting ? 'Cancelling…' : 'Cancel') : null;
     const modelPicker = vals.targetSelectV1 || targetSelect;
-    const workbench = s.screens[s.version] === 'batch' ? this.buildBatchWorkspace() : h('div', { className: 'ca-generate-form' }, panel('Prompt and target', h('div', { className: 'ca-stack' }, prompt, vals.promptTools || null, modelPicker, targetSelect, negative, samplingNote, basic, this.buildAdvancedSampling(), this.buildStylesPanel(), vals.createResources || null, vals.createPresets || null, h('div', { className: 'ca-form-actions' }, generate, interrupt), this.buildRequestPreview()), accent), this.buildCreateWorkbench(vals.modelsListDisplay));
+    const workbench = s.screens[s.version] === 'batch' ? this.buildBatchWorkspace() : h('div', { className: 'ca-generate-form' }, panel('Prompt and target', h('div', { className: 'ca-stack' }, prompt, vals.promptTools || null, modelPicker, targetSelect, negative, samplingNote, basic, this.buildAdvancedSampling(), this.buildSettingsGuide(), this.buildStylesPanel(), vals.createResources || null, vals.createPresets || null, h('div', { className: 'ca-form-actions' }, generate, interrupt), this.buildRequestPreview()), accent), this.buildCreateWorkbench(vals.modelsListDisplay));
     return h('div', { className: 'ca-generate-layout' }, h('section', { className: 'ca-results-column' }, panel('Preview and result', this.buildResultStaging(), accent), s.screens[s.version] === 'batch' ? null : panel('Advanced workflows', h('div', { className: 'ca-muted' }, 'Batch / Sweep, prompt drafts, wildcards, enhancement, recipes, macros, and reproducibility remain available in their existing controls. Use Preview request below the form to inspect the exact request and worker command.'), accent)), h('section', { className: 'ca-main-column' }, workbench));
   };
 

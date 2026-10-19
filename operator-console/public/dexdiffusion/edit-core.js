@@ -289,6 +289,7 @@
   }
   function readinessOf(t) {
     if (!t) return { key: 'unknown', label: 'Unknown', ok: false };
+    if (t.unsupported) return { key: 'unsupported', label: 'Not for this operation', ok: false };
     if (t.runtime === 'model-missing') return { key: 'missing', label: 'Model missing', ok: false };
     if (t.runtime === 'dormant') return { key: 'dormant', label: 'Dormant', ok: false };
     const st = String(t.status || '').toLowerCase();
@@ -305,7 +306,7 @@
       const c = cardById.get(t.id) || {};
       const fam = familyOf(c.family ? { family: c.family, id: t.id } : t);
       const readiness = readinessOf(t);
-      const blurb = String(c.description || c.why_use || (t.backend === 'mflux' ? 'MFLUX engine' : 'stable-diffusion.cpp')).split(/(?<=[.!?])\s/)[0].slice(0, 110);
+      const blurb = t.unsupported ? String(t.unsupported) : String(c.description || c.why_use || (t.backend === 'mflux' ? 'MFLUX engine' : 'stable-diffusion.cpp')).split(/(?<=[.!?])\s/)[0].slice(0, 110);
       return { id: t.id, label: t.label || c.display_name || t.id, family: fam, readiness, blurb, primary: !!t.primary, active: t.id === activeId, backend: t.backend || 'sdcpp',
         haystack: [t.id, t.label, c.display_name, c.description, (c.specialties || []).join(' '), (c.best_for || []).join(' ')].join(' ').toLowerCase() };
     });

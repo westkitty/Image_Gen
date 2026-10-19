@@ -38,6 +38,29 @@ test('validation clamps ranges, rejects unknown filters and over-long chains', (
   assert.equal(FX.validate({ nodes: [{ type: 'delay', params: { delay_ms: '100;rm', feedback: 0.3, mix: 0.4 } }] }).chain.nodes[0].params.delay_ms, 100, 'params are coerced to numbers, never interpolated as text');
 });
 
+test('formant pitch compiles to an ordered Rubber Band processor stage', () => {
+  const c = FX.compile({ version: 1, preset: 'custom', nodes: [
+    { type: 'highpass', params: { freq: 120 } },
+    { type: 'pitch_formant', params: { semitones: 2 } },
+    { type: 'gain', params: { db: -1 } },
+  ] });
+  assert.deepEqual(c.stages.map(s => s.type), ['ffmpeg', 'rubberband-formant-pitch', 'ffmpeg']);
+  assert.equal(c.stages[1].semitones, 2);
+  assert.equal(c.stages[1].method, 'Rubber Band R3 --formant');
+});
+
+test('Rubber Band formant pitch creates a verified, duration-matched derivative', { skip: HAVE.rubberband ? false : 'Rubber Band CLI not installed', timeout: 30000 }, async () => {
+  const src = wav(tone(1.25, 220)), original = require('node:crypto').createHash('sha256').update(fs.readFileSync(src)).digest('hex');
+  const out = path.join(tmp(), 'formant.wav'), result = await T.formantPitch(src, out, 2);
+  const after = require('node:crypto').createHash('sha256').update(fs.readFileSync(src)).digest('hex');
+  const info = await T.probe(out), scan = await T.scanWav(out);
+  assert.equal(original, after, 'source bytes are unchanged');
+  assert.match(result.method, /^Rubber Band 4\.0\.0 R3 --formant/);
+  assert.equal(result.formant_preserved, true);
+  assert.ok(Math.abs(info.duration - 1.25) <= 0.08, `duration ${info.duration}`);
+  assert.equal(scan.silent, false); assert.equal(scan.non_finite, 0);
+});
+
 test('compiled filter strings are injection-proof and contain only the expected filter names', () => {
   for (const p of FX.listPresets()) { const f = FX.compile(FX.presetChain(p.id)).filter; assert.ok(!/[;`$\n"']/.test(f.replace(/'/g, '')), p.id + ' ' + f); }
   const f = FX.compile({ nodes: [{ type: 'eq', params: { freq: 1000, width: 200, gain_db: 3 } }] }).filter; assert.match(f, /^equalizer=f=1000:width_type=h:width=200:g=3$/);

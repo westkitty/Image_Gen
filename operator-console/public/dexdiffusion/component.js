@@ -556,11 +556,14 @@ class Component extends DCLogic {
     if (enhancingPrompt) return;
     if (!prompt.trim()) { this.toast('Write a prompt to enhance first', '#fbbf24'); return; }
     this.setState({ enhancingPrompt: true, enhancementResult: null });
+    // The request can be cancelled by the user and times out on its own; the original prompt is never touched until Apply/Append.
+    const ctrl = this._enhanceAbort = new AbortController();
+    const timeout = AbortSignal.timeout(60000);
     try {
       const r = await fetch(backendUrl + '/api/ollama/enhance', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, target, model: ollamaModel || undefined, save_prompts: !!this.state.savePrompts }),
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.any([ctrl.signal, timeout]),
       });
       if (!r.ok) {
         const failure = await r.json().catch(() => ({}));
@@ -584,8 +587,14 @@ class Component extends DCLogic {
         this.setState({ enhancingPrompt: false });
         this.toast('No enhancement returned', '#fbbf24');
       }
-    } catch (e) { this.setState({ enhancingPrompt: false }); this.toast('Enhance failed: ' + e.message, '#ef4444'); }
+    } catch (e) {
+      this.setState({ enhancingPrompt: false });
+      if (ctrl.signal.aborted) this.toast('Enhance cancelled; your prompt is unchanged', '#94a3b8');
+      else if (timeout.aborted) this.toast('Enhance timed out after 60 s; your prompt is unchanged', '#ef4444');
+      else this.toast('Enhance failed: ' + e.message, '#ef4444');
+    } finally { if (this._enhanceAbort === ctrl) this._enhanceAbort = null; }
   }
+  cancelEnhance() { if (this._enhanceAbort) this._enhanceAbort.abort(); }
   applyEnhancement() {
     const { prompt, enhancementResult } = this.state;
     if (!enhancementResult || !enhancementResult.enhanced) return;
@@ -659,7 +668,7 @@ class Component extends DCLogic {
   }
 
   // ── Job poller ────────────────────────────────────────────────
-  _startPoll(jobId, onComplete) {
+  _startPoll(jobId, onComplete, onTick) {
     clearInterval(this._pollTimer);
     const generation = this._pollGeneration = (this._pollGeneration || 0) + 1;
     let busy = false, failures = 0;
@@ -674,6 +683,7 @@ class Component extends DCLogic {
         failures = 0;
         const stage = job.stage || { label: 'Running', percent: null, determinate: false };
         this.setState({ jobStage: stage, progress: stage.determinate ? stage.percent : null });
+        if (onTick && !this._jobTerminal(job.status)) { try { onTick(job); } catch (_) {} }
         if (this._jobTerminal(job.status)) {
           clearInterval(this._pollTimer);
           onComplete(job);
@@ -1613,11 +1623,12 @@ class Component extends DCLogic {
       // Top Controls Row
       React.createElement('div', { style: { display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap', position: 'relative' } },
         React.createElement('button', {
-          onClick: () => this.enhancePrompt(),
-          disabled: !ollamaOnline || enhancingPrompt,
+          onClick: () => (enhancingPrompt ? this.cancelEnhance() : this.enhancePrompt()),
+          'data-enhance': 'true',
+          disabled: !ollamaOnline,
           title: ollamaOnline ? ('Enhance prompt with ' + (ollamaModel || 'qwen3.8:27b-mlx')) : 'Ollama offline',
           style: { border: '1px solid ' + (ollamaOnline ? '#a78bfa' : 'rgba(148,163,184,.18)'), background: ollamaOnline ? 'rgba(167,139,250,.12)' : 'transparent', color: ollamaOnline ? '#c4b5fd' : '#5a6678', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: ollamaOnline ? 'pointer' : 'not-allowed', opacity: ollamaOnline ? 1 : .6, fontFamily: "'DM Sans',sans-serif", fontWeight: 700 }
-        }, enhancingPrompt ? '✨ Enhancing…' : ('✨ Enhance (' + (ollamaModel ? ollamaModel.replace(':latest', '') : 'Ollama') + ')')),
+        }, enhancingPrompt ? '✕ Cancel enhance' : ('✨ Enhance (' + (ollamaModel ? ollamaModel.replace(':latest', '') : 'Ollama') + ')')),
 
         React.createElement('button', {
           onClick: () => this.setState(s => ({ showWildcards: !s.showWildcards, wildcardFilter: '' })),

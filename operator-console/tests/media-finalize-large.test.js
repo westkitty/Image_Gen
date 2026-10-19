@@ -1,10 +1,11 @@
 'use strict';
+const { trackScratch } = require('./helpers/owned-scratch');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path'); const crypto = require('node:crypto');
 const M = require('../media'); const A = require('../voice-audio'); const Mx = require('../drama-mixer'); const T = require('../audio-tools');
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'dex-fl-'));
+const tmp = () => trackScratch(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-fl-')));
 const store = () => { const b = tmp(); const s = M.createMediaStore({ roots: { image: b + '/i', voice: b + '/v', music: b + '/m', video: b + '/vid', world: b + '/w' }, registryFile: b + '/media.json' }); s.ensureRoots(); return s; };
 function bigWav(frames) { const f = path.join(tmp(), 'big.wav'); const fd = fs.openSync(f, 'w'); fs.writeSync(fd, Mx.wavHeader24(frames, 48000)); const blk = Buffer.alloc(6 * 4800); for (let i = 0; i < 4800; i++) blk.writeIntLE(Math.round(Math.sin(i / 7) * 3e6), i * 6, 3); fs.writeSync(fd, blk); fs.ftruncateSync(fd, 44 + frames * 6); fs.closeSync(fd); return f; }
 

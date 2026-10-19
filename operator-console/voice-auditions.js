@@ -10,9 +10,11 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { execFileSync } = require('child_process');
 const A = require('./voice-audio');
 const E = require('./voice-engines');
 const F = require('./drama-fingerprint');
+const Asr = require('./asr-adapter');
 
 const sid = p => p + '-' + crypto.randomBytes(4).toString('hex');
 const ID_OK = /^vp-[a-f0-9]{10}$/;
@@ -20,7 +22,7 @@ const gate = (message, gate_, status = 409) => Object.assign(new Error(message),
 const textSha = t => F.sha(F.normalizeSpokenText(t));
 const descSha = p => F.sha(F.normalizeSpokenText(p.description || ''));
 
-function createAuditionService({ dir, profiles, voice, mediaStore, jobStore, now = () => Date.now() }) {
+function createAuditionService({ dir, profiles, voice, mediaStore, jobStore, now = () => Date.now(), detectAsr = Asr.detect, asr = Asr }) {
   const root = path.resolve(dir);
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   const cache = new Map(), active = new Set();
@@ -29,9 +31,10 @@ function createAuditionService({ dir, profiles, voice, mediaStore, jobStore, now
     if (!ID_OK.test(String(profileId))) throw gate('invalid profile id', 'invalid', 400);
     if (cache.has(profileId)) return cache.get(profileId);
     let d; try { d = JSON.parse(fs.readFileSync(fileOf(profileId), 'utf8')); } catch (_) { d = null; }
-    if (!d) d = { schema: 'dexdiffusion.voice_auditions.v1', profile_id: profileId, rounds: [], trials: [] };
+    if (!d) d = { schema: 'dexdiffusion.voice_auditions.v1', profile_id: profileId, rounds: [], trials: [], evaluations: [] };
+    if (!Array.isArray(d.evaluations)) d.evaluations = [];
     for (const r of d.rounds) if (r.status === 'rendering' && !active.has(r.id)) { r.status = 'interrupted'; for (const c of r.candidates) if (c.status === 'rendering') { c.status = 'interrupted'; c.error = 'interrupted: the console restarted before this render finished'; } }
-    for (const t of d.trials) if (t.status === 'rendering' && !active.has(t.id)) { t.status = 'interrupted'; t.error = 'interrupted: the console restarted before this render finished'; }
+    for (const t of [...d.trials, ...d.evaluations]) if (t.status === 'rendering' && !active.has(t.id)) { t.status = 'interrupted'; t.error = 'interrupted: the console restarted before this render finished'; }
     cache.set(profileId, d); return d;
   }
   function save(d) {
@@ -167,6 +170,80 @@ function createAuditionService({ dir, profiles, voice, mediaStore, jobStore, now
       .catch(e => { trial.status = 'failed'; trial.error = String(e.message).slice(0, 200); }).finally(() => { active.delete(trial.id); save(d); });
     return trialView(trial);
   }
+  function startEvaluation(profileId, { scripts, directions } = {}) {
+    const profile = needProfile(profileId);
+    if (profile.type !== 'cloned' || !profile.consent || profile.consent.kind !== 'fictional') throw gate('the 18-take evaluation is restricted to an explicitly fictional synthetic clone profile', 'synthetic-only');
+    const texts = (Array.isArray(scripts) ? scripts : []).map(t => F.normalizeSpokenText(t));
+    const styles = (Array.isArray(directions) ? directions : []).map(d => String(d).slice(0, 240));
+    if (texts.length !== 3 || texts.some(t => !t || t.length > 900) || styles.length !== 3 || styles.some(x => !x.trim())) throw gate('provide exactly 3 short scripts and 3 acting directions', 'invalid', 400);
+    const evaluation = { id: sid('ev'), profile_id: profileId, created_at: now(), status: 'rendering', take_count: 18, design: { scripts: texts.map(textSha), directions: styles, repeats_per_pair: 2 }, engine: null, runtime: null, exact_settings: { seed: null, seed_supported: false }, clips: [] };
+    const items = [];
+    for (let script_index = 0; script_index < 3; script_index++) for (let direction_index = 0; direction_index < 3; direction_index++) for (let repeat = 0; repeat < 2; repeat++) {
+      const blind_label = 'Voice ' + String.fromCharCode(65 + crypto.randomInt(0, 26)) + '-' + crypto.randomBytes(2).toString('hex');
+      items.push({ text: texts[script_index], direction: styles[direction_index], preserve_text: true, meta: { script_index, direction_index, repeat: repeat + 1, blind_label } });
+    }
+    const d = load(profileId), onItem = async it => {
+      const meta = items[it.index].meta, stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+      const rec = mediaStore.finalize(it.file, { kind: 'voice', base: `${stamp}-clone-eval-${evaluation.id}-${it.index + 1}`, job_id: it.job_id, worker: it.worker, model: it.worker, duration: it.duration,
+        meta: { operation: 'clone-evaluation', evaluation_id: evaluation.id, blind_label: meta.blind_label, take: it.index + 1 } });
+      evaluation.clips.push({ index: it.index, script_index: meta.script_index, direction_index: meta.direction_index, repeat: meta.repeat, blind_label: meta.blind_label, artifact_id: rec.artifact_id, duration: rec.duration, sha256: rec.sha256, checks: clipChecks(mediaStore.resolve(rec) || rec, texts[meta.script_index].length), human_review: null, word_integrity: 'not-measured' });
+      save(d); return rec;
+    };
+    const r = voice.renderItems({ profileId, items, operation: 'clone-evaluation', onItem, saveText: false, meta: { evaluation_id: evaluation.id, synthetic_only: true } });
+    if (r.error) throw Object.assign(new Error(r.error), { status: r.status || 400, gate: r.gate });
+    evaluation.job_id = r.job_id; evaluation.engine = r.engine; evaluation.runtime = r.revision; evaluation.exact_settings = { seed: null, seed_supported: false, delivery_applied: r.delivery.applied, warnings: r.warnings || [] };
+    d.evaluations.push(evaluation); active.add(evaluation.id); save(d);
+    voice.waitJob(r.job_id, { pollMs: 25 }).then(result => { evaluation.status = evaluation.clips.length === 18 ? 'complete' : evaluation.clips.length ? 'partial' : 'failed'; if (evaluation.status !== 'complete') evaluation.error = result && result.error || 'not all 18 outputs completed'; })
+      .catch(e => { evaluation.status = evaluation.clips.length ? 'partial' : 'failed'; evaluation.error = String(e.message).slice(0, 200); }).finally(() => { active.delete(evaluation.id); save(d); });
+    return evaluationView(evaluation);
+  }
+  const evaluationView = e => Object.assign({}, e, { clips: e.clips.slice().sort((a, b) => a.index - b.index).map(clipView) });
+  function reviewEvaluation(profileId, evaluationId, clipIndex, state, note = '') {
+    const d = load(profileId), e = d.evaluations.find(x => x.id === evaluationId), c = e && e.clips.find(x => x.index === Number(clipIndex));
+    if (!c) throw gate('evaluation take not found', 'not-found', 404);
+    if (!['heard-ok', 'needs-work', 'clear'].includes(state)) throw gate('review must be heard-ok, needs-work or clear', 'invalid', 400);
+    c.human_review = state === 'clear' ? null : { state, note: String(note).slice(0, 240), at: now() }; save(d); return evaluationView(e);
+  }
+  async function checkEvaluationWords(profileId, evaluationId, scripts) {
+    const d = load(profileId), e = d.evaluations.find(x => x.id === evaluationId);
+    if (!e) throw gate('evaluation not found', 'not-found', 404);
+    if (e.status !== 'complete' || e.clips.length !== 18) throw gate('word-integrity QA requires all 18 saved evaluation clips to be complete', 'evaluation-incomplete');
+    if (!Array.isArray(scripts) || scripts.length !== 3 || scripts.some(x => typeof x !== 'string' || !x.trim())) throw gate('provide the three original evaluation scripts for hash verification', 'invalid', 400);
+    const expectedHashes = scripts.map(textSha);
+    if (expectedHashes.some((hash, i) => hash !== e.design.scripts[i])) throw gate('provided scripts do not match the evaluation script hashes', 'script-mismatch', 400);
+    const det = detectAsr();
+    if (!det || !det.available) {
+      for (const c of e.clips) c.word_integrity = { status: 'UNAVAILABLE', measured: false, reason: det && det.reason || 'local speech recognition is unavailable', local_only: true };
+      e.word_integrity = { status: 'UNAVAILABLE', measured: false, checked_at: now(), reason: det && det.reason || 'local speech recognition is unavailable', clips_measured: 0, clips_total: e.clips.length };
+      save(d); return evaluationView(e);
+    }
+    let modelSha = null;
+    try { modelSha = crypto.createHash('sha256').update(fs.readFileSync(det.model)).digest('hex'); } catch (_) {}
+    let runtimeVersion = null;
+    try { runtimeVersion = execFileSync(det.bin, ['--version'], { encoding: 'utf8', timeout: 10000 }).trim().split(/\r?\n/)[0]; } catch (_) {}
+    let measured = 0, failed = 0;
+    for (const c of e.clips.slice().sort((a, b) => a.index - b.index)) {
+      const art = mediaStore.resolve(c.artifact_id);
+      if (!art || !fs.existsSync(art.path) || c.sha256 && crypto.createHash('sha256').update(fs.readFileSync(art.path)).digest('hex') !== c.sha256) {
+        c.word_integrity = { status: 'ERROR', measured: false, reason: 'evaluation audio is missing or its recorded checksum changed', artifact_id: c.artifact_id, expected_sha256: e.design.scripts[c.script_index], checked_at: now() };
+        failed++; continue;
+      }
+      try {
+        const heard = await asr.transcribe(art.path, det), comparison = asr.compare(scripts[c.script_index], heard.text);
+        c.word_integrity = Object.assign({}, comparison, { status: comparison.status, measured: true, transcription: heard.text, expected_sha256: e.design.scripts[c.script_index], audio_sha256: c.sha256,
+          artifact_id: c.artifact_id, engine: heard.engine || 'whisper.cpp', runtime: runtimeVersion, runtime_path: det.bin, model: path.basename(det.model), model_sha256: modelSha, local_only: true, checked_at: now() });
+        measured++;
+      } catch (err) {
+        c.word_integrity = { status: 'ERROR', measured: false, reason: String(err.message).slice(0, 200), expected_sha256: e.design.scripts[c.script_index], audio_sha256: c.sha256, artifact_id: c.artifact_id, local_only: true, checked_at: now() };
+        failed++;
+      }
+      save(d);
+    }
+    e.word_integrity = { status: failed ? (measured ? 'PARTIAL' : 'ERROR') : 'MEASURED', measured: true, checked_at: now(), engine: 'whisper.cpp', runtime: runtimeVersion,
+      runtime_path: det.bin, model: path.basename(det.model), model_sha256: modelSha, local_only: true, clips_measured: measured, clips_failed: failed, clips_total: e.clips.length,
+      limitations: Asr.LIMITATIONS };
+    save(d); return evaluationView(e);
+  }
   const trialView = t => Object.assign({}, t, { clips: t.clips.slice().sort((a, b) => a.line_index - b.line_index).map(clipView) });
   const findTrial = (profileId, id) => { const t = load(profileId).trials.find(x => x.id === id); if (!t) throw gate('trial not found', 'not-found', 404); return t; };
   const getTrial = (profileId, id) => trialView(findTrial(profileId, id));
@@ -183,7 +260,8 @@ function createAuditionService({ dir, profiles, voice, mediaStore, jobStore, now
     return { trial: trialView(t), profile: updated };
   }
 
-  return { start, getRound, listRounds, mark, approve, promote, startTrial, getTrial, waitTrial, acceptTrial, listTrials: profileId => load(profileId).trials.slice().reverse().map(trialView) };
+  return { start, getRound, listRounds, mark, approve, promote, startTrial, getTrial, waitTrial, acceptTrial, listTrials: profileId => load(profileId).trials.slice().reverse().map(trialView), startEvaluation,
+    listEvaluations: profileId => load(profileId).evaluations.slice().reverse().map(evaluationView), getEvaluation: (profileId, id) => { const e = load(profileId).evaluations.find(x => x.id === id); return e ? evaluationView(e) : null; }, reviewEvaluation, checkEvaluationWords };
 }
 
 module.exports = { createAuditionService };

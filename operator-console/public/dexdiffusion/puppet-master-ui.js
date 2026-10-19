@@ -31,7 +31,7 @@
     if (!(host instanceof Element)) throw new Error('mount(el): el must be an element');
     const state = {
       pose: PP.createPose(opts.plan || 'openpose18', { width: opts.width || 512, height: opts.height || 512 }),
-      past: [], future: [], sel: { person: 0, joint: 0 }, drag: null, bg: null, lastKey: { t: 0, joint: '' }, destroyed: false,
+      past: [], future: [], sel: { person: 0, joint: 0 }, drag: null, bg: null, connected: true, lastKey: { t: 0, joint: '' }, destroyed: false,
     };
     const cb = name => (typeof opts[name] === 'function' ? opts[name] : null);
 
@@ -57,6 +57,7 @@
         btn('Larger', 'scale-up', () => commit(PP.scalePerson(state.pose, state.sel.person, 1.1))),
         btn('Add person', 'add-person', () => { const r = guard(() => PP.addPerson(state.pose, tplSel.value)); if (r) { state.sel = { person: r.people.length - 1, joint: 0 }; commit(r); } }),
         btn('Remove person', 'remove-person', () => { if (state.pose.people.length <= 1) return say('At least one person is required'); const r = PP.removePerson(state.pose, state.sel.person); state.sel = { person: Math.max(0, state.sel.person - 1), joint: 0 }; commit(r); }),
+        el('label', { style: 'display:inline-flex;gap:4px;align-items:center;font-size:12px', title: 'When on, moving a joint also moves everything attached beyond it (drag a wrist and the hand follows).' }, el('input', { type: 'checkbox', 'data-puppet-field': 'connected', checked: true, onchange: e => { state.connected = e.target.checked; } }), 'Move connected limb'),
         btn('Hide/show joint', 'toggle-joint', () => toggleJoint()), undoBtn, redoBtn),
       planNote, canvas, status, errBox,
       el('div', { style: 'display:flex;flex-wrap:wrap;gap:6px' },
@@ -133,7 +134,7 @@
     canvas.addEventListener('pointermove', ev => {
       if (!state.drag) return;
       const p = toCanvas(ev);
-      state.pose = PP.moveJoint(state.drag.start, state.sel.person, state.sel.joint, p.x, p.y);   // live; history is pushed on release
+      state.pose = (state.connected ? PP.moveJointChain : PP.moveJoint)(state.drag.start, state.sel.person, state.sel.joint, p.x, p.y);   // live; history is pushed on release
       state.drag.moved = true; draw();
     });
     const endDrag = ev => {
@@ -159,7 +160,7 @@
       if (d) {
         ev.preventDefault();
         const k = people()[state.sel.person].keypoints[state.sel.joint]; if (!k) return say(describeSel() + ' (press V to show it)');
-        commit(PP.moveJoint(state.pose, state.sel.person, state.sel.joint, k[0] + d[0], k[1] + d[1]), { coalesceKey: state.sel.person + ':' + state.sel.joint });
+        commit((state.connected ? PP.moveJointChain : PP.moveJoint)(state.pose, state.sel.person, state.sel.joint, k[0] + d[0], k[1] + d[1]), { coalesceKey: state.sel.person + ':' + state.sel.joint });
       } else if (ev.key === 'v' || ev.key === 'V') { ev.preventDefault(); toggleJoint(); }
       else if ((ev.key === 'z' || ev.key === 'Z')) { ev.preventDefault(); ev.shiftKey ? redo() : undo(); }
     });

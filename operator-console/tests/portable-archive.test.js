@@ -1,10 +1,11 @@
 'use strict';
+const { trackScratch } = require('./helpers/owned-scratch');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path'); const zlib = require('node:zlib'); const crypto = require('node:crypto');
 const Z = require('../portable-archive');
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'dex-zip-'));
+const tmp = () => trackScratch(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-zip-')));
 const sha = b => crypto.createHash('sha256').update(b).digest('hex');
 
 const rawZip = require('./helpers/rawzip');

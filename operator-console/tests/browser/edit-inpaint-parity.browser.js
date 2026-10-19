@@ -20,12 +20,34 @@ async function newPage(browser, base) {
   await page.route('**/api/actions/inpaint', r => { posts.push(r.request().postDataJSON()); r.fulfill({ status: 400, json: { error: 'intercepted by test', gate: 'test' } }); });
   await page.route('**/api/library/images**', r => r.fulfill({ json: { filter: 'all', total: 1, items: [{ id: 'fx-landscape.png', url: '/api/images/fx-landscape.png', width: 800, height: 500, meta: FX['fx-landscape.png'].meta }] } }));
   await page.goto(base + '/dexdiffusion/');
-  await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
+  try {
+    await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData, null, { timeout: 30000 });
+  } catch (err) {
+    const state = await page.evaluate(() => ({
+      loaded: document.readyState, dex: !!window.__dex,
+      models: window.__dex?.state?.modelTargets?.length ?? null,
+      capabilityData: !!window.__dex?.state?.capabilityData,
+      target: window.__dex?.state?.target ?? null
+    }));
+    throw new Error('model readiness timeout: ' + JSON.stringify(state) + ', page errors: ' + JSON.stringify(errors) + ' / ' + err.message);
+  }
   return { page, ctx, errors, posts };
 }
 async function openInpaint(page) {
   assert.ok(await page.evaluate(() => __dex.openImageInEdit('fx-landscape.png', 'inpaint')));
-  await page.waitForFunction(() => __dex.ed && !__dex.ed.loading && __dex.ed.op === 'inpaint' && document.querySelector('[data-inpaint-options]') && document.querySelector('[data-mask-viewport] img'));
+  try {
+    await page.waitForFunction(() => __dex.ed && !__dex.ed.loading && __dex.ed.op === 'inpaint' && document.querySelector('[data-inpaint-options]') && document.querySelector('[data-mask-viewport] img'), null, { timeout: 30000 });
+  } catch (err) {
+    const state = await page.evaluate(() => ({
+      ed: window.__dex && { exists: !!__dex.ed, loading: __dex.ed && __dex.ed.loading, op: __dex.ed && __dex.ed.op },
+      options: !!document.querySelector('[data-inpaint-options]'),
+      viewport: !!document.querySelector('[data-mask-viewport]'),
+      image: !!document.querySelector('[data-mask-viewport] img'),
+      screens: window.__dex && __dex.state.screens,
+      errors: window.__dex && (__dex.ed && __dex.ed.error)
+    }));
+    throw new Error('inpaint readiness timeout: ' + JSON.stringify(state) + ' / ' + err.message);
+  }
   await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
   await page.locator('[data-mask-viewport]').scrollIntoViewIfNeeded();
   await page.evaluate(() => __dex.edQuiet({ brush: { mode: 'paint', size: 40 } }));
@@ -44,7 +66,7 @@ const run = async (page, posts) => {
 const commit = page => page.keyboard.press('Tab');
 
 (async () => {
-  const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer();
+  const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer({ seedCanonicalImage: { id: 'fixture-canonical.png', width: 32, height: 24 } });
   const browser = await launchBrowser(chromium);
   try {
     await test('defaults keep today\'s behaviour: whole picture, blur 4, original content, and nothing else is sent', async () => {
@@ -106,7 +128,7 @@ const commit = page => page.keyboard.press('Tab');
     await test('server validator (real source, no job starts): bad area/content/padding/blur are refused before any work', async () => {
       const lib = await (await fetch(srv.base + '/api/library/images?limit=1')).json().catch(() => ({}));
       const id = (lib.items || [])[0] && lib.items[0].id;
-      if (!id) { console.log('  (no canonical image in this environment; HTTP validator checks skipped)'); return; }
+      assert.ok(id, 'isolated HTTP validator fixture is required, never skip validation');
       const post = async body => { const r = await fetch(srv.base + '/api/actions/inpaint', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ image_id: id, prompt: 'p', strength: 0.5, mask_data: 'data:image/png;base64,AAAA' }, body)) }); return { status: r.status, data: await r.json() }; };
       const cases = [
         [{ inpaint_area: 'tiles' }, /inpaint_area must be/],

@@ -33,6 +33,7 @@ const NODE_TYPES = {
   chorus: { label: 'Chorus', params: { delay_ms: [10, 80, 40], depth: [0.1, 5, 1.5], speed: [0.1, 5, 0.5] }, build: p => ({ f: `chorus=0.7:0.9:${r3(p.delay_ms)}:0.4:${r3(p.speed)}:${r3(p.depth)}` }) },
   flanger: { label: 'Flanger', params: { delay_ms: [0, 10, 3], depth: [0, 10, 2], speed: [0.1, 10, 0.5] }, build: p => ({ f: `flanger=delay=${r3(p.delay_ms)}:depth=${r3(p.depth)}:speed=${r3(p.speed)}` }) },
   pitch: { label: 'Pitch shift', params: { semitones: [-12, 12, 0] }, build: p => { const k = Math.pow(2, p.semitones / 12); return { f: `asetrate=${Math.round(WORK_RATE * k)},aresample=${WORK_RATE},atempo=${r3(1 / k)}`, needs48k: true }; } },
+  pitch_formant: { label: 'Pitch shift (formant-preserving)', params: { semitones: [-12, 12, 0] }, build: p => ({ processor: 'rubberband-formant-pitch', semitones: p.semitones, method: 'Rubber Band R3 --formant' }) },
   robot: { label: 'Bit-crush (robotic)', params: { bits: [4, 16, 10], mix: [0, 1, 0.6] }, build: p => ({ f: `acrusher=bits=${Math.round(p.bits)}:mode=lin:mix=${r3(p.mix)}` }) },
   tremolo: { label: 'Tremolo', params: { freq: [0.1, 50, 8], depth: [0, 1, 0.5] }, build: p => ({ f: `tremolo=f=${r3(p.freq)}:d=${r3(p.depth)}` }) },
 };
@@ -85,11 +86,21 @@ function compile(chain) {
   if (v.chain.bypass || !nodes.length || !v.ok) return { filter: '', tail_s: 0, empty: true, nodes: [] };
   const built = nodes.map(n => NODE_TYPES[n.type].build(n.params));
   const tail = Math.min(5, built.reduce((m, b) => Math.max(m, b.tail || 0), 0));
-  const parts = [];
-  if (built.some(b => b.needs48k)) parts.push(`aresample=${WORK_RATE}`);
-  if (tail > 0) parts.push(`apad=pad_dur=${r3(tail)}`);      // pad BEFORE the echoes so the tail is generated, not truncated
-  parts.push(...built.map(b => b.f));
-  return { filter: parts.join(','), tail_s: r3(tail), empty: false, nodes: nodes.map(n => n.type) };
+  const stages = []; let group = [];
+  const flush = () => {
+    if (!group.length) return;
+    const parts = [];
+    if (group.some(b => b.needs48k)) parts.push(`aresample=${WORK_RATE}`);
+    if (group.some(b => b.tail)) parts.push(`apad=pad_dur=${r3(Math.max(...group.map(b => b.tail || 0)))}`);
+    parts.push(...group.map(b => b.f)); stages.push({ type: 'ffmpeg', filter: parts.join(',') }); group = [];
+  };
+  for (const b of built) {
+    if (b.processor) { flush(); stages.push({ type: b.processor, semitones: b.semitones, method: b.method }); }
+    else group.push(b);
+  }
+  flush();
+  const filters = built.filter(b => b.f);
+  return { filter: filters.map(b => b.f).join(','), tail_s: r3(tail), empty: false, nodes: nodes.map(n => n.type), stages };
 }
 function identity(chain) {
   const v = validate(chain), nodes = v.chain.nodes.filter(n => n.enabled);

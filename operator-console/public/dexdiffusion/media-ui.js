@@ -30,7 +30,8 @@
 
   // ── state ────────────────────────────────────────────────────────
   P._mws = function () {
-    if (!this.mws) this.mws = { voiceMode: 'speech', workers: null, resources: null, lib: { kind: 'all', items: [], counts: {}, showTest: false, loading: false }, refs: {}, jobs: {}, options: null, speed: 1, language: 'en', vSeed: '', mSeed: '', aceDuration: 30, magDuration: 8, musicWorker: 'ace-step', kokoroVoice: 'af_heart', instrumental: false, influence: 0.5 };
+    if (!this.mws) this.mws = { voiceMode: 'speech', workers: null, resources: null, lib: { kind: 'all', items: [], counts: {}, showTest: false, loading: false }, refs: {}, refErrors: {}, jobs: {}, options: null, speed: 1, language: 'en', vSeed: '', mSeed: '', aceDuration: 30, magDuration: 8, musicWorker: 'ace-step', kokoroVoice: 'af_heart', instrumental: false, influence: 0.5 };
+    if (!this.mws.refErrors) this.mws.refErrors = {};
     if (!this._mtext) this._mtext = {}; // private text: memory only
     return this.mws;
   };
@@ -63,44 +64,107 @@
   // ── reusable reference-audio stager (Voice Clone, Music reference) ─
   P.stageReference = async function (slot, file) {
     if (!file) return;
-    if (file.size > 40 * 1024 * 1024) { this.toast('Audio too large (40 MB max)', '#ef4444'); return; }
-    const r = await fetch(this.state.backendUrl + '/api/staging?accept=audio', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
-    const d = await r.json().catch(() => ({ error: r.statusText }));
-    if (!r.ok) { this.toast(d.error || 'Reference rejected', '#ef4444'); return; }
-    const prev = this._mws().refs[slot];
-    if (prev) fetch(this.state.backendUrl + '/api/staging/' + prev.id, { method: 'DELETE' });
-    this.mSet({ refs: Object.assign({}, this._mws().refs, { [slot]: d }) });
-    this.toast('Reference staged · ' + fmtTime(d.duration), '#a78bfa');
+    if (file.size > 40 * 1024 * 1024) {
+      const msg = 'Audio too large (40 MB max)';
+      const refErrors = Object.assign({}, this._mws().refErrors, { [slot]: msg });
+      this.mSet({ refErrors });
+      this.toast(msg, '#ef4444');
+      return;
+    }
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/staging?accept=audio', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+      const d = await r.json().catch(() => ({ error: r.statusText }));
+      if (!r.ok) {
+        const msg = d.error || 'Reference rejected';
+        const refErrors = Object.assign({}, this._mws().refErrors, { [slot]: msg });
+        this.mSet({ refErrors });
+        this.toast(msg, '#ef4444');
+        return;
+      }
+      const prev = this._mws().refs[slot];
+      if (prev) fetch(this.state.backendUrl + '/api/staging/' + prev.id, { method: 'DELETE' });
+      const staged = Object.assign({}, d, { filename: file.name, name: file.name });
+      const refErrors = Object.assign({}, this._mws().refErrors);
+      delete refErrors[slot];
+      this.mSet({ refs: Object.assign({}, this._mws().refs, { [slot]: staged }), refErrors });
+      this.toast('Reference staged · ' + fmtTime(d.duration), '#a78bfa');
+    } catch (e) {
+      const msg = (e && e.message) ? e.message : 'Upload failed';
+      const refErrors = Object.assign({}, this._mws().refErrors, { [slot]: msg });
+      this.mSet({ refErrors });
+      this.toast(msg, '#ef4444');
+    }
   };
   P.removeReference = function (slot) {
     const prev = this._mws().refs[slot];
     if (prev) fetch(this.state.backendUrl + '/api/staging/' + prev.id, { method: 'DELETE' });
     const refs = Object.assign({}, this._mws().refs); delete refs[slot];
-    this.mSet({ refs });
+    const refErrors = Object.assign({}, this._mws().refErrors); delete refErrors[slot];
+    this.mSet({ refs, refErrors });
   };
   P.buildReferenceStager = function (slot, label) {
     const ref = this._mws().refs[slot], base = this.state.backendUrl;
-    const input = h('input', { type: 'file', accept: 'audio/wav,audio/x-wav,audio/mpeg,audio/mp4,audio/x-m4a,audio/flac,.wav,.mp3,.m4a,.flac', style: { display: 'none' }, onChange: e => this.stageReference(slot, e.target.files[0]) });
+    const triggerPick = e => {
+      const parent = e && e.currentTarget && (e.currentTarget.closest('[data-reference-stager], [data-reference-card]') || e.currentTarget.parentElement);
+      const inp = (parent && parent.querySelector('input[type="file"]')) || document.querySelector('input[data-reference-input="' + slot + '"]');
+      if (inp) inp.click();
+    };
+    const input = h('input', {
+      type: 'file',
+      'data-reference-input': slot,
+      accept: 'audio/wav,audio/x-wav,audio/mpeg,audio/mp4,audio/x-m4a,audio/flac,.wav,.mp3,.m4a,.flac',
+      style: { display: 'none' },
+      onChange: e => {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (file) this.stageReference(slot, file);
+      }
+    });
+    const err = (this._mws().refErrors || {})[slot];
+    const errorBlock = err ? h('div', {
+      role: 'alert',
+      'data-reference-error': slot,
+      style: { color: tone.bad, fontSize: 12, border: '1px solid rgba(248,113,113,.4)', borderRadius: 8, padding: '6px 10px', background: 'rgba(239,68,68,.08)', overflowWrap: 'anywhere' }
+    }, '✗ ' + err) : null;
     return h('div', { style: { display: 'grid', gap: 6, minWidth: 0 } },
       h('span', { style: css.label }, label),
-      ref ? h('div', { style: { display: 'grid', gap: 6, border: '1px solid rgba(167,139,250,.3)', borderRadius: 8, padding: 8 } },
-        this._mediaEl(base + ref.url, 'audio'),
-        h('div', { style: css.row }, chip(ref.mime, '#a78bfa'), h('span', { style: css.muted }, fmtTime(ref.duration) + ' · ' + Math.round(ref.bytes / 1024) + ' KB · temporary (24 h)'),
-          h('label', { style: { color: '#c4b5fd', fontSize: 12, cursor: 'pointer', fontWeight: 700, padding: '7px 4px' } }, 'Replace', input),
-          btn('Remove', () => this.removeReference(slot), '#f87171')))
-        : h('label', { style: { border: '1px dashed rgba(167,139,250,.5)', color: '#c4b5fd', borderRadius: 8, padding: '12px', minHeight: 44, cursor: 'pointer', fontSize: 12, fontWeight: 700, display: 'block' },
-          onDragover: e => e.preventDefault(), onDrop: e => { e.preventDefault(); this.stageReference(slot, e.dataTransfer.files[0]); } },
-          'Add reference audio (WAV / MP3 / M4A / FLAC, ≤ 10 min) — click or drop', input));
+      ref ? h('div', { 'data-reference-card': slot, style: { display: 'grid', gap: 6, border: '1px solid rgba(167,139,250,.3)', borderRadius: 8, padding: 8 } },
+        h('div', { style: Object.assign({}, css.row, { justifyContent: 'space-between' }) },
+          h('span', { 'data-reference-filename': slot, style: { fontWeight: 700, color: '#e2e8f0', fontSize: 12, overflowWrap: 'anywhere' } }, ref.filename || ref.name || 'reference audio'),
+          chip(ref.mime || 'audio', '#a78bfa')),
+        this._mediaEl(base + ref.url, 'audio', slot),
+        h('div', { style: css.row },
+          chip(ref.mime || 'audio', '#a78bfa'),
+          h('span', { 'data-reference-duration': slot, style: css.muted }, fmtTime(ref.duration) + ' · ' + Math.round((ref.bytes || 0) / 1024) + ' KB · temporary (24 h)'),
+          h('div', { style: { flex: 1 } }),
+          btn('Replace', triggerPick, '#c4b5fd', { 'data-upload-button': slot, 'data-replace-button': slot }),
+          btn('Remove', () => this.removeReference(slot), '#f87171', { 'data-remove-button': slot }),
+          input),
+        errorBlock)
+        : h('div', { style: { display: 'grid', gap: 6 } },
+          h('div', {
+            'data-reference-stager': slot,
+            style: { border: '1px dashed rgba(167,139,250,.5)', color: '#c4b5fd', borderRadius: 8, padding: '10px 12px', minHeight: 48, cursor: 'pointer', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
+            onDragover: e => e.preventDefault(),
+            onDrop: e => { e.preventDefault(); if (e.dataTransfer.files && e.dataTransfer.files[0]) this.stageReference(slot, e.dataTransfer.files[0]); },
+            onClick: e => { if (e.target.tagName !== 'BUTTON') triggerPick(e); }
+          },
+            h('span', null, 'Add reference audio (WAV / MP3 / M4A / FLAC, ≤ 10 min) — click or drop'),
+            btn('Upload audio', triggerPick, '#a78bfa', { 'data-upload-button': slot }),
+            input),
+          errorBlock));
   };
 
   // ── shared pieces ─────────────────────────────────────────────────
   P._workerCard = function (id) {
     const w = this._worker(id);
     if (!w) return h('div', { style: css.muted }, 'Loading worker status…');
-    const flag = (k, v) => h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 } }, h('span', { style: { color: '#94a3b8' } }, k), h('span', { style: { color: v ? tone.ok : tone.warn, fontWeight: 700 } }, v ? 'Yes' : 'No'));
+    const flag = (k, v) => h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 } }, h('span', { style: { color: '#94a3b8' } }, k), h('span', { style: { color: v === null ? tone.off : v ? tone.ok : tone.warn, fontWeight: 700 } }, v === null ? 'Unknown' : v ? 'Yes' : 'No'));
     return h('div', { style: Object.assign({}, css.panel, { marginBottom: 0 }) },
       h('div', { style: Object.assign({}, css.row, { marginBottom: 6 }) }, h('span', { style: { fontWeight: 800, color: '#e2e8f0' } }, 'Worker: ' + w.label), chip(w.state, w.enabled ? tone.ok : tone.warn)),
-      flag('Architecture ready', w.architecture_available), flag('Runtime installed', w.runtime_available), flag('Model installed', w.model_available),
+      flag('Architecture ready', w.architecture_available), flag('Big Mac connected', w.remote_reachable),
+      flag('Runtime installed', w.remote_reachable === false ? null : w.runtime_available),
+      flag('Model installed', w.remote_reachable === false ? null : w.model_available),
       flag('Generation enabled', w.enabled), flag('Proven', w.proven),
       w.activation ? h('details', { style: { marginTop: 6 } }, h('summary', { style: Object.assign({}, css.muted, { cursor: 'pointer' }) }, '▸ Activation path'),
         h('div', { style: css.mono }, w.activation + ' Runtime: ' + w.runtimePath + ' · Model: ' + w.modelPath)) : null);
@@ -111,6 +175,8 @@
   const MEDIA_JOBS_KEY = 'dex_media_jobs'; // job ids only (no text) for reload recovery
   P._disabledReason = function (w) {
     if (!w) return 'Checking worker…';
+    if (w.remote_reachable === false) return 'Big Mac unreachable';
+    if (w.state === 'MODEL INACCESSIBLE (wc2tb)') return 'Model drive inaccessible';
     if (!w.runtime_available) return 'Runtime not installed';
     if (!w.model_available) return 'Model not installed';
     return w.enabled ? '' : 'Worker disabled';

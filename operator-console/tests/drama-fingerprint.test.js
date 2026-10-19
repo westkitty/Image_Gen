@@ -2,9 +2,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const F = require('../drama-fingerprint');
+const Score = require('../performance-score');
 
 const sample = (o = {}) => Object.assign({ id: 'sm-aaaaaaaaaa', sha256: 'a'.repeat(64), transcript: 'Hello there.', active: true }, o);
-const profile = (o = {}) => Object.assign({ id: 'vp-1111111111', name: 'Tiger', type: 'designed', language: 'en', description: 'A gravelly baritone, calm and slow.', samples: [], preferred_engine: 'qwen3-tts-voice-design' }, o);
+const profile = (o = {}) => Object.assign({ id: 'vp-1111111111', identity_version: 1, name: 'Tiger', type: 'designed', language: 'en', description: 'A gravelly baritone, calm and slow.', samples: [], preferred_engine: 'qwen3-tts-voice-design' }, o);
 const cloned = (o = {}) => profile(Object.assign({ type: 'cloned', description: '', preferred_engine: 'qwen3-tts-base', samples: [sample()] }, o));
 const preset = (o = {}) => profile(Object.assign({ type: 'preset', description: '', preset_voice: 'af_heart', default_speed: 1, preferred_engine: 'kokoro' }, o));
 const line = (o = {}) => Object.assign({ id: 'ln-001', kind: 'dialogue', speaker: 'TIGER', speaker_key: 'TIGER', text: 'I warned you.', direction: '' }, o);
@@ -27,7 +28,7 @@ test('fingerprint is deterministic, versioned and exposes per-component hashes',
   assert.equal(a.inputs_sha, b.inputs_sha);
   assert.match(a.inputs_sha, /^[a-f0-9]{64}$/);
   assert.equal(a.version, F.FP_VERSION);
-  for (const k of ['text', 'speaker', 'voice', 'reference', 'engine', 'language', 'settings', 'delivery', 'pronunciation', 'source']) assert.match(a.components[k], /^[a-f0-9]{64}$/, k);
+  for (const k of ['text', 'speaker', 'voice', 'reference', 'engine', 'language', 'settings', 'delivery', 'performance', 'pronunciation', 'source']) assert.match(a.components[k], /^[a-f0-9]{64}$/, k);
 });
 
 test('whitespace-only and unrelated edits do not change the speech fingerprint', () => {
@@ -79,6 +80,17 @@ test('delivery direction only matters when the engine actually applies it', () =
   assert.equal(dDir.delivery.applied, true);
   const q = F.speechFingerprint({ line: line(), actor: actor(), profile: cloned(), engineId: 'qwen3-tts-base', language: 'en', direction: 'shouting' });
   assert.equal(q.delivery.applied, false, 'Qwen3 Base never forwards instruct');
+});
+
+test('performance score directions invalidate only the bound line and stale source is rejected', () => {
+  const score = Score.createScore({ sourceText: 'I warned you.', profileId: 'vp-1111111111', identityVersion: 1, lineId: 'ln-001',
+    phrases: [{ start: 2, end: 8, text: 'warned', delivery: 'quietly' }] });
+  const base = fp();
+  const directed = fp({ performanceScore: score });
+  assert.notEqual(directed.inputs_sha, base.inputs_sha);
+  assert.throws(() => fp({ line: line({ text: 'I told you.' }), performanceScore: score }), /stale/);
+  assert.throws(() => fp({ profile: profile({ id: 'vp-other' }), performanceScore: score }), /different voice profile/);
+  assert.throws(() => fp({ profile: profile({ identity_version: 2 }), performanceScore: score }), /stale voice identity/);
 });
 
 test('kokoro speed is a synthesis setting', () => {

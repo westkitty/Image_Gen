@@ -3,7 +3,7 @@ const test = require('node:test'); const assert = require('node:assert/strict');
 const fs = require('node:fs'); const path = require('node:path'); const vm = require('node:vm');
 test('a delayed old poll cannot update or complete a replacement job', async () => {
   const source = fs.readFileSync(path.join(__dirname, '../public/dexdiffusion/component.js'), 'utf8');
-  const method = source.slice(source.indexOf('  _startPoll(jobId, onComplete) {'), source.indexOf('\n  setVersion(', source.indexOf('  _startPoll(jobId, onComplete) {')));
+  const method = source.slice(source.indexOf('  _startPoll(jobId, onComplete, onTick) {'), source.indexOf('\n  setVersion(', source.indexOf('  _startPoll(jobId, onComplete, onTick) {')));
   const ticks = []; let resolve; const updates = [], completed = [];
   const obj = vm.runInNewContext('({' + method + '})', { setInterval: f => (ticks.push(f), ticks.length), clearInterval() {}, fetch: () => new Promise(r => { resolve = r; }), AbortSignal });
   obj.state = { backendUrl: '' }; obj.setState = p => updates.push(p); obj._jobTerminal = s => s === 'PASS';
@@ -12,6 +12,19 @@ test('a delayed old poll cannot update or complete a replacement job', async () 
   resolve({ ok: true, json: async () => ({ id: 'old', status: 'PASS', stage: { label: 'Old result' } }) });
   await pending;
   assert.equal(updates.length, 0); assert.deepEqual(completed, []);
+});
+
+test('a delayed old poll also cannot deliver progressive results (onTick) to a replacement job', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../public/dexdiffusion/component.js'), 'utf8');
+  const method = source.slice(source.indexOf('  _startPoll(jobId, onComplete, onTick) {'), source.indexOf('\n  setVersion(', source.indexOf('  _startPoll(jobId, onComplete, onTick) {')));
+  const ticks = []; let resolve; const seen = [];
+  const obj = vm.runInNewContext('({' + method + '})', { setInterval: f => (ticks.push(f), ticks.length), clearInterval() {}, fetch: () => new Promise(r => { resolve = r; }), AbortSignal });
+  obj.state = { backendUrl: '' }; obj.setState = () => {}; obj._jobTerminal = s => s === 'PASS';
+  obj._startPoll('old', () => {}, j => seen.push(j.id)); const pending = ticks[0]();
+  obj._startPoll('new', () => {}, j => seen.push(j.id));
+  resolve({ ok: true, json: async () => ({ id: 'old', status: 'running', results: [{ status: 'DONE' }] }) });
+  await pending;
+  assert.deepEqual(seen, []);
 });
 
 test('Create progress reads its real controlled-generation log', () => {

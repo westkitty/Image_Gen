@@ -7,9 +7,9 @@ const { registerVoiceRoutes } = require('../voice-routes');
 const A = require('../voice-audio');
 const { harness, tone } = require('./helpers/fake-bigmac');
 
-async function boot() {
+async function boot({ probeFor } = {}) {
   const h = harness(); const app = express(); app.use(express.json());
-  const mod = registerVoiceRoutes(app, { stateDir: h.base + '/state', jobStore: h.jobStore, mediaStore: h.mediaStore, staging: h.staging, mediaBridge: h.bridge, probeFor: h.probeFor, llmChat: null, ingest: async p => fs.readFileSync(p) });
+  const mod = registerVoiceRoutes(app, { stateDir: h.base + '/state', jobStore: h.jobStore, mediaStore: h.mediaStore, staging: h.staging, mediaBridge: h.bridge, probeFor: probeFor || h.probeFor, llmChat: null, ingest: async p => fs.readFileSync(p) });
   const server = await new Promise(r => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const api = async (method, url, body, raw) => { const r = await fetch(base + url, { method, headers: raw ? {} : { 'content-type': 'application/json' }, body: raw || (body ? JSON.stringify(body) : undefined) }); const ct = r.headers.get('content-type') || ''; return { status: r.status, body: ct.includes('json') ? await r.json() : Buffer.from(await r.arrayBuffer()), headers: r.headers }; };
@@ -69,4 +69,41 @@ test('preview returns a labelled scratch render; bank export is metadata-only by
     assert.equal((await h.api('POST', '/api/voice/bank/import', null, Buffer.from('not a zip at all'))).status, 422);
     assert.equal((await h.api('POST', '/api/voice/bank/export', { profile_ids: [] })).status, 400);
   } finally { h.close(); }
+});
+
+test('OpenVoice conversion refuses unreviewed voices, dispatches only an approved synthetic target, and reports unavailable capability', async () => {
+  const h = await boot(); try {
+    let dispatch = null;
+    h.bridge.startConversion = args => { dispatch = args; return { job_id: 'job-openvoice-test', status: 'QUEUED', worker: 'openvoice-v2' }; };
+    const profile = (await h.api('POST', '/api/voice/profiles', { name: 'Test-only synthetic target', type: 'cloned' })).body.profile;
+    const refFile = require('./helpers/fake-bigmac').writeWav(tone(5, 220));
+    const refStage = h.staging.stage(fs.readFileSync(refFile), { accept: 'audio' });
+    const sample = await h.api('POST', `/api/voice/profiles/${profile.id}/samples`, { staged_id: refStage.id, name: 'Synthetic target sample', transcript: 'This is a synthetic target voice sample.' });
+    assert.equal(sample.status, 201);
+    const sourceFile = require('./helpers/fake-bigmac').writeWav(tone(5, 310));
+    const source = h.staging.stage(fs.readFileSync(sourceFile), { accept: 'audio' });
+    const refused = await h.api('POST', '/api/voice/convert', { source_staged_id: source.id, target_profile_id: profile.id });
+    assert.equal(refused.status, 409); assert.equal(refused.body.gate, 'consent-required'); assert.equal(dispatch, null);
+
+    await h.api('PUT', `/api/voice/profiles/${profile.id}/consent`, { kind: 'fictional', note: 'Isolated synthetic conversion test fixture.' });
+    await h.api('POST', `/api/voice/profiles/${profile.id}/approve`, { note: 'Isolated test fixture only; not production approval.' });
+    const reviewed = await h.api('PUT', `/api/voice/profiles/${profile.id}/samples/${sample.body.sample.id}/review`, { state: 'approved', note: 'Automated route-test fixture; no human-audition claim.' });
+    assert.equal(reviewed.status, 200);
+    const accepted = await h.api('POST', '/api/voice/convert', { source_staged_id: source.id, target_profile_id: profile.id });
+    assert.equal(accepted.status, 202); assert.equal(accepted.body.job_id, 'job-openvoice-test');
+    assert.equal(dispatch.targetProfileId, profile.id); assert.equal(dispatch.targetSampleId, sample.body.sample.id);
+    assert.notEqual(dispatch.sourceSha256, dispatch.targetSampleSha256, 'source and target audio identities remain separate');
+    assert.equal(dispatch.probe.runtime_available, true);
+    const sameSource = h.staging.stage(fs.readFileSync(refFile), { accept: 'audio' });
+    const same = await h.api('POST', '/api/voice/convert', { source_staged_id: sameSource.id, target_profile_id: profile.id });
+    assert.equal(same.status, 400); assert.equal(same.body.gate, 'identity-separation');
+  } finally { h.close(); }
+
+  const unavailable = await boot({ probeFor: id => id === 'openvoice-v2' ? { state: 'runtime-missing', runtime_available: false, model_available: false, enabled: false } : { runtime_available: true, model_available: true } });
+  try {
+    const { body } = await unavailable.api('GET', '/api/voice/converters');
+    const ov = body.converters.find(c => c.id === 'openvoice-v2');
+    assert.equal(ov.capabilities.voice_conversion, true); assert.equal(ov.capabilities.text_generation, false);
+    assert.equal(ov.availability.enabled, false); assert.equal(ov.availability.runtime_available, false);
+  } finally { unavailable.close(); }
 });

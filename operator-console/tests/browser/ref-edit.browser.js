@@ -26,7 +26,7 @@ const previewHas = (page, re) => page.waitForFunction(src => new RegExp(src).tes
 const f = (page, k) => page.locator('[data-refedit-field="' + k + '"]');
 
 (async () => {
-  const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer();
+  const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer({ seedCanonicalImage: { id: 'fixture-canonical.png', width: 32, height: 24 } });
   const browser = await launchBrowser(chromium);
   try {
     await test('the card shows the output size, blocks Run until a prompt and valid steps exist, then sends exactly the request', async () => {

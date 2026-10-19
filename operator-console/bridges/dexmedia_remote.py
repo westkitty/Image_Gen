@@ -28,7 +28,7 @@ import sys
 import traceback
 import wave
 
-PRIVATE_KEYS = ("text", "ref_text", "instruct", "prompt", "caption", "lyrics")
+PRIVATE_KEYS = ("text", "ref_text", "instruct", "voice_description", "prompt", "caption", "lyrics")
 MAX_SEED = 2147483647
 
 
@@ -41,6 +41,8 @@ def scrub(msg, req):
     out = str(msg)
     secrets = [req.get(k) for k in PRIVATE_KEYS]
     secrets += [it.get("text") for it in (req.get("items") or []) if isinstance(it, dict)]
+    secrets += [it.get("instruct") for it in (req.get("items") or []) if isinstance(it, dict)]
+    secrets += [it.get("direction") for it in (req.get("items") or []) if isinstance(it, dict)]
     for v in secrets:
         if isinstance(v, str) and len(v) >= 3:
             out = out.replace(v, "[REDACTED]")
@@ -88,6 +90,38 @@ def gen_tts(req, out_dir):
     return files[0] if files else None
 
 
+def build_tts_item_kwargs(worker, item, req, ref_audio=None, ref_text=None):
+    """Build the exact per-item kwargs passed to the already-loaded MLX model."""
+    kw = dict(text=item["text"], temperature=0.7, max_tokens=1200, verbose=False)
+    if worker == "kokoro":
+        kw.update(voice=req["voice_path"], speed=float(req.get("speed", 1.0)), lang_code=req["lang_code"])
+    elif worker == "qwen3-tts-base":
+        kw.update(ref_audio=ref_audio, ref_text=ref_text, lang_code=req["lang_code"])
+    elif worker == "qwen3-tts-voice-design":
+        kw.update(instruct=item.get("instruct") or req.get("instruct"), lang_code=req["lang_code"])
+        if not kw["instruct"]:
+            raise RuntimeError("Voice Design item is missing its instruction")
+    else:
+        raise ValueError("unknown tts worker")
+    return kw
+
+
+def build_voxcpm_item_kwargs(item, req):
+    """Build upstream generate() arguments; the controlled text retains its exact dialogue suffix."""
+    direction = (item.get("direction") or "").strip()
+    dialogue = item["text"]
+    prefix = []
+    if req.get("profile_type") == "designed" and req.get("voice_description"):
+        prefix.append(req["voice_description"].strip().rstrip("."))
+    if direction:
+        prefix.append(direction)
+    controlled_text = f"({' Delivery: '.join(prefix)}){dialogue}" if prefix else dialogue
+    kwargs = {"text": controlled_text, "cfg_value": 2.0, "inference_timesteps": 10}
+    if req.get("profile_type") != "designed":
+        kwargs["reference_wav_path"] = req["ref_audio"]
+    return kwargs
+
+
 def write_wav(path, audio, rate):
     """16-bit PCM mono WAV from float32 samples in [-1, 1] (stdlib only)."""
     import numpy as np
@@ -127,6 +161,8 @@ def gen_tts_items(req, out_dir):
 
     Progress and per-item results are reported in-band as they happen so the console can
     show 'chunk X/N' and attribute a failure to the exact chunk."""
+    if req["worker"] == "voxcpm2":
+        return gen_voxcpm2_items(req, out_dir)
     import mlx.core as mx
     import numpy as np
     from mlx_audio.tts.utils import load_model
@@ -151,15 +187,8 @@ def gen_tts_items(req, out_dir):
         try:
             if it.get("seed") is not None:
                 mx.random.seed(int(it["seed"]) % MAX_SEED)
-            kw = dict(text=it["text"], temperature=0.7, max_tokens=1200, verbose=False)
-            if w == "kokoro":
-                kw.update(voice=req["voice_path"], speed=float(req.get("speed", 1.0)), lang_code=req["lang_code"])
-            elif w == "qwen3-tts-base":
-                kw.update(ref_audio=ref_audio, ref_text=ref_text, lang_code=req["lang_code"])
-            elif w == "qwen3-tts-voice-design":
-                kw.update(instruct=req["instruct"], lang_code=req["lang_code"])
-            else:
-                raise ValueError("unknown tts worker")
+            # The same model instance serves each item; instructions vary without model reload.
+            kw = build_tts_item_kwargs(w, it, req, ref_audio=ref_audio, ref_text=ref_text)
             parts = [np.array(r.audio, dtype=np.float32).reshape(-1) for r in model.generate(**kw)]
             if not parts:
                 raise RuntimeError("engine produced no audio")
@@ -174,6 +203,32 @@ def gen_tts_items(req, out_dir):
             mx.clear_cache()
         except Exception:  # noqa: BLE001 - older MLX
             pass
+    return os.path.join(out_dir, "item-000.wav")
+
+
+def gen_voxcpm2_items(req, out_dir):
+    """VoxCPM2 cloned-voice batch: load once, vary natural-language direction per item."""
+    import numpy as np
+    from voxcpm import VoxCPM
+
+    if req.get("profile_type") != "designed" and (not req.get("ref_audio") or not os.path.isfile(req["ref_audio"])):
+        raise RuntimeError("VoxCPM2 reference audio is missing")
+    marker("MODEL_LOADING")
+    model = VoxCPM.from_pretrained(req["model"], load_denoiser=False, device="mps", optimize=False, local_files_only=True)
+    rate = int(model.tts_model.sample_rate)
+    marker("MODEL_READY")
+    marker("ITEMS_TOTAL", len(req["items"]))
+    for i, item in enumerate(req["items"]):
+        marker("ITEM_START", i)
+        # Upstream documents a parenthesized natural-language control prefix.
+        audio_parts = [np.asarray(part, dtype=np.float32).reshape(-1) for part in model.generate(**build_voxcpm_item_kwargs(item, req))]
+        if not audio_parts:
+            raise RuntimeError("VoxCPM2 returned no audio frames")
+        audio = np.concatenate(audio_parts)
+        path = os.path.join(out_dir, f"item-{i:03d}.wav")
+        write_wav(path, np.asarray(audio, dtype=np.float32).reshape(-1), rate)
+        info = item_info(path)
+        marker("ITEM", f"{i}|{info['path']}|{info['sha']}|{info['bytes']}|{info['duration']}|{info['rate']}|{info['ch']}")
     return os.path.join(out_dir, "item-000.wav")
 
 
@@ -271,7 +326,7 @@ def main():
     marker("STARTED", req["worker"])
     try:
         w = req["worker"]
-        if w in ("kokoro", "qwen3-tts-base", "qwen3-tts-voice-design"):
+        if w in ("kokoro", "qwen3-tts-base", "qwen3-tts-voice-design", "voxcpm2"):
             path = gen_tts_items(req, out_dir) if req.get("items") else gen_tts(req, out_dir)
         elif w == "magenta-rt":
             path = gen_magenta(req, out_dir)

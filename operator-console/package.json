@@ -21,7 +21,10 @@
     "test:browser:pwa": "node tests/browser/pwa.browser.js",
     "test:browser:matrix": "node tests/browser/interaction-matrix.browser.js",
     "test:browser:concept-a": "node tests/browser/concept-a-refinement.browser.js",
-    "test:release": "node tests/release-gate.js"
+    "test:release": "node tests/release-gate.js",
+    "preflight": "bash ../scripts/release-preflight.sh",
+    "test:live:cancel": "node tests/live/cancellation.live.js all",
+    "test:perf": "node tests/perf/ui-perf.js"
   },
   "keywords": [],
   "author": "",

@@ -121,6 +121,60 @@
     const r = await this._dmApi(`/api/drama/projects/${this._dm().current.id}/lines/${lineId}/takes/${takeId}/select`, {});
     if (r.ok) this.dmSet({ current: r.data.project }); else this.toast(r.data.error, '#ef4444');
   };
+  P.dramaTakeAction = async function (lineId, takeId, action) {
+    const dm = this._dm(), line = dm.current && dm.current.scenes.flatMap(s => s.lines).find(l => l.id === lineId);
+    const target = takeId || (line && (line.active_take_id || line.takes.find(t => t.pinned)?.id));
+    if (!line || !target) return;
+    const r = await this._dmApi(`/api/drama/projects/${dm.current.id}/lines/${lineId}/takes/${target}/decision/${action}`, {});
+    if (!r.ok) { this.toast(r.data.error || 'Take action failed', '#ef4444'); return; }
+    this.dmSet({ current: r.data.project });
+    this.toast(({ reject: 'Take rejected and retained in history', restore: 'Take restored', pin: 'Pin updated', undo: 'Take selection undone' })[action], '#65d66e');
+  };
+  P.dramaAuditionPhrase = async function (line, phrase) {
+    const dm = this._dm(), r = await this._dmApi(`/api/drama/projects/${dm.current.id}/lines/${line.id}/phrases/${encodeURIComponent(phrase.id)}/audition`, {});
+    if (!r.ok) { this.toast(r.data.error || 'Phrase audition failed', '#ef4444'); return; }
+    const entry = { job_id: r.data.audition.job_id, status: 'RUNNING', engine: r.data.engine, direction: r.data.direction };
+    const auditions = Object.assign({}, dm.phraseAuditions || {}, { [phrase.id]: entry }); this.dmSet({ phraseAuditions: auditions });
+    const tick = async () => {
+      const result = await this._dmApi('/api/voice/render/' + entry.job_id);
+      if (!result.ok) { entry.status = 'FAILED'; entry.error = result.data.error || 'Could not read audition status'; }
+      else { entry.status = result.data.status; entry.artifact = result.data.artifact; entry.error = result.data.error; }
+      this.dmSet({ phraseAuditions: Object.assign({}, this._dm().phraseAuditions, { [phrase.id]: Object.assign({}, entry) }) });
+      if (['COMPLETE', 'FAILED', 'INTERRUPTED', 'CANCELLED'].includes(entry.status)) clearInterval(timer);
+    };
+    tick(); const timer = setInterval(tick, 1400);
+  };
+  P.dramaUsePhraseDirection = async function (line, phrase) {
+    const delivery = window.prompt('Direction for the selected phrase', phrase.delivery || '');
+    if (delivery == null) return;
+    const phrases = line.performance_score.phrases.map(x => Object.assign({}, x, x.id === phrase.id ? { delivery } : {}));
+    const p = this._dm().current, r = await this._dmApi(`/api/drama/projects/${p.id}/lines/${line.id}/performance-score`, { phrases }, 'PUT');
+    if (!r.ok) { this.toast(r.data.error || 'Direction save failed', '#ef4444'); return; }
+    this.dmSet({ current: r.data.project });
+    await this.dramaRender({ scope: 'line', line_id: line.id, alternate: true });
+  };
+
+  P.dramaDirectSelection = async function (line, removeId) {
+    const dm = this._dm(), project = dm.current;
+    if (!project) return;
+    const score = line.performance_score && line.performance_score.source && line.performance_score.source.text === line.text ? line.performance_score : { phrases: [] };
+    let phrases = (score.phrases || []).map(x => Object.assign({}, x));
+    if (removeId === '*') phrases = [];
+    else if (removeId) phrases = phrases.filter(x => x.id !== removeId);
+    else {
+      const range = this._dmSelection && this._dmSelection[line.id];
+      if (!range || range.start === range.end) { this.toast('Select a phrase in the dialogue first', '#fbbf24'); return; }
+      if (phrases.some(x => range.start < x.end && range.end > x.start)) { this.toast('That selection overlaps an existing directed phrase', '#fbbf24'); return; }
+      const delivery = window.prompt('Acting direction for the selected phrase', '');
+      if (delivery == null || !delivery.trim()) return;
+      phrases.push({ id: 'phrase-' + range.start + '-' + range.end, start: range.start, end: range.end, text: line.text.slice(range.start, range.end), delivery: delivery.trim() });
+      phrases.sort((a, b) => a.start - b.start);
+    }
+    const r = await this._dmApi(`/api/drama/projects/${project.id}/lines/${line.id}/performance-score`, { phrases }, 'PUT');
+    if (!r.ok) { this.toast(r.data.error || 'Could not save phrase direction', '#ef4444'); return; }
+    this.dmSet({ current: r.data.project });
+    this.toast(removeId ? 'Phrase direction removed' : 'Phrase direction saved; exact dialogue retained', '#65d66e');
+  };
 
   // ── rendering runs ────────────────────────────────────────────────────────
   P.dramaRender = async function (opts) {
@@ -187,8 +241,17 @@
     return h('div', { key: t.id, 'data-take': t.id, style: { border: '1px solid ' + (t.active ? 'rgba(101,214,110,.5)' : 'rgba(148,163,184,.16)'), borderRadius: 8, padding: 6, display: 'grid', gap: 4, minWidth: 0 } },
       h('div', { style: css.row }, h('b', { style: { fontSize: 11, color: '#cbd5e1' } }, 'Take ' + (idx + 1)), chip(t.state ? t.state.label : t.status, (window.DexStudio && window.DexStudio.TAKE_TONE[t.state && t.state.label]) || (t.status === 'complete' ? tone.ok : t.status === 'failed' ? tone.bad : tone.info)), t.engine ? chip(t.engine, '#94a3b8') : null, t.duration ? chip(fmtT(t.duration), '#94a3b8') : null,
         t.seed != null ? h('span', { style: css.mono }, 'seed ' + t.seed) : null, t.settings && t.settings.delivery && t.settings.delivery.note ? chip('direction not applied', tone.warn) : null, t.settings && t.settings.seeded === false ? h('span', { title: 'This engine has no seed: re-rendering the same text gives the same audio. Change the text, direction or voice for a different take.', style: { border: '1px solid rgba(148,163,184,.4)', color: '#94a3b8', borderRadius: 6, padding: '2px 7px', fontSize: 10 } }, 'deterministic engine') : null,
-        h('div', { style: { flex: 1 } }), t.status === 'complete' ? (t.active ? chip('✓ active', tone.ok) : btn('Use this take', () => this.dramaSelectTake(line.id, t.id), '#65d66e', { 'data-use-take': t.id })) : null),
+        t.settings && t.settings.direction ? chip('direction: ' + t.settings.direction, '#a78bfa') : null,
+        t.qa && t.qa.integrity ? chip('QA: ' + (t.qa.integrity.ok ? 'valid audio' : 'failed'), t.qa.integrity.ok ? tone.ok : tone.bad) : chip('QA: not checked', '#94a3b8'),
+        t.human_review ? chip('listened: ' + t.human_review.state, t.human_review.state === 'heard-ok' ? tone.ok : tone.warn) : null,
+        t.created_at ? h('span', { style: { color: '#64748b', fontSize: 10 } }, new Date(t.created_at).toLocaleString()) : null,
+        h('div', { style: { flex: 1 } }), t.rejected ? chip('rejected · retained', tone.warn) : null, t.pinned ? chip('pinned', tone.ok) : null,
+        t.status === 'complete' ? (t.active ? chip('✓ selected for export', tone.ok) : btn('Select', () => this.dramaSelectTake(line.id, t.id), '#65d66e', { 'data-use-take': t.id })) : null),
       t.url ? this._mediaEl(base + t.url, 'audio', 'take-' + t.id) : null,
+      t.status === 'complete' ? h('div', { style: css.row },
+        t.rejected ? btn('Restore take', () => this.dramaTakeAction(line.id, t.id, 'restore'), '#38bdf8') : btn('Reject', () => this.dramaTakeAction(line.id, t.id, 'reject'), '#f87171'),
+        btn(t.pinned ? 'Unpin' : 'Pin approved take', () => this.dramaTakeAction(line.id, t.id, 'pin'), '#a78bfa', { disabled: t.rejected || !t.approved, title: t.approved ? 'Keep this selection from being silently replaced by a later render' : 'Approve this current take in Review before pinning it' }),
+        btn('Undo selection', () => this.dramaTakeAction(line.id, t.id, 'undo'), '#94a3b8', { disabled: !(line.take_decision_history || []).length })) : null,
       t.status === 'failed' ? h('div', { style: { color: tone.bad, fontSize: 11, overflowWrap: 'anywhere' } }, '✗ ' + (t.error || 'failed') + (t.gate ? ' (' + t.gate + ')' : '')) : null);
   };
   P._dmLine = function (p, scene, line, speakers) {
@@ -205,7 +268,17 @@
         field('Delivery direction', h('input', { value: line.direction || '', placeholder: 'e.g. quietly', style: css.input, onInput: e => this._dmQueue(line.id, { direction: e.target.value }) })),
         field('Pause before (s)', h('input', { type: 'number', min: '0', step: '0.1', value: line.pause_before_s == null ? '' : String(line.pause_before_s), placeholder: 'auto', style: css.input, onInput: e => this._dmQueue(line.id, { pause_before_s: e.target.value }) })),
         field('Pause after (s)', h('input', { type: 'number', min: '0', step: '0.1', value: line.pause_after_s == null ? '' : String(line.pause_after_s), placeholder: String(p.settings.line_gap_s), style: css.input, onInput: e => this._dmQueue(line.id, { pause_after_s: e.target.value }) }))),
-      h('textarea', { rows: Math.min(5, Math.max(1, Math.ceil(line.text.length / 90))), value: line.text, 'aria-label': 'Line text', style: Object.assign({}, css.input, { resize: 'vertical' }), onInput: e => this._dmQueue(line.id, { text: e.target.value }) }),
+      h('textarea', { rows: Math.min(5, Math.max(1, Math.ceil(line.text.length / 90))), value: line.text, 'aria-label': 'Line text', style: Object.assign({}, css.input, { resize: 'vertical' }), onSelect: e => { this._dmSelection = this._dmSelection || {}; this._dmSelection[line.id] = { start: e.target.selectionStart, end: e.target.selectionEnd }; }, onInput: e => this._dmQueue(line.id, { text: e.target.value }) }),
+      !skip ? h('div', { style: css.row }, btn('Direct selected phrase', () => this.dramaDirectSelection(line), '#fbbf24', { 'aria-label': 'Apply acting direction to selected dialogue phrase' }),
+        line.performance_score && (line.performance_score.phrases || []).length ? btn('Clear directions', () => this.dramaDirectSelection(line, '*'), '#94a3b8') : null,
+        line.performance_score && line.performance_score.source && line.performance_score.source.text !== line.text ? h('span', { role: 'status', style: { color: '#fbbf24', fontSize: 11 } }, 'Dialogue changed; old phrase ranges are stale. Select phrases again to rebind directions.') : null,
+        ...(line.performance_score && line.performance_score.phrases || []).map(q => {
+          const a = (dm.phraseAuditions || {})[q.id];
+          return h('div', { key: q.id, style: { border: '1px solid rgba(251,191,36,.35)', borderRadius: 6, padding: 5, color: '#fde68a', fontSize: 11, display: 'grid', gap: 4 } },
+            h('span', null, `${q.text} — ${q.delivery || q.preset || 'directed'}`),
+            h('div', { style: css.row }, btn('Audition phrase', () => this.dramaAuditionPhrase(line, q), '#a78bfa'), btn('Change direction · render line alternate', () => this.dramaUsePhraseDirection(line, q), '#38bdf8'), btn('×', () => this.dramaDirectSelection(line, q.id), '#fca5a5', { 'aria-label': 'Remove phrase direction' })),
+            a ? h('div', { style: { display: 'grid', gap: 4 } }, h('span', { role: 'status', style: css.muted }, `${a.status} · ${a.engine || ''} · ${a.direction || 'no direction'}`), a.artifact ? this._mediaEl(base + a.artifact.url, 'audio', 'phrase-audition-' + q.id) : a.error ? h('span', { role: 'alert', style: { color: tone.bad } }, a.error) : null) : null);
+        })) : null,
       line.takes.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,260px),1fr))', gap: 6 } }, ...line.takes.map((t, i) => this._dmTake(line, t, i))) : null);
   };
   P._dmRunPanel = function (p) {

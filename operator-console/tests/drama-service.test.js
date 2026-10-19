@@ -1,4 +1,5 @@
 'use strict';
+const { trackScratch } = require('./helpers/owned-scratch');
 // Drama orchestration against a fake voice service + a real media store.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -6,11 +7,11 @@ const fs = require('node:fs'); const os = require('node:os'); const path = requi
 const M = require('../media'); const A = require('../voice-audio'); const D = require('../drama');
 const { createDramaStore } = require('../drama'); const { createDramaService } = require('../drama-service');
 
-const tmp = p => fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ds-' + p));
+const tmp = p => trackScratch(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ds-' + p)));
 const tone = (sec, hz) => { const n = Math.round(sec * 24000), a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = 0.4 * Math.sin(2 * Math.PI * hz * i / 24000); return { sampleRate: 24000, channels: [a] }; };
 const SCRIPT = 'TIGER: I warned you.\nCODEC: [quietly] I know.\nNARRATOR: The rain fell.\nTIGER: Then why come back?';
 
-function setup({ failTexts = [] } = {}) {
+function setup({ failTexts = [], checkAsr } = {}) {
   const base = tmp('x');
   const roots = { image: base + '/i', voice: base + '/v', music: base + '/m', video: base + '/vid' };
   const mediaStore = M.createMediaStore({ roots, registryFile: base + '/media.json' }); mediaStore.ensureRoots();
@@ -31,7 +32,7 @@ function setup({ failTexts = [] } = {}) {
       return { job_id: id, status: 'COMPLETE', artifact: { artifact_id: rec.artifact_id, duration: rec.duration, sha256: rec.sha256 } };
     },
   };
-  const svc = createDramaService({ store, voice, profiles, mediaStore });
+  const svc = createDramaService({ store, voice, profiles, mediaStore, checkAsr });
   return { base, store, svc, calls, mediaStore, profiles };
 }
 const waitRun = async (svc, id) => { for (let i = 0; i < 400; i++) { const r = svc.runView(id); if (r.status !== 'running') return r; await new Promise(r2 => setTimeout(r2, 5)); } throw new Error('run did not finish'); };
@@ -116,6 +117,36 @@ test('LLM parse path is wired and cannot rewrite dialogue', async () => {
   assert.equal(r.ok, false); assert.match(r.errors.join(' '), /not verbatim/);
   const none = await createDramaService({ store, voice: {}, profiles: {}, mediaStore: {} }).createProject({ title: 'x', script: 'a: b', mode: 'llm' });
   assert.match(none.errors[0], /no local model/);
+});
+
+test('verified conversion attaches as a derived take, exports when selected, and undo restores the previous take', async () => {
+  const { svc, store, mediaStore, profiles } = setup({ checkAsr: async () => ({ status: 'PASS', wer: 0 }) });
+  const targetId = 'vp-synthetic-openvoice';
+  const originalGet = profiles.get;
+  profiles.get = id => id === targetId ? { id, name: 'Synthetic OpenVoice target', type: 'cloned', preferred_engine: 'qwen3-tts-base', language: 'en', validation: { state: 'valid' },
+    samples: [{ id: 'sm-synthetic-test', name: 'Synthetic reference', sha256: 'a'.repeat(64), transcript: 'Synthetic test reference.', active: true, validation: { ok: true } }], readiness: { ready: true } } : originalGet(id);
+  const project = svc.need((await svc.createProject({ title: 'Conversion take', script: 'TIGER: The train leaves at noon.' })).project.id);
+  const actor = project.actors.find(a => a.speaker_key === 'TIGER'); D.bindActor(project, actor.id, targetId);
+  await waitRun(svc, svc.startRun(project.id, { scope: 'line', lineId: D.renderableLines(project)[0].line.id }).id);
+  const line = D.renderableLines(project)[0].line, priorTakeId = line.active_take_id;
+  const dir = tmp('conversion'); const sourceFile = path.join(dir, 'source.wav'), convertedFile = path.join(dir, 'converted.wav');
+  fs.writeFileSync(sourceFile, A.encodeWav(tone(0.8, 330))); fs.writeFileSync(convertedFile, A.encodeWav(tone(0.8, 440)));
+  const source = mediaStore.finalize(sourceFile, { kind: 'voice', base: 'synthetic-source', duration: 0.8 });
+  const conversion = { converter: 'myshell-ai/OpenVoiceV2', source_sha256: source.sha256, source_artifact_id: source.artifact_id,
+    target_profile_id: targetId, target_sample_id: 'sm-synthetic-test' };
+  const artifact = mediaStore.finalize(convertedFile, { kind: 'voice', base: 'synthetic-conversion', worker: 'openvoice-v2', model: 'myshell-ai/OpenVoiceV2', job_id: 'job-openvoice-synthetic', parent: source.artifact_id, duration: 0.8, meta: { conversion } });
+  await assert.rejects(svc.attachConvertedTake(project.id, line.id, { artifactId: artifact.artifact_id, jobId: 'wrong-job', targetProfileId: targetId }), e => e.gate === 'conversion-artifact-invalid');
+  await assert.rejects(svc.attachConvertedTake(project.id, line.id, { artifactId: artifact.artifact_id, jobId: 'job-openvoice-synthetic', targetProfileId: 'vp-other' }), e => e.gate === 'target-profile-mismatch');
+  const attached = await svc.attachConvertedTake(project.id, line.id, { artifactId: artifact.artifact_id, jobId: 'job-openvoice-synthetic', targetProfileId: targetId });
+  assert.equal(attached.qa.status, 'PASS'); assert.equal(attached.take.conversion.converter, 'myshell-ai/OpenVoiceV2');
+  assert.equal(line.active_take_id, priorTakeId, 'new conversion does not silently replace the selected take');
+  D.selectTake(project, line.id, attached.take.id);
+  const convertedExport = svc.assembleExport(project.id, { sceneId: project.scenes[0].id });
+  assert.equal(convertedExport.manifest.items[0].take_id, attached.take.id, 'export uses the selected converted take');
+  D.decideTake(project, line.id, attached.take.id, 'undo');
+  assert.equal(line.active_take_id, priorTakeId, 'undo restores the earlier selection');
+  const restoredExport = svc.assembleExport(project.id, { sceneId: project.scenes[0].id });
+  assert.equal(restoredExport.manifest.items[0].take_id, priorTakeId);
 });
 
 

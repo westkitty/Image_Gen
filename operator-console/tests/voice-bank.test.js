@@ -1,4 +1,5 @@
 'use strict';
+const { trackScratch } = require('./helpers/owned-scratch');
 // Portable voice bank: export/import with strict validation. Cached speaker state is never exported or trusted.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -6,7 +7,7 @@ const fs = require('node:fs'); const os = require('node:os'); const path = requi
 const A = require('../voice-audio'); const VP = require('../voice-profiles'); const Z = require('../portable-archive'); const Bank = require('../voice-bank');
 const rawZip = require('./helpers/rawzip');
 
-const tmp = p => fs.mkdtempSync(path.join(os.tmpdir(), 'dex-bank-' + p));
+const tmp = p => trackScratch(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-bank-' + p)));
 const sha = b => crypto.createHash('sha256').update(b).digest('hex');
 const tone = (sec = 5, hz = 220) => { const rate = 24000, n = Math.round(sec * rate), a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = (i < 3000 ? 0.001 : 0.3) * Math.sin(2 * Math.PI * hz * i / rate); return { sampleRate: rate, channels: [a] }; };
 const wavFile = a => { const f = path.join(tmp('w'), 's.wav'); fs.writeFileSync(f, A.encodeWav(a)); return f; };
@@ -32,7 +33,7 @@ test('metadata-only export contains no audio and no transcripts', async () => {
   const c = m.profiles.find(p => p.id === clone.id);
   assert.equal(c.samples[0].transcript, undefined); assert.equal(c.samples[0].file, undefined); assert.match(c.samples[0].sha256, /^[a-f0-9]{64}$/);
   assert.ok(!JSON.stringify(m).includes('Hello there'), 'transcript text is not exported'); assert.ok(!JSON.stringify(m).includes(os.tmpdir()), 'no absolute local paths');
-  assert.equal(c.consent.kind, 'fictional'); assert.deepEqual(c.required_engines, ['qwen3-tts-base']);
+  assert.equal(c.consent.kind, 'fictional'); assert.deepEqual(c.required_engines, ['qwen3-tts-base', 'voxcpm2']);
 });
 
 test('explicit audio + transcript export round-trips into a fresh store as a usable profile', async () => {

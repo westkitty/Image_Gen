@@ -183,6 +183,8 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
         assert.ok((await px(10, 10)) > 0, 'corner stroke at intended pixel'); assert.equal(await px(Math.floor(w / 2), Math.floor(h / 2)), 0);
         // zoom 4x + pan, then paint near the bottom-right corner of the source
         await page.evaluate(() => { const m = __dex._mask; m.zoomBy(4); m.view = DexEdit.clampPan(Object.assign({}, m.view, { panX: -99999, panY: -99999 })); m.apply(); });
+        // Settle transform/layout and ResizeObserver before painting in zoomed coordinates.
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         g = await geo(); assert.ok(g.view.zoom === 4);
         await paint(w - 14, h - 14);
         assert.ok((await px(w - 14, h - 14)) > 0, 'stroke after zoom+pan lands on the same intended pixel');

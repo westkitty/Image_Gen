@@ -1,4 +1,5 @@
 'use strict';
+const { trackScratch } = require('./owned-scratch');
 // Shared fake Big Mac: real job store, lease arbiter, media store and media bridge; ssh/scp/ffmpeg are faked.
 // Every synthesised item is a deterministic tone whose frequency is derived from the item index + seed, so
 // tests can assert which audio landed where without any model.
@@ -7,7 +8,7 @@ const M = require('../../media'); const B = require('../../media-bridge');
 const A = require('../../voice-audio');
 const { createProfileStore } = require('../../voice-profiles'); const { createVoiceService } = require('../../voice-service');
 
-const tmp = p => fs.mkdtempSync(path.join(os.tmpdir(), 'dex-fb-' + p));
+const tmp = p => trackScratch(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-fb-' + p)));
 const sha = b => crypto.createHash('sha256').update(b).digest('hex');
 const tone = (sec = 1, hz = 220, amp = 0.4, rate = 24000) => { const n = Math.round(sec * rate), a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = amp * Math.sin(2 * Math.PI * hz * i / rate); return { sampleRate: rate, channels: [a] }; };
 

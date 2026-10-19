@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const A = require('./voice-audio');
+const PerformanceScore = require('./performance-score');
 
 const SCHEMA = 'dexdiffusion.drama_project.v2';
 const LEGACY_SCHEMAS = ['dexdiffusion.drama_project.v1'];
@@ -303,9 +304,18 @@ function setLine(p, lineId, patch) {
   if (x.render !== undefined) l.render = !!x.render;
   if (x.direction !== undefined) l.direction = String(x.direction).slice(0, 160);
   for (const k of ['pause_before_s', 'pause_after_s']) if (x[k] !== undefined) l[k] = x[k] === null || x[k] === '' ? null : Math.max(0, Math.min(30, Number(x[k]) || 0));
-  if (x.text !== undefined) { const t = String(x.text).slice(0, 8000); if (t !== l.text) { l.text = t; l.edited = true; l.source_sha = null; l.rev = (l.rev || 1) + 1; } }
+  if (x.text !== undefined) { const t = String(x.text).slice(0, 8000); if (t !== l.text) { l.text = t; l.edited = true; l.source_sha = null; l.rev = (l.rev || 1) + 1; if (l.pinned_take_id) { const oldPin = (l.takes || []).find(x => x.id === l.pinned_take_id); if (oldPin) { oldPin.pinned = false; oldPin.pin_stale = true; if (l.active_take_id === oldPin.id) l.active_take_id = null; } l.pinned_take_id = null; } } }
   if (x.engine_override !== undefined) l.engine_override = x.engine_override || null;
   if (x.profile_override !== undefined) l.profile_override = x.profile_override || null;
+  if (x.performance_score !== undefined) {
+    if (x.performance_score === null) delete l.performance_score;
+    else {
+      const valid = PerformanceScore.validateScore(x.performance_score);
+      if (!valid.ok) throw Object.assign(new Error(valid.error), { status: 400, gate: 'performance-score-invalid' });
+      if (x.performance_score.lineId !== l.id || x.performance_score.source.text !== l.text) throw Object.assign(new Error('performance score does not match this line and its current source dialogue'), { status: 409, gate: 'performance-score-stale' });
+      l.performance_score = JSON.parse(JSON.stringify(x.performance_score));
+    }
+  }
   ensureActors(p);
   return l;
 }
@@ -347,8 +357,49 @@ function completeTake(p, lineId, takeId, patch) {
 }
 function selectTake(p, lineId, takeId) {
   const f = findLine(p, lineId); if (!f) return null;
-  const t = f.line.takes.find(x => x.id === takeId && x.status === 'complete'); if (!t) return null;
+  const t = f.line.takes.find(x => x.id === takeId && x.status === 'complete' && !x.rejected); if (!t) return null;
+  f.line.take_decision_history = Array.isArray(f.line.take_decision_history) ? f.line.take_decision_history : [];
+  if (f.line.active_take_id !== t.id) f.line.take_decision_history.push({ active_take_id: f.line.active_take_id || null, at: Date.now() });
   f.line.active_take_id = t.id; return t;
+}
+
+function decideTake(p, lineId, takeId, action) {
+  const f = findLine(p, lineId); if (!f) return null;
+  const line = f.line; line.take_decision_history = Array.isArray(line.take_decision_history) ? line.take_decision_history : [];
+  const t = line.takes.find(x => x.id === takeId && x.status === 'complete'); if (!t) return null;
+  if (action === 'reject') {
+    line.take_decision_history.push({ kind: 'reject', active_take_id: line.active_take_id || null, take_id: t.id, rejected: !!t.rejected, pinned_take_id: line.pinned_take_id || null });
+    t.rejected = true; t.rejected_at = Date.now();
+    if (line.pinned_take_id === t.id) { line.pinned_take_id = null; t.pinned = false; }
+    if (line.active_take_id === t.id) {
+      const prior = [...line.take_decision_history].reverse().find(x => x.active_take_id && line.takes.some(y => y.id === x.active_take_id && y.status === 'complete' && !y.rejected));
+      line.active_take_id = prior ? prior.active_take_id : null;
+    }
+  } else if (action === 'restore') {
+    line.take_decision_history.push({ kind: 'restore', active_take_id: line.active_take_id || null, take_id: t.id, rejected: !!t.rejected, pinned_take_id: line.pinned_take_id || null });
+    t.rejected = false; delete t.rejected_at; line.active_take_id = t.id;
+  } else if (action === 'pin') {
+    if (t.rejected || !t.approved) return null;
+    line.take_decision_history.push({ kind: 'pin', active_take_id: line.active_take_id || null, take_id: t.id, pinned_take_id: line.pinned_take_id || null, was_pinned: !!t.pinned });
+    if (line.pinned_take_id && line.pinned_take_id !== t.id) { const priorPin = line.takes.find(x => x.id === line.pinned_take_id); if (priorPin) priorPin.pinned = false; }
+    line.pinned_take_id = t.pinned ? null : t.id; t.pinned = !t.pinned; t.pinned_at = t.pinned ? Date.now() : null; delete t.pin_stale;
+  } else if (action === 'undo') {
+    const previous = line.take_decision_history.pop();
+    if (!previous) return null;
+    if (previous.kind === 'reject' || previous.kind === 'restore') {
+      const changed = line.takes.find(x => x.id === previous.take_id);
+      if (changed) { changed.rejected = previous.rejected; if (!changed.rejected) delete changed.rejected_at; changed.pinned = previous.pinned_take_id === changed.id; }
+      line.pinned_take_id = previous.pinned_take_id;
+    } else if (previous.kind === 'pin') {
+      const changed = line.takes.find(x => x.id === previous.take_id);
+      if (changed) changed.pinned = previous.was_pinned;
+      line.pinned_take_id = previous.pinned_take_id;
+      const oldPin = line.takes.find(x => x.id === previous.pinned_take_id);
+      if (oldPin) oldPin.pinned = true;
+    }
+    line.active_take_id = previous.active_take_id && line.takes.some(y => y.id === previous.active_take_id && y.status === 'complete' && !y.rejected) ? previous.active_take_id : null;
+  } else return null;
+  return { line, take: t };
 }
 
 // Take state is two orthogonal facts plus a display label. LIFECYCLE says what happened to the render;
@@ -492,7 +543,7 @@ function createDramaStore({ root, now = () => Date.now() }) {
 }
 
 module.exports = {
-  parseCue, takeState, LEGACY_SCHEMAS,
+  parseCue, takeState, decideTake, LEGACY_SCHEMAS,
   normalizeSpoken: normWsText, normalizeNewlines, verifySourceCoverage, reconstructLineText, stampSource, SPAN_CLASSES,
   SCHEMA, KINDS, DEFAULT_SETTINGS, parseScript, validateLlmParse, parseWithLlm, LLM_SYSTEM, newProject, allLines, findLine, ensureActors, actorFor, renderableLines, unresolvedSpeakers,
   setLine, deleteLine, addLine, bindActor, lineStatus, addTake, completeTake, selectTake, planTimeline, assemble, createDramaStore, migrate, keyOf,

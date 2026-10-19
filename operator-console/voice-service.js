@@ -34,7 +34,7 @@ function createVoiceService({ bridge, jobStore, mediaStore, profiles, probeFor, 
       if (!act || !act.path) return { error: 'the active reference sample file is missing', status: 400, gate: 'reference-invalid' };
       refPath = act.path;
     }
-    const useSeed = seed == null || seed === '' ? crypto.randomInt(0, 2147483000) : Number(seed);
+    const useSeed = eng.capabilities.deterministic_seed ? (seed == null || seed === '' ? crypto.randomInt(0, 2147483000) : Number(seed)) : null;
     let plan;
     try { plan = E.buildRenderPlan(engineId, profile, { texts: chunks.map(c => c.text), direction, language, seed: eng.capabilities.deterministic_seed ? useSeed : null, speed, refPath }); }
     catch (e) { return { error: e.message, status: 400, gate: e.gate || 'profile-invalid' }; }
@@ -62,8 +62,8 @@ function createVoiceService({ bridge, jobStore, mediaStore, profiles, probeFor, 
     if (!eng) return { error: 'no compatible engine', status: 400, gate: 'profile-invalid' };
     if (!Array.isArray(items) || !items.length) return { error: 'at least one item is required', status: 400 };
     if (items.length > 400) return { error: 'at most 400 items per job', status: 400 };
-    const texts = items.map(i => String((i && i.text) == null ? '' : i.text).trim());
-    if (texts.some(t => !t)) return { error: 'every item needs text', status: 400 };
+    const texts = items.map(i => { const raw = String((i && i.text) == null ? '' : i.text); return i && i.preserve_text ? raw : raw.trim(); });
+    if (texts.some(t => !t.trim())) return { error: 'every item needs text', status: 400 };
     if (texts.some(t => t.length > eng.capabilities.max_chunk_chars)) return { error: `each item is limited to ${eng.capabilities.max_chunk_chars} characters for ${eng.label}`, status: 400 };
     let refPath = null;
     if (profile.type === 'cloned') {
@@ -73,7 +73,8 @@ function createVoiceService({ bridge, jobStore, mediaStore, profiles, probeFor, 
     }
     const seeds = items.map(i => (!eng.capabilities.deterministic_seed ? null : i.seed == null || i.seed === '' ? crypto.randomInt(0, 2147483000) : Number(i.seed)));
     let plan;
-    try { plan = E.buildRenderPlan(engineId, profile, { texts, direction, language, seeds, speed, refPath }); }
+    const directions = items.map(i => i && i.direction != null ? String(i.direction) : direction);
+    try { plan = E.buildRenderPlan(engineId, profile, { texts, direction, directions, language, seeds, speed, refPath, preserveText: items.some(i => i && i.preserve_text) }); }
     catch (e) { return { error: e.message, status: 400, gate: e.gate || 'profile-invalid' }; }
     const r = bridge.startBatch(eng.worker, plan.body, {
       probe: probeFor(eng.worker), saveText, operation, mode: 'items', onItem,

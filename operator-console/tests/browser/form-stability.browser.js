@@ -81,13 +81,16 @@ const stopStorm = page => page.evaluate(() => { window.__storm.stop = true; retu
       await page.locator('[data-dex-field="negative-prompt"]').click();
       await startStorm(page);
       await page.keyboard.type('blurry, low quality', { delay: 15 });
+      // Keep the storm running for a measured number of renders, not a CPU-dependent typing duration.
+      await page.waitForFunction(() => window.__storm && window.__storm.n >= 10, null, { timeout: 7000 });
       const s1 = await stopStorm(page);
       assert.ok(s1.renders >= 10, JSON.stringify(s1));
       assert.equal(await page.locator('[data-dex-field="negative-prompt"]').inputValue(), 'blurry, low quality');
       await page.locator('[data-dex-field="clip-skip"]').click();   // click first: elements cannot be clicked mid-storm
       await startStorm(page);
       await page.keyboard.type('2', { delay: 15 });
-      await page.waitForTimeout(150);
+      // Measure the required rerenders, independent of machine speed.
+      await page.waitForFunction(() => window.__storm && window.__storm.n >= 5, null, { timeout: 7000 });
       const s2 = await stopStorm(page);
       assert.ok(s2.renders >= 5, JSON.stringify(s2));
       assert.equal(await page.locator('[data-dex-field="clip-skip"]').inputValue(), '2');

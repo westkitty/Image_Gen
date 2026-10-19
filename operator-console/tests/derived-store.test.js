@@ -1,9 +1,10 @@
 'use strict';
+const { trackScratch } = require('./helpers/owned-scratch');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path'); const crypto = require('node:crypto');
 const { createDerivedStore } = require('../derived-store');
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ds-'));
+const tmp = () => trackScratch(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ds-')));
 
 test('derived versions are built once, recorded with lineage and a checksum, and reused', async () => {
   const s = createDerivedStore({ root: tmp() }); let builds = 0;

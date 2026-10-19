@@ -635,6 +635,20 @@
       label('Prompt', h('textarea', { rows: 3, 'data-edit-prompt': '1', value: st.prompt || '', placeholder: ph, style: Object.assign({}, css.input, { resize: 'vertical', borderColor: !String(st.prompt || '').trim() && ed.attempt ? '#f87171' : undefined }), onInput: e => { st.prompt = e.target.value; this._edSyncRun(); } })),
       label('Negative prompt', h('textarea', { rows: 2, 'data-edit-negative': '1', value: st.negative || '', placeholder: 'low quality, blurry…', style: Object.assign({}, css.input, { resize: 'vertical' }), onInput: e => { st.negative = e.target.value; } })));
   };
+  // Every installed checkpoint is listed in the Edit catalog, but only the ones the edit worker can actually run for the
+  // chosen operation are selectable; the rest say why (e.g. text-to-image only) instead of pretending to be editable.
+  P._editCatalog = function (supported, op) {
+    const ok = new Set((supported || []).map(t => t.id)), worker = this.state.capabilityData && this.state.capabilityData.editWorkerTarget;
+    const label = OP_LABEL[op] || 'this operation';
+    return (this.state.modelTargets || []).map(t => {
+      if (ok.has(t.id)) return t;
+      const why = (t.backend || 'sdcpp') === 'mflux' ? 'FLUX.2 Klein has no ' + label + ' path here (text-to-image only).'
+        : String(t.status).toLowerCase() === 'broken' ? 'Marked broken; not usable for ' + label + '.'
+        : t.runtime === 'model-missing' ? 'Model file missing.'
+        : worker ? label + ' runs on ' + worker + ' only; this checkpoint is text-to-image.' : 'No ' + label + ' worker is available for this checkpoint.';
+      return Object.assign({}, t, { unsupported: why });
+    });
+  };
   P._edParams = function () {
     const ed = this._ed(), st = ed.state, p = st.params, op = ed.op;
     const targets = this._editTargets();
@@ -642,7 +656,7 @@
     const strength = op === 'outpaint' ? (ed.outpaintStrength != null ? ed.outpaintStrength : 0.85) : p.strength;
     const sOut = h('span', { style: { color: '#38bdf8', fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, minWidth: 36 } }, Number(strength).toFixed(2));
     return h('div', { style: { display: 'grid', gap: 8 } },
-      h('div', { style: { display: 'grid', gap: 4, minWidth: 0 } }, h('span', { style: css.label }, 'Edit model'), this.buildModelPicker('edit', targets, st.editModel, id => { this.edSet({ state: Object.assign({}, st, { editModel: id }), assetsFor: null }); this.loadEditAssets(); })),
+      h('div', { style: { display: 'grid', gap: 4, minWidth: 0 } }, h('span', { style: css.label }, 'Edit model'), this.buildModelPicker('edit', this._editCatalog(targets, op), st.editModel, id => { this.edSet({ state: Object.assign({}, st, { editModel: id }), assetsFor: null }); this.loadEditAssets(); })),
       this.state.capabilityData && this.state.capabilityData.editWorkerTarget ? h('div', { style: css.muted, 'data-edit-worker-model': this.state.capabilityData.editWorkerTarget }, 'Img2Img, Inpaint, Outpaint and the scripts run on ' + this.state.capabilityData.editWorkerTarget + ' (the edit worker\'s configured model); other checkpoints are not used by Edit.') : null,
       st.editModel && st.editModel !== this._activeSecondary() && !(this.state.capabilityData && this.state.capabilityData.editWorkerTarget === st.editModel) ? h('div', { style: { color: '#fde68a', fontSize: 11 } }, 'Switching to ' + st.editModel + ' happens when you press Run (the Big Mac secondary slot is replaced).') : null,
       h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,92px),1fr))', gap: 8 } },
@@ -908,7 +922,29 @@
     const out = [];
     for (const [k, l] of OPS) if (this._gate(k)) out.push({ label: '→ ' + l, onClick: () => this.openImageInEdit(imageId, k) });
     out.push({ label: 'Details', onClick: () => this.showInLibrary(imageId) });
+    // Nondestructive basics: each makes a NEW canonical image linked to this one; the original file is never modified.
+    if (window.DexTransform) {
+      out.push({ label: '↻ Rotate', title: 'Rotate 90° clockwise (new version)', onClick: () => this.transformImage(imageId, [{ op: 'rotate', degrees: 90 }]) });
+      out.push({ label: '↺ Rotate', title: 'Rotate 90° counter-clockwise (new version)', onClick: () => this.transformImage(imageId, [{ op: 'rotate', degrees: 270 }]) });
+      out.push({ label: '⇋ Flip', title: 'Mirror left-right (new version)', onClick: () => this.transformImage(imageId, [{ op: 'flip', axis: 'h' }]) });
+      out.push({ label: '⇅ Flip', title: 'Mirror top-bottom (new version)', onClick: () => this.transformImage(imageId, [{ op: 'flip', axis: 'v' }]) });
+      for (const [rw, rh] of [[1, 1], [4, 3], [16, 9]]) out.push({ label: 'Crop ' + rw + ':' + rh, title: 'Centre crop to ' + rw + ':' + rh + ' (new version)', onClick: () => this.transformImage(imageId, null, { rw, rh }) });
+    }
     return out;
+  };
+  P.transformImage = async function (imageId, ops, crop) {
+    const meta = await this._imageMeta(imageId);
+    if (!meta || !meta.width) { this.toast('Could not read this image to transform it', '#ef4444'); return; }
+    const list = ops || [window.DexTransform.cropPreset(meta.width, meta.height, crop.rw, crop.rh)];
+    const check = window.DexTransform.normalize(list, { width: meta.width, height: meta.height });
+    if (check.error) { this.toast(check.error, '#ef4444'); return; }
+    const r = await this._api('/api/actions/transform', { image_id: imageId, ops: check.ops });
+    if (!r.ok) { this.toast((r.data && r.data.error) || 'Transform rejected', '#ef4444'); return; }
+    this.toast('Creating a new version (' + check.result.width + '×' + check.result.height + ')…', '#a78bfa');
+    const job = await this._waitJob(r.data.job_id);
+    const done = job && (job.results || []).find(x => x.status === 'DONE');
+    if (job && this._jobOk(job.status) && done) { this.toast('Saved as a new image; the original is unchanged', '#65d66e'); this.showInLibrary(done.imageId); }
+    else this.toast('Transform failed' + (job && job.firstFailedGate ? ' at ' + job.firstFailedGate : ''), '#ef4444');
   };
 
   // ── Create integration ───────────────────────────────────────────────

@@ -94,6 +94,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
           { id: 'music', kind: 'cue', role: 'music', clips: [] }, { id: 'ambience', kind: 'cue', role: 'ambience', clips: [{ id: 'cue:' + cue.track.id, track_id: cue.track.id, artifact_id: cue.artifact_id, url: '/api/media/' + cue.artifact_id, resolved: true, start_s: 0, duration_s: 6, gain: 0.35, loop: true, duck: true, required: false, priority: 0, anchored: true, label: 'rain on a tin roof', fade_in_s: 1, fade_out_s: 0 }] }, { id: 'sfx', kind: 'cue', role: 'sfx', clips: [] }] } } }));
       await page.route(`**/api/drama/projects/${pid}/lines/${l1.id}/clip`, async r => { clipCalls.push(JSON.parse(r.request().postData())); r.fulfill({ json: { overrides: { start_offset_s: 0.1 }, project: (await api('GET', '/api/drama/projects/' + pid)).project } }); });
       await page.evaluate(() => { __dex.dm.timeline = null; __dex.dm._tlAsked = null; __dex.dmSet({}); }); await page.waitForSelector('[data-timeline]');
+      await page.waitForSelector('[data-lane="dlg:TIGER"]', { timeout: 9000 });
       assert.deepEqual(await page.$$eval('[data-lane]', e => e.map(x => x.dataset.lane)), ['dlg:TIGER', 'music', 'ambience', 'sfx']);
       await page.waitForFunction(() => document.querySelector('[data-clip^="c:"] canvas'), null, { timeout: 8000 });
       const clip = page.locator('[data-clip^="c:"]'); assert.match(await clip.getAttribute('aria-label'), /Dialogue TIGER, line ln-\d+, starts 0\.50 seconds, 2\.00 long/);

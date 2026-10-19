@@ -12,6 +12,7 @@ const InpaintOptions = require('./public/dexdiffusion/inpaint-options.js');
 const ExtrasOptions = require('./public/dexdiffusion/extras-options.js');
 const XyzPlot = require('./public/dexdiffusion/xyz-plot.js');
 const NetworkTokens = require('./public/dexdiffusion/network-tokens.js');
+const TransformOptions = require('./public/dexdiffusion/transform-options.js');
 const Infotext = require('./public/dexdiffusion/infotext.js');
 const PngText = require('./png-text');
 const { createModelInspector, familyFromArch } = require('./model-inspect');
@@ -70,7 +71,11 @@ try {
   if (publicationRecoveryState.journal.unresolved.length) publicationRecoveryState.blocked = true;
   if (publicationRecoveryState.journal.repaired || publicationRecoveryState.journal.unresolved.length) console.log('Canonical publication recovery:', JSON.stringify(publicationRecoveryState.journal));
 } catch (err) { publicationRecoveryState.blocked = true; publicationRecoveryState.journal.unresolved.push({ reason: err.message }); console.error('Canonical publication recovery failed:', err.message); }
-const mediaStore = M.createMediaStore({ registryFile: path.join(STATE_DIR, 'media-artifacts.json') });
+// Browser/live-suite media must stay inside its owned state tree. Production keeps
+// the established canonical roots unless the isolated-suite override is present.
+const MEDIA_ROOT_OVERRIDE = process.env.DEX_MEDIA_ROOT_OVERRIDE ? path.resolve(process.env.DEX_MEDIA_ROOT_OVERRIDE) : null;
+const mediaRoots = MEDIA_ROOT_OVERRIDE ? Object.fromEntries(Object.keys(M.CANONICAL_ROOTS).map(k => [k, path.join(MEDIA_ROOT_OVERRIDE, k)])) : undefined;
+const mediaStore = M.createMediaStore({ roots: mediaRoots, registryFile: path.join(STATE_DIR, 'media-artifacts.json') });
 try { mediaStore.ensureRoots(); } catch (_) {}
 const worldStore = createWorldStore({ root: path.join(STATE_DIR, 'world-projects') });
 const staging = M.createStaging({ root: path.join(STATE_DIR, 'staging') });
@@ -839,6 +844,10 @@ function recordEditResults(job, stdoutText) {
   for (const runId of runIds) {
     for (const e of imageStore.readRunIndex(path.join(RUNS_DIR, runId))) {
       if (job.results.some(r => r.imageId === e.image_id) || e.image_id === job.sourceImageId) continue;
+      // Scripts that write into the SOURCE image's run folder (upscale, transform) share a run index with earlier outputs:
+      // only entries published after this job began belong to it.
+      const t0 = Number(job.startedAt || job.createdAt || 0), pub = Date.parse(e.published_at || '');
+      if (t0 && Number.isFinite(pub) && pub < t0 - 1500) continue;
       const img = imageStore.resolveImage(e.image_id);
       if (!img) continue;
       const dims = pngSize(img.path) || {};
@@ -1522,7 +1531,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
   job.results = job.results || [];
   const env = { ...process.env, SDCPP_REDACT_PROMPTS: params.save_prompts ? '0' : '1', DEXDIFFUSION_JOB_ID: jobId };
   const sensitives = jobSensitives[jobId] || [];
-  const native = opts.native !== undefined ? opts.native : nativeBatchEligible(spec, quantity);
+  const native = opts.native !== undefined ? opts.native : nativeBatchEligible(spec, quantity, process.env, params.fast_batch === true);
   const seeds = opts.seeds || W.planSeeds(params.seed, quantity, { consecutive: native });
   job.seeds = seeds;
   job.nativeBatch = native;
@@ -1796,6 +1805,7 @@ function normalizeControlledGenerationBody(body) {
     'seed',
     'save_prompts',
     'quantity',
+    'fast_batch',
     'hires_scale',
     'hires_steps',
     'hires_denoise',
@@ -1833,6 +1843,7 @@ function normalizeControlledGenerationBody(body) {
     vae: body.vae !== undefined && body.vae !== null ? String(body.vae).trim() : 'auto',
     save_prompts: !!body.save_prompts,
     quantity: body.quantity !== undefined && body.quantity !== null && body.quantity !== '' ? Number(body.quantity) : 1,
+    fast_batch: body.fast_batch === true,
     hires_scale: body.hires_scale !== undefined && body.hires_scale !== null && body.hires_scale !== '' ? Number(body.hires_scale) : null,
     hires_steps: body.hires_steps !== undefined && body.hires_steps !== null && body.hires_steps !== '' ? Number(body.hires_steps) : 0,
     hires_denoise: body.hires_denoise !== undefined && body.hires_denoise !== null && body.hires_denoise !== '' ? Number(body.hires_denoise) : 0.5,
@@ -1967,7 +1978,7 @@ function buildTxt2imgPreview(body) {
   if (err) return { ok: false, status: 400, error: err };
   const spec = allTargetById[params.target];
   // The preview is built by the very function the job runner uses, so it can never drift from execution.
-  const batchCount = nativeBatchEligible(spec, params.quantity || 1) ? params.quantity : 1;
+  const batchCount = nativeBatchEligible(spec, params.quantity || 1, process.env, params.fast_batch === true) ? params.quantity : 1;
   const args = buildControlledArgs(spec, params, {
     seedValue: params.seed, isDiscovered: !CONTROLLED_TARGET_BY_ID[params.target], resolveVaePath, batchCount,
   });
@@ -2774,8 +2785,10 @@ app.get('/api/model-compatibility', (req, res) => {
   res.json(readSchemaFile(MODEL_COMPATIBILITY_REGISTRY));
 });
 
-async function ollamaRequest(route, body = null, timeoutMs = 90000) {
+async function ollamaRequest(route, body = null, timeoutMs = 90000, externalSignal = null) {
   const controller = new AbortController();
+  // A caller that goes away (browser Cancel, timeout, closed tab) aborts the upstream request so Big Mac stops generating.
+  if (externalSignal) { if (externalSignal.aborted) controller.abort(); else externalSignal.addEventListener('abort', () => controller.abort(), { once: true }); }
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const options = { signal: controller.signal };
@@ -3091,6 +3104,8 @@ app.post('/api/ollama/enhance', async (req, res) => {
   const { model, error: modelErr } = await resolveOllamaModel(req.body.model);
   if (modelErr) return res.status(503).json({ error: modelErr });
 
+  const gone = new AbortController();
+  res.on('close', () => { if (!res.writableFinished) gone.abort(); });
   const result = await runPromptEnhance({
     prompt,
     negativePrompt: req.body.negative_prompt || req.body.negativePrompt || '',
@@ -3099,11 +3114,12 @@ app.post('/api/ollama/enhance', async (req, res) => {
     generatorId: req.body.generatorId || '',
     modality: req.body.modality || 'image',
     operation: req.body.operation || 'txt2img',
-    ollamaRequester: ollamaRequest,
+    ollamaRequester: (route, body, ms) => ollamaRequest(route, body, ms, gone.signal),
     ollamaModel: model,
     savePrompts: !!req.body.save_prompts
   });
 
+  if (gone.signal.aborted) return;   // the client already left; nothing to send
   if (!result.ok) {
     return res.status(500).json({
       error: result.error,
@@ -3431,6 +3447,24 @@ app.post('/api/actions/upscale', (req, res) => {
   runAction(jobId, 'bin/sdcpp-upscale.sh', args);
 
   res.json({ job_id: jobId, status: jobs[jobId].status });
+});
+
+// Nondestructive rotate / flip / crop: a NEW canonical image linked to its source; the source file is never modified.
+app.post('/api/actions/transform', (req, res) => {
+  const body = req.body || {};
+  if (typeof body.image_id !== 'string' || !body.image_id) return res.status(400).json({ error: 'image_id is required', gate: 'args' });
+  const img = imageStore.resolveImage(body.image_id), rec = imageSourceMap().get(body.image_id);
+  if (!img || !rec) return res.status(404).json({ error: 'Source image not found in the canonical image store.', gate: 'source' });
+  const dims = pngSize(img.path);
+  if (!dims) return res.status(400).json({ error: 'Only PNG images can be transformed.', gate: 'source' });
+  const plan = TransformOptions.normalize(body.ops, dims);
+  if (plan.error) return res.status(400).json({ error: plan.error, gate: 'transform' });
+  const opsJson = JSON.stringify(plan.ops);
+  const jobId = createJob('transform', `bin/sdcpp-transform.sh --run-id ${rec.runId} --image ${rec.runFile} --ops …`, { image_id: body.image_id, ops: plan.ops.length, result_size: `${plan.result.width}x${plan.result.height}` });
+  jobs[jobId].sourceImageId = body.image_id;
+  jobs[jobId].lineageOp = 'transform';
+  runAction(jobId, 'bin/sdcpp-transform.sh', ['--run-id', rec.runId, '--image', rec.runFile, '--ops', opsJson]);
+  res.json({ job_id: jobId, status: jobs[jobId].status, result: plan.result });
 });
 
 // Hires Fix — two-pass txt2img → local Pillow upscale

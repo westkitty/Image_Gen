@@ -1,11 +1,12 @@
 'use strict';
+const { trackScratch } = require('./helpers/owned-scratch');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path'); const crypto = require('node:crypto');
 const M = require('../drama-mixer'); const T = require('../audio-tools');
 
 const RATE = 48000;
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'dex-mx-'));
+const tmp = () => trackScratch(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-mx-')));
 // stereo float32 file: fn(i) → sample (both channels)
 function f32(frames, fn) { const f = path.join(tmp(), 'src.f32'); const b = Buffer.alloc(frames * 8); for (let i = 0; i < frames; i++) { const v = fn(i); b.writeFloatLE(v, i * 8); b.writeFloatLE(v, i * 8 + 4); } fs.writeFileSync(f, b); return { file: f, frames }; }
 const sine = (hz, amp) => i => amp * Math.sin(2 * Math.PI * hz * i / RATE);

@@ -161,3 +161,39 @@ test('successful owned transform atomically updates canonical digest and cleans 
   assert.equal(store.inspectIntegrity({ runsRoot: path.dirname(run) }).counts.valid, 1);
   assert.deepEqual(fs.readdirSync(store.root), [original.image_id]);
 });
+
+// Regression: inpaint/outpaint strip PNG metadata AFTER publication (replacePublishedImage). The job's pending journal kept
+// the pre-strip digest/inode, so its receipt could never be acknowledged and every console restart left heavy compute BLOCKED
+// ("canonical publication recovery unresolved").
+const OWNER_JOB = '11111111-1111-4111-8111-111111111111';
+test('an owned transform keeps the job journal truthful so the receipt can still be acknowledged', t => {
+  const { run, store } = fixture(t, undefined, { owner: true });
+  const [original] = store.finalizeRun(run);
+  assert.equal(fs.readdirSync(store.root).filter(n => n.startsWith('.pending-')).length, 1, 'job-owned journal awaits its receipt');
+  const updated = store.replacePublishedImage(run, original.image_id, f => fs.appendFileSync(f, 'new'));
+  const journal = JSON.parse(fs.readFileSync(path.join(store.root, fs.readdirSync(store.root).find(n => n.startsWith('.pending-'))), 'utf8'));
+  assert.equal(journal.entries[0].sha256, updated.sha256);
+  assert.equal(journal.image_records[0].inode, fs.statSync(updated.image_path).ino);
+  const ack = store.acknowledgePublication(OWNER_JOB, [original.image_id]);
+  assert.equal(ack.acknowledged, 1, JSON.stringify(ack)); assert.deepEqual(ack.unresolved, []);
+  assert.equal(fs.readdirSync(store.root).filter(n => n.startsWith('.pending-')).length, 0);
+});
+test('restart recovery accepts a post-publication transform that the run index vouches for, and clears the stale journal', t => {
+  const { run, store } = fixture(t, undefined, { owner: true });
+  const [original] = store.finalizeRun(run);
+  const jpath = path.join(store.root, fs.readdirSync(store.root).find(n => n.startsWith('.pending-')));
+  const stale = fs.readFileSync(jpath, 'utf8');
+  const updated = store.replacePublishedImage(run, original.image_id, f => fs.appendFileSync(f, 'new'));
+  fs.writeFileSync(jpath, stale);   // reproduce the pre-fix state: journal still holds the old digest and inode
+  const r = store.recoverPendingPublications();
+  assert.deepEqual(r.unresolved, [], JSON.stringify(r)); assert.equal(r.repaired, 1);
+  assert.equal(fs.readdirSync(store.root).filter(n => n.startsWith('.pending-')).length, 0);
+  assert.equal(store.readRunIndex(run)[0].sha256, updated.sha256);
+});
+test('recovery still refuses a journal whose file digest is NOT vouched for by the run index', t => {
+  const { run, store } = fixture(t, undefined, { owner: true });
+  const [original] = store.finalizeRun(run);
+  fs.appendFileSync(original.image_path, 'tamper'); // file changed without any committed index update
+  const r = store.recoverPendingPublications();
+  assert.equal(r.unresolved.length, 1);
+});

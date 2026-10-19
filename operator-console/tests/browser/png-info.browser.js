@@ -33,7 +33,7 @@ async function newPage(browser, base) {
 }
 
 (async () => {
-  const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer();
+  const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer({ seedCanonicalImage: { id: 'fixture-canonical.png', width: 32, height: 24 } });
   const browser = await launchBrowser(chromium);
   try {
     await test('uploading an A1111 PNG lists every field with its state and Send to Create restores the supported ones', async () => {

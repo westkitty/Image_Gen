@@ -290,3 +290,57 @@ test('volume permission failure suppresses stale voice proofs and worker availab
   assert.equal(state.model_variants.voices, false);
   assert.equal(state.state, 'MODEL INACCESSIBLE (wc2tb)');
 });
+
+test('staging decodes uploaded images: a truncated or mislabelled PNG is refused and leaves no staged file', () => {
+  const { createStaging } = require('../media');
+  const { makePng } = require('./browser/helpers');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-staging-'));
+  try {
+    const st = createStaging({ root: dir });
+    const ok = st.stage(makePng(48, 32), { accept: ['image'] });
+    assert.ok(ok.id, JSON.stringify(ok)); assert.equal(ok.width, 48);
+    const cut = st.stage(makePng(48, 32).subarray(0, 40), { accept: ['image'] });
+    assert.match(cut.error || '', /could not be decoded/);
+    assert.deepEqual(fs.readdirSync(dir).filter(f => f.endsWith('.png')), [ok.id + '.png'], 'only the valid upload remains on disk');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('staging & conversion: WAV, MP3, M4A, and FLAC stage, decode duration, and convert to mono 24 kHz PCM16 WAV', async () => {
+  const { referenceToWav } = require('../media-bridge');
+  const st = M.createStaging({ root: path.join(tmp('stg-voice'), 'staging') });
+  const d = tmp('voice-formats');
+  const wavFile = path.join(d, 'source.wav');
+  fs.writeFileSync(wavFile, wav(2));
+
+  const mp3File = path.join(d, 'source.mp3');
+  const m4aFile = path.join(d, 'source.m4a');
+  const flacFile = path.join(d, 'source.flac');
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', wavFile, '-c:a', 'libmp3lame', mp3File]);
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', wavFile, '-c:a', 'aac', m4aFile]);
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', wavFile, '-c:a', 'flac', flacFile]);
+
+  const formats = [
+    { name: 'wav', buf: fs.readFileSync(wavFile), expectedMime: 'audio/wav' },
+    { name: 'mp3', buf: fs.readFileSync(mp3File), expectedMime: 'audio/mpeg' },
+    { name: 'm4a', buf: fs.readFileSync(m4aFile), expectedMime: 'audio/mp4' },
+    { name: 'flac', buf: fs.readFileSync(flacFile), expectedMime: 'audio/flac' },
+  ];
+
+  for (const fmt of formats) {
+    const staged = st.stage(fmt.buf, { accept: ['audio'] });
+    assert.ok(staged.id, `${fmt.name} staged successfully: ${JSON.stringify(staged)}`);
+    assert.equal(staged.kind, 'audio');
+    assert.equal(staged.mime, fmt.expectedMime);
+    assert.ok(staged.duration >= 1.8 && staged.duration <= 2.2, `${fmt.name} duration is ~2s (got ${staged.duration})`);
+
+    const pcmWavPath = await referenceToWav(st.get(staged.id));
+    assert.ok(pcmWavPath, `${fmt.name} converted to WAV`);
+    assert.ok(fs.existsSync(pcmWavPath));
+    const probeJson = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=channels,sample_rate,codec_name', '-of', 'json', pcmWavPath]).toString());
+    const stream = probeJson.streams[0];
+    assert.equal(stream.channels, 1, `${fmt.name} converted to mono`);
+    assert.equal(stream.sample_rate, '24000', `${fmt.name} converted to 24 kHz`);
+    assert.equal(stream.codec_name, 'pcm_s16le', `${fmt.name} converted to 16-bit PCM`);
+    try { fs.rmSync(path.dirname(pcmWavPath), { recursive: true, force: true }); } catch (_) {}
+  }
+});

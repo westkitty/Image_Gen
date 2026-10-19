@@ -65,6 +65,28 @@ function waitHttp(url, ms = 20000) {
 }
 // ── lifecycle: nothing a suite starts may outlive it ────────────────────────────────────────────────
 const cleanups = [];
+const ownedSuiteDirs = new Set();
+function cleanupOwnedSuiteDir(dir) {
+  if (!ownedSuiteDirs.has(dir)) return;
+  const root = fs.realpathSync(require('node:os').tmpdir());
+  if (fs.realpathSync(path.dirname(dir)) !== root || !/^dex-suite-state-[a-zA-Z0-9]{6}$/.test(path.basename(dir))) {
+    throw new Error('refusing removal of non-owned suite state directory');
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+  ownedSuiteDirs.delete(dir);
+}
+function preserveSuiteState(dir) {
+  if (!ownedSuiteDirs.has(dir)) return false;
+  ownedSuiteDirs.delete(dir);
+  return true;
+}
+// Direct process.exit() bypasses asynchronous suite teardown, not the synchronous exit event.
+process.on('exit', () => {
+  for (const dir of ownedSuiteDirs) {
+    try { cleanupOwnedSuiteDir(dir); }
+    catch (err) { fs.writeSync(2, '[suite] state cleanup failed: ' + err.message + '\n'); process.exitCode = 1; }
+  }
+});
 let cleaning = false;
 function onCleanup(fn) { cleanups.push(fn); }
 async function runCleanups() {
@@ -113,6 +135,7 @@ const LIVE_STATE_DIR = path.join(__dirname, '..', '..', '..', 'sdcpp-workflow', 
 function createSuiteStateDir() {
   const fs = require('fs'), os = require('os');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-suite-state-'));
+  ownedSuiteDirs.add(dir);
   for (const name of SEEDED_STATE_FILES) { try { fs.copyFileSync(path.join(LIVE_STATE_DIR, name), path.join(dir, name)); } catch (e) { if (e.code !== 'ENOENT') throw e; } }
   // Image records (settings/lineage only) let validator suites address a real canonical image. Prompt text is never copied.
   try {
@@ -120,7 +143,7 @@ function createSuiteStateDir() {
     for (const rec of Object.values(meta.images || {})) { delete rec.prompt; delete rec.negative_prompt; delete rec.negativePrompt; if ('prompt_saved' in rec) rec.prompt_saved = false; }
     fs.writeFileSync(path.join(dir, 'image-meta.json'), JSON.stringify(meta));
   } catch (e) { if (e.code !== 'ENOENT') throw e; }
-  onCleanup(() => fs.rmSync(dir, { recursive: true, force: true }));
+  onCleanup(() => cleanupOwnedSuiteDir(dir));
   return dir;
 }
 
@@ -131,9 +154,31 @@ async function startServer(preferred) {
   const stateDir = process.env.DEX_SUITE_SHARED_STATE === '1' ? LIVE_STATE_DIR : (process.env.DEX_STATE_DIR || createSuiteStateDir());
   const stateEnv = stateDir === LIVE_STATE_DIR ? {} : { DEX_STATE_DIR: stateDir };
   const imagesRoot = stateDir === LIVE_STATE_DIR ? null : path.join(stateDir, 'images');
+  const mediaRoot = stateDir === LIVE_STATE_DIR ? null : path.join(stateDir, 'media');
   if (imagesRoot) fs.mkdirSync(imagesRoot, { recursive: true });
+  if (mediaRoot) fs.mkdirSync(mediaRoot, { recursive: true });
   const imagesEnv = imagesRoot ? { DEX_IMAGES_ROOT_OVERRIDE: imagesRoot } : {};
-  const sup = spawn(process.execPath, [path.join(__dirname, 'server-supervisor.js'), String(process.pid), path.join(__dirname, '..', '..')], { env: Object.assign({}, process.env, stateEnv, imagesEnv, { OPERATOR_CONSOLE_PORT: String(port) }), stdio: 'ignore' });
+  const mediaEnv = mediaRoot ? { DEX_MEDIA_ROOT_OVERRIDE: mediaRoot } : {};
+  // Synthetic, prompt-free fixture for real HTTP tests; never seed externally supplied or live state.
+  const seedImage = preferred && typeof preferred === 'object' ? preferred.seedCanonicalImage : null;
+  if (seedImage) {
+    if (!imagesRoot || process.env.DEX_STATE_DIR || process.env.DEX_SUITE_SHARED_STATE === '1') {
+      throw new Error('canonical test fixture requires an owned, isolated state directory');
+    }
+    const id = seedImage.id;
+    if (typeof id !== 'string' || !/^fixture-[a-z0-9-]+\.png$/.test(id)) throw new Error('invalid synthetic fixture id');
+    const width = seedImage.width || 32, height = seedImage.height || 24;
+    fs.writeFileSync(path.join(imagesRoot, id), makePng(width, height), { flag: 'wx' });
+    fs.writeFileSync(path.join(stateDir, 'image-meta.json'), JSON.stringify({
+      schema: 'dexdiffusion.image_meta.v1',
+      images: { [id]: {
+        operation: 'txt2img', target: 'sd15', seed: 42, steps: 20, cfg: 7,
+        sampler: 'euler_a', scheduler: 'discrete', vae: 'auto', gen_schema: 1,
+        prompt_saved: false, at: new Date().toISOString()
+      } }
+    }));
+  }
+  const sup = spawn(process.execPath, [path.join(__dirname, 'server-supervisor.js'), String(process.pid), path.join(__dirname, '..', '..')], { env: Object.assign({}, process.env, stateEnv, imagesEnv, mediaEnv, { OPERATOR_CONSOLE_PORT: String(port) }), stdio: 'ignore' });
   const exited = new Promise(r => sup.on('exit', r));
   const stop = () => { try { sup.kill('SIGTERM'); } catch (_) {} return Promise.race([exited, new Promise(r => setTimeout(r, 6000))]); };
   onCleanup(stop);
@@ -195,4 +240,4 @@ function makeWav(sec = 5, hz = 220, rate = 24000, amp = 0.4) {
   return Buffer.concat([h, data]);
 }
 
-module.exports = { makePng, decodePng, makeWav, startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, onCleanup, runCleanups };
+module.exports = { makePng, decodePng, makeWav, startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, onCleanup, runCleanups, preserveSuiteState };

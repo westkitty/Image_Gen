@@ -60,7 +60,7 @@
     const errBox = el('div', { role: 'alert', 'data-lightbox-error': '1', style: 'display:none;color:#fca5a5;font:600 14px DM Sans,system-ui,sans-serif;padding:24px;text-align:center;' });
     const box = el('div', { style: 'flex:1;min-height:0;display:flex;justify-content:center;align-items:center;overflow:hidden;padding:8px;touch-action:pan-y;' }, img, errBox);
     setZoom(img, box, false);
-    img.addEventListener('click', () => setZoom(img, box, !zoomed));
+    img.addEventListener('click', () => { if (img.__noToggle) { img.__noToggle = false; return; } setZoom(img, box, !zoomed); });
     const btnCss = 'min-height:40px;min-width:40px;border:1px solid rgba(148,163,184,.35);background:rgba(15,23,42,.9);color:#e2e8f0;border-radius:8px;padding:6px 12px;font:600 13px DM Sans,system-ui,sans-serif;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;';
     const mkBtn = (label, fn, aria) => el('button', { type: 'button', 'aria-label': aria || label, onclick: fn, style: btnCss }, label);
     const closeBtn = mkBtn('✕ Close', close, 'Close fullscreen image');
@@ -93,7 +93,7 @@
       }
       actionsHost.textContent = '';
       const acts = col && typeof col.actionsFor === 'function' ? col.actionsFor(c.id) : (o.actions || []);
-      for (const a of acts) actionsHost.append(mkBtn(a.label, () => { close(); a.onClick(); }));
+      for (const a of acts) { const b = mkBtn(a.label, () => { close(); a.onClick(); }); if (a.title) b.title = a.title; actionsHost.append(b); }
       // Warm the neighbours (bounded: at most one image each side).
       if (col) for (const d of [-1, 1]) { const n = col.items[idx + d]; if (n && n.src) { const pre = new Image(); pre.src = n.src; } }
     }
@@ -125,6 +125,12 @@
       const t = e.changedTouches[0], dx = t.clientX - t0.x, dy = t.clientY - t0.y; t0 = null;
       if (Math.abs(dx) > 50 && Math.abs(dx) > 2 * Math.abs(dy)) go(dx < 0 ? 1 : -1);
     }, { passive: true });
+    // Drag to pan while zoomed (the box scrolls; this just maps pointer drags onto it).
+    let drag = null;
+    box.addEventListener('pointerdown', e => { if (!zoomed || e.button > 0) return; drag = { x: e.clientX, y: e.clientY, l: box.scrollLeft, t: box.scrollTop, moved: false }; box.setPointerCapture(e.pointerId); });
+    box.addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true; box.scrollLeft = drag.l - dx; box.scrollTop = drag.t - dy; });
+    const endDrag = () => { if (drag && drag.moved) img.__noToggle = true; drag = null; };
+    box.addEventListener('pointerup', endDrag); box.addEventListener('pointercancel', endDrag);
     closeBtn.focus();
     return true;
   }

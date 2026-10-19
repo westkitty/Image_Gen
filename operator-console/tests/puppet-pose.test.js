@@ -163,3 +163,27 @@ test('renderToCanvas draws ControlNet colours with a recording context', () => {
   assert.ok(fills.includes('rgb(255,0,0)'), 'joint 0 is full red');
   assert.throws(() => P.renderToCanvas(ctx, { plan: 'openpose18', width: 512, height: 512, people: [{ keypoints: [] }] }));
 });
+
+test('moveJointChain: dragging an elbow carries the forearm and hand and preserves limb lengths', () => {
+  const PP = require('../public/dexdiffusion/puppet-pose.js');
+  const pose = PP.createPose('openpose18', { width: 512, height: 512, template: 'standing' });
+  const k = pose.people[0].keypoints, len = (a, b) => Math.hypot(k[a][0] - k[b][0], k[a][1] - k[b][1]);
+  const upper = len(2, 3), fore = len(3, 4);
+  const moved = PP.moveJointChain(pose, 0, 3, k[3][0] + 20, k[3][1] + 15);
+  const m = moved.people[0].keypoints, ml = (a, b) => Math.hypot(m[a][0] - m[b][0], m[a][1] - m[b][1]);
+  assert.deepEqual([m[3][0] - k[3][0], m[3][1] - k[3][1]], [20, 15]);
+  assert.deepEqual([m[4][0] - k[4][0], m[4][1] - k[4][1]], [20, 15], 'wrist follows the elbow');
+  assert.ok(Math.abs(ml(3, 4) - fore) < 1e-9, 'forearm length preserved');
+  assert.ok(Math.abs(ml(2, 3) - upper) > 0, 'upper arm changes because only the elbow end moved');
+  assert.deepEqual(m[5], k[5], 'the other arm is untouched'); assert.deepEqual(pose.people[0].keypoints[3], k[3], 'input is not mutated');
+});
+test('moveJointChain: the root joint, a leaf and an absent joint behave like a plain move; the limb stops at the canvas edge', () => {
+  const PP = require('../public/dexdiffusion/puppet-pose.js');
+  const pose = PP.createPose('openpose18', { width: 512, height: 512, template: 'standing' });
+  const k = pose.people[0].keypoints;
+  assert.deepEqual(PP.moveJointChain(pose, 0, 4, k[4][0] + 5, k[4][1]).people[0].keypoints[4].slice(0, 2), [k[4][0] + 5, k[4][1]]);
+  const far = PP.moveJointChain(pose, 0, 3, 100000, k[3][1]).people[0].keypoints;
+  assert.ok(far[3][0] <= 512 && far[4][0] <= 512, 'neither elbow nor wrist leaves the canvas');
+  assert.ok(Math.abs((far[4][0] - far[3][0]) - (k[4][0] - k[3][0])) < 1e-9, 'forearm vector preserved at the edge');
+  assert.ok(PP.validatePose(far.length ? PP.moveJointChain(pose, 0, 3, 100000, k[3][1]) : pose));
+});

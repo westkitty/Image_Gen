@@ -12,8 +12,12 @@ function controlledScriptFor(spec) {
 // Native sd-cli --batch-count: one model load for N outputs (proved equivalent
 // to N sequential runs at seeds S..S+N-1). SDCPP only; MFLUX stays sequential.
 const NATIVE_BATCH_MAX = 16;
-function nativeBatchEligible(spec, quantity, env = process.env) {
-  return spec.backend !== 'mflux' && env.DEX_NATIVE_BATCH !== '0' && quantity >= 2 && quantity <= NATIVE_BATCH_MAX;
+// Progressive results are the default: each image is validated, canonicalized and shown as soon as ITS run finishes.
+// One sd-cli --batch-count process only produces its files together at the end, so it is used only when the caller asks for
+// it explicitly (fast_batch) or the operator sets DEX_NATIVE_BATCH=1 (and never when DEX_NATIVE_BATCH=0).
+function nativeBatchEligible(spec, quantity, env = process.env, fastBatch = false) {
+  const wanted = fastBatch === true || env.DEX_NATIVE_BATCH === '1';
+  return wanted && spec.backend !== 'mflux' && env.DEX_NATIVE_BATCH !== '0' && quantity >= 2 && quantity <= NATIVE_BATCH_MAX;
 }
 
 // ---- Sampling fields (P02): one canonical path from request to worker ----------------

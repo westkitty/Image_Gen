@@ -6,14 +6,15 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execFile, execFileSync, spawn } = require('child_process');
+const { execFile, execFileSync, spawn, spawnSync } = require('child_process');
 
 let cached = null;
 function available() {
   if (cached) return cached;
-  const has = (cmd, args) => { try { return execFileSync(cmd, args, { stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000 }).toString(); } catch (_) { return null; } };
-  const v = has('ffmpeg', ['-version']), p = has('ffprobe', ['-version']);
-  cached = { ffmpeg: !!v, ffprobe: !!p, version: v ? (/ffmpeg version (\S+)/.exec(v) || [])[1] || null : null };
+  const has = (cmd, args) => { try { const r = spawnSync(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 10000 }); return r.status === 0 ? String(r.stdout || '') + String(r.stderr || '') : null; } catch (_) { return null; } };
+  const v = has('ffmpeg', ['-version']), p = has('ffprobe', ['-version']), rb = has('rubberband', ['--version']);
+  cached = { ffmpeg: !!v, ffprobe: !!p, version: v ? (/ffmpeg version (\S+)/.exec(v) || [])[1] || null : null,
+    rubberband: !!rb, rubberband_version: rb ? (/(?:Rubber Band\s+)?(\d+\.\d+(?:\.\d+)?)/.exec(rb) || [])[1] || null : null };
   return cached;
 }
 
@@ -48,6 +49,36 @@ async function conformToF32(src, dest, { filters = null, rate = 48000 } = {}) {
   const size = fs.statSync(dest).size;
   if (size < 8) throw new Error('conform produced no audio');
   return { frames: size / 8, sample_rate: rate, channels: 2 };
+}
+
+async function filterToWav(src, dest, filters) {
+  if (!filters || typeof filters !== 'string') throw new Error('a concrete FFmpeg filter chain is required');
+  const tmp = dest + '.partial.wav';
+  try {
+    await run('ffmpeg', ['-v', 'error', '-y', '-i', src, '-vn', '-af', filters, '-c:a', 'pcm_s24le', tmp]);
+    const out = await probe(tmp);
+    if (!(out.duration > 0) || !out.channels || !out.sample_rate) throw new Error('FX filter produced an invalid WAV');
+    fs.renameSync(tmp, dest); return { duration: out.duration, sample_rate: out.sample_rate, channels: out.channels };
+  } finally { try { fs.rmSync(tmp, { force: true }); } catch (_) {} }
+}
+
+// Formant-preserving pitch change using the local Rubber Band CLI. The source is converted to a
+// temporary WAV first, and only the newly derived output is written.
+async function formantPitch(src, dest, semitones) {
+  const n = Number(semitones);
+  if (!Number.isFinite(n) || n < -12 || n > 12) throw new Error('formant-preserving pitch must be between -12 and +12 semitones');
+  if (!available().rubberband) throw new Error('formant-preserving pitch is unavailable: Rubber Band CLI was not detected');
+  const before = await probe(src), normalized = dest + '.input.wav', partial = dest + '.partial.wav';
+  try {
+    await run('ffmpeg', ['-v', 'error', '-y', '-i', src, '-vn', '-c:a', 'pcm_s24le', normalized]);
+    await run('rubberband', ['--fine', '--formant', '--pitch', String(n), normalized, partial]);
+    const after = await probe(partial), scan = await scanWav(partial);
+    if (!(after.duration > 0) || !Number.isFinite(scan.peak) || scan.non_finite || scan.silent) throw new Error('formant-preserving pitch produced invalid or silent audio');
+    if (Math.abs(after.duration - before.duration) > Math.max(0.08, before.duration * 0.03)) throw new Error('formant-preserving pitch changed duration beyond tolerance');
+    fs.renameSync(partial, dest);
+    return { duration: after.duration, sample_rate: after.sample_rate, channels: after.channels,
+      method: `Rubber Band ${available().rubberband_version || 'unknown'} R3 --formant --pitch ${n}`, formant_preserved: true };
+  } finally { for (const file of [normalized, partial]) try { fs.rmSync(file, { force: true }); } catch (_) {} }
 }
 
 async function measureLoudness(file, { target = -16, truePeak = -1.5 } = {}) {
@@ -194,4 +225,4 @@ async function timeStretch(src, dest, tempo) {
   } finally { try { fs.unlinkSync(tmp); } catch (_) {} }
 }
 
-module.exports = { available, run, probe, conformToF32, measureLoudness, scanWav, peaks, encode, decodeCheck, timeStretch, chapterMetadata, TEMPO_MIN, TEMPO_MAX, FORMATS };
+module.exports = { available, run, probe, conformToF32, filterToWav, formantPitch, measureLoudness, scanWav, peaks, encode, decodeCheck, timeStretch, chapterMetadata, TEMPO_MIN, TEMPO_MAX, FORMATS };

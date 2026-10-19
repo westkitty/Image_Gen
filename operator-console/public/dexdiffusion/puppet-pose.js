@@ -96,6 +96,32 @@
     k[ji] = [clamp(x, 0, pose.width), clamp(y, 0, pose.height), k[ji][2]];
     return out;
   }
+  // Connected-limb movement: the joint moves to (x, y) and everything hanging off it (its subtree when the skeleton is rooted at
+  // the neck/body joint 1) moves by the same offset, so limb lengths and joint angles below it are preserved. Absent joints are
+  // not created. Falls back to a plain single-joint move for the root and for plans whose graph has no joint 1.
+  function descendants(plan, ji, root) {
+    const adj = plan.limbs.reduce((m, [a, b]) => ((m[a] = m[a] || []).push(b), (m[b] = m[b] || []).push(a), m), {});
+    const parent = { [root]: -1 }, order = [root];
+    for (let i = 0; i < order.length; i++) for (const n of adj[order[i]] || []) if (!(n in parent)) { parent[n] = order[i]; order.push(n); }
+    if (!(ji in parent) || ji === root) return [];
+    const out = []; for (const n of order) { let c = n; while (c !== -1 && c !== ji) c = parent[c]; if (c === ji && n !== ji) out.push(n); }
+    return out;
+  }
+  function moveJointChain(pose, pi, ji, x, y) {
+    checkPerson(pose, pi);
+    if (!fin(x) || !fin(y)) throw new PoseError('joint position must be finite');
+    const k0 = pose.people[pi].keypoints[ji];
+    if (!isInt(ji) || ji < 0 || ji >= pose.people[pi].keypoints.length) throw new PoseError('no such joint: ' + ji);
+    if (!k0) return copy(pose);
+    const plan = getPlan(pose.plan), kids = descendants(plan, ji, 1);
+    if (!kids.length) return moveJoint(pose, pi, ji, x, y);
+    // Clamp the offset so no descendant leaves the canvas: the whole limb stops at the edge instead of squashing.
+    let dx = x - k0[0], dy = y - k0[1];
+    for (const n of [ji, ...kids]) { const k = pose.people[pi].keypoints[n]; if (!k) continue; dx = clamp(dx, -k[0], pose.width - k[0]); dy = clamp(dy, -k[1], pose.height - k[1]); }
+    const out = copy(pose), kp = out.people[pi].keypoints;
+    for (const n of [ji, ...kids]) if (kp[n]) kp[n] = [kp[n][0] + dx, kp[n][1] + dy, kp[n][2]];
+    return out;
+  }
   // Toggle presence. Re-showing a joint puts it at `at`, else at the centre of the person's other joints.
   function setVisible(pose, pi, ji, visible, at) {
     checkPerson(pose, pi);
@@ -241,7 +267,7 @@
     ctx.restore();
   }
 
-  return { MAX_PEOPLE, MIN_CANVAS, MAX_CANVAS, PLANS, OPENPOSE_COLORS, OPENPOSE_NAMES, OPENPOSE_LIMBS, PoseError, planIds, planColors, templateNames, getPlan, mirrorMap,
+  return { moveJointChain, MAX_PEOPLE, MIN_CANVAS, MAX_CANVAS, PLANS, OPENPOSE_COLORS, OPENPOSE_NAMES, OPENPOSE_LIMBS, PoseError, planIds, planColors, templateNames, getPlan, mirrorMap,
     createPose, applyTemplate, moveJoint, setVisible, translatePerson, scalePerson, mirror, addPerson, removePerson, changePlan, bbox, validatePose,
     toOpenPoseJson, importOpenPoseJson, toDexPoseJson, importDexPoseJson, renderToCanvas, clone: copy };
 });

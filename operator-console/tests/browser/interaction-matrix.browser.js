@@ -121,11 +121,24 @@ async function forms(page, m) {
   const failures = [...m.unnamedFields.map(x=>'Unlabelled field: '+x)], measures={fields:m.fieldCount,toggles:0,validation:0,selects:0,details:0};
   for (const c of m.controls.filter(c=>!c.disabled && ['checkbox','radio'].includes(c.type))) {
     await measure(page);
-    const named=page.getByRole(c.type,{name:c.name,exact:true});
+    // UI labels can exceed the report's 110-character display cap.
+    // Match long labels by escaped accessible-name prefix after rerenders.
+    const escaped = [...c.name].map(char => '.+*?^$()[]{}|\\'.includes(char) ? '\\' + char : char).join('');
+    const matcher = c.name.length >= 110 ? new RegExp('^' + escaped) : c.name;
+    const named=page.getByRole(c.type,{name:matcher,exact:c.name.length<110});
     const loc=await named.count()===1?named:page.locator(`[data-matrix-control="${c.i}"]`); await loc.focus();
-    const before=await loc.isChecked(); await page.keyboard.press('Space');
+    const checked = async phase => {
+      try { return await loc.isChecked({ timeout: 1500 }); }
+      catch (err) {
+        const present = await page.evaluate(() => [...document.querySelectorAll('input[type="checkbox"],input[type="radio"]')].map(n => ({
+          i: n.getAttribute('data-matrix-control'), kind: n.type, name: n.getAttribute('aria-label') || n.labels?.[0]?.textContent?.trim() || ''
+        })).slice(0, 30));
+        throw new Error('forms ' + phase + ' ' + c.type + ' index=' + c.i + ' label=' + JSON.stringify(c.name) + ' present=' + JSON.stringify(present) + ': ' + err.message.split('\\n')[0]);
+      }
+    };
+    const before=await checked('before'); await page.keyboard.press('Space');
     await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
-    const after=await loc.isChecked(); if (c.type==='checkbox' && before===after) failures.push('Space did not toggle: '+c.name);
+    const after=await checked('after'); if (c.type==='checkbox' && before===after) failures.push('Space did not toggle: '+c.name);
     if (c.type==='radio' && !after) failures.push('Space did not select: '+c.name);
     if (c.type==='checkbox') {await loc.focus();await page.keyboard.press('Space');await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));} measures.toggles++;
   }

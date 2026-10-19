@@ -13,6 +13,7 @@ const D = require('./drama');
 const A = require('./voice-audio');
 const E = require('./voice-engines');
 const F = require('./drama-fingerprint');
+const Asr = require('./asr-adapter');
 const P = require('./drama-planner');
 const R = require('./drama-reparse');
 const FX = require('./fx-rack');
@@ -23,7 +24,7 @@ const SD = require('./sound-director');
 const TRACK_ROLES = ['music', 'ambience', 'sfx'];
 const slug = s => String(s || 'drama').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'drama';
 
-function createDramaService({ store, voice, profiles, mediaStore, llmChat = null, engineAvailable = null, assembly = null, now = () => Date.now() }) {
+function createDramaService({ store, voice, profiles, mediaStore, llmChat = null, engineAvailable = null, assembly = null, checkAsr = Asr.checkLine, now = () => Date.now() }) {
   const runs = new Map();
   const planContext = () => ({ profiles, media: mediaStore, engineAvailable });
   let producer = null;
@@ -258,6 +259,26 @@ function createDramaService({ store, voice, profiles, mediaStore, llmChat = null
 
   const assembleExport = (projectId, opts = {}) => (assembly ? assembleExportStreaming(projectId, opts) : assembleExportLegacy(projectId, opts));
 
+  async function attachConvertedTake(projectId, lineId, { artifactId, jobId, targetProfileId }) {
+    const p = need(projectId), found = D.findLine(p, lineId);
+    if (!found || found.line.render === false || found.line.kind === 'direction') throw Object.assign(new Error('select a renderable dialogue line'), { status: 400, gate: 'line-invalid' });
+    const actor = D.actorFor(p, found.line.speaker_key), assigned = found.line.profile_override || (actor && actor.voice_profile_id);
+    if (!assigned || assigned !== targetProfileId) throw Object.assign(new Error('the Drama line must be assigned to the selected target voice profile'), { status: 409, gate: 'target-profile-mismatch' });
+    const profile = profiles.get(targetProfileId);
+    if (!profile || profile.type !== 'cloned' || !profile.readiness || !profile.readiness.ready) throw Object.assign(new Error('target voice approval, sample review and consent are required'), { status: 409, gate: 'consent-required' });
+    const art = mediaStore.resolve(artifactId);
+    if (!art || art.kind !== 'voice' || art.job_id !== jobId || !art.meta || !art.meta.conversion || art.meta.conversion.converter !== 'myshell-ai/OpenVoiceV2' || art.meta.conversion.target_profile_id !== targetProfileId) throw Object.assign(new Error('converted artifact is missing verified OpenVoice lineage'), { status: 409, gate: 'conversion-artifact-invalid' });
+    const info = P.lineFingerprint(p, found.line, planContext());
+    if (info.problem || !info.fp) throw Object.assign(new Error('Drama line or voice profile is not ready'), { status: 409, gate: 'line-invalid' });
+    const { spoken_text: spoken, ...fpRecord } = info.fp;
+    const qa = await checkAsr({ detect: Asr.detect(), wavPath: art.canonical_path, expected: spoken });
+    if (qa.status !== 'PASS') throw Object.assign(new Error('converted speech does not pass local word-integrity QA for this Drama line'), { status: 409, gate: 'conversion-word-integrity', qa });
+    const take = D.addTake(p, lineId, { profile_id: targetProfileId, engine: 'openvoice-v2', job_id: jobId, fingerprint: fpRecord,
+      render_sha: F.renderFingerprint(info.fp, null), source_rev: p.source_rev || 1, status: 'complete', artifact_id: art.artifact_id,
+      duration: art.duration, sha256: art.sha256, completed_at: now(), conversion: { converter: 'myshell-ai/OpenVoiceV2', source_sha256: art.meta.conversion.source_sha256,
+        target_profile_id: targetProfileId, target_sample_id: art.meta.conversion.target_sample_id, local_asr_status: qa.status, local_asr_wer: qa.wer } });
+    store.touch(p); return { take, qa };
+  }
   function approveTake(projectId, lineId, takeId, approved = true) {
     const p = need(projectId), f = D.findLine(p, lineId); if (!f) throw Object.assign(new Error('line not found'), { status: 404 });
     const t = f.line.takes.find(x => x.id === takeId && x.status === 'complete'); if (!t) throw Object.assign(new Error('take not found or not complete'), { status: 400 });
@@ -311,7 +332,14 @@ function createDramaService({ store, voice, profiles, mediaStore, llmChat = null
     if (b.language !== undefined) { const l = clipStr(b.language, 8); if (l && !LANG_SET.has(l)) throw Object.assign(new Error('unsupported language'), { status: 400 }); a.language = l || null; changed.push('language'); }
     if (b.pronunciation !== undefined) { a.pronunciation = cleanPronunciation(b.pronunciation); changed.push('pronunciation'); }
     if (b.notes !== undefined) { a.notes = clipStr(b.notes, 500); changed.push('notes'); }
-    if (b.fx !== undefined) { a.fx = cleanFx(b.fx); changed.push('fx'); }
+    if (b.fx_undo === true) {
+      a.fx_history = Array.isArray(a.fx_history) ? a.fx_history : [];
+      if (a.fx_history.length) { a.fx = a.fx_history.pop(); changed.push('fx'); }
+    } else if (b.fx !== undefined) {
+      a.fx_history = Array.isArray(a.fx_history) ? a.fx_history : [];
+      a.fx_history.push(a.fx == null ? null : JSON.parse(JSON.stringify(a.fx)));
+      a.fx_history = a.fx_history.slice(-20); a.fx = cleanFx(b.fx); changed.push('fx');
+    }
     if (b.pacing !== undefined) { a.pacing = cleanPacing(b.pacing); changed.push('pacing'); }
     if (b.role !== undefined) { if (!ACTOR_ROLES.includes(b.role)) throw Object.assign(new Error('role must be ' + ACTOR_ROLES.join(', ')), { status: 400 }); a.role = b.role; changed.push('role'); }
     if (changed.length) { const pr = a.voice_profile_id && profiles.get(a.voice_profile_id); a.history = [{ at: now(), changed, voice_profile_id: a.voice_profile_id, identity_version: pr ? pr.identity_version || null : null }, ...(a.history || [])].slice(0, 30); }
@@ -429,7 +457,7 @@ function createDramaService({ store, voice, profiles, mediaStore, llmChat = null
     store.touch(p); return { reused: false, artifact: out.artifact, assembly_fp: out.fingerprint.sha, warnings: out.warnings };
   }
 
-  return { parse, createProject, reparse, view, need, renderTake, startRun, runView, assembleExport, approveTake, adoptLegacyTake, planContext, attachProducer, addTrack, updateTrack, removeTrack, splitTrack, updateActor, setClip, markers, timelineView, previewScene, ACTOR_ROLES, TRACK_ROLES, _runs: runs };
+  return { parse, createProject, reparse, view, need, renderTake, startRun, runView, assembleExport, approveTake, adoptLegacyTake, attachConvertedTake, planContext, attachProducer, addTrack, updateTrack, removeTrack, splitTrack, updateActor, setClip, markers, timelineView, previewScene, ACTOR_ROLES, TRACK_ROLES, _runs: runs };
 }
 
 module.exports = { createDramaService, TRACK_ROLES };

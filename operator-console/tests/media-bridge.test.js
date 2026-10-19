@@ -69,7 +69,7 @@ test('remote driver: redacts private text in errors, validates WAV, never touche
 });
 
 // ---- full run() with fake ssh/scp ------------------------------------------------------
-function harness({ remoteOut, scpBytes, cleaned = true, refOk = true, cleanupThrows = false } = {}) {
+function harness({ remoteOut, scpBytes, cleaned = true, refOk = true, cleanupThrows = false, toWav: customToWav = null, remoteHashes = null } = {}) {
   const base = tmp('run');
   const roots = { image: base + '/img', voice: base + '/voice', music: base + '/music', video: base + '/video' };
   const mediaStore = M.createMediaStore({ roots, registryFile: base + '/media.json' }); mediaStore.ensureRoots();
@@ -83,6 +83,7 @@ function harness({ remoteOut, scpBytes, cleaned = true, refOk = true, cleanupThr
     const a = args.join(' ');
     if (cmd === 'ssh' && a.includes('mktemp -d')) return { ok: true, stdout: `DEXMEDIA_DIR=${dir}\n` };
     if (cmd === 'ssh' && a.includes('ref.wav')) return { ok: true, stdout: refOk ? 'DEXMEDIA_REF_OK\n' : '' };
+    if (cmd === 'ssh' && a.includes('shasum -a 256')) return { ok: true, stdout: (remoteHashes || []).map((h, i) => `${h} ${dir}/${i ? 'target' : 'source'}.wav`).join('\n') + '\n' };
     if (cmd === 'ssh' && a.includes('rm -rf') && cleanupThrows) throw new Error('owned cleanup transport fixture');
     if (cmd === 'ssh' && a.includes('rm -rf')) return { ok: true, stdout: cleaned ? 'DEXMEDIA_CLEANED=' + /DEXMEDIA_CLEANED=([a-f0-9]{64})/.exec(a)[1] + '\n' : 'DEXMEDIA_STILL_THERE\n' };
     if (cmd === 'scp' && a.includes(`${dir}/out`)) { if (scpBytes) fs.writeFileSync(args[args.length - 1], scpBytes); return { ok: !!scpBytes, stdout: '' }; }
@@ -90,7 +91,7 @@ function harness({ remoteOut, scpBytes, cleaned = true, refOk = true, cleanupThr
   };
   let payloadSeen = '';
   const sshRunFn = async (_t, payload) => { payloadSeen = payload; return typeof remoteOut === 'function' ? remoteOut(dir) : remoteOut; };
-  const toWav = async () => { const f = path.join(tmp('ref'), 'ref.wav'); fs.writeFileSync(f, wav()); return f; };
+  const toWav = customToWav || (async () => { const f = path.join(tmp('ref'), 'ref.wav'); fs.writeFileSync(f, wav()); return f; });
   const bridge = B.createMediaBridge({ jobStore, arbiter, mediaStore, staging, evidenceFile: base + '/ev.json', exec, sshRunFn, toWav });
   return { base, roots, mediaStore, jobStore, arbiter, staging, bridge, calls, dir, payload: () => payloadSeen };
 }
@@ -205,6 +206,76 @@ test('server wiring: bridged generate path, lease sweep respects durable media j
   assert.match(src, /mediaBridge\.sweepRemoteOrphans\(60\)/);
   const br = fs.readFileSync(path.join(__dirname, '..', 'media-bridge.js'), 'utf8');
   assert.match(br, /tracked-terminal-resources/);
+});
+
+test('OpenVoice V2 conversion validates capability and distinct identities before creating a heavy job', () => {
+  const h = harness();
+  const a = path.join(h.base, 'source.wav'), b = path.join(h.base, 'target.wav');
+  fs.writeFileSync(a, wav()); fs.writeFileSync(b, wav(0.6));
+  const sha = f => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+  const common = { sourcePath: a, targetPath: b, sourceSha256: sha(a), targetSampleSha256: sha(b), targetProfileId: 'vp-abcd1234', targetSampleId: 'sm-1234abcd' };
+  assert.equal(h.bridge.startConversion({ ...common, probe: { runtime_available: false, model_available: true } }).gate, 'runtime-missing');
+  assert.equal(h.bridge.startConversion({ ...common, probe: { runtime_available: true, model_available: false } }).gate, 'model-missing');
+  assert.equal(h.bridge.startConversion({ ...common, targetSampleSha256: sha(a), probe }).gate, 'identity-separation');
+  assert.equal(h.bridge.startConversion({ ...common, targetProfileId: '../../etc/passwd', probe }).gate, 'reference-invalid');
+  assert.equal(h.jobStore.list().length, 0);
+  assert.equal(h.arbiter.state().owner, null);
+});
+
+test('OpenVoice V2 conversion dispatches with verified lineage, transfers distinct WAVs, and cleans private copies', async () => {
+  const bytes = wav(0.55), source = wav(0.6), target = wav(0.7);
+  const sourceHash = crypto.createHash('sha256').update(source).digest('hex');
+  const targetHash = crypto.createHash('sha256').update(target).digest('hex');
+  const outputHash = crypto.createHash('sha256').update(bytes).digest('hex');
+  const converted = [];
+  const toWav = async input => {
+    const f = path.join(tmp('openvoice-wav'), 'audio.wav'); fs.writeFileSync(f, input.path.endsWith('source.wav') ? source : target); converted.push(f); return f;
+  };
+  const modelSha = '9652c27e92b6b2a91632590ac9962ef7ae2b712e5c5b7f4c34ec55ee2b37ab9e';
+  const watermarkSha = '7a3d873d115c2c644685fb4cf109bdb299718296b88c871d3cf1c8e4cbc13144';
+  const h = harness({ scpBytes: bytes, toWav, remoteHashes: [sourceHash, targetHash], remoteOut: dir => [
+    `DEXMEDIA_OUTPUT=${dir}/out/converted.wav`, `DEXMEDIA_SHA256=${outputHash}`, 'DEXMEDIA_DURATION=0.55', 'DEXMEDIA_SAMPLE_RATE=24000', 'DEXMEDIA_CHANNELS=1',
+    'DEXMEDIA_WATERMARK=enabled-default', `DEXMEDIA_MODEL_SHA256=${modelSha}`, `DEXMEDIA_WATERMARK_SHA256=${watermarkSha}`, 'DEXMEDIA_PASS', 'DEXMEDIA_DONE', ''
+  ].join('\n') });
+  const sourcePath = path.join(h.base, 'source.wav'), targetPath = path.join(h.base, 'target.wav');
+  fs.writeFileSync(sourcePath, wav(0.6)); fs.writeFileSync(targetPath, wav(0.7));
+  const sha = f => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+  const result = h.bridge.startConversion({ sourcePath, targetPath, sourceStagingId: 'stg-source-test', sourceSha256: sha(sourcePath),
+    targetProfileId: 'vp-abcd1234', targetSampleId: 'sm-1234abcd', targetSampleSha256: sha(targetPath), probe });
+  const job = await settle(h.jobStore, result.job_id);
+  assert.equal(job.status, 'COMPLETE'); assert.equal(job.worker_id, 'openvoice-v2'); assert.equal(job.operation, 'voice-conversion');
+  const rec = h.mediaStore.resolve(job.artifacts[0]);
+  assert.equal(rec.sha256, outputHash); assert.equal(rec.parent, 'stg-source-test');
+  assert.equal(rec.meta.conversion.source_staging_id, 'stg-source-test');
+  assert.equal(rec.meta.conversion.target_profile_id, 'vp-abcd1234'); assert.equal(rec.meta.conversion.target_sample_id, 'sm-1234abcd');
+  assert.equal(rec.meta.conversion.converter_checkpoint_sha256, modelSha); assert.equal(rec.meta.conversion.watermark_model_sha256, watermarkSha);
+  assert.equal(rec.meta.conversion.source_wav_sha256, sourceHash); assert.equal(rec.meta.conversion.target_wav_sha256, targetHash);
+  assert.deepEqual(rec.meta.conversion.parameters, { device: 'cpu', tau: 0.3, watermark: 'enabled-default' });
+  const payload = h.payload(), encoded = [...payload.matchAll(/printf %s '([A-Za-z0-9+/=]+)' \| base64 -d > "\$D\/[^\"]+"/g)].map(m => Buffer.from(m[1], 'base64').toString());
+  assert.ok(encoded.some(s => s.includes('ToneColorConverter')), 'OpenVoice V2 adapter is dispatched');
+  const request = encoded.map(s => { try { return JSON.parse(s); } catch (_) { return null; } }).find(o => o && o.source_wav_sha256);
+  assert.equal(request.source_wav_sha256, sourceHash); assert.equal(request.target_wav_sha256, targetHash);
+  assert.ok(h.calls.some(([c, a]) => c === 'ssh' && a.includes('shasum -a 256')));
+  assert.ok(h.calls.some(([c, a]) => c === 'ssh' && a.includes('rm -rf') && a.includes('dexmedia.TEST01')));
+  assert.equal(h.arbiter.state().owner, null, 'shared heavy-compute lease released');
+  assert.ok(converted.every(f => !fs.existsSync(f)), 'MacBook worker WAV scratch copies removed');
+});
+
+test('OpenVoice V2 failure without verified default watermark creates no artifact and still cleans up', async () => {
+  const output = wav(), outputHash = crypto.createHash('sha256').update(output).digest('hex');
+  const input = wav(0.7), sourcePath = path.join(tmp('openvoice-fail'), 'source.wav'), targetPath = path.join(tmp('openvoice-fail'), 'target.wav');
+  fs.writeFileSync(sourcePath, input); fs.writeFileSync(targetPath, wav(0.8));
+  const converted = [];
+  const toWav = async p => { const f = path.join(tmp('openvoice-fail-wav'), 'x.wav'); fs.writeFileSync(f, p.path === sourcePath ? input : wav(0.8)); converted.push(f); return f; };
+  const ssha = crypto.createHash('sha256').update(input).digest('hex'), tsha = crypto.createHash('sha256').update(wav(0.8)).digest('hex');
+  const h = harness({ scpBytes: output, toWav, remoteHashes: [ssha, tsha], remoteOut: dir => `DEXMEDIA_OUTPUT=${dir}/out/converted.wav\nDEXMEDIA_SHA256=${outputHash}\nDEXMEDIA_PASS\nDEXMEDIA_DONE\n` });
+  const hashFile = f => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+  const r = h.bridge.startConversion({ sourcePath, targetPath, sourceSha256: hashFile(sourcePath), targetProfileId: 'vp-abcd1234', targetSampleId: 'sm-1234abcd', targetSampleSha256: hashFile(targetPath), probe });
+  const job = await settle(h.jobStore, r.job_id);
+  assert.equal(job.status, 'FAILED'); assert.equal(job.first_failed_gate, 'output-invalid');
+  assert.deepEqual(fs.readdirSync(h.roots.voice), []); assert.equal(h.arbiter.state().owner, null);
+  assert.ok(h.calls.some(([c, a]) => c === 'ssh' && a.includes('rm -rf') && a.includes('dexmedia.TEST01')));
+  assert.ok(converted.every(f => !fs.existsSync(f)));
 });
 
 // D-034: cleanup transport must not bypass release in finally.

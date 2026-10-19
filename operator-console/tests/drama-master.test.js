@@ -1,11 +1,12 @@
 'use strict';
+const { trackScratch } = require('./helpers/owned-scratch');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path'); const crypto = require('node:crypto');
 const M = require('../media'); const Mx = require('../drama-mixer'); const T = require('../audio-tools'); const A = require('../voice-audio'); const MB = require('../drama-master');
 
 const RATE = 48000; const HAVE = T.available(); const opts = { skip: HAVE.ffmpeg ? false : 'ffmpeg not installed' };
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ms-'));
+const tmp = () => trackScratch(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ms-')));
 function f32(frames, fn) { const f = path.join(tmp(), 'src.f32'); const b = Buffer.alloc(frames * 8); for (let i = 0; i < frames; i++) { const v = fn(i); b.writeFloatLE(v, i * 8); b.writeFloatLE(v, i * 8 + 4); } fs.writeFileSync(f, b); return { file: f, frames }; }
 const sine = (hz, amp) => i => amp * Math.sin(2 * Math.PI * hz * i / RATE);
 async function sceneMaster(sec, hz, amp) { const a = f32(Math.round(sec * RATE), sine(hz, amp)); const out = path.join(tmp(), 'sc.wav'); const r = await Mx.renderScene({ rate: RATE, length_frames: a.frames, clips: [{ kind: 'dialogue', file: a.file, start_frame: 0, src_offset_frames: 0, frames: a.frames, gain: 1 }], cues: [] }, { masterPath: out }); return { file: out, frames: r.frames }; }

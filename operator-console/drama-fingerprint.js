@@ -18,6 +18,7 @@
 
 const crypto = require('crypto');
 const E = require('./voice-engines');
+const PerformanceScore = require('./performance-score');
 
 const FP_VERSION = 'dxsp1';
 const ASSEMBLY_FP_VERSION = 'dxas1';
@@ -80,6 +81,14 @@ function speechFingerprint(input) {
     language: hashOf({ language }),
     settings: hashOf({ pipeline: PIPELINE_VERSION, max_chunk_chars: caps.max_chunk_chars || null, speed }),
     delivery: hashOf(delivery.applied ? { instruct: delivery.instruct } : null),
+    performance: hashOf(input.performanceScore ? (() => {
+      const valid = PerformanceScore.validateScore(input.performanceScore);
+      if (!valid.ok || input.performanceScore.source.text !== line.text) throw new Error('performance score is stale: ' + (valid.error || 'source dialogue changed'));
+      if (input.performanceScore.speaker.profileId !== profile.id) throw new Error('performance score is bound to a different voice profile');
+      if (input.performanceScore.speaker.identityVersion != null && input.performanceScore.speaker.identityVersion !== profile.identity_version) throw new Error('performance score is bound to a stale voice identity version');
+      if (input.performanceScore.lineId !== line.id) throw new Error('performance score is bound to a different line');
+      return input.performanceScore;
+    })() : null),
     pronunciation: hashOf(pr.applied.map(a => [a.from, a.to])),
     source: hashOf({ kind: line.kind, source_sha: line.source_sha || null }),
   };

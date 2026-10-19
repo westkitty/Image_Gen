@@ -122,7 +122,8 @@
       'model-present': 'the selected model is missing on Big Mac', timeout: 'the job timed out', 'mask-empty': 'the mask is empty', 'mask-full': 'the whole image is masked',
       'tunnel-down': 'the SD1.5 server tunnel is down', route: 'Big Mac is unreachable', 'init-img': 'the source image could not be used', source: 'the source image could not be found',
     };
-    return 'Failed at gate "' + g + '"' + (hints[g] ? ' — ' + hints[g] : '') + '.';
+    const fs = window.DexFailureStage && window.DexFailureStage.classify(job.firstFailedGate, String(job.stderr || '') + '\n' + String(job.stdout || ''));
+    return (fs && fs.stage ? fs.text + ' ' : '') + 'Failed at gate "' + g + '"' + (hints[g] ? ' — ' + hints[g] : '') + '.';
   };
 
   // ── Create: quantity, results, variations ───────────────────────
@@ -134,6 +135,7 @@
       steps: +s.steps, width: +s.width, height: +s.height,
       seed: Number.isInteger(seed) && seed >= 0 ? seed : -1,
       quantity: Math.max(1, Math.min(100, parseInt(ws.quantity, 10) || 1)),
+      fast_batch: !!ws.fastBatch,
       save_prompts: !!s.savePrompts,
     };
     if (ctl.negativePrompt) body.negative_prompt = s.negPrompt || '';
@@ -183,7 +185,24 @@
   };
 
   P._followCreateJob = function (jobId, body) {
-    this._startPoll(jobId, job => this._onCreateDone(job, body));
+    this._startPoll(jobId, job => this._onCreateDone(job, body), job => this._onCreateTick(job));
+  };
+  // Progressive results: every cell the backend has already validated and canonicalized (status DONE/FAILED in job.results)
+  // is shown immediately; cells still running keep their QUEUED placeholder. Nothing here plays a completion sound.
+  P._onCreateTick = function (job) {
+    const got = D.jobResults(job); if (!got.length) return;
+    const ws = this._ws(), cur = ws.results || [], base = this.state.backendUrl;
+    const merged = cur.map((r, i) => got[i] || r);
+    for (let i = cur.length; i < got.length; i++) merged.push(got[i]);
+    // After a refresh/reattach the placeholders are gone: rebuild them from the job's planned seeds so the batch size stays visible.
+    for (let i = merged.length; Array.isArray(job.seeds) && i < job.seeds.length; i++) merged.push({ index: i, status: 'QUEUED', seed: job.seeds[i], target: job.controlledTarget || this.state.target });
+    const changed = merged.some((r, i) => !cur[i] || cur[i].status !== r.status || cur[i].imageId !== r.imageId);
+    if (!changed) return;
+    const firstIdx = merged.findIndex(x => x.status === 'DONE');
+    const patch = { results: merged };
+    if (firstIdx >= 0 && !(cur.some(x => x.status === 'DONE'))) patch.activeIndex = firstIdx;
+    this.wsSet(patch);
+    if (firstIdx >= 0 && !this.state.currentImageSrc) this.setState({ currentImageSrc: base + merged[firstIdx].imageUrl, lastSeed: merged[firstIdx].seed });
   };
   P._onCreateDone = function (job, body) {
     const results = D.jobResults(job);
@@ -1139,6 +1158,8 @@
       h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) },
         h('label', { style: Object.assign({}, css.label, { marginBottom: 0 }) }, 'Quantity'),
         numInput(ws.quantity, v => this.wsSet({ quantity: v }), { min: '1', max: '100', step: '1', 'aria-label': 'Quantity' }),
+        h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1', gap: 4 }), title: 'Run all images in one model load (faster). They appear together at the end instead of one by one. Stable Diffusion models only.' },
+          h('input', { type: 'checkbox', 'data-fast-batch': 'true', checked: !!ws.fastBatch, onChange: e => this.wsSet({ fastBatch: e.target.checked }) }), 'Fast batch'),
         btn('Square', () => setDims('square'), '#94a3b8'), btn('Landscape', () => setDims('landscape'), '#94a3b8'), btn('Portrait', () => setDims('portrait'), '#94a3b8'),
         btn('Swap W↔H', () => this.setState({ width: s.height, height: s.width }), '#94a3b8')),
       h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) },

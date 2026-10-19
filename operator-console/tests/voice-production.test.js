@@ -1,4 +1,5 @@
 'use strict';
+const { trackScratch } = require('./helpers/owned-scratch');
 // Voice profiles, engine capability contract, long-form batch execution through the real bridge
 // (fake ssh/scp), chunk failure attribution, privacy and cleanup.
 const test = require('node:test');
@@ -9,7 +10,7 @@ const A = require('../voice-audio'); const E = require('../voice-engines');
 const { createProfileStore } = require('../voice-profiles'); const { createVoiceService } = require('../voice-service');
 
 const CANARY = 'DEXVOICEPROD-CANARY-902';
-const tmp = p => fs.mkdtempSync(path.join(os.tmpdir(), 'dex-vp-' + p));
+const tmp = p => trackScratch(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-vp-' + p)));
 const tone = (sec = 4, hz = 220, amp = 0.4, rate = 24000) => { const n = Math.round(sec * rate), a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = amp * Math.sin(2 * Math.PI * hz * i / rate); return { sampleRate: rate, channels: [a] }; };
 const wavOf = (a) => A.encodeWav(a);
 const sha = b => crypto.createHash('sha256').update(b).digest('hex');

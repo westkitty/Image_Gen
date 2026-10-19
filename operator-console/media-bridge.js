@@ -24,17 +24,21 @@ const { artifactReceipt, TERMINAL } = require('./job-contract');
 const { cleanupCommand } = require('./cleanup-owner');
 
 const DRIVER_PATH = path.join(__dirname, 'bridges', 'dexmedia_remote.py');
+const OPENVOICE_DRIVER_PATH = path.join(__dirname, 'bridges', 'openvoice_v2_remote.py');
 const REMOTE_TMP_BASE = '$HOME/Library/Caches/DexDiffusion/tmp';
 const KOKORO_VOICES = ['af_heart', 'af_bella', 'af_nicole', 'af_sarah', 'af_sky', 'am_adam', 'am_michael', 'am_echo', 'am_liam', 'bf_emma', 'bf_isabella', 'bm_george', 'bm_lewis'];
 const LANGS = ['en', 'zh', 'ja', 'ko', 'de', 'fr', 'es', 'it', 'pt', 'ru'];
 const MAX_TEXT = 2000;
-const TIMEOUT_MS = { tts: 8 * 60 * 1000, 'ace-step': 25 * 60 * 1000, 'magenta-rt': 10 * 60 * 1000 };
+const TIMEOUT_MS = { tts: 8 * 60 * 1000, voxcpm2: 20 * 60 * 1000, 'openvoice-v2': 20 * 60 * 1000, 'ace-step': 25 * 60 * 1000, 'magenta-rt': 10 * 60 * 1000 };
 
 // Execution specs for bridged workers (paths come from WORKER_PATHS).
 const BRIDGES = {
   kokoro: { media_kind: 'voice', operation: 'speech', python: WORKER_PATHS.kokoro.runtime.python, model: path.dirname(WORKER_PATHS.kokoro.models.voices) },
   'qwen3-tts-base': { media_kind: 'voice', operation: 'clone', python: WORKER_PATHS['qwen3-tts-base'].runtime.python, model: path.dirname(WORKER_PATHS['qwen3-tts-base'].models.base) },
   'qwen3-tts-voice-design': { media_kind: 'voice', operation: 'design', python: WORKER_PATHS['qwen3-tts-voice-design'].runtime.python, model: path.dirname(WORKER_PATHS['qwen3-tts-voice-design'].models['voice-design']) },
+  voxcpm2: { media_kind: 'voice', operation: 'clone', python: WORKER_PATHS.voxcpm2.runtime.python, model: path.dirname(WORKER_PATHS.voxcpm2.models.base) },
+  'openvoice-v2': { media_kind: 'voice', operation: 'voice-conversion', python: WORKER_PATHS['openvoice-v2'].runtime.python,
+    model: path.dirname(path.dirname(WORKER_PATHS['openvoice-v2'].models.converter)) },
   'ace-step': { media_kind: 'music', operation: 'song', python: WORKER_PATHS['ace-step'].runtime.python, aceSrc: path.dirname(path.dirname(path.dirname(WORKER_PATHS['ace-step'].runtime.python))) },
   'magenta-rt': { media_kind: 'music', operation: 'music', python: WORKER_PATHS['magenta-rt'].runtime.python, magentaData: path.dirname(path.dirname(WORKER_PATHS['magenta-rt'].models['mrt2-small'])) },
 };
@@ -103,7 +107,7 @@ function validateRequest(worker, body) {
 
 // Shell payload executed by `ssh westcat bash -s`. Private text travels only
 // inside the base64 request (stdin), never in argv.
-function buildPayload({ dir, request, driverSource, python, magentaData }) {
+function buildPayload({ dir, request, driverSource, python, magentaData, hfHome }) {
   const b64 = s => Buffer.from(s).toString('base64');
   const q = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
   const lines = [
@@ -115,7 +119,7 @@ function buildPayload({ dir, request, driverSource, python, magentaData }) {
     `printf %s ${q(b64(JSON.stringify(request)))} | base64 -d > "$D/request.json"`,
     'chmod 600 "$D/request.json"',
   ];
-  let env = '';
+  let env = hfHome ? `HF_HOME=${q(hfHome)} ` : '';
   if (magentaData) {
     lines.push('mkdir -p "$D/mhome/magenta-rt-v2"',
       `ln -sfn ${q(magentaData + '/resources')} "$D/mhome/magenta-rt-v2/resources"`,
@@ -168,7 +172,7 @@ async function referenceToWav(staged) {
 }
 
 // ---- multi-item TTS (long-form chunks / drama lines) ----------------------------------
-const TTS_WORKERS = ['kokoro', 'qwen3-tts-base', 'qwen3-tts-voice-design'];
+const TTS_WORKERS = ['kokoro', 'qwen3-tts-base', 'qwen3-tts-voice-design', 'voxcpm2'];
 const MAX_ITEMS = 400, MAX_ITEM_CHARS = 1500;
 // Validate a render plan built server-side by voice-engines.buildRenderPlan (never taken from HTTP bodies).
 function validateBatchPlan(worker, plan) {
@@ -177,13 +181,25 @@ function validateBatchPlan(worker, plan) {
   const b = plan || {};
   if (!Array.isArray(b.items) || !b.items.length || b.items.length > MAX_ITEMS) return bad(`1-${MAX_ITEMS} text chunks are required`);
   const items = [];
+  const preserveText = b.preserve_text === true;
   for (const it of b.items) {
-    const text = str(it && it.text);
-    if (!text) return bad('empty text chunk');
+    const text = preserveText && it && typeof it.text === 'string' ? it.text : str(it && it.text);
+    if (!text.trim()) return bad('empty text chunk');
     if (text.length > MAX_ITEM_CHARS) return bad(`a chunk exceeds ${MAX_ITEM_CHARS} characters`);
     const seed = intOrNull(it.seed, 0, 2147483647);
     if (Number.isNaN(seed)) return bad('seed must be an integer 0-2147483647');
-    items.push({ text, seed });
+    const item = { text, seed };
+    if (worker === 'qwen3-tts-voice-design' && it && it.instruct !== undefined) {
+      const instruct = str(it.instruct);
+      if (!instruct) return bad('Voice Design item instruction cannot be empty');
+      if (instruct.length > 1500) return bad('Voice Design item instruction too long');
+      item.instruct = instruct;
+    } else if (worker === 'voxcpm2' && it && it.direction !== undefined) {
+      const direction = str(it.direction);
+      if (direction.length > 500) return bad('VoxCPM2 direction is limited to 500 characters');
+      item.direction = direction;
+    } else if (it && (it.instruct !== undefined || it.direction !== undefined)) return bad(`${worker} does not support per-item delivery instructions`, 'unsupported-instruction');
+    items.push(item);
   }
   const lang = str(b.language) || 'en';
   if (!LANGS.includes(lang)) return bad('unsupported language');
@@ -199,13 +215,23 @@ function validateBatchPlan(worker, plan) {
     if (!str(b.ref_text)) return bad('the reference sample needs its exact transcript', 'reference-invalid');
     if (!str(b.ref_path)) return bad('Voice Clone needs a reference sample', 'reference-invalid');
     req.ref_text = str(b.ref_text); safe.reference = 'profile'; safe.has_transcript = true;
-  } else {
+  } else if (worker === 'qwen3-tts-voice-design') {
     const instruct = str(b.instruct);
-    if (!instruct) return bad('Voice Design needs a voice description');
+    if (!instruct && items.some(it => !it.instruct)) return bad('Voice Design needs a voice description or an instruction for every item');
     if (instruct.length > 1500) return bad('Voice description too long');
-    req.instruct = instruct;
+    if (instruct) req.instruct = instruct;
+  } else if (worker === 'voxcpm2') {
+    req.profile_type = b.profile_type === 'designed' ? 'designed' : 'cloned';
+    if (req.profile_type === 'cloned') {
+      if (!str(b.ref_path)) return bad('VoxCPM2 requires an approved voice reference', 'reference-invalid');
+      safe.reference = 'profile'; req.ref_text = str(b.ref_text);
+    } else {
+      const description = str(b.voice_description);
+      if (description.length < 10 || description.length > 1000) return bad('VoxCPM2 voice description must be 10-1000 characters');
+      req.voice_description = description;
+    }
   }
-  return { req, safe, refPath: worker === 'qwen3-tts-base' ? str(b.ref_path) : null };
+  return { req, safe, refPath: worker === 'qwen3-tts-base' || (worker === 'voxcpm2' && req.profile_type === 'cloned') ? str(b.ref_path) : null };
 }
 // DEXMEDIA_ITEM=<i>|<path>|<sha>|<bytes>|<duration>|<rate>|<channels>
 function parseItemMarkers(text) {
@@ -230,7 +256,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
 
   async function run(jobId, worker, spec, v, private_) {
     const fail = (gate, error) => { jobStore.transition(jobId, 'FAILED', { first_failed_gate: gate, error }); return { ok: false, gate }; };
-    let remoteDir = null, remoteResource = null, localRef = null, localOut = null;
+    let remoteDir = null, remoteResource = null, localRef = null, localSource = null, localTarget = null, localOut = null, openVoiceTransfer = null;
     try {
       // 1. lease (capacity 1, shared with image jobs)
       const lease = await arbiter.acquire(jobId, `${worker} ${spec.operation}`);
@@ -249,7 +275,22 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       // 3. reference audio (server-resolved staged file only)
       const request = { ...private_, out_dir: `${remoteDir}/out`, model: spec.model, ace_src: spec.aceSrc };
       if (worker === 'kokoro') request.voice_path = `${spec.model}/voices/${private_.voice}.safetensors`;
-      if (v.refId) {
+      if (worker === 'openvoice-v2') {
+        localSource = await toWav({ path: v.sourcePath });
+        localTarget = await toWav({ path: v.targetPath });
+        if (!localSource || !localTarget) return fail('reference-invalid', 'source or approved target audio could not be converted to WAV');
+        openVoiceTransfer = { sourceSha: sha256File(localSource), targetSha: sha256File(localTarget) };
+        const [sourceUp, targetUp] = await Promise.all([
+          exec('scp', ['-q', localSource, `${sshTarget}:${remoteDir}/source.wav`]),
+          exec('scp', ['-q', localTarget, `${sshTarget}:${remoteDir}/target.wav`]),
+        ]);
+        const chk = await exec('ssh', ['-o', 'BatchMode=yes', sshTarget,
+          `test -s "${remoteDir}/source.wav" && test -s "${remoteDir}/target.wav" && shasum -a 256 "${remoteDir}/source.wav" "${remoteDir}/target.wav"`]);
+        const remoteHashes = String(chk.stdout || '').match(/[a-f0-9]{64}/g) || [];
+        if (!sourceUp.ok || !targetUp.ok || remoteHashes.length < 2 || remoteHashes[0] !== openVoiceTransfer.sourceSha || remoteHashes[1] !== openVoiceTransfer.targetSha) return fail('transfer', 'source/target upload checksums did not match');
+        request.source_audio = `${remoteDir}/source.wav`; request.target_audio = `${remoteDir}/target.wav`; request.model_dir = spec.model;
+        request.source_wav_sha256 = openVoiceTransfer.sourceSha; request.target_wav_sha256 = openVoiceTransfer.targetSha;
+      } else if (v.refId) {
         const st = staging.get(v.refId);
         if (!st || st.kind !== 'audio') return fail('reference-invalid', 'staged reference audio not found or expired');
         localRef = await toWav(st);
@@ -262,13 +303,23 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       }
 
       // 4. generate
-      const payload = buildPayload({ dir: remoteDir, request, driverSource: fs.readFileSync(DRIVER_PATH, 'utf8'), python: spec.python, magentaData: spec.magentaData });
-      const out = await sshRunFn(sshTarget, payload, TIMEOUT_MS[worker] || TIMEOUT_MS.tts);
+      const driverSource = worker === 'openvoice-v2' ? fs.readFileSync(OPENVOICE_DRIVER_PATH, 'utf8') : fs.readFileSync(DRIVER_PATH, 'utf8');
+      const payload = buildPayload({ dir: remoteDir, request, driverSource, python: spec.python, magentaData: spec.magentaData,
+        hfHome: worker === 'openvoice-v2' ? '/Volumes/wc2tb/generative-models/voice/openvoice-v2/.hf-cache' : null });
+      const onData = worker === 'openvoice-v2' ? chunk => {
+        const text = String(chunk || '');
+        if (text.includes('DEXMEDIA_MODEL_LOADED=')) jobStore.transition(jobId, 'RUNNING', { progress: { phase: 'extracting-speakers', label: 'Extracting source and target speaker embeddings' } });
+        if (text.includes('DEXMEDIA_EMBEDDINGS=')) jobStore.transition(jobId, 'RUNNING', { progress: { phase: 'converting', label: 'Converting source performance with OpenVoice V2' } });
+        if (text.includes('DEXMEDIA_PASS')) jobStore.transition(jobId, 'RUNNING', { progress: { phase: 'validating-output', label: 'Validating converted audio and watermark' } });
+      } : undefined;
+      if (worker === 'openvoice-v2') jobStore.transition(jobId, 'RUNNING', { progress: { phase: 'loading-model', label: 'Loading OpenVoice V2 on Big Mac' } });
+      const out = await sshRunFn(sshTarget, payload, TIMEOUT_MS[worker] || TIMEOUT_MS.tts, onData);
       if (onRemoteOutput) onRemoteOutput(out); // test/diagnostic hook only; never persisted
       const mk2 = parseMarkers(out);
       if (!mk2.DONE && !mk2.FAIL && !mk2.PASS) return fail('generation', 'Big Mac generation did not report completion (timeout or connection loss)');
       if (mk2.FAIL) return fail(String(mk2.FAIL), `${worker}: ${mk2.ERROR || 'generation failed'}`);
       if (!mk2.PASS || !mk2.OUTPUT || !/^[a-f0-9]{64}$/.test(mk2.SHA256 || '')) return fail('output-missing', 'no validated output reported');
+      if (worker === 'openvoice-v2' && (mk2.WATERMARK !== 'enabled-default' || mk2.MODEL_SHA256 !== '9652c27e92b6b2a91632590ac9962ef7ae2b712e5c5b7f4c34ec55ee2b37ab9e' || mk2.WATERMARK_SHA256 !== '7a3d873d115c2c644685fb4cf109bdb299718296b88c871d3cf1c8e4cbc13144')) return fail('output-invalid', 'OpenVoice checkpoint or default watermark did not match verified upstream metadata');
       if (!String(mk2.OUTPUT).startsWith(remoteDir + '/')) return fail('output-invalid', 'output outside the job directory');
 
       // 5. transfer + checksum
@@ -285,8 +336,16 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
         const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
         rec = mediaStore.finalize(localOut, {
           kind: spec.media_kind, base: `${stamp}-${worker}-${spec.operation}`, job_id: jobId, worker, model: worker,
+          parent: worker === 'openvoice-v2' ? (v.sourceArtifactId || v.safe.source_staging_id || null) : null,
           seed: v.safe.seed ?? null, duration: Number(mk2.DURATION) || null,
-          meta: { operation: spec.operation, sample_rate: Number(mk2.SAMPLE_RATE) || null, channels: Number(mk2.CHANNELS) || null, reference_used: !!v.refId, ...v.safe },
+          meta: { operation: spec.operation, sample_rate: Number(mk2.SAMPLE_RATE) || null, channels: Number(mk2.CHANNELS) || null, reference_used: !!v.refId, ...v.safe,
+            ...(worker === 'openvoice-v2' ? { conversion: { source_sha256: v.safe.source_sha256, source_staging_id: v.safe.source_staging_id || null,
+              source_artifact_id: v.sourceArtifactId || null, source_audio_id: v.safe.source_staging_id || v.sourceArtifactId || null,
+              target_profile_id: v.safe.target_profile_id, target_profile_version: v.safe.target_profile_version || null, target_sample_id: v.safe.target_sample_id,
+              target_sample_sha256: v.safe.target_sample_sha256, converter: 'myshell-ai/OpenVoiceV2', converter_revision: 'OpenVoice V2 checkpoints 2024-04-17',
+              source_wav_sha256: openVoiceTransfer && openVoiceTransfer.sourceSha, target_wav_sha256: openVoiceTransfer && openVoiceTransfer.targetSha,
+              converter_checkpoint_sha256: mk2.MODEL_SHA256, watermark_model_sha256: mk2.WATERMARK_SHA256,
+              parameters: { device: 'cpu', tau: 0.3, watermark: 'enabled-default' }, qa: { worker_audio_validation: 'PASS', asr: 'not-run' } } } : {}) },
         });
       } catch (e) { return fail('canonicalization', String(e.message).slice(0, 200)); }
       if (rec.sha256 !== sha) return fail('checksum', 'canonical file checksum mismatch');
@@ -298,7 +357,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       if (g && !['COMPLETE', 'FAILED', 'INTERRUPTED', 'CANCELLED'].includes(g.status)) return fail('generation', String(e.message).slice(0, 200));
       return { ok: false };
     } finally {
-      for (const f of [localRef, localOut]) if (f) try { fs.rmSync(path.dirname(f), { recursive: true, force: true }); } catch (_) {}
+      for (const f of [localRef, localSource, localTarget, localOut]) if (f) try { fs.rmSync(path.dirname(f), { recursive: true, force: true }); } catch (_) {}
       try { if (remoteResource) await cleanupResource(jobId, remoteResource); } finally { arbiter.release(jobId); }
     }
   }
@@ -308,6 +367,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
   function start(worker, body, { probe, saveText }) {
     const spec = BRIDGES[worker];
     if (!spec) return { error: 'worker has no execution bridge', gate: 'worker-unavailable', status: 409 };
+    if (probe.remote_reachable === false) return { error: 'Big Mac connection unavailable (SSH probe failed)', gate: 'remote-unreachable', status: 503 };
     if (!probe.runtime_available) return { error: 'Runtime not installed', gate: 'runtime-missing', status: 409 };
     if (!probe.model_available) return { error: 'Model not installed', gate: 'model-missing', status: 409 };
     const v = validateRequest(worker, body);
@@ -317,6 +377,24 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       resource_class: 'heavy', params: { ...v.safe, ...privateOnly(v.req) }, persist_text: !!saveText });
     run(job.job_id, worker, spec, v, v.req).catch(() => {});
     return { job_id: job.job_id, status: 'QUEUED' };
+  }
+  function startConversion({ sourcePath, targetPath, sourceArtifactId = null, sourceStagingId = null, sourceSha256, targetProfileId, targetProfileVersion = null, targetSampleId, targetSampleSha256, probe }) {
+    const worker = 'openvoice-v2', spec = BRIDGES[worker];
+    if (probe && probe.remote_reachable === false) return { error: 'Big Mac connection unavailable (SSH probe failed)', gate: 'remote-unreachable', status: 503 };
+    if (!probe || !probe.runtime_available) return { error: 'OpenVoice V2 runtime is not installed', gate: 'runtime-missing', status: 409 };
+    if (!probe.model_available) return { error: 'OpenVoice V2 converter or watermark model is unavailable', gate: 'model-missing', status: 409 };
+    if (!sourcePath || !targetPath || !fs.existsSync(sourcePath) || !fs.existsSync(targetPath)) return { error: 'source or target reference is missing', gate: 'reference-invalid', status: 400 };
+    if (!/^[a-f0-9]{64}$/.test(sourceSha256 || '') || !/^[a-f0-9]{64}$/.test(targetSampleSha256 || '') || sourceSha256 === targetSampleSha256) return { error: 'source and target reference must be distinct checksum-verified audio', gate: 'identity-separation', status: 400 };
+    if (!/^vp-[a-z0-9-]{4,80}$/.test(targetProfileId || '') || !/^sm-[a-z0-9-]{4,80}$/.test(targetSampleId || '')) return { error: 'authorized target profile/sample identity is required', gate: 'reference-invalid', status: 400 };
+    const v = { sourcePath, targetPath, sourceArtifactId, safe: { source_sha256: sourceSha256, source_staging_id: sourceStagingId,
+      target_profile_id: targetProfileId, target_profile_version: Number.isSafeInteger(targetProfileVersion) ? targetProfileVersion : null,
+      target_sample_id: targetSampleId, target_sample_sha256: targetSampleSha256,
+      converter: 'myshell-ai/OpenVoiceV2', converter_checkpoint_sha256: '9652c27e92b6b2a91632590ac9962ef7ae2b712e5c5b7f4c34ec55ee2b37ab9e' } };
+    const job = jobStore.create({ media_kind: 'voice', operation: spec.operation, worker_id: worker, model_id: 'myshell-ai/OpenVoiceV2', resource_class: 'heavy',
+      params: v.safe, artifact_required: true });
+    run(job.job_id, worker, spec, v, { model_sha256: '9652c27e92b6b2a91632590ac9962ef7ae2b712e5c5b7f4c34ec55ee2b37ab9e',
+      watermark_sha256: '7a3d873d115c2c644685fb4cf109bdb299718296b88c871d3cf1c8e4cbc13144' }).catch(() => {});
+    return { job_id: job.job_id, status: 'QUEUED', worker };
   }
   // One Big Mac invocation for N text chunks (model loaded once). Chunk WAVs are transferred and
   // checksum-verified individually, stitched on the MacBook (one canonical artifact), and the chunk
@@ -455,6 +533,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
     const spec = BRIDGES[worker];
     if (!spec) return { error: 'worker has no execution bridge', gate: 'worker-unavailable', status: 409 };
     const probe = ctx.probe;
+    if (probe.remote_reachable === false) return { error: 'Big Mac connection unavailable (SSH probe failed)', gate: 'remote-unreachable', status: 503 };
     if (!probe.runtime_available) return { error: 'Runtime not installed', gate: 'runtime-missing', status: 409 };
     if (!probe.model_available) return { error: 'Model not installed', gate: 'model-missing', status: 409 };
     const v = validateBatchPlan(worker, plan);
@@ -497,16 +576,16 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
     return { swept, remaining: inspectCleanup().filter(r => r.state !== 'succeeded').length, scope: 'tracked-terminal-resources' };
   }
 
-  return { start, startBatch, evidence, sweepRemoteOrphans, inspectCleanup, reconcileCleanup, BRIDGES };
+  return { start, startBatch, startConversion, evidence, sweepRemoteOrphans, inspectCleanup, reconcileCleanup, BRIDGES };
 }
 
 // Private text keys, passed to jobStore.create so its PRIVATE_KEYS policy
 // redacts them unless prompt saving is on.
 function privateOnly(req) {
-  const map = { text: 'text', ref_text: 'reference_transcript', instruct: 'voice_description', prompt: 'prompt', caption: 'description', lyrics: 'lyrics' };
+  const map = { text: 'text', ref_text: 'reference_transcript', instruct: 'voice_description', voice_description: 'voice_description', prompt: 'prompt', caption: 'description', lyrics: 'lyrics' };
   const out = {};
   for (const [k, dest] of Object.entries(map)) if (typeof req[k] === 'string' && req[k]) out[dest] = req[k];
   return out;
 }
 
-module.exports = { createMediaBridge, validateRequest, validateBatchPlan, parseItemMarkers, buildPayload, parseMarkers, BRIDGES, KOKORO_VOICES, LANGS, DRIVER_PATH, privateOnly, MAX_ITEMS, MAX_ITEM_CHARS };
+module.exports = { createMediaBridge, validateRequest, validateBatchPlan, parseItemMarkers, buildPayload, parseMarkers, BRIDGES, KOKORO_VOICES, LANGS, DRIVER_PATH, privateOnly, MAX_ITEMS, MAX_ITEM_CHARS, referenceToWav };

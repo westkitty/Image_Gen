@@ -51,14 +51,16 @@ const enable = page => page.locator('label', { hasText: 'High-Res Refine' }).loc
       const f = k => page.locator('[data-second-pass] [data-second-field="' + k + '"]');
       await f('on').check();
       await f('prompt').fill('a detailed red fox'); await page.keyboard.press('Tab');
-      await f('target').selectOption('sdxl-photonic');
+      const availableSecondTargets = await f('target').locator('option').evaluateAll(nodes => nodes.map(n => n.value).filter(Boolean));
+      assert.ok(availableSecondTargets.includes('sdxl-base'), 'requested checkpoint absent; available: ' + JSON.stringify(availableSecondTargets));
+      await f('target').selectOption('sdxl-base');
       await f('sampler').selectOption('heun');
       await f('denoise').fill('0.35'); await page.keyboard.press('Tab');
       await page.locator('.ca-generate-form textarea').first().fill('a red fox in snow');
       await page.locator('.ca-generate-form .ca-primary').click();
       for (let i = 0; i < 40 && !sent.length; i++) await page.waitForTimeout(100);
       assert.equal(sent.length, 1, 'one hires-2pass request');
-      assert.deepEqual(sent[0].second_pass, { prompt: 'a detailed red fox', target: 'sdxl-photonic', sampler: 'heun', denoise: 0.35 }, 'only explicitly chosen fields; the rest inherit server-side');
+      assert.deepEqual(sent[0].second_pass, { prompt: 'a detailed red fox', target: 'sdxl-base', sampler: 'heun', denoise: 0.35 }, 'only explicitly chosen fields; the rest inherit server-side');
       assert.equal(sent[0].target, 'sd15'); assert.equal(sent[0].prompt, 'a red fox in snow');
       assert.ok(!Object.keys(sent[0]).some(k => /^hires_/.test(k)) && !('quantity' in sent[0]));
       await enable(page);

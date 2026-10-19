@@ -56,7 +56,8 @@ const ENGINES = {
     id: 'qwen3-tts-voice-design', worker: 'qwen3-tts-voice-design', label: 'Qwen3-TTS VoiceDesign', voice_types: ['designed'], revision: RUNTIME_REVISION,
     capabilities: {
       cloning: false, voice_design: true, preset_voices: false, multi_sample_reference: false,
-      delivery_instructions: true,             // the voice description IS the instruction text; delivery is appended to it
+      delivery_instructions: true,             // instruction is passed to model.generate()
+      per_item_instructions: true,             // the existing worker calls model.generate once per item after one model load
       speed_control: false, paralinguistic_tags: false, streaming: false, deterministic_seed: true, prompt_caching: false,
       languages: LANGS, sample_rate: 24000, reference_seconds: null, max_chunk_chars: 700,
     },
@@ -65,11 +66,37 @@ const ENGINES = {
       prompt_caching: `no precomputed-prompt API (${PROBE})`,
     },
   },
+  voxcpm2: {
+    id: 'voxcpm2', worker: 'voxcpm2', label: 'VoxCPM2 (controllable clone)', voice_types: ['cloned', 'designed'], revision: 'voxcpm 2.0.3',
+    status: 'IMPLEMENTED / UNVERIFIED',
+    capabilities: { cloning: true, voice_design: true, preset_voices: false, multi_sample_reference: false, delivery_instructions: true, per_item_instructions: true,
+      speed_control: false, paralinguistic_tags: false, voice_conversion: false, audio_editing: false, streaming: false, deterministic_seed: false, prompt_caching: false,
+      languages: ['en', 'zh', 'ja', 'ko', 'de', 'fr', 'es', 'it', 'pt', 'sv', 'nl', 'fi', 'el', 'he', 'hi', 'id', 'ms', 'th', 'vi', 'tr', 'pl', 'ar', 'fa', 'bn', 'sw', 'km', 'lo', 'my'],
+      sample_rate: 16000, reference_seconds: { min: 3, recommended: [5, 20], max: 30 }, max_chunk_chars: 700 },
+    evidence: { adapter: 'Pinned voxcpm 2.0.3 generate() accepts reference_wav_path, cfg_value and inference_timesteps; its installed _generate signature has no seed argument. Directions use the documented parenthesized text prefix. MPS explicitly supported.',
+      license: 'OpenBMB/VoxCPM code and openbmb/VoxCPM2 weights are Apache-2.0 per upstream repository/model card.', prompt_caching: 'No reusable speaker-conditioning API is integrated.' },
+  },
 };
 
+// Candidate inventory is descriptive only. These entries cannot be selected for
+// production until an installed runtime, exact weights, license and smoke proof exist.
+const CANDIDATES = Object.freeze([
+  ['fish-speech-s2-pro', 'Fish Speech S2 Pro', 'No DexDiffusion adapter/runtime or verified installed weights; model-weight research/commercial terms require review.'],
+  ['indextts-2.5', 'IndexTTS 2.5', 'No DexDiffusion adapter/runtime or verified installed weights; license and Apple Silicon execution not verified.'],
+  ['chatterbox', 'Chatterbox', 'No compatible installed runtime is registered; prior compatibility note is EXPERIMENT only.'],
+  ['step-audio-editx', 'Step-Audio-EditX', 'No DexDiffusion editing adapter/runtime or verified installed weights.'],
+  ['seed-vc', 'Seed-VC', 'No DexDiffusion conversion adapter/runtime or verified installed weights; experimental candidate.'],
+].map(([id, label, blocker]) => Object.freeze({ id, label, status: 'UNAVAILABLE', selectable: false, blocker,
+  capabilities: { cloning: false, voice_design: false, delivery_instructions: false, per_item_instructions: false, speed_control: false, voice_conversion: false, audio_editing: false, max_chunk_chars: 0 },
+  evidence: { availability: blocker } })));
+
+const CONVERTERS = Object.freeze({ 'openvoice-v2': Object.freeze({ id: 'openvoice-v2', label: 'OpenVoice V2 tone-color conversion',
+  model: 'myshell-ai/OpenVoiceV2', revision: 'V2 checkpoint 2024-04-17', license: 'MIT',
+  capabilities: Object.freeze({ voice_conversion: true, text_generation: false, source_and_target_embeddings: true, watermark: 'enabled by default', device: 'cpu' }) }) });
+
 const getEngine = id => ENGINES[id] || null;
-const listEngines = () => Object.values(ENGINES).map(e => ({ id: e.id, label: e.label, revision: e.revision, voice_types: e.voice_types, capabilities: e.capabilities, evidence: e.evidence, voices: e.voices }));
-const TYPE_ENGINES = { cloned: ['qwen3-tts-base'], designed: ['qwen3-tts-voice-design'], preset: ['kokoro'] };
+const listEngines = () => Object.values(ENGINES).map(e => ({ id: e.id, label: e.label, revision: e.revision, status: e.status || 'IMPLEMENTED / UNVERIFIED', voice_types: e.voice_types, capabilities: e.capabilities, evidence: e.evidence, voices: e.voices })).concat(CANDIDATES);
+const TYPE_ENGINES = { cloned: ['qwen3-tts-base', 'voxcpm2'], designed: ['qwen3-tts-voice-design', 'voxcpm2'], preset: ['kokoro'] };
 const compatibleEngines = profile => TYPE_ENGINES[profile && profile.type] || [];
 
 const MIN_SAMPLE_S = 3, MAX_SAMPLE_S = 30;
@@ -93,7 +120,7 @@ function validateProfileForEngine(profile, engineId) {
     const act = (profile.samples || []).find(s => s.active) || (profile.samples || [])[0];
     if (!act) errors.push('add at least one reference sample');
     else {
-      if (!String(act.transcript || '').trim()) errors.push(`the active sample "${act.name}" needs its exact transcript (Qwen3 Base clones from audio + transcript)`);
+      if (engineId === 'qwen3-tts-base' && !String(act.transcript || '').trim()) errors.push(`the active sample "${act.name}" needs its exact transcript (Qwen3 Base clones from audio + transcript)`);
       if (!act.validation || act.validation.ok === false) errors.push(`the active sample "${act.name}" failed validation: ${((act.validation && act.validation.errors) || []).join('; ') || 'unreadable'}`);
       else for (const m of act.validation.warnings || []) warnings.push(`sample "${act.name}": ${m}`);
     }
@@ -115,18 +142,21 @@ function resolveDelivery(engineId, profile, direction) {
   const eff = dir || String((profile && profile.default_direction) || '').trim();
   if (!eff) return { requested: '', applied: false, note: null };
   if (!e || !e.capabilities.delivery_instructions) return { requested: eff, applied: false, note: `${e ? e.label : engineId} cannot honor delivery directions ("${eff}" was NOT applied)` };
+  if (engineId === 'voxcpm2') return { requested: eff, applied: true, instruct: eff, note: null };
   const base = String(profile.description || '').trim().replace(/[.\s]+$/, '');
   return { requested: eff, applied: true, instruct: `${base}. Delivery: ${eff.replace(/[.\s]+$/, '')}.`, note: null };
 }
 
 // Everything the bridge needs for one engine invocation covering `texts` (one chunk each).
-function buildRenderPlan(engineId, profile, { texts, direction, language, seed, seeds, speed, refPath }) {
+function buildRenderPlan(engineId, profile, { texts, direction, directions, language, seed, seeds, speed, refPath, preserveText = false }) {
   const e = getEngine(engineId); if (!e) throw new Error('unknown engine ' + engineId);
   const v = validateProfileForEngine(profile, engineId);
   if (!v.ok) { const err = new Error(v.errors.join('; ')); err.gate = 'profile-invalid'; throw err; }
   const lang = language || profile.language || 'en';
   const delivery = resolveDelivery(engineId, profile, direction);
+  const itemDirections = texts.map((_, i) => Array.isArray(directions) && directions[i] != null ? String(directions[i]) : direction);
   const body = { items: texts.map((text, i) => ({ text, seed: Array.isArray(seeds) ? (seeds[i] == null ? null : Number(seeds[i])) : seed == null ? null : (Number(seed) + i) % 2147483647 })), language: lang };
+  if (preserveText) body.preserve_text = true;
   const notes = [];
   if (delivery.note) notes.push(delivery.note);
   if (engineId === 'kokoro') { body.voice = profile.preset_voice; body.speed = speed || profile.default_speed || 1; }
@@ -134,8 +164,23 @@ function buildRenderPlan(engineId, profile, { texts, direction, language, seed, 
     const act = (profile.samples || []).find(s => s.active) || profile.samples[0];
     body.ref_text = String(act.transcript || '').trim(); body.ref_path = refPath; body.seed = seed;
   }
-  if (engineId === 'qwen3-tts-voice-design') { body.instruct = delivery.applied ? delivery.instruct : String(profile.description).trim(); body.seed = seed; }
-  return { worker: e.worker, body, delivery, notes, warnings: v.warnings };
+  if (engineId === 'voxcpm2') {
+    body.profile_type = profile.type;
+    if (profile.type === 'cloned') {
+      const act = (profile.samples || []).find(s => s.active) || profile.samples[0];
+      body.ref_path = refPath; body.ref_text = String(act.transcript || '').trim();
+    } else body.voice_description = String(profile.description || '').trim();
+    body.items = body.items.map((item, i) => { item.direction = String(itemDirections[i] || ''); return item; });
+  }
+  if (engineId === 'qwen3-tts-voice-design') {
+    body.instruct = String(profile.description).trim(); body.seed = seed;
+    body.items = body.items.map((item, i) => {
+      const itemDelivery = resolveDelivery(engineId, profile, itemDirections[i]);
+      item.instruct = itemDelivery.applied ? itemDelivery.instruct : body.instruct;
+      return item;
+    });
+  }
+  return { worker: e.worker, body, delivery, itemDeliveries: engineId === 'qwen3-tts-voice-design' ? itemDirections.map(d => resolveDelivery(engineId, profile, d)) : null, notes, warnings: v.warnings };
 }
 
-module.exports = { ENGINES, getEngine, listEngines, compatibleEngines, TYPE_ENGINES, validateProfileForEngine, sampleWarnings, resolveDelivery, buildRenderPlan, MIN_SAMPLE_S, MAX_SAMPLE_S };
+module.exports = { ENGINES, CANDIDATES, CONVERTERS, getEngine, listEngines, compatibleEngines, TYPE_ENGINES, validateProfileForEngine, sampleWarnings, resolveDelivery, buildRenderPlan, MIN_SAMPLE_S, MAX_SAMPLE_S };

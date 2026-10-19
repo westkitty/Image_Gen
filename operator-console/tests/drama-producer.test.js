@@ -4,7 +4,20 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'); const path = require('node:path');
 const D = require('../drama'); const A = require('../voice-audio'); const P = require('../drama-planner');
+const { chunkFpOf } = require('../drama-producer');
 const { rig } = require('./helpers/drama-rig');
+
+test('phrase receipt fingerprints change only for the edited directed span', () => {
+  const components = { text: 'same-source', voice: 'same-voice', engine: 'same-engine', performance: 'old-score' };
+  const editedScore = Object.assign({}, components, { performance: 'new-score' });
+  const phrase = (phraseId, start, end, text, direction) => ({ phraseId, sourceStart: start, sourceEnd: end, direction });
+  const fp = (inputs, c, item) => chunkFpOf(inputs, null, 0, 3, item.text, item, c);
+  const a = { ...phrase('beat-1', 0, 5, 'Wait.', 'urgent'), text: 'Wait.' };
+  const b = { ...phrase('beat-2', 6, 20, 'I can explain.', 'reassuring'), text: 'I can explain.' };
+  const aEdited = Object.assign({}, a, { direction: 'calm' });
+  assert.notEqual(fp('old-line-fp', components, a), fp('new-line-fp', editedScore, aEdited));
+  assert.equal(fp('old-line-fp', components, b), fp('new-line-fp', editedScore, b));
+});
 
 const CANARY = 'PRODUCERCANARY-5521';
 const SCRIPT = `INT. WAREHOUSE - NIGHT

@@ -170,3 +170,25 @@ test('schema migration: a v0 project gains actors/tracks/exports/settings', () =
   assert.equal(p.schema, D.SCHEMA); assert.deepEqual([p.tracks, p.exports], [[], []]); assert.equal(p.settings.line_gap_s, 0.35);
   assert.equal(p.actors[0].speaker_key, 'A'); assert.deepEqual(p.scenes[0].lines[0].takes, []);
 });
+
+test('take decisions retain rejected artifacts, undo decisions, pin approvals and clear stale pins after source edits', () => {
+  const p = D.newProject({ title: 'decisions', source_script: 'A: one line', parsed: D.parseScript('A: one line') });
+  const l = lines(p)[0];
+  const old = D.addTake(p, l.id, { status: 'complete', fingerprint: { inputs_sha: 'old' }, artifact_id: 'old.wav', approved: true });
+  const alternate = D.addTake(p, l.id, { status: 'complete', fingerprint: { inputs_sha: 'new' }, artifact_id: 'new.wav', approved: true });
+  l.active_take_id = old.id;
+  assert.equal(D.selectTake(p, l.id, alternate.id).id, alternate.id);
+  assert.ok(D.decideTake(p, l.id, alternate.id, 'pin'));
+  assert.equal(l.pinned_take_id, alternate.id);
+  assert.ok(D.decideTake(p, l.id, alternate.id, 'reject'));
+  assert.equal(alternate.rejected, true);
+  assert.equal(alternate.artifact_id, 'new.wav');
+  assert.ok(D.decideTake(p, l.id, alternate.id, 'undo'));
+  assert.equal(alternate.rejected, false);
+  assert.equal(l.pinned_take_id, alternate.id);
+  D.setLine(p, l.id, { text: 'changed source' });
+  assert.equal(l.pinned_take_id, null);
+  assert.equal(l.active_take_id, null);
+  assert.equal(alternate.pin_stale, true);
+  assert.equal(alternate.artifact_id, 'new.wav');
+});

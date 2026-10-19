@@ -6,6 +6,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { createProfileStore } = require('./voice-profiles');
 const { createVoiceService } = require('./voice-service');
@@ -23,6 +24,8 @@ const { createProofStore } = require('./proof-store');
 const { registerDramaStudioRoutes } = require('./drama-studio-routes');
 const E = require('./voice-engines');
 const { KOKORO_VOICES } = require('./media-bridge');
+const PerformanceScore = require('./performance-score');
+const { createDirectorPreferences } = require('./director-preferences');
 
 // Normalise any ffmpeg-readable audio to a PCM16 mono 24 kHz WAV buffer (null on failure).
 function ingestToWav(src) {
@@ -55,6 +58,7 @@ function registerVoiceRoutes(app, { stateDir, jobStore, mediaStore, staging, med
   const producer = createProducer({ drama, store: dramaStore, voice, profiles, mediaStore, jobStore, chunkStore, assembly, qa, proofs, cancelChild: cancelJob, onJobStart, onJobEnd });
   drama.attachProducer(producer);
   const auditions = createAuditionService({ dir: path.join(stateDir, 'voice-auditions'), profiles, voice, mediaStore, jobStore });
+  const directorPreferences = createDirectorPreferences(path.join(stateDir, 'director-preferences.json'));
 
   const h = fn => async (req, res) => {
     try { await fn(req, res); } catch (e) {
@@ -68,7 +72,47 @@ function registerVoiceRoutes(app, { stateDir, jobStore, mediaStore, staging, med
   const noStore = res => res.set('Cache-Control', 'no-store');
 
   // ── engines + profiles ──────────────────────────────────────────────────
-  app.get('/api/voice/engines', (req, res) => res.json({ engines: E.listEngines(), kokoro_voices: KOKORO_VOICES }));
+  app.get('/api/voice/director-preferences', (req, res) => { noStore(res); res.json({ preferences: directorPreferences.get() }); });
+  app.put('/api/voice/director-preferences', h((req, res) => res.json({ preferences: directorPreferences.update(req.body || {}) })));
+  app.delete('/api/voice/director-preferences', (req, res) => res.json({ preferences: directorPreferences.reset() }));
+  app.get('/api/voice/engines', (req, res) => {
+    const engines = E.listEngines().map(engine => {
+      let availability = null;
+      try { availability = probeFor(engine.id) || null; } catch (_) {}
+      if (!availability) return engine;
+      return Object.assign({}, engine, { availability: { state: availability.state, runtime_available: !!availability.runtime_available,
+        model_available: !!availability.model_available, installed: !!availability.installed, proven: !!availability.proven,
+        runtimePath: availability.runtimePath || null, modelPath: availability.modelPath || null },
+        status: availability.proven ? 'PROVEN' : availability.installed ? 'INSTALLED / UNVERIFIED' : availability.state || engine.status });
+    });
+    res.json({ engines, kokoro_voices: KOKORO_VOICES });
+  });
+  app.get('/api/voice/converters', (req, res) => {
+    const converters = Object.values(E.CONVERTERS || {}).map(c => {
+      const a = probeFor(c.id) || {};
+      return Object.assign({}, c, { availability: { state: a.state || 'UNKNOWN', runtime_available: !!a.runtime_available,
+        model_available: !!a.model_available, enabled: !!a.enabled, proven: !!a.proven, runtimePath: a.runtimePath || null, modelPath: a.modelPath || null } });
+    });
+    res.json({ converters });
+  });
+  app.post('/api/voice/convert', h((req, res) => {
+    const b = req.body || {}, source = staging.get(String(b.source_staged_id || ''));
+    if (!source || source.kind !== 'audio') return json(res, 400, { error: 'stage a source audio performance first', gate: 'reference-invalid' });
+    const profile = profiles.get(String(b.target_profile_id || ''));
+    if (!profile) return nf(res, 'target voice profile');
+    if (profile.type !== 'cloned' || !profile.readiness || !profile.readiness.ready) return json(res, 409, { error: 'target voice requires an approved cloned profile, reviewed active sample and recorded consent', gate: 'consent-required', readiness: profile.readiness || null });
+    const active = profiles.activeSample(profile.id);
+    if (!active || !active.path || !active.sample.review || active.sample.review.state !== 'approved') return json(res, 409, { error: 'target voice has no approved active reference sample', gate: 'reference-invalid' });
+    const digest = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+    const sourceSha = digest(source.path), targetSha = active.sample.sha256 || digest(active.path);
+    if (sourceSha === targetSha) return json(res, 400, { error: 'source performance and target reference must be different recordings', gate: 'identity-separation' });
+    const result = mediaBridge.startConversion({ sourcePath: source.path, targetPath: active.path, sourceStagingId: source.id,
+      sourceSha256: sourceSha, targetProfileId: profile.id, targetSampleId: active.sample.id, targetSampleSha256: targetSha,
+      targetProfileVersion: profile.identity_version,
+      probe: probeFor('openvoice-v2') });
+    if (result.error) return json(res, result.status || 409, result);
+    noStore(res); res.status(202).json(result);
+  }));
   app.get('/api/voice/profiles', h((req, res) => { noStore(res); res.json({ profiles: profiles.list() }); }));
   app.post('/api/voice/profiles', h((req, res) => res.status(201).json({ profile: profiles.create(req.body || {}) })));
   app.get('/api/voice/profiles/:id', h((req, res) => { noStore(res); const p = profiles.get(req.params.id); return p ? res.json({ profile: p }) : nf(res, 'profile'); }));
@@ -126,6 +170,13 @@ function registerVoiceRoutes(app, { stateDir, jobStore, mediaStore, staging, med
   app.get('/api/voice/profiles/:id/trials', h((req, res) => { noStore(res); res.json({ trials: auditions.listTrials(req.params.id) }); }));
   app.get('/api/voice/profiles/:id/trials/:tid', h((req, res) => { noStore(res); res.json({ trial: auditions.getTrial(req.params.id, req.params.tid) }); }));
   app.post('/api/voice/profiles/:id/trials/:tid/accept', h((req, res) => res.json(auditions.acceptTrial(req.params.id, req.params.tid, req.body || {}))));
+  app.post('/api/voice/profiles/:id/evaluations', h((req, res) => { const b = req.body || {}; res.status(202).json({ evaluation: auditions.startEvaluation(req.params.id, { scripts: b.scripts, directions: b.directions }) }); }));
+  app.get('/api/voice/profiles/:id/evaluations', h((req, res) => { noStore(res); res.json({ evaluations: auditions.listEvaluations(req.params.id) }); }));
+  app.get('/api/voice/profiles/:id/evaluations/:eid', h((req, res) => { noStore(res); const evaluation = auditions.getEvaluation(req.params.id, req.params.eid); return evaluation ? res.json({ evaluation }) : nf(res, 'evaluation'); }));
+  app.post('/api/voice/profiles/:id/evaluations/:eid/word-integrity', h(async (req, res) => {
+    noStore(res); const evaluation = await auditions.checkEvaluationWords(req.params.id, req.params.eid, (req.body || {}).scripts); res.json({ evaluation });
+  }));
+  app.patch('/api/voice/profiles/:id/evaluations/:eid/takes/:index/review', h((req, res) => res.json({ evaluation: auditions.reviewEvaluation(req.params.id, req.params.eid, req.params.index, (req.body || {}).state, (req.body || {}).note) })));
   app.post('/api/voice/preview', h((req, res) => { const b = req.body || {}; const r = voice.preview({ profileId: String(b.profile_id || ''), text: b.text, direction: b.direction, language: b.language, seed: b.seed, engine: b.engine }); if (r.error) return json(res, r.status || 400, { error: r.error, gate: r.gate }); res.status(202).json(r); }));
 
   // ── portable voice bank ───────────────────────────────────────────────────────
@@ -175,7 +226,43 @@ function registerVoiceRoutes(app, { stateDir, jobStore, mediaStore, staging, med
   app.delete('/api/drama/projects/:id', h((req, res) => res.json({ removed: dramaStore.remove(req.params.id) })));
 
   const D = require('./drama');
+  app.post('/api/drama/projects/:id/lines/:lid/conversions', h(async (req, res) => {
+    const b = req.body || {};
+    const result = await drama.attachConvertedTake(req.params.id, req.params.lid, { artifactId: String(b.artifact_id || ''), jobId: String(b.job_id || ''), targetProfileId: String(b.target_profile_id || '') });
+    res.status(201).json({ take: result.take, word_integrity: result.qa });
+  }));
   app.patch('/api/drama/projects/:id/lines/:lid', h((req, res) => { const p = drama.need(req.params.id); const l = D.setLine(p, req.params.lid, req.body || {}); if (!l) return nf(res, 'line'); dramaStore.touch(p); res.json({ project: drama.view(p) }); }));
+  app.put('/api/drama/projects/:id/lines/:lid/performance-score', h((req, res) => {
+    const p = drama.need(req.params.id), found = D.findLine(p, req.params.lid);
+    if (!found) return nf(res, 'line');
+    const actor = D.actorFor(p, found.line.speaker_key);
+    const profileId = found.line.profile_override || (actor && actor.voice_profile_id);
+    const profile = profileId && profiles.get(profileId);
+    if (!profile) return json(res, 409, { error: 'bind an approved voice profile before saving phrase directions', gate: 'voice-missing' });
+    const b = req.body || {};
+    const score = PerformanceScore.createScore({ sourceText: found.line.text, profileId: profile.id, identityVersion: profile.identity_version,
+      sceneId: found.scene.id, lineId: found.line.id, engineId: profile.preferred_engine, modelRevision: E.getEngine(profile.preferred_engine)?.revision,
+      seed: b.seed == null ? null : b.seed, settings: b.settings || {}, phrases: Array.isArray(b.phrases) ? b.phrases : [] });
+    if (found.line.performance_score && found.line.performance_score.source.sha256 === score.source.sha256) {
+      score.takes = found.line.performance_score.takes;
+      score.createdAt = found.line.performance_score.createdAt;
+    }
+    D.setLine(p, found.line.id, { performance_score: score }); dramaStore.touch(p);
+    res.json({ project: drama.view(p), score });
+  }));
+  app.post('/api/drama/projects/:id/lines/:lid/phrases/:pid/audition', h((req, res) => {
+    const p = drama.need(req.params.id), found = D.findLine(p, req.params.lid), b = req.body || {};
+    if (!found) return nf(res, 'line');
+    const score = found.line.performance_score;
+    if (!score || score.source.text !== found.line.text) return json(res, 409, { error: 'phrase directions are missing or stale', gate: 'performance-score-stale' });
+    const phrase = score.phrases.find(x => x.id === req.params.pid);
+    if (!phrase) return nf(res, 'phrase');
+    const actor = D.actorFor(p, found.line.speaker_key), profileId = found.line.profile_override || (actor && actor.voice_profile_id);
+    if (!profileId) return json(res, 409, { error: 'bind a voice profile before auditioning this phrase', gate: 'voice-missing' });
+    const profile = profiles.get(profileId), result = voice.preview({ profileId, text: phrase.text, direction: b.direction === undefined ? phrase.delivery : String(b.direction).slice(0, 240), language: profile && profile.language, seed: b.seed });
+    if (result.error) return json(res, result.status || 400, { error: result.error, gate: result.gate || 'preview-failed' });
+    res.status(202).json({ audition: result, phrase_id: phrase.id, engine: result.engine, direction: b.direction === undefined ? phrase.delivery : String(b.direction).slice(0, 240) });
+  }));
   app.delete('/api/drama/projects/:id/lines/:lid', h((req, res) => { const p = drama.need(req.params.id); if (!D.deleteLine(p, req.params.lid)) return nf(res, 'line'); dramaStore.touch(p); res.json({ project: drama.view(p) }); }));
   app.post('/api/drama/projects/:id/scenes/:sid/lines', h((req, res) => { const p = drama.need(req.params.id); const l = D.addLine(p, req.params.sid, req.body || {}); if (!l) return nf(res, 'scene'); dramaStore.touch(p); res.status(201).json({ project: drama.view(p), line_id: l.id }); }));
   app.post('/api/drama/projects/:id/render', h((req, res) => {
@@ -184,6 +271,13 @@ function registerVoiceRoutes(app, { stateDir, jobStore, mediaStore, staging, med
   }));
   app.get('/api/drama/runs/:rid', h((req, res) => { noStore(res); const r = drama.runView(req.params.rid); return r ? res.json({ run: r, project: drama.view(drama.need(r.project_id)) }) : nf(res, 'run'); }));
   app.post('/api/drama/projects/:id/lines/:lid/takes/:tid/select', h((req, res) => { const p = drama.need(req.params.id); if (!D.selectTake(p, req.params.lid, req.params.tid)) return json(res, 400, { error: 'take not found or not complete' }); dramaStore.touch(p); res.json({ project: drama.view(p) }); }));
+  app.post('/api/drama/projects/:id/lines/:lid/takes/:tid/decision/:action', h((req, res) => {
+    const p = drama.need(req.params.id), action = req.params.action;
+    if (!['reject', 'restore', 'pin', 'undo'].includes(action)) return json(res, 404, { error: 'unknown take action' });
+    const result = D.decideTake(p, req.params.lid, req.params.tid, action);
+    if (!result) return json(res, 409, { error: action === 'undo' ? 'no take decision to undo' : 'take is missing, incomplete, rejected, or cannot be changed' });
+    dramaStore.touch(p); res.json({ project: drama.view(p), take: result.take });
+  }));
   // One-click production: validates, plans incrementally, reuses valid work, produces only what is missing, assembles and masters.
   app.post('/api/drama/projects/:id/produce', h((req, res) => { const r = producer.produce(req.params.id, req.body || {}); res.status(202).json(Object.assign(r, { project: drama.view(drama.need(req.params.id)) })); }));
   app.get('/api/drama/projects/:id/productions', h((req, res) => { noStore(res); const p = drama.need(req.params.id); res.json({ active: producer.activeFor(p.id), productions: p.productions || [] }); }));
@@ -197,7 +291,7 @@ function registerVoiceRoutes(app, { stateDir, jobStore, mediaStore, staging, med
   app.delete('/api/drama/projects/:id/tracks/:tid', h((req, res) => res.json({ removed: drama.removeTrack(req.params.id, req.params.tid), project: drama.view(drama.need(req.params.id)) })));
 
   registerDramaStudioRoutes(app, { drama, dramaStore, producer, assembly, derived, profiles, mediaStore, qa, proofs, fxPresets, h, nf, noStore });
-  return { profiles, voice, drama, dramaStore, auditions, producer, chunkStore, assembly, derived, qa, proofs, fxPresets };
+  return { profiles, voice, drama, dramaStore, auditions, producer, chunkStore, assembly, derived, qa, proofs, fxPresets, directorPreferences };
 }
 
 module.exports = { registerVoiceRoutes, ingestToWav };

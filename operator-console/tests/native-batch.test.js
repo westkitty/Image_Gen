@@ -17,11 +17,13 @@ const flux = { id: 'flux2-klein-4b', backend: 'mflux' };
 
 test('native batch: SDCPP 2-16 only; MFLUX always sequential; env kill-switch', () => {
   assert.equal(nativeBatchEligible(sd15, 1), false);
-  assert.equal(nativeBatchEligible(sd15, 3), true);
-  assert.equal(nativeBatchEligible(sd15, NATIVE_BATCH_MAX), true);
-  assert.equal(nativeBatchEligible(sd15, NATIVE_BATCH_MAX + 1), false, 'larger quantities fall back to sequential');
-  assert.equal(nativeBatchEligible(flux, 3), false);
-  assert.equal(nativeBatchEligible(sd15, 3, { DEX_NATIVE_BATCH: '0' }), false);
+  assert.equal(nativeBatchEligible(sd15, 3), false, 'progressive sequential is the default');
+  assert.equal(nativeBatchEligible(sd15, 3, {}, true), true, 'fast_batch opts in');
+  assert.equal(nativeBatchEligible(sd15, NATIVE_BATCH_MAX, {}, true), true);
+  assert.equal(nativeBatchEligible(sd15, NATIVE_BATCH_MAX + 1, {}, true), false, 'larger quantities fall back to sequential');
+  assert.equal(nativeBatchEligible(flux, 3, {}, true), false);
+  assert.equal(nativeBatchEligible(sd15, 3, { DEX_NATIVE_BATCH: '0' }, true), false);
+  assert.equal(nativeBatchEligible(sd15, 3, { DEX_NATIVE_BATCH: '1' }), true, 'operator override');
 });
 
 test('native batch command construction: --batch-count with the base seed; never for MFLUX', () => {

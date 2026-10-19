@@ -24,11 +24,22 @@ const Integrity = require('./audio-integrity');
 const Proof = require('./drama-proof');
 const { splitLongText } = require('./long-form');
 const { artifactReceipt } = require('./job-contract');
+const PerformanceScore = require('./performance-score');
 
 const sha = F.sha;
 const sid = p => p + '-' + crypto.randomBytes(4).toString('hex');
 const lineSeedOf = inputsSha => parseInt(inputsSha.slice(0, 8), 16) % 2147483000;
-const chunkFpOf = (inputsSha, seed, i, n, text) => sha(`dxck1|${inputsSha}|${seed == null ? 'none' : seed}|${i}/${n}|${sha(F.normalizeSpokenText(text))}`);
+const chunkFpOf = (inputsSha, seed, i, n, text, performance = null, components = null) => {
+  if (performance) {
+    // A score edit to one beat should invalidate only that beat. Keep the
+    // unchanged speech identity/settings components, then bind this receipt to
+    // its stable source span, text and direction (not the whole score hash or
+    // its ordinal, both of which change when a neighbouring phrase is edited).
+    const stable = Object.fromEntries(Object.entries(components || {}).filter(([key]) => key !== 'performance'));
+    return sha(`dxpk1|${sha(F.canonical(stable))}|${performance.phraseId || 'unscored'}|${performance.sourceStart}:${performance.sourceEnd}|${sha(F.normalizeSpokenText(text))}|${performance.direction || ''}`);
+  }
+  return sha(`dxck1|${inputsSha}|${seed == null ? 'none' : seed}|${i}/${n}|${sha(F.normalizeSpokenText(text))}`);
+};
 const chunkArray = (a, n) => { const out = []; for (let i = 0; i < a.length; i += n) out.push(a.slice(i, i + n)); return out; };
 const TERMINAL = new Set(['complete', 'failed', 'partial', 'cancelled', 'superseded', 'interrupted']);
 
@@ -114,9 +125,18 @@ function createProducer({ drama, store, voice, profiles, mediaStore, jobStore, c
       const f = D.findLine(snap, entry.line_id), line = f.line, info = P.lineFingerprint(snap, line, ctx);
       const eng = E.getEngine(info.engineId), seeded = !!eng.capabilities.deterministic_seed;
       const seed = seeded ? lineSeedOf(info.fp.inputs_sha) : null;
-      const chunks = chunker(info.fp.spoken_text, { maxChars: eng.capabilities.max_chunk_chars });
+      let chunks;
+      if (line.performance_score) {
+        const scoreItems = PerformanceScore.compileScoreItems(line.performance_score, eng);
+        chunks = scoreItems.map((item, index) => {
+          if (item.text.length > eng.capabilities.max_chunk_chars) throw Object.assign(new Error(`directed phrase ${item.phraseId || index + 1} exceeds ${eng.capabilities.max_chunk_chars} characters; split the phrase before rendering`), { gate: 'performance-phrase-too-long' });
+          return { text: item.text, boundary: 'performance-phrase', gapAfterMs: item.pauseAfterMs || 0, performance: item };
+        });
+        const joined = chunks.map(c => c.text).join('');
+        if (joined !== line.text) throw Object.assign(new Error('performance score segments do not reconstruct the exact source dialogue'), { gate: 'performance-score-stale' });
+      } else chunks = chunker(info.fp.spoken_text, { maxChars: eng.capabilities.max_chunk_chars });
       const lw = { line, scene: f.scene, info, seed, chunks, finished: false, failed: false, order: lineIndex.get(line.id) };
-      lw.items = chunks.map((c, i) => ({ lw, i, chunk: c, fp: chunkFpOf(info.fp.inputs_sha, seed, i, chunks.length, c.text), seed: seeded ? (seed + i) % 2147483647 : null }));
+      lw.items = chunks.map((c, i) => ({ lw, i, chunk: c, fp: chunkFpOf(info.fp.inputs_sha, seed, i, chunks.length, c.text, c.performance || null, info.fp.components), seed: seeded ? (seed + i) % 2147483647 : null }));
       for (const it of lw.items) {
         const rc = chunkStore.get(projectId, it.fp);
         if (rc) { it.receipt = rc; prod.chunks.cached++; } else if (chunkStore.lastInvalid(projectId, it.fp)) prod.chunks.invalid++;
@@ -135,7 +155,8 @@ function createProducer({ drama, store, voice, profiles, mediaStore, jobStore, c
     const groups = new Map();
     for (const lw of work) {
       if (lw.finished) continue;
-      const dir = lw.info.fp.delivery.applied ? lw.info.direction : '';
+      const engine = E.getEngine(lw.info.engineId);
+      const dir = !lw.line.performance_score && lw.info.fp.delivery.applied && !(engine && engine.capabilities.per_item_instructions) ? lw.info.direction : '';
       const key = [lw.info.profile_id, lw.info.engineId, lw.info.language, lw.info.fp.speed || '', dir].join('|');
       if (!groups.has(key)) groups.set(key, { key, lw0: lw, dir, items: [] });
       groups.get(key).items.push(...lw.items.filter(it => !it.receipt));
@@ -224,7 +245,7 @@ function createProducer({ drama, store, voice, profiles, mediaStore, jobStore, c
       progress(prod, 'rendering', { label: label(x.lw, x) });
       if (x.lw.items.every(i2 => i2.receipt) && !x.lw.finished) { x.lw.finished = true; x.lw.take = makeTake(prod, snap, x.lw); prod.lines.generated++; }
     };
-    const r = voice.renderItems({ profileId: info.profile_id, items: items.map(x => ({ text: x.chunk.text, seed: x.seed })), direction: g.dir || undefined, language: info.language, engine: info.engineId, speed: info.fp.speed || undefined,
+    const r = voice.renderItems({ profileId: info.profile_id, items: items.map(x => ({ text: x.chunk.text, seed: x.seed, direction: x.chunk.performance ? x.chunk.performance.direction : (x.lw.info.direction || undefined), preserve_text: !!x.chunk.performance })), direction: g.dir || undefined, language: info.language, engine: info.engineId, speed: info.fp.speed || undefined,
       operation: 'drama-chunks', saveText: false, meta: { drama: { project_id: prod.project_id, production_id: prod.id } }, safeParams: { project_id: prod.project_id, production_id: prod.id }, onItem });
     if (r.error) { prod.last_error = r.error; return { fatal: true, gate: r.gate || 'render-refused', error: r.error }; }
     prod.child_job_id = r.job_id;
@@ -257,7 +278,14 @@ function createProducer({ drama, store, voice, profiles, mediaStore, jobStore, c
       const take = { id: sid('tk'), line_id: lw.line.id, status: 'complete', created_at: now(), completed_at: now(), artifact_id: rec.artifact_id, duration: rec.duration, sha256: rec.sha256, profile_id: lw.info.profile_id, engine: lw.info.engineId, seed: lw.seed,
         fingerprint: fpRecord, render_sha: F.renderFingerprint(lw.info.fp, lw.seed), measure: Pacing.measure(lw.info.fp.spoken_text, audio), source_rev: prod.source_rev, production_id: prod.id, chunks: lw.items.length, receipts: lw.items.map(it => it.fp), settings: { direction: lw.info.direction, delivery: lw.info.fp.delivery, chunks: lw.items.length, seeded: lw.seed != null } };
       const liveLine = D.findLine(drama.need(project), lw.line.id);
-      if (liveLine) { liveLine.line.takes.push(take); if (!liveLine.line.active_take_id || !liveLine.line.takes.some(t => t.id === liveLine.line.active_take_id && t.status === 'complete' && t.fingerprint && t.fingerprint.inputs_sha === fpRecord.inputs_sha)) liveLine.line.active_take_id = take.id; store.touch(drama.need(project)); }
+      if (liveLine) {
+        liveLine.line.takes.push(take);
+        const pinned = liveLine.line.takes.find(t => t.id === liveLine.line.pinned_take_id && t.status === 'complete' && !t.rejected);
+        // A pin is a human selection lock. A new render remains in history; it cannot replace the pin.
+        if (pinned) liveLine.line.active_take_id = pinned.fingerprint && pinned.fingerprint.inputs_sha === fpRecord.inputs_sha ? pinned.id : null;
+        else if (!liveLine.line.active_take_id || !liveLine.line.takes.some(t => t.id === liveLine.line.active_take_id && t.status === 'complete' && t.fingerprint && t.fingerprint.inputs_sha === fpRecord.inputs_sha && !t.rejected)) liveLine.line.active_take_id = take.id;
+        store.touch(drama.need(project));
+      }
       const sl = D.findLine(snap, lw.line.id); if (sl) { sl.line.takes.push(Object.assign({}, take)); sl.line.active_take_id = take.id; }
       return take;
     } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {} }

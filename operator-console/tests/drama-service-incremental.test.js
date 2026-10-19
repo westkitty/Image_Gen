@@ -1,4 +1,5 @@
 'use strict';
+const { trackScratch } = require('./helpers/owned-scratch');
 // Incremental production through the drama service: fingerprints on takes, stale detection, selective re-render,
 // current-vs-historical exports and safe reparse. Voice rendering is a fake; media storage is real.
 const test = require('node:test');
@@ -7,7 +8,7 @@ const fs = require('node:fs'); const os = require('node:os'); const path = requi
 const M = require('../media'); const A = require('../voice-audio'); const D = require('../drama'); const P = require('../drama-planner');
 const { createDramaStore } = require('../drama'); const { createDramaService } = require('../drama-service');
 
-const tmp = p => fs.mkdtempSync(path.join(os.tmpdir(), 'dex-inc-' + p));
+const tmp = p => trackScratch(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-inc-' + p)));
 const tone = (sec, hz) => { const n = Math.round(sec * 24000), a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = 0.4 * Math.sin(2 * Math.PI * hz * i / 24000); return { sampleRate: 24000, channels: [a] }; };
 const SCRIPT = 'TIGER: I warned you.\nCODEC: [quietly] I know.\nNARRATOR: The rain fell.\nTIGER: Then why come back?';
 

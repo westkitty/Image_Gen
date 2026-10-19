@@ -252,10 +252,15 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT, runsRoot = path.resolve
         const rec = (journal.image_records || []).find(r => r.image_id === entry.image_id);
         const dest = path.join(rootDir, entry.image_id);
         let st; try { st = fs.lstatSync(dest); } catch (_) {}
-        if (!st || !st.isFile() || !rec || st.dev !== rec.device || st.ino !== rec.inode) continue;
+        if (!st || !st.isFile() || !rec) continue;
         try {
           const actual = validateImage(dest);
-          if (actual.sha256 !== entry.sha256 || actual.bytes !== entry.bytes) { conflict = true; break; }
+          // An owned transform (e.g. metadata strip) rewrites the canonical file AFTER publication and atomically updates the
+          // run index. The index entry for the same job/run/file with the file's CURRENT digest proves that rewrite committed.
+          const vouched = readRunIndex(runDir).some(i => i.image_id === entry.image_id && i.job_id === entry.job_id && i.run_id === entry.run_id
+            && i.run_file === entry.run_file && i.sha256 === actual.sha256 && i.bytes === actual.bytes);
+          if (!vouched && (st.dev !== rec.device || st.ino !== rec.inode)) continue;
+          if (!vouched && (actual.sha256 !== entry.sha256 || actual.bytes !== entry.bytes)) { conflict = true; break; }
           committed.push({ ...entry, image_path: dest, image_url: imageUrl(entry.image_id), ...actual });
         } catch (_) { conflict = true; break; }
       }
@@ -316,6 +321,23 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT, runsRoot = path.resolve
     if (!options.runDir) throw new Error('canonical metadata runDir required');
     return publishFile(src, options);
   }
+  // The transform replaces the canonical file (new digest, new inode). A publication journal that still lists the pre-transform
+  // digest/inode would never be acknowledged and would block heavy compute after the next restart, so keep it truthful.
+  function syncOwningJournals(runDir, imageId, validation, ownJournalPath, imagePath) {
+    let names = []; try { names = fs.readdirSync(rootDir).filter(n => /^\.pending-.*\.json$/.test(n)); } catch (_) {}
+    let st = null; try { st = fs.statSync(imagePath); } catch (_) {}
+    for (const name of names) {
+      const jp = path.join(rootDir, name);
+      if (jp === ownJournalPath) continue;
+      try {
+        const j = JSON.parse(fs.readFileSync(jp, 'utf8'));
+        if (path.resolve(String(j.run_dir || '')) !== path.resolve(runDir) || !(j.entries || []).some(e => e.image_id === imageId)) continue;
+        const entries = j.entries.map(e => e.image_id === imageId ? { ...e, sha256: validation.sha256, bytes: validation.bytes, ...(validation.dimensions ? { dimensions: validation.dimensions } : {}) } : e);
+        const image_records = (j.image_records || []).map(r => r.image_id === imageId && st ? { ...r, device: st.dev, inode: st.ino } : r);
+        writeJsonAtomic(jp, { ...j, entries, image_records });
+      } catch (_) { /* an unreadable journal is left for recovery to report */ }
+    }
+  }
   function replacePublishedImage(runDir, imageId, transform) {
     const original = resolveImage(imageId);
     const images = readRunIndex(runDir);
@@ -337,6 +359,7 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT, runsRoot = path.resolve
       const updated = { ...entry, ...validation, transformed_at: new Date().toISOString() };
       writeRunIndex(runDir, images.map(e => e === entry ? updated : e)); committed = true;
       fs.unlinkSync(journal);
+      syncOwningJournals(runDir, imageId, validation, journal, original.path);
       return updated;
     } catch (err) { if (replaced && !committed) { fs.renameSync(backup, original.path); restored = true; } throw err; }
     finally {

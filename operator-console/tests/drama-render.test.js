@@ -1,4 +1,5 @@
 'use strict';
+const { trackScratch } = require('./helpers/owned-scratch');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
@@ -6,7 +7,7 @@ const M = require('../media'); const A = require('../voice-audio'); const D = re
 const P = require('../drama-planner'); const { createDerivedStore } = require('../derived-store'); const { createSceneRenderer } = require('../drama-render');
 
 const HAVE = T.available(); const opts = { skip: HAVE.ffmpeg ? false : 'ffmpeg not installed' };
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'dex-rn-'));
+const tmp = () => trackScratch(fs.mkdtempSync(path.join(os.tmpdir(), 'dex-rn-')));
 const tone = (sec, hz, amp = 0.4) => { const n = Math.round(sec * 24000), a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = amp * Math.sin(2 * Math.PI * hz * i / 24000); return { sampleRate: 24000, channels: [a] }; };
 function rig() {
   const b = tmp(); const mediaStore = M.createMediaStore({ roots: { image: b + '/i', voice: b + '/v', music: b + '/m', video: b + '/vid', world: b + '/w' }, registryFile: b + '/media.json' }); mediaStore.ensureRoots();
@@ -53,6 +54,16 @@ test('actor FX bake into a derived version with lineage; the clean take is untou
   assert.equal(entry.lineage.source_sha256, cleanSha); assert.equal(entry.lineage.fx_chain.preset, 'radio'); assert.match(entry.sha256, /^[a-f0-9]{64}$/); assert.match(entry.lineage.filter, /highpass=f=300/);
   assert.equal(r.mediaStore.resolve(r.art[0].artifact_id).sha256, cleanSha, 'original clean take untouched');
   const before = r.calls(); await r.renderer.renderScene(r.p, r.p.scenes[0].id, { takeFor: r.takeFor }); assert.equal(r.calls(), before, 'identical state → zero FFmpeg conforms');
+});
+
+test('formant-preserving pitch is baked as a source-tracked derived stage', { skip: HAVE.ffmpeg && HAVE.rubberband ? false : 'FFmpeg or Rubber Band CLI not installed', timeout: 30000 }, async () => {
+  const r = rig(), source = r.mediaStore.resolve(r.art[0].artifact_id), sourceSha = source.sha256;
+  r.p.actors.find(a => a.speaker_key === 'TIGER').fx = { version: 1, preset: 'custom', nodes: [{ id: 'p1', type: 'pitch_formant', enabled: true, params: { semitones: 2 } }] };
+  const out = await r.renderer.renderScene(r.p, r.p.scenes[0].id, { takeFor: r.takeFor });
+  const entries = r.derived.entries(), stage = entries.find(e => e.kind === 'fx-formant-pitch-wav'), conform = entries.find(e => e.lineage.processors && e.lineage.processors.length);
+  assert.ok(stage); assert.equal(stage.lineage.source_sha256, sourceSha); assert.equal(stage.lineage.formant_preserved, true); assert.match(stage.lineage.method, /^Rubber Band 4\.0\.0 R3 --formant/);
+  assert.ok(conform); assert.equal(conform.lineage.processors[0].semitones, 2);
+  assert.ok(out.record.meta.drama); assert.equal(r.mediaStore.resolve(r.art[0].artifact_id).sha256, sourceSha, 'clean source remains unchanged');
 });
 
 test('the radio effect is audible in the rendered scene: the 500 Hz line keeps energy, a low tone does not', opts, async () => {

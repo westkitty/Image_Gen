@@ -30,7 +30,11 @@ function registerDramaStudioRoutes(app, { drama, dramaStore, producer, assembly,
   app.put('/api/drama/projects/:id/actors/:aid', h((req, res) => { drama.updateActor(req.params.id, req.params.aid, req.body || {}); ok(res, { project: viewOf(req.params.id) }); }));
 
   // ── FX rack ────────────────────────────────────────────────────────────────────
-  app.get('/api/drama/fx/presets', (req, res) => ok(res, { builtin: FX.listPresets().map(p => Object.assign(p, { chain: FX.presetChain(p.id) })), custom: fxPresets.list(), effects: Object.entries(FX.NODE_TYPES).map(([type, s]) => ({ type, label: s.label, params: Object.fromEntries(Object.entries(s.params).map(([k, [min, max, def]]) => [k, { min, max, default: def }])) })), max_effects: 12 }));
+  app.get('/api/drama/fx/presets', (req, res) => {
+    const available = tools.available ? tools.available() : {};
+    const effects = Object.entries(FX.NODE_TYPES).filter(([type]) => type !== 'pitch_formant' || available.rubberband).map(([type, s]) => ({ type, label: s.label, params: Object.fromEntries(Object.entries(s.params).map(([k, [min, max, def]]) => [k, { min, max, default: def }])) }));
+    ok(res, { builtin: FX.listPresets().map(p => Object.assign(p, { chain: FX.presetChain(p.id) })), custom: fxPresets.list(), effects, processors: { formant_pitch: { available: !!available.rubberband, method: available.rubberband ? `Rubber Band ${available.rubberband_version || ''} R3 --formant` : null } }, max_effects: 12 });
+  });
   app.post('/api/drama/fx/validate', h((req, res) => { const v = FX.validate((req.body || {}).chain); const c = FX.compile(v.chain); ok(res, { ok: v.ok, errors: v.errors, warnings: v.warnings, chain: v.chain, identity: FX.identity(v.chain), tail_s: c.tail_s, effects: c.nodes }); }));
   app.post('/api/drama/fx/presets', h((req, res) => res.status(201).json({ preset: fxPresets.save(req.body || {}) })));
   app.put('/api/drama/fx/presets/:pid', h((req, res) => { const p = fxPresets.update(req.params.pid, req.body || {}); return p ? ok(res, { preset: p }) : nf(res, 'preset'); }));

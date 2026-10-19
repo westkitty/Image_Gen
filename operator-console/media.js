@@ -245,6 +245,18 @@ const WORKER_PATHS = {
     runtime: { python: `${DEX_CACHE}/voice/venv/bin/python` },
     models: { 'voice-design': `${GEN_MODELS}/voice/qwen3-tts-voice-design/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit/config.json` },
   },
+  voxcpm2: {
+    runtime: { python: `${GEN_MODELS}/voice/voxcpm2/runtime/bin/python` },
+    models: { base: `${GEN_MODELS}/voice/voxcpm2/model/config.json` },
+  },
+  'openvoice-v2': {
+    runtime: { python: `${GEN_MODELS}/voice/openvoice-v2/.venv/bin/python` },
+    models: {
+      converter: `${GEN_MODELS}/voice/openvoice-v2/checkpoints_v2/converter/checkpoint.pth`,
+      config: `${GEN_MODELS}/voice/openvoice-v2/checkpoints_v2/converter/config.json`,
+      watermark: `${GEN_MODELS}/voice/openvoice-v2/.hf-cache/hub/models--M4869--WavMark/blobs/7a3d873d115c2c644685fb4cf109bdb299718296b88c871d3cf1c8e4cbc13144`,
+    },
+  },
   'ace-step': {
     runtime: { python: `${DEX_CACHE}/music/ACE-Step-1.5/.venv/bin/python` },
     models: {
@@ -293,12 +305,14 @@ function bridgedWorker({ id, media_kind, label, getEvidence }) {
       const ev = (getEvidence() || {})[id] || {};
       const enabled = s.rt && s.md;
       const proven = enabled && !!ev.lastPass;
-      return { architecture_available: true, runtime_available: s.rt, model_available: s.md, model_variants: s.variants, installed: enabled,
+      return { architecture_available: true, remote_reachable: assets.reachable === false ? false : assets.reachable === true ? true : null,
+        runtime_available: s.rt, model_available: s.md, model_variants: s.variants, installed: enabled,
         enabled, proven, lastPass: ev.lastPass || null,
-        state: !s.rt ? 'RUNTIME MISSING' : assets.wc2tbReadable === false ? 'MODEL INACCESSIBLE (wc2tb)' : !s.md ? 'MODEL MISSING' : proven ? 'PROVEN' : 'ENABLED — awaiting first DexDiffusion proof',
+        state: assets.reachable === false ? 'BIG MAC UNREACHABLE' : !s.rt ? 'RUNTIME MISSING' : assets.wc2tbReadable === false ? 'MODEL INACCESSIBLE (wc2tb)' : !s.md ? 'MODEL MISSING' : proven ? 'PROVEN' : 'ENABLED — awaiting first DexDiffusion proof',
         runtimePath: s.runtimePath, modelPath: s.modelPath };
     },
-    capabilities() { return { generate: true, cancel_supported: false, cancel_reason: 'Targeted termination of the remote Big Mac generator via Tailscale SSH is not proven safe; jobs run to completion.' }; },
+    capabilities() { return id === 'openvoice-v2' ? { generate: false, voice_conversion: true, source_and_target_embeddings: true, watermark: 'OpenVoice default watermark enabled', device: 'cpu', cancel_supported: false }
+      : { generate: true, cancel_supported: false, cancel_reason: 'Targeted termination of the remote Big Mac generator via Tailscale SSH is not proven safe; jobs run to completion.' }; },
     prepare() { return { ok: true }; }, execute() { return { ok: false, gate: 'worker-unavailable', error: 'execution runs through media-bridge.js' }; },
     status() { return null; }, cancel() { return { ok: false, reason: 'cancel not supported' }; }, cleanup() { return { ok: true }; },
   };
@@ -336,6 +350,8 @@ function createWorkerRegistry({ imageAdapters = {}, getEvidence = () => ({}) } =
     bridgedWorker({ id: 'kokoro', media_kind: 'voice', label: 'Kokoro 82M (speech)', getEvidence }),
     bridgedWorker({ id: 'qwen3-tts-base', media_kind: 'voice', label: 'Qwen3-TTS Base (voice clone)', getEvidence }),
     bridgedWorker({ id: 'qwen3-tts-voice-design', media_kind: 'voice', label: 'Qwen3-TTS VoiceDesign', getEvidence }),
+    bridgedWorker({ id: 'voxcpm2', media_kind: 'voice', label: 'VoxCPM2 (controllable voice clone)', getEvidence }),
+    bridgedWorker({ id: 'openvoice-v2', media_kind: 'voice', label: 'OpenVoice V2 (tone-color conversion)', getEvidence }),
     bridgedWorker({ id: 'ace-step', media_kind: 'music', label: 'ACE-Step 1.5 (Turbo + 0.6B LM)', getEvidence }),
     bridgedWorker({ id: 'magenta-rt', media_kind: 'music', label: 'Magenta RealTime 2 (small)', getEvidence }),
     dormantWorker({ id: 'ltx-video', media_kind: 'video', label: 'LTX Video',
@@ -551,8 +567,15 @@ function createStaging({ root, limits = STAGING_LIMITS, now = () => Date.now() }
     const id = 'stg-' + crypto.randomBytes(12).toString('hex');
     const file = path.join(dir, id + s.ext);
     fs.writeFileSync(file, buf, { flag: 'wx', mode: 0o600 });
+    if (s.kind === 'image') {
+      // The header alone proves nothing: a truncated or corrupt file would pass imageDims and fail later inside the worker.
+      // Decode the pixels now, before the file is ever offered as a source.
+      const want = { 'image/png': 'PNG', 'image/jpeg': 'JPEG', 'image/webp': 'WEBP' }[s.mime];
+      const v = require('./image-validation').inspectImageFiles([file])[0];
+      if (!v || !v.valid || (want && v.format !== want)) { try { fs.unlinkSync(file); } catch (_) {} return { error: 'reference-invalid: image could not be decoded (truncated, corrupt or mislabelled)' }; }
+    }
     if (s.kind === 'audio') {
-      const d = s.mime === 'audio/wav' ? (wavInfo(buf) || {}).duration : probeDuration(file);
+      const d = (s.mime === 'audio/wav' ? (wavInfo(buf) || {}).duration : null) || probeDuration(file);
       if (!d) { fs.unlinkSync(file); return { error: 'reference-invalid: audio could not be decoded' }; }
       if (d > limits.maxAudioSeconds) { fs.unlinkSync(file); return { error: `reference-invalid: audio is ${Math.round(d)} s (max ${limits.maxAudioSeconds} s)` }; }
       info.duration = Math.round(d * 100) / 100;
