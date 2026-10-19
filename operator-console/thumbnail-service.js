@@ -19,7 +19,11 @@ function createThumbnailService({ cacheDir, imageStore, maxDimension = 384 }) {
 
   function getCachePath(imageId) {
     const safeId = path.basename(imageId).replace(/[^a-zA-Z0-9._-]/g, '_');
-    return path.join(cacheDir, `${safeId}_thumb_${maxDimension}.jpg`);
+    const resolved = imageStore && imageStore.resolveImage(imageId);
+    const source = typeof resolved === 'string' ? resolved : resolved && resolved.path;
+    let version = 'missing';
+    try { const st = fs.statSync(source); version = `${st.dev}-${st.ino}-${st.size}-${Math.trunc(st.mtimeMs)}-${Math.trunc(st.ctimeMs)}`; } catch (_) {}
+    return path.join(cacheDir, `${safeId}_${version}_thumb_${maxDimension}.jpg`);
   }
 
   function hasThumbnail(imageId) {

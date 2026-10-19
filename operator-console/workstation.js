@@ -123,7 +123,7 @@ const { sanitizeRecipe, RECIPE_FIELDS } = require('./public/dexdiffusion/client-
 // Per-image generation record (gen_schema 1): sampler/vae/preset/loras/edit_target are
 // non-sensitive structured settings; prompt text is written ONLY when prompt saving was on
 // (prompt_saved says which), so recall can state "prompt saving was off" truthfully.
-const META_FIELDS = ['operation', 'parent', 'detailed_from', 'runId', 'target', 'seed', 'width', 'height', 'steps', 'cfg', 'scheduler', 'strength', 'queueId', 'batchNumber', 'test_artifact', 'note',
+const META_FIELDS = ['operation', 'parent', 'detailed_from', 'runId', 'target', 'seed', 'width', 'height', 'steps', 'cfg', 'scheduler', 'strength', 'queueId', 'batchNumber', 'test_artifact', 'note', 'keeper_identity_sha256',
   'gen_schema', 'sampler', 'clip_skip', 'tiling', 'eta', 'rng', 'hires', 'resize', 'exact_steps', 'inpaint', 'vae', 'preset', 'loras', 'edit_target', 'prompt_saved', 'prompt', 'negative_prompt', 'prompt_scope',
   // multi-pass workflows: OP-4A second-pass hires links (workflow_id / pass / second_pass) and script-chain settings (script / loopback)
   'workflow_id', 'workflow', 'pass', 'second_pass', 'script', 'loopback'];
@@ -177,10 +177,12 @@ function createImageMetaStore(file) {
     }
     return out;
   }
-  function setKeeper(imageId, keeper) {
+  function setKeeper(imageId, keeper, identitySha256) {
     const data = read();
     const entry = { ...(data.images[imageId] || { at: new Date().toISOString() }) };
     if (keeper) entry.keeper = true; else delete entry.keeper;
+    if (keeper && identitySha256) entry.keeper_identity_sha256 = identitySha256;
+    else delete entry.keeper_identity_sha256;
     data.images[imageId] = entry;
     write();
     return !!entry.keeper;

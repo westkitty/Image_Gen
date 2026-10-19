@@ -91,7 +91,7 @@ const recipeStore = createRecipeStore(path.join(STATE_DIR, 'recipes.json'));
 const stylesStore = createStylesStore(process.env.DEX_STYLES_FILE || path.join(STATE_DIR, 'styles.json')); // env override: test servers must not touch the user's styles
 const macroStore = createMacroStore(path.join(STATE_DIR, 'macros.json'));
 const thumbnailService = createThumbnailService({ cacheDir: path.join(STATE_DIR, 'thumbnails'), imageStore });
-const libraryIndex = createLibraryIndex({ indexPath: path.join(STATE_DIR, 'library-index.json'), imageStore, imageMeta, runsDir: RUNS_DIR });
+const libraryIndex = createLibraryIndex({ indexPath: path.join(STATE_DIR, 'library-index.json'), imageStore, imageMeta, runsDir: RUNS_DIR, metadataForImage: id => (imageView(id) || {}).meta });
 try {
   publicationRecoveryState.jobs = reconcileInterruptedPublications({ jobStore, runsRoot: RUNS_DIR, imageStore, validateImage });
   if (publicationRecoveryState.jobs.unresolved.some(x => x.reason !== 'no-exact-owned-published-artifact')) publicationRecoveryState.blocked = true;
@@ -765,13 +765,24 @@ function pngSize(file) {
 
 // canonical image id -> { runId, runFile } from the run dirs' canonical-images.json.
 let imageSourceCache = { at: 0, map: new Map() };
+let imageIdentityCache = new Map();
+function currentImageDigest(file) {
+  try {
+    const st = fs.statSync(file);
+    const key = `${file}:${st.dev}:${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`;
+    let digest = imageIdentityCache.get(key);
+    if (!digest) { digest = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); imageIdentityCache.set(key, digest); }
+    if (imageIdentityCache.size > 2048) imageIdentityCache.clear();
+    return digest;
+  } catch (_) { return null; }
+}
 function imageSourceMap() {
   if (Date.now() - imageSourceCache.at < 5000) return imageSourceCache.map;
   const map = new Map();
   try {
     for (const d of fs.readdirSync(RUNS_DIR, { withFileTypes: true })) {
       if (!d.isDirectory()) continue;
-      for (const e of imageStore.readRunIndex(path.join(RUNS_DIR, d.name))) map.set(e.image_id, { runId: d.name, runFile: e.run_file });
+      for (const e of imageStore.readRunIndex(path.join(RUNS_DIR, d.name))) map.set(e.image_id, { runId: d.name, runFile: e.run_file, sha256: e.sha256 || null });
     }
   } catch (_) {}
   imageSourceCache = { at: Date.now(), map };
@@ -4072,8 +4083,14 @@ app.post('/api/actions/outpaint', (req, res) => {
 function imageView(id) {
   const img = imageStore.resolveImage(id);
   if (!img) return null;
-  const meta = imageMeta.get(id) || {};
   const src = imageSourceMap().get(id) || null;
+  // Filename equality is not image identity. Only enrich from run metadata when
+  // the current bytes match the digest recorded at canonical publication.
+  const recordedMeta = imageMeta.get(id) || {};
+  const expectedIdentity = src && src.sha256;
+  const digest = expectedIdentity ? currentImageDigest(img.path) : null;
+  const meta = expectedIdentity && digest === expectedIdentity ? recordedMeta
+    : recordedMeta.keeper_identity_sha256 && currentImageDigest(img.path) === recordedMeta.keeper_identity_sha256 ? { keeper: true } : {};
   const dims = pngSize(img.path) || {};
   return {
     id, url: imageStore.imageUrl(id), path: img.path, width: dims.width, height: dims.height,
@@ -4149,7 +4166,10 @@ app.get('/api/images/:id/infotext', (req, res) => {
 app.get('/api/images/:id/export', (req, res) => {
   const img = imageStore.resolveImage(req.params.id);
   if (!img) return res.status(404).json({ error: 'Image not found' });
-  if (!/\.png$/i.test(img.path)) return res.status(415).json({ error: 'Only PNG images can carry embedded metadata.' });
+  if (!/\.png$/i.test(img.path)) {
+    if (req.query.metadata === '1') return res.status(415).json({ error: 'Only PNG images can carry embedded metadata.' });
+    return res.set({ 'Content-Type': img.contentType, 'Content-Disposition': `attachment; filename="${req.params.id.replace(/["\\\r\n]/g, '_')}"`, 'Cache-Control': 'no-store' }).sendFile(img.path);
+  }
   const info = req.query.metadata === '1' ? infotextFor(req.params.id, { withPrompt: req.query.prompt !== '0' }) : null;
   let buf;
   try {
@@ -4190,8 +4210,9 @@ app.post('/api/images/export', async (req, res) => {
   } finally { exportBusy = false; }
 });
 app.post('/api/images/:id/keeper', (req, res) => {
-  if (!imageStore.resolveImage(req.params.id)) return res.status(404).json({ error: 'Image not found' });
-  const keeper = imageMeta.setKeeper(req.params.id, !!(req.body && req.body.keeper));
+  const image = imageStore.resolveImage(req.params.id);
+  if (!image) return res.status(404).json({ error: 'Image not found' });
+  const keeper = imageMeta.setKeeper(req.params.id, !!(req.body && req.body.keeper), currentImageDigest(image.path));
   res.json({ id: req.params.id, keeper });
 });
 // Metadata-only flag for known test/regression artifacts: the file is never
@@ -4207,14 +4228,13 @@ app.post('/api/images/:id/test-artifact', (req, res) => {
 });
 app.get('/api/library/images', (req, res) => {
   const filter = String(req.query.filter || 'all');
-  const all = imageMeta.all();
-  // "All" also covers legacy images that only have a run record (no lineage yet).
-  const pool = filter === 'all' ? [...new Set([...Object.keys(all), ...imageSourceMap().keys()])] : Object.keys(all);
-  let ids = pool.filter(id => imageStore.resolveImage(id));
+  let ids = imageStore.listCanonicalImages();
+  const verified = new Map(ids.map(id => [id, imageView(id)]));
+  ids = ids.filter(id => verified.get(id));
   // Known test/regression artifacts stay on disk but are hidden unless asked for.
-  if (req.query.show_test !== '1') ids = ids.filter(id => !(all[id] && all[id].test_artifact));
-  if (filter === 'keepers') ids = ids.filter(id => all[id].keeper);
-  else if (filter !== 'all') ids = ids.filter(id => all[id].operation === filter || all[id].target === filter);
+  if (req.query.show_test !== '1') ids = ids.filter(id => !(verified.get(id).meta && verified.get(id).meta.test_artifact));
+  if (filter === 'keepers') ids = ids.filter(id => verified.get(id).keeper);
+  else if (filter !== 'all') ids = ids.filter(id => { const m = verified.get(id).meta || {}; return m.operation === filter || m.target === filter; });
   // Canonical ids start with the run timestamp, so id order is creation order.
   ids.sort((a, b) => b.localeCompare(a));
   if (String(req.query.sort || 'desc') === 'asc') ids.reverse();
@@ -4472,16 +4492,19 @@ app.get('/api/media/:id/download', (req, res) => {
 app.get('/api/library', (req, res) => {
   const kind = String(req.query.kind || 'all');
   const showTest = req.query.show_test === '1';
-  const meta = imageMeta.all();
   let items = [];
   if (kind === 'all' || kind === 'image' || kind === 'keepers') {
-    const ids = [...new Set([...Object.keys(meta), ...imageSourceMap().keys()])].filter(id => imageStore.resolveImage(id))
-      .filter(id => showTest || !(meta[id] && meta[id].test_artifact))
-      .filter(id => kind !== 'keepers' || (meta[id] && meta[id].keeper));
+    const ids = imageStore.listCanonicalImages().filter(id => {
+      const meta = (imageView(id) || {}).meta || {};
+      return (showTest || !meta.test_artifact) && (kind !== 'keepers' || !!meta.keeper);
+    });
     ids.sort((a, b) => b.localeCompare(a));
-    items = ids.slice(0, 200).map(id => ({ artifact_id: id, kind: 'image', url: imageStore.imageUrl(id), keeper: !!(meta[id] && meta[id].keeper),
-      operation: meta[id] && meta[id].operation, model: meta[id] && meta[id].target, seed: meta[id] && meta[id].seed, parent: meta[id] && meta[id].parent,
-      width: meta[id] && meta[id].width, height: meta[id] && meta[id].height, test_artifact: !!(meta[id] && meta[id].test_artifact) }));
+    items = ids.slice(0, 200).map(id => {
+      const meta = (imageView(id) || {}).meta || {};
+      return { artifact_id: id, kind: 'image', url: imageStore.imageUrl(id), keeper: !!meta.keeper,
+        operation: meta.operation || null, model: meta.target || null, seed: meta.seed ?? null, parent: meta.parent || null,
+        width: meta.width ?? null, height: meta.height ?? null, test_artifact: !!meta.test_artifact };
+    });
   }
   if (kind !== 'image') {
     const recs = mediaStore.list(kind === 'all' || kind === 'keepers' ? null : kind).filter(r => kind !== 'keepers' || r.keeper);
@@ -4969,6 +4992,10 @@ app.post('/api/remote-workers/:id/release', (req, res) => {
 
 // ---- F04: Indexed Library Endpoints ------------------------------------------
 app.get('/api/library/v2/items', (req, res) => {
+  // The folder is authoritative; refresh this rebuildable query index for every
+  // request so add/remove/replacement is reflected without restarting the app.
+  const inventory = libraryIndex.rebuild();
+  if (!inventory.success) return res.status(500).json({ error: 'Could not refresh the image Library.' });
   const filter = req.query.filter || 'all';
   const collectionId = req.query.collection_id || null;
   const operation = req.query.operation || null;
@@ -4996,7 +5023,7 @@ app.get('/api/library/v2/items', (req, res) => {
     return {
       ...it,
       imageUrl: imageStore.imageUrl(it.id),
-      thumbnailUrl: thumbnailService.hasThumbnail(it.id) ? `/api/thumbnails/${encodeURIComponent(it.id)}` : imageStore.imageUrl(it.id)
+      thumbnailUrl: `/api/thumbnails/${encodeURIComponent(it.id)}`
     };
   });
 

@@ -20,7 +20,9 @@ const IMAGE_CONTENT_TYPES = {
   '.webp': 'image/webp',
   '.gif': 'image/gif',
 };
-const SAFE_IMAGE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)*$/;
+// Canonical ids are single path components. Spaces and ordinary Unicode are
+// valid; separators, dot components, control chars and hidden files are not.
+const SAFE_IMAGE_ID = /^(?!\.)(?!.*[\\/])[^\u0000-\u001f\u007f]+$/;
 
 function datedImageKey(imageId) {
   const match = /^(20\d{6})-(\d{6})/.exec(String(imageId || ''));
@@ -63,6 +65,7 @@ function fsyncDirectory(dir) {
 function createImageStore({ root = CANONICAL_IMAGE_ROOT, runsRoot = path.resolve(__dirname, '../sdcpp-workflow/runs'), fault } = {}) {
   const rootDir = path.resolve(root);
   const runsRootDir = path.resolve(runsRoot);
+  const inventoryCache = new Map();
 
   function ensureRoot() {
     fs.mkdirSync(rootDir, { recursive: true });
@@ -79,6 +82,36 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT, runsRoot = path.resolve
     try { st = fs.lstatSync(full); } catch (_) { return null; }
     if (!st.isFile() || pendingImageIds().has(id)) return null;
     return { id, path: full, contentType: IMAGE_CONTENT_TYPES[path.extname(id).toLowerCase()] };
+  }
+
+  // Refreshes a bounded, one-level inventory. Image decoding is cached against
+  // the filesystem identity, so unchanged files are never re-read at full size.
+  function listCanonicalImages() {
+    let names;
+    try { names = fs.readdirSync(rootDir, { withFileTypes: true }); } catch (_) { return []; }
+    const pending = pendingImageIds();
+    const candidates = [];
+    for (const ent of names) {
+      const id = ent.name;
+      if (id.length > 255 || id.startsWith('.') || !isImageName(id) || !SAFE_IMAGE_ID.test(id)) continue;
+      const full = path.join(rootDir, id);
+      let st;
+      try { st = fs.lstatSync(full); } catch (_) { continue; }
+      if (!st.isFile() || ent.isSymbolicLink() || pending.has(id)) continue;
+      const signature = `${st.dev}:${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`;
+      const cached = inventoryCache.get(id);
+      if (cached && cached.signature === signature) {
+        if (cached.valid) candidates.push(id);
+        continue;
+      }
+      candidates.push({ id, full, signature });
+    }
+    const changed = candidates.filter(x => typeof x !== 'string');
+    const inspected = inspectImageFiles(changed.map(x => x.full));
+    changed.forEach((x, i) => inventoryCache.set(x.id, { signature: x.signature, valid: !!(inspected[i] && inspected[i].valid) }));
+    const active = new Set(candidates.filter(x => typeof x === 'string').concat(changed.filter((x, i) => inspected[i] && inspected[i].valid).map(x => x.id)));
+    for (const id of inventoryCache.keys()) if (!active.has(id) && !names.some(e => e.name === id)) inventoryCache.delete(id);
+    return [...active].sort((a, b) => a.localeCompare(b));
   }
 
   function imageUrl(id) {
@@ -476,13 +509,13 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT, runsRoot = path.resolve
     const validDated = rows.filter(r => r.state === 'valid').map(r => datedImageKey(r.image_id)).filter(Boolean).sort();
     const missingRows = rows.filter(r => r.state === 'missing');
     const missingDated = missingRows.map(r => datedImageKey(r.image_id)).filter(Boolean).sort();
-    const historicalGap = missingRows.length > 0 && missingDated.length === missingRows.length && validDated.length > 0
-      && missingDated[missingDated.length - 1] < validDated[0];
+    // A reference to an absent path is historical information. Current
+    // publication failures are represented by pending journals, active owners,
+    // invalid records, digest mismatches and ownership conflicts below.
+    const historicalGap = missingRows.length > 0;
     for (const row of missingRows) {
-      row.missing_classification = historicalGap ? 'historical-missing-reference' : 'current-missing-reference';
-      row.classification_basis = historicalGap
-        ? 'missing dated cohort predates retained dated canonical cohort'
-        : 'missing reference overlaps or cannot be separated from retained canonical cohort';
+      row.missing_classification = 'historical-missing-reference';
+      row.classification_basis = 'absent canonical path is an informational historical reference; publication failures are classified separately';
     }
     const counts = { valid: 0, missing: 0, orphan: 0, 'digest-mismatch': 0, broken: metadata_errors.length, duplicate: 0, pending: 0, unknown: 0 };
     for (const row of rows) { counts[row.state]++; if (row.duplicate_logical_reference) counts.duplicate++; }
@@ -495,9 +528,7 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT, runsRoot = path.resolve
       historical_missing_references,
       retained_dated_cohort_start: validDated[0] || null,
       historical_missing_cohort_end: historicalGap ? missingDated[missingDated.length - 1] : null,
-      basis: historicalGap
-        ? 'strict non-overlap between fully dated missing and retained canonical cohorts'
-        : 'conservative: missing references remain current when cohort separation is unavailable'
+      basis: 'historical absence is informational; active publication integrity is counted from journals, ownership, decodability and digests'
     };
     const pending_publications = [];
     let journalNames = []; try { journalNames = fs.readdirSync(rootDir).filter(n => /^\.pending-.*\.json$/.test(n)); } catch (_) {}
@@ -560,6 +591,7 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT, runsRoot = path.resolve
     root: rootDir,
     ensureRoot,
     resolveImage,
+    listCanonicalImages,
     imageUrl,
     adoptFile,
     publishFile,

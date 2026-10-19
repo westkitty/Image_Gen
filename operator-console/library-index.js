@@ -13,7 +13,8 @@ function createLibraryIndex({
   indexPath,
   imageStore,
   imageMeta,
-  runsDir
+  runsDir,
+  metadataForImage
 }) {
   let index = new Map(); // artifactId -> item
   let status = 'dormant'; // dormant, ready, rebuilding, error
@@ -69,14 +70,14 @@ function createLibraryIndex({
       id: artifact.id,
       runId: artifact.runId || existing.runId || null,
       mediaKind: artifact.mediaKind || existing.mediaKind || 'image',
-      operation: artifact.operation || existing.operation || 'txt2img',
+      operation: artifact.operation || existing.operation || null,
       model: artifact.model || artifact.target || existing.model || null,
       target: artifact.target || artifact.model || existing.target || null,
       dimensions: artifact.dimensions || existing.dimensions || null,
       width: artifact.width || existing.width || null,
       height: artifact.height || existing.height || null,
-      createdAt: artifact.createdAt || existing.createdAt || Date.now(),
-      status: artifact.status || existing.status || 'PASS',
+      createdAt: artifact.createdAt || existing.createdAt || null,
+      status: artifact.status || existing.status || null,
       seed: artifact.seed != null ? artifact.seed : (existing.seed != null ? existing.seed : null),
       keeper: Boolean(artifact.keeper !== undefined ? artifact.keeper : existing.keeper),
       testArtifact: Boolean(artifact.testArtifact !== undefined ? artifact.testArtifact : (artifact.test_artifact !== undefined ? artifact.test_artifact : existing.testArtifact)),
@@ -110,23 +111,23 @@ function createLibraryIndex({
       const canonicalIds = imageStore ? imageStore.listCanonicalImages() : [];
 
       for (const id of canonicalIds) {
-        const meta = metaAll[id] || {};
+        const meta = (metadataForImage ? metadataForImage(id) : metaAll[id]) || {};
         let width = meta.width || null;
         let height = meta.height || null;
         let dims = (width && height) ? `${width}x${height}` : null;
 
         const item = {
           id,
-          runId: meta.runId || (id.includes('-') ? id.slice(0, 15) : null),
+          runId: meta.runId || null,
           mediaKind: 'image',
-          operation: meta.operation || 'txt2img',
+          operation: meta.operation || null,
           model: meta.target || meta.model || null,
           target: meta.target || null,
           dimensions: dims,
           width,
           height,
-          createdAt: meta.created_at || (id.includes('-') ? id.slice(0, 15) : Date.now()),
-          status: 'PASS',
+          createdAt: meta.created_at || null,
+          status: null,
           seed: meta.seed != null ? meta.seed : null,
           keeper: Boolean(meta.keeper),
           testArtifact: Boolean(meta.test_artifact),
@@ -211,7 +212,7 @@ function createLibraryIndex({
       items.sort((a, b) => (Number(a.seed || 0)) - (Number(b.seed || 0)));
     } else {
       // Default: newest
-      items.sort((a, b) => String(b.createdAt || b.id).localeCompare(String(a.createdAt || a.id)));
+      items.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')) || b.id.localeCompare(a.id));
     }
 
     const total = items.length;

@@ -82,7 +82,7 @@ test('read-only inventory identifies exactly owned missing/orphan/digest/duplica
   assert.equal(report.counts['digest-mismatch'], 1);
 });
 
-test('integrity separates a strictly older historical missing cohort without hiding overlap', t => {
+test('integrity treats absent paths as historical information even when dated cohorts overlap', t => {
   const { store } = fixture(t); store.ensureRoot();
   const validId = '20261004-120000-controlled-flux2-klein-4b.png';
   fs.writeFileSync(path.join(store.root, validId), PNG);
@@ -99,9 +99,9 @@ test('integrity separates a strictly older historical missing cohort without hid
   const overlappingId = '20261005-010000-controlled-flux2-klein-4b.png';
   refs.push({ image_id: overlappingId, image_path: path.join(store.root, overlappingId), run_id: '20261005-010000-controlled-flux2-klein-4b' });
   report = store.inspectIntegrity({ references: refs });
-  assert.equal(report.classification.current_problems, 2);
-  assert.equal(report.classification.historical_missing_references, 0);
-  assert.ok(report.records.filter(r => r.state === 'missing').every(r => r.missing_classification === 'current-missing-reference'));
+  assert.equal(report.classification.current_problems, 0);
+  assert.equal(report.classification.historical_missing_references, 2);
+  assert.ok(report.records.filter(r => r.state === 'missing').every(r => r.missing_classification === 'historical-missing-reference'));
 });
 
 test('process death after link leaves explicit hidden pending publication, never completed metadata', t => {

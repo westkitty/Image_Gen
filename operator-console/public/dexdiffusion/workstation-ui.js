@@ -1679,6 +1679,13 @@
   const _mount = P.componentDidMount;
   P.componentDidMount = function () {
     _mount.call(this);
+    // Keep the open Library current if files are added or removed outside the
+    // app. Each request uses the bounded server inventory and cached validation.
+    this._libraryFreshnessTimer = setInterval(() => {
+      const legacy = this.state && this.state.screens && this.state.screens[this.state.version] === 'library';
+      const concept = this._ca && this._ca().module === 'library';
+      if (legacy || concept) this.loadLibraryImages();
+    }, 20000);
     const ws = this._ws();
     this._ensureEditSource();
     if (ws.activeJobId) {
@@ -1702,7 +1709,7 @@
     }).catch(() => {});
   };
   const _unmount = P.componentWillUnmount;
-  P.componentWillUnmount = function () { clearInterval(this._queueTimer); _unmount.call(this); };
+  P.componentWillUnmount = function () { clearInterval(this._queueTimer); clearInterval(this._libraryFreshnessTimer); _unmount.call(this); };
 
   // ── Keyboard navigation: siblings filmstrip rail (Up/Down/Left/Right/Home/End) ──
   const _onKeydown = P.onKeydown;
