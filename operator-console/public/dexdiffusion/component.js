@@ -435,6 +435,10 @@ class Component extends DCLogic {
     const s = this.state;
     const SA = this._sourceAsset();
     const picks = SA ? SA.choices(s.runs) : [];
+    const currentSource = s.worldSourceArtifact || '';
+    if (SA && SA.isImageId(currentSource) && !picks.some(p => p.id === currentSource)) {
+      picks.unshift({ id: currentSource, label: currentSource + ' · chosen in Library' });
+    }
     const opts = [h('option', { key: '__none', value: '' }, picks.length ? 'Choose a source image…' : 'No canonical images loaded')]
       .concat(picks.map(p => h('option', { key: p.id, value: p.id }, p.label + (p.run && p.run.model ? ' · ' + p.run.model : ''))));
     const status = s.worldWorkerStatus;
@@ -444,7 +448,7 @@ class Component extends DCLogic {
         h('div', { style: { fontSize: 18, color: '#f0f4f8', fontWeight: 750, marginBottom: 4 } }, 'World'),
         h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, marginBottom: 12 } }, 'Dedicated local 3D workspace. Quick 3D reconstructs one image; Complete 360 builds panorama, depth/scaffold, aligned SHARP proposals, fusion and viewer artifacts. Learned global depth is not installed, so Complete 360 may report WARN while using the bounded fallback.'),
         h('div', { 'data-source-rule': 'world', style: { color: '#8fa3b8', fontSize: 11, lineHeight: 1.5, marginBottom: 8 } }, 'World uses exactly the image you choose here. Nothing is substituted, and no source is pre-selected.'),
-        h('select', { value: s.worldSourceArtifact || '', onChange: e => { this.setState({ worldSourceArtifact: e.target.value }); if (SA && SA.isImageId(e.target.value)) this.setActiveAssetSelection({ kind: 'image', id: e.target.value }); }, style: { width: '100%', maxWidth: 520, marginBottom: 10, border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
+        h('select', { 'aria-label': 'World source image', value: s.worldSourceArtifact || '', onChange: e => { this.setState({ worldSourceArtifact: e.target.value }); if (SA && SA.isImageId(e.target.value)) this.setActiveAssetSelection({ kind: 'image', id: e.target.value }); }, style: { width: '100%', maxWidth: 520, marginBottom: 10, border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
         h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
           h('button', { onClick: () => this.startWorld('quick3d'), style: { border: '1px solid #38bdf866', background: '#38bdf616', color: '#38bdf8', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make 3D'),
           h('button', { onClick: () => this.startWorld('complete360'), style: { border: '1px solid #f59e0b66', background: '#f59e0b16', color: '#fbbf24', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make World'),
@@ -471,6 +475,9 @@ class Component extends DCLogic {
     const SA = this._sourceAsset();
     const picks = SA ? SA.choices(s.runs) : [];
     const selected = s.asset3dSourceArtifact || '';
+    if (SA && SA.isImageId(selected) && !picks.some(p => p.id === selected)) {
+      picks.unshift({ id: selected, label: selected + ' · chosen in Library' });
+    }
     const worker = s.asset3dWorkerStatus;
     const modes = worker && worker.modes ? worker.modes : {};
     const meshReady = modes.mesh && modes.mesh.status === 'PROVEN';
@@ -490,7 +497,7 @@ class Component extends DCLogic {
           h('div', null,
             h('div', { style: { color: '#6090a8', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 5 } }, 'Source · canonical image'),
             h('div', { 'data-source-rule': '3d', style: { color: '#8fa3b8', fontSize: 11, lineHeight: 1.5, marginBottom: 6 } }, 'Required. 3D uses exactly the image you choose; the newest result is never substituted.'),
-            h('select', { value: selected, onChange: e => { this.setState({ asset3dSourceArtifact: e.target.value, asset3dPreviewFailedId: '' }); if (SA && SA.isImageId(e.target.value)) this.setActiveAssetSelection({ kind: 'image', id: e.target.value }); }, style: { width: '100%', border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
+            h('select', { 'aria-label': '3D source image', value: selected, onChange: e => { this.setState({ asset3dSourceArtifact: e.target.value, asset3dPreviewFailedId: '' }); if (SA && SA.isImageId(e.target.value)) this.setActiveAssetSelection({ kind: 'image', id: e.target.value }); }, style: { width: '100%', border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
             sourcePreview ? (s.asset3dPreviewFailedId === selected
               ? h('div', { role: 'status', style: { display: 'grid', placeItems: 'center', width: 150, height: 150, boxSizing: 'border-box', marginTop: 10, padding: 12, border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, background: '#0d1823', color: '#91a2b4', fontSize: 11, lineHeight: 1.45, textAlign: 'center' } }, 'Source preview unavailable. Verify the canonical image in Library before starting a 3D job.')
               : h('img', { src: sourcePreview, alt: 'Selected canonical source preview', onError: () => this.setState({ asset3dPreviewFailedId: selected }), style: { width: 150, height: 150, objectFit: 'cover', borderRadius: 8, marginTop: 10, border: '1px solid rgba(148,163,184,.16)' } })) : null
