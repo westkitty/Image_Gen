@@ -7,6 +7,7 @@ const {startServer,launchBrowser,runCleanups}=require('./helpers');
  const {base}=await startServer();const browser=await launchBrowser(chromium);
  const page=await browser.newPage({viewport:{width:1340,height:870}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.route('**/api/workers',r=>r.fulfill({json:{workers:[{id:'kokoro',enabled:true,proven:true,capabilities:{cancel_supported:false}},{id:'ace-step',enabled:true,proven:true,capabilities:{cancel_supported:false}}],options:{kokoro_voices:['af_heart']}}}));
  await page.goto(base+'/dexdiffusion/',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.__dex?.state?.version===2,{timeout:15000});
  await page.locator('[data-studio-category="voice"]').click();
