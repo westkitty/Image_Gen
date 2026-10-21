@@ -5,8 +5,23 @@
 
 class Component extends DCLogic {
   state = {
-    version: (() => { const v = Number(localStorage.getItem('dex_version')); return v === 1 || v === 2 || v === 3 || v === 4 ? v : 4; })(),
-    screens: (() => { let s = 'create'; try { s = sessionStorage.getItem('dex_screen') || 'create'; } catch {} let ca = 'workstation'; try { ca = sessionStorage.getItem('dex_concept_screen') || 'workstation'; } catch {} return { 1: s, 2: s, 3: s, 4: ca }; })(),
+    // G4 / T-401: Studio is the only normal product shell. A one-time, idempotent migration records
+    // where the profile came from and points the preference at Studio without touching any draft.
+    version: (() => {
+      try {
+        const Nav = window.DexStudioNav;
+        if (!Nav) return 2;
+        Nav.migratePreferences(localStorage);
+        const developerMode = Nav.isDeveloperMode(localStorage, window.location);
+        return Nav.resolveInitialVersion(localStorage.getItem('dex_version'), { developerMode });
+      } catch (_) { return 2; }
+    })(),
+    screens: (() => {
+      let s = 'create';
+      try { s = window.DexStudioNav ? window.DexStudioNav.resolveInitialScreen(sessionStorage.getItem('dex_screen')) : (sessionStorage.getItem('dex_screen') || 'create'); } catch {}
+      let ca = 'workstation'; try { ca = sessionStorage.getItem('dex_concept_screen') || 'workstation'; } catch {}
+      return { 1: s, 2: s, 3: s, 4: ca };
+    })(),
     activeAssetSelection: null,
     // Create
     target: 'sd15',
@@ -29,6 +44,8 @@ class Component extends DCLogic {
     steps: 20, cfg: 7, seed: -1, width: 512, height: 512,
     sampler: 'euler_a', scheduler: 'discrete', clipSkip: '', tiling: false, eta: '', rng: '',
     jobStatus: 'idle', progress: 0, currentImageSrc: null, lastSeed: null, errorMsg: '', lastGenerationParams: null,
+    // T-202: the exact job currently owned by the Studio Create screen (mirrored for the Cancel control).
+    activeJobId: null,
     // Batch
     batchAxisX: 'seed', batchValuesX: '-1,-1,-1,-1',
     batchPrompt: '', batchNeg: '', batchSteps: 20, batchCfg: 7, batchW: 512, batchH: 512,
@@ -1153,12 +1170,23 @@ class Component extends DCLogic {
   }
 
   // ── Generate (txt2img) ────────────────────────────────────────
+  // T-202: the dedicated Cancel control for the Create screen. The proven implementation already
+  // exists in workstation-ui.js (`interruptGeneration`): it targets the exact job id, waits for the
+  // server's remote-stop verdict and never claims success without it. This method only routes to it and
+  // refuses honestly when the Studio workspace module is not loaded.
+  onCancelJob() {
+    if (typeof this.interruptGeneration === 'function') return this.interruptGeneration();
+    this.toast('Cancelling is not available in this view — open Studio to stop the job.', '#fbbf24');
+    return undefined;
+  }
+
   async onGenerate() {
     const { jobStatus, prompt, negPrompt, steps, cfg, seed, width, height,
             target, backendUrl, savePrompts, sampler, scheduler, selectedVae } = this.state;
-    if (jobStatus === 'generating') {
-      clearInterval(this._pollTimer);
-      this.setState({ jobStatus: 'idle', progress: 0 });
+    // T-202: Generate starts one job. It is never a disguised "stop" that silently resets local state
+    // while the worker keeps running. A running job has its own Cancel affordance keyed by job id.
+    if (jobStatus === 'generating' || jobStatus === 'cancelling') {
+      this.toast('A job is already running — use Cancel job to stop it', '#fbbf24');
       return;
     }
     if (!prompt.trim()) { this.toast('Enter a prompt first', '#fbbf24'); return; }
@@ -1183,6 +1211,7 @@ class Component extends DCLogic {
         this.toast(err.error || 'Generate failed', '#ef4444'); return;
       }
       const { job_id } = await r.json();
+      this.setState({ activeJobId: job_id });
       this._startPoll(job_id, (job) => this._onGenerateDone(job, body, backendUrl));
     } catch(e) {
       this.setState({ jobStatus: 'error', errorMsg: e.message });
@@ -1210,7 +1239,7 @@ class Component extends DCLogic {
       };
       const runs = [run, ...this.state.runs].slice(0, 100);
       try { localStorage.setItem('dex_runs', JSON.stringify(runs)); } catch {}
-      this.setState(s => ({ jobStatus: 'complete', progress: 100, currentImageSrc: imgSrc, lastSeed: params.seed, runs,
+      this.setState(s => ({ jobStatus: 'complete', progress: 100, activeJobId: null, currentImageSrc: imgSrc, lastSeed: params.seed, runs,
         lastGenerationParams: { ...(s.lastGenerationParams || params), runId, imageFile: imgFile, status: job.status } }));
       this.toast('Done · ' + (runId || ''), '#65d66e');
       setTimeout(() => this.loadRuns(), 1500);
@@ -1405,6 +1434,50 @@ class Component extends DCLogic {
         params.runId ? row('Run', params.runId, true) : null));
   }
 
+  // The Create workspace record lives in workstation-ui.js; read it defensively so the shell still
+  // renders if that module is unavailable.
+  _createWs() {
+    try { return (typeof this._ws === 'function' ? this._ws() : null) || {}; } catch (_) { return {}; }
+  }
+
+  // T-402: horizontal chip row overflow. Keyboard users get the same reach as pointer users; the
+  // row itself remains a single line (never a wrapped chip waterfall).
+  scrollStudioNav(direction) {
+    try {
+      const nav = document.querySelector('[data-studio-nav]');
+      if (!nav) return;
+      const step = Math.max(160, Math.round(nav.clientWidth * 0.6)) * (direction < 0 ? -1 : 1);
+      nav.scrollBy ? nav.scrollBy({ left: step, behavior: 'smooth' }) : (nav.scrollLeft += step);
+      const active = nav.querySelector('[data-tab][data-active="true"]');
+      if (active && active.focus) active.focus({ preventScroll: true });
+    } catch (_) {}
+  }
+
+  // S03 / T-603: Swap is a required destination whose backend, semantics and licence are unresolved.
+  // It stays navigable and truthful: no generation control, no hidden download, no fake job.
+  buildSwapWorkspace() {
+    const h = React.createElement;
+    const card = (title, body) => h('div', { style: { border: '1px solid rgba(125,211,252,.16)', background: 'rgba(125,211,252,.05)', borderRadius: 10, padding: '12px 14px', marginBottom: 10 } },
+      h('div', { style: { fontSize: 12, fontWeight: 700, color: '#dbeafe', marginBottom: 4 } }, title),
+      h('div', { style: { fontSize: 12, color: '#93a3b8', lineHeight: 1.6 } }, body));
+    const button = (label, onClick) => h('button', {
+      type: 'button', onClick,
+      style: { border: '1px solid rgba(148,163,184,.35)', background: 'rgba(255,255,255,.04)', color: '#e2e8f0', borderRadius: 8, padding: '7px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }
+    }, label);
+
+    return h('div', { style: { maxWidth: 760, margin: '0 auto' } },
+      h('h1', { style: { fontSize: 18, fontWeight: 700, color: '#f1f5f9', margin: '0 0 4px' } }, 'Swap'),
+      h('p', { style: { fontSize: 13, color: '#a8b3c2', margin: '0 0 14px', lineHeight: 1.6 } },
+        'This tool isn\'t enabled yet. Nothing here will start a job or download a model.'),
+      card('What Swap is for', 'Replacing or exchanging content between images — for example putting one subject\'s appearance into another picture. The exact behaviour has not been agreed yet, so it is not built.'),
+      card('What is missing', 'An approved, licensed model, an agreed definition of the operation, and a proven run on this machine. Until then no Swap button will pretend to work.'),
+      card('What you can do now', 'Everything else in the studio still works. Use Edit to change an existing image, or Enhance to make one larger.'),
+      h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 } },
+        button('Open Library', () => this.setScreen('library')),
+        button('Open Edit', () => this.setScreen('edit')),
+        button('View system status', () => this.setScreen('system'))));
+  }
+
   buildImageDisplay(jobStatus, progress, imageSrc, lastSeed, errorMsg) {
     if (jobStatus === 'generating') {
       const steps = Math.round(progress / 100 * (+this.state.steps || 20));
@@ -1436,6 +1509,18 @@ class Component extends DCLogic {
           React.createElement('div', { style: { fontSize: 13, color: '#65d66e', fontFamily: "'IBM Plex Mono',monospace" } }, '✓ Job done'),
           React.createElement('div', { style: { fontSize: 11, color: '#4a6878', fontFamily: "'IBM Plex Mono',monospace" } }, 'seed: ' + (lastSeed ?? '—'))),
         React.createElement('div', { style: { fontSize: 11, color: '#5060a0' } }, 'Image saved to runs/ — check Library'));
+    }
+    if (jobStatus === 'cancelled') {
+      return React.createElement('div', { role: 'status', style: { textAlign: 'center', padding: 20 } },
+        React.createElement('div', { style: { fontSize: 14, color: '#94a3b8', marginBottom: 8 } }, 'Job cancelled'),
+        React.createElement('div', { style: { fontSize: 12, color: '#64748b', maxWidth: 280, lineHeight: 1.5 } }, 'Your prompt and settings are still here. Press Generate image when you want to try again.'));
+    }
+    if (jobStatus === 'cancel-unverified') {
+      const reason = this.state.cancelError || 'The worker could not confirm that it stopped.';
+      return React.createElement('div', { role: 'alert', style: { textAlign: 'center', padding: 20 } },
+        React.createElement('div', { style: { fontSize: 14, color: '#f59e0b', marginBottom: 8 } }, 'Could not confirm the worker stopped'),
+        React.createElement('div', { style: { fontSize: 12, color: '#94a3b8', maxWidth: 320, lineHeight: 1.6, margin: '0 auto' } }, reason),
+        React.createElement('div', { style: { fontSize: 11, color: '#64748b', marginTop: 8 } }, 'Heavy work stays paused until this is reconciled. See System for details.'));
     }
     if (jobStatus === 'error') {
       return React.createElement('div', { style: { textAlign: 'center', padding: 20 } },
@@ -2203,17 +2288,37 @@ class Component extends DCLogic {
 
     return {
       version, versionStr: String(version), screen, compactModeStr: String(s.compactMode),
+      devModeStr: String((() => { try { return window.DexStudioNav.isDeveloperMode(localStorage, window.location); } catch (_) { return false; } })()),
       isV1: version===1, isV2: version===2, isV3: version===3, isV4: version===4, isLegacy: version !== 4,
       isV1Str: String(version===1), isV2Str: String(version===2), isV3Str: String(version===3), isV4Str: String(version===4),
       setV1: ()=>this.setVersion(1), setV2: ()=>this.setVersion(2), setV3: ()=>this.setVersion(3), setV4: ()=>this.setVersion(4),
       isCreate: screen==='create', isBatch: screen==='batch', isEdit: screen==='edit',
       isEnhance: screen==='enhance', isLibrary: screen==='library', isWorld: screen==='world', is3d: screen==='3d', isModels: screen==='models', isSystem: screen==='system',
+      isSwap: screen==='swap',
       isCreateStr: String(screen==='create'), isBatchStr: String(screen==='batch'),
       isEditStr: String(screen==='edit'), isEnhanceStr: String(screen==='enhance'),
       isLibraryStr: String(screen==='library'), isWorldStr: String(screen==='world'), is3dStr: String(screen==='3d'), isModelsStr: String(screen==='models'), isSystemStr: String(screen==='system'),
+      isSwapStr: String(screen==='swap'),
       navCreate: ()=>this.setScreen('create'), navBatch: ()=>this.setScreen('batch'),
       navEdit: ()=>this.setScreen('edit'), navEnhance: ()=>this.setScreen('enhance'),
       navLibrary: ()=>this.setScreen('library'), navWorld: ()=>this.setScreen('world'), nav3d: ()=>this.setScreen('3d'), navModels: ()=>this.setScreen('models'), navSystem: ()=>this.setScreen('system'),
+      navSwap: ()=>this.setScreen('swap'),
+      // T-402: exactly one canonical chip row, built from the shared 14-category registry. The array
+      // reference is cached per (version, screen) so an unrelated render tick never rebuilds the nav
+      // (and therefore never steals focus or scroll from the user).
+      navChips: (() => {
+        const Nav = window.DexStudioNav;
+        if (!Nav) return [];
+        const key = version + '|' + screen;
+        if (!this._navChips || this._navChipsKey !== key) {
+          this._navChipsKey = key;
+          this._navChips = Nav.chips({ activeScreen: screen, onSelect: id => this.setScreen(id) });
+        }
+        return this._navChips;
+      })(),
+      navScrollBack: ()=>this.scrollStudioNav(-1),
+      navScrollForward: ()=>this.scrollStudioNav(1),
+      swapWorkspace: this.buildSwapWorkspace(),
       // Create form
       prompt, negPrompt, steps: String(steps), cfg: String(cfg), seed: String(seed),
       width: String(width), height: String(height), promptLen: String(prompt.length),
@@ -2237,6 +2342,18 @@ class Component extends DCLogic {
       setDimPortrait: ()=>this.setState({width:512,height:768}),
       setDim1024: ()=>this.setState({width:1024,height:1024}),
       onGenerate: ()=>this.onGenerate(),
+      onCancelJob: ()=>this.onCancelJob(),
+      // sc-if treats any non-empty string as true, so this must stay a real boolean.
+      showCancel: (() => { const ws = this._createWs(); return jobStatus === 'generating' && !!ws.activeJobId; })(),
+      activeCancelJobId: (() => { const ws = this._createWs(); return ws.activeJobId || ''; })(),
+      cancelLabel: (() => { const ws = this._createWs(); return ws.interrupting ? 'Stopping — checking the worker…' : 'Cancel job'; })(),
+      cancelDisabled: (() => { const ws = this._createWs(); return String(!!ws.interrupting); })(),
+      cancelError: (() => {
+        const ws = this._createWs();
+        if (ws.interruptState === 'unverified') return 'The stop request reached the server, but the worker could not be confirmed stopped. Heavy work stays paused until it is reconciled.';
+        if (ws.interruptState === 'error') return 'The cancel request failed. The job may still be running — check the Job Center.';
+        return '';
+      })(),
       generateLabel: isGenerating ? ('Generating… ' + progress + '%') : 'Generate Image',
       genCursor: isGenerating ? 'default' : 'pointer',
       genOpacity: isGenerating ? '0.75' : '1',
@@ -2246,12 +2363,17 @@ class Component extends DCLogic {
       showJobResult: jobStatus !== 'idle',
       jobIdle: jobStatus === 'idle',
       imageDisplay: this.buildImageDisplay(jobStatus, progress, currentImageSrc, lastSeed, errorMsg),
-      actionStatus: isGenerating ? ('generating · ' + ((this.state.jobStage || {}).label || 'Waiting for backend')) : jobStatus==='complete' ? ('done · seed ' + lastSeed) : jobStatus==='error' ? 'error · check backend' : 'idle · no job',
+      actionStatus: jobStatus==='cancelling' ? 'stopping · checking the worker'
+        : jobStatus==='cancelled' ? 'cancelled · verified by the worker'
+        : jobStatus==='cancel-unverified' ? ('stop not confirmed · ' + (this.state.cancelError || 'check System'))
+        : isGenerating ? ('generating · ' + ((this.state.jobStage || {}).label || 'Waiting for backend'))
+        : jobStatus==='complete' ? ('done · seed ' + lastSeed) : jobStatus==='error' ? 'error · check backend' : 'idle · no job',
       // Status chips
       backendDot, backendLabel: backendOnline ? 'Backend' : 'Offline',
       backendChipBg: backendOnline ? 'rgba(101,214,110,.08)' : 'rgba(239,68,68,.08)',
       backendChipBorder: backendOnline ? 'rgba(101,214,110,.2)' : 'rgba(239,68,68,.2)',
-      jobDot, jobLabel: isGenerating ? (progress + '%') : jobStatus==='complete' ? 'Done' : jobStatus==='error' ? 'Error' : 'Idle',
+      jobDot, jobLabel: jobStatus==='cancelling' ? 'Stopping…' : jobStatus==='cancelled' ? 'Cancelled' : jobStatus==='cancel-unverified' ? 'Check required'
+        : isGenerating ? (progress + '%') : jobStatus==='complete' ? 'Done' : jobStatus==='error' ? 'Error' : 'Idle',
       jobChipBg: isGenerating ? 'rgba(56,189,248,.07)' : jobStatus==='complete' ? 'rgba(101,214,110,.07)' : jobStatus==='error' ? 'rgba(239,68,68,.07)' : 'rgba(251,191,36,.07)',
       jobChipBorder: isGenerating ? 'rgba(56,189,248,.2)' : jobStatus==='complete' ? 'rgba(101,214,110,.2)' : jobStatus==='error' ? 'rgba(239,68,68,.2)' : 'rgba(251,191,36,.2)',
       // System

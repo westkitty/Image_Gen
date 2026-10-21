@@ -37,10 +37,16 @@
   };
   P.mSet = function (patch) { Object.assign(this._mws(), patch); this.setState({ _mTick: (this.state._mTick || 0) + 1 }); };
   P.loadWorkers = async function () {
+    // T-506/T-614: an unreachable or misbehaving local service must degrade the System/Models detail,
+    // never the whole Studio shell. Only a shape-validated payload is stored; anything else is "unknown".
     try {
       const [w, r] = await Promise.all([fetch(this.state.backendUrl + '/api/workers').then(x => x.json()), fetch(this.state.backendUrl + '/api/resources').then(x => x.json())]);
-      this.mSet({ workers: w.workers, options: w.options || null, resources: r });
-    } catch (_) {}
+      const workers = Array.isArray(w && w.workers) ? w.workers : [];
+      const resources = r && typeof r === 'object' && Array.isArray(r.waiting) && r.external && typeof r.external === 'object' ? r : null;
+      this.mSet({ workers, options: (w && w.options) || null, resources, workersError: workers.length ? null : 'The local service did not report any workers.' });
+    } catch (_) {
+      this.mSet({ workers: [], resources: null, workersError: 'Cannot reach the local studio service.' });
+    }
   };
   P._worker = function (id) { return ((this._mws().workers) || []).find(w => w.id === id) || null; };
 
@@ -392,7 +398,8 @@
 
   // ── System / Models: workers + resources ─────────────────────────
   P.buildWorkersPanel = function () {
-    const m = this._mws(), rs = m.resources;
+    const m = this._mws();
+    const rs = m.resources && Array.isArray(m.resources.waiting) && m.resources.external ? m.resources : null;
     if (!m.workersLoadedOnce) { m.workersLoadedOnce = true; setTimeout(() => this.loadWorkers(), 0); }
     const row = w => h('div', { key: w.id, style: { display: 'grid', gridTemplateColumns: 'minmax(0,1.3fr) minmax(0,1fr)', gap: 6, fontSize: 12, padding: '5px 0', borderBottom: '1px solid rgba(148,163,184,.06)' } },
       h('div', { style: { minWidth: 0 } }, h('div', { style: { color: '#e2e8f0', fontWeight: 700 } }, w.label), h('div', { style: css.muted }, w.media_kind + ' · ' + w.resource_class + ' resource')),
@@ -402,6 +409,7 @@
     return h('div', { style: css.panel },
       h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Workers & Big Mac resources'), h('div', { style: { flex: 1 } }), btn('Refresh', () => this.loadWorkers(), '#94a3b8')),
       ...((m.workers || []).map(row)),
+      (m.workers || []).length ? null : h('div', { style: Object.assign({}, css.muted, { padding: '6px 0' }) }, m.workersError || 'No media workers are installed on this machine.'),
       rs ? h('div', { style: { marginTop: 8, display: 'grid', gap: 3, fontSize: 12 } },
         h('div', null, h('b', { style: { color: '#cbd5e1' } }, 'Heavy compute: '), h('span', { style: css.mono }, rs.group + ' · capacity ' + rs.capacity)),
         h('div', null, h('b', { style: { color: '#cbd5e1' } }, 'Owner: '), h('span', { style: css.mono }, rs.owner ? rs.owner.label + ' (since ' + new Date(rs.owner.since).toLocaleTimeString() + ')' : 'none')),
