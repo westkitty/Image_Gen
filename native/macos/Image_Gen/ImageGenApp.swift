@@ -817,6 +817,91 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     // MARK: - WKUIDelegate
 
+    // T-201: WKWebView routes window.alert/confirm/prompt through these delegates. Without them the
+    // wrapper silently negates every JavaScript confirmation, so "Cancel job", unsaved-draft guards and
+    // destructive-action warnings could never be accepted inside the installed app. Each completion
+    // handler is invoked exactly once, from the main thread, and never while another sheet is attached
+    // (a nested sheet is refused by AppKit and would leave the JS promise unresolved forever).
+    private func presentJavaScriptDialog(
+        message: String,
+        defaultText: String?,
+        withCancel: Bool,
+        completion: @escaping (Bool, String?) -> Void
+    ) {
+        let deliver: (Bool, String?) -> Void = { accepted, text in
+            if Thread.isMainThread { completion(accepted, text) }
+            else { DispatchQueue.main.async { completion(accepted, text) } }
+        }
+        // AppKit UI must be built and shown on the main thread.
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async {
+                self.presentJavaScriptDialog(message: message, defaultText: defaultText, withCancel: withCancel, completion: completion)
+            }
+            return
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "DexDiffusion"
+        alert.informativeText = message
+        alert.alertStyle = withCancel ? .warning : .informational
+        alert.addButton(withTitle: withCancel ? "Continue" : "OK")
+        if withCancel { alert.addButton(withTitle: "Cancel") }
+
+        var field: NSTextField? = nil
+        if let defaultText = defaultText {
+            let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
+            input.stringValue = defaultText
+            alert.accessoryView = input
+            field = input
+        }
+
+        let handle: (NSApplication.ModalResponse) -> Void = { response in
+            let accepted = response == .alertFirstButtonReturn
+            deliver(accepted, field?.stringValue)
+        }
+
+        if let win = self.window, win.isVisible, win.attachedSheet == nil {
+            alert.beginSheetModal(for: win, completionHandler: handle)
+        } else {
+            // No window, or a sheet is already up: present modally so the JS call still resolves.
+            handle(alert.runModal())
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping () -> Void
+    ) {
+        presentJavaScriptDialog(message: message, defaultText: nil, withCancel: false) { _, _ in
+            completionHandler()
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        presentJavaScriptDialog(message: message, defaultText: nil, withCancel: true) { accepted, _ in
+            completionHandler(accepted)
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt prompt: String,
+        defaultText: String?,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (String?) -> Void
+    ) {
+        presentJavaScriptDialog(message: prompt, defaultText: defaultText ?? "", withCancel: true) { accepted, text in
+            completionHandler(accepted ? (text ?? "") : nil)
+        }
+    }
+
     func webView(
         _ webView: WKWebView,
         runOpenPanelWith parameters: WKOpenPanelParameters,
