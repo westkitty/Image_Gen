@@ -285,6 +285,7 @@ function createCancellationManager({
       }
     } else {
       // Job-owned stop hook (queue/stop-after-current). Its own result is the evidence.
+      let ownerAccepted = false;
       if (typeof onLocalTerminate !== 'function') {
         return refuse(jobId, {
           gate: 'cancel-unsafe', cancelState: 'refused_unsafe', status: currentStatus,
@@ -299,6 +300,7 @@ function createCancellationManager({
             error: res.error || 'The job owner refused the stop.'
           });
         }
+        ownerAccepted = !!res && res.ok === true;
         // A hook returning undefined, {ok:true}, or a sent signal is NOT exit proof.
         // Do not release the heavy lease until the exact owner confirms termination.
         terminationVerified = !!res && res.ok === true && res.verified === true;
@@ -316,7 +318,7 @@ function createCancellationManager({
       }
       if (!terminationVerified) {
         return {
-          ok: false, accepted: !!(typeof res !== 'undefined' && res && res.ok === true),
+          ok: false, accepted: ownerAccepted,
           status: currentStatus, alreadyTerminal: false, neverStarted: false,
           terminationVerified: false, cancelState: 'requested', leaseReleased: false,
           gate: 'local-stop-unverified',
