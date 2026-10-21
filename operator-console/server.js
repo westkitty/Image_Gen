@@ -44,6 +44,7 @@ const { createMacroStore } = require('./macro-store');
 const { exportReproBundle, validateReproBundle, checkBundleCompatibility } = require('./repro-bundle');
 const { createThumbnailService } = require('./thumbnail-service');
 const { createCancellationManager } = require('./cancellation');
+const { dramaCancelCapability, requestDramaStop } = require('./drama-cancel-policy');
 const { createLibraryIndex } = require('./library-index');
 const { reconcileInterruptedPublications, historicalMissingJournal } = require('./publication-recovery');
 
@@ -1100,7 +1101,9 @@ const cancelManager = createCancellationManager({
   eventBus,
   // T-102: a mid-run stop is only offered when the owning worker actually declares it. Image jobs are
   // governed by the image route's own run-id-scoped verified stop, so they resolve to null here.
-  workerCapabilities: ({ record }) => {
+  workerCapabilities: ({ record, active }) => {
+    const drama = dramaCancelCapability({ record, active });
+    if (drama) return drama;
     if (!record || record.media_kind === 'image') return null;
     try {
       const w = workerRegistry.get(record.worker_id);
@@ -1118,16 +1121,9 @@ const cancelManager = createCancellationManager({
         return { ok: false, verified: false, error: 'Could not signal the registered process: ' + error.message };
       }
     }
-    // Drama stop-after-current is a request, not an instantaneous termination.
-    try {
-      if (typeof voiceModule !== 'undefined' && voiceModule.producer && typeof voiceModule.producer.cancelByJob === 'function') {
-        const accepted = voiceModule.producer.cancelByJob(active.jobId);
-        return { ok: accepted !== false, verified: false, stop_after_current: accepted !== false,
-          detail: 'No further drama groups requested; the current group has not been verified stopped' };
-      }
-    } catch (error) {
-      return { ok: false, verified: false, error: error.message };
-    }
+    // A Drama producer has a cooperative stop-after-current contract, not a process exit.
+    // Only a job registered as the exact drama producer may reach this hook.
+    if (active.target === 'drama-production') return requestDramaStop(voiceModule.producer, active);
     return { ok: false, verified: false, error: 'No job-owned stop method was available' };
   }
 });
@@ -4577,7 +4573,7 @@ setInterval(() => mediaBridge.sweepRemoteOrphans(60).catch(() => {}), 60 * 60 * 
 // Persistent voice profiles, long-form speech and audio-drama production (voice-routes.js).
 const voiceModule = require('./voice-routes').registerVoiceRoutes(app, {
   stateDir: STATE_DIR, jobStore, mediaStore, staging, mediaBridge, log: m => console.log(m),
-  cancelJob: id => cancelManager.cancelJob(id), onJobStart: id => cancelManager.registerActiveJob(id, {}), onJobEnd: id => cancelManager.unregisterActiveJob(id),
+  cancelJob: id => cancelManager.cancelJob(id), onJobStart: id => cancelManager.registerActiveJob(id, { target: 'drama-production' }), onJobEnd: id => cancelManager.unregisterActiveJob(id),
   probeFor: id => workerRegistry.get(id).probe(workerAssets()),
   // Optional local intelligent parse: strict-schema JSON from the managed Ollama tunnel (never rewrites dialogue; see drama.js).
   llmChat: async messages => {
