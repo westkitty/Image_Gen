@@ -433,3 +433,15 @@ DexDiffusion V12 operates with a unified real-time architecture:
 - **Synchronized Image Comparison**: Compare 2–4 images side-by-side or with swipe/flicker modes without generating redundant disk artifacts.
 - **Reproducibility & Workflows**: Export and import settings bundles (`dexdiffusion.repro.v1`), reusable recipes (`dexdiffusion.recipe.v1`), and declarative workflow macros (`dexdiffusion.macro.v1`).
 - **Scoped Cancellation**: Safe cancellation of queued and active jobs with PID and nonce verification that strictly prevents killing unrelated processes.
+
+## Current product direction — V2 Studio is the only normal shell (2026-10-20, Arena branch)
+
+**This supersedes the Workstation-first direction below/above only as the *current default*. Workstation/Concept A, V1 and V3 remain in the codebase as developer-only shells with their tests intact.** History is preserved; nothing was deleted.
+
+- **Default landing:** DexDiffusion **Studio → Create**, for new and migrated profiles. `dex_version` is migrated once (marker `dex_studio_nav_migrated`); the previous version is recorded in `dex_legacy_version`. The version picker is hidden unless developer mode (`localStorage.dex_developer = '1'` or `?dev=1`).
+- **Navigation:** exactly one chip row with 14 destinations in fixed order — **Create · Batch · Swap · Voice · Drama · Music · Video · World · 3D · Library · Edit · Enhance · Models · System** — defined once in `operator-console/public/dexdiffusion/studio-nav.js` and rendered into the shell. Group tints distinguish image / sound / motion / library-operations; they never imply that a mode works.
+- **Honest unavailability:** **Swap** is a real destination with no approved backend, model or licence — it explains what is missing and starts nothing. **Video** remains non-executable until a verified generator exists. Neither may be represented as working.
+- **Cancellation truth:** a job becomes `CANCELLED` only when it provably never started, or its exact registered worker was verified stopped. An unowned `RUNNING`/`TRANSFERRING` durable job is refused (`cancel-unsafe`), keeps its state and keeps its heavy-compute lease. `POST /api/jobs/:id/cancel` reports `accepted`, `neverStarted`, `terminationVerified`, `cancelState` and `remote_stop` separately.
+- **Create actions:** `Generate image` starts exactly one job; a second click cannot restart or hide it. A separate `Cancel job` control is bound to the job id and shows `Stopping — checking the worker…` → verified / unverified / refused, never a green false success.
+- **Source of truth for this work:** `docs/operations/arena-v2-studio-20261020/EXECUTION_LEDGER.md` (ticket status, gates, blockers) and the copied master instruction beside it.
+- **Still open:** canonical source resolver and Library→Edit→Enhance→3D/World handoffs, Create layout/Advanced disclosure, the remaining control sweep, native V2 scroll evidence, and every native/worker/novice acceptance gate. None of these is claimed complete.
