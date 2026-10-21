@@ -21,3 +21,21 @@ This is a source-grounded acceptance record for the V2 Studio repair. It does no
 ## Production change guard
 
 Only merge after final technical gate checks. Preserve source changes, the canonical image directory, workflow state, run history, original Dock state, and prior app bundle. Confirm no active or queued jobs before stopping old port 31337. After fast-forwarding `main`, rebuild the native app, confirm one Dock tile, verify native bundle source/root, API revision, live Library path, and resource health. If a cutover check fails, stop only project-owned new processes and restore without purging user data.
+
+
+## Matched regression evidence and last correction
+
+The full Node suite was run twice on **the same Big Mac and the same dependency tree**:
+
+| Build | Tests | Passed | Failed | Skipped |
+|---|---:|---:|---:|---:|
+| Pristine `4324dec` | 923 | 847 | 75 | 1 |
+| Repair `588ddee` | 988 | 914 | 73 | 1 |
+
+Failure **names** (not just counts) were compared after stripping durations: **zero repair-only failures; two baseline failures resolved**. The full suite remains non-green due to 73 tests also failing on pristine `main` under this environment. This is a matched no-new-regression finding, *not* a statement that all test failures have been fixed.
+
+A separate source-level regression was exposed by that comparison: Drama cooperative cancellation had lost its declared stop-after-current capability. The repair now requires an exact registered Drama producer, passes a scoped cancellation request, and retains the running status/lease until the producer actually finishes the active chunk and records cancellation. A refused or missing owner never reports successful stopping. The dedicated Drama cancellation route/policy suite passed **26/26** on both MacBook and Big Mac.
+
+The final UI update labels these jobs **Stop after current** rather than **Cancel job**, with an explicit confirmation and truthful pending result. After that UI update, all **seven** independent Studio browser workflows passed on Big Mac (beginner/queued jobs, Drama stop-after-current, unsupported worker disclosure, fixture generation, unverified stop handling, older Library source handoff, scroll preservation). The compiled native preview and real Big Mac worker evidence above remain applicable; no new native Swift or inference backend code was changed by the last UI-label update.
+
+**Still not certified:** E6 independent unaided human novice study; clean all-platform full suite; currently dormant model/Video/Swap capabilities.
