@@ -37,6 +37,24 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
   await page.locator('#v12-jc-close-btn').click();
   assert.equal(await page.locator('#v12-job-center-drawer').getAttribute('aria-hidden'),'true');
   assert.equal(await page.locator('#v12-hud-bar').isVisible(),false,'no duplicate HUD');
+  // Fixture renders the actual result component without dispatching a real job.
+  await page.evaluate(() => {
+    __dex.wsSet({results:[{status:'QUEUED',imageId:'fixture-studio.png',imageUrl:'/api/images/fixture-studio.png',target:'sd15',seed:42,width:512,height:512}],activeIndex:0});
+    __dex.setState({jobStatus:'generating'});
+  });
+  assert.equal(await page.getByText('Saved to Library',{exact:true}).count(),0,'queued image must not be called saved');
+  await page.evaluate(() => {
+    __dex.wsSet({results:[{status:'DONE',imageId:'fixture-studio.png',imageUrl:'/api/images/fixture-studio.png',target:'sd15',seed:42,width:512,height:512}],activeIndex:0});
+    __dex.setState({jobStatus:'complete'});
+  });
+  await page.getByText('Saved to Library',{exact:true}).waitFor({state:'visible'});
+  const actions=page.locator('[data-results-anchor]');
+  for (const label of ['Open in Library','Enhance']) assert.equal(await actions.getByRole('button',{name:label,exact:true}).isVisible(),true,label+' result action visible');
+  const download=actions.getByRole('link',{name:'Download',exact:true});
+  assert.equal(await download.isVisible(),true,'result download link visible');
+  assert.match(await download.getAttribute('href'),/\/api\/images\/fixture-studio\.png$/);
+  assert.equal(await download.getAttribute('download'),'fixture-studio.png');
+
   assert.equal(errors.length,0,'browser page errors: '+JSON.stringify(errors));
   console.log('NOVICE_BROWSER_PASS',JSON.stringify({chips:labels.length,visiblePrompt:true,advanced:true,jobs:true,errors:0}));
 })().catch(e=>{console.error('NOVICE_BROWSER_FAIL',e.stack);process.exitCode=1}).finally(runCleanups);
