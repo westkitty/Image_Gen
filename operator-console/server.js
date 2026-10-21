@@ -34,7 +34,7 @@ const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras
 const { MODEL_CARDS, getModelCards, getModelCardById, checkModelSwitchWarnings } = require('./model-registry');
 const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt, ATTEMPT_TIMEOUT_MS } = require('./detailer');
 const { createEventBus } = require('./event-bus');
-const { projectOperationalJob, projectGenericProgress, genericJobLabel, createGenericJobEventPublisher } = require('./operational-jobs');
+const { projectOperationalJob, projectGenericProgress, genericJobLabel, genericJobCanCancel, createGenericJobEventPublisher } = require('./operational-jobs');
 const { createTimingStore } = require('./timing-store');
 const { createCollectionStore } = require('./collections-store');
 const { createRecipeStore } = require('./recipes-store');
@@ -4834,7 +4834,7 @@ function getOperationalJobSnapshot() {
       queuePosition: g.status === 'QUEUED' ? arbiter.position(g.job_id) : null,
       resourceClass: g.resource_class,
       resourceState: g.status === 'QUEUED' ? 'WAITING_LEASE' : g.status,
-      canCancel: ['QUEUED', 'RUNNING', 'TRANSFERRING'].includes(g.status),
+      canCancel: genericJobCanCancel(g),
       firstFailedGate: g.first_failed_gate,
       artifactIds: g.artifacts || []
     });

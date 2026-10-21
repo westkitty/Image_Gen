@@ -107,6 +107,13 @@ function genericJobLabel(job) {
   return (l || (job && job.operation) || 'Job').slice(0, 120);
 }
 
+// Durable media jobs share a cancellation route, but running-stop support is
+// worker-specific and is not represented by one authoritative capability field
+// yet. Only a never-started queue item is universally safe to advertise here.
+function genericJobCanCancel(job) {
+  return !!job && String(job.status || '').toUpperCase() === 'QUEUED';
+}
+
 // Publishes durable non-image job lifecycle changes on the SSE bus. Payloads carry ids, status, measured counts and a
 // generated label only: never request text.
 const GENERIC_EVENT = { created: 'job.created', started: 'job.started', progress: 'job.progress', completed: 'job.completed', failed: 'job.failed', cancelled: 'job.cancelled', interrupted: 'job.interrupted' };
@@ -124,6 +131,7 @@ module.exports = {
   createGenericJobEventPublisher,
   projectGenericProgress,
   genericJobLabel,
+  genericJobCanCancel,
   projectOperationalJob,
   SCHEMA_VERSION,
   FORBIDDEN_FIELDS
