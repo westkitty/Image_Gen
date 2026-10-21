@@ -1102,11 +1102,27 @@ const cancelManager = createCancellationManager({
     } catch (_) { return null; }
   },
   onLocalTerminate: async (active) => {
+    // A signal being delivered is not proof that its recipient exited.
+    // The manager holds the job state and lease until its owner provides evidence.
     if (active.pid) {
-      try { process.kill(active.pid, 'SIGTERM'); } catch (_) {}
+      try {
+        process.kill(active.pid, 'SIGTERM');
+        return { ok: true, verified: false, detail: 'SIGTERM sent; process exit has not been verified' };
+      } catch (error) {
+        return { ok: false, verified: false, error: 'Could not signal the registered process: ' + error.message };
+      }
     }
-    // A drama production owns no process: cancelling it stops further Big Mac groups after the one already running.
-    try { if (typeof voiceModule !== 'undefined' && voiceModule.producer) voiceModule.producer.cancelByJob(active.jobId); } catch (_) {}
+    // Drama stop-after-current is a request, not an instantaneous termination.
+    try {
+      if (typeof voiceModule !== 'undefined' && voiceModule.producer && typeof voiceModule.producer.cancelByJob === 'function') {
+        const accepted = voiceModule.producer.cancelByJob(active.jobId);
+        return { ok: accepted !== false, verified: false, stop_after_current: accepted !== false,
+          detail: 'No further drama groups requested; the current group has not been verified stopped' };
+      }
+    } catch (error) {
+      return { ok: false, verified: false, error: error.message };
+    }
+    return { ok: false, verified: false, error: 'No job-owned stop method was available' };
   }
 });
 setInterval(() => { arbiter.refreshExternal().catch(() => {}); }, 60 * 1000).unref();
