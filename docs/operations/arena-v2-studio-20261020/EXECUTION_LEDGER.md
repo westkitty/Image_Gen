@@ -26,7 +26,9 @@ No `git clean`, `git reset --hard`, `git checkout --`, `git add .` or `git add -
 | Cancellation tests | `operator-console/tests/cancellation-truth.test.js` (new) |
 | Native dialogs (G2) | `native/macos/Image_Gen/ImageGenApp.swift`, `operator-console/tests/native-wrapper-launch.test.js` |
 | Studio shell (G4) | `operator-console/public/dexdiffusion/studio-nav.js` (new), `component.js`, `index.html` |
-| Offline robustness | `operator-console/public/dexdiffusion/media-ui.js` |
+| Source handoffs (G3) | `operator-console/public/dexdiffusion/source-asset.js` (new), `component.js`, `edit-ui.js`, `workstation-ui.js` |
+| Offline robustness | `operator-console/public/dexdiffusion/media-ui.js`, `dc-runtime.js`, `workstation-ui.js` |
+| Source handoff tests | `operator-console/tests/source-asset.test.js` (new) |
 | Studio shell + cancel tests | `operator-console/tests/studio-shell.test.js` (new), `operator-console/tests/world-tab-navigation.test.js` (updated for the registry row) |
 | Test dependency | `operator-console/package.json`, `operator-console/package-lock.json` (`jsdom`, dev-only) |
 | Documentation | this ledger, `DEXDIFFUSION.md`, `OPERATIONAL_STATE.md`, `docs/acceptance/DEXDIFFUSION_HUMAN_ACCEPTANCE.md` |
