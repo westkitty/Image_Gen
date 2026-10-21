@@ -249,6 +249,9 @@
     `;
 
     document.body.appendChild(bar);
+    // Studio has a Job Center entry in the main chrome. The old HUD is redundant there.
+    const studio = window.__dex && window.__dex.state && window.__dex.state.version === 2;
+    if (studio) bar.style.display = 'none';
 
     document.getElementById('v12-hud-jobs-btn').onclick = toggleJobCenter;
     document.getElementById('v12-hud-palette-btn').onclick = toggleCommandPalette;
@@ -302,7 +305,7 @@
 
     drawer.innerHTML = `
       <div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between;">
-        <div style="font-size:15px;font-weight:600;letter-spacing:0.3px;">Workstation Job Center</div>
+        <div style="font-size:15px;font-weight:600;letter-spacing:0.3px;">DexDiffusion Job Center</div>
         <button id="v12-jc-close-btn" type="button" aria-label="Close Job Center" style="background:transparent;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:4px 8px;">✕</button>
       </div>
       <div id="v12-jc-content" style="flex:1;overflow-y:auto;padding:16px;">
