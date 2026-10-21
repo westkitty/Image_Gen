@@ -73,7 +73,7 @@ The standard-library Node tests and source checks pass for the touched behaviors
 | T-003 | `BLOCKED_HUMAN` | Mac novice and native scroll recordings not possible in Arena. |
 | T-004 | `IN_PROGRESS` | Protected local-first, storage, model, privacy, publication and worker boundaries retained; no physical runtime readback. |
 | T-101 | `VERIFIED_SANDBOX` | Regression fixtures cover durable RUNNING and TRANSFERRING with absent owner, plus missing job. |
-| T-102 | `VERIFIED_SANDBOX` (conservative projection) | Generic durable `canCancel` is true only for QUEUED; running worker-specific capability remains unprojected and is therefore not offered. |
+| T-102 | `IN_PROGRESS` (conservative projection verified) | Generic durable `canCancel` is true only for QUEUED; running worker-specific capability remains unprojected and is therefore not offered. The required image/voice/music/video/3D capability matrix is not implemented or tested. |
 | T-103 | `BLOCKED_REAL_WORKER` | No Big Mac process/nonce/workdir test was authorized or available. |
 | T-104 | `IN_PROGRESS` | Existing endpoint remains backward-compatible; the new UI interprets verified/not-started/unverified responses. Full API response matrix not run. |
 | T-201 | `BLOCKED_NATIVE` | Alert, confirm and text-input WKUIDelegate handlers added; no native build or packaged click proof. |
