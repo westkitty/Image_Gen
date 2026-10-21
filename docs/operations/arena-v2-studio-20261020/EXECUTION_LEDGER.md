@@ -78,7 +78,7 @@ Evidence levels: **E1** source, **E2** fixture/integration (includes the jsdom r
 |---|---|---|---|
 | T-401 | Clean Studio launch + safe migration | `VERIFIED_SANDBOX` | `studio-nav.js` migration is idempotent, records `dex_legacy_version`, preserves model/preset/prompt-saving keys. Fresh profile, `dex_version=4` profile and `workstation` session screen all land on Create (E2 real mount). |
 | T-402 | Exactly one 14-chip top navigation | `VERIFIED_SANDBOX` | Registry-driven row, exact order Create…System, tints per group, `aria-current`, `title` per chip, one row `overflow-x:auto` with labelled back/forward affordances. E2: 14 chips rendered and each one clicked to its own screen. |
-| T-403 | Replace front-page clutter with one canvas + inspector | `NOT_STARTED` | V2 Create still renders the legacy stacked panels; not restructured in this session. |
+| T-403 | Replace front-page clutter with one canvas + inspector | `IN_PROGRESS` | Honest partial only: Create now opens with a `Create` header and one sentence of intent, and the dead shell buttons around it are gone. The stacked legacy panels were **not** restructured into canvas + inspector. |
 | T-404 | Retire V4 as default without destroying modules | `VERIFIED_SANDBOX` | Default is Studio; the version picker is `data-dev-only` and hidden unless developer mode; V1/V3/V4 modules and tests remain. |
 
 ### G5 — simple *and* complete
@@ -125,11 +125,11 @@ Evidence levels: **E1** source, **E2** fixture/integration (includes the jsdom r
 | ID | Objective | Status | Evidence |
 |---|---|---|---|
 | T-801 | Unit + integration regression ladder | `IN_PROGRESS` | Full `npm test` run before and after; see §6. |
-| T-802 | Real interaction matrix | `IN_PROGRESS` | E2 real-DOM clicks for all 14 chips, Create generate, cancel and Swap. No E3 browser matrix (no Chromium available). |
+| T-802 | Real interaction matrix | `VERIFIED_SANDBOX` (E2) | One jsdom mount walks all 14 chips with real click events and asserts each screen draws without a render error, is not blank, names itself, has no unnamed enabled button, gives every image `alt` text and wraps nothing in a form. Create's Generate, Cancel, reattach and Swap are covered by their own cases. **No E3 browser matrix** (no Chromium in this sandbox). |
 | T-803 | Native WKWebView + Dock | `BLOCKED_NATIVE` | Requires the owner's Mac. |
 | T-804 | Bounded real-machine E2E | `BLOCKED_REAL_WORKER` | Requires explicit authorization and Big Mac availability. |
 | T-805 | Independent novice acceptance | `BLOCKED_HUMAN` | `HUMAN ACCEPTANCE NOT RUN`. |
-| T-806 | Accessibility/responsiveness | `IN_PROGRESS` | Chips are real buttons with titles and `aria-current`, one row with keyboard-reachable overflow controls; no 200%/viewport measurement done. |
+| T-806 | Accessibility/responsiveness | `IN_PROGRESS` | Chips are real buttons with titles and `aria-current`, one row with labelled keyboard-reachable overflow controls; every screen is asserted to expose no unnamed enabled button and no image without `alt`. **Not done:** 200% zoom, 1280/1440/1920 layout measurement, screen-reader pass — all need a real browser (E3). |
 | T-807 | Performance/resource stability | `NOT_STARTED` | — |
 
 ### G9 — documentation and rollout
@@ -180,13 +180,17 @@ Evidence levels: **E1** source, **E2** fixture/integration (includes the jsdom r
 | M4 documentation | `07290f8` | `docs/operations/arena-v2-studio-20261020/*`, `DEXDIFFUSION.md`, `OPERATIONAL_STATE.md`, `docs/acceptance/…` | Reviewed by hand. |
 | Full suite | — | — | See §6.1. |
 
+**Later commits on the same branch** (each independently tested):
+`6e093d9` canonical source resolution + reload reconciliation + render survival;
+`a90f600` Create screen header + the 14-screen render matrix.
+
 **Source control readback:** branch `arena/f721222f-image-gen` pushed to `origin`; remote head observed at `07290f893f6cf84f809cecefa26a89afea21608e`.
 Pull request **#4** — https://github.com/westkitty/Image_Gen/pull/4 — **open, converted to DRAFT, never merged or closed**.
 
 ### 6.1 Full-suite comparison
 
 - **Before** (pristine base SHA copy, same dependencies): 923 tests, **755 pass / 88 fail / 80 skipped**.
-- **After** (this branch): 960 tests, **792 pass / 88 fail / 80 skipped** (+37 tests, +37 passes).
+- **After** (this branch, latest full run): 979 tests, **811 pass / 88 fail / 80 skipped** (+56 tests, +56 passes). An interim run after G1-G4 was 960/792/88/80.
 - Failure names were compared with `comm` against the baseline list: **0 new failures, 0 newly-fixed-by-accident**. The 88 failures are byte-identical to the baseline set (`ffmpeg`, Python/numpy, macOS paths, live-run fixtures).
 - Known environmental gaps: no Chromium, so every `test:browser*` suite is **skipped, not passed**; no Swift toolchain, so the native test is source-level only.
 
