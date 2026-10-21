@@ -5,8 +5,8 @@
 
 class Component extends DCLogic {
   state = {
-    version: (() => { const v = Number(localStorage.getItem('dex_version')); return v === 1 || v === 2 || v === 3 || v === 4 ? v : 4; })(),
-    screens: (() => { let s = 'create'; try { s = sessionStorage.getItem('dex_screen') || 'create'; } catch {} let ca = 'workstation'; try { ca = sessionStorage.getItem('dex_concept_screen') || 'workstation'; } catch {} return { 1: s, 2: s, 3: s, 4: ca }; })(),
+    version: (() => { let v = Number(localStorage.getItem('dex_version')); if (v === 4) { try { localStorage.setItem('dex_version','2'); } catch {} v = 2; } return v === 1 || v === 2 || v === 3 ? v : 2; })(),
+    screens: (() => { let s = 'create'; try { s = sessionStorage.getItem('dex_screen') || 'create'; } catch {} let ca = 'create'; try { ca = sessionStorage.getItem('dex_concept_screen') || 'create'; if (ca === 'workstation') ca = 'create'; } catch {} return { 1: s, 2: s, 3: s, 4: s }; })(),
     activeAssetSelection: null,
     // Create
     target: 'sd15',
@@ -28,7 +28,7 @@ class Component extends DCLogic {
     })(),
     steps: 20, cfg: 7, seed: -1, width: 512, height: 512,
     sampler: 'euler_a', scheduler: 'discrete', clipSkip: '', tiling: false, eta: '', rng: '',
-    jobStatus: 'idle', progress: 0, currentImageSrc: null, lastSeed: null, errorMsg: '', lastGenerationParams: null,
+    jobStatus: 'idle', progress: 0, currentImageSrc: null, lastSeed: null, errorMsg: '', lastGenerationParams: null, generatingJobId: null, cancelStatus: null, quarantineNote: '',
     // Batch
     batchAxisX: 'seed', batchValuesX: '-1,-1,-1,-1',
     batchPrompt: '', batchNeg: '', batchSteps: 20, batchCfg: 7, batchW: 512, batchH: 512,
@@ -103,11 +103,11 @@ class Component extends DCLogic {
   }
 
   _workspaceForScreen(screen) {
-    if (screen === 'create' || screen === 'batch') return 'generate';
+    if (screen === 'create' || screen === 'batch' || screen === 'swap' || screen === 'voice' || screen === 'drama' || screen === 'music' || screen === 'video' || screen === 'world' || screen === '3d') return screen;
     if (screen === 'edit' || screen === 'enhance') return 'edit';
     if (screen === 'library') return 'media';
     if (screen === 'models' || screen === 'system') return 'settings';
-    return screen || 'workstation';
+    return screen || 'create';
   }
 
   _unsavedWorkspaceWork() {
@@ -366,6 +366,40 @@ class Component extends DCLogic {
   }
 
   openAsset3dViewer(artifactId) { this.setActiveAssetSelection({ kind: 'asset3d', id: artifactId }); window.open('/dexdiffusion/asset3d-viewer.html?artifact=' + encodeURIComponent(artifactId), '_blank', 'noopener'); }
+
+  buildSwapWorkspace() {
+    const h = React.createElement;
+    const cap = (this.state.capabilityData && this.state.capabilityData.featureGates && this.state.capabilityData.featureGates.swap) || null;
+    const sys = this.state.systemInfo && this.state.systemInfo.capabilities ? this.state.systemInfo.capabilities.find(c=>c.id==='swap') : null;
+    const status = sys ? sys.status : 'not_proven';
+    const reason = sys ? sys.reason : (cap ? cap.reason : 'No runtime evidence — feature not proven on this 32 GiB machine without dedicated asset');
+    return h('div', { style: { display:'grid', gap:14, maxWidth:1080 } },
+      h('div', { style: { background:'#060a10', border:'1px solid rgba(148,163,184,.14)', borderRadius:12, padding:16 } },
+        h('div', { style:{ fontSize:18, color:'#f0f4f8', fontWeight:750 } }, 'Swap'),
+        h('div', { style:{ color:'#90a4b8', fontSize:12, lineHeight:1.5, margin:'6px 0 12px' } }, 'Face and style transfer. Runtime evidence: not proven on this machine.'),
+        h('div', { style:{ display:'inline-flex', alignItems:'center', gap:7, border:'1px solid rgba(251,191,36,.3)', background:'rgba(251,191,36,.08)', color:'#fde68a', borderRadius:999, padding:'5px 10px', fontSize:11, fontWeight:700 } }, 'Unavailable — ' + status),
+        h('div', { style:{ color:'#8da0b4', fontSize:11, marginTop:10, lineHeight:1.5 } }, reason || 'Swap engine not staged. Use Create/Edit for generation.'),
+        h('div', { style:{ color:'#70849a', fontSize:11, marginTop:12, fontFamily:"'IBM Plex Mono',monospace" } }, 'Gate: ' + (cap ? cap.gate : 'not-proven') + ' · capability: /api/capabilities · system-info: /api/system-info')
+      )
+    );
+  }
+
+  buildVideoWorkspace() {
+    const h = React.createElement;
+    const cap = (this.state.capabilityData && this.state.capabilityData.featureGates && this.state.capabilityData.featureGates.video) || null;
+    const sys = this.state.systemInfo && this.state.systemInfo.capabilities ? this.state.systemInfo.capabilities.find(c=>c.id==='video') : null;
+    const status = sys ? sys.status : 'not_proven';
+    const reason = sys ? sys.reason : (cap ? cap.reason : 'No runtime evidence — video model not proven on this 32 GiB machine');
+    return h('div', { style: { display:'grid', gap:14, maxWidth:1080 } },
+      h('div', { style: { background:'#060a10', border:'1px solid rgba(148,163,184,.14)', borderRadius:12, padding:16 } },
+        h('div', { style:{ fontSize:18, color:'#f0f4f8', fontWeight:750 } }, 'Video'),
+        h('div', { style:{ color:'#90a4b8', fontSize:12, lineHeight:1.5, margin:'6px 0 12px' } }, 'Image-to-video. Runtime evidence: not proven.'),
+        h('div', { style:{ display:'inline-flex', alignItems:'center', gap:7, border:'1px solid rgba(251,191,36,.3)', background:'rgba(251,191,36,.08)', color:'#fde68a', borderRadius:999, padding:'5px 10px', fontSize:11, fontWeight:700 } }, 'Unavailable — ' + status),
+        h('div', { style:{ color:'#8da0b4', fontSize:11, marginTop:10, lineHeight:1.5 } }, reason || 'Video engine not staged.'),
+        h('div', { style:{ color:'#70849a', fontSize:11, marginTop:12, fontFamily:"'IBM Plex Mono',monospace" } }, 'Gate: ' + (cap ? cap.gate : 'not-proven') + ' · capability: /api/capabilities')
+      )
+    );
+  }
 
   openAsset3dInBlender(artifactId) {
     fetch(this.state.backendUrl + '/api/3d/open-in-blender', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ artifact_id: artifactId }) })
@@ -1152,13 +1186,13 @@ class Component extends DCLogic {
     } catch {}
   }
 
-  // ── Generate (txt2img) ────────────────────────────────────────
+  // ── Generate (txt2img) — verified cancellation (F14) ───────────────
   async onGenerate() {
-    const { jobStatus, prompt, negPrompt, steps, cfg, seed, width, height,
+    const { jobStatus, generatingJobId, prompt, negPrompt, steps, cfg, seed, width, height,
             target, backendUrl, savePrompts, sampler, scheduler, selectedVae } = this.state;
-    if (jobStatus === 'generating') {
-      clearInterval(this._pollTimer);
-      this.setState({ jobStatus: 'idle', progress: 0 });
+    if (jobStatus === 'generating' || jobStatus === 'cancelling') {
+      if (generatingJobId) await this.cancelCurrentJob();
+      else { clearInterval(this._pollTimer); this.setState({ jobStatus: 'idle', progress: 0, generatingJobId: null }); }
       return;
     }
     if (!prompt.trim()) { this.toast('Enter a prompt first', '#fbbf24'); return; }
@@ -1183,10 +1217,44 @@ class Component extends DCLogic {
         this.toast(err.error || 'Generate failed', '#ef4444'); return;
       }
       const { job_id } = await r.json();
+      this.setState({ generatingJobId: job_id, jobStage: { label: 'Running', percent: 0, determinate: false } });
       this._startPoll(job_id, (job) => this._onGenerateDone(job, body, backendUrl));
     } catch(e) {
-      this.setState({ jobStatus: 'error', errorMsg: e.message });
+      this.setState({ jobStatus: 'error', errorMsg: e.message, generatingJobId: null });
       this.toast(e.message, '#ef4444');
+    }
+  }
+
+  async cancelCurrentJob() {
+    const { generatingJobId, backendUrl } = this.state;
+    if (!generatingJobId) return;
+    this.setState({ jobStatus: 'cancelling', cancelStatus: 'stopping', quarantineNote: '' });
+    this.toast('Stopping on Big Mac…', '#f59e0b');
+    try {
+      const r = await fetch(backendUrl + '/api/jobs/' + encodeURIComponent(generatingJobId) + '/cancel', { method: 'POST', headers: { 'content-type':'application/json' }, body: JSON.stringify({ reason: 'Cancelled by user' }) });
+      const body = await r.json().catch(()=> ({}));
+      if (r.ok && body.remote_stop === 'verified' || body.status === 'COMPLETE') {
+        clearInterval(this._pollTimer);
+        // A completed image outranks cancel — let poll deliver it, else mark cancelled verified
+        if (body.status === 'COMPLETE') { this.toast('Job completed before stop — image preserved',' #65d66e'); return; }
+        this.setState({ jobStatus: 'idle', progress: 0, generatingJobId: null, cancelStatus: 'verified', currentImageSrc: null, errorMsg: '' });
+        this.toast('Cancelled — Big Mac verified stopped', '#65d66e');
+      } else if (r.status === 202 || body.quarantine || body.remote_stop === 'unverified') {
+        clearInterval(this._pollTimer);
+        this.setState({ jobStatus: 'idle', progress: 0, generatingJobId: null, cancelStatus: 'quarantine', quarantineNote: body.error || body.worker?.state || 'unverified — heavy work paused', errorMsg: body.error || 'Remote stop not verified — quarantine active' });
+        this.toast('Cancelled locally — quarantine (heavy work paused) · check System → Remote Workers', '#fbbf24');
+      } else if (!r.ok) {
+        this.setState({ jobStatus: 'cancelling', errorMsg: body.error || ('cancel ' + r.status) });
+        this.toast(body.error || 'Cancel failed', '#ef4444');
+        // keep polling until server settles
+      } else {
+        clearInterval(this._pollTimer);
+        this.setState({ jobStatus: 'idle', generatingJobId: null, cancelStatus: body.remote_stop || 'cancelled' });
+        this.toast('Cancelled', '#65d66e');
+      }
+    } catch (e) {
+      this.setState({ jobStatus: 'cancelling', errorMsg: e.message });
+      this.toast('Cancel request failed: ' + e.message, '#ef4444');
     }
   }
 
@@ -1210,13 +1278,16 @@ class Component extends DCLogic {
       };
       const runs = [run, ...this.state.runs].slice(0, 100);
       try { localStorage.setItem('dex_runs', JSON.stringify(runs)); } catch {}
-      this.setState(s => ({ jobStatus: 'complete', progress: 100, currentImageSrc: imgSrc, lastSeed: params.seed, runs,
+      this.setState(s => ({ jobStatus: 'complete', progress: 100, currentImageSrc: imgSrc, lastSeed: params.seed, runs, cancelStatus: null, generatingJobId: null,
         lastGenerationParams: { ...(s.lastGenerationParams || params), runId, imageFile: imgFile, status: job.status } }));
       this.toast('Done · ' + (runId || ''), '#65d66e');
       setTimeout(() => this.loadRuns(), 1500);
+    } else if (job.status === 'CANCELLED' || job.status === 'INTERRUPTED') {
+      this.setState({ jobStatus: 'idle', currentImageSrc: null, errorMsg: 'Cancelled' + (job.firstFailedGate ? ' · ' + job.firstFailedGate : ''), generatingJobId: null, cancelStatus: job.quarantine ? 'quarantine' : 'cancelled', progress: 0 });
+      this.toast('Cancelled' + (job.quarantine ? ' — quarantine (heavy work paused)' : ''), '#fbbf24');
     } else {
       const gate = job.firstFailedGate ? ' · gate: ' + job.firstFailedGate : '';
-      this.setState({ jobStatus: 'error', progress: 0, errorMsg: 'Job ' + (job.status || 'failed') + gate + ' (exit ' + (job.exitCode ?? '?') + ')' });
+      this.setState({ jobStatus: 'error', progress: 0, errorMsg: 'Job ' + (job.status || 'failed') + gate + ' (exit ' + (job.exitCode ?? '?') + ')', generatingJobId: null });
       this.toast('Generation failed' + gate, '#ef4444');
     }
   }
@@ -1406,6 +1477,11 @@ class Component extends DCLogic {
   }
 
   buildImageDisplay(jobStatus, progress, imageSrc, lastSeed, errorMsg) {
+    if (jobStatus === 'cancelling') {
+      return React.createElement('div', { role:'status', 'aria-busy':'true', style:{ textAlign:'center', padding:'0 24px', maxWidth:320 } },
+        React.createElement('div', { style:{ fontSize:13, color:'#f59e0b', marginBottom:10 } }, 'Stopping on Big Mac… verifying none left'),
+        React.createElement('div', { style:{ height:5, background:'rgba(255,255,255,.08)', borderRadius:3, overflow:'hidden' } }, React.createElement('div', { className:'dex-indeterminate-bar', style:{ position:'absolute', top:0, height:'100%', width:'40%', borderRadius:3, background:'linear-gradient(90deg,#f59e0b,#fbbf24)', animation:'dexIndeterminate 1.1s ease-in-out infinite' } })));
+    }
     if (jobStatus === 'generating') {
       const steps = Math.round(progress / 100 * (+this.state.steps || 20));
       const determinate = progress > 0;
@@ -2203,15 +2279,15 @@ class Component extends DCLogic {
 
     return {
       version, versionStr: String(version), screen, compactModeStr: String(s.compactMode),
-      isV1: version===1, isV2: version===2, isV3: version===3, isV4: version===4, isLegacy: version !== 4,
+      isV1: version===1, isV2: version===2, isV3: version===3, isV4: version===4, isLegacy: version !== 2,
       isV1Str: String(version===1), isV2Str: String(version===2), isV3Str: String(version===3), isV4Str: String(version===4),
-      setV1: ()=>this.setVersion(1), setV2: ()=>this.setVersion(2), setV3: ()=>this.setVersion(3), setV4: ()=>this.setVersion(4),
-      isCreate: screen==='create', isBatch: screen==='batch', isEdit: screen==='edit',
+      setV1: ()=>this.setVersion(1), setV2: ()=>this.setVersion(2), setV3: ()=>this.setVersion(3), setV4: ()=>{ try { localStorage.setItem('dex_version','2'); } catch {} this.setState({ version: 2, screens: { ...this.state.screens, 2: this.state.screens[4] || 'create' } }); this.toast('Concept A merged into Studio — now in Create',' #38bdf8'); },
+      isCreate: screen==='create', isBatch: screen==='batch', isSwap: screen==='swap', isVoice: screen==='voice', isDrama: screen==='drama', isMusic: screen==='music', isVideo: screen==='video', isEdit: screen==='edit',
       isEnhance: screen==='enhance', isLibrary: screen==='library', isWorld: screen==='world', is3d: screen==='3d', isModels: screen==='models', isSystem: screen==='system',
-      isCreateStr: String(screen==='create'), isBatchStr: String(screen==='batch'),
+      isCreateStr: String(screen==='create'), isBatchStr: String(screen==='batch'), isSwapStr: String(screen==='swap'), isVoiceStr: String(screen==='voice'), isDramaStr: String(screen==='drama'), isMusicStr: String(screen==='music'), isVideoStr: String(screen==='video'),
       isEditStr: String(screen==='edit'), isEnhanceStr: String(screen==='enhance'),
       isLibraryStr: String(screen==='library'), isWorldStr: String(screen==='world'), is3dStr: String(screen==='3d'), isModelsStr: String(screen==='models'), isSystemStr: String(screen==='system'),
-      navCreate: ()=>this.setScreen('create'), navBatch: ()=>this.setScreen('batch'),
+      navCreate: ()=>this.setScreen('create'), navBatch: ()=>this.setScreen('batch'), navSwap: ()=>this.setScreen('swap'), navVoice: ()=>this.setScreen('voice'), navDrama: ()=>this.setScreen('drama'), navMusic: ()=>this.setScreen('music'), navVideo: ()=>this.setScreen('video'),
       navEdit: ()=>this.setScreen('edit'), navEnhance: ()=>this.setScreen('enhance'),
       navLibrary: ()=>this.setScreen('library'), navWorld: ()=>this.setScreen('world'), nav3d: ()=>this.setScreen('3d'), navModels: ()=>this.setScreen('models'), navSystem: ()=>this.setScreen('system'),
       // Create form
@@ -2272,7 +2348,7 @@ class Component extends DCLogic {
       savePrompts, onSavePrompts: e=>{ const v=e.target.checked; this.setState({savePrompts:v}); localStorage.setItem('dex_save_prompts',String(v)); },
       onRefreshRuns: ()=>this.loadRuns(), onRefreshAll: ()=>this.refreshAll(), onDiscoverAssets: ()=>this.discoverAssets(),
       settingsDrawer, runInspector, truthStatusPanel, systemInfoPanel, keyboardHelp, validationPanel,
-      libraryCards, runsCount: String(runs.length), jobLogDisplay, worldWorkspace: this.buildWorldWorkspace(), asset3dWorkspace: this.buildAsset3dWorkspace(),
+      libraryCards, runsCount: String(runs.length), jobLogDisplay, swapWorkspace: this.buildSwapWorkspace(), videoWorkspace: this.buildVideoWorkspace(), worldWorkspace: this.buildWorldWorkspace(), asset3dWorkspace: this.buildAsset3dWorkspace(),
       libraryFilters, libraryLoadMore, extraNetworksDisplay,
       assetCountsDisplay: (assets.loras || []).length + ' LoRAs · ' + (assets.vaes || []).length + ' VAEs · ' + (assets.controlnets || []).length + ' ControlNets',
       onHiresSubmit: ()=>this.onHiresSubmit(),
