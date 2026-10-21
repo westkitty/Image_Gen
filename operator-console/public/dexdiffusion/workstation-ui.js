@@ -454,6 +454,21 @@
     this.selectLibraryImage(id);
     return true;
   };
+  // Library-origin sources can be older than the recent-run list. Retain exactly
+  // the selected canonical image ID through 3D / World navigation.
+  P.useLibrarySource = function (id, destination) {
+    const SA = window.DexSourceAsset;
+    if (!SA || !SA.isImageId(id) || !['3d', 'world'].includes(destination)) {
+      this.toast('Choose a published Library image first.', '#fbbf24');
+      return false;
+    }
+    if (this.setScreen(destination) === false) return false;
+    this.setActiveAssetSelection({ kind: 'image', id });
+    this.setState(destination === '3d'
+      ? { asset3dSourceArtifact: id, asset3dPreviewFailedId: '' }
+      : { worldSourceArtifact: id });
+    return true;
+  };
 
   // Edit (img2img / inpaint / outpaint) lives in edit-ui.js: one authoritative openImageInEdit,
   // one operation state, one Run control.
@@ -754,7 +769,16 @@
       h('div', { style: { display: 'grid', gap: 6, alignContent: 'start' } },
         h('div', { style: css.mono }, sel.id),
         h('div', { style: css.muted }, [sel.width + '×' + sel.height, sel.meta.operation, sel.meta.target, sel.meta.seed != null ? 'seed ' + sel.meta.seed : null, sel.meta.steps ? sel.meta.steps + ' steps' : null, sel.meta.strength ? 'strength ' + sel.meta.strength : null, sel.keeper ? '★ Keeper' : null].filter(Boolean).join(' · ') || 'legacy image (no lineage recorded)'),
-        h('div', { style: css.row }, ...this.imageActions(selView)),
+        h('div', { style: Object.assign({}, css.row, { flexWrap: 'wrap' }), 'data-library-primary-actions': sel.id },
+          this._gate('img2img') ? btn('Edit', () => this.sendToEdit(sel.id, 'img2img'), '#a78bfa') : null,
+          btn('Enhance', () => this.sendToEnhance(sel.id), '#f59e0b'),
+          btn('Use for 3D', () => this.useLibrarySource(sel.id, '3d'), '#38bdf8'),
+          btn('Use for World', () => this.useLibrarySource(sel.id, 'world'), '#38bdf8'),
+          h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export', download: sel.id,
+            'aria-label': 'Download selected image', style: { padding: '8px 9px', color: '#7dd3fc', fontSize: 12, fontWeight: 700 } }, 'Download')),
+        h('details', { style: { border: '1px solid rgba(148,163,184,.17)', borderRadius: 8, padding: '8px 10px' } },
+          h('summary', { style: { cursor: 'pointer', color: '#cbd5e1', fontSize: 12 } }, 'More image actions'),
+          h('div', { style: Object.assign({}, css.row, { marginTop: 8, flexWrap: 'wrap' }) }, ...this.imageActions(selView))),
         h('div', { style: css.row, 'data-export-actions': 'true' },
           btn('Copy infotext', async () => { const r = await fetch(base + '/api/images/' + encodeURIComponent(sel.id) + '/infotext'); if (r.ok) this.copyInfotext(await r.text()); else this.toast((await r.json().catch(() => ({}))).error || 'No recorded settings', '#fbbf24'); }, '#94a3b8'),
           h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export?metadata=1', download: sel.id, 'data-export-link': 'metadata', style: { color: '#94a3b8', fontSize: 12, textDecoration: 'underline', padding: '6px 8px' } }, 'Export PNG with parameters'),
