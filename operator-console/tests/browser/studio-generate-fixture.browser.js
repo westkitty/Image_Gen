@@ -9,7 +9,7 @@ const {startServer,launchBrowser,installImageFixtures,runCleanups}=require('./he
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await installImageFixtures(page,{'fixture-create-result.png':{w:768,h:512,meta:{target:'sd15',seed:42}}});
  let submissions=[];
- await page.route('**/api/**',r=>['GET','HEAD'].includes(r.request().method())?r.continue():r.fulfill({status:409,json:{error:'Fixture blocks mutation'}}));
+ await page.route('**/api/**',r=>['GET','HEAD'].includes(r.request().method())?r.fallback():r.fulfill({status:409,json:{error:'Fixture blocks mutation'}}));
  await page.route('**/api/actions/generate-controlled',async r=>{
    submissions.push(r.request().postDataJSON());
    await r.fulfill({json:{job_id:'fixture-create-1',seeds:[42]}});
