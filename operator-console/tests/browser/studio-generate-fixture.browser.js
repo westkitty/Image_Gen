@@ -1,0 +1,40 @@
+'use strict';
+// Read-only isolated end-to-end UI simulation. No external worker or real jobs are touched.
+const assert=require('node:assert/strict');
+const {chromium}=require('playwright-core');
+const {startServer,launchBrowser,installImageFixtures,runCleanups}=require('./helpers');
+(async()=>{
+ const {base}=await startServer(); const browser=await launchBrowser(chromium);
+ const page=await browser.newPage({viewport:{width:1320,height:860}});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await installImageFixtures(page,{'fixture-create-result.png':{w:768,h:512,meta:{target:'sd15',seed:42}}});
+ let submissions=[];
+ await page.route('**/api/**',r=>['GET','HEAD'].includes(r.request().method())?r.continue():r.fulfill({status:409,json:{error:'Fixture blocks mutation'}}));
+ await page.route('**/api/actions/generate-controlled',async r=>{
+   submissions.push(r.request().postDataJSON());
+   await r.fulfill({json:{job_id:'fixture-create-1',seeds:[42]}});
+ });
+ await page.route('**/api/jobs/fixture-create-1',r=>r.fulfill({json:{id:'fixture-create-1',status:'COMPLETE',controlledTarget:'sd15',results:[{index:0,status:'DONE',imageId:'fixture-create-result.png',imageUrl:'/api/images/fixture-create-result.png',runId:'fixture-run',seed:42,width:768,height:512,target:'sd15'}]}}));
+ await page.goto(base+'/dexdiffusion/',{waitUntil:'domcontentloaded',timeout:30000});
+ await page.waitForFunction(()=>!!window.__dex&&window.__dex.state.version===2,{timeout:15000});
+ const prompt=page.getByRole('textbox',{name:'Describe your image'});
+ await prompt.fill('A golden oak tree under an alien sky');
+ await page.locator('[data-studio-shape="landscape"]').click();
+ await page.waitForFunction(()=>document.querySelector('[data-studio-shape="landscape"]')?.getAttribute('aria-pressed')==='true');
+ assert.equal(await page.getByText('Your image will appear here').isVisible(),true);
+ await page.getByRole('button',{name:'Generate image',exact:true}).click();
+ await page.getByText('Saved to Library',{exact:true}).waitFor({state:'visible',timeout:12000});
+ assert.equal(submissions.length,1,'one action per click');
+ const submitted=submissions[0];
+ assert.equal(submitted.prompt,'A golden oak tree under an alien sky');
+ assert.equal(submitted.width,768);assert.equal(submitted.height,512);
+ assert.ok(submitted.target,'model supplied');
+ const results=page.locator('[data-results-anchor]');
+ assert.equal(await results.getByRole('button',{name:'Open in Library',exact:true}).isVisible(),true);
+ assert.equal(await results.getByRole('button',{name:'Enhance',exact:true}).isVisible(),true);
+ const download=results.getByRole('link',{name:'Download',exact:true});
+ assert.equal(await download.getAttribute('download'),'fixture-create-result.png');
+ assert.match(await download.getAttribute('href'),/\/api\/images\/fixture-create-result\.png$/);
+ assert.deepEqual(errors,[]);
+ console.log('GENERATE_FIXTURE_PASS',JSON.stringify({submissions:submissions.length,prompt:submitted.prompt,size:`${submitted.width}x${submitted.height}`,result:'DONE',actions:['Open in Library','Enhance','Download']}));
+})().catch(e=>{console.error('GENERATE_FIXTURE_FAIL',e.stack);process.exitCode=1}).finally(runCleanups);
