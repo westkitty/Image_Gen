@@ -246,6 +246,7 @@ test('T-103 a job-owned stop hook that refuses keeps the job running', async () 
   const { state, jobStore, arbiter } = fixture({ status: 'RUNNING' });
   const mgr = createCancellationManager({
     arbiter, jobStore,
+    workerCapabilities: () => ({ cancel_supported: true, cancel_scope: 'stop-after-current' }),
     onLocalTerminate: async () => ({ ok: false, error: 'producer refused' })
   });
   mgr.registerActiveJob('job-1', {});
@@ -261,13 +262,42 @@ test('T-103 a job-owned stop hook (stop-after-current) is reported as such', asy
   let hooked = false;
   const mgr = createCancellationManager({
     arbiter, jobStore,
-    onLocalTerminate: async () => { hooked = true; return { ok: true } }
+    workerCapabilities: () => ({ cancel_supported: true, cancel_scope: 'stop-after-current' }),
+    onLocalTerminate: async () => { hooked = true; return { ok: true, verified: false, stop_after_current: true } }
   });
   mgr.registerActiveJob('job-1', {});
   const res = await mgr.cancelJob('job-1');
   assert.equal(hooked, true);
-  assert.equal(res.ok, true);
+  assert.equal(res.ok, false);
+  assert.equal(res.accepted, true);
   assert.equal(res.cancelState, 'stop_after_current');
+  assert.equal(state.job.status, 'RUNNING');
+  assert.equal(state.released.length, 0);
+});
+
+
+test('T-103 an undefined owner hook response cannot release the lease', async () => {
+  const { state, jobStore, arbiter } = fixture({ status: 'RUNNING' });
+  const mgr = createCancellationManager({ arbiter, jobStore,
+    workerCapabilities: () => ({ cancel_supported: true, cancel_scope: 'stop-after-current' }),
+    onLocalTerminate: async () => undefined });
+  mgr.registerActiveJob('job-1', {});
+  const res = await mgr.cancelJob('job-1');
+  assert.equal(res.ok, false);
+  assert.equal(res.gate, 'local-stop-unverified');
+  assert.equal(state.job.status, 'RUNNING');
+  assert.deepEqual(state.released, []);
+});
+
+test('T-103 an explicit verified owner result is required for final cancellation', async () => {
+  const { state, jobStore, arbiter } = fixture({ status: 'RUNNING' });
+  const mgr = createCancellationManager({ arbiter, jobStore,
+    workerCapabilities: () => ({ cancel_supported: true, cancel_scope: 'stop-after-current' }),
+    onLocalTerminate: async () => ({ ok: true, verified: true, detail: 'owner exited' }) });
+  mgr.registerActiveJob('job-1', {});
+  const res = await mgr.cancelJob('job-1');
+  assert.equal(res.ok, true);
+  assert.equal(res.terminationVerified, true);
   assert.equal(state.job.status, 'CANCELLED');
-  assert.equal(state.released.length, 1);
+  assert.deepEqual(state.released, ['job-1']);
 });
