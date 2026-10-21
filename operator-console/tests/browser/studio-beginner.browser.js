@@ -59,6 +59,7 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
   await jobs.click();
   const queuedButton=page.getByRole('button',{name:'Cancel queued job',exact:true});
   await queuedButton.waitFor({state:'visible'});
+  await page.waitForFunction(() => document.querySelector('[data-studio-jobs]')?.textContent.includes('1'),null,{timeout:3000});
   const cancelRequest=page.waitForRequest(r=>r.url().endsWith('/api/jobs/fixture-queued-1/cancel')&&r.method()==='POST');
   await queuedButton.click();
   const req=await cancelRequest;
