@@ -56,9 +56,8 @@
       [data-v] [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:minmax(0,1fr)!important}
       [data-v] nav{overflow-x:auto}
     }
-    @media (max-width: 600px){
-      [data-v="2"] [data-studio-primary-action]{position:sticky;bottom:0;z-index:10;background:#160f22;padding:7px 0;margin-bottom:0!important;box-shadow:0 -8px 22px rgba(0,0,0,.35)}
-    }
+    /* Generate stays reachable on a normal Dock-sized desktop window, not only phones. */
+    [data-v="2"] [data-studio-primary-action]{position:sticky;bottom:0;z-index:10;background:#160f22;padding:7px 0;margin-bottom:0!important;box-shadow:0 -8px 22px rgba(0,0,0,.35)}
     @media (max-width: 600px){
       [data-v] [style*="repeat(4,1fr)"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;min-width:0}
     }
