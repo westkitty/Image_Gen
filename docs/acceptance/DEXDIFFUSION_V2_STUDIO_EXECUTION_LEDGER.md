@@ -7,8 +7,8 @@
 **Initial remote readback:** `origin/main` was the same SHA as baseline; no intervening main commits. Initial worktree was clean.
 **Initial source-control authority:** `origin=https://github.com/westkitty/Image_Gen.git`; `gh repo view` returned exact repository and `viewerPermission=ADMIN`. No pre-existing PR was found for this branch.
 **Final pre-doc commit readback:** `HEAD=35208161d7042e486947865661021a0fde37179e`; `origin/main=4324dec29240fc61fb32ef2ef9db23fad0ced7a1`; merge base remains the original baseline.
-**Pushed branch readback:** `origin/arena/ba1fe323-image-gen=35fd1c7bb094480854a4f88398e3a57631facacd` (matched local HEAD before this ledger follow-up).
-**Review PR:** [#5](https://github.com/westkitty/Image_Gen/pull/5), draft, `OPEN`, base `main`, head `arena/ba1fe323-image-gen`, merge commit `null`. Never merged.
+**Pushed branch readback (before this receipt update):** `origin/arena/ba1fe323-image-gen=030cc0d35ccb5b3ede36cb5a1bc6f76bc2c69639` (matched local HEAD).
+**Review PR readback:** [#5](https://github.com/westkitty/Image_Gen/pull/5), draft, `OPEN`, base `main`, head `arena/ba1fe323-image-gen`, PR head SHA `030cc0d35ccb5b3ede36cb5a1bc6f76bc2c69639`, merge commit `null`. Never merged.
 **Environment:** Linux x86_64 Arena container, Node 22.22.3; not the owner’s MacBook, native WKWebView, or Big Mac.
 
 ## Current delivery state
@@ -24,6 +24,7 @@ The standard-library Node tests and source checks pass for the touched behaviors
 | `0a3392a` — `fix(jobs): fail closed for unowned cancellation` | `operator-console/cancellation.js`, `operational-jobs.js`, `server.js`, `tests/cancellation-unowned.test.js`, `tests/generic-job-cancel-capability.test.js` | Cancellation and job projection are covered by focused Node suites; this is not evidence of Big Mac termination. |
 | `3520816` — `feat(studio): make V2 the normal shell` | Native dialog delegate, V2 `component.js`/`index.html`, package browser script, seven debug-query updates, browser harness, Studio unit/source-contract tests | Focused suites pass; full unit suite has 88 failures; actual browser did not start (Chrome absent); Swift not compiled. |
 | `35fd1c7` — `docs(studio): record V2 acceptance and blockers` | README/operator/acceptance/Concept A direction updates plus this ledger | Explicit test failures and external blockers recorded; pushed with the branch. |
+| `030cc0d` — `docs(studio): record pushed branch and review PR` | `OPERATIONAL_STATE.md`, this ledger | Records verified push and open draft PR #5; subsequent ledger receipt update is still to be pushed. |
 
 ## Gate record
 
