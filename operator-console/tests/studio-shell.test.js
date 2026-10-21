@@ -135,8 +135,9 @@ test('the component no longer defaults to the Workstation shell', () => {
 function boot({ storage = {}, screen = null, fetch: fetchImpl = null } = {}) {
   const html = read('index.html');
   const tpl = html.match(/<template id="dc-template">([\s\S]*?)<\/template>/)[1];
+  const styles = (html.match(/<style>([\s\S]*?)<\/style>/) || [, ''])[1];
   const dom = new JSDOM(
-    `<!doctype html><html><body><div id="app-root"></div><template id="dc-template">${tpl}</template></body></html>`,
+    `<!doctype html><html><head><style>${styles}</style></head><body><div id="app-root"></div><template id="dc-template">${tpl}</template></body></html>`,
     { url: 'http://127.0.0.1:31337/dexdiffusion/', runScripts: 'outside-only', pretendToBeVisual: true }
   );
   const w = dom.window;
@@ -554,4 +555,27 @@ test('every onClick/onChange binding in the template resolves to a real function
     const missing = [...names].filter(n => typeof inst.__lastVals[n] !== 'function');
     assert.deepEqual(missing, [], 'these bindings point at nothing and would be dead controls');
   } finally { close(); }
+});
+
+test('I-01: the version picker is really hidden for a normal profile, and really shown in developer mode', { skip: needsDom }, async () => {
+  const normal = boot();
+  try {
+    await settle(normal.w, 120);
+    const picker = normal.doc.querySelector('[data-version-buttons]');
+    assert.ok(picker, 'the picker still exists for developers');
+    assert.equal(normal.w.getComputedStyle(picker).display, 'none', 'a normal first run must not see a version picker');
+    for (const id of ['1', '2', '3', '4']) {
+      const b = normal.doc.querySelector(`[data-vbtn="${id}"]`);
+      assert.ok(b, 'V' + id + ' remains in the DOM (nothing deleted)');
+      assert.equal(b.closest('[data-dev-only]'), picker, 'V' + id + ' lives inside the developer-only picker');
+    }
+    assert.equal(picker.getAttribute('data-dev-only'), 'false', 'a normal profile is not in developer mode');
+  } finally { normal.close(); }
+
+  const dev = boot({ storage: { dex_developer: '1' } });
+  try {
+    await settle(dev.w, 120);
+    assert.notEqual(dev.w.getComputedStyle(dev.doc.querySelector('[data-version-buttons]')).display, 'none',
+      'developer mode may still compare shells');
+  } finally { dev.close(); }
 });
