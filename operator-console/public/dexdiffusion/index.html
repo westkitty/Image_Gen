@@ -465,7 +465,7 @@
           <div style="font-size:18px;font-weight:800;color:#eeeaf8;font-family:'DM Sans',sans-serif;">Create</div>
           <div style="font-size:12px;color:#9090b4;line-height:1.5;margin-top:2px;">Describe an image, choose a model and image shape, then press Generate image. Use Jobs to review work or stop an eligible job.</div>
         </div>
-        <div>{{ keyboardHelp }}</div><div>{{ createWorkbench }}</div><div>{{ settingsDrawer }}</div>
+        
         <div style="margin-bottom:14px;border:1px solid rgba(245,158,11,.16);border-radius:9px;padding:9px;background:rgba(17,10,30,.55);">
           <button onClick="{{ onTogglePrompt }}" style="width:100%;border:none;background:transparent;padding:0;display:flex;align-items:center;justify-content:space-between;color:#f59e0b;cursor:pointer;font-family:'DM Sans',sans-serif;">
             <span style="font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;">Describe your image</span>
@@ -486,7 +486,9 @@
           <div style="display:flex;gap:5px;flex-wrap:wrap;"><button onClick="{{ setDim512 }}" style="border:1px solid rgba(200,180,255,.12);background:rgba(22,15,34,.8);color:#8888b0;border-radius:5px;padding:3px 7px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;">Square</button><button onClick="{{ setDim768 }}" style="border:1px solid rgba(200,180,255,.12);background:rgba(22,15,34,.8);color:#8888b0;border-radius:5px;padding:3px 7px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;">Landscape</button><button onClick="{{ setDimPortrait }}" style="border:1px solid rgba(200,180,255,.12);background:rgba(22,15,34,.8);color:#8888b0;border-radius:5px;padding:3px 7px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;">Portrait</button><button onClick="{{ setDim1024 }}" style="border:1px solid rgba(200,180,255,.12);background:rgba(22,15,34,.8);color:#8888b0;border-radius:5px;padding:3px 7px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;">Large square</button></div>
 <details data-studio-advanced style="margin-top:16px;border:1px solid rgba(200,180,255,.2);border-radius:9px;padding:12px;">
 <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#ddd6fe;">Advanced settings</summary>
-<div style="margin-top:13px;">        <div style="margin-bottom:12px;">{{ createResources }}</div><div>{{ createPresets }}</div>
+<div style="margin-top:13px;">
+<div>{{ createWorkbench }}</div><div>{{ settingsDrawer }}</div><div>{{ keyboardHelp }}</div>
+        <div style="margin-bottom:12px;">{{ createResources }}</div><div>{{ createPresets }}</div>
                 <div style="font-size:10px;font-weight:700;color:#f59e0b;letter-spacing:.1em;text-transform:uppercase;padding-bottom:7px;border-bottom:1px solid rgba(245,158,11,.15);margin-bottom:10px;">Parameters</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:8px;">
           <div><div style="font-size:10px;color:#8888b0;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;">Steps</div><input type="number" value="{{ steps }}" onChange="{{ onStepsChange }}" min="1" max="150" style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:7px;outline:none;font-size:12px;" /></div>
