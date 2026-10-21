@@ -205,9 +205,14 @@
     const enabled = !!(w && w.enabled) && !busy;
     const label = busy ? this._jobLabel(j) : reason ? 'Generate — ' + reason : 'Generate';
     const keepActionVisible = this.state.version === 4 && (kind === 'voice' || kind === 'music');
+    const cannotStopOnceStarted = !!(w && w.enabled && w.capabilities && w.capabilities.cancel_supported === false);
     return h('div', { className: keepActionVisible ? 'ca-media-action-bar' : undefined, 'data-media-generate-bar': keepActionVisible ? kind : undefined, style: Object.assign({}, css.row, keepActionVisible
       ? { marginTop: 10, position: 'sticky', bottom: 4, zIndex: 5, background: 'rgba(16,27,39,.98)', padding: 8, border: '1px solid rgba(148,163,184,.2)', borderRadius: 9, boxShadow: '0 8px 24px rgba(0,0,0,.38)' }
       : { marginTop: 10 }) },
+      cannotStopOnceStarted ? h('div', { role: 'note', 'data-worker-cancel-warning': workerId,
+        style: { flex: '1 1 100%', padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(251,191,36,.45)',
+          background: 'rgba(251,191,36,.08)', color: '#fde68a', fontWeight: 650, fontSize: 12, lineHeight: 1.45 } },
+        'This job cannot be stopped after it starts. It will run to completion once the worker begins.') : null,
       h('button', { type: 'button', disabled: !enabled, 'aria-disabled': String(!enabled), 'aria-busy': String(!!busy), title: label,
         style: { flex: '1 1 220px', minHeight: 44, borderRadius: 9, border: 0, fontWeight: 800, fontSize: 14, cursor: enabled ? 'pointer' : 'not-allowed',
           background: enabled ? 'linear-gradient(90deg,#8b5cf6,#22d3ee)' : busy ? 'rgba(56,189,248,.18)' : 'rgba(148,163,184,.12)', color: enabled ? '#06060a' : busy ? '#7dd3fc' : '#94a3b8' },
