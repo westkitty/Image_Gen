@@ -30,6 +30,7 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
   assert.equal(await shape.count(),4,'four named image shapes');
   assert.equal(await shape.filter({hasText:'Square'}).first().getAttribute('aria-pressed'),'true');
   await page.locator('[data-studio-shape="landscape"]').click();
+  await page.waitForFunction(() => document.querySelector('[data-studio-shape=\"landscape\"]')?.getAttribute('aria-pressed')==='true',null,{timeout:5000});
   assert.equal(await page.locator('[data-studio-shape="landscape"]').getAttribute('aria-pressed'),'true','selected shape announced');
   assert.equal(await page.locator('[data-studio-shape="square"]').getAttribute('aria-pressed'),'false','old shape deselected');
   assert.equal(await page.getByRole('textbox',{name:'Negative prompt'}).isVisible(),false,'advanced negative prompt starts hidden');
@@ -47,6 +48,24 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
   await page.locator('#v12-jc-close-btn').click();
   assert.equal(await page.locator('#v12-job-center-drawer').getAttribute('aria-hidden'),'true');
   assert.equal(await page.locator('#v12-hud-bar').isVisible(),false,'no duplicate HUD');
+  // J02: a queued job must have an obvious, functioning Cancel queued job button.
+  // The HTTP mutation is intercepted. No real job is touched.
+  const queuedJob={id:'fixture-queued-1',operation:'txt2img',label:'Sample queued job',
+    worker:'mflux',mediaKind:'image',status:'QUEUED',canCancel:true,cancelCapability:'queued_only',createdAt:new Date().toISOString()};
+  await page.route('**/api/operations/snapshot',r=>r.fulfill({json:{active:[],queue:[queuedJob],recent:[],resources:{}}}));
+  await page.route('**/api/jobs/fixture-queued-1/cancel',r=>r.fulfill({json:{ok:true,accepted:true,neverStarted:true,terminationVerified:true,cancelState:'not_started'}}));
+  await page.evaluate(j=>{__DEX_V12.snapshot={active:[],queue:[j],recent:[],resources:{}};},queuedJob);
+  let queuedPrompt=''; page.on('dialog',async d=>{queuedPrompt=d.message();await d.accept();});
+  await jobs.click();
+  const queuedButton=page.getByRole('button',{name:'Cancel queued job',exact:true});
+  await queuedButton.waitFor({state:'visible'});
+  const cancelRequest=page.waitForRequest(r=>r.url().endsWith('/api/jobs/fixture-queued-1/cancel')&&r.method()==='POST');
+  await queuedButton.click();
+  const req=await cancelRequest;
+  assert.match(queuedPrompt,/before it starts/,'queued confirmation accurately explains timing');
+  assert.equal(req.postDataJSON().reason,'User cancelled via Job Center');
+  await page.locator('#v12-jc-close-btn').click();
+
   await page.setViewportSize({width:390,height:844});
   const promptBox=await page.getByRole('textbox',{name:'Describe your image'}).boundingBox();
   const generateBox=await page.getByRole('button',{name:'Generate image',exact:true}).boundingBox();
