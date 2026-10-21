@@ -172,13 +172,16 @@ Evidence levels: **E1** source, **E2** fixture/integration (includes the jsdom r
 
 ## 6. Milestones, commands and results
 
-| Milestone | Staged paths | Verification |
-|---|---|---|
-| M1 cancellation truth | `cancellation.js`, `server.js`, `operational-jobs.js`, `tests/cancellation-truth.test.js` | `node --test tests/cancellation-truth.test.js` → 16/16 pass. Related suites (`v12-cancellation-safety`, `workstation-v12-foundations`, `job-store-events`, `op7-remote-workers`) pass; the only failures are the pre-existing `scan-owned` fixture and `drama-production-routes` (missing `ffmpeg`). |
-| M2 native dialogs | `ImageGenApp.swift`, `tests/native-wrapper-launch.test.js` | Static test 4/4 pass. Not compiled (no toolchain) → `BLOCKED_NATIVE`. |
-| M3 Studio shell | `studio-nav.js`, `component.js`, `index.html`, `media-ui.js`, `tests/studio-shell.test.js`, `tests/world-tab-navigation.test.js` | `node --test tests/studio-shell.test.js` → 20/20 pass; `world-tab-navigation` 4/4. |
-| M4 documentation | `docs/operations/arena-v2-studio-20261020/*`, `DEXDIFFUSION.md`, `OPERATIONAL_STATE.md`, `docs/acceptance/…` | Reviewed by hand. |
-| Full suite | — | See §6.1. |
+| Milestone | Commit | Staged paths | Verification |
+|---|---|---|---|
+| M1 cancellation truth | `b1253ca` | `cancellation.js`, `server.js`, `operational-jobs.js`, `tests/cancellation-truth.test.js` | `node --test tests/cancellation-truth.test.js` → 16/16 pass. Related suites (`v12-cancellation-safety`, `workstation-v12-foundations`, `job-store-events`, `op7-remote-workers`) pass; the only failures there are the pre-existing `scan-owned` fixture and `drama-production-routes` (missing `ffmpeg`). |
+| M2 native dialogs | `50e6b97` | `ImageGenApp.swift`, `tests/native-wrapper-launch.test.js` | Static test 4/4 pass. Not compiled (no toolchain) → `BLOCKED_NATIVE`. |
+| M3 Studio shell | `d9779e0` | `studio-nav.js`, `component.js`, `index.html`, `media-ui.js`, `tests/studio-shell.test.js`, `tests/world-tab-navigation.test.js`, `package.json`/`package-lock.json` (jsdom, dev) | `node --test tests/studio-shell.test.js` → 20/20 pass; `world-tab-navigation` 4/4. |
+| M4 documentation | `07290f8` | `docs/operations/arena-v2-studio-20261020/*`, `DEXDIFFUSION.md`, `OPERATIONAL_STATE.md`, `docs/acceptance/…` | Reviewed by hand. |
+| Full suite | — | — | See §6.1. |
+
+**Source control readback:** branch `arena/f721222f-image-gen` pushed to `origin`; remote head observed at `07290f893f6cf84f809cecefa26a89afea21608e`.
+Pull request **#4** — https://github.com/westkitty/Image_Gen/pull/4 — **open, converted to DRAFT, never merged or closed**.
 
 ### 6.1 Full-suite comparison
 
