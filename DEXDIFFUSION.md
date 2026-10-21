@@ -1,5 +1,7 @@
 # DexDiffusion — Operator Guide
 
+> **Current interface direction (2026-10-20):** Normal DexDiffusion launches into **V2 Studio → Create**. The former Workstation/Concept A shell remains available only for developer regression work with `?debug=1`; its older default-first documentation is historical. Current implementation evidence and external acceptance steps are tracked in [`docs/acceptance/DEXDIFFUSION_V2_STUDIO_EXECUTION_LEDGER.md`](docs/acceptance/DEXDIFFUSION_V2_STUDIO_EXECUTION_LEDGER.md).
+
 This is the canonical, cold-start guide to running DexDiffusion. It is written so a
 person or a successor AI can operate and repair the system from the repository
 alone. Current evidence and history live in [`OPERATIONAL_STATE.md`](OPERATIONAL_STATE.md);

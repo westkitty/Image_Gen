@@ -1,5 +1,23 @@
 # DexDiffusion Human Acceptance
 
+> **Direction supersession (2026-10-20):** The checklist below was written for the earlier Workstation-first design and is retained as historical evidence; do not use its first-load requirement as current acceptance. The normal product is V2 Studio. Use the current Studio checklist first and record physical/native/human acceptance in the [V2 execution ledger](DEXDIFFUSION_V2_STUDIO_EXECUTION_LEDGER.md).
+
+## Current V2 Studio acceptance (owner-run; not performed in Arena)
+
+- [ ] Launch a clean profile and an existing profile. Both land on **Create** in V2 Studio; only the old shell preference changes, not drafts or settings.
+- [ ] Click, by mouse and keyboard, all 14 top chips in order: Create, Batch, Swap, Voice, Drama, Music, Video, World, 3D, Library, Edit, Enhance, Models, System. Each screen has the correct title and no blank route.
+- [ ] Confirm Swap is a visibly gated placeholder, not face-swap or width/height swap; confirm Video generation is unavailable unless a verified worker is present.
+- [ ] Confirm Create prompt/model/shape and recipe controls; Generate starts one exact job. A second Generate click cannot hide/reset it.
+- [ ] On an owned fixture, cancel a queued job and verify it never started. For an unowned RUNNING fixture, verify cancellation is refused and the lease remains. Perform active-worker stop only after owner approval and verify exact process/nonce/readback.
+- [ ] Confirm the separate Cancel job control calls the safe endpoint once, says “Stopping — checking the worker”, and only says cancelled with verified stop evidence. Refresh/relaunch and reconcile the same job.
+- [ ] In native WKWebView, accept/reject a benign confirm, see an alert, exercise prompt input, and verify the existing file picker still works.
+- [ ] Check source identity and lineage through Library → Edit → Enhance and Library → 3D/World, including stale ID and wrong-media fixtures.
+- [ ] Check focus, caret and scroll offsets on Create, Library, Edit, Batch and System during polling, resize, navigation and keyboard use. Native-only scroll reports need native traces.
+- [ ] Complete the unassisted novice protocol with three unfamiliar people. Record timings, assistance, wrong turns, confusion, data loss and each criterion; no developer counts as a novice.
+- [ ] Verify Mac app source stamp, one Dock tile, storage path, local-only/Tailnet network scope, rollback, and tests before any release.
+
+## Historical Workstation-first checklist (superseded; preserved below)
+
 ## Before you begin
 
 - [ ] Click **DexDiffusion** in the Dock. No Terminal should be required.
