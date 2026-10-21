@@ -468,7 +468,22 @@
     rootBinder.mount(container);
 
     function render() {
-      const vals = inst.renderVals ? inst.renderVals() : (inst.render ? inst.render() : {});
+      // One malformed response must not blank the whole application. Before this guard a
+      // single missing field in a screen builder threw out of renderVals and left the shell
+      // unrenderable. The first render is still allowed to fail loudly; afterwards the last
+      // good screen is kept and the failure is reported on the instance for tests/diagnostics.
+      let vals;
+      try {
+        vals = inst.renderVals ? inst.renderVals() : (inst.render ? inst.render() : {});
+      } catch (err) {
+        inst.__renderError = err;
+        if (!inst.__lastVals) throw err;
+        inst.__renderFailures = (inst.__renderFailures || 0) + 1;
+        try { console.error('DexDiffusion: a screen could not be drawn; keeping the last good view.', err); } catch (_) {}
+        return;
+      }
+      inst.__renderError = null;
+      inst.__lastVals = vals;
       ctx.vals = vals;
       rootBinder.patch(vals);
     }

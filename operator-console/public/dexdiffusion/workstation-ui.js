@@ -214,7 +214,7 @@
         lastGenerationParams: Object.assign({}, this.state.lastGenerationParams || body || {}, { runId: first.runId, status: job.status }) });
       this.toast(results.length > 1 ? results.filter(x => x.status === 'DONE').length + ' / ' + results.length + ' images done' : 'Done · seed ' + first.seed, '#65d66e');
       setTimeout(() => this.loadRuns(), 1200);
-    } else if (job.status === 'CANCELLED') {
+    } else if (String(job.status == null ? '' : job.status).toUpperCase() === 'CANCELLED') {
       this.setState({ jobStatus: 'idle', progress: 0, errorMsg: '' });
       // OP-7: only a verified worker record counts as "stopped"; anything else is said plainly.
       const st = job.remoteStop;
@@ -226,15 +226,30 @@
     }
   };
   // Interrupt the running generation: stops the local process, then verifies the Big Mac process is really gone.
+  // T-104/T-202: the server reports acceptance and verification separately; this never turns "asked" into "stopped".
   P.interruptGeneration = async function () {
-    const id = this._ws().activeJobId;
-    if (!id || this._ws().interrupting) return;
-    this.wsSet({ interrupting: true, interruptState: 'requested' });
+    const ws = this._ws();
+    const id = ws.activeJobId;
+    // A job restored from a reload is not cancellable until its state is confirmed.
+    if (!id || ws.interrupting) return;
+    if (ws.reconciling) { this.toast('Still checking the job that was running before the reload — try again in a moment.', '#fbbf24'); return; }
+    this.wsSet({ interrupting: true, interruptState: 'requested', cancelReason: '' });
     const r = await this._api('/api/jobs/' + encodeURIComponent(id) + '/cancel', { reason: 'Cancelled from Create' });
-    const rs = r.data && r.data.remote_stop;
-    this.wsSet({ interrupting: false, interruptState: rs || (r.ok ? 'verified' : 'error') });
-    if (rs === 'unverified') this.toast('Cancelled, but the Big Mac stop could not be verified — heavy work is paused until it is (Job Center)', '#ef4444');
-    else if (!r.ok && r.status !== 202) this.toast(r.data.error || 'Cancel failed', '#ef4444');
+    const d = (r.data && typeof r.data === 'object') ? r.data : {};
+    const rs = d.remote_stop;
+    const verified = d.terminationVerified === true || rs === 'verified' || rs === 'cancelled_verified' || rs === 'not_started' || rs === 'completed_naturally';
+    let state;
+    if (d.cancelState === 'refused_unsafe' || d.gate === 'cancel-unsafe' || d.gate === 'cancel-unsupported' || d.gate === 'unknown-job') state = 'refused';
+    else if (d.cancelState === 'already_terminal' || rs === 'already_finished') state = 'finished';
+    else if (verified) state = 'verified';
+    else if (!r.ok && r.status !== 202) state = 'error';
+    else state = 'unverified';
+    this.wsSet({ interrupting: false, interruptState: state, cancelReason: d.error || '' });
+    if (state === 'unverified') this.toast('Stop requested, but it could not be verified — the job stays running and heavy work stays paused until reconciliation (Job Center)', '#ef4444');
+    else if (state === 'refused') this.toast(d.error || 'This job cannot be stopped safely from here. It was left running; see the Job Center.', '#ef4444');
+    else if (state === 'finished') this.toast('That job had already finished.', '#fbbf24');
+    else if (state === 'error') this.toast(d.error || 'Cancel failed', '#ef4444');
+    else if (state === 'verified' && rs === 'not_started') this.toast('Cancelled before the worker started it.', '#fbbf24');
   };
 
   P.selectResult = function (i) {
@@ -445,6 +460,12 @@
 
   // ── Enhance ─────────────────────────────────────────────────────
   P.sendToEnhance = async function (id) {
+    // G3: the Enhance handoff names one canonical image; a missing or malformed
+    // id is refused rather than silently replaced by the newest result.
+    const SA = window.DexSourceAsset;
+    if (SA && !SA.isImageId(String(id == null ? '' : id))) {
+      this.toast(SA.MESSAGES['not-canonical'], '#fbbf24'); return false;
+    }
     const m = await this._imageMeta(id);
     if (!m) return false;
     if (this.setScreen('enhance') === false) return false;
@@ -590,7 +611,12 @@
     const off = filter && filter !== ws.lib.filter ? 0 : Math.max(0, offset == null ? ws.lib.offset : offset);
     this.wsSet({ lib: Object.assign({}, ws.lib, { filter: f, loading: true, offset: off, error: null }) });
     const r = await this._api('/api/library/images?filter=' + encodeURIComponent(f) + '&sort=' + ws.lib.sort + '&limit=' + lay.pageSize + '&offset=' + off, undefined);
-    this.wsSet({ lib: Object.assign({}, this._ws().lib, { items: r.ok ? r.data.items : [], total: r.ok ? r.data.total : 0, loading: false, error: r.ok ? null : 'Could not load the Library' }) });
+    // A malformed 200 (no items array) used to store `undefined` and crash the next render.
+    const items = r.ok && r.data && Array.isArray(r.data.items) ? r.data.items : [];
+    const total = r.ok && r.data && Number.isFinite(r.data.total) ? r.data.total : items.length;
+    const malformed = r.ok && !(r.data && Array.isArray(r.data.items));
+    this.wsSet({ lib: Object.assign({}, this._ws().lib, { items, total, loading: false,
+      error: !r.ok ? 'Could not load the Library' : malformed ? 'The Library returned an unexpected response, so no images are shown.' : null }) });
   };
   // Full-size viewer over the ACTIVE (filtered + sorted) collection, not just the visible page.
   P.openLibraryViewer = async function (id) {
@@ -608,9 +634,19 @@
   };
   P.selectLibraryImage = async function (id) {
     const m = await this._imageMeta(id);
-    if (!m) return false;
-    this.wsSet({ lib: Object.assign({}, this._ws().lib, { selectedId: id, selected: m }) });
-    this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'image', id: m.id || id });
+    // A partial record must not be trusted: `ancestors`/`children` used to be assumed
+    // present, and one malformed /api/images/:id/meta response crashed the whole render.
+    if (!m || typeof m !== 'object' || !(m.id || id) || !m.url) {
+      this.toast('That image record is incomplete, so it was not opened. Refresh the Library and try again.', '#fbbf24');
+      return false;
+    }
+    const rec = Object.assign({}, m, {
+      id: m.id || id,
+      ancestors: Array.isArray(m.ancestors) ? m.ancestors : [],
+      children: Array.isArray(m.children) ? m.children : []
+    });
+    this.wsSet({ lib: Object.assign({}, this._ws().lib, { selectedId: id, selected: rec }) });
+    this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'image', id: rec.id });
     return true;
   };
   // Library thumbnail: click = fullscreen (with Edit actions in the viewer); the corner "ⓘ" selects it for details/lineage.
@@ -725,9 +761,9 @@
           h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export', download: sel.id, 'data-export-link': 'plain', style: { color: '#94a3b8', fontSize: 12, textDecoration: 'underline', padding: '6px 8px' } }, 'Export plain PNG')),
         this.buildExportPanel([sel.id]),
         h('div', { style: css.row }, h('span', { style: css.label }, 'Lineage'),
-          sel.ancestors.length ? lineageChip(sel.ancestors[sel.ancestors.length - 1], '⇤ Original') : null,
+          (sel.ancestors || []).length ? lineageChip(sel.ancestors[sel.ancestors.length - 1], '⇤ Original') : null,
           sel.parent ? lineageChip(sel.parent, '↑ Parent') : h('span', { style: css.muted }, 'no parent'),
-          ...sel.children.map((c, i) => lineageChip(c, '↓ Child ' + (i + 1))),
+          ...(sel.children || []).map((c, i) => lineageChip(c, '↓ Child ' + (i + 1))),
           sel.parent ? btn('Compare with parent', () => { this.wsSet({ compareIds: [sel.parent, sel.id] }); this.loadCompare(); }, '#38bdf8') : null))) : null;
     return h('div', null,
       this.buildPngInfoPanel(),
@@ -1689,14 +1725,27 @@
     const ws = this._ws();
     this._ensureEditSource();
     if (ws.activeJobId) {
+      // The job id survived a reload. Until it is confirmed, the Cancel control must not claim it can stop it.
+      this.wsSet({ reconciling: true, interruptState: '', interrupting: false });
       fetch(this.state.backendUrl + '/api/jobs/' + ws.activeJobId).then(r => (r.ok ? r.json() : null)).then(job => {
-        if (!job) { this.wsSet({ activeJobId: null }); return; }
+        this.wsSet({ reconciling: false });
+        if (!job) {
+          this.wsSet({ activeJobId: null });
+          this.setState({ jobStatus: 'idle', progress: 0, errorMsg: '' });
+          this.toast('The job that was running before the reload no longer exists on the server.', '#fbbf24');
+          return;
+        }
         if (!this._jobTerminal(job.status)) {
           this.setState({ jobStatus: 'generating', progress: job.stage && job.stage.determinate ? job.stage.percent : null, jobStage: job.stage || null });
           this.toast('Reattached to the running generation', '#38bdf8');
           this._followCreateJob(job.id, null);
         } else this._onCreateDone(job, null);
-      }).catch(() => {});
+      }).catch(() => {
+        // Unknown state is not "still running": drop the stale id instead of offering a Cancel that cannot be honoured.
+        this.wsSet({ reconciling: false, activeJobId: null, interrupting: false, interruptState: '' });
+        this.setState({ jobStatus: 'idle', progress: 0, errorMsg: '' });
+        this.toast('Could not confirm the job that was running before the reload. It is no longer offered here as cancellable — check the Job Center.', '#fbbf24');
+      });
     }
     if (ws.queueId) this._pollQueue();
     else this._detectRestoredQueue();

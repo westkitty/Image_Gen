@@ -105,6 +105,15 @@
   // state, make sure the pixels load, then show what was recalled. Fails visibly.
   P.openImageInEdit = async function (imageId, mode, opts) {
     const o = opts || {};
+    // G3/T-302: Edit accepts one canonical image id. Anything that could address
+    // a different file is refused here instead of being normalized into a
+    // different asset. Temporary uploads keep their own `staged:` flow.
+    const SA = window.DexSourceAsset;
+    const requested = String(imageId == null ? '' : imageId);
+    if (SA && !/^staged:/i.test(requested) && !SA.isImageId(requested)) {
+      this.toast(SA.MESSAGES['not-canonical'], '#fbbf24');
+      return false;
+    }
     const ed = this._ed();
     const op = OPS.some(x => x[0] === mode) ? mode : (ed.op || 'img2img');
     const replacing = !!(ed.source && (ed.source.imageId || ed.source.key) !== imageId);

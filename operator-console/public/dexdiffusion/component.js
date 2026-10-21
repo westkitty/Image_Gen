@@ -349,8 +349,11 @@ class Component extends DCLogic {
   }
 
   async startAsset3d(mode) {
-    const source = this.state.asset3dSourceArtifact || (this.state.runs[0] && this.state.runs[0].imageFile);
-    if (!source) { this.toast('Select a canonical library image first', '#fbbf24'); return; }
+    const SA = this._sourceAsset();
+    if (!SA) { this.toast('Source resolution failed to load — reload Studio before starting 3D.', '#ef4444'); return; }
+    const resolved = SA.resolveSource({ explicitId: this.state.asset3dSourceArtifact, selection: this.state.activeAssetSelection });
+    if (!resolved.ok) { this.toast(resolved.message, '#fbbf24'); return; }
+    const source = resolved.id;
     this.setState({ asset3dLoading: true, asset3dMode: mode });
     try {
       const url = mode === 'quick3d' ? '/api/world/projects' : '/api/3d/jobs';
@@ -391,8 +394,11 @@ class Component extends DCLogic {
   }
 
   async startWorld(mode, sourceArtifactId) {
-    const source = sourceArtifactId || this.state.worldSourceArtifact || (this.state.runs[0] && this.state.runs[0].imageFile);
-    if (!source) { this.toast('Select a canonical library image first', '#fbbf24'); return; }
+    const SA = this._sourceAsset();
+    if (!SA) { this.toast('Source resolution failed to load — reload Studio before starting World.', '#ef4444'); return; }
+    const resolved = SA.resolveSource({ explicitId: sourceArtifactId || this.state.worldSourceArtifact, selection: this.state.activeAssetSelection });
+    if (!resolved.ok) { this.toast(resolved.message, '#fbbf24'); return; }
+    const source = resolved.id;
     this.setState({ worldLoading: true });
     try {
       const r = await fetch(this.state.backendUrl + '/api/world/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, sourceArtifactId: source, parameters: { seed: 42 } }) });
@@ -427,15 +433,18 @@ class Component extends DCLogic {
   buildWorldWorkspace() {
     const h = React.createElement;
     const s = this.state;
-    const runs = (s.runs || []).filter(r => r.imageFile);
-    const opts = runs.length ? runs.map(r => h('option', { key: r.imageFile, value: r.imageFile }, r.id + ' · ' + r.model)) : [h('option', { value: '' }, 'No canonical images loaded')];
+    const SA = this._sourceAsset();
+    const picks = SA ? SA.choices(s.runs) : [];
+    const opts = [h('option', { key: '__none', value: '' }, picks.length ? 'Choose a source image…' : 'No canonical images loaded')]
+      .concat(picks.map(p => h('option', { key: p.id, value: p.id }, p.label + (p.run && p.run.model ? ' · ' + p.run.model : ''))));
     const status = s.worldWorkerStatus;
     const workerLine = status && status.workers ? status.workers.map(w => `${w.label}: ${w.status}`).join(' · ') : 'Worker status loading…';
     return h('div', { style: { display: 'grid', gap: 14 } },
       h('div', { style: { background: '#060a10', border: '1px solid rgba(148,163,184,.14)', borderRadius: 12, padding: 16 } },
         h('div', { style: { fontSize: 18, color: '#f0f4f8', fontWeight: 750, marginBottom: 4 } }, 'World'),
         h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, marginBottom: 12 } }, 'Dedicated local 3D workspace. Quick 3D reconstructs one image; Complete 360 builds panorama, depth/scaffold, aligned SHARP proposals, fusion and viewer artifacts. Learned global depth is not installed, so Complete 360 may report WARN while using the bounded fallback.'),
-        h('select', { value: s.worldSourceArtifact || (runs[0] && runs[0].imageFile) || '', onChange: e => this.setState({ worldSourceArtifact: e.target.value }), style: { width: '100%', maxWidth: 520, marginBottom: 10, border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
+        h('div', { 'data-source-rule': 'world', style: { color: '#8fa3b8', fontSize: 11, lineHeight: 1.5, marginBottom: 8 } }, 'World uses exactly the image you choose here. Nothing is substituted, and no source is pre-selected.'),
+        h('select', { value: s.worldSourceArtifact || '', onChange: e => { this.setState({ worldSourceArtifact: e.target.value }); if (SA && SA.isImageId(e.target.value)) this.setActiveAssetSelection({ kind: 'image', id: e.target.value }); }, style: { width: '100%', maxWidth: 520, marginBottom: 10, border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
         h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
           h('button', { onClick: () => this.startWorld('quick3d'), style: { border: '1px solid #38bdf866', background: '#38bdf616', color: '#38bdf8', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make 3D'),
           h('button', { onClick: () => this.startWorld('complete360'), style: { border: '1px solid #f59e0b66', background: '#f59e0b16', color: '#fbbf24', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make World'),
@@ -459,8 +468,9 @@ class Component extends DCLogic {
   buildAsset3dWorkspace() {
     const h = React.createElement;
     const s = this.state;
-    const runs = (s.runs || []).filter(r => r.imageFile);
-    const selected = s.asset3dSourceArtifact || (runs[0] && runs[0].imageFile) || '';
+    const SA = this._sourceAsset();
+    const picks = SA ? SA.choices(s.runs) : [];
+    const selected = s.asset3dSourceArtifact || '';
     const worker = s.asset3dWorkerStatus;
     const modes = worker && worker.modes ? worker.modes : {};
     const meshReady = modes.mesh && modes.mesh.status === 'PROVEN';
@@ -468,7 +478,8 @@ class Component extends DCLogic {
     const job = s.asset3dJob;
     const artifact = job && Array.isArray(job.artifacts_detail) ? job.artifacts_detail[0] : null;
     const sourcePreview = selected ? s.backendUrl + '/api/images/' + encodeURIComponent(selected) : '';
-    const opts = runs.length ? runs.map(r => h('option', { key: r.imageFile, value: r.imageFile }, r.id + ' · ' + r.model)) : [h('option', { value: '' }, 'No canonical images loaded')];
+    const opts = [h('option', { key: '__none', value: '' }, picks.length ? 'Choose a source image…' : 'No canonical images loaded')]
+      .concat(picks.map(p => h('option', { key: p.id, value: p.id }, p.label + (p.run && p.run.model ? ' · ' + p.run.model : ''))));
     const statusLine = worker ? `Big Mac: ${worker.remote?.reachable ? worker.remote.identity : 'unavailable'} · runtime ${worker.remote?.runtime ? 'present' : 'missing'} · lease shared with all heavy inference` : 'Loading Big Mac 3D capability status…';
     const chip = (label, item) => h('div', { style: { border: '1px solid rgba(148,163,184,.15)', borderRadius: 7, padding: '8px 10px', background: 'rgba(9,20,32,.55)' } }, h('div', { style: { color: '#8da0b4', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em' } }, label), h('div', { style: { color: item?.status === 'PROVEN' ? '#65d66e' : item?.status === 'DISABLED' ? '#70849a' : '#fbbf24', font: "700 11px 'IBM Plex Mono',monospace", marginTop: 4 } }, item?.status || 'NOT_TESTED'));
     return h('div', { style: { display: 'grid', gap: 14, maxWidth: 1080 } },
@@ -478,7 +489,8 @@ class Component extends DCLogic {
         h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(260px,1fr) minmax(180px,280px)', gap: 14, alignItems: 'start' } },
           h('div', null,
             h('div', { style: { color: '#6090a8', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 5 } }, 'Source · canonical image'),
-            h('select', { value: selected, onChange: e => this.setState({ asset3dSourceArtifact: e.target.value, asset3dPreviewFailedId: '' }), style: { width: '100%', border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
+            h('div', { 'data-source-rule': '3d', style: { color: '#8fa3b8', fontSize: 11, lineHeight: 1.5, marginBottom: 6 } }, 'Required. 3D uses exactly the image you choose; the newest result is never substituted.'),
+            h('select', { value: selected, onChange: e => { this.setState({ asset3dSourceArtifact: e.target.value, asset3dPreviewFailedId: '' }); if (SA && SA.isImageId(e.target.value)) this.setActiveAssetSelection({ kind: 'image', id: e.target.value }); }, style: { width: '100%', border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
             sourcePreview ? (s.asset3dPreviewFailedId === selected
               ? h('div', { role: 'status', style: { display: 'grid', placeItems: 'center', width: 150, height: 150, boxSizing: 'border-box', marginTop: 10, padding: 12, border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, background: '#0d1823', color: '#91a2b4', fontSize: 11, lineHeight: 1.45, textAlign: 'center' } }, 'Source preview unavailable. Verify the canonical image in Library before starting a 3D job.')
               : h('img', { src: sourcePreview, alt: 'Selected canonical source preview', onError: () => this.setState({ asset3dPreviewFailedId: selected }), style: { width: 150, height: 150, objectFit: 'cover', borderRadius: 8, marginTop: 10, border: '1px solid rgba(148,163,184,.16)' } })) : null
@@ -770,8 +782,18 @@ class Component extends DCLogic {
   // ── Job status helpers ────────────────────────────────────────
   // The real backend reports terminal jobs as PASS / PARTIAL / FAIL (not
   // done/error/failed). Treat anything that is not queued/running as finished.
-  _jobTerminal(s) { return !!s && s !== 'queued' && s !== 'running' && s !== 'pending'; }
-  _jobOk(s) { return s === 'PASS' || s === 'PARTIAL' || s === 'done' || s === 'complete' || s === 'succeeded'; }
+  // Job status vocabulary differs by store: the controlled pipeline uses lowercase
+  // (queued/running) while the durable job store uses uppercase (QUEUED/RUNNING).
+  // Comparing one spelling made a live RUNNING generic job look finished, so a
+  // reload adopted it as a failure and dropped its Cancel. Normalize first.
+  _jobTerminal(s) {
+    const v = String(s == null ? '' : s).toUpperCase();
+    return !!v && v !== 'QUEUED' && v !== 'RUNNING' && v !== 'PENDING' && v !== 'STARTING' && v !== 'PREPARING' && v !== 'TRANSFERRING';
+  }
+  _jobOk(s) {
+    const v = String(s == null ? '' : s).toUpperCase();
+    return v === 'PASS' || v === 'PARTIAL' || v === 'DONE' || v === 'COMPLETE' || v === 'COMPLETED' || v === 'SUCCEEDED';
+  }
   // Build a /api/run-file URL, tolerating an absolute path or a bare filename.
   _imgUrl(runId, file) {
     if (!runId || !file) return null;
@@ -1303,11 +1325,15 @@ class Component extends DCLogic {
   // Resolve the actual run + image filename to use as a source, honoring the
   // explicit "Source image" picker when set, else the run's primary image.
   _resolveSource(runId, file) {
+    const SA = this._sourceAsset();
     const runs = this.state.runs;
     const srcRun = (runId && runId !== 'last') ? runs.find(r => r.id === runId) : runs[0];
     if (!srcRun) return { error: 'No source run — generate an image first' };
     const imageFile = file || srcRun.imageFile || (this.state.runFiles[srcRun.id] || [])[0];
     if (!imageFile) return { error: 'Source run has no image file' };
+    if (SA && !SA.isSafeImageName(String(imageFile))) {
+      return { error: 'That source file name is not a supported image, so it was not sent to Enhance.' };
+    }
     return { run: srcRun, imageFile };
   }
   onI2iRunChange(runId) { this.setState({ i2iSrcRunId: runId, i2iSrcFile: '' }); this.loadRunFiles(runId); }
@@ -1436,6 +1462,10 @@ class Component extends DCLogic {
 
   // The Create workspace record lives in workstation-ui.js; read it defensively so the shell still
   // renders if that module is unavailable.
+  // G3: canonical source resolution. One module decides which image a
+  // World/3D/Enhance/Edit handoff acts on, and it refuses rather than guessing.
+  _sourceAsset() { return window.DexSourceAsset || null; }
+
   _createWs() {
     try { return (typeof this._ws === 'function' ? this._ws() : null) || {}; } catch (_) { return {}; }
   }
@@ -2234,7 +2264,11 @@ class Component extends DCLogic {
       h('div', { style: { fontSize: 10, fontWeight: 800, color: '#94a3b8', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 } }, title), ...rows);
     const siTs = si && si.network && si.network.tailscale;
     const siLauncher = si && si.launcher;
-    const systemInfoPanel = h('div', { style: { border: '1px solid rgba(56,189,248,.22)', background: 'rgba(6,10,16,.64)', borderRadius: 9, padding: 12, marginBottom: 12 } },
+    // A partial or unexpected /api/system-info payload must never break renderVals: when it did,
+    // one malformed field blanked the whole Studio (not just the System screen).
+    let systemInfoPanel;
+    try {
+    systemInfoPanel = h('div', { style: { border: '1px solid rgba(56,189,248,.22)', background: 'rgba(6,10,16,.64)', borderRadius: 9, padding: 12, marginBottom: 12 } },
       h('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
         h('div', { style: { fontSize: 12, fontWeight: 800, color: '#cbd5e1', letterSpacing: '.06em', textTransform: 'uppercase' } }, 'About DexDiffusion'),
         h('div', { style: { flex: 1 } }),
@@ -2274,6 +2308,10 @@ class Component extends DCLogic {
           siRow('Other targets', si.sdcpp.otherTargets),
         ]),
         h('div', { style: { color: '#7f93a8', fontSize: 11, marginTop: 10 } }, 'Docs: ' + si.app.docs + ' · state: ' + si.app.operationalState + ' · terminal: bin/dexdiffusion status · checked ' + si.checkedAt)));
+    } catch (_) {
+      systemInfoPanel = h('div', { role: 'status', 'data-system-info': 'incomplete', style: { border: '1px solid rgba(251,191,36,.35)', background: 'rgba(251,191,36,.07)', borderRadius: 9, padding: 12, marginBottom: 12, color: '#fbbf24', fontSize: 12, lineHeight: 1.5 } },
+        'The system information this build received is incomplete, so the About panel is hidden rather than showing wrong values. Everything else in Studio still works; reload or check GET /api/system-info on the console.');
+    }
 
     const keyboardHelp = h('div', { style: { border: '1px solid rgba(148,163,184,.12)', borderRadius: 8, padding: 9, color: '#94a3b8', fontSize: 11, lineHeight: 1.6, marginBottom: 10, background: 'rgba(5,10,18,.38)' } },
       'Keyboard shortcuts: Command+Enter generate · / focus prompt · P collapse prompt · S settings · L library');
@@ -2346,11 +2384,12 @@ class Component extends DCLogic {
       // sc-if treats any non-empty string as true, so this must stay a real boolean.
       showCancel: (() => { const ws = this._createWs(); return jobStatus === 'generating' && !!ws.activeJobId; })(),
       activeCancelJobId: (() => { const ws = this._createWs(); return ws.activeJobId || ''; })(),
-      cancelLabel: (() => { const ws = this._createWs(); return ws.interrupting ? 'Stopping — checking the worker…' : 'Cancel job'; })(),
-      cancelDisabled: (() => { const ws = this._createWs(); return String(!!ws.interrupting); })(),
+      cancelLabel: (() => { const ws = this._createWs(); return ws.reconciling ? 'Checking the job…' : ws.interrupting ? 'Stopping — checking the worker…' : 'Cancel job'; })(),
+      cancelDisabled: (() => { const ws = this._createWs(); return String(!!(ws.interrupting || ws.reconciling)); })(),
       cancelError: (() => {
         const ws = this._createWs();
-        if (ws.interruptState === 'unverified') return 'The stop request reached the server, but the worker could not be confirmed stopped. Heavy work stays paused until it is reconciled.';
+        if (ws.interruptState === 'unverified') return 'The stop request reached the server, but the worker could not be confirmed stopped. The job stays running and heavy work stays paused until it is reconciled.';
+        if (ws.interruptState === 'refused') return ws.cancelReason || 'This job cannot be stopped safely from here. It was left running.';
         if (ws.interruptState === 'error') return 'The cancel request failed. The job may still be running — check the Job Center.';
         return '';
       })(),

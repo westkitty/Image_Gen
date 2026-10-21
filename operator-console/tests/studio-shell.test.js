@@ -132,7 +132,7 @@ test('the component no longer defaults to the Workstation shell', () => {
 });
 
 // ── A real mount of the actual application ───────────────────────────────────────────────────
-function boot({ storage = {}, screen = null } = {}) {
+function boot({ storage = {}, screen = null, fetch: fetchImpl = null } = {}) {
   const html = read('index.html');
   const tpl = html.match(/<template id="dc-template">([\s\S]*?)<\/template>/)[1];
   const dom = new JSDOM(
@@ -166,6 +166,9 @@ function boot({ storage = {}, screen = null } = {}) {
     catch (e) { loadErrors.push(path.basename(src.path) + ': ' + e.message); }
   }
   assert.deepEqual(loadErrors, [], 'every shell script the page loads also loads here');
+  // Tests that need to observe the very first request (job reconciliation) install their stub here,
+  // after the scripts exist but before the component mounts.
+  if (fetchImpl) w.fetch = fetchImpl(w);
 
   const root = w.document.getElementById('dc-template').content.firstElementChild;
   const inst = w.DCRuntime.mount(w.DexDiffusionComponent, root, w.document.getElementById('app-root'));
@@ -412,4 +415,94 @@ test('the formerly inert Models actions are gone instead of silently enabled', (
     assert.equal(html.indexOf('>' + label + '</button>'), -1, label + ' no longer pretends to act');
   }
   assert.match(html, /onClick="\{\{ onLoadModels \}\}"/, 'the real model refresh remains wired');
+});
+
+// ── T-203: a job restored after a reload is reconciled before it can be cancelled ────────────
+const RUNNING_JOB = { id: 'job-restored', job_id: 'job-restored', status: 'RUNNING', stage: { label: 'Generating', percent: 40, determinate: true } };
+
+test('T-203: a restored job id is confirmed with the server before Cancel is offered', { skip: needsDom }, async () => {
+  let release = null;
+  const calls = [];
+  const { w, doc, inst, close } = boot({
+    storage: { dex_ws_session: JSON.stringify({ activeJobId: 'job-restored', quantity: 1 }) },
+    fetch: w => (url, opts = {}) => {
+      const u = String(url);
+      calls.push({ url: u, method: opts.method || 'GET' });
+      if (/\/api\/jobs\/job-restored$/.test(u)) {
+        return new w.Promise(res => { release = () => res(jsonResponse(w, RUNNING_JOB)); });
+      }
+      if (u.indexOf('/cancel') > -1) return jsonResponse(w, { ok: true, status: 'CANCELLED', remote_stop: 'not_started', cancelState: 'not_started', terminationVerified: true });
+      return jsonResponse(w, {});
+    }
+  });
+  try {
+    await settle(w, 80);
+    assert.equal(inst._ws().reconciling, true, 'the restored id is being reconciled');
+    assert.equal(byLabel(doc, 'Cancel job'), undefined, 'no cancel is offered for an unconfirmed job');
+    assert.equal(inst.state.jobStatus, 'idle', 'nothing claims to be generating before the server says so');
+
+    release();
+    await settle(w, 300);
+    assert.equal(inst._ws().reconciling, false);
+    assert.equal(inst.state.jobStatus, 'generating', 'the running job is adopted, not duplicated');
+    const cancel = byLabel(doc, 'Cancel job');
+    assert.ok(cancel, 'Cancel appears once the job is confirmed running');
+    assert.equal(cancel.getAttribute('data-cancel-job'), 'job-restored', 'Cancel is bound to the restored id');
+    assert.equal(calls.filter(c => c.url.indexOf('generate-controlled') > -1).length, 0, 'reconciliation never starts a new job');
+
+    clickIt(w, cancel);
+    await settle(w, 200);
+    const cancels = calls.filter(c => c.url.indexOf('/cancel') > -1);
+    assert.equal(cancels.length, 1);
+    assert.match(cancels[0].url, /\/api\/jobs\/job-restored\/cancel$/);
+  } finally { close(); }
+});
+
+test('T-203: a job that cannot be confirmed is dropped instead of left falsely cancellable', { skip: needsDom }, async () => {
+  const { w, doc, inst, close } = boot({
+    storage: { dex_ws_session: JSON.stringify({ activeJobId: 'job-gone', quantity: 1 }) },
+    fetch: w => (url) => {
+      const u = String(url);
+      if (/\/api\/jobs\/job-gone$/.test(u)) return w.Promise.reject(new Error('network down'));
+      return jsonResponse(w, {});
+    }
+  });
+  try {
+    await settle(w, 120);
+    assert.equal(inst._ws().reconciling, false);
+    assert.equal(inst._ws().activeJobId, null, 'a stale id is not kept');
+    assert.equal(byLabel(doc, 'Cancel job'), undefined, 'no cancel is offered for a job that may not exist');
+    assert.equal(inst.state.jobStatus, 'idle');
+    assert.ok(inst.state.toasts.some(t => /Could not confirm the job/i.test(t.msg)),
+      'the uncertainty is stated to the user, not swallowed');
+  } finally { close(); }
+});
+
+test('T-203: a completed restored job is finished, not shown as running', { skip: needsDom }, async () => {
+  const { w, doc, inst, close } = boot({
+    storage: { dex_ws_session: JSON.stringify({ activeJobId: 'job-done', quantity: 1 }) },
+    fetch: w => (url) => {
+      const u = String(url);
+      if (/\/api\/jobs\/job-done$/.test(u)) return jsonResponse(w, { id: 'job-done', status: 'PASS', results: [], controlledOutputImage: null });
+      return jsonResponse(w, {});
+    }
+  });
+  try {
+    await settle(w, 150);
+    assert.equal(inst._ws().activeJobId, null, 'a terminal job is not left cancellable');
+    assert.notEqual(inst.state.jobStatus, 'generating');
+    assert.equal(byLabel(doc, 'Cancel job'), undefined);
+  } finally { close(); }
+});
+
+test('T-203: a structured verified stop is reported as verified, not assumed from a 200', { skip: needsDom }, async () => {
+  const { w, doc, inst, close } = boot();
+  try {
+    await settle(w);
+    apiStub(w, { cancel: { status: 200, body: { ok: true, accepted: true, cancelState: 'verified_stopped', terminationVerified: true, status: 'CANCELLED' } } });
+    await startGeneration(w, inst, doc);
+    clickIt(w, byLabel(doc, 'Cancel job'));
+    await settle(w, 250);
+    assert.equal(inst._ws().interruptState, 'verified');
+  } finally { close(); }
 });
