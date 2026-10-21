@@ -815,7 +815,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         return FileHandle(forWritingAtPath: path) ?? FileHandle.standardError
     }
 
-    // MARK: - WKUIDelegate
+    // MARK: - WKUIDelegate — JS dialogs must not be silently dropped (T-201)
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        if let win = self.window { alert.beginSheetModal(for: win) { _ in completionHandler() } } else { alert.runModal(); completionHandler() }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        if let win = self.window { alert.beginSheetModal(for: win) { r in completionHandler(r == .alertFirstButtonReturn) } } else { let r = alert.runModal(); completionHandler(r == .alertFirstButtonReturn) }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = prompt
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 22))
+        field.stringValue = defaultText ?? ""
+        alert.accessoryView = field
+        field.becomeFirstResponder()
+        if let win = self.window { alert.beginSheetModal(for: win) { r in completionHandler(r == .alertFirstButtonReturn ? field.stringValue : nil) } } else { let r = alert.runModal(); completionHandler(r == .alertFirstButtonReturn ? field.stringValue : nil) }
+    }
 
     func webView(
         _ webView: WKWebView,
