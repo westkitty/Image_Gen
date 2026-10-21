@@ -3,10 +3,28 @@
 // The fictional A1111 onGenerate() stub (sdapi/v1) was removed so the real port-31337
 // generate-controlled flow (the first onGenerate) is the one that runs.
 
+const DEX_STUDIO_DEBUG = (() => {
+  try { return new URLSearchParams((window.location && window.location.search) || '').get('debug') === '1'; }
+  catch (_) { return false; }
+})();
+const DEX_MIGRATING_OLD_SHELL = (() => {
+  if (DEX_STUDIO_DEBUG) return false;
+  try { const saved = localStorage.getItem('dex_version'); return saved != null && saved !== '2'; } catch (_) { return false; }
+})();
+const DEX_INITIAL_VERSION = (() => {
+  let saved = 2;
+  try { const candidate = Number(localStorage.getItem('dex_version')); if ([1, 2, 3, 4].includes(candidate)) saved = candidate; } catch (_) {}
+  if (DEX_STUDIO_DEBUG) return saved;
+  // Studio is the normal shell. Keep user drafts and other preferences intact;
+  // only migrate the obsolete shell selection.
+  try { if (saved !== 2) localStorage.setItem('dex_version', '2'); } catch (_) {}
+  return 2;
+})();
+
 class Component extends DCLogic {
   state = {
-    version: (() => { const v = Number(localStorage.getItem('dex_version')); return v === 1 || v === 2 || v === 3 || v === 4 ? v : 4; })(),
-    screens: (() => { let s = 'create'; try { s = sessionStorage.getItem('dex_screen') || 'create'; } catch {} let ca = 'workstation'; try { ca = sessionStorage.getItem('dex_concept_screen') || 'workstation'; } catch {} return { 1: s, 2: s, 3: s, 4: ca }; })(),
+    version: DEX_INITIAL_VERSION,
+    screens: (() => { let s = 'create'; try { if (!DEX_MIGRATING_OLD_SHELL) s = sessionStorage.getItem('dex_screen') || 'create'; } catch {} if (!['create','batch','swap','voice','drama','music','video','world','3d','library','edit','enhance','models','system'].includes(s)) s = 'create'; let ca = 'workstation'; try { ca = sessionStorage.getItem('dex_concept_screen') || 'workstation'; } catch {} return { 1: s, 2: s, 3: s, 4: ca }; })(),
     activeAssetSelection: null,
     // Create
     target: 'sd15',
@@ -29,6 +47,7 @@ class Component extends DCLogic {
     steps: 20, cfg: 7, seed: -1, width: 512, height: 512,
     sampler: 'euler_a', scheduler: 'discrete', clipSkip: '', tiling: false, eta: '', rng: '',
     jobStatus: 'idle', progress: 0, currentImageSrc: null, lastSeed: null, errorMsg: '', lastGenerationParams: null,
+    activeJobId: null, cancelRequested: false, cancelMessage: '',
     // Batch
     batchAxisX: 'seed', batchValuesX: '-1,-1,-1,-1',
     batchPrompt: '', batchNeg: '', batchSteps: 20, batchCfg: 7, batchW: 512, batchH: 512,
@@ -753,7 +772,7 @@ class Component extends DCLogic {
   // ── Job status helpers ────────────────────────────────────────
   // The real backend reports terminal jobs as PASS / PARTIAL / FAIL (not
   // done/error/failed). Treat anything that is not queued/running as finished.
-  _jobTerminal(s) { return !!s && s !== 'queued' && s !== 'running' && s !== 'pending'; }
+  _jobTerminal(s) { return !!s && !['queued', 'starting', 'running', 'transferring', 'pending', 'stopping', 'cancel_requested', 'stop_dispatched', 'stop_pending', 'verifying'].includes(String(s).toLowerCase()); }
   _jobOk(s) { return s === 'PASS' || s === 'PARTIAL' || s === 'done' || s === 'complete' || s === 'succeeded'; }
   // Build a /api/run-file URL, tolerating an absolute path or a bare filename.
   _imgUrl(runId, file) {
@@ -1156,9 +1175,12 @@ class Component extends DCLogic {
   async onGenerate() {
     const { jobStatus, prompt, negPrompt, steps, cfg, seed, width, height,
             target, backendUrl, savePrompts, sampler, scheduler, selectedVae } = this.state;
-    if (jobStatus === 'generating') {
-      clearInterval(this._pollTimer);
-      this.setState({ jobStatus: 'idle', progress: 0 });
+    if (jobStatus === 'generating' || jobStatus === 'stopping' || jobStatus === 'reconciling') {
+      this.toast('This image job is already in progress or being checked.', '#fbbf24');
+      return;
+    }
+    if (jobStatus === 'cancel-unverified' || jobStatus === 'job-unverified') {
+      this.toast('The existing job status is not confirmed. Check Jobs before starting another image.', '#f87171');
       return;
     }
     if (!prompt.trim()) { this.toast('Enter a prompt first', '#fbbf24'); return; }
@@ -1172,7 +1194,7 @@ class Component extends DCLogic {
       vae: selectedVae === 'default' ? 'auto' : selectedVae,
       save_prompts: savePrompts,
     };
-    this.setState({ jobStatus: 'generating', progress: 0, currentImageSrc: null, errorMsg: '', lastGenerationParams: { ...body, preset: this.state.preset || 'balanced', selectedVae: this.state.selectedVae } });
+    this.setState({ jobStatus: 'generating', progress: 0, activeJobId: null, cancelRequested: false, cancelMessage: '', currentImageSrc: null, errorMsg: '', lastGenerationParams: { ...body, preset: this.state.preset || 'balanced', selectedVae: this.state.selectedVae } });
     try {
       const r = await fetch(backendUrl + '/api/actions/generate-controlled', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -1183,14 +1205,71 @@ class Component extends DCLogic {
         this.toast(err.error || 'Generate failed', '#ef4444'); return;
       }
       const { job_id } = await r.json();
+      if (!job_id) {
+        this.setState({ jobStatus: 'job-unverified', cancelMessage: 'The server accepted the request without returning a job ID. Check Jobs before retrying.', errorMsg: '' });
+        return;
+      }
+      this.setState({ activeJobId: String(job_id) });
       this._startPoll(job_id, (job) => this._onGenerateDone(job, body, backendUrl));
     } catch(e) {
-      this.setState({ jobStatus: 'error', errorMsg: e.message });
-      this.toast(e.message, '#ef4444');
+      this.setState({ jobStatus: 'job-unverified', cancelMessage: 'The connection was lost before the server confirmed the job ID. Check Jobs before trying again.', errorMsg: e.message });
+      this.toast('Job status could not be confirmed; do not submit again yet.', '#ef4444');
+    }
+  }
+
+  onCheckGenerateStatus() {
+    const jobId = this.state.activeJobId;
+    if (!jobId) return;
+    this.setState({ jobStatus: 'reconciling', cancelMessage: 'Checking the existing job status…' });
+    const params = this.state.lastGenerationParams || {};
+    const backendUrl = this.state.backendUrl;
+    this._startPoll(jobId, job => this._onGenerateDone(job, params, backendUrl), () => {
+      if (this.state.jobStatus === 'reconciling') this.setState({ jobStatus: this.state.cancelRequested ? 'stopping' : 'generating' });
+    });
+  }
+
+  async onCancelGenerate() {
+    const jobId = this.state.activeJobId;
+    if (!jobId || this.state.cancelRequested || this._cancelRequestInFlight) return;
+    this._cancelRequestInFlight = true;
+    this.setState({ jobStatus: 'stopping', cancelRequested: true, cancelMessage: 'Stopping — checking the worker.' });
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/jobs/' + encodeURIComponent(jobId) + '/cancel', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Cancelled from Create' }), signal: AbortSignal.timeout(15000)
+      });
+      const data = await r.json().catch(() => ({}));
+      if (data.remote_stop === 'verified' || data.remote_stop === 'not_started') {
+        this.setState({ cancelMessage: 'Stop verified. Confirming the final job status…' });
+      } else if (data.remote_stop === 'completed_naturally') {
+        this.setState({ cancelMessage: 'The job completed before the stop request. Checking its saved result…' });
+      } else if (data.remote_stop === 'unverified' || data.gate === 'remote-stop-unverified') {
+        this.setState({ cancelMessage: 'Could not confirm the worker stopped. Checking status; do not start another job yet.' });
+      } else if (!r.ok && data.gate !== 'cancel-in-progress') {
+        this.setState({ cancelMessage: data.error || 'Stop was not confirmed. Checking the existing job.' });
+      }
+    } catch (error) {
+      this.setState({ cancelMessage: 'Connection interrupted while checking the stop. The job may still be running; status will keep reconciling.' });
+    } finally {
+      this._cancelRequestInFlight = false;
     }
   }
 
   _onGenerateDone(job, params, backendUrl) {
+    if (job.firstFailedGate === 'polling') {
+      this.setState({ jobStatus: 'job-unverified', cancelMessage: 'The server could not confirm this job status. It may still be running; check Jobs before retrying.', errorMsg: job.error || '' });
+      return;
+    }
+    const finalStatus = String(job.status || '').toUpperCase();
+    const stopVerified = !!(job.remoteCancel && job.remoteCancel.ok) || job.remoteStop === 'cancelled_verified';
+    if (finalStatus === 'CANCELLED') {
+      if (stopVerified) {
+        this.setState({ jobStatus: 'cancelled', activeJobId: null, cancelRequested: false, cancelMessage: 'The worker stop was verified.', errorMsg: '' });
+      } else {
+        this.setState({ jobStatus: 'cancel-unverified', cancelRequested: true, cancelMessage: 'Could not verify that the worker stopped. Keep this job visible and do not retry until status is reconciled.', errorMsg: '' });
+      }
+      return;
+    }
     if (this._jobOk(job.status)) {
       const runId = job.runId;
       const imgFile = job.controlledOutputImage;
@@ -1210,13 +1289,13 @@ class Component extends DCLogic {
       };
       const runs = [run, ...this.state.runs].slice(0, 100);
       try { localStorage.setItem('dex_runs', JSON.stringify(runs)); } catch {}
-      this.setState(s => ({ jobStatus: 'complete', progress: 100, currentImageSrc: imgSrc, lastSeed: params.seed, runs,
+      this.setState(s => ({ jobStatus: 'complete', activeJobId: null, cancelRequested: false, cancelMessage: '', progress: 100, currentImageSrc: imgSrc, lastSeed: params.seed, runs,
         lastGenerationParams: { ...(s.lastGenerationParams || params), runId, imageFile: imgFile, status: job.status } }));
       this.toast('Done · ' + (runId || ''), '#65d66e');
       setTimeout(() => this.loadRuns(), 1500);
     } else {
       const gate = job.firstFailedGate ? ' · gate: ' + job.firstFailedGate : '';
-      this.setState({ jobStatus: 'error', progress: 0, errorMsg: 'Job ' + (job.status || 'failed') + gate + ' (exit ' + (job.exitCode ?? '?') + ')' });
+      this.setState({ jobStatus: 'error', activeJobId: null, cancelRequested: false, cancelMessage: '', progress: 0, errorMsg: 'Job ' + (job.status || 'failed') + gate + ' (exit ' + (job.exitCode ?? '?') + ')' });
       this.toast('Generation failed' + gate, '#ef4444');
     }
   }
@@ -1406,7 +1485,7 @@ class Component extends DCLogic {
   }
 
   buildImageDisplay(jobStatus, progress, imageSrc, lastSeed, errorMsg) {
-    if (jobStatus === 'generating') {
+    if (jobStatus === 'generating' || jobStatus === 'stopping' || jobStatus === 'reconciling') {
       const steps = Math.round(progress / 100 * (+this.state.steps || 20));
       const determinate = progress > 0;
       // When the backend reports a percentage, show a determinate bar; otherwise an
@@ -1416,7 +1495,7 @@ class Component extends DCLogic {
         : React.createElement('div', { className: 'dex-indeterminate-bar', style: { position: 'absolute', top: 0, height: '100%', width: '40%', borderRadius: 3, background: 'linear-gradient(90deg,#38bdf8,#65d66e)', animation: 'dexIndeterminate 1.1s ease-in-out infinite' } });
       return React.createElement('div', { role: 'status', 'aria-busy': 'true', style: { textAlign: 'center', padding: '0 24px', maxWidth: 320 } },
         React.createElement('div', { style: { fontSize: 13, color: '#9090c8', marginBottom: 14, fontFamily: "'DM Sans',sans-serif" } },
-          determinate ? ('Generating… ' + progress + '%') : 'Working — waiting for backend…'),
+          jobStatus === 'stopping' || jobStatus === 'reconciling' ? (this.state.cancelMessage || 'Checking the existing job…') : (determinate ? ('Generating… ' + progress + '%') : 'Working — waiting for backend…')),
         React.createElement('div', { style: { position: 'relative', height: 5, background: 'rgba(255,255,255,.08)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 } }, bar),
         determinate ? React.createElement('div', { style: { fontSize: 11, color: '#6060a0', fontFamily: "'IBM Plex Mono',monospace" } },
           'step ~' + steps + ' / ' + (this.state.steps || 20)) : null);
@@ -1436,6 +1515,15 @@ class Component extends DCLogic {
           React.createElement('div', { style: { fontSize: 13, color: '#65d66e', fontFamily: "'IBM Plex Mono',monospace" } }, '✓ Job done'),
           React.createElement('div', { style: { fontSize: 11, color: '#4a6878', fontFamily: "'IBM Plex Mono',monospace" } }, 'seed: ' + (lastSeed ?? '—'))),
         React.createElement('div', { style: { fontSize: 11, color: '#5060a0' } }, 'Image saved to runs/ — check Library'));
+    }
+    if (jobStatus === 'cancelled' || jobStatus === 'cancel-unverified' || jobStatus === 'job-unverified') {
+      const verified = jobStatus === 'cancelled';
+      const title = verified ? 'Worker stop verified' : jobStatus === 'cancel-unverified' ? 'Worker stop not verified' : 'Job status unknown';
+      const message = this.state.cancelMessage || (verified ? 'The job stopped before completion.' : 'The job may still be running. Check Jobs before trying again.');
+      return React.createElement('div', { role: 'status', style: { textAlign: 'center', padding: 20, maxWidth: 360 } },
+        React.createElement('div', { style: { fontSize: 14, color: verified ? '#86efac' : '#fca5a5', marginBottom: 8 } }, title),
+        React.createElement('div', { style: { fontSize: 12, color: '#cbd5e1', lineHeight: 1.55 } }, message),
+        this.state.activeJobId ? React.createElement('button', { type: 'button', onClick: () => this.onCheckGenerateStatus(), style: { marginTop: 14, border: '1px solid rgba(148,163,184,.35)', background: 'rgba(30,41,59,.7)', color: '#e2e8f0', borderRadius: 8, padding: '8px 12px', cursor: 'pointer' } }, 'Check job status') : null);
     }
     if (jobStatus === 'error') {
       return React.createElement('div', { style: { textAlign: 'center', padding: 20 } },
@@ -1460,7 +1548,7 @@ class Component extends DCLogic {
             ollamaOnline, ollamaModel, enhancingPrompt, wildcards, showWildcards, wildcardFilter, assets, loadingAssets,
           } = s;
     const screen = screens[version];
-    const isGenerating = jobStatus === 'generating';
+    const isGenerating = jobStatus === 'generating' || jobStatus === 'stopping' || jobStatus === 'reconciling';
     const accent = version === 2 ? '#f59e0b' : version === 3 ? '#a78bfa' : '#38bdf8';
 
     // ── Library cards ──────────────────────────────────────────
@@ -2204,14 +2292,16 @@ class Component extends DCLogic {
     return {
       version, versionStr: String(version), screen, compactModeStr: String(s.compactMode),
       isV1: version===1, isV2: version===2, isV3: version===3, isV4: version===4, isLegacy: version !== 4,
+      debugModeStr: String(DEX_STUDIO_DEBUG),
       isV1Str: String(version===1), isV2Str: String(version===2), isV3Str: String(version===3), isV4Str: String(version===4),
       setV1: ()=>this.setVersion(1), setV2: ()=>this.setVersion(2), setV3: ()=>this.setVersion(3), setV4: ()=>this.setVersion(4),
-      isCreate: screen==='create', isBatch: screen==='batch', isEdit: screen==='edit',
+      isCreate: screen==='create', isBatch: screen==='batch', isSwap: screen==='swap', isEdit: screen==='edit',
       isEnhance: screen==='enhance', isLibrary: screen==='library', isWorld: screen==='world', is3d: screen==='3d', isModels: screen==='models', isSystem: screen==='system',
-      isCreateStr: String(screen==='create'), isBatchStr: String(screen==='batch'),
+      isCreateStr: String(screen==='create'), isBatchStr: String(screen==='batch'), isSwapStr: String(screen==='swap'),
       isEditStr: String(screen==='edit'), isEnhanceStr: String(screen==='enhance'),
       isLibraryStr: String(screen==='library'), isWorldStr: String(screen==='world'), is3dStr: String(screen==='3d'), isModelsStr: String(screen==='models'), isSystemStr: String(screen==='system'),
-      navCreate: ()=>this.setScreen('create'), navBatch: ()=>this.setScreen('batch'),
+      navCreate: ()=>this.setScreen('create'), navBatch: ()=>this.setScreen('batch'), navSwap: ()=>this.setScreen('swap'),
+      navVoice: ()=>this.setScreen('voice'), navDrama: ()=>this.setScreen('drama'), navMusic: ()=>this.setScreen('music'), navVideo: ()=>this.setScreen('video'),
       navEdit: ()=>this.setScreen('edit'), navEnhance: ()=>this.setScreen('enhance'),
       navLibrary: ()=>this.setScreen('library'), navWorld: ()=>this.setScreen('world'), nav3d: ()=>this.setScreen('3d'), navModels: ()=>this.setScreen('models'), navSystem: ()=>this.setScreen('system'),
       // Create form
@@ -2237,7 +2327,8 @@ class Component extends DCLogic {
       setDimPortrait: ()=>this.setState({width:512,height:768}),
       setDim1024: ()=>this.setState({width:1024,height:1024}),
       onGenerate: ()=>this.onGenerate(),
-      generateLabel: isGenerating ? ('Generating… ' + progress + '%') : 'Generate Image',
+      generateLabel: jobStatus === 'stopping' ? 'Stopping…' : isGenerating ? ('Generating… ' + (progress == null ? '' : progress + '%')) : 'Generate image',
+      cancelGenerateButton: s.activeJobId && ['generating', 'stopping'].includes(jobStatus) ? React.createElement('button', { type: 'button', onClick: () => this.onCancelGenerate(), disabled: !!s.cancelRequested, 'aria-label': 'Cancel current image job', style: { width: '100%', marginTop: 7, border: '1px solid rgba(248,113,113,.45)', background: 'rgba(127,29,29,.25)', color: '#fecaca', borderRadius: 8, padding: '9px 12px', fontSize: 13, fontWeight: 700, cursor: s.cancelRequested ? 'wait' : 'pointer', opacity: s.cancelRequested ? .75 : 1 } }, s.cancelRequested ? 'Stopping — checking the worker…' : 'Cancel job') : null,
       genCursor: isGenerating ? 'default' : 'pointer',
       genOpacity: isGenerating ? '0.75' : '1',
       genBg1: isGenerating ? 'linear-gradient(90deg,#1a5068,#2a6034)' : 'linear-gradient(90deg,#38bdf8,#65d66e)',
@@ -2246,7 +2337,7 @@ class Component extends DCLogic {
       showJobResult: jobStatus !== 'idle',
       jobIdle: jobStatus === 'idle',
       imageDisplay: this.buildImageDisplay(jobStatus, progress, currentImageSrc, lastSeed, errorMsg),
-      actionStatus: isGenerating ? ('generating · ' + ((this.state.jobStage || {}).label || 'Waiting for backend')) : jobStatus==='complete' ? ('done · seed ' + lastSeed) : jobStatus==='error' ? 'error · check backend' : 'idle · no job',
+      actionStatus: jobStatus === 'stopping' ? (s.cancelMessage || 'Stopping — checking the worker') : jobStatus === 'reconciling' ? (s.cancelMessage || 'Checking the existing job') : isGenerating ? ('generating · ' + ((this.state.jobStage || {}).label || 'Waiting for backend')) : jobStatus==='complete' ? ('done · seed ' + lastSeed) : jobStatus==='error' ? 'error · check backend' : jobStatus==='cancel-unverified' ? (s.cancelMessage || 'Worker stop unverified') : jobStatus==='cancelled' ? 'cancelled · worker stop verified' : 'idle · no job',
       // Status chips
       backendDot, backendLabel: backendOnline ? 'Backend' : 'Offline',
       backendChipBg: backendOnline ? 'rgba(101,214,110,.08)' : 'rgba(239,68,68,.08)',
@@ -2267,6 +2358,7 @@ class Component extends DCLogic {
       preset, onPresetChange: e=>this.onSelectPreset(e.target.value),
       promptTools, onEnhancePrompt: ()=>this.enhancePrompt(),
       onCopyParams: ()=>this.copyText('Params', JSON.stringify(this.currentParams(), null, 2)),
+      onSaveStyle: ()=>this.saveFavoritePreset(),
       onReuseLastSeed: ()=>{ if(lastSeed!=null){this.setState({seed:String(lastSeed)}); this.toast('Seed '+lastSeed+' reloaded', '#38bdf8');} },
       goToImg2img: ()=>this.setScreen('edit'),
       savePrompts, onSavePrompts: e=>{ const v=e.target.checked; this.setState({savePrompts:v}); localStorage.setItem('dex_save_prompts',String(v)); },

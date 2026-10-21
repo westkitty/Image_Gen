@@ -1,5 +1,9 @@
 # Image_Gen — DexDiffusion
 
+**Current product shell:** DexDiffusion V2 Studio → Create. Normal launches migrate old shell selection to V2; developer regression shells are retained behind `?debug=1`.
+
+**Execution evidence / open acceptance gates:** [V2 Studio execution ledger](docs/acceptance/DEXDIFFUSION_V2_STUDIO_EXECUTION_LEDGER.md). This Arena work is not a release sign-off.
+
 **Start here: [DEXDIFFUSION.md](DEXDIFFUSION.md)**. It is the operator guide: how to open
 DexDiffusion (Dock app / URLs), the architecture, the primary model, where images go,
 start/stop/status, troubleshooting and protected invariants.

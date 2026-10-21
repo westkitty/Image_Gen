@@ -61,7 +61,7 @@ async function configure(page, base, screen, shell) {
     await r.fulfill(await apiSnapshots.get(key));
   });
   await page.addInitScript(v => localStorage.setItem('dex_version', String(v)), shell);
-  await page.goto(base + '/dexdiffusion/', {timeout:30000});
+  await page.goto(base + '/dexdiffusion/?debug=1', {timeout:30000});
   await page.waitForFunction(() => window.__dex && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData, null, { timeout: 30000 }).catch(async error => {
     const state = await page.evaluate(() => ({
       dexMounted: !!window.__dex,

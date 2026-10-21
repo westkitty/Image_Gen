@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var statusLabel: NSTextField!
     private var consoleProcess: Process?
     private var serviceStartupInProgress = false
+    private var javaScriptDialogInProgress = false
 
     private let projectRoot: String = {
         if let env = ProcessInfo.processInfo.environment["IMAGE_GEN_ROOT"], !env.isEmpty {
@@ -816,6 +817,94 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     // MARK: - WKUIDelegate
+
+    // WKWebView does not present JavaScript dialogs unless its UI delegate does
+    // so. Resolve every completion exactly once on the main thread; never silently
+    // accept a confirm after a missing/overlapping native window.
+    private func presentJavaScriptDialog(
+        message: String,
+        confirm: Bool,
+        completion: @escaping (Bool) -> Void
+    ) {
+        DispatchQueue.main.async {
+            guard !self.javaScriptDialogInProgress else {
+                completion(false)
+                return
+            }
+            self.javaScriptDialogInProgress = true
+            let alert = NSAlert()
+            alert.messageText = confirm ? "DexDiffusion confirmation" : "DexDiffusion"
+            alert.informativeText = message
+            alert.alertStyle = confirm ? .warning : .informational
+            if confirm {
+                alert.addButton(withTitle: "Continue")
+                alert.addButton(withTitle: "Cancel")
+            } else {
+                alert.addButton(withTitle: "OK")
+            }
+            let finish: (NSApplication.ModalResponse) -> Void = { response in
+                self.javaScriptDialogInProgress = false
+                completion(!confirm || response == .alertFirstButtonReturn)
+            }
+            if let win = self.window {
+                alert.beginSheetModal(for: win, completionHandler: finish)
+            } else {
+                finish(alert.runModal())
+            }
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping () -> Void
+    ) {
+        presentJavaScriptDialog(message: message, confirm: false) { _ in completionHandler() }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        presentJavaScriptDialog(message: message, confirm: true, completion: completionHandler)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt prompt: String,
+        defaultText: String?,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (String?) -> Void
+    ) {
+        DispatchQueue.main.async {
+            guard !self.javaScriptDialogInProgress else {
+                completionHandler(nil)
+                return
+            }
+            self.javaScriptDialogInProgress = true
+            let alert = NSAlert()
+            alert.messageText = "DexDiffusion"
+            alert.informativeText = prompt
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: "Cancel")
+            let input = NSTextField(string: defaultText ?? "")
+            input.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
+            alert.accessoryView = input
+            let finish: (NSApplication.ModalResponse) -> Void = { response in
+                self.javaScriptDialogInProgress = false
+                completionHandler(response == .alertFirstButtonReturn ? input.stringValue : nil)
+            }
+            if let win = self.window {
+                alert.beginSheetModal(for: win, completionHandler: finish)
+            } else {
+                finish(alert.runModal())
+            }
+        }
+    }
 
     func webView(
         _ webView: WKWebView,

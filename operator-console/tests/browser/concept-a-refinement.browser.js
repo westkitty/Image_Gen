@@ -13,7 +13,7 @@ async function openConcept(page, base) {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   await installModelSnapshots(page, base);
-  await page.goto(base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
+  await page.goto(base + '/dexdiffusion/?debug=1', { waitUntil: 'domcontentloaded' });
   if (!(await page.locator('.ca-shell').count())) {
     await page.locator('[data-vbtn="4"]').click();
   }

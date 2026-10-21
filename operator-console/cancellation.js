@@ -53,8 +53,14 @@ function createCancellationManager({
       };
     }
 
-    // Queued job cancellation (immediate)
-    if (!active || currentStatus === 'QUEUED') {
+    // Only a durable queued job with no registered owner is safe to cancel
+    // immediately. A missing in-memory registration is NOT proof that a running
+    // worker stopped (for example after a restart or lost worker record).
+    if (currentStatus == null) {
+      return { ok: false, error: 'Job not found in the durable job store', gate: 'job-not-found' };
+    }
+
+    if (currentStatus === 'QUEUED' && !active) {
       if (jobStore) {
         jobStore.transition(jobId, 'CANCELLED', { error: reason, first_failed_gate: 'user-cancelled' });
       }
@@ -65,6 +71,18 @@ function createCancellationManager({
         eventBus.publish('job.cancelled', { id: jobId, reason, status: 'CANCELLED' });
       }
       return { ok: true, status: 'CANCELLED', immediate: true };
+    }
+
+    // A durable RUNNING/TRANSFERRING record without an active owner cannot be
+    // cancelled safely. Preserve its state and resource lease for reconciliation.
+    if (!active) {
+      return {
+        ok: false,
+        error: `Cannot verify the owner of job ${jobId}; cancellation was not performed`,
+        gate: 'cancel-unsafe',
+        status: currentStatus,
+        remote_stop: 'unverified'
+      };
     }
 
     // Active Running Job cancellation

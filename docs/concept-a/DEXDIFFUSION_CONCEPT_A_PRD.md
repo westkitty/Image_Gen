@@ -1,5 +1,7 @@
 # DexDiffusion Concept A — Product Requirements Document
 
+> **Historical direction — superseded 2026-10-20.** The approved current product decision is DexDiffusion V2 Studio, opening at Create with the 14-category Studio navigation. This Concept A/Workstation-first PRD is retained as historical design context and must not be used to override the current Studio decision. See the [V2 Studio execution ledger](../acceptance/DEXDIFFUSION_V2_STUDIO_EXECUTION_LEDGER.md) and current [operator guide](../../DEXDIFFUSION.md).
+
 **Document type:** Product Requirements Document (PRD)
 **Status:** Approved direction / implementation not yet started by this document
 **Project:** Image_Gen / DexDiffusion

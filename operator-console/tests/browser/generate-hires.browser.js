@@ -15,7 +15,7 @@ async function open(page, base) {
   await installModelSnapshots(page, base);
   await page.route('**/api/models/secondary/activate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ modelState: {} }) }));
   await page.route(ENDPOINT, route => { bodies.push(JSON.parse(route.request().postData() || '{}')); route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'intercepted by test' }) }); });
-  await page.goto(base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
+  await page.goto(base + '/dexdiffusion/?debug=1', { waitUntil: 'domcontentloaded' });
   if (!(await page.locator('.ca-shell').count())) await page.locator('[data-vbtn="4"]').click();
   await page.waitForSelector('.ca-shell');
   await page.locator('.ca-nav-item', { hasText: 'Create' }).click();
