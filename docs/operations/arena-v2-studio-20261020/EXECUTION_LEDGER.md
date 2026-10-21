@@ -60,17 +60,17 @@ Evidence levels: **E1** source, **E2** fixture/integration (includes the jsdom r
 |---|---|---|---|
 | T-201 | Restore WKWebView JS alert/confirm/prompt | `BLOCKED_NATIVE` (code delivered) | Three delegates + main-thread/sheet guards in `ImageGenApp.swift`; E1 static test. No Swift toolchain and no macOS → never compiled or clicked here. |
 | T-202 | Dedicated Cancel bound to job identity | `VERIFIED_SANDBOX` | Wired to the pre-existing `interruptGeneration()` (chosen over a duplicate implementation). E2 real-click tests: one request, job-scoped URL, no duplicate job on a second Generate, unverified stop not shown as success. |
-| T-203 | Reconcile jobs after refresh/tab/relaunch | `NOT_STARTED` | Existing polling/reattach code left intact; no new reconciliation contract was written. |
+| T-203 | Reconcile jobs after refresh/tab/relaunch | `VERIFIED_SANDBOX` | A restored job id is reconciled before anything is offered: `reconciling` gates Cancel, a running job is adopted (not duplicated), a terminal one is cleared, and an unconfirmable one is dropped with an explanation. `_jobTerminal`/`_jobOk` now normalize case — the durable store's `RUNNING` used to look terminal, which adopted live jobs as failures. E2: 4 jsdom reload cases. |
 
 ### G3 — canonical asset handoffs
 
 | ID | Objective | Status | Evidence |
 |---|---|---|---|
-| T-301 | One source-artifact resolver + typed result | `NOT_STARTED` | `imageStore` is authoritative today; no consolidated resolver added in this session. |
-| T-302 | Stable, recoverable Edit source | `NOT_STARTED` | Existing draft/race protection untouched. |
-| T-303 | Exact Enhance source and result identity | `NOT_STARTED` | — |
-| T-304 | Strict World/3D source gates | `NOT_STARTED` | — |
-| T-305 | Preserve cross-module selection/lineage | `NOT_STARTED` | — |
+| T-301 | One source-artifact resolver + typed result | `VERIFIED_SANDBOX` | `public/dexdiffusion/source-asset.js`: canonical-id validation, typed failures (`no-source`/`not-canonical`/`staged`/`wrong-kind`/`not-image`), choice lists, lineage. `imageStore` remains the server authority. E2: 14 tests. |
+| T-302 | Stable, recoverable Edit source | `VERIFIED_SANDBOX` (partial) | `openImageInEdit` now refuses a malformed id instead of normalizing it into a different asset, while keeping the `staged:` upload path. Existing draft/race protection untouched and still green. |
+| T-303 | Exact Enhance source and result identity | `VERIFIED_SANDBOX` (partial) | `sendToEnhance` and `_resolveSource` validate the canonical/plain image name before any API call. Result identity (receipt/lineage display) is unchanged and not re-verified. |
+| T-304 | Strict World/3D source gates | `VERIFIED_SANDBOX` | The `runs[0].imageFile` fallback is deleted from both `startAsset3d` and `startWorld`; pickers start empty with an explicit "Choose a source image…", and each screen states the rule. E2 tests plus a source assertion that the fallback cannot return. |
+| T-305 | Preserve cross-module selection/lineage | `VERIFIED_SANDBOX` (partial) | Choosing a World/3D source publishes it via `setActiveAssetSelection`, so the next module resolves the same id; explicit pick > selection > explicit "newest" only. Library lineage read is guarded. A full round-trip through all four modules on real data is not run. |
 
 ### G4 — V2 Studio as sole normal shell
 
@@ -90,7 +90,7 @@ Evidence levels: **E1** source, **E2** fixture/integration (includes the jsdom r
 | T-503 | One Job Center; remove duplicate presentations | `NOT_STARTED` | Existing Job Center untouched. |
 | T-504 | Eliminate enabled no-ops across the Studio | `IN_PROGRESS` | Removed the four known inert Models actions (`Check stage`, `SDXL smoke`, `Flux smoke`, `Inventory`) and `Discover`; removed five further inert shell buttons (`Save style ↗`, `Latest sweep`, Library card `Open`/`→ Create`/`JSON`). Added an E2 guard that no enabled `<button>` in the V2 shell lacks a handler. Remaining screens not swept. |
 | T-505 | Model selection cannot silently surprise | `NOT_STARTED` | Existing `model-startup-activation` tests still pass; no new work. |
-| T-506 | Recoverable, understandable states | `IN_PROGRESS` | Fixed a real crash: an unreachable/malformed `/api/workers` or `/api/resources` used to throw during `renderVals` and blank the entire shell. Now degrades to an explained empty state. Cancel states have explicit copy. |
+| T-506 | Recoverable, understandable states | `VERIFIED_SANDBOX` (core) | Three real crash classes fixed and tested: unguarded worker/resource payloads, a partial `/api/system-info` (whole shell blanked), and a malformed `/api/library/images` (stored `undefined` items). `render()` now keeps the last good view and records the error instead of leaving an unrenderable shell. Screen-by-screen empty states are not all reviewed. |
 | T-507 | Micro-interactions without visual noise | `NOT_STARTED` | — |
 
 ### G6 — per-module capability passes

@@ -506,3 +506,38 @@ test('T-203: a structured verified stop is reported as verified, not assumed fro
     assert.equal(inst._ws().interruptState, 'verified');
   } finally { close(); }
 });
+
+// ── T-802 / T-806: every screen must actually draw, and every control must be nameable ──────
+test('all 14 screens render without a draw error and expose accessible controls', { skip: needsDom }, async () => {
+  const { w, doc, inst, close } = boot();
+  try {
+    await settle(w, 120);
+    const report = {};
+    for (const cat of Nav.CATEGORIES) {
+      const chip = doc.querySelector(`[data-studio-category="${cat.id}"]`);
+      clickIt(w, chip);
+      await settle(w, 120);
+      // A partial payload must never leave the shell unrenderable.
+      assert.equal(inst.__renderError, null, cat.id + ' drew without a render error');
+      const pane = doc.querySelector('[data-scroll-pane]');
+      assert.ok(pane, cat.id + ' has a scroll pane');
+      assert.ok(pane.textContent.trim().length > 40, cat.id + ' is not blank');
+
+      const buttons = [...pane.querySelectorAll('button')].filter(b => !b.disabled);
+      for (const b of buttons) {
+        const name = (b.getAttribute('aria-label') || b.textContent || '').trim();
+        assert.ok(name.length > 0, cat.id + ' has an unnamed enabled button');
+      }
+      for (const img of pane.querySelectorAll('img')) {
+        assert.ok(img.hasAttribute('alt'), cat.id + ' image without alt text');
+      }
+      // Headings/labels: the screen says what it is.
+      assert.ok(new RegExp(cat.label.replace('3D', '3D')).test(pane.textContent), cat.id + ' names itself');
+      // Nothing in the Studio is a native form, so no control can implicitly submit/navigate.
+      assert.equal(pane.querySelectorAll('form').length, 0, cat.id + ' must not wrap controls in a form');
+      report[cat.id] = { enabledButtons: buttons.length };
+    }
+    // Documented as evidence: the matrix is real DOM, not a static scan.
+    assert.equal(Object.keys(report).length, 14);
+  } finally { close(); }
+});
