@@ -70,7 +70,9 @@ function createCancellationManager({
     if (active.isRemote) return Boolean(active.nonce && active.remoteWorkDir && typeof onRemoteTerminate === 'function');
     if (active.process && typeof active.process.kill === 'function') return true;
     if (active.pid && typeof onLocalTerminate === 'function') return true;
-    if (typeof onLocalTerminate === 'function') return true; // job-owned queue/stop hook (e.g. stop-after-current)
+    // An arbitrary registered job is not sufficient proof of a stoppable worker.
+    // A job-owned stop-after-current path is advertised only by a declared worker contract.
+    return false;
     return false;
   }
 
@@ -99,7 +101,7 @@ function createCancellationManager({
         reason: declared.cancel_reason || 'This type of job cannot be stopped once it starts.' };
     }
 
-    if (!hasTerminationPath(act)) {
+    if (!(hasTerminationPath(act) || (declared && declared.cancel_scope === 'stop-after-current' && typeof onLocalTerminate === 'function' && !!act))) {
       // T-101: the unsafe case. RUNNING/TRANSFERRING without a verified owner.
       return { canCancel: false, cancelCapability: 'unknown', cancelState: 'refused_unsafe',
         reason: 'This job is marked running but no worker process is registered for it, so a stop cannot be verified. It stays running until reconciliation.' };
@@ -214,7 +216,7 @@ function createCancellationManager({
     }
 
     // ---- 3. Running without a verified owner: refuse, keep state and lease ---------------
-    if (!hasTerminationPath(active)) {
+    if (!(hasTerminationPath(active) || (declared && declared.cancel_scope === 'stop-after-current' && typeof onLocalTerminate === 'function' && !!active))) {
       return refuse(jobId, {
         gate: 'cancel-unsafe', cancelState: 'refused_unsafe', status: currentStatus,
         error: 'Cancellation refused: this job is marked running but no process owner is registered for it. ' +
@@ -297,10 +299,29 @@ function createCancellationManager({
             error: res.error || 'The job owner refused the stop.'
           });
         }
-        terminationVerified = !res || res.verified !== false;
-        evidence = { kind: terminationVerified ? 'owner_accepted' : 'unverified', detail: (res && res.detail) || 'job-owned stop hook' };
+        // A hook returning undefined, {ok:true}, or a sent signal is NOT exit proof.
+        // Do not release the heavy lease until the exact owner confirms termination.
+        terminationVerified = !!res && res.ok === true && res.verified === true;
+        if (!terminationVerified && res && res.ok === true && res.stop_after_current === true) {
+          return {
+            ok: false, accepted: true, status: currentStatus,
+            alreadyTerminal: false, neverStarted: false, terminationVerified: false,
+            cancelState: 'stop_after_current', leaseReleased: false, gate: 'stop-after-current',
+            error: res.detail || 'The current group is still running. No further groups should start; wait for the owner to finish and reconcile.'
+          };
+        }
+        evidence = { kind: terminationVerified ? 'verified' : 'unverified', detail: (res && res.detail) || 'job-owned stop hook' };
       } catch (err) {
         return refuse(jobId, { gate: 'local-cancel-failed', cancelState: 'requested', status: currentStatus, error: err.message });
+      }
+      if (!terminationVerified) {
+        return {
+          ok: false, accepted: !!(typeof res !== 'undefined' && res && res.ok === true),
+          status: currentStatus, alreadyTerminal: false, neverStarted: false,
+          terminationVerified: false, cancelState: 'requested', leaseReleased: false,
+          gate: 'local-stop-unverified',
+          error: 'The job owner has not verified termination. The job and lease remain active until reconciliation.'
+        };
       }
     }
 
