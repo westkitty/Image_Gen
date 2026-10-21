@@ -20,6 +20,7 @@
     "test:browser:notifications": "node tests/browser/notifications.browser.js",
     "test:browser:pwa": "node tests/browser/pwa.browser.js",
     "test:browser:matrix": "node tests/browser/interaction-matrix.browser.js",
+    "test:browser:studio-navigation": "node tests/browser/studio-navigation.browser.js",
     "test:browser:concept-a": "node tests/browser/concept-a-refinement.browser.js",
     "test:release": "node tests/release-gate.js",
     "preflight": "bash ../scripts/release-preflight.sh",
