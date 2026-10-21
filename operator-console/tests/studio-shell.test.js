@@ -541,3 +541,17 @@ test('all 14 screens render without a draw error and expose accessible controls'
     assert.equal(Object.keys(report).length, 14);
   } finally { close(); }
 });
+
+// ── T-002 / T-504: every bound handler in the shell must actually exist ─────────────────────
+test('every onClick/onChange binding in the template resolves to a real function', { skip: needsDom }, async () => {
+  const { w, inst, close } = boot();
+  try {
+    await settle(w, 120);
+    const tpl = read('index.html').match(/<template id="dc-template">([\s\S]*?)<\/template>/)[1];
+    const names = new Set();
+    for (const m of tpl.matchAll(/\bon(?:Click|Change|Input|Submit|KeyDown)="\{\{\s*([A-Za-z0-9_$]+)\s*\}\}"/g)) names.add(m[1]);
+    assert.ok(names.size > 50, 'the inventory found the shell handlers');
+    const missing = [...names].filter(n => typeof inst.__lastVals[n] !== 'function');
+    assert.deepEqual(missing, [], 'these bindings point at nothing and would be dead controls');
+  } finally { close(); }
+});

@@ -41,7 +41,7 @@ Evidence levels: **E1** source, **E2** fixture/integration (includes the jsdom r
 | ID | Objective | Status | Evidence / note |
 |---|---|---|---|
 | T-001 | Fingerprint machine, executable, worktree | `VERIFIED_SANDBOX` | Repo/branch/SHA/clean tree recorded above. Native app stamp and Dock readback are `BLOCKED_NATIVE`. |
-| T-002 | Function and control inventory | `IN_PROGRESS` | V2 shell inventory done for the Create path and Models row; full 14-screen inventory not complete. See §5. |
+| T-002 | Function and control inventory | `VERIFIED_SANDBOX` | Automated inventory: every `onClick`/`onChange`/`onInput`/`onSubmit`/`onKeyDown` binding in the template is resolved against the live mounted instance, and every screen's enabled buttons are enumerated by the 14-screen matrix. A binding that points at nothing now fails a test. Screen-by-screen *intent* review (does this control do the right thing, not just something) is still incomplete. |
 | T-003 | Pre-change novice + scroll recordings | `BLOCKED_HUMAN` | No native app, no browser, no participants in the sandbox. Nothing was fabricated. |
 | T-004 | Freeze release boundaries and regression claims | `VERIFIED_SANDBOX` | Baseline suite + invariant list captured before edits (§1, §7). |
 
@@ -88,7 +88,7 @@ Evidence levels: **E1** source, **E2** fixture/integration (includes the jsdom r
 | T-501 | Basic/Advanced disclosure with preserved semantics | `NOT_STARTED` | — |
 | T-502 | Consistent action priority/result transitions | `NOT_STARTED` | — |
 | T-503 | One Job Center; remove duplicate presentations | `NOT_STARTED` | Existing Job Center untouched. |
-| T-504 | Eliminate enabled no-ops across the Studio | `IN_PROGRESS` | Removed the four known inert Models actions (`Check stage`, `SDXL smoke`, `Flux smoke`, `Inventory`) and `Discover`; removed five further inert shell buttons (`Save style ↗`, `Latest sweep`, Library card `Open`/`→ Create`/`JSON`). Added an E2 guard that no enabled `<button>` in the V2 shell lacks a handler. Remaining screens not swept. |
+| T-504 | Eliminate enabled no-ops across the Studio | `IN_PROGRESS` | Removed the four known inert Models actions (`Check stage`, `SDXL smoke`, `Flux smoke`, `Inventory`) and `Discover`; removed five further inert shell buttons (`Save style ↗`, `Latest sweep`, Library card `Open`/`→ Create`/`JSON`). Three automated guards now exist: no `<button>` in the V2 markup without `onClick`/`disabled`; every template binding resolves to a real function; every enabled button on all 14 screens has an accessible name. **Not proven:** that each remaining control does something *useful* — that needs the click-level sweep on a real browser (E3). |
 | T-505 | Model selection cannot silently surprise | `NOT_STARTED` | Existing `model-startup-activation` tests still pass; no new work. |
 | T-506 | Recoverable, understandable states | `VERIFIED_SANDBOX` (core) | Three real crash classes fixed and tested: unguarded worker/resource payloads, a partial `/api/system-info` (whole shell blanked), and a malformed `/api/library/images` (stored `undefined` items). `render()` now keeps the last good view and records the error instead of leaving an unrenderable shell. Screen-by-screen empty states are not all reviewed. |
 | T-507 | Micro-interactions without visual noise | `NOT_STARTED` | — |
