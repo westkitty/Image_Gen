@@ -92,6 +92,28 @@ class Component extends DCLogic {
     this.loadWildcards();
     this.checkOllama();
     this.loadSystemInfo();
+    // Reconcile persisted generation job after refresh/tab change (T-203)
+    try {
+      const persisted = localStorage.getItem('dex_generating_job');
+      if (persisted) {
+        const pid = JSON.parse(persisted);
+        if (pid && pid.jobId) {
+          this.setState({ generatingJobId: pid.jobId, jobStatus: 'generating', jobStage: { label: 'Reconnecting…', percent: 0, determinate:false } });
+          // resume poll; backend truth will correct status (COMPLETE/FAILED/CANCELLED)
+          this._startPoll(pid.jobId, (job) => this._onGenerateDone(job, pid.params || {}, this.state.backendUrl));
+          this.toast('Resumed job ' + pid.jobId, '#38bdf8');
+        }
+      }
+    } catch {}
+    // Also reconcile via ops snapshot if available
+    fetch(this.state.backendUrl + '/api/operations/snapshot', { signal: AbortSignal.timeout(4000) }).then(r=>r.ok?r.json():null).then(snap=>{
+      if (!snap || !snap.jobs) return;
+      const running = (snap.jobs || []).find(j=>j.status==='running' || j.status==='queued');
+      if (running && running.id && !this.state.generatingJobId) {
+        this.setState({ generatingJobId: running.id, jobStatus: 'generating' });
+        this._startPoll(running.id, (job)=> this._onGenerateDone(job, {}, this.state.backendUrl));
+      }
+    }).catch(()=>{});
   }
   componentWillUnmount() {
     clearInterval(this._pingTimer); clearInterval(this._pollTimer); clearInterval(this._worldPollTimer); clearInterval(this._asset3dPollTimer);
@@ -1218,6 +1240,7 @@ class Component extends DCLogic {
       }
       const { job_id } = await r.json();
       this.setState({ generatingJobId: job_id, jobStage: { label: 'Running', percent: 0, determinate: false } });
+      try { localStorage.setItem('dex_generating_job', JSON.stringify({ jobId: job_id, params: body })); } catch {}
       this._startPoll(job_id, (job) => this._onGenerateDone(job, body, backendUrl));
     } catch(e) {
       this.setState({ jobStatus: 'error', errorMsg: e.message, generatingJobId: null });
@@ -1238,10 +1261,12 @@ class Component extends DCLogic {
         // A completed image outranks cancel — let poll deliver it, else mark cancelled verified
         if (body.status === 'COMPLETE') { this.toast('Job completed before stop — image preserved',' #65d66e'); return; }
         this.setState({ jobStatus: 'idle', progress: 0, generatingJobId: null, cancelStatus: 'verified', currentImageSrc: null, errorMsg: '' });
+        try { localStorage.removeItem('dex_generating_job'); } catch {}
         this.toast('Cancelled — Big Mac verified stopped', '#65d66e');
       } else if (r.status === 202 || body.quarantine || body.remote_stop === 'unverified') {
         clearInterval(this._pollTimer);
         this.setState({ jobStatus: 'idle', progress: 0, generatingJobId: null, cancelStatus: 'quarantine', quarantineNote: body.error || body.worker?.state || 'unverified — heavy work paused', errorMsg: body.error || 'Remote stop not verified — quarantine active' });
+        try { localStorage.removeItem('dex_generating_job'); } catch {}
         this.toast('Cancelled locally — quarantine (heavy work paused) · check System → Remote Workers', '#fbbf24');
       } else if (!r.ok) {
         this.setState({ jobStatus: 'cancelling', errorMsg: body.error || ('cancel ' + r.status) });
@@ -1280,14 +1305,17 @@ class Component extends DCLogic {
       try { localStorage.setItem('dex_runs', JSON.stringify(runs)); } catch {}
       this.setState(s => ({ jobStatus: 'complete', progress: 100, currentImageSrc: imgSrc, lastSeed: params.seed, runs, cancelStatus: null, generatingJobId: null,
         lastGenerationParams: { ...(s.lastGenerationParams || params), runId, imageFile: imgFile, status: job.status } }));
+      try { localStorage.removeItem('dex_generating_job'); } catch {}
       this.toast('Done · ' + (runId || ''), '#65d66e');
       setTimeout(() => this.loadRuns(), 1500);
     } else if (job.status === 'CANCELLED' || job.status === 'INTERRUPTED') {
       this.setState({ jobStatus: 'idle', currentImageSrc: null, errorMsg: 'Cancelled' + (job.firstFailedGate ? ' · ' + job.firstFailedGate : ''), generatingJobId: null, cancelStatus: job.quarantine ? 'quarantine' : 'cancelled', progress: 0 });
+      try { localStorage.removeItem('dex_generating_job'); } catch {}
       this.toast('Cancelled' + (job.quarantine ? ' — quarantine (heavy work paused)' : ''), '#fbbf24');
     } else {
       const gate = job.firstFailedGate ? ' · gate: ' + job.firstFailedGate : '';
       this.setState({ jobStatus: 'error', progress: 0, errorMsg: 'Job ' + (job.status || 'failed') + gate + ' (exit ' + (job.exitCode ?? '?') + ')', generatingJobId: null });
+      try { localStorage.removeItem('dex_generating_job'); } catch {}
       this.toast('Generation failed' + gate, '#ef4444');
     }
   }
@@ -1503,7 +1531,14 @@ class Component extends DCLogic {
       if (this._completedImageCache.key === cacheKey && this._completedImageCache.node) return this._completedImageCache.node;
       this._completedImageCache = { key: cacheKey, node: React.createElement('div', { style: { width: '100%', height: '100%', overflowY: 'auto', padding: '16px 10px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start' } },
         React.createElement('img', { src: imageSrc, alt: 'Generated image', crossOrigin: 'anonymous', style: { width: 'min(100%, 720px)', maxHeight: 'min(70vh, 720px)', objectFit: 'contain', borderRadius: 6, flexShrink: 0 } }),
-        this.buildGenerationMeta(this.state.lastGenerationParams)) };
+        this.buildGenerationMeta(this.state.lastGenerationParams),
+        React.createElement('div', { style:{ marginTop:11, display:'flex', gap:6, flexWrap:'wrap', justifyContent:'center' } },
+          React.createElement('span', { style:{ color:'#65d66e', fontSize:11, fontWeight:700, alignSelf:'center' } }, 'Saved to Library'),
+          React.createElement('button', { onClick:()=>this.setScreen('library'), style:{ border:'1px solid rgba(101,214,110,.3)', background:'rgba(101,214,110,.08)', color:'#65d66e', borderRadius:6, padding:'6px 10px', fontSize:11, cursor:'pointer' } }, 'Open in Library'),
+          React.createElement('button', { onClick:()=>this.sendActiveResultToEdit('img2img'), style:{ border:'1px solid #a78bfa66', background:'#a78bfa16', color:'#c4b5fd', borderRadius:6, padding:'6px 10px', fontSize:11, cursor:'pointer' } }, 'Edit'),
+          React.createElement('button', { onClick:()=>{ const id=this.state.lastGenerationParams && this.state.lastGenerationParams.runId; if(id) this.setState({ enhSrcRunId:id, enhSrcFile: this.state.lastGenerationParams.imageFile || '' }); this.setScreen('enhance'); }, style:{ border:'1px solid #38bdf866', background:'#38bdf816', color:'#38bdf8', borderRadius:6, padding:'6px 10px', fontSize:11, cursor:'pointer' } }, 'Enhance'),
+          React.createElement('a', { href: imageSrc, download:'', style:{ border:'1px solid rgba(148,163,184,.2)', color:'#b8c7d6', borderRadius:6, padding:'6px 10px', fontSize:11, textDecoration:'none' } }, 'Download')
+        )) };
       return this._completedImageCache.node;
     }
     if (jobStatus === 'complete') {
@@ -2313,12 +2348,19 @@ class Component extends DCLogic {
       setDimPortrait: ()=>this.setState({width:512,height:768}),
       setDim1024: ()=>this.setState({width:1024,height:1024}),
       onGenerate: ()=>this.onGenerate(),
-      generateLabel: isGenerating ? ('Generating… ' + progress + '%') : 'Generate Image',
+      onCancel: ()=>this.cancelCurrentJob(),
+      isGenerating,
+      isCancelling: jobStatus === 'cancelling',
+      canCancel: backendOnline && !!this.state.generatingJobId && (jobStatus === 'generating' || jobStatus === 'cancelling') && (this.state.capabilityData?.featureGates?.cancel_supported !== false && this.state.systemInfo?.capabilities?.find(c=>c.id==='cancel')?.status !== 'unsupported'),
+      showCancel: jobStatus === 'generating' || jobStatus === 'cancelling',
+      cancelLabel: jobStatus === 'cancelling' ? 'Cancelling…' : 'Cancel job',
+      generatingJobId: this.state.generatingJobId || '',
+      generateLabel: jobStatus === 'cancelling' ? 'Cancelling…' : isGenerating ? ('Generating… ' + progress + '%') : 'Generate image',
       genCursor: isGenerating ? 'default' : 'pointer',
       genOpacity: isGenerating ? '0.75' : '1',
       genBg1: isGenerating ? 'linear-gradient(90deg,#1a5068,#2a6034)' : 'linear-gradient(90deg,#38bdf8,#65d66e)',
       genBg2: isGenerating ? 'linear-gradient(90deg,#7a5008,#8a3810)' : 'linear-gradient(90deg,#f59e0b,#fb923c)',
-      genBg3: isGenerating ? 'linear-gradient(135deg,#4a2a8a,#0a6a8a)' : 'linear-gradient(135deg,#8b5cf6,#22d3ee)',
+      genBg3: jobStatus === 'cancelling' ? 'linear-gradient(135deg,#f59e0b,#ef4444)' : isGenerating ? 'linear-gradient(135deg,#4a2a8a,#0a6a8a)' : 'linear-gradient(135deg,#8b5cf6,#22d3ee)',
       showJobResult: jobStatus !== 'idle',
       jobIdle: jobStatus === 'idle',
       imageDisplay: this.buildImageDisplay(jobStatus, progress, currentImageSrc, lastSeed, errorMsg),
