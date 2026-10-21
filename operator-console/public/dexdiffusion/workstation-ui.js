@@ -1627,7 +1627,7 @@
         }
       },
         heroImage,
-        active && active.imageId ? h('div', { style: { display: 'grid', gap: 8, width: '100%', marginTop: 6 } },
+        active && active.imageId && active.status === 'DONE' ? h('div', { style: { display: 'grid', gap: 8, width: '100%', marginTop: 6 } },
           h('div', { style: Object.assign({}, css.row, { flexWrap: 'wrap', alignItems: 'center' }) },
             h('span', { role: 'status', style: { color: '#86efac', fontWeight: 700, fontSize: 12 } }, 'Saved to Library'),
             btn('Open in Library', () => this.showInLibrary(active.imageId), '#38bdf8'),
