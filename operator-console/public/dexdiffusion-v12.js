@@ -249,6 +249,9 @@
     `;
 
     document.body.appendChild(bar);
+    // Studio has a Job Center entry in the main chrome. The old HUD is redundant there.
+    const studio = window.__dex && window.__dex.state && window.__dex.state.version === 2;
+    if (studio) bar.style.display = 'none';
 
     document.getElementById('v12-hud-jobs-btn').onclick = toggleJobCenter;
     document.getElementById('v12-hud-palette-btn').onclick = toggleCommandPalette;
@@ -302,7 +305,7 @@
 
     drawer.innerHTML = `
       <div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between;">
-        <div style="font-size:15px;font-weight:600;letter-spacing:0.3px;">Workstation Job Center</div>
+        <div style="font-size:15px;font-weight:600;letter-spacing:0.3px;">DexDiffusion Job Center</div>
         <button id="v12-jc-close-btn" type="button" aria-label="Close Job Center" style="background:transparent;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:4px 8px;">✕</button>
       </div>
       <div id="v12-jc-content" style="flex:1;overflow-y:auto;padding:16px;">
@@ -312,6 +315,13 @@
 
     document.body.appendChild(drawer);
     document.getElementById('v12-jc-close-btn').onclick = toggleJobCenter;
+    // Job ids are data attributes, not executable string interpolation.
+    // One delegated listener survives every snapshot content replacement.
+    document.getElementById('v12-jc-content').addEventListener('click', event => {
+      const button = event.target.closest('[data-job-cancel-id]');
+      if (!button) return;
+      V12.cancelJob(button.getAttribute('data-job-cancel-id'));
+    });
   }
 
   function toggleJobCenter() {
@@ -384,6 +394,9 @@
   function renderJobCard(j, isActive) {
     const pct = progressPercent(j.progress);
     const canCancel = j.canCancel;
+    const stopAfterCurrent = isActive && j.cancelCapability === 'stop_after_current';
+    const cancelLabel = stopAfterCurrent ? 'Stop after current' : isActive ? 'Cancel job' : 'Cancel queued job';
+    const cancelAria = stopAfterCurrent ? 'Stop after current' : isActive ? 'Cancel running job' : 'Cancel queued job';
     const statusColor = isActive ? '#38bdf8' : '#f59e0b';
 
     return `
@@ -408,7 +421,7 @@
         ` : isActive ? `<div style="margin:8px 0 6px 0;font-size:11px;color:#94a3b8;">Progress unavailable · current stage is indeterminate</div>` : ''}
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
           <span style="font-size:10px;color:#64748b;">${new Date(j.createdAt).toLocaleTimeString()}</span>
-          ${canCancel ? `<button type="button" onclick="window.__DEX_V12.cancelJob('${j.id}')" style="background:#ef4444;border:none;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;">Cancel</button>` : ''}
+          ${canCancel ? `<button type="button" data-job-cancel-id="${escapeHtml(j.id)}" aria-label="${cancelAria}" style="background:#ef4444;border:none;color:#fff;padding:7px 10px;min-height:36px;border-radius:4px;font-size:12px;cursor:pointer;">${cancelLabel}</button>` : ''}
         </div>
       </div>
     `;
@@ -435,7 +448,14 @@
   }
 
   V12.cancelJob = async function(jobId) {
-    if (!confirm('Are you sure you want to cancel this operation?')) return;
+    const queued = (V12.snapshot.queue || []).some(j => j.id === jobId);
+    const stopAfterCurrent = (V12.snapshot.active || []).some(j => j.id === jobId && j.cancelCapability === 'stop_after_current');
+    const question = queued
+      ? 'Cancel this queued job before it starts?'
+      : stopAfterCurrent
+        ? 'Request Stop after current? The running audio chunk will finish before Drama stops; the worker is not stopped yet.'
+        : 'Request cancellation of this running job? It may continue until the worker confirms it stopped.';
+    if (!confirm(question)) return;
     try {
       const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, {
         method: 'POST',
@@ -443,13 +463,17 @@
         body: JSON.stringify({ reason: 'User cancelled via Job Center' })
       });
       const data = await res.json();
-      if (data.ok) {
+      if (data.ok && (data.neverStarted === true || data.terminationVerified === true)) {
         fetchSnapshot();
-      } else if (data.remote_stop === 'unverified') {
+      } else if (data.cancelState === 'stop_after_current' && data.accepted === true) {
         fetchSnapshot();
-        alert('Cancelled locally, but the Big Mac stop could not be verified. Heavy work is paused until a check proves it stopped (see the Job Center banner).');
+        alert('Stop after current requested. The current audio chunk may finish before the producer confirms cancellation. Job Center will keep tracking it.');
+      } else if (data.accepted === true || data.cancelState === 'requested' || data.remote_stop === 'unverified') {
+        fetchSnapshot();
+        alert('Stop requested but not verified. The job may still be running. Job Center will continue tracking it.');
       } else {
-        alert(`Cancellation error: ${data.error || 'Failed'}`);
+        fetchSnapshot();
+        alert(`Cancellation not confirmed: ${data.error || 'The worker cannot currently prove it stopped.'}`);
       }
     } catch (err) {
       alert(`Network error: ${err.message}`);

@@ -5,15 +5,16 @@ const assert = require('node:assert/strict');
 const express = require('express'); const fs = require('node:fs'); const path = require('node:path');
 const { registerVoiceRoutes } = require('../voice-routes'); const { createEventBus } = require('../event-bus'); const { createCancellationManager } = require('../cancellation');
 const O = require('../operational-jobs'); const { harness } = require('./helpers/fake-bigmac');
+const { dramaCancelCapability, requestDramaStop } = require('../drama-cancel-policy');
 
 const CANARY = 'ROUTECANARY-9034';
 async function boot(opts) {
   const bus = createEventBus(); const pub = O.createGenericJobEventPublisher(bus);
   const h = harness(Object.assign({ onChange: (k, j) => pub(k, j) }, opts));
   const app = express(); app.use(express.json());
-  let mod; const cancelManager = createCancellationManager({ arbiter: h.arbiter, jobStore: h.jobStore, eventBus: bus, onLocalTerminate: async a => { mod.producer.cancelByJob(a.jobId); } });
+  let mod; const cancelManager = createCancellationManager({ arbiter: h.arbiter, jobStore: h.jobStore, eventBus: bus, workerCapabilities: dramaCancelCapability, onLocalTerminate: async a => requestDramaStop(mod.producer, a) });
   mod = registerVoiceRoutes(app, { stateDir: h.base + '/state', jobStore: h.jobStore, mediaStore: h.mediaStore, staging: h.staging, mediaBridge: h.bridge, probeFor: h.probeFor, llmChat: null, ingest: async p => fs.readFileSync(p),
-    cancelJob: id => cancelManager.cancelJob(id), onJobStart: id => cancelManager.registerActiveJob(id, {}), onJobEnd: id => cancelManager.unregisterActiveJob(id) });
+    cancelJob: id => cancelManager.cancelJob(id), onJobStart: id => cancelManager.registerActiveJob(id, { target: 'drama-production' }), onJobEnd: id => cancelManager.unregisterActiveJob(id) });
   const server = await new Promise(r => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const api = async (method, url, body) => { const r = await fetch(base + url, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, body: await r.json() }; };
@@ -57,7 +58,12 @@ test('cancelling through the shared job cancel path stops the production at the 
     const id = await castProject(h, 'TIGER: One.\nCODEC: Two.\nNARRATOR: Three.');
     const r = await h.api('POST', `/api/drama/projects/${id}/produce`, {});
     await until(() => h.state.requests.length > 0);
-    const res = await h.cancelManager.cancelJob(r.body.job_id, { reason: 'user' }); assert.equal(res.ok, true);
+    const res = await h.cancelManager.cancelJob(r.body.job_id, { reason: 'user' });
+    assert.equal(res.ok, false, 'safe-boundary stop is pending, never immediately verified');
+    assert.equal(res.accepted, true);
+    assert.equal(res.cancelState, 'stop_after_current');
+    assert.equal(res.terminationVerified, false);
+    assert.equal(res.leaseReleased, false);
     const fin = await until(async () => { const x = (await h.api('GET', `/api/drama/productions/${r.body.production.id}`)).body; return TERMINALS.includes(x.production.status) ? x : null; });
     assert.equal(fin.production.status, 'cancelled'); assert.ok(h.state.requests.length < 3);
     assert.equal(h.jobStore.get(r.body.job_id).status, 'CANCELLED');

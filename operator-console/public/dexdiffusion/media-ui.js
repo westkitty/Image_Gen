@@ -37,10 +37,16 @@
   };
   P.mSet = function (patch) { Object.assign(this._mws(), patch); this.setState({ _mTick: (this.state._mTick || 0) + 1 }); };
   P.loadWorkers = async function () {
+    // T-506/T-614: an unreachable or misbehaving local service must degrade the System/Models detail,
+    // never the whole Studio shell. Only a shape-validated payload is stored; anything else is "unknown".
     try {
       const [w, r] = await Promise.all([fetch(this.state.backendUrl + '/api/workers').then(x => x.json()), fetch(this.state.backendUrl + '/api/resources').then(x => x.json())]);
-      this.mSet({ workers: w.workers, options: w.options || null, resources: r });
-    } catch (_) {}
+      const workers = Array.isArray(w && w.workers) ? w.workers : [];
+      const resources = r && typeof r === 'object' && Array.isArray(r.waiting) && r.external && typeof r.external === 'object' ? r : null;
+      this.mSet({ workers, options: (w && w.options) || null, resources, workersError: workers.length ? null : 'The local service did not report any workers.' });
+    } catch (_) {
+      this.mSet({ workers: [], resources: null, workersError: 'Cannot reach the local studio service.' });
+    }
   };
   P._worker = function (id) { return ((this._mws().workers) || []).find(w => w.id === id) || null; };
 
@@ -199,9 +205,14 @@
     const enabled = !!(w && w.enabled) && !busy;
     const label = busy ? this._jobLabel(j) : reason ? 'Generate — ' + reason : 'Generate';
     const keepActionVisible = this.state.version === 4 && (kind === 'voice' || kind === 'music');
+    const cannotStopOnceStarted = !!(w && w.enabled && w.capabilities && w.capabilities.cancel_supported === false);
     return h('div', { className: keepActionVisible ? 'ca-media-action-bar' : undefined, 'data-media-generate-bar': keepActionVisible ? kind : undefined, style: Object.assign({}, css.row, keepActionVisible
       ? { marginTop: 10, position: 'sticky', bottom: 4, zIndex: 5, background: 'rgba(16,27,39,.98)', padding: 8, border: '1px solid rgba(148,163,184,.2)', borderRadius: 9, boxShadow: '0 8px 24px rgba(0,0,0,.38)' }
       : { marginTop: 10 }) },
+      cannotStopOnceStarted ? h('div', { role: 'note', 'data-worker-cancel-warning': workerId,
+        style: { flex: '1 1 100%', padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(251,191,36,.45)',
+          background: 'rgba(251,191,36,.08)', color: '#fde68a', fontWeight: 650, fontSize: 12, lineHeight: 1.45 } },
+        'This job cannot be stopped after it starts. It will run to completion once the worker begins.') : null,
       h('button', { type: 'button', disabled: !enabled, 'aria-disabled': String(!enabled), 'aria-busy': String(!!busy), title: label,
         style: { flex: '1 1 220px', minHeight: 44, borderRadius: 9, border: 0, fontWeight: 800, fontSize: 14, cursor: enabled ? 'pointer' : 'not-allowed',
           background: enabled ? 'linear-gradient(90deg,#8b5cf6,#22d3ee)' : busy ? 'rgba(56,189,248,.18)' : 'rgba(148,163,184,.12)', color: enabled ? '#06060a' : busy ? '#7dd3fc' : '#94a3b8' },
@@ -392,7 +403,8 @@
 
   // ── System / Models: workers + resources ─────────────────────────
   P.buildWorkersPanel = function () {
-    const m = this._mws(), rs = m.resources;
+    const m = this._mws();
+    const rs = m.resources && Array.isArray(m.resources.waiting) && m.resources.external ? m.resources : null;
     if (!m.workersLoadedOnce) { m.workersLoadedOnce = true; setTimeout(() => this.loadWorkers(), 0); }
     const row = w => h('div', { key: w.id, style: { display: 'grid', gridTemplateColumns: 'minmax(0,1.3fr) minmax(0,1fr)', gap: 6, fontSize: 12, padding: '5px 0', borderBottom: '1px solid rgba(148,163,184,.06)' } },
       h('div', { style: { minWidth: 0 } }, h('div', { style: { color: '#e2e8f0', fontWeight: 700 } }, w.label), h('div', { style: css.muted }, w.media_kind + ' · ' + w.resource_class + ' resource')),
@@ -402,6 +414,7 @@
     return h('div', { style: css.panel },
       h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Workers & Big Mac resources'), h('div', { style: { flex: 1 } }), btn('Refresh', () => this.loadWorkers(), '#94a3b8')),
       ...((m.workers || []).map(row)),
+      (m.workers || []).length ? null : h('div', { style: Object.assign({}, css.muted, { padding: '6px 0' }) }, m.workersError || 'No media workers are installed on this machine.'),
       rs ? h('div', { style: { marginTop: 8, display: 'grid', gap: 3, fontSize: 12 } },
         h('div', null, h('b', { style: { color: '#cbd5e1' } }, 'Heavy compute: '), h('span', { style: css.mono }, rs.group + ' · capacity ' + rs.capacity)),
         h('div', null, h('b', { style: { color: '#cbd5e1' } }, 'Owner: '), h('span', { style: css.mono }, rs.owner ? rs.owner.label + ' (since ' + new Date(rs.owner.since).toLocaleTimeString() + ')' : 'none')),

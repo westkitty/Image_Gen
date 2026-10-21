@@ -214,7 +214,7 @@
         lastGenerationParams: Object.assign({}, this.state.lastGenerationParams || body || {}, { runId: first.runId, status: job.status }) });
       this.toast(results.length > 1 ? results.filter(x => x.status === 'DONE').length + ' / ' + results.length + ' images done' : 'Done · seed ' + first.seed, '#65d66e');
       setTimeout(() => this.loadRuns(), 1200);
-    } else if (job.status === 'CANCELLED') {
+    } else if (String(job.status == null ? '' : job.status).toUpperCase() === 'CANCELLED') {
       this.setState({ jobStatus: 'idle', progress: 0, errorMsg: '' });
       // OP-7: only a verified worker record counts as "stopped"; anything else is said plainly.
       const st = job.remoteStop;
@@ -226,15 +226,30 @@
     }
   };
   // Interrupt the running generation: stops the local process, then verifies the Big Mac process is really gone.
+  // T-104/T-202: the server reports acceptance and verification separately; this never turns "asked" into "stopped".
   P.interruptGeneration = async function () {
-    const id = this._ws().activeJobId;
-    if (!id || this._ws().interrupting) return;
-    this.wsSet({ interrupting: true, interruptState: 'requested' });
+    const ws = this._ws();
+    const id = ws.activeJobId;
+    // A job restored from a reload is not cancellable until its state is confirmed.
+    if (!id || ws.interrupting) return;
+    if (ws.reconciling) { this.toast('Still checking the job that was running before the reload — try again in a moment.', '#fbbf24'); return; }
+    this.wsSet({ interrupting: true, interruptState: 'requested', cancelReason: '' });
     const r = await this._api('/api/jobs/' + encodeURIComponent(id) + '/cancel', { reason: 'Cancelled from Create' });
-    const rs = r.data && r.data.remote_stop;
-    this.wsSet({ interrupting: false, interruptState: rs || (r.ok ? 'verified' : 'error') });
-    if (rs === 'unverified') this.toast('Cancelled, but the Big Mac stop could not be verified — heavy work is paused until it is (Job Center)', '#ef4444');
-    else if (!r.ok && r.status !== 202) this.toast(r.data.error || 'Cancel failed', '#ef4444');
+    const d = (r.data && typeof r.data === 'object') ? r.data : {};
+    const rs = d.remote_stop;
+    const verified = d.terminationVerified === true || rs === 'verified' || rs === 'cancelled_verified' || rs === 'not_started' || rs === 'completed_naturally';
+    let state;
+    if (d.cancelState === 'refused_unsafe' || d.gate === 'cancel-unsafe' || d.gate === 'cancel-unsupported' || d.gate === 'unknown-job') state = 'refused';
+    else if (d.cancelState === 'already_terminal' || rs === 'already_finished') state = 'finished';
+    else if (verified) state = 'verified';
+    else if (!r.ok && r.status !== 202) state = 'error';
+    else state = 'unverified';
+    this.wsSet({ interrupting: false, interruptState: state, cancelReason: d.error || '' });
+    if (state === 'unverified') this.toast('Stop requested, but it could not be verified — the job stays running and heavy work stays paused until reconciliation (Job Center)', '#ef4444');
+    else if (state === 'refused') this.toast(d.error || 'This job cannot be stopped safely from here. It was left running; see the Job Center.', '#ef4444');
+    else if (state === 'finished') this.toast('That job had already finished.', '#fbbf24');
+    else if (state === 'error') this.toast(d.error || 'Cancel failed', '#ef4444');
+    else if (state === 'verified' && rs === 'not_started') this.toast('Cancelled before the worker started it.', '#fbbf24');
   };
 
   P.selectResult = function (i) {
@@ -439,12 +454,33 @@
     this.selectLibraryImage(id);
     return true;
   };
+  // Library-origin sources can be older than the recent-run list. Retain exactly
+  // the selected canonical image ID through 3D / World navigation.
+  P.useLibrarySource = function (id, destination) {
+    const SA = window.DexSourceAsset;
+    if (!SA || !SA.isImageId(id) || !['3d', 'world'].includes(destination)) {
+      this.toast('Choose a published Library image first.', '#fbbf24');
+      return false;
+    }
+    if (this.setScreen(destination) === false) return false;
+    this.setActiveAssetSelection({ kind: 'image', id });
+    this.setState(destination === '3d'
+      ? { asset3dSourceArtifact: id, asset3dPreviewFailedId: '' }
+      : { worldSourceArtifact: id });
+    return true;
+  };
 
   // Edit (img2img / inpaint / outpaint) lives in edit-ui.js: one authoritative openImageInEdit,
   // one operation state, one Run control.
 
   // ── Enhance ─────────────────────────────────────────────────────
   P.sendToEnhance = async function (id) {
+    // G3: the Enhance handoff names one canonical image; a missing or malformed
+    // id is refused rather than silently replaced by the newest result.
+    const SA = window.DexSourceAsset;
+    if (SA && !SA.isImageId(String(id == null ? '' : id))) {
+      this.toast(SA.MESSAGES['not-canonical'], '#fbbf24'); return false;
+    }
     const m = await this._imageMeta(id);
     if (!m) return false;
     if (this.setScreen('enhance') === false) return false;
@@ -590,7 +626,12 @@
     const off = filter && filter !== ws.lib.filter ? 0 : Math.max(0, offset == null ? ws.lib.offset : offset);
     this.wsSet({ lib: Object.assign({}, ws.lib, { filter: f, loading: true, offset: off, error: null }) });
     const r = await this._api('/api/library/images?filter=' + encodeURIComponent(f) + '&sort=' + ws.lib.sort + '&limit=' + lay.pageSize + '&offset=' + off, undefined);
-    this.wsSet({ lib: Object.assign({}, this._ws().lib, { items: r.ok ? r.data.items : [], total: r.ok ? r.data.total : 0, loading: false, error: r.ok ? null : 'Could not load the Library' }) });
+    // A malformed 200 (no items array) used to store `undefined` and crash the next render.
+    const items = r.ok && r.data && Array.isArray(r.data.items) ? r.data.items : [];
+    const total = r.ok && r.data && Number.isFinite(r.data.total) ? r.data.total : items.length;
+    const malformed = r.ok && !(r.data && Array.isArray(r.data.items));
+    this.wsSet({ lib: Object.assign({}, this._ws().lib, { items, total, loading: false,
+      error: !r.ok ? 'Could not load the Library' : malformed ? 'The Library returned an unexpected response, so no images are shown.' : null }) });
   };
   // Full-size viewer over the ACTIVE (filtered + sorted) collection, not just the visible page.
   P.openLibraryViewer = async function (id) {
@@ -608,9 +649,19 @@
   };
   P.selectLibraryImage = async function (id) {
     const m = await this._imageMeta(id);
-    if (!m) return false;
-    this.wsSet({ lib: Object.assign({}, this._ws().lib, { selectedId: id, selected: m }) });
-    this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'image', id: m.id || id });
+    // A partial record must not be trusted: `ancestors`/`children` used to be assumed
+    // present, and one malformed /api/images/:id/meta response crashed the whole render.
+    if (!m || typeof m !== 'object' || !(m.id || id) || !m.url) {
+      this.toast('That image record is incomplete, so it was not opened. Refresh the Library and try again.', '#fbbf24');
+      return false;
+    }
+    const rec = Object.assign({}, m, {
+      id: m.id || id,
+      ancestors: Array.isArray(m.ancestors) ? m.ancestors : [],
+      children: Array.isArray(m.children) ? m.children : []
+    });
+    this.wsSet({ lib: Object.assign({}, this._ws().lib, { selectedId: id, selected: rec }) });
+    this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'image', id: rec.id });
     return true;
   };
   // Library thumbnail: click = fullscreen (with Edit actions in the viewer); the corner "ⓘ" selects it for details/lineage.
@@ -718,16 +769,25 @@
       h('div', { style: { display: 'grid', gap: 6, alignContent: 'start' } },
         h('div', { style: css.mono }, sel.id),
         h('div', { style: css.muted }, [sel.width + '×' + sel.height, sel.meta.operation, sel.meta.target, sel.meta.seed != null ? 'seed ' + sel.meta.seed : null, sel.meta.steps ? sel.meta.steps + ' steps' : null, sel.meta.strength ? 'strength ' + sel.meta.strength : null, sel.keeper ? '★ Keeper' : null].filter(Boolean).join(' · ') || 'legacy image (no lineage recorded)'),
-        h('div', { style: css.row }, ...this.imageActions(selView)),
+        h('div', { style: Object.assign({}, css.row, { flexWrap: 'wrap' }), 'data-library-primary-actions': sel.id },
+          this._gate('img2img') ? btn('Edit', () => this.sendToEdit(sel.id, 'img2img'), '#a78bfa') : null,
+          btn('Enhance', () => this.sendToEnhance(sel.id), '#f59e0b'),
+          btn('Use for 3D', () => this.useLibrarySource(sel.id, '3d'), '#38bdf8'),
+          btn('Use for World', () => this.useLibrarySource(sel.id, 'world'), '#38bdf8'),
+          h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export', download: sel.id,
+            'aria-label': 'Download selected image', style: { padding: '8px 9px', color: '#7dd3fc', fontSize: 12, fontWeight: 700 } }, 'Download')),
+        h('details', { style: { border: '1px solid rgba(148,163,184,.17)', borderRadius: 8, padding: '8px 10px' } },
+          h('summary', { style: { cursor: 'pointer', color: '#cbd5e1', fontSize: 12 } }, 'More image actions'),
+          h('div', { style: Object.assign({}, css.row, { marginTop: 8, flexWrap: 'wrap' }) }, ...this.imageActions(selView))),
         h('div', { style: css.row, 'data-export-actions': 'true' },
           btn('Copy infotext', async () => { const r = await fetch(base + '/api/images/' + encodeURIComponent(sel.id) + '/infotext'); if (r.ok) this.copyInfotext(await r.text()); else this.toast((await r.json().catch(() => ({}))).error || 'No recorded settings', '#fbbf24'); }, '#94a3b8'),
           h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export?metadata=1', download: sel.id, 'data-export-link': 'metadata', style: { color: '#94a3b8', fontSize: 12, textDecoration: 'underline', padding: '6px 8px' } }, 'Export PNG with parameters'),
           h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export', download: sel.id, 'data-export-link': 'plain', style: { color: '#94a3b8', fontSize: 12, textDecoration: 'underline', padding: '6px 8px' } }, 'Export plain PNG')),
         this.buildExportPanel([sel.id]),
         h('div', { style: css.row }, h('span', { style: css.label }, 'Lineage'),
-          sel.ancestors.length ? lineageChip(sel.ancestors[sel.ancestors.length - 1], '⇤ Original') : null,
+          (sel.ancestors || []).length ? lineageChip(sel.ancestors[sel.ancestors.length - 1], '⇤ Original') : null,
           sel.parent ? lineageChip(sel.parent, '↑ Parent') : h('span', { style: css.muted }, 'no parent'),
-          ...sel.children.map((c, i) => lineageChip(c, '↓ Child ' + (i + 1))),
+          ...(sel.children || []).map((c, i) => lineageChip(c, '↓ Child ' + (i + 1))),
           sel.parent ? btn('Compare with parent', () => { this.wsSet({ compareIds: [sel.parent, sel.id] }); this.loadCompare(); }, '#38bdf8') : null))) : null;
     return h('div', null,
       this.buildPngInfoPanel(),
@@ -1591,17 +1651,25 @@
         }
       },
         heroImage,
-        active && active.imageId ? h('div', { style: Object.assign({}, css.row, { marginTop: 4, flexWrap: 'wrap' }) },
-          btn(active.keeper ? '★ Keeper' : '☆ Keeper', () => this.toggleKeeper(active.imageId, !active.keeper, active), '#fbbf24'),
-          btn('Copy Seed', () => { navigator.clipboard.writeText(String(active.seed)); this.toast('Copied seed ' + active.seed, '#38bdf8'); }, '#94a3b8'),
-          btn('Reuse Settings', () => this.reuseSettings(active.imageId), '#94a3b8'),
-          btn('Same / New Seed', () => this.generateVariation(active), '#65d66e'),
-          this._gate('img2img') ? btn('Send to Img2Img', () => this.sendToEdit(active.imageId, 'img2img'), '#a78bfa') : null,
-          this._gate('inpaint') ? btn('Send to Inpaint', () => this.sendToEdit(active.imageId, 'inpaint'), '#a78bfa') : null,
-          btn('Upscale', () => this.sendToEnhance(active.imageId), '#f59e0b'),
-          btn('Detailer', () => this.openDetailer(active.imageId), '#a855f7'),
-          btn('Fullscreen', () => openFull(this, active.imageId, base + '/api/images/' + encodeURIComponent(active.imageId)), '#94a3b8'),
-          btn('Lineage', () => this.showInLibrary(active.imageId), '#94a3b8')
+        active && active.imageId && active.status === 'DONE' ? h('div', { style: { display: 'grid', gap: 8, width: '100%', marginTop: 6 } },
+          h('div', { style: Object.assign({}, css.row, { flexWrap: 'wrap', alignItems: 'center' }) },
+            h('span', { role: 'status', style: { color: '#86efac', fontWeight: 700, fontSize: 12 } }, 'Saved to Library'),
+            btn('Open in Library', () => this.showInLibrary(active.imageId), '#38bdf8'),
+            this._gate('img2img') ? btn('Edit', () => this.sendToEdit(active.imageId, 'img2img'), '#a78bfa') : null,
+            btn('Enhance', () => this.sendToEnhance(active.imageId), '#f59e0b'),
+            h('a', { href: base + '/api/images/' + encodeURIComponent(active.imageId), download: active.imageId,
+              style: { display: 'inline-flex', alignItems: 'center', padding: '7px 11px', borderRadius: 7, border: '1px solid rgba(148,163,184,.5)', color: '#f8fafc', textDecoration: 'none', fontWeight: 700, fontSize: 12 } }, 'Download')),
+          h('details', { style: { border: '1px solid rgba(148,163,184,.22)', borderRadius: 8, padding: '8px 10px' } },
+            h('summary', { style: { cursor: 'pointer', color: '#cbd5e1', fontSize: 12 } }, 'More image actions'),
+            h('div', { style: Object.assign({}, css.row, { marginTop: 8, flexWrap: 'wrap' }) },
+              btn(active.keeper ? '★ Keeper' : '☆ Keeper', () => this.toggleKeeper(active.imageId, !active.keeper, active), '#fbbf24'),
+              btn('Copy Seed', () => { navigator.clipboard.writeText(String(active.seed)); this.toast('Copied seed ' + active.seed, '#38bdf8'); }, '#94a3b8'),
+              btn('Reuse Settings', () => this.reuseSettings(active.imageId), '#94a3b8'),
+              btn('Same / New Seed', () => this.generateVariation(active), '#65d66e'),
+              this._gate('inpaint') ? btn('Send to Inpaint', () => this.sendToEdit(active.imageId, 'inpaint'), '#a78bfa') : null,
+              btn('Detailer', () => this.openDetailer(active.imageId), '#a855f7'),
+              btn('Fullscreen', () => openFull(this, active.imageId, base + '/api/images/' + encodeURIComponent(active.imageId)), '#94a3b8'),
+              btn('Lineage', () => this.showInLibrary(active.imageId), '#94a3b8')))
         ) : null
       ),
       // Siblings Filmstrip Rail
@@ -1689,14 +1757,27 @@
     const ws = this._ws();
     this._ensureEditSource();
     if (ws.activeJobId) {
+      // The job id survived a reload. Until it is confirmed, the Cancel control must not claim it can stop it.
+      this.wsSet({ reconciling: true, interruptState: '', interrupting: false });
       fetch(this.state.backendUrl + '/api/jobs/' + ws.activeJobId).then(r => (r.ok ? r.json() : null)).then(job => {
-        if (!job) { this.wsSet({ activeJobId: null }); return; }
+        this.wsSet({ reconciling: false });
+        if (!job) {
+          this.wsSet({ activeJobId: null });
+          this.setState({ jobStatus: 'idle', progress: 0, errorMsg: '' });
+          this.toast('The job that was running before the reload no longer exists on the server.', '#fbbf24');
+          return;
+        }
         if (!this._jobTerminal(job.status)) {
           this.setState({ jobStatus: 'generating', progress: job.stage && job.stage.determinate ? job.stage.percent : null, jobStage: job.stage || null });
           this.toast('Reattached to the running generation', '#38bdf8');
           this._followCreateJob(job.id, null);
         } else this._onCreateDone(job, null);
-      }).catch(() => {});
+      }).catch(() => {
+        // Unknown state is not "still running": drop the stale id instead of offering a Cancel that cannot be honoured.
+        this.wsSet({ reconciling: false, activeJobId: null, interrupting: false, interruptState: '' });
+        this.setState({ jobStatus: 'idle', progress: 0, errorMsg: '' });
+        this.toast('Could not confirm the job that was running before the reload. It is no longer offered here as cancellable — check the Job Center.', '#fbbf24');
+      });
     }
     if (ws.queueId) this._pollQueue();
     else this._detectRestoredQueue();

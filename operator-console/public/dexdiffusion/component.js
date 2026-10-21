@@ -5,8 +5,23 @@
 
 class Component extends DCLogic {
   state = {
-    version: (() => { const v = Number(localStorage.getItem('dex_version')); return v === 1 || v === 2 || v === 3 || v === 4 ? v : 4; })(),
-    screens: (() => { let s = 'create'; try { s = sessionStorage.getItem('dex_screen') || 'create'; } catch {} let ca = 'workstation'; try { ca = sessionStorage.getItem('dex_concept_screen') || 'workstation'; } catch {} return { 1: s, 2: s, 3: s, 4: ca }; })(),
+    // G4 / T-401: Studio is the only normal product shell. A one-time, idempotent migration records
+    // where the profile came from and points the preference at Studio without touching any draft.
+    version: (() => {
+      try {
+        const Nav = window.DexStudioNav;
+        if (!Nav) return 2;
+        Nav.migratePreferences(localStorage);
+        const developerMode = Nav.isDeveloperMode(localStorage, window.location);
+        return Nav.resolveInitialVersion(localStorage.getItem('dex_version'), { developerMode });
+      } catch (_) { return 2; }
+    })(),
+    screens: (() => {
+      let s = 'create';
+      try { s = window.DexStudioNav ? window.DexStudioNav.resolveInitialScreen(sessionStorage.getItem('dex_screen')) : (sessionStorage.getItem('dex_screen') || 'create'); } catch {}
+      let ca = 'workstation'; try { ca = sessionStorage.getItem('dex_concept_screen') || 'workstation'; } catch {}
+      return { 1: s, 2: s, 3: s, 4: ca };
+    })(),
     activeAssetSelection: null,
     // Create
     target: 'sd15',
@@ -29,6 +44,8 @@ class Component extends DCLogic {
     steps: 20, cfg: 7, seed: -1, width: 512, height: 512,
     sampler: 'euler_a', scheduler: 'discrete', clipSkip: '', tiling: false, eta: '', rng: '',
     jobStatus: 'idle', progress: 0, currentImageSrc: null, lastSeed: null, errorMsg: '', lastGenerationParams: null,
+    // T-202: the exact job currently owned by the Studio Create screen (mirrored for the Cancel control).
+    activeJobId: null,
     // Batch
     batchAxisX: 'seed', batchValuesX: '-1,-1,-1,-1',
     batchPrompt: '', batchNeg: '', batchSteps: 20, batchCfg: 7, batchW: 512, batchH: 512,
@@ -332,8 +349,11 @@ class Component extends DCLogic {
   }
 
   async startAsset3d(mode) {
-    const source = this.state.asset3dSourceArtifact || (this.state.runs[0] && this.state.runs[0].imageFile);
-    if (!source) { this.toast('Select a canonical library image first', '#fbbf24'); return; }
+    const SA = this._sourceAsset();
+    if (!SA) { this.toast('Source resolution failed to load — reload Studio before starting 3D.', '#ef4444'); return; }
+    const resolved = SA.resolveSource({ explicitId: this.state.asset3dSourceArtifact, selection: this.state.activeAssetSelection });
+    if (!resolved.ok) { this.toast(resolved.message, '#fbbf24'); return; }
+    const source = resolved.id;
     this.setState({ asset3dLoading: true, asset3dMode: mode });
     try {
       const url = mode === 'quick3d' ? '/api/world/projects' : '/api/3d/jobs';
@@ -374,8 +394,11 @@ class Component extends DCLogic {
   }
 
   async startWorld(mode, sourceArtifactId) {
-    const source = sourceArtifactId || this.state.worldSourceArtifact || (this.state.runs[0] && this.state.runs[0].imageFile);
-    if (!source) { this.toast('Select a canonical library image first', '#fbbf24'); return; }
+    const SA = this._sourceAsset();
+    if (!SA) { this.toast('Source resolution failed to load — reload Studio before starting World.', '#ef4444'); return; }
+    const resolved = SA.resolveSource({ explicitId: sourceArtifactId || this.state.worldSourceArtifact, selection: this.state.activeAssetSelection });
+    if (!resolved.ok) { this.toast(resolved.message, '#fbbf24'); return; }
+    const source = resolved.id;
     this.setState({ worldLoading: true });
     try {
       const r = await fetch(this.state.backendUrl + '/api/world/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, sourceArtifactId: source, parameters: { seed: 42 } }) });
@@ -410,15 +433,22 @@ class Component extends DCLogic {
   buildWorldWorkspace() {
     const h = React.createElement;
     const s = this.state;
-    const runs = (s.runs || []).filter(r => r.imageFile);
-    const opts = runs.length ? runs.map(r => h('option', { key: r.imageFile, value: r.imageFile }, r.id + ' · ' + r.model)) : [h('option', { value: '' }, 'No canonical images loaded')];
+    const SA = this._sourceAsset();
+    const picks = SA ? SA.choices(s.runs) : [];
+    const currentSource = s.worldSourceArtifact || '';
+    if (SA && SA.isImageId(currentSource) && !picks.some(p => p.id === currentSource)) {
+      picks.unshift({ id: currentSource, label: currentSource + ' · chosen in Library' });
+    }
+    const opts = [h('option', { key: '__none', value: '' }, picks.length ? 'Choose a source image…' : 'No canonical images loaded')]
+      .concat(picks.map(p => h('option', { key: p.id, value: p.id }, p.label + (p.run && p.run.model ? ' · ' + p.run.model : ''))));
     const status = s.worldWorkerStatus;
     const workerLine = status && status.workers ? status.workers.map(w => `${w.label}: ${w.status}`).join(' · ') : 'Worker status loading…';
     return h('div', { style: { display: 'grid', gap: 14 } },
       h('div', { style: { background: '#060a10', border: '1px solid rgba(148,163,184,.14)', borderRadius: 12, padding: 16 } },
         h('div', { style: { fontSize: 18, color: '#f0f4f8', fontWeight: 750, marginBottom: 4 } }, 'World'),
         h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, marginBottom: 12 } }, 'Dedicated local 3D workspace. Quick 3D reconstructs one image; Complete 360 builds panorama, depth/scaffold, aligned SHARP proposals, fusion and viewer artifacts. Learned global depth is not installed, so Complete 360 may report WARN while using the bounded fallback.'),
-        h('select', { value: s.worldSourceArtifact || (runs[0] && runs[0].imageFile) || '', onChange: e => this.setState({ worldSourceArtifact: e.target.value }), style: { width: '100%', maxWidth: 520, marginBottom: 10, border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
+        h('div', { 'data-source-rule': 'world', style: { color: '#8fa3b8', fontSize: 11, lineHeight: 1.5, marginBottom: 8 } }, 'World uses exactly the image you choose here. Nothing is substituted, and no source is pre-selected.'),
+        h('select', { 'aria-label': 'World source image', value: s.worldSourceArtifact || '', onChange: e => { this.setState({ worldSourceArtifact: e.target.value }); if (SA && SA.isImageId(e.target.value)) this.setActiveAssetSelection({ kind: 'image', id: e.target.value }); }, style: { width: '100%', maxWidth: 520, marginBottom: 10, border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
         h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
           h('button', { onClick: () => this.startWorld('quick3d'), style: { border: '1px solid #38bdf866', background: '#38bdf616', color: '#38bdf8', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make 3D'),
           h('button', { onClick: () => this.startWorld('complete360'), style: { border: '1px solid #f59e0b66', background: '#f59e0b16', color: '#fbbf24', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make World'),
@@ -442,8 +472,12 @@ class Component extends DCLogic {
   buildAsset3dWorkspace() {
     const h = React.createElement;
     const s = this.state;
-    const runs = (s.runs || []).filter(r => r.imageFile);
-    const selected = s.asset3dSourceArtifact || (runs[0] && runs[0].imageFile) || '';
+    const SA = this._sourceAsset();
+    const picks = SA ? SA.choices(s.runs) : [];
+    const selected = s.asset3dSourceArtifact || '';
+    if (SA && SA.isImageId(selected) && !picks.some(p => p.id === selected)) {
+      picks.unshift({ id: selected, label: selected + ' · chosen in Library' });
+    }
     const worker = s.asset3dWorkerStatus;
     const modes = worker && worker.modes ? worker.modes : {};
     const meshReady = modes.mesh && modes.mesh.status === 'PROVEN';
@@ -451,7 +485,8 @@ class Component extends DCLogic {
     const job = s.asset3dJob;
     const artifact = job && Array.isArray(job.artifacts_detail) ? job.artifacts_detail[0] : null;
     const sourcePreview = selected ? s.backendUrl + '/api/images/' + encodeURIComponent(selected) : '';
-    const opts = runs.length ? runs.map(r => h('option', { key: r.imageFile, value: r.imageFile }, r.id + ' · ' + r.model)) : [h('option', { value: '' }, 'No canonical images loaded')];
+    const opts = [h('option', { key: '__none', value: '' }, picks.length ? 'Choose a source image…' : 'No canonical images loaded')]
+      .concat(picks.map(p => h('option', { key: p.id, value: p.id }, p.label + (p.run && p.run.model ? ' · ' + p.run.model : ''))));
     const statusLine = worker ? `Big Mac: ${worker.remote?.reachable ? worker.remote.identity : 'unavailable'} · runtime ${worker.remote?.runtime ? 'present' : 'missing'} · lease shared with all heavy inference` : 'Loading Big Mac 3D capability status…';
     const chip = (label, item) => h('div', { style: { border: '1px solid rgba(148,163,184,.15)', borderRadius: 7, padding: '8px 10px', background: 'rgba(9,20,32,.55)' } }, h('div', { style: { color: '#8da0b4', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em' } }, label), h('div', { style: { color: item?.status === 'PROVEN' ? '#65d66e' : item?.status === 'DISABLED' ? '#70849a' : '#fbbf24', font: "700 11px 'IBM Plex Mono',monospace", marginTop: 4 } }, item?.status || 'NOT_TESTED'));
     return h('div', { style: { display: 'grid', gap: 14, maxWidth: 1080 } },
@@ -461,7 +496,8 @@ class Component extends DCLogic {
         h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(260px,1fr) minmax(180px,280px)', gap: 14, alignItems: 'start' } },
           h('div', null,
             h('div', { style: { color: '#6090a8', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 5 } }, 'Source · canonical image'),
-            h('select', { value: selected, onChange: e => this.setState({ asset3dSourceArtifact: e.target.value, asset3dPreviewFailedId: '' }), style: { width: '100%', border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
+            h('div', { 'data-source-rule': '3d', style: { color: '#8fa3b8', fontSize: 11, lineHeight: 1.5, marginBottom: 6 } }, 'Required. 3D uses exactly the image you choose; the newest result is never substituted.'),
+            h('select', { 'aria-label': '3D source image', value: selected, onChange: e => { this.setState({ asset3dSourceArtifact: e.target.value, asset3dPreviewFailedId: '' }); if (SA && SA.isImageId(e.target.value)) this.setActiveAssetSelection({ kind: 'image', id: e.target.value }); }, style: { width: '100%', border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
             sourcePreview ? (s.asset3dPreviewFailedId === selected
               ? h('div', { role: 'status', style: { display: 'grid', placeItems: 'center', width: 150, height: 150, boxSizing: 'border-box', marginTop: 10, padding: 12, border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, background: '#0d1823', color: '#91a2b4', fontSize: 11, lineHeight: 1.45, textAlign: 'center' } }, 'Source preview unavailable. Verify the canonical image in Library before starting a 3D job.')
               : h('img', { src: sourcePreview, alt: 'Selected canonical source preview', onError: () => this.setState({ asset3dPreviewFailedId: selected }), style: { width: 150, height: 150, objectFit: 'cover', borderRadius: 8, marginTop: 10, border: '1px solid rgba(148,163,184,.16)' } })) : null
@@ -753,8 +789,18 @@ class Component extends DCLogic {
   // ── Job status helpers ────────────────────────────────────────
   // The real backend reports terminal jobs as PASS / PARTIAL / FAIL (not
   // done/error/failed). Treat anything that is not queued/running as finished.
-  _jobTerminal(s) { return !!s && s !== 'queued' && s !== 'running' && s !== 'pending'; }
-  _jobOk(s) { return s === 'PASS' || s === 'PARTIAL' || s === 'done' || s === 'complete' || s === 'succeeded'; }
+  // Job status vocabulary differs by store: the controlled pipeline uses lowercase
+  // (queued/running) while the durable job store uses uppercase (QUEUED/RUNNING).
+  // Comparing one spelling made a live RUNNING generic job look finished, so a
+  // reload adopted it as a failure and dropped its Cancel. Normalize first.
+  _jobTerminal(s) {
+    const v = String(s == null ? '' : s).toUpperCase();
+    return !!v && v !== 'QUEUED' && v !== 'RUNNING' && v !== 'PENDING' && v !== 'STARTING' && v !== 'PREPARING' && v !== 'TRANSFERRING';
+  }
+  _jobOk(s) {
+    const v = String(s == null ? '' : s).toUpperCase();
+    return v === 'PASS' || v === 'PARTIAL' || v === 'DONE' || v === 'COMPLETE' || v === 'COMPLETED' || v === 'SUCCEEDED';
+  }
   // Build a /api/run-file URL, tolerating an absolute path or a bare filename.
   _imgUrl(runId, file) {
     if (!runId || !file) return null;
@@ -820,6 +866,11 @@ class Component extends DCLogic {
     const { version, screens } = this.state;
     try { sessionStorage.setItem(version === 4 ? 'dex_concept_screen' : 'dex_screen', s); } catch {}
     this.setState({ screens: { ...screens, [version]: s } });
+    // Category navigation must present the selected screen immediately.
+    // On rapid transitions the global rAF batcher can leave the previous
+    // module visible even though route state has changed. Reconcile this
+    // explicit user action synchronously; background updates remain batched.
+    if (version === 2 && typeof this.__render === 'function') this.__render();
     return true;
   }
 
@@ -1153,12 +1204,23 @@ class Component extends DCLogic {
   }
 
   // ── Generate (txt2img) ────────────────────────────────────────
+  // T-202: the dedicated Cancel control for the Create screen. The proven implementation already
+  // exists in workstation-ui.js (`interruptGeneration`): it targets the exact job id, waits for the
+  // server's remote-stop verdict and never claims success without it. This method only routes to it and
+  // refuses honestly when the Studio workspace module is not loaded.
+  onCancelJob() {
+    if (typeof this.interruptGeneration === 'function') return this.interruptGeneration();
+    this.toast('Cancelling is not available in this view — open Studio to stop the job.', '#fbbf24');
+    return undefined;
+  }
+
   async onGenerate() {
     const { jobStatus, prompt, negPrompt, steps, cfg, seed, width, height,
             target, backendUrl, savePrompts, sampler, scheduler, selectedVae } = this.state;
-    if (jobStatus === 'generating') {
-      clearInterval(this._pollTimer);
-      this.setState({ jobStatus: 'idle', progress: 0 });
+    // T-202: Generate starts one job. It is never a disguised "stop" that silently resets local state
+    // while the worker keeps running. A running job has its own Cancel affordance keyed by job id.
+    if (jobStatus === 'generating' || jobStatus === 'cancelling') {
+      this.toast('A job is already running — use Cancel job to stop it', '#fbbf24');
       return;
     }
     if (!prompt.trim()) { this.toast('Enter a prompt first', '#fbbf24'); return; }
@@ -1183,6 +1245,7 @@ class Component extends DCLogic {
         this.toast(err.error || 'Generate failed', '#ef4444'); return;
       }
       const { job_id } = await r.json();
+      this.setState({ activeJobId: job_id });
       this._startPoll(job_id, (job) => this._onGenerateDone(job, body, backendUrl));
     } catch(e) {
       this.setState({ jobStatus: 'error', errorMsg: e.message });
@@ -1210,7 +1273,7 @@ class Component extends DCLogic {
       };
       const runs = [run, ...this.state.runs].slice(0, 100);
       try { localStorage.setItem('dex_runs', JSON.stringify(runs)); } catch {}
-      this.setState(s => ({ jobStatus: 'complete', progress: 100, currentImageSrc: imgSrc, lastSeed: params.seed, runs,
+      this.setState(s => ({ jobStatus: 'complete', progress: 100, activeJobId: null, currentImageSrc: imgSrc, lastSeed: params.seed, runs,
         lastGenerationParams: { ...(s.lastGenerationParams || params), runId, imageFile: imgFile, status: job.status } }));
       this.toast('Done · ' + (runId || ''), '#65d66e');
       setTimeout(() => this.loadRuns(), 1500);
@@ -1274,11 +1337,15 @@ class Component extends DCLogic {
   // Resolve the actual run + image filename to use as a source, honoring the
   // explicit "Source image" picker when set, else the run's primary image.
   _resolveSource(runId, file) {
+    const SA = this._sourceAsset();
     const runs = this.state.runs;
     const srcRun = (runId && runId !== 'last') ? runs.find(r => r.id === runId) : runs[0];
     if (!srcRun) return { error: 'No source run — generate an image first' };
     const imageFile = file || srcRun.imageFile || (this.state.runFiles[srcRun.id] || [])[0];
     if (!imageFile) return { error: 'Source run has no image file' };
+    if (SA && !SA.isSafeImageName(String(imageFile))) {
+      return { error: 'That source file name is not a supported image, so it was not sent to Enhance.' };
+    }
     return { run: srcRun, imageFile };
   }
   onI2iRunChange(runId) { this.setState({ i2iSrcRunId: runId, i2iSrcFile: '' }); this.loadRunFiles(runId); }
@@ -1405,6 +1472,54 @@ class Component extends DCLogic {
         params.runId ? row('Run', params.runId, true) : null));
   }
 
+  // The Create workspace record lives in workstation-ui.js; read it defensively so the shell still
+  // renders if that module is unavailable.
+  // G3: canonical source resolution. One module decides which image a
+  // World/3D/Enhance/Edit handoff acts on, and it refuses rather than guessing.
+  _sourceAsset() { return window.DexSourceAsset || null; }
+
+  _createWs() {
+    try { return (typeof this._ws === 'function' ? this._ws() : null) || {}; } catch (_) { return {}; }
+  }
+
+  // T-402: horizontal chip row overflow. Keyboard users get the same reach as pointer users; the
+  // row itself remains a single line (never a wrapped chip waterfall).
+  scrollStudioNav(direction) {
+    try {
+      const nav = document.querySelector('[data-studio-nav]');
+      if (!nav) return;
+      const step = Math.max(160, Math.round(nav.clientWidth * 0.6)) * (direction < 0 ? -1 : 1);
+      nav.scrollBy ? nav.scrollBy({ left: step, behavior: 'smooth' }) : (nav.scrollLeft += step);
+      const active = nav.querySelector('[data-tab][data-active="true"]');
+      if (active && active.focus) active.focus({ preventScroll: true });
+    } catch (_) {}
+  }
+
+  // S03 / T-603: Swap is a required destination whose backend, semantics and licence are unresolved.
+  // It stays navigable and truthful: no generation control, no hidden download, no fake job.
+  buildSwapWorkspace() {
+    const h = React.createElement;
+    const card = (title, body) => h('div', { style: { border: '1px solid rgba(125,211,252,.16)', background: 'rgba(125,211,252,.05)', borderRadius: 10, padding: '12px 14px', marginBottom: 10 } },
+      h('div', { style: { fontSize: 12, fontWeight: 700, color: '#dbeafe', marginBottom: 4 } }, title),
+      h('div', { style: { fontSize: 12, color: '#93a3b8', lineHeight: 1.6 } }, body));
+    const button = (label, onClick) => h('button', {
+      type: 'button', onClick,
+      style: { border: '1px solid rgba(148,163,184,.35)', background: 'rgba(255,255,255,.04)', color: '#e2e8f0', borderRadius: 8, padding: '7px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }
+    }, label);
+
+    return h('div', { style: { maxWidth: 760, margin: '0 auto' } },
+      h('h1', { style: { fontSize: 18, fontWeight: 700, color: '#f1f5f9', margin: '0 0 4px' } }, 'Swap'),
+      h('p', { style: { fontSize: 13, color: '#a8b3c2', margin: '0 0 14px', lineHeight: 1.6 } },
+        'This tool isn\'t enabled yet. Nothing here will start a job or download a model.'),
+      card('What Swap is for', 'Replacing or exchanging content between images — for example putting one subject\'s appearance into another picture. The exact behaviour has not been agreed yet, so it is not built.'),
+      card('What is missing', 'An approved, licensed model, an agreed definition of the operation, and a proven run on this machine. Until then no Swap button will pretend to work.'),
+      card('What you can do now', 'Everything else in the studio still works. Use Edit to change an existing image, or Enhance to make one larger.'),
+      h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 } },
+        button('Open Library', () => this.setScreen('library')),
+        button('Open Edit', () => this.setScreen('edit')),
+        button('View system status', () => this.setScreen('system'))));
+  }
+
   buildImageDisplay(jobStatus, progress, imageSrc, lastSeed, errorMsg) {
     if (jobStatus === 'generating') {
       const steps = Math.round(progress / 100 * (+this.state.steps || 20));
@@ -1436,6 +1551,18 @@ class Component extends DCLogic {
           React.createElement('div', { style: { fontSize: 13, color: '#65d66e', fontFamily: "'IBM Plex Mono',monospace" } }, '✓ Job done'),
           React.createElement('div', { style: { fontSize: 11, color: '#4a6878', fontFamily: "'IBM Plex Mono',monospace" } }, 'seed: ' + (lastSeed ?? '—'))),
         React.createElement('div', { style: { fontSize: 11, color: '#5060a0' } }, 'Image saved to runs/ — check Library'));
+    }
+    if (jobStatus === 'cancelled') {
+      return React.createElement('div', { role: 'status', style: { textAlign: 'center', padding: 20 } },
+        React.createElement('div', { style: { fontSize: 14, color: '#94a3b8', marginBottom: 8 } }, 'Job cancelled'),
+        React.createElement('div', { style: { fontSize: 12, color: '#64748b', maxWidth: 280, lineHeight: 1.5 } }, 'Your prompt and settings are still here. Press Generate image when you want to try again.'));
+    }
+    if (jobStatus === 'cancel-unverified') {
+      const reason = this.state.cancelError || 'The worker could not confirm that it stopped.';
+      return React.createElement('div', { role: 'alert', style: { textAlign: 'center', padding: 20 } },
+        React.createElement('div', { style: { fontSize: 14, color: '#f59e0b', marginBottom: 8 } }, 'Could not confirm the worker stopped'),
+        React.createElement('div', { style: { fontSize: 12, color: '#94a3b8', maxWidth: 320, lineHeight: 1.6, margin: '0 auto' } }, reason),
+        React.createElement('div', { style: { fontSize: 11, color: '#64748b', marginTop: 8 } }, 'Heavy work stays paused until this is reconciled. See System for details.'));
     }
     if (jobStatus === 'error') {
       return React.createElement('div', { style: { textAlign: 'center', padding: 20 } },
@@ -2149,7 +2276,11 @@ class Component extends DCLogic {
       h('div', { style: { fontSize: 10, fontWeight: 800, color: '#94a3b8', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 } }, title), ...rows);
     const siTs = si && si.network && si.network.tailscale;
     const siLauncher = si && si.launcher;
-    const systemInfoPanel = h('div', { style: { border: '1px solid rgba(56,189,248,.22)', background: 'rgba(6,10,16,.64)', borderRadius: 9, padding: 12, marginBottom: 12 } },
+    // A partial or unexpected /api/system-info payload must never break renderVals: when it did,
+    // one malformed field blanked the whole Studio (not just the System screen).
+    let systemInfoPanel;
+    try {
+    systemInfoPanel = h('div', { style: { border: '1px solid rgba(56,189,248,.22)', background: 'rgba(6,10,16,.64)', borderRadius: 9, padding: 12, marginBottom: 12 } },
       h('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
         h('div', { style: { fontSize: 12, fontWeight: 800, color: '#cbd5e1', letterSpacing: '.06em', textTransform: 'uppercase' } }, 'About DexDiffusion'),
         h('div', { style: { flex: 1 } }),
@@ -2189,6 +2320,10 @@ class Component extends DCLogic {
           siRow('Other targets', si.sdcpp.otherTargets),
         ]),
         h('div', { style: { color: '#7f93a8', fontSize: 11, marginTop: 10 } }, 'Docs: ' + si.app.docs + ' · state: ' + si.app.operationalState + ' · terminal: bin/dexdiffusion status · checked ' + si.checkedAt)));
+    } catch (_) {
+      systemInfoPanel = h('div', { role: 'status', 'data-system-info': 'incomplete', style: { border: '1px solid rgba(251,191,36,.35)', background: 'rgba(251,191,36,.07)', borderRadius: 9, padding: 12, marginBottom: 12, color: '#fbbf24', fontSize: 12, lineHeight: 1.5 } },
+        'The system information this build received is incomplete, so the About panel is hidden rather than showing wrong values. Everything else in Studio still works; reload or check GET /api/system-info on the console.');
+    }
 
     const keyboardHelp = h('div', { style: { border: '1px solid rgba(148,163,184,.12)', borderRadius: 8, padding: 9, color: '#94a3b8', fontSize: 11, lineHeight: 1.6, marginBottom: 10, background: 'rgba(5,10,18,.38)' } },
       'Keyboard shortcuts: Command+Enter generate · / focus prompt · P collapse prompt · S settings · L library');
@@ -2203,17 +2338,37 @@ class Component extends DCLogic {
 
     return {
       version, versionStr: String(version), screen, compactModeStr: String(s.compactMode),
+      devModeStr: String((() => { try { return window.DexStudioNav.isDeveloperMode(localStorage, window.location); } catch (_) { return false; } })()),
       isV1: version===1, isV2: version===2, isV3: version===3, isV4: version===4, isLegacy: version !== 4,
       isV1Str: String(version===1), isV2Str: String(version===2), isV3Str: String(version===3), isV4Str: String(version===4),
       setV1: ()=>this.setVersion(1), setV2: ()=>this.setVersion(2), setV3: ()=>this.setVersion(3), setV4: ()=>this.setVersion(4),
       isCreate: screen==='create', isBatch: screen==='batch', isEdit: screen==='edit',
       isEnhance: screen==='enhance', isLibrary: screen==='library', isWorld: screen==='world', is3d: screen==='3d', isModels: screen==='models', isSystem: screen==='system',
+      isSwap: screen==='swap',
       isCreateStr: String(screen==='create'), isBatchStr: String(screen==='batch'),
       isEditStr: String(screen==='edit'), isEnhanceStr: String(screen==='enhance'),
       isLibraryStr: String(screen==='library'), isWorldStr: String(screen==='world'), is3dStr: String(screen==='3d'), isModelsStr: String(screen==='models'), isSystemStr: String(screen==='system'),
+      isSwapStr: String(screen==='swap'),
       navCreate: ()=>this.setScreen('create'), navBatch: ()=>this.setScreen('batch'),
       navEdit: ()=>this.setScreen('edit'), navEnhance: ()=>this.setScreen('enhance'),
       navLibrary: ()=>this.setScreen('library'), navWorld: ()=>this.setScreen('world'), nav3d: ()=>this.setScreen('3d'), navModels: ()=>this.setScreen('models'), navSystem: ()=>this.setScreen('system'),
+      navSwap: ()=>this.setScreen('swap'),
+      // T-402: exactly one canonical chip row, built from the shared 14-category registry. The array
+      // reference is cached per (version, screen) so an unrelated render tick never rebuilds the nav
+      // (and therefore never steals focus or scroll from the user).
+      navChips: (() => {
+        const Nav = window.DexStudioNav;
+        if (!Nav) return [];
+        const key = version + '|' + screen;
+        if (!this._navChips || this._navChipsKey !== key) {
+          this._navChipsKey = key;
+          this._navChips = Nav.chips({ activeScreen: screen, onSelect: id => this.setScreen(id) });
+        }
+        return this._navChips;
+      })(),
+      navScrollBack: ()=>this.scrollStudioNav(-1),
+      navScrollForward: ()=>this.scrollStudioNav(1),
+      swapWorkspace: this.buildSwapWorkspace(),
       // Create form
       prompt, negPrompt, steps: String(steps), cfg: String(cfg), seed: String(seed),
       width: String(width), height: String(height), promptLen: String(prompt.length),
@@ -2232,11 +2387,31 @@ class Component extends DCLogic {
       sampler, scheduler,
       onSamplerChange: e=>this.setState({sampler:e.target.value}),
       onSchedulerChange: e=>this.setState({scheduler:e.target.value}),
+      shapeSquareSelected: Number(width) === 512 && Number(height) === 512,
+      shapeLandscapeSelected: Number(width) === 768 && Number(height) === 512,
+      shapePortraitSelected: Number(width) === 512 && Number(height) === 768,
+      shapeLargeSquareSelected: Number(width) === 1024 && Number(height) === 1024,
       setDim512: ()=>this.setState({width:512,height:512}),
       setDim768: ()=>this.setState({width:768,height:512}),
       setDimPortrait: ()=>this.setState({width:512,height:768}),
       setDim1024: ()=>this.setState({width:1024,height:1024}),
       onGenerate: ()=>this.onGenerate(),
+      onCancelJob: ()=>this.onCancelJob(),
+      onOpenJobCenter: ()=>{ const center=window.__DEX_V12; if(center && typeof center.toggleJobCenter==='function') center.toggleJobCenter(); else this.toast('Job Center is initializing. Try again in a moment.', '#fbbf24'); },
+      activeJobCount: (() => { const c=window.__DEX_V12; return c ? ((c.activeJobCount || 0)+(c.queuedJobCount || 0)) : 0; })(),
+      offlineWarning: !backendOnline,
+      // sc-if treats any non-empty string as true, so this must stay a real boolean.
+      showCancel: (() => { const ws = this._createWs(); return jobStatus === 'generating' && !!ws.activeJobId; })(),
+      activeCancelJobId: (() => { const ws = this._createWs(); return ws.activeJobId || ''; })(),
+      cancelLabel: (() => { const ws = this._createWs(); return ws.reconciling ? 'Checking the job…' : ws.interrupting ? 'Stopping — checking the worker…' : 'Cancel job'; })(),
+      cancelDisabled: (() => { const ws = this._createWs(); return String(!!(ws.interrupting || ws.reconciling)); })(),
+      cancelError: (() => {
+        const ws = this._createWs();
+        if (ws.interruptState === 'unverified') return 'The stop request reached the server, but the worker could not be confirmed stopped. The job stays running and heavy work stays paused until it is reconciled.';
+        if (ws.interruptState === 'refused') return ws.cancelReason || 'This job cannot be stopped safely from here. It was left running.';
+        if (ws.interruptState === 'error') return 'The cancel request failed. The job may still be running — check the Job Center.';
+        return '';
+      })(),
       generateLabel: isGenerating ? ('Generating… ' + progress + '%') : 'Generate Image',
       genCursor: isGenerating ? 'default' : 'pointer',
       genOpacity: isGenerating ? '0.75' : '1',
@@ -2246,12 +2421,17 @@ class Component extends DCLogic {
       showJobResult: jobStatus !== 'idle',
       jobIdle: jobStatus === 'idle',
       imageDisplay: this.buildImageDisplay(jobStatus, progress, currentImageSrc, lastSeed, errorMsg),
-      actionStatus: isGenerating ? ('generating · ' + ((this.state.jobStage || {}).label || 'Waiting for backend')) : jobStatus==='complete' ? ('done · seed ' + lastSeed) : jobStatus==='error' ? 'error · check backend' : 'idle · no job',
+      actionStatus: jobStatus==='cancelling' ? 'stopping · checking the worker'
+        : jobStatus==='cancelled' ? 'cancelled · verified by the worker'
+        : jobStatus==='cancel-unverified' ? ('stop not confirmed · ' + (this.state.cancelError || 'check System'))
+        : isGenerating ? ('generating · ' + ((this.state.jobStage || {}).label || 'Waiting for backend'))
+        : jobStatus==='complete' ? ('done · seed ' + lastSeed) : jobStatus==='error' ? 'error · check backend' : 'idle · no job',
       // Status chips
       backendDot, backendLabel: backendOnline ? 'Backend' : 'Offline',
       backendChipBg: backendOnline ? 'rgba(101,214,110,.08)' : 'rgba(239,68,68,.08)',
       backendChipBorder: backendOnline ? 'rgba(101,214,110,.2)' : 'rgba(239,68,68,.2)',
-      jobDot, jobLabel: isGenerating ? (progress + '%') : jobStatus==='complete' ? 'Done' : jobStatus==='error' ? 'Error' : 'Idle',
+      jobDot, jobLabel: jobStatus==='cancelling' ? 'Stopping…' : jobStatus==='cancelled' ? 'Cancelled' : jobStatus==='cancel-unverified' ? 'Check required'
+        : isGenerating ? (progress + '%') : jobStatus==='complete' ? 'Done' : jobStatus==='error' ? 'Error' : 'Idle',
       jobChipBg: isGenerating ? 'rgba(56,189,248,.07)' : jobStatus==='complete' ? 'rgba(101,214,110,.07)' : jobStatus==='error' ? 'rgba(239,68,68,.07)' : 'rgba(251,191,36,.07)',
       jobChipBorder: isGenerating ? 'rgba(56,189,248,.2)' : jobStatus==='complete' ? 'rgba(101,214,110,.2)' : jobStatus==='error' ? 'rgba(239,68,68,.2)' : 'rgba(251,191,36,.2)',
       // System

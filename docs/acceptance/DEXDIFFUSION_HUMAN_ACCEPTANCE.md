@@ -143,3 +143,47 @@ What felt especially good?
 
 What should be fixed before we call DexDiffusion finished?
 
+
+---
+
+# Studio first-run acceptance (2026-10-20) — supersedes the Workstation script above as the default path
+
+> The Workstation script above is retained as history. Normal users now open **Studio → Create**; Workstation is developer-only.
+> **HUMAN ACCEPTANCE NOT RUN** — this section is the script to run, not a result.
+
+## Facilitator script (read exactly this)
+
+> "This is DexDiffusion Studio. Use it to make or work with something. Please say aloud what you expect each button to do. I cannot teach you the interface during this test."
+
+Answer questions only after recording that the participant could not proceed; count any answer as assistance.
+
+## Tasks
+
+| # | Task | First correct action (s) | Completed | Help needed |
+|---|---|---|---|---|
+| 1 | Find **Create** (the app should already be there) | | YES / NO | NO / YES |
+| 2 | Identify the prompt field and the model | | YES / NO | NO / YES |
+| 3 | Generate one image (only when a real worker is authorized) | | YES / NO | NO / YES |
+| 4 | Say where the image was saved / find it in Library | | YES / NO | NO / YES |
+| 5 | Open the result in **Edit** | | YES / NO | NO / YES |
+| 6 | Find **Enhance** | | YES / NO | NO / YES |
+| 7 | Locate **Jobs** and explain what **Cancel job** really means | | YES / NO | NO / YES |
+| 8 | Find **Swap** and say whether it works right now | | YES / NO | NO / YES |
+| 9 | Return to Create without losing the draft | | YES / NO | NO / YES |
+| 10 | Recover from a visible error (e.g. unplug the service) | | YES / NO | NO / YES |
+
+## Specifically watch for
+
+- Does a first-run profile ever show a version picker, Workstation, or a project-setup step? (It must not.)
+- Are all 14 chips visible and in order: Create · Batch · Swap · Voice · Drama · Music · Video · World · 3D · Library · Edit · Enhance · Models · System?
+- Clicking **Generate image** twice must never start a second job or hide the first.
+- **Swap** must say it is not enabled and must issue no network request.
+- A cancelled job must not be described as stopped unless the worker confirmed it.
+- Any button that looks clickable but does nothing is a release blocker; record its label.
+- Scroll position, text caret and the focused field must survive a job-status update.
+
+## Record
+
+Participant code: ______  Date/time: ______  App stamp (HEAD): ______  Profile: fresh / existing
+Input: mouse / trackpad / keyboard  Local service: ______  Big Mac: ______
+Outcome: PASS / FAIL / BLOCKED — blocking defects: ______________________

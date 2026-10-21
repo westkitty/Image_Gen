@@ -33,3 +33,20 @@ test('installer stamps full source SHA and artwork identity; status accepts lega
   assert.match(launcher, /rev-parse HEAD/);
   assert.match(launcher, /"\$repo_head" = "\$ahead"\*/);
 });
+
+test('T-201 the wrapper implements the JavaScript dialog delegates instead of auto-rejecting confirms', () => {
+  const src = read('native/macos/Image_Gen/ImageGenApp.swift');
+  // Without these three WKUIDelegate methods every window.confirm() inside the app resolves false.
+  assert.match(src, /runJavaScriptAlertPanelWithMessage message: String[\s\S]{0,200}completionHandler: @escaping \(\) -> Void/);
+  assert.match(src, /runJavaScriptConfirmPanelWithMessage message: String[\s\S]{0,200}completionHandler: @escaping \(Bool\) -> Void/);
+  assert.match(src, /runJavaScriptTextInputPanelWithPrompt prompt: String[\s\S]{0,260}completionHandler: @escaping \(String\?\) -> Void/);
+  // The confirm delegate must forward the user's choice, not a constant.
+  const confirm = src.slice(src.indexOf('runJavaScriptConfirmPanelWithMessage'), src.indexOf('runJavaScriptTextInputPanelWithPrompt'));
+  assert.match(confirm, /completionHandler\(accepted\)/);
+  // AppKit work stays on the main thread and a completion handler is always called exactly once.
+  assert.match(src, /guard Thread\.isMainThread else/);
+  assert.match(src, /win\.attachedSheet == nil/);
+  assert.match(src, /presentJavaScriptDialog[\s\S]{0,1500}handle\(alert\.runModal\(\)\)/);
+  // The existing file picker is preserved.
+  assert.match(src, /runOpenPanelWith parameters: WKOpenPanelParameters/);
+});

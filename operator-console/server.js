@@ -44,8 +44,9 @@ const { createMacroStore } = require('./macro-store');
 const { exportReproBundle, validateReproBundle, checkBundleCompatibility } = require('./repro-bundle');
 const { createThumbnailService } = require('./thumbnail-service');
 const { createCancellationManager } = require('./cancellation');
+const { dramaCancelCapability, requestDramaStop } = require('./drama-cancel-policy');
 const { createLibraryIndex } = require('./library-index');
-const { reconcileInterruptedPublications } = require('./publication-recovery');
+const { reconcileInterruptedPublications, historicalMissingJournal } = require('./publication-recovery');
 
 const app = express();
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
@@ -68,7 +69,6 @@ const jobStore = M.createJobStore(path.join(STATE_DIR, 'jobs.json'), { onChange:
 const publicationRecoveryState = { blocked: false, journal: { inspected: 0, repaired: 0, unresolved: [] }, jobs: { inspected: 0, recovered: 0, unresolved: [] } };
 try {
   publicationRecoveryState.journal = imageStore.recoverPendingPublications();
-  if (publicationRecoveryState.journal.unresolved.length) publicationRecoveryState.blocked = true;
   if (publicationRecoveryState.journal.repaired || publicationRecoveryState.journal.unresolved.length) console.log('Canonical publication recovery:', JSON.stringify(publicationRecoveryState.journal));
 } catch (err) { publicationRecoveryState.blocked = true; publicationRecoveryState.journal.unresolved.push({ reason: err.message }); console.error('Canonical publication recovery failed:', err.message); }
 // Browser/live-suite media must stay inside its owned state tree. Production keeps
@@ -1081,6 +1081,13 @@ const remoteWorkers = RemoteWorkers.createRemoteWorkerRegistry({
   file: path.join(STATE_DIR, 'remote-workers.json'),
   onChange: r => { try { eventBus.publish('remote.worker', { job_id: r.job_id, state: r.state, action: r.action }); } catch (_) {} },
 });
+publicationRecoveryState.journal.historical = [];
+for (const item of publicationRecoveryState.journal.unresolved) {
+  if (item.reason === 'publication-not-committed' && historicalMissingJournal({
+    journalName: item.journal, imageRoot: imageStore.root, runsRoot: RUNS_DIR, jobStore, remoteWorkers,
+  })) publicationRecoveryState.journal.historical.push(item.journal);
+  else publicationRecoveryState.blocked = true;
+}
 const arbiter = M.createResourceArbiter({
   quarantineCheck: () => publicationRecoveryState.blocked ? 'canonical publication recovery unresolved' : remoteWorkers.quarantineReason(),
   externalProbe: () => new Promise(resolve => {
@@ -1092,12 +1099,32 @@ const cancelManager = createCancellationManager({
   arbiter,
   jobStore,
   eventBus,
+  // T-102: a mid-run stop is only offered when the owning worker actually declares it. Image jobs are
+  // governed by the image route's own run-id-scoped verified stop, so they resolve to null here.
+  workerCapabilities: ({ record, active }) => {
+    const drama = dramaCancelCapability({ record, active });
+    if (drama) return drama;
+    if (!record || record.media_kind === 'image') return null;
+    try {
+      const w = workerRegistry.get(record.worker_id);
+      return w && typeof w.capabilities === 'function' ? (w.capabilities() || null) : null;
+    } catch (_) { return null; }
+  },
   onLocalTerminate: async (active) => {
+    // A signal being delivered is not proof that its recipient exited.
+    // The manager holds the job state and lease until its owner provides evidence.
     if (active.pid) {
-      try { process.kill(active.pid, 'SIGTERM'); } catch (_) {}
+      try {
+        process.kill(active.pid, 'SIGTERM');
+        return { ok: true, verified: false, detail: 'SIGTERM sent; process exit has not been verified' };
+      } catch (error) {
+        return { ok: false, verified: false, error: 'Could not signal the registered process: ' + error.message };
+      }
     }
-    // A drama production owns no process: cancelling it stops further Big Mac groups after the one already running.
-    try { if (typeof voiceModule !== 'undefined' && voiceModule.producer) voiceModule.producer.cancelByJob(active.jobId); } catch (_) {}
+    // A Drama producer has a cooperative stop-after-current contract, not a process exit.
+    // Only a job registered as the exact drama producer may reach this hook.
+    if (active.target === 'drama-production') return requestDramaStop(voiceModule.producer, active);
+    return { ok: false, verified: false, error: 'No job-owned stop method was available' };
   }
 });
 setInterval(() => { arbiter.refreshExternal().catch(() => {}); }, 60 * 1000).unref();
@@ -4546,7 +4573,7 @@ setInterval(() => mediaBridge.sweepRemoteOrphans(60).catch(() => {}), 60 * 60 * 
 // Persistent voice profiles, long-form speech and audio-drama production (voice-routes.js).
 const voiceModule = require('./voice-routes').registerVoiceRoutes(app, {
   stateDir: STATE_DIR, jobStore, mediaStore, staging, mediaBridge, log: m => console.log(m),
-  cancelJob: id => cancelManager.cancelJob(id), onJobStart: id => cancelManager.registerActiveJob(id, {}), onJobEnd: id => cancelManager.unregisterActiveJob(id),
+  cancelJob: id => cancelManager.cancelJob(id), onJobStart: id => cancelManager.registerActiveJob(id, { target: 'drama-production' }), onJobEnd: id => cancelManager.unregisterActiveJob(id),
   probeFor: id => workerRegistry.get(id).probe(workerAssets()),
   // Optional local intelligent parse: strict-schema JSON from the managed Ollama tunnel (never rewrites dialogue; see drama.js).
   llmChat: async messages => {
@@ -4776,6 +4803,21 @@ app.get('/api/doctor', async (req, res) => {
 });
 
 // ---- V12 Workstation Operational Projection Helper --------------------------
+// T-102: one honest cancel capability per job. Image jobs use the image route's own run-id-scoped
+// stop; durable media jobs consult their worker contract and registered process owner. A RUNNING job
+// with no owner is never advertised as cancellable, because the server would refuse it.
+function imageCancelCapability(job) {
+  const st = String(job && job.status || '').toLowerCase();
+  if (st === 'queued' && !job.startedRunningAt) {
+    return { canCancel: true, cancelCapability: 'queued_only', cancelState: 'not_started', reason: 'This job has not started yet.' };
+  }
+  if (st === 'queued' || st === 'running') {
+    return { canCancel: true, cancelCapability: 'running_verified', cancelState: 'verified_stopped',
+      reason: 'Cancel stops this run\'s own remote processes by run id and verifies none are left.' };
+  }
+  return { canCancel: false, cancelCapability: 'terminal', cancelState: 'already_terminal', reason: `This job already finished (${job && job.status}).` };
+}
+
 function getOperationalJobSnapshot() {
   const activeJobs = [];
   const queuedJobs = [];
@@ -4789,6 +4831,7 @@ function getOperationalJobSnapshot() {
   for (const [id, j] of Object.entries(jobs)) {
     seenIds.add(id);
     const est = timingStore ? timingStore.getEstimate(j.commandAction === 'upscale' ? 'local' : (j.requestParams && j.requestParams.target) || 'sdcpp', j.commandAction) : null;
+    const cancelCap = imageCancelCapability(j);
     const proj = projectOperationalJob({
       id: j.id,
       mediaKind: 'image',
@@ -4804,7 +4847,9 @@ function getOperationalJobSnapshot() {
       queuePosition: j.waitingForLease ? arbiter.position(j.id) : null,
       resourceClass: HEAVY_ACTIONS.has(j.commandAction) ? 'heavy' : 'light',
       resourceState: j.waitingForLease ? 'WAITING_LEASE' : (j.status === 'running' ? 'RUNNING' : 'QUEUED'),
-      canCancel: ['queued', 'running'].includes(j.status),
+      canCancel: cancelCap.canCancel,
+      cancelCapability: cancelCap.cancelCapability,
+      cancelReason: cancelCap.reason,
       firstFailedGate: j.firstFailedGate,
       artifactIds: (j.results || []).filter(r => r.imageId).map(r => r.imageId),
       estimatedDurationMs: est && est.available ? est.estimatedDurationMs : null
@@ -4819,6 +4864,7 @@ function getOperationalJobSnapshot() {
   for (const g of allDurable) {
     if (seenIds.has(g.job_id)) continue;
     seenIds.add(g.job_id);
+    const cancelCap = cancelManager.describeCancelCapability(g.job_id, { record: g });
     const proj = projectOperationalJob({
       id: g.job_id,
       mediaKind: g.media_kind,
@@ -4834,7 +4880,9 @@ function getOperationalJobSnapshot() {
       queuePosition: g.status === 'QUEUED' ? arbiter.position(g.job_id) : null,
       resourceClass: g.resource_class,
       resourceState: g.status === 'QUEUED' ? 'WAITING_LEASE' : g.status,
-      canCancel: ['QUEUED', 'RUNNING', 'TRANSFERRING'].includes(g.status),
+      canCancel: cancelCap.canCancel,
+      cancelCapability: cancelCap.cancelCapability,
+      cancelReason: cancelCap.reason,
       firstFailedGate: g.first_failed_gate,
       artifactIds: g.artifacts || []
     });
@@ -4968,8 +5016,22 @@ app.post('/api/jobs/:id/cancel', async (req, res) => {
     return res.status(202).json({ ok: false, status: 'CANCELLED', remote_stop: 'unverified', quarantine: true, gate: 'remote-stop-unverified', worker: rec,
       error: 'Cancelled locally, but the Big Mac side could not be verified stopped. Heavy work is paused (quarantine) until reconciliation proves it stopped; retry the check or release it explicitly.' });
   }
+  // T-104: the generic (durable media) path reports refusal separately from acceptance. A RUNNING job
+  // with no verified process owner is refused here instead of being relabelled CANCELLED.
   const result = await cancelManager.cancelJob(jobId, { reason });
-  res.json(result);
+  const remoteStop = result.cancelState === 'not_started' ? 'not_started'
+    : result.cancelState === 'verified_stopped' ? 'verified'
+    : result.cancelState === 'stop_after_current' ? 'stop_after_current'
+    : result.cancelState === 'requested' ? 'stopping'
+    : result.cancelState === 'already_terminal' ? 'already_finished'
+    : 'not_attempted';
+  const payload = { ...result, remote_stop: remoteStop, status: result.status || null };
+  const code = result.ok ? 200
+    : result.gate === 'state-write-failed' ? 500
+    : (result.gate === 'already-terminal' || result.gate === 'cancel-unsafe' || result.gate === 'cancel-unsupported' || result.gate === 'unknown-job') ? 409
+    : result.cancelState === 'requested' ? 202
+    : 400;
+  res.status(code).json(payload);
 });
 
 // OP-7 operator surface: unresolved remote workers, a reconcile-now trigger, and an explicit (labelled) release.

@@ -1,0 +1,31 @@
+'use strict';
+// Verifies the actual active Create Generate/Cancel route without starting external work.
+const assert=require('node:assert/strict');
+const {chromium}=require('playwright-core');
+const {startServer,launchBrowser,runCleanups}=require('./helpers');
+(async()=>{
+ const {base}=await startServer();const browser=await launchBrowser(chromium);const page=await browser.newPage({viewport:{width:1320,height:860}});
+ const pageErrors=[];page.on('pageerror',e=>pageErrors.push(e.message));
+ let generateCalls=0,cancelCalls=0;
+ await page.route('**/api/**',r=>['GET','HEAD'].includes(r.request().method())?r.continue():r.fulfill({status:409,json:{error:'blocked by controlled fixture'}}));
+ await page.route('**/api/actions/generate-controlled',r=>{generateCalls++;return r.fulfill({json:{job_id:'fixture-running-1',seeds:[91]}});});
+ await page.route('**/api/jobs/fixture-running-1',r=>r.fulfill({json:{id:'fixture-running-1',status:'RUNNING',results:[],seeds:[91]}}));
+ await page.route('**/api/jobs/fixture-running-1/cancel',r=>{cancelCalls++;return r.fulfill({status:202,json:{ok:false,accepted:true,terminationVerified:false,cancelState:'requested',remote_stop:'unverified',error:'Worker stop has not been verified'}});});
+ await page.goto(base+'/dexdiffusion/',{waitUntil:'domcontentloaded',timeout:30000});
+ await page.waitForFunction(()=>window.__dex&&window.__dex.state.version===2,{timeout:15000});
+ await page.getByRole('textbox',{name:'Describe your image'}).fill('A bright paper moon over a park');
+ await page.getByRole('button',{name:'Generate image',exact:true}).click();
+ const cancel=page.locator('[data-cancel-job="fixture-running-1"]');await cancel.waitFor({state:'visible',timeout:9000});
+ assert.equal(generateCalls,1,'first click launches one job');
+ await page.getByRole('button',{name:'Generate image',exact:true}).click();
+ assert.equal(generateCalls,1,'second click while running cannot create another job');
+ await cancel.click();
+ await page.waitForFunction(()=>window.__dex?._ws()?.interruptState==='unverified',{timeout:5000});
+ assert.equal(cancelCalls,1,'cancel targets exactly one real active job id');
+ assert.equal(await page.evaluate(()=>__dex._ws().activeJobId),'fixture-running-1','unverified job remains tracked');
+ assert.equal(await page.evaluate(()=>__dex.state.jobStatus),'generating','unverified job is not falsely marked stopped');
+ await page.locator('[data-cancel-error]').waitFor({state:'visible'});
+ assert.match(await page.locator('[data-cancel-error]').innerText(),/could not be confirmed stopped/i);
+ assert.deepEqual(pageErrors,[]);
+ console.log('CANCEL_FIXTURE_PASS',JSON.stringify({generateCalls,cancelCalls,activeJobId:'fixture-running-1',cancel:'unverified',state:'generating'}));
+})().catch(e=>{console.error('CANCEL_FIXTURE_FAIL',e.stack);process.exitCode=1}).finally(runCleanups);
