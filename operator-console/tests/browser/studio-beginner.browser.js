@@ -88,6 +88,9 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
   const promptBox=await page.getByRole('textbox',{name:'Describe your image'}).boundingBox();
   const generateBox=await page.getByRole('button',{name:'Generate image',exact:true}).boundingBox();
   assert.ok(generateBox.y>promptBox.y+promptBox.height, 'on mobile, Generate follows prompt rather than preceding it');
+  assert.ok(generateBox.y+generateBox.height<=844,'the primary action is visible without an initial mobile scroll');
+  await page.locator('[data-studio-shape="portrait"]').click({timeout:4500});
+  await page.waitForFunction(()=>document.querySelector('[data-studio-shape=\"portrait\"]')?.getAttribute('aria-pressed')==='true',null,{timeout:5000});
   await page.setViewportSize({width:1440,height:900});
 
   // Fixture renders the actual result component without dispatching a real job.
