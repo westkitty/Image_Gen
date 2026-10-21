@@ -24,10 +24,20 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
   assert.equal(await prompt.isVisible(),true,'prompt must be visible on entry');
   assert.match(await page.title(),/DexDiffusion Studio/);
   assert.equal(await page.getByText('Your image will appear here').isVisible(),true);
+  const quality=page.getByRole('combobox',{name:'Quality preset'});
+  assert.equal(await quality.isVisible(),true,'quality preset must have an accessible name');
+  const shape=page.locator('[data-studio-shape]');
+  assert.equal(await shape.count(),4,'four named image shapes');
+  assert.equal(await shape.filter({hasText:'Square'}).first().getAttribute('aria-pressed'),'true');
+  await page.locator('[data-studio-shape="landscape"]').click();
+  assert.equal(await page.locator('[data-studio-shape="landscape"]').getAttribute('aria-pressed'),'true','selected shape announced');
+  assert.equal(await page.locator('[data-studio-shape="square"]').getAttribute('aria-pressed'),'false','old shape deselected');
+  assert.equal(await page.getByRole('textbox',{name:'Negative prompt'}).isVisible(),false,'advanced negative prompt starts hidden');
   const advanced=page.locator('details[data-studio-advanced]');
   assert.equal(await advanced.evaluate(x=>x.open),false,'advanced settings closed by default');
   await page.getByText('Advanced settings',{exact:true}).click();
   assert.equal(await advanced.evaluate(x=>x.open),true);
+  assert.equal(await page.getByRole('textbox',{name:'Negative prompt'}).isVisible(),true,'negative prompt revealed on demand');
   await prompt.fill('A copper observatory on a snowy hill');
   assert.equal(await prompt.inputValue(),'A copper observatory on a snowy hill');
   const jobs=page.locator('[data-studio-jobs]');
@@ -37,6 +47,12 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
   await page.locator('#v12-jc-close-btn').click();
   assert.equal(await page.locator('#v12-job-center-drawer').getAttribute('aria-hidden'),'true');
   assert.equal(await page.locator('#v12-hud-bar').isVisible(),false,'no duplicate HUD');
+  await page.setViewportSize({width:390,height:844});
+  const promptBox=await page.getByRole('textbox',{name:'Describe your image'}).boundingBox();
+  const generateBox=await page.getByRole('button',{name:'Generate image',exact:true}).boundingBox();
+  assert.ok(generateBox.y>promptBox.y+promptBox.height, 'on mobile, Generate follows prompt rather than preceding it');
+  await page.setViewportSize({width:1440,height:900});
+
   // Fixture renders the actual result component without dispatching a real job.
   await page.evaluate(() => {
     __dex.wsSet({results:[{status:'QUEUED',imageId:'fixture-studio.png',imageUrl:'/api/images/fixture-studio.png',target:'sd15',seed:42,width:512,height:512}],activeIndex:0});
