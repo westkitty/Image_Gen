@@ -1,19 +1,44 @@
 'use strict';
 
 // F14: Actual cancellation engine
-// Queued jobs: cancel immediately. Status becomes CANCELLED.
-// Local active jobs: terminate specific process group/PID, verify process identity, release lease.
+// Queued jobs: cancel immediately. Status becomes CANCELLED with `not_started` proof.
+// Local active jobs: terminate the exact registered process/group, verify exit, release lease.
 // Remote Big Mac jobs: verified job identity markers / nonce; fail closed against killing unrelated work.
 // Never: pkill node, killall python, killall sd-cli.
+//
+// T-101: A durable RUNNING/TRANSFERRING job with no verified process owner is NEVER finalized as
+// CANCELLED. A request, a timeout or a released lease is not termination evidence. Such a job keeps
+// its state and its heavy lease (quarantined) until reconciliation proves what happened.
+//
+// T-104 response contract (all fields always present on the structured result):
+//   ok                   request accepted AND the resulting state is truthful (backward compatible)
+//   status               resulting (or unchanged) job status
+//   accepted             the cancellation request was acted on at all
+//   alreadyTerminal      the job had already finished before this request
+//   neverStarted         proven never dispatched, so no worker could be running
+//   terminationVerified  a worker/process was proven stopped (null when not applicable)
+//   cancelState          not_started | verified_stopped | stop_after_current | requested | refused_unsafe |
+//                        refused_unsupported | already_terminal | unknown
+//   leaseReleased        the heavy-compute lease was released by this call
+//   gate / error         machine + human readable refusal reason
 
-const EventEmitter = require('events');
+const TERMINAL = new Set(['COMPLETE', 'FAILED', 'CANCELLED', 'INTERRUPTED']);
+
+function normalizeStatus(value) {
+  return value == null ? null : String(value).toUpperCase();
+}
 
 function createCancellationManager({
   arbiter,
   jobStore,
   eventBus,
   onLocalTerminate = null,
-  onRemoteTerminate = null
+  onRemoteTerminate = null,
+  // Optional resolver: ({ jobId, record, active }) => { cancel_supported, cancel_scope, cancel_reason }
+  // Lets the owning worker contract decide whether a mid-run stop is even offered.
+  workerCapabilities = null,
+  // How long a locally signalled process gets to exit before the stop is reported unverified.
+  localExitTimeoutMs = 5000
 } = {}) {
   const activeProcesses = new Map(); // jobId -> { pid, process, target, startTime, nonce, remoteWorkDir }
 
@@ -34,110 +59,262 @@ function createCancellationManager({
     activeProcesses.delete(jobId);
   }
 
+  function declaredCapability(jobId, record, active) {
+    if (typeof workerCapabilities !== 'function') return null;
+    try { return workerCapabilities({ jobId, record, active }) || null; } catch (_) { return null; }
+  }
+
+  // A process registration only counts as ownership when it names something we can stop and verify.
+  function hasTerminationPath(active) {
+    if (!active) return false;
+    if (active.isRemote) return Boolean(active.nonce && active.remoteWorkDir && typeof onRemoteTerminate === 'function');
+    if (active.process && typeof active.process.kill === 'function') return true;
+    if (active.pid && typeof onLocalTerminate === 'function') return true;
+    if (typeof onLocalTerminate === 'function') return true; // job-owned queue/stop hook (e.g. stop-after-current)
+    return false;
+  }
+
+  // Single source of truth for "may this job be cancelled right now, and how truthfully".
+  function describeCancelCapability(jobId, { record = null, active = null } = {}) {
+    const rec = record !== undefined && record !== null ? record : (jobStore ? jobStore.get(jobId) : null);
+    const act = active !== undefined && active !== null ? active : (activeProcesses.get(jobId) || null);
+    const status = normalizeStatus(rec && rec.status);
+
+    if (!rec) {
+      return { canCancel: false, cancelCapability: 'unknown', cancelState: 'unknown',
+        reason: 'No durable record exists for this job, so nothing can be verified stopped.' };
+    }
+    if (TERMINAL.has(status)) {
+      return { canCancel: false, cancelCapability: 'terminal', cancelState: 'already_terminal',
+        reason: `This job already finished (${status}).` };
+    }
+    if (status === 'QUEUED' && !act) {
+      return { canCancel: true, cancelCapability: 'queued_only', cancelState: 'not_started',
+        reason: 'This job has not started, so it can be cancelled immediately.' };
+    }
+
+    const declared = declaredCapability(jobId, rec, act);
+    if (declared && declared.cancel_supported === false && !(status === 'QUEUED' && !act)) {
+      return { canCancel: false, cancelCapability: 'unsupported', cancelState: 'refused_unsupported',
+        reason: declared.cancel_reason || 'This type of job cannot be stopped once it starts.' };
+    }
+
+    if (!hasTerminationPath(act)) {
+      // T-101: the unsafe case. RUNNING/TRANSFERRING without a verified owner.
+      return { canCancel: false, cancelCapability: 'unknown', cancelState: 'refused_unsafe',
+        reason: 'This job is marked running but no worker process is registered for it, so a stop cannot be verified. It stays running until reconciliation.' };
+    }
+
+    if (declared && declared.cancel_scope === 'stop-after-current') {
+      return { canCancel: true, cancelCapability: 'stop_after_current', cancelState: 'stop_after_current',
+        reason: 'The work already running will finish; nothing further will be started.' };
+    }
+    return { canCancel: true, cancelCapability: 'running_verified', cancelState: 'verified_stopped',
+      reason: 'A job-scoped stop is available and its result is verified.' };
+  }
+
+  function refuse(jobId, { gate, cancelState, status = null, reason, error = null }) {
+    return {
+      ok: false, accepted: false, status: status || undefined,
+      cancelState, gate, error: error || reason,
+      alreadyTerminal: cancelState === 'already_terminal',
+      neverStarted: false, terminationVerified: false, leaseReleased: false
+    };
+  }
+
+  function releaseLease(jobId) {
+    if (!arbiter) return false;
+    try { arbiter.release(jobId); return true; } catch (_) { return false; }
+  }
+
+  function finalize(jobId, reason, patch = {}) {
+    if (jobStore && jobStore.get(jobId)) {
+      const out = jobStore.transition(jobId, 'CANCELLED', { error: reason, first_failed_gate: 'user-cancelled', ...patch });
+      // A transition failure is a bare { error } with no job record; a successful transition returns the
+      // job itself (which legitimately carries an `error` field holding the cancellation reason).
+      if (out && out.error && out.job_id === undefined) return { ok: false, error: out.error };
+    }
+    if (eventBus) {
+      try { eventBus.publish('job.cancelled', { id: jobId, reason, status: 'CANCELLED' }); } catch (_) {}
+    }
+    return { ok: true };
+  }
+
+  // Wait for an actual exit event. A kill() call alone is never termination proof (I-03).
+  function awaitLocalExit(child, timeoutMs) {
+    if (!child) return Promise.resolve(false);
+    if (child.exitCode !== null && child.exitCode !== undefined) return Promise.resolve(true);
+    if (child.signalCode) return Promise.resolve(true);
+    if (typeof child.once !== 'function') return Promise.resolve(false);
+    return new Promise(resolve => {
+      let settled = false;
+      let escalate = null;
+      let giveUp = null;
+      const finish = (ok) => {
+        if (settled) return;
+        settled = true;
+        if (escalate) clearTimeout(escalate);
+        if (giveUp) clearTimeout(giveUp);
+        resolve(ok);
+      };
+      try { child.once('exit', () => finish(true)); } catch (_) { return finish(false); }
+      // Bounded: escalate once, then report the stop as unverified rather than waiting forever.
+      escalate = setTimeout(() => {
+        try { child.kill('SIGKILL'); } catch (_) {}
+        giveUp = setTimeout(() => finish(false), Math.max(100, Math.min(1200, Math.floor(timeoutMs / 4))));
+      }, timeoutMs);
+    });
+  }
+
   async function cancelJob(jobId, { reason = 'User requested cancellation' } = {}) {
-    if (!jobId) return { ok: false, error: 'Job ID required', gate: 'missing-id' };
+    if (!jobId) {
+      return refuse(null, { gate: 'missing-id', cancelState: 'unknown', reason: 'A job id is required.' });
+    }
 
-    // 1. Check if job is in active processes map
-    const active = activeProcesses.get(jobId);
-
-    // 2. Check durable job store
+    const active = activeProcesses.get(jobId) || null;
     const record = jobStore ? jobStore.get(jobId) : null;
-    const currentStatus = record ? record.status : null;
+    const currentStatus = record ? normalizeStatus(record.status) : null;
 
-    if (currentStatus === 'COMPLETE' || currentStatus === 'FAILED' || currentStatus === 'CANCELLED' || currentStatus === 'INTERRUPTED') {
+    if (record && TERMINAL.has(currentStatus)) {
+      return refuse(jobId, {
+        gate: 'already-terminal', cancelState: 'already_terminal', status: currentStatus,
+        reason: `Cannot cancel job in terminal state: ${currentStatus}`
+      });
+    }
+
+    // ---- 1. Queued and proven never started -------------------------------------------------
+    // Only when no worker registration exists: an active registration means execution began.
+    if ((record && currentStatus === 'QUEUED' && !active) || (!record && !active)) {
+      if (!record) {
+        return refuse(jobId, {
+          gate: 'unknown-job', cancelState: 'unknown',
+          reason: 'No durable record exists for this job, so there is nothing to cancel.'
+        });
+      }
+      const fin = finalize(jobId, reason, { first_failed_gate: 'user-cancelled-not-started' });
+      if (!fin.ok) return refuse(jobId, { gate: 'state-write-failed', cancelState: 'unknown', reason: fin.error });
+      const leaseReleased = releaseLease(jobId);
+      unregisterActiveJob(jobId);
       return {
-        ok: false,
-        error: `Cannot cancel job in terminal state: ${currentStatus}`,
-        gate: 'already-terminal',
-        status: currentStatus
+        ok: true, accepted: true, status: 'CANCELLED', immediate: true,
+        alreadyTerminal: false, neverStarted: true, terminationVerified: true,
+        cancelState: 'not_started', leaseReleased,
+        evidence: { kind: 'not_started', detail: 'never dispatched; no worker process existed' }
       };
     }
 
-    // Queued job cancellation (immediate)
-    if (!active || currentStatus === 'QUEUED') {
-      if (jobStore) {
-        jobStore.transition(jobId, 'CANCELLED', { error: reason, first_failed_gate: 'user-cancelled' });
-      }
-      if (arbiter) {
-        try { arbiter.release(jobId); } catch (_) {}
-      }
-      if (eventBus) {
-        eventBus.publish('job.cancelled', { id: jobId, reason, status: 'CANCELLED' });
-      }
-      return { ok: true, status: 'CANCELLED', immediate: true };
+    // ---- 2. Worker contract first: an unsupported mid-run stop is never offered ---------
+    const declared = declaredCapability(jobId, record, active);
+    if (declared && declared.cancel_supported === false) {
+      return refuse(jobId, {
+        gate: 'cancel-unsupported', cancelState: 'refused_unsupported', status: currentStatus,
+        reason: declared.cancel_reason || 'This type of job cannot be stopped once it starts.',
+        error: declared.cancel_reason || 'This job cannot be stopped while it is running.'
+      });
     }
 
-    // Active Running Job cancellation
+    // ---- 3. Running without a verified owner: refuse, keep state and lease ---------------
+    if (!hasTerminationPath(active)) {
+      return refuse(jobId, {
+        gate: 'cancel-unsafe', cancelState: 'refused_unsafe', status: currentStatus,
+        error: 'Cancellation refused: this job is marked running but no process owner is registered for it. ' +
+          'The job keeps running and its heavy-compute lease is held until reconciliation proves the worker stopped.'
+      });
+    }
+
+    // ---- 4. Active, job-owned stop ------------------------------------------------------
+    let terminationVerified = false;
+    let evidence = null;
+
     if (active.isRemote) {
-      // Remote cancellation contract: verify job-specific nonce and remote directory
+      // Remote contract: exact job-scoped nonce and remote work directory, never a broad kill.
       if (!active.nonce || !active.remoteWorkDir) {
+        return refuse(jobId, {
+          gate: 'cancel-unsafe', cancelState: 'refused_unsafe', status: currentStatus,
+          error: 'Remote cancellation refused: lack of job-scoped identity marker'
+        });
+      }
+      try {
+        const res = await onRemoteTerminate(active);
+        if (!res || res.ok === false) {
+          return refuse(jobId, {
+            gate: 'remote-cancel-failed', cancelState: 'requested', status: currentStatus,
+            error: (res && res.error) || 'Remote termination hook failed'
+          });
+        }
+        terminationVerified = res.verified !== false;
+        evidence = { kind: terminationVerified ? 'verified' : 'unverified', detail: res.detail || 'remote stop hook' };
+      } catch (e) {
+        return refuse(jobId, { gate: 'remote-cancel-exception', cancelState: 'requested', status: currentStatus, error: e.message });
+      }
+      if (!terminationVerified) {
+        // Accepted request, but no proof. Fail closed: keep the job and the lease.
         return {
-          ok: false,
-          error: 'Remote cancellation refused: lack of job-scoped identity marker',
-          gate: 'cancel-unsafe'
+          ok: false, accepted: true, status: currentStatus,
+          alreadyTerminal: false, neverStarted: false, terminationVerified: false,
+          cancelState: 'requested', leaseReleased: false, gate: 'remote-stop-unverified',
+          error: 'The stop was requested but the remote worker is not confirmed stopped. Heavy work stays paused until reconciliation.'
         };
       }
-
-      if (onRemoteTerminate && typeof onRemoteTerminate === 'function') {
-        try {
-          const res = await onRemoteTerminate(active);
-          if (!res || !res.ok) {
-            return {
-              ok: false,
-              error: res ? res.error : 'Remote termination hook failed',
-              gate: 'remote-cancel-failed'
-            };
+    } else if (active.process && typeof active.process.kill === 'function') {
+      try {
+        const alreadyExited = (active.process.exitCode !== null && active.process.exitCode !== undefined) || !!active.process.signalCode;
+        if (alreadyExited) {
+          terminationVerified = true;
+        } else {
+          // Attach the exit listener before signalling so a fast exit is never missed.
+          const exited = awaitLocalExit(active.process, localExitTimeoutMs);
+          try { active.process.kill('SIGTERM'); } catch (err) {
+            return refuse(jobId, { gate: 'local-cancel-failed', cancelState: 'requested', status: currentStatus, error: `Local termination failed: ${err.message}` });
           }
-        } catch (e) {
-          return { ok: false, error: e.message, gate: 'remote-cancel-exception' };
+          terminationVerified = await exited;
         }
+        evidence = { kind: terminationVerified ? 'verified' : 'unverified', detail: 'local process exit' };
+      } catch (err) {
+        return refuse(jobId, { gate: 'local-cancel-failed', cancelState: 'requested', status: currentStatus, error: err.message });
+      }
+      if (!terminationVerified) {
+        return {
+          ok: false, accepted: true, status: currentStatus,
+          alreadyTerminal: false, neverStarted: false, terminationVerified: false,
+          cancelState: 'requested', leaseReleased: false, gate: 'local-stop-unverified',
+          error: 'The local process was signalled but its exit could not be verified. The job and its lease are held.'
+        };
       }
     } else {
-      // Local process cancellation: verify PID
-      if (active.process && typeof active.process.kill === 'function') {
-        try {
-          // Graceful termination first
-          active.process.kill('SIGTERM');
-          setTimeout(() => {
-            try {
-              if (activeProcesses.has(jobId)) {
-                active.process.kill('SIGKILL');
-              }
-            } catch (_) {}
-          }, 3000).unref?.();
-        } catch (err) {
-          return { ok: false, error: `Local termination failed: ${err.message}`, gate: 'local-cancel-failed' };
+      // Job-owned stop hook (queue/stop-after-current). Its own result is the evidence.
+      if (typeof onLocalTerminate !== 'function') {
+        return refuse(jobId, {
+          gate: 'cancel-unsafe', cancelState: 'refused_unsafe', status: currentStatus,
+          error: 'No verified termination path exists for this job.'
+        });
+      }
+      try {
+        const res = await onLocalTerminate(active);
+        if (res && res.ok === false) {
+          return refuse(jobId, {
+            gate: 'local-cancel-failed', cancelState: 'requested', status: currentStatus,
+            error: res.error || 'The job owner refused the stop.'
+          });
         }
-      } else if (onLocalTerminate && typeof onLocalTerminate === 'function') {
-        try {
-          await onLocalTerminate(active);
-        } catch (err) {
-          return { ok: false, error: err.message, gate: 'local-cancel-failed' };
-        }
+        terminationVerified = !res || res.verified !== false;
+        evidence = { kind: terminationVerified ? 'owner_accepted' : 'unverified', detail: (res && res.detail) || 'job-owned stop hook' };
+      } catch (err) {
+        return refuse(jobId, { gate: 'local-cancel-failed', cancelState: 'requested', status: currentStatus, error: err.message });
       }
     }
 
-    // Release arbiter lease
-    if (arbiter) {
-      try { arbiter.release(jobId); } catch (_) {}
-    }
-
-    // Transition durable state
-    if (jobStore) {
-      jobStore.transition(jobId, 'CANCELLED', { error: reason, first_failed_gate: 'user-cancelled' });
-    }
-
-    // Emit event
-    if (eventBus) {
-      eventBus.publish('job.cancelled', { id: jobId, reason, status: 'CANCELLED' });
-    }
-
+    // ---- 5. Verified stop: only now may the job become CANCELLED -----------------------
+    const fin = finalize(jobId, reason);
+    if (!fin.ok) return refuse(jobId, { gate: 'state-write-failed', cancelState: 'unknown', status: currentStatus, reason: fin.error });
+    const leaseReleased = releaseLease(jobId);
     unregisterActiveJob(jobId);
 
     return {
-      ok: true,
-      status: 'CANCELLED',
-      immediate: false
+      ok: true, accepted: true, status: 'CANCELLED', immediate: false,
+      alreadyTerminal: false, neverStarted: false, terminationVerified: true,
+      cancelState: active.isRemote ? 'verified_stopped' : (evidence && evidence.kind === 'owner_accepted' ? 'stop_after_current' : 'verified_stopped'),
+      leaseReleased, evidence
     };
   }
 
@@ -145,6 +322,7 @@ function createCancellationManager({
     registerActiveJob,
     unregisterActiveJob,
     cancelJob,
+    describeCancelCapability: (jobId, opts = {}) => describeCancelCapability(jobId, opts),
     getActive: (jobId) => activeProcesses.get(jobId) || null,
     activeCount: () => activeProcesses.size
   };

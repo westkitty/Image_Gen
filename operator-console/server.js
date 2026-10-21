@@ -1092,6 +1092,15 @@ const cancelManager = createCancellationManager({
   arbiter,
   jobStore,
   eventBus,
+  // T-102: a mid-run stop is only offered when the owning worker actually declares it. Image jobs are
+  // governed by the image route's own run-id-scoped verified stop, so they resolve to null here.
+  workerCapabilities: ({ record }) => {
+    if (!record || record.media_kind === 'image') return null;
+    try {
+      const w = workerRegistry.get(record.worker_id);
+      return w && typeof w.capabilities === 'function' ? (w.capabilities() || null) : null;
+    } catch (_) { return null; }
+  },
   onLocalTerminate: async (active) => {
     if (active.pid) {
       try { process.kill(active.pid, 'SIGTERM'); } catch (_) {}
@@ -4776,6 +4785,21 @@ app.get('/api/doctor', async (req, res) => {
 });
 
 // ---- V12 Workstation Operational Projection Helper --------------------------
+// T-102: one honest cancel capability per job. Image jobs use the image route's own run-id-scoped
+// stop; durable media jobs consult their worker contract and registered process owner. A RUNNING job
+// with no owner is never advertised as cancellable, because the server would refuse it.
+function imageCancelCapability(job) {
+  const st = String(job && job.status || '').toLowerCase();
+  if (st === 'queued' && !job.startedRunningAt) {
+    return { canCancel: true, cancelCapability: 'queued_only', cancelState: 'not_started', reason: 'This job has not started yet.' };
+  }
+  if (st === 'queued' || st === 'running') {
+    return { canCancel: true, cancelCapability: 'running_verified', cancelState: 'verified_stopped',
+      reason: 'Cancel stops this run\'s own remote processes by run id and verifies none are left.' };
+  }
+  return { canCancel: false, cancelCapability: 'terminal', cancelState: 'already_terminal', reason: `This job already finished (${job && job.status}).` };
+}
+
 function getOperationalJobSnapshot() {
   const activeJobs = [];
   const queuedJobs = [];
@@ -4789,6 +4813,7 @@ function getOperationalJobSnapshot() {
   for (const [id, j] of Object.entries(jobs)) {
     seenIds.add(id);
     const est = timingStore ? timingStore.getEstimate(j.commandAction === 'upscale' ? 'local' : (j.requestParams && j.requestParams.target) || 'sdcpp', j.commandAction) : null;
+    const cancelCap = imageCancelCapability(j);
     const proj = projectOperationalJob({
       id: j.id,
       mediaKind: 'image',
@@ -4804,7 +4829,9 @@ function getOperationalJobSnapshot() {
       queuePosition: j.waitingForLease ? arbiter.position(j.id) : null,
       resourceClass: HEAVY_ACTIONS.has(j.commandAction) ? 'heavy' : 'light',
       resourceState: j.waitingForLease ? 'WAITING_LEASE' : (j.status === 'running' ? 'RUNNING' : 'QUEUED'),
-      canCancel: ['queued', 'running'].includes(j.status),
+      canCancel: cancelCap.canCancel,
+      cancelCapability: cancelCap.cancelCapability,
+      cancelReason: cancelCap.reason,
       firstFailedGate: j.firstFailedGate,
       artifactIds: (j.results || []).filter(r => r.imageId).map(r => r.imageId),
       estimatedDurationMs: est && est.available ? est.estimatedDurationMs : null
@@ -4819,6 +4846,7 @@ function getOperationalJobSnapshot() {
   for (const g of allDurable) {
     if (seenIds.has(g.job_id)) continue;
     seenIds.add(g.job_id);
+    const cancelCap = cancelManager.describeCancelCapability(g.job_id, { record: g });
     const proj = projectOperationalJob({
       id: g.job_id,
       mediaKind: g.media_kind,
@@ -4834,7 +4862,9 @@ function getOperationalJobSnapshot() {
       queuePosition: g.status === 'QUEUED' ? arbiter.position(g.job_id) : null,
       resourceClass: g.resource_class,
       resourceState: g.status === 'QUEUED' ? 'WAITING_LEASE' : g.status,
-      canCancel: ['QUEUED', 'RUNNING', 'TRANSFERRING'].includes(g.status),
+      canCancel: cancelCap.canCancel,
+      cancelCapability: cancelCap.cancelCapability,
+      cancelReason: cancelCap.reason,
       firstFailedGate: g.first_failed_gate,
       artifactIds: g.artifacts || []
     });
@@ -4968,8 +4998,22 @@ app.post('/api/jobs/:id/cancel', async (req, res) => {
     return res.status(202).json({ ok: false, status: 'CANCELLED', remote_stop: 'unverified', quarantine: true, gate: 'remote-stop-unverified', worker: rec,
       error: 'Cancelled locally, but the Big Mac side could not be verified stopped. Heavy work is paused (quarantine) until reconciliation proves it stopped; retry the check or release it explicitly.' });
   }
+  // T-104: the generic (durable media) path reports refusal separately from acceptance. A RUNNING job
+  // with no verified process owner is refused here instead of being relabelled CANCELLED.
   const result = await cancelManager.cancelJob(jobId, { reason });
-  res.json(result);
+  const remoteStop = result.cancelState === 'not_started' ? 'not_started'
+    : result.cancelState === 'verified_stopped' ? 'verified'
+    : result.cancelState === 'stop_after_current' ? 'stop_after_current'
+    : result.cancelState === 'requested' ? 'stopping'
+    : result.cancelState === 'already_terminal' ? 'already_finished'
+    : 'not_attempted';
+  const payload = { ...result, remote_stop: remoteStop, status: result.status || null };
+  const code = result.ok ? 200
+    : result.gate === 'state-write-failed' ? 500
+    : (result.gate === 'already-terminal' || result.gate === 'cancel-unsafe' || result.gate === 'cancel-unsupported' || result.gate === 'unknown-job') ? 409
+    : result.cancelState === 'requested' ? 202
+    : 400;
+  res.status(code).json(payload);
 });
 
 // OP-7 operator surface: unresolved remote workers, a reconcile-now trigger, and an explicit (labelled) release.
