@@ -13,6 +13,13 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
   await page.waitForFunction(()=>window.__dex && __dex.state.version===2,{timeout:15000});
   const labels = await page.locator('[data-studio-nav] [data-studio-category]').allTextContents();
   assert.deepEqual(labels.map(s=>s.trim()),['Create','Batch','Swap','Voice','Drama','Music','Video','World','3D','Library','Edit','Enhance','Models','System']);
+  for (const id of ['create','batch','swap','voice','drama','music','video','world','3d','library','edit','enhance','models','system']) {
+    await page.locator('[data-studio-category=\"'+id+'\"]').click();
+    await page.waitForTimeout(70);
+    const current=await page.evaluate(()=>__dex.state.screens[2]);
+    assert.equal(current,id,'clicked '+id+' must route correctly');
+  }
+  await page.locator('[data-studio-category=\"create\"]').click();
   const prompt=page.getByRole('textbox',{name:'Describe your image'});
   assert.equal(await prompt.isVisible(),true,'prompt must be visible on entry');
   assert.match(await page.title(),/DexDiffusion Studio/);
