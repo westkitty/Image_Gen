@@ -859,6 +859,11 @@ class Component extends DCLogic {
     const { version, screens } = this.state;
     try { sessionStorage.setItem(version === 4 ? 'dex_concept_screen' : 'dex_screen', s); } catch {}
     this.setState({ screens: { ...screens, [version]: s } });
+    // Category navigation must present the selected screen immediately.
+    // On rapid transitions the global rAF batcher can leave the previous
+    // module visible even though route state has changed. Reconcile this
+    // explicit user action synchronously; background updates remain batched.
+    if (version === 2 && typeof this.__render === 'function') this.__render();
     return true;
   }
 
