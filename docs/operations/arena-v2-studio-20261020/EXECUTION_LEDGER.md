@@ -192,7 +192,7 @@ Pull request **#4** — https://github.com/westkitty/Image_Gen/pull/4 — **open
 ### 6.1 Full-suite comparison
 
 - **Before** (pristine base SHA copy, same dependencies): 923 tests, **755 pass / 88 fail / 80 skipped**.
-- **After** (this branch, latest full run): 979 tests, **811 pass / 88 fail / 80 skipped** (+56 tests, +56 passes). An interim run after G1-G4 was 960/792/88/80.
+- **After** (this branch, final full run): 980 tests, **812 pass / 88 fail / 80 skipped** (+57 tests, +57 passes). Interim runs: 960/792 and 979/811, each with the same 88-name failure set.
 - Failure names were compared with `comm` against the baseline list: **0 new failures, 0 newly-fixed-by-accident**. The 88 failures are byte-identical to the baseline set (`ffmpeg`, Python/numpy, macOS paths, live-run fixtures).
 - Known environmental gaps: no Chromium, so every `test:browser*` suite is **skipped, not passed**; no Swift toolchain, so the native test is source-level only.
 
