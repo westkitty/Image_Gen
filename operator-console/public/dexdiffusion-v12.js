@@ -394,6 +394,9 @@
   function renderJobCard(j, isActive) {
     const pct = progressPercent(j.progress);
     const canCancel = j.canCancel;
+    const stopAfterCurrent = isActive && j.cancelCapability === 'stop_after_current';
+    const cancelLabel = stopAfterCurrent ? 'Stop after current' : isActive ? 'Cancel job' : 'Cancel queued job';
+    const cancelAria = stopAfterCurrent ? 'Stop after current' : isActive ? 'Cancel running job' : 'Cancel queued job';
     const statusColor = isActive ? '#38bdf8' : '#f59e0b';
 
     return `
@@ -418,7 +421,7 @@
         ` : isActive ? `<div style="margin:8px 0 6px 0;font-size:11px;color:#94a3b8;">Progress unavailable · current stage is indeterminate</div>` : ''}
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
           <span style="font-size:10px;color:#64748b;">${new Date(j.createdAt).toLocaleTimeString()}</span>
-          ${canCancel ? `<button type="button" data-job-cancel-id="${escapeHtml(j.id)}" aria-label="${isActive ? 'Cancel running job' : 'Cancel queued job'}" style="background:#ef4444;border:none;color:#fff;padding:7px 10px;min-height:36px;border-radius:4px;font-size:12px;cursor:pointer;">${isActive ? 'Cancel job' : 'Cancel queued job'}</button>` : ''}
+          ${canCancel ? `<button type="button" data-job-cancel-id="${escapeHtml(j.id)}" aria-label="${cancelAria}" style="background:#ef4444;border:none;color:#fff;padding:7px 10px;min-height:36px;border-radius:4px;font-size:12px;cursor:pointer;">${cancelLabel}</button>` : ''}
         </div>
       </div>
     `;
@@ -446,9 +449,12 @@
 
   V12.cancelJob = async function(jobId) {
     const queued = (V12.snapshot.queue || []).some(j => j.id === jobId);
+    const stopAfterCurrent = (V12.snapshot.active || []).some(j => j.id === jobId && j.cancelCapability === 'stop_after_current');
     const question = queued
       ? 'Cancel this queued job before it starts?'
-      : 'Request cancellation of this running job? It may continue until the worker confirms it stopped.';
+      : stopAfterCurrent
+        ? 'Request Stop after current? The running audio chunk will finish before Drama stops; the worker is not stopped yet.'
+        : 'Request cancellation of this running job? It may continue until the worker confirms it stopped.';
     if (!confirm(question)) return;
     try {
       const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, {
@@ -459,7 +465,10 @@
       const data = await res.json();
       if (data.ok && (data.neverStarted === true || data.terminationVerified === true)) {
         fetchSnapshot();
-      } else if (data.accepted === true || data.cancelState === 'requested' || data.cancelState === 'stop_after_current' || data.remote_stop === 'unverified') {
+      } else if (data.cancelState === 'stop_after_current' && data.accepted === true) {
+        fetchSnapshot();
+        alert('Stop after current requested. The current audio chunk may finish before the producer confirms cancellation. Job Center will keep tracking it.');
+      } else if (data.accepted === true || data.cancelState === 'requested' || data.remote_stop === 'unverified') {
         fetchSnapshot();
         alert('Stop requested but not verified. The job may still be running. Job Center will continue tracking it.');
       } else {
