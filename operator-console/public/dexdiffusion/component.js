@@ -2381,6 +2381,9 @@ class Component extends DCLogic {
       setDim1024: ()=>this.setState({width:1024,height:1024}),
       onGenerate: ()=>this.onGenerate(),
       onCancelJob: ()=>this.onCancelJob(),
+      onOpenJobCenter: ()=>{ const center=window.__DEX_V12; if(center && typeof center.toggleJobCenter==='function') center.toggleJobCenter(); else this.toast('Job Center is initializing. Try again in a moment.', '#fbbf24'); },
+      activeJobCount: (() => { const c=window.__DEX_V12; return c ? ((c.activeJobCount || 0)+(c.queuedJobCount || 0)) : 0; })(),
+      offlineWarning: !backendOnline,
       // sc-if treats any non-empty string as true, so this must stay a real boolean.
       showCancel: (() => { const ws = this._createWs(); return jobStatus === 'generating' && !!ws.activeJobId; })(),
       activeCancelJobId: (() => { const ws = this._createWs(); return ws.activeJobId || ''; })(),
