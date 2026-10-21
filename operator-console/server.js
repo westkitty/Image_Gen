@@ -45,7 +45,7 @@ const { exportReproBundle, validateReproBundle, checkBundleCompatibility } = req
 const { createThumbnailService } = require('./thumbnail-service');
 const { createCancellationManager } = require('./cancellation');
 const { createLibraryIndex } = require('./library-index');
-const { reconcileInterruptedPublications } = require('./publication-recovery');
+const { reconcileInterruptedPublications, historicalMissingJournal } = require('./publication-recovery');
 
 const app = express();
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
@@ -68,7 +68,6 @@ const jobStore = M.createJobStore(path.join(STATE_DIR, 'jobs.json'), { onChange:
 const publicationRecoveryState = { blocked: false, journal: { inspected: 0, repaired: 0, unresolved: [] }, jobs: { inspected: 0, recovered: 0, unresolved: [] } };
 try {
   publicationRecoveryState.journal = imageStore.recoverPendingPublications();
-  if (publicationRecoveryState.journal.unresolved.length) publicationRecoveryState.blocked = true;
   if (publicationRecoveryState.journal.repaired || publicationRecoveryState.journal.unresolved.length) console.log('Canonical publication recovery:', JSON.stringify(publicationRecoveryState.journal));
 } catch (err) { publicationRecoveryState.blocked = true; publicationRecoveryState.journal.unresolved.push({ reason: err.message }); console.error('Canonical publication recovery failed:', err.message); }
 // Browser/live-suite media must stay inside its owned state tree. Production keeps
@@ -1081,6 +1080,13 @@ const remoteWorkers = RemoteWorkers.createRemoteWorkerRegistry({
   file: path.join(STATE_DIR, 'remote-workers.json'),
   onChange: r => { try { eventBus.publish('remote.worker', { job_id: r.job_id, state: r.state, action: r.action }); } catch (_) {} },
 });
+publicationRecoveryState.journal.historical = [];
+for (const item of publicationRecoveryState.journal.unresolved) {
+  if (item.reason === 'publication-not-committed' && historicalMissingJournal({
+    journalName: item.journal, imageRoot: imageStore.root, runsRoot: RUNS_DIR, jobStore, remoteWorkers,
+  })) publicationRecoveryState.journal.historical.push(item.journal);
+  else publicationRecoveryState.blocked = true;
+}
 const arbiter = M.createResourceArbiter({
   quarantineCheck: () => publicationRecoveryState.blocked ? 'canonical publication recovery unresolved' : remoteWorkers.quarantineReason(),
   externalProbe: () => new Promise(resolve => {

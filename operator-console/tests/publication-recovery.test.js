@@ -7,7 +7,35 @@ const os = require('node:os');
 const path = require('node:path');
 const M = require('../media');
 const J = require('../job-contract');
-const { reconcileInterruptedPublications } = require('../publication-recovery');
+const { reconcileInterruptedPublications, historicalMissingJournal } = require('../publication-recovery');
+
+test('only exactly owned, indexed, missing output with a resolved worker is historical', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dexdiffusion-historical-journal-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const imageRoot = path.join(root, 'images'), runsRoot = path.join(root, 'runs');
+  const runId = '20261019-010101-controlled-sd15', jobId = '11111111-1111-4111-8111-111111111111';
+  const runDir = path.join(runsRoot, runId), imageId = runId + '-s1.png', journalName = '.pending-abcdef123456.json';
+  fs.mkdirSync(imageRoot); fs.mkdirSync(runDir, { recursive: true });
+  const entry = { image_id: imageId, job_id: jobId, run_id: runId, run_file: 'output.png', sha256: 'a'.repeat(64), bytes: 12 };
+  const journal = { schema: 'dexdiffusion.image_publication.pending.v1', phase: 'run-index-committed',
+    cleanup_state: 'metadata-committed', run_dir: runDir, image_ids: [imageId],
+    image_records: [{ image_id: imageId, device: 1, inode: 2 }], entries: [entry] };
+  fs.writeFileSync(path.join(runDir, 'job-owner.json'), JSON.stringify({ schema: 'dexdiffusion.run_owner.v1', job_id: jobId, run_id: runId }));
+  fs.writeFileSync(path.join(runDir, 'canonical-images.json'), JSON.stringify({ images: [entry] }));
+  fs.writeFileSync(path.join(imageRoot, journalName), JSON.stringify(journal));
+  const jobStore = { get: () => ({ status: 'INTERRUPTED' }) };
+  let workerState = 'cancelled_verified';
+  const remoteWorkers = { get: () => ({ state: workerState }) };
+  const check = () => historicalMissingJournal({ journalName, imageRoot, runsRoot, jobStore, remoteWorkers });
+  assert.equal(check(), true);
+  workerState = 'stop_unverified'; assert.equal(check(), false); workerState = 'cancelled_verified';
+  fs.writeFileSync(path.join(imageRoot, imageId), 'foreign bytes'); assert.equal(check(), false);
+  fs.unlinkSync(path.join(imageRoot, imageId));
+  fs.writeFileSync(path.join(imageRoot, journalName), JSON.stringify({ ...journal, entries: [{ ...entry, sha256: 'b'.repeat(64) }] }));
+  assert.equal(check(), false, 'index and journal must agree');
+  fs.writeFileSync(path.join(imageRoot, journalName), JSON.stringify({ ...journal, phase: 'intent' }));
+  assert.equal(check(), false, 'an active intent is not historical');
+});
 
 test('restart reconciliation completes only the exactly owned and validated publication', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dexdiffusion-recovery-'));

@@ -55,4 +55,39 @@ function reconcileInterruptedPublications({ jobStore, runsRoot, imageStore, vali
   return result;
 }
 
-module.exports = { reconcileInterruptedPublications };
+// A missing historical output is not an in-flight publication. Keep its journal
+// and index as evidence, but permit unrelated new jobs only when every identity
+// and terminal-state check agrees. Any ambiguity remains a blocking recovery.
+function historicalMissingJournal({ journalName, imageRoot, runsRoot, jobStore, remoteWorkers }) {
+  try {
+    if (!/^\.pending-[0-9a-f]+\.json$/.test(journalName)) return false;
+    const journal = JSON.parse(fs.readFileSync(path.join(imageRoot, journalName), 'utf8'));
+    if (journal.schema !== 'dexdiffusion.image_publication.pending.v1' || journal.phase !== 'run-index-committed'
+      || journal.cleanup_state !== 'metadata-committed') return false;
+    const runDir = path.resolve(String(journal.run_dir || ''));
+    const relative = path.relative(path.resolve(runsRoot), runDir);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return false;
+    const owner = JSON.parse(fs.readFileSync(path.join(runDir, 'job-owner.json'), 'utf8'));
+    if (owner.schema !== 'dexdiffusion.run_owner.v1' || owner.run_id !== path.basename(runDir) || !owner.job_id) return false;
+    const job = jobStore.get(owner.job_id), worker = remoteWorkers.get(owner.job_id);
+    if (!job || !['COMPLETE', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(job.status)) return false;
+    if (!worker || !['completed', 'cancelled_verified'].includes(worker.state)) return false;
+    const entries = journal.entries, index = JSON.parse(fs.readFileSync(path.join(runDir, 'canonical-images.json'), 'utf8')).images;
+    if (!Array.isArray(entries) || !entries.length || !Array.isArray(index) || !Array.isArray(journal.image_ids)
+      || !Array.isArray(journal.image_records) || entries.length !== journal.image_ids.length
+      || entries.length !== journal.image_records.length) return false;
+    return entries.every(entry => {
+      const id = entry && entry.image_id;
+      if (typeof id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpg|jpeg|webp)$/i.test(id)
+        || entry.job_id !== owner.job_id || entry.run_id !== owner.run_id || !journal.image_ids.includes(id)) return false;
+      if (!journal.image_records.some(row => row.image_id === id && Number.isInteger(row.device)
+        && Number.isInteger(row.inode) && row.inode > 0)) return false;
+      try { fs.lstatSync(path.join(imageRoot, id)); return false; }
+      catch (error) { if (error.code !== 'ENOENT') return false; }
+      return index.some(row => row.image_id === id && row.job_id === owner.job_id && row.run_id === owner.run_id
+        && row.run_file === entry.run_file && row.sha256 === entry.sha256 && row.bytes === entry.bytes);
+    });
+  } catch (_) { return false; }
+}
+
+module.exports = { reconcileInterruptedPublications, historicalMissingJournal };
