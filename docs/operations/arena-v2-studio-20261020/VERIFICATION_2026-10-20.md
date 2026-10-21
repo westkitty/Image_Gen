@@ -67,7 +67,7 @@ This is the section a beginner actually meets, so it is audited literally.
 | Single **Jobs** control top-right (`Ready` / `Running 1` / `Check required`) opening a Job Center | ❌ | the header has a **passive status chip** (`Idle / 40% / Done / Error`); no Jobs button, no Job Center in V2 |
 | No help wall / diagnostic log / competing rails | ✅ | the V2 shell has one nav row and no log wall (the previous shell's rails are gone) |
 | On success: canonical image + **Open in Library / Edit / Enhance / Download** + **Saved to Library** | ⚠️ | result actions exist as `Fullscreen / Keeper / Copy Seed / Reuse Settings / Send to Img2Img / Send to Inpaint / Upscale / Detailer / Lineage` — no `Open in Library`, no `Download`, no `Saved to Library` confirmation |
-| Offline: **Studio can't reach the local service** + **Retry connection** + **Open System details**, draft preserved | ❌ | no offline banner or retry control exists in the V2 markup; only a small `✗ Offline` backend chip |
+| Offline: **Studio can't reach the local service** + **Retry connection** + **Open System details**, draft preserved | ❌ | no banner and no retry control exist in the V2 markup. The only signal is a 10px passive chip that switches its text from `Backend` to `Offline`; there is no explanation and no action. |
 
 **Net: 4 of 14 first-load requirements are met, 3 partially, 7 absent.**
 
@@ -163,7 +163,7 @@ Two things were found while re-checking, and both are fixed in the same branch:
 
 | Command (in `operator-console/`) | Result at audit time |
 |---|---|
-| `npm test` | **980 tests — 812 pass / 88 fail / 80 skipped** |
+| `npm test` | **981 tests — 813 pass / 88 fail / 80 skipped** |
 | failing set vs pristine base | **0 new, 0 removed** (88 environmental: `ffmpeg`, Python libs, macOS paths, live fixtures) |
 | `node --test tests/studio-shell.test.js` | 27/27 |
 | `node --test tests/source-asset.test.js` | 14/14 |
