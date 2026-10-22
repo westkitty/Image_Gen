@@ -68,7 +68,9 @@ test('release preflight excludes protected Style and wildcard unit files', () =>
 test('release preflight reserves disk space and bounds unit-test concurrency', () => {
   const script = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'release-preflight.sh'), 'utf8');
   assert.match(script, /DEX_PREFLIGHT_MIN_FREE_KIB/);
-  assert.match(script, /--test-concurrency=2/);
+  const concurrency = script.match(/--test-concurrency=(\d+)/);
+  assert.ok(concurrency, 'the release unit runner must set an explicit concurrency bound');
+  assert.ok(Number(concurrency[1]) >= 1 && Number(concurrency[1]) <= 2, 'one or two test files may run; unbounded parallelism is refused');
 });
 
 test('release preflight blocks insufficient disk before launching tests', () => {

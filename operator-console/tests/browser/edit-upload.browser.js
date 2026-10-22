@@ -4,7 +4,7 @@
 // Generation POSTs are intercepted so no inference runs.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { makePng, startServer, installModelSnapshots, runner, launchBrowser } = require('./helpers');
+const { makePng, startServer, installModelSnapshots, runner, launchBrowser, openStudio } = require('./helpers');
 const { test, exitCode } = runner('edit-upload');
 const toasts = page => page.evaluate(() => __dex.state.toasts.map(t => t.msg));
 
@@ -19,7 +19,7 @@ const toasts = page => page.evaluate(() => __dex.state.toasts.map(t => t.msg));
     await installModelSnapshots(page, srv.base);
     await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: [], vaes: [], embeddings: { count: 0, items: [] } } }));
     await page.route('**/api/actions/img2img', r => { posts.push(r.request().postDataJSON()); r.fulfill({ status: 400, json: { error: 'intercepted by test', gate: 'test' } }); });
-    await page.goto(srv.base + '/dexdiffusion/');
+    await openStudio(page, srv.base + '/dexdiffusion/');
     await page.waitForFunction(() => window.__dex && __dex.state.capabilityData && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
     await page.evaluate(() => __dex.setScreen('edit'));
     await page.waitForSelector('input[type="file"][accept*="image/png"]', { state: 'attached' });

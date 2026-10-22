@@ -47,6 +47,12 @@ test('MFLUX args never carry SDCPP-only flags', () => {
   ]);
 });
 
+test('MFLUX Pixel Art route carries only the approved adapter id and validated strength', () => {
+  const args = buildControlledArgs(MFLUX, { ...FULL_PARAMS, mflux_lora_id: 'pixelart_lora', mflux_lora_strength: 0.5 }, { seedValue: 42 });
+  assert.deepEqual(args.slice(args.indexOf('--lora-id'), args.indexOf('--save-prompts')), ['--lora-id', 'pixelart_lora', '--lora-strength', '0.5']);
+  assert.equal(args.some(x => x.includes('/') || x.includes('safetensors')), false, 'browser-controlled filesystem paths never reach the command');
+});
+
 test('custom portrait and landscape dimensions survive the controlled argument path unchanged', () => {
   const landscape = buildControlledArgs(MFLUX, { ...FULL_PARAMS, width: 768, height: 512 }, { seedValue: 7 });
   const portrait = buildControlledArgs(MFLUX, { ...FULL_PARAMS, width: 512, height: 768 }, { seedValue: 8 });
@@ -61,6 +67,13 @@ test('SDCPP args keep negative prompt, CFG, scheduler and VAE', () => {
   for (const flag of ['--negative-prompt', '--cfg', '--scheduler', '--vae']) {
     assert.ok(args.includes(flag), `${flag} missing from SDCPP args`);
   }
+});
+
+test('SDXL Lightning CFG zero is serialized as zero, not replaced by a default', () => {
+  const args = buildControlledArgs({ id: 'sdxl-base' }, {
+    ...FULL_PARAMS, target: 'sdxl-base', cfg_scale: 0, steps: 4, sampler: 'euler', scheduler: 'sgm_uniform'
+  }, { seedValue: 42 });
+  assert.equal(args[args.indexOf('--cfg') + 1], '0');
 });
 
 test('SDXL Turbo always sends cfg 1 and never a negative prompt (sd.cpp cfg 0 = unconditioned)', () => {
@@ -165,6 +178,37 @@ test('P03: controlsFor exposes sampler/clipSkip/tiling for SDCPP only', () => {
   assert.equal(D.controlsFor({ backend: 'sdcpp', capabilities: { tiling: false } }).tiling, false);
 });
 
+test('controlled LoRA experiments serialize only the closed mode/backend enums', () => {
+  const args = CA.buildControlledArgs({ id: 'sdxl-base', backend: 'sdcpp' }, { target: 'sdxl-base', prompt: 'p', lora_apply_mode: 'at_runtime', backend_override: 'cpu' }, { seedValue: 1 });
+  assert.deepEqual(args.slice(args.indexOf('--lora-apply-mode'), args.indexOf('--lora-apply-mode') + 2), ['--lora-apply-mode', 'at_runtime']);
+  assert.deepEqual(args.slice(args.indexOf('--backend-override'), args.indexOf('--backend-override') + 2), ['--backend-override', 'cpu']);
+  const metalArgs = CA.buildControlledArgs({ id: 'sdxl-base', backend: 'sdcpp' }, { target: 'sdxl-base', prompt: 'p', loras: [{ name: 'sdxl_lightning_4step_lora', weight: 1 }], backend_override: 'metal' }, { seedValue: 1 });
+  assert.deepEqual(metalArgs.slice(metalArgs.indexOf('--backend-override'), metalArgs.indexOf('--backend-override') + 2), ['--backend-override', 'metal']);
+  const script = fs.readFileSync(path.join(__dirname, '..', '..', 'sdcpp-workflow', 'bin', 'sdcpp-controlled-generate.sh'), 'utf8');
+  assert.match(script, /auto\|at_runtime\|immediately/);
+  assert.match(script, /\|cpu\|metal\|gpu\|MTL0/);
+  assert.match(script, /BACKEND_OVERRIDE_TOKEN="MTL0"/);
+});
+
+test('verified LoRA production routes select Metal at_runtime for each proven recipe and retain CPU fallbacks', () => {
+  const { resolveLoraRuntimePolicy } = require('../lora-runtime-policy');
+  const lightning = resolveLoraRuntimePolicy({ target: 'sdxl-base', loras: [{ name: 'sdxl_lightning_4step_lora', weight: 0.85 }], steps: 4, cfg_scale: 0, sampler: 'euler', scheduler: 'sgm_uniform' });
+  assert.deepEqual(lightning, { ok: true, route: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' } });
+  const metalProbe = resolveLoraRuntimePolicy({ target: 'sdxl-base', loras: [{ name: 'lcm_sdxl', weight: 1 }], steps: 4, cfg_scale: 1.5, sampler: 'lcm', scheduler: 'lcm', backend_override: 'MTL0', lora_apply_mode: 'at_runtime' });
+  assert.deepEqual(metalProbe, { ok: true, route: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' }, explicit: true });
+  const lcm = resolveLoraRuntimePolicy({ target: 'sd15', loras: [{ name: 'lcm_sd15', weight: 1 }], steps: 4, cfg_scale: 1.5, sampler: 'lcm', scheduler: 'lcm' });
+  assert.deepEqual(lcm, { ok: true, route: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' } });
+  const hyperSdxl = resolveLoraRuntimePolicy({ target: 'sdxl-base', loras: [{ name: 'Hyper-SDXL-8steps-CFG-lora' }], steps: 8, cfg_scale: 6, sampler: 'ddim_trailing', scheduler: 'discrete' });
+  assert.deepEqual(hyperSdxl, { ok: true, route: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' } });
+  const hyperSd15 = resolveLoraRuntimePolicy({ target: 'sd15', loras: [{ name: 'Hyper-SD15-8steps-CFG-lora' }], steps: 8, cfg_scale: 6, sampler: 'ddim_trailing', scheduler: 'discrete' });
+  assert.deepEqual(hyperSd15, { ok: true, route: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' } });
+  assert.match(resolveLoraRuntimePolicy({ target: 'sdxl-base', loras: [{ name: 'sdxl_lightning_4step_lora' }], steps: 4, cfg_scale: 0, sampler: 'euler', scheduler: 'sgm_uniform', backend_override: 'MTL0', lora_apply_mode: 'auto' }).error, /unsupported ADD/);
+  assert.match(resolveLoraRuntimePolicy({ target: 'sdxl-base', loras: [{ name: 'sdxl_lightning_4step_lora' }], steps: 8, cfg_scale: 6, sampler: 'ddim_trailing', scheduler: 'discrete' }).error, /requires its verified 4-step/);
+  assert.deepEqual(resolveLoraRuntimePolicy({ target: 'flux2-klein-4b', loras: [{ name: 'pixelart_lora', weight: 1 }], steps: 4, cfg_scale: 1, sampler: 'euler', scheduler: 'discrete' }), {
+    ok: true, route: { mflux_lora_id: 'pixelart_lora', mflux_lora_strength: 1 },
+  });
+});
+
 // ---- P05: eta, noise RNG and the wider sampler inventory ----
 test('P05: eta and rng are normalised, validated against the effective sampler, and forwarded', () => {
   const n = CA.normalizeSamplingFields({ eta: '0.5', rng: 'CPU' });
@@ -208,6 +252,7 @@ test('P05: the UI scheduler choices are all accepted by the server', () => {
   const m = s.match(/const ALLOWED_SCHEDULERS = new Set\(\[([^\]]+)\]\)/);
   const allowed = m[1].split(',').map(x => x.trim().replace(/'/g, ''));
   for (const [id] of D.SCHEDULER_CHOICES) assert.ok(allowed.includes(id), id);
+  assert.ok(allowed.includes('lcm'), 'the installed engine and LCM presets both support the lcm scheduler');
 });
 
 // ---- P06: High-Res Refine (sd-cli --hires) ----

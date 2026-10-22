@@ -1,0 +1,275 @@
+{
+  "schema": "dexdiffusion.lora-metal-performance.v1",
+  "date": "2026-10-21",
+  "status": "PARTIAL",
+  "engine": {
+    "name": "stable-diffusion.cpp",
+    "revision": "7f0e728b7d42f2490dfa5dd9539082d904f2f6b2",
+    "binary_sha256": "ee1bc2fe07d48a787e17a7d0c5505fd7bb07241af09d9993294772dcefbba9bb",
+    "binary_path": "/Users/bigmac/stable-diffusion.cpp/build/bin/sd-cli"
+  },
+  "hardware": {
+    "host": "Big Mac via ssh westcat",
+    "chip": "Apple M4",
+    "metal_frameworks": [
+      "Metal.framework",
+      "MetalKit.framework"
+    ]
+  },
+  "selector": {
+    "accepted_logical_values": [
+      "cpu",
+      "metal",
+      "gpu",
+      "MTL0"
+    ],
+    "mapping": {
+      "metal": "MTL0"
+    },
+    "unsupported": "metal is not an sd-cli backend token"
+  },
+  "runs": [
+    {
+      "purpose": "Metal device-selection smoke, no LoRA",
+      "job_id": "191d0215-1ca9-45e6-9464-43e5fea4b681",
+      "run_id": "20261021-041045-controlled-sdxl-base",
+      "steps": 7,
+      "backend": "MTL0",
+      "device": "Apple M4",
+      "engine_generation_seconds": 17.82,
+      "output_sha256": "29c70febd4a07ad2352ebb57e3dd4ab71f619c2fe4827fdbe2b98752a8b2e93f",
+      "output_dimensions": [
+        512,
+        512
+      ],
+      "interpretation": "device-selection smoke only; not a quality or performance baseline"
+    },
+    {
+      "purpose": "SDXL Lightning at_runtime on Metal",
+      "job_id": "d97c8259-2cca-47f1-bd10-88da9dd85928",
+      "run_id": "20261021-041255-controlled-sdxl-base",
+      "mode": "at_runtime",
+      "adapter": "sdxl_lightning_4step_lora",
+      "weight": 0.85,
+      "backend": "MTL0",
+      "device": "Apple M4",
+      "applied_tensors": "2364/2364",
+      "adapter_application_seconds": 16.1,
+      "engine_generation_seconds": 31.93,
+      "worker_elapsed_seconds": 42.18,
+      "output_sha256": "6d83cf82da41fd248c5f9fff80da4c84cf81f91b36b22b260635bd27388de8cc",
+      "output_dimensions": [
+        512,
+        512
+      ],
+      "remote_output_cleaned": true,
+      "interpretation": "functional Metal inference proven for this adapter and mode only"
+    },
+    {
+      "purpose": "SDXL Lightning auto mode",
+      "job_id": "c2fc375a-a64b-49b4-8120-3d024f3e352f",
+      "run_id": "20261021-041354-controlled-sdxl-base",
+      "mode": "auto",
+      "backend": "MTL0",
+      "status": "FAILED",
+      "error": "unsupported op 'ADD'",
+      "remote_output_cleaned": true
+    },
+    {
+      "purpose": "SDXL Lightning immediately mode",
+      "job_id": "6712371c-ce58-4eaa-b1be-acd3d49ffec8",
+      "run_id": "20261021-041418-controlled-sdxl-base",
+      "mode": "immediately",
+      "backend": "MTL0",
+      "status": "CANCELLED_VERIFIED",
+      "reason": "repeated adapter-load stall",
+      "remote_cleanup": "SDCPP_REMOTE_CLEANUP: OK",
+      "remote_stop": "cancelled_verified",
+      "output_produced": false
+    },
+    {
+      "purpose": "CPU 20-step baseline",
+      "job_id": "abd328b3-2862-4dc5-a81a-9dd5c345ad13",
+      "run_id": "20261021-042149-controlled-sdxl-base",
+      "target": "sdxl-base",
+      "adapter": null,
+      "backend": "CPU",
+      "steps": 20,
+      "cfg": 7,
+      "sampling_seconds": 283.11,
+      "engine_generation_seconds": 301.41,
+      "worker_elapsed_seconds": 312.08,
+      "remote_output_cleaned": true,
+      "output_sha256": "fae49e3407c584bc6aed15e0303141024ed11dfeefed70c87e7e50172f1c9431",
+      "quality_review": "pending"
+    },
+    {
+      "purpose": "hyper-sdxl-8step-cfg Metal at_runtime adapter proof",
+      "adapter": "hyper-sdxl-8step-cfg",
+      "job_id": "513e4363-e997-421f-ac98-5f47e8d72ec8",
+      "run_id": "20261021-050334-controlled-sdxl-base",
+      "target": "sdxl-base",
+      "backend": "MTL0",
+      "device": "Apple M4",
+      "apply_mode": "at_runtime",
+      "recipe": {
+        "width": 512,
+        "height": 512,
+        "steps": 8,
+        "cfg": 6,
+        "sampler": "ddim_trailing",
+        "scheduler": "discrete"
+      },
+      "applied_tensors": "2364/2364",
+      "engine_generation_seconds": 56.31,
+      "worker_elapsed_seconds": 65.94,
+      "output_sha256": "b3513a7ca01cf56aa9cd675015bbef4b160b38f1022fc0ca9d355fb4f4613c18",
+      "output_bytes": 320890,
+      "output_dimensions": [
+        512,
+        512
+      ],
+      "remote_output_cleaned": true,
+      "interpretation": "functional Metal inference proven for this adapter, target, recipe, and mode only; no acceleration claim"
+    },
+    {
+      "purpose": "lcm-sdxl Metal at_runtime adapter proof",
+      "adapter": "lcm-sdxl",
+      "job_id": "f7d2bee0-247d-48b9-bdfc-12d742cfbbc4",
+      "run_id": "20261021-050442-controlled-sdxl-base",
+      "target": "sdxl-base",
+      "backend": "MTL0",
+      "device": "Apple M4",
+      "apply_mode": "at_runtime",
+      "recipe": {
+        "width": 512,
+        "height": 512,
+        "steps": 4,
+        "cfg": 1.5,
+        "sampler": "lcm",
+        "scheduler": "lcm"
+      },
+      "applied_tensors": "2364/2364",
+      "engine_generation_seconds": 31.2,
+      "worker_elapsed_seconds": 40.8,
+      "output_sha256": "51799d0e1d3da06048c994e7e8d018e5c05c77b1937a961c7348c3237830e7b1",
+      "output_bytes": 223614,
+      "output_dimensions": [
+        512,
+        512
+      ],
+      "remote_output_cleaned": true,
+      "interpretation": "functional Metal inference proven for this adapter, target, recipe, and mode only; no acceleration claim"
+    },
+    {
+      "purpose": "lcm-sd15 Metal at_runtime adapter proof",
+      "adapter": "lcm-sd15",
+      "job_id": "1e8320b5-de6a-4c6e-a742-d4402a32768e",
+      "run_id": "20261021-050525-controlled-sd15",
+      "target": "sd15",
+      "backend": "MTL0",
+      "device": "Apple M4",
+      "apply_mode": "at_runtime",
+      "recipe": {
+        "width": 512,
+        "height": 512,
+        "steps": 4,
+        "cfg": 1.5,
+        "sampler": "lcm",
+        "scheduler": "lcm"
+      },
+      "applied_tensors": "834/834",
+      "engine_generation_seconds": 178.94,
+      "worker_elapsed_seconds": 188.1,
+      "output_sha256": "c599ff96cc7073cbe575728bd949674d02809e980feb0114f158d48390099986",
+      "output_bytes": 380078,
+      "output_dimensions": [
+        512,
+        512
+      ],
+      "remote_output_cleaned": true,
+      "interpretation": "functional Metal inference proven for this adapter, target, recipe, and mode only; no acceleration claim"
+    },
+    {
+      "purpose": "hyper-sd15-8step-cfg Metal at_runtime adapter proof",
+      "adapter": "hyper-sd15-8step-cfg",
+      "job_id": "0cdcb974-aa53-4a26-8372-a8b9f1352118",
+      "run_id": "20261021-050835-controlled-sd15",
+      "target": "sd15",
+      "backend": "MTL0",
+      "device": "Apple M4",
+      "apply_mode": "at_runtime",
+      "recipe": {
+        "width": 512,
+        "height": 512,
+        "steps": 8,
+        "cfg": 6,
+        "sampler": "ddim_trailing",
+        "scheduler": "discrete"
+      },
+      "applied_tensors": "834/834",
+      "engine_generation_seconds": 33.05,
+      "worker_elapsed_seconds": 41.66,
+      "output_sha256": "0bceb17a0a804a274e94d62d7ee5c10262bac4546d42155bd77782e7947ff2fb",
+      "output_bytes": 354951,
+      "output_dimensions": [
+        512,
+        512
+      ],
+      "remote_output_cleaned": true,
+      "interpretation": "functional Metal inference proven for this adapter, target, recipe, and mode only; no acceleration claim"
+    }
+  ],
+  "performance": {
+    "status": "MATCHED_METAL_MEASURED",
+    "benchmark_report": "sdcpp-workflow/runs/lora-performance-20261021-sdxl-base-mtl0.json",
+    "backend": "MTL0",
+    "target": "sdxl-base",
+    "resolution": "512x512",
+    "warmup_per_arm": 1,
+    "repeats_per_arm": 3,
+    "matched_rounds": [
+      0,
+      1,
+      2
+    ],
+    "normal_quality_mean_end_to_end_seconds": 52.39,
+    "low_step_control_mean_end_to_end_seconds": 23.75,
+    "lightning_lora_mean_end_to_end_seconds": 27.23,
+    "low_step_vs_normal_reduction_percent": 54.7,
+    "lora_vs_low_step_overhead_seconds": 3.48,
+    "os_file_cache_state": "unknown",
+    "headroom": "Big Mac free memory 68-89%; pageout delta 0 pages during benchmark; throttled pages 0; thermal warnings none; volume free >274 GB",
+    "interpretation": "low-step Lightning recipe was faster than matched normal-quality arm on MTL0. This does not establish equal image quality; Lightning was 3.48s slower end-to-end than the identical low-step no-LoRA arm. Owner image-quality acceptance remains pending."
+  },
+  "limitations": [
+    "No matched Metal/CPU or LoRA/no-LoRA timing comparison; no acceleration claim.",
+    "Metal auto failed on unsupported ADD; immediately stalled and was cancelled after remote stop/cleanup verification.",
+    "Visual quality requires owner review.",
+    "FLUX.2 rsLoRA scaling/effect and other outstanding source identities remain unresolved.",
+    "No commit, push, wrapper rebuild, install, or restart.",
+    "Matched MTL0 runtime comparison covers SDXL Base 512x512 only; the Lightning output quality advantage over low-step no-LoRA requires owner review."
+  ],
+  "lora_edit_routes": {
+    "status": "FUNCTIONAL_METAL",
+    "adapter": "lcm_sd15",
+    "target": "sd15",
+    "backend": "MTL0",
+    "apply_mode": "at_runtime",
+    "proof_jobs": [
+      "ad25474c-00ca-4ca2-9c94-07ecf3ef5266",
+      "0d62bd00-4983-426c-9f61-3bf011ff0c9f",
+      "69fab706-9694-4b66-b82f-b929a5223f9b"
+    ],
+    "operations": [
+      "img2img",
+      "inpaint",
+      "outpaint"
+    ],
+    "remote_cleanup_verified": true,
+    "prompt_persistence": false,
+    "limitations": [
+      "The real edit proof covers LCM SD1.5 at its exact 4-step recipe; other adapters are not edit-proven."
+    ]
+  }
+}

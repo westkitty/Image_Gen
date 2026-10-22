@@ -118,3 +118,27 @@ test('live missing assets override historical model-card proof and carry availab
   assert.equal(card.runtime, 'model-missing');
   assert.equal(card.availability_reason, 'model-missing');
 });
+
+test('model-cards: only verified HTTPS provenance is exposed and discovered sources stay unavailable', () => {
+  const cards = getModelCards();
+  assert.equal(cards.find(c => c.id === 'sdxl-base').source_url, 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0');
+  assert.equal(cards.find(c => c.id === 'sdxl-epicrealism').source_url, 'https://civitai.com/models/277058?modelVersionId=2514955');
+  const extraSources = getModelCards({}, [
+    { id: 'sdxl-biglove-photo45', label: 'Big Love Photo4.5', status: 'staged', backend: 'sdcpp' },
+    { id: 'sd15-auto-v1-5-pruned-emaonly', label: 'Stable Diffusion 1.5 alias', status: 'staged', backend: 'sdcpp' }
+  ]);
+  assert.equal(extraSources.find(c => c.id === 'sdxl-biglove-photo45').source_url, 'https://civitai.com/models/897413?modelVersionId=2503034');
+  assert.equal(extraSources.find(c => c.id === 'sd15-auto-v1-5-pruned-emaonly').source_url, 'https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5');
+  const flux = cards.find(c => c.id === 'flux2-klein-4b');
+  assert.equal(flux.source_status, 'verified');
+  assert.match(flux.distribution_url, /^https:\/\//);
+  for (const card of cards) {
+    assert.equal(card.source_status, card.source_url ? 'verified' : 'unavailable');
+    if (card.source_url) assert.equal(new URL(card.source_url).protocol, 'https:');
+  }
+  const discovered = getModelCards({}, [{ id: 'sdxl-custom', label: 'Unknown model' }])[0];
+  assert.equal(discovered.source_url, null);
+  assert.equal(discovered.source_status, 'unavailable');
+  assert.equal(cards.find(c => c.id === 'flux-fp8').source_status, 'unavailable');
+  assert.equal(cards.find(c => c.id === 'sdxl-cyberrealistic').source_status, 'unavailable');
+});

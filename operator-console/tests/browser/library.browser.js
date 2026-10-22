@@ -4,8 +4,8 @@
 // The Library endpoints are served from an in-test fixture so the browser exercises the real UI against a known 84-image set.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { makePng, startServer, installModelSnapshots, runner, launchBrowser } = require('./helpers');
-const { test, exitCode } = runner('library');
+const { makePng, startServer, installModelSnapshots, runner, launchBrowser, openStudio } = require('./helpers');
+const { results, test, exitCode } = runner('library');
 
 const N = 84;
 const ALL = Array.from({ length: N }, (_, i) => {
@@ -15,12 +15,13 @@ const ALL = Array.from({ length: N }, (_, i) => {
 const BAD = ALL[3].id;
 const PNG = makePng(64, 64);
 
-async function newPage(browser, base, ctxOpts) {
+async function newPage(browser, base, ctxOpts, mediaItems = []) {
   const ctx = await browser.newContext(Object.assign({ viewport: { width: 1280, height: 900 } }, ctxOpts));
   const page = await ctx.newPage();
   const errors = []; page.on('pageerror', e => errors.push(String(e)));
   const reqs = { thumbs: 0, thumbIds: [], full: 0, list: [] };
   await installModelSnapshots(page, base);
+  await page.route(/\/api\/library(?:\?|$)/, r => r.fulfill({ json: { items: mediaItems, counts: { image: mediaItems.filter(i => i.kind === 'image').length } } }));
   await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: [], vaes: [], embeddings: { count: 0, items: [] } } }));
   await page.route('**/api/library/images**', r => {
     const u = new URL(r.request().url()), filter = u.searchParams.get('filter') || 'all', sort = u.searchParams.get('sort') || 'desc';
@@ -34,7 +35,7 @@ async function newPage(browser, base, ctxOpts) {
   await page.route(/\/api\/images\/[^/]+$/, r => { if (decodeURIComponent(r.request().url()).includes(BAD)) return r.fulfill({ status: 404, body: 'gone' }); reqs.full++; r.fulfill({ contentType: 'image/png', body: PNG }); });
   await page.route(/\/api\/images\/[^/]+\/export$/, r => r.fulfill({ contentType: 'image/png', headers: { 'Content-Disposition': 'attachment; filename="x.png"' }, body: PNG }));
   await page.route(/\/api\/images\/[^/]+\/meta$/, r => r.fulfill({ status: 404, json: { error: 'n/a' } }));
-  await page.goto(base + '/dexdiffusion/');
+  await openStudio(page, base + '/dexdiffusion/');
   await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
   await page.evaluate(() => __dex.setScreen('library'));
   await page.waitForSelector('[data-lib-controls]');
@@ -49,6 +50,24 @@ const counter = page => page.locator('[data-lightbox-count]').innerText();
   const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer();
   const browser = await launchBrowser(chromium);
   try {
+    await test('a full mixed-media collection scrolls without compressing or overlapping image rows', async () => {
+      const images = ALL.map(i => ({ ...i, kind: 'image', artifact_id: i.id }));
+      const voice = { kind: 'voice', artifact_id: 'fixture-voice.wav', url: '/api/audio/fixture-voice.wav', download_url: '/api/audio/fixture-voice.wav', duration: 2 };
+      const { page, ctx } = await newPage(browser, srv.base, undefined, [...images, voice]);
+      await page.waitForSelector('[data-media-library-grid] [data-lib-thumb]');
+      const boxes = await page.locator('[data-media-library-grid] [data-lib-thumb]').evaluateAll(nodes => nodes.map(n => {
+        const b = n.getBoundingClientRect(); return { x: b.x, y: b.y, bottom: b.bottom, width: b.width, height: b.height };
+      }));
+      assert.equal(boxes.length, N);
+      assert.ok(boxes.every(b => b.height >= b.width - 2), 'image rows retain square thumbnail height');
+      for (const a of boxes) for (const b of boxes) {
+        if (b.y > a.y + 1) assert.ok(b.y >= a.bottom - 1, 'later rows do not overlap earlier thumbnails');
+      }
+      const scroll = await page.locator('[data-media-library-grid]').evaluate(n => ({ height: n.clientHeight, content: n.scrollHeight }));
+      assert.ok(scroll.height <= 361 && scroll.content > scroll.height, JSON.stringify(scroll));
+      await ctx.close();
+    });
+
     await test('grid mode: rows and columns each change the visible page independently; range and total are exact', async () => {
       const { page, ctx, errors } = await newPage(browser, srv.base);
       await page.evaluate(() => localStorage.removeItem('dexdiffusion.library.prefs.v1'));
@@ -130,7 +149,9 @@ const counter = page => page.locator('[data-lightbox-count]').innerText();
 
     await test('viewer navigation follows the active filter and sort, not the unfiltered library', async () => {
       const { page, ctx } = await newPage(browser, srv.base);
-      await page.click('button:has-text("★ Keepers")');
+      const keeperFilter = page.locator('button:visible').filter({ hasText: '★ Keepers' });
+      assert.ok(await keeperFilter.count() >= 1, 'active Library exposes its Keepers filter');
+      await keeperFilter.last().click();
       const keepers = ALL.filter(x => x.keeper).length;
       await page.waitForFunction(n => new RegExp('of ' + n + '\\b').test(document.querySelector('[data-lib-pager]').innerText), keepers);
       await page.locator('[data-lib-grid] [data-lib-thumb] img').first().click();
@@ -213,5 +234,5 @@ const counter = page => page.locator('[data-lightbox-count]').innerText();
       await ctx.close();
     });
   } finally { await srv.stop(); }
-  process.exit(exitCode());
+  process.exit(exitCode(results.some(result => result[0] === 'FAIL')));
 })();

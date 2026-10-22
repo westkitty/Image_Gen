@@ -4,7 +4,7 @@
 // The generation POST is intercepted and refused; no inference runs.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, runner, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, installModelSnapshots, runner, launchBrowser, runCleanups, openStudio, chooseModel } = require('./helpers');
 
 const { test, results, exitCode } = runner('prompt-language');
 
@@ -12,12 +12,12 @@ async function open(page, base) {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   await installModelSnapshots(page, base);
-  await page.route('**/api/models/secondary/activate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ modelState: {} }) }));
-  await page.goto(base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
-  if (!(await page.locator('.ca-shell').count())) await page.locator('[data-vbtn="4"]').click();
-  await page.waitForSelector('.ca-shell');
-  await page.locator('.ca-nav-item', { hasText: 'Create' }).click();
-  await page.waitForSelector('.ca-shell[data-ca-module="generate"]');
+    await page.route('**/api/models/secondary/activate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ modelState: {} }) }));
+  await openStudio(page, base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
+
+  await page.locator('[data-studio-nav]').waitFor();
+  await page.locator('[data-studio-category="create"]').click();
+  await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
   await page.waitForTimeout(300);
   return errors;
 }
@@ -32,10 +32,7 @@ async function waitQuiet(page, quietMs = 700, capMs = 10000) {
   }), [quietMs, capMs]);
 }
 async function chooseTarget(page, id) {
-  const select = page.locator('select', { has: page.locator(`option[value="${id}"]`) }).first();
-  await select.waitFor({ state: 'visible' });
-  await select.selectOption(id);
-  await page.waitForTimeout(400);
+  await chooseModel(page, id);
 }
 
 (async () => {

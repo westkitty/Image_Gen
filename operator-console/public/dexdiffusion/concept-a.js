@@ -286,6 +286,9 @@
     const r = await this._api('/api/styles');
     if (r.ok) { st.list = r.data.styles || []; st.selected = st.selected.filter(id => st.list.some(x => x.id === id)); st.loaded = true; }
     else st.note = 'Could not load styles: ' + ((r.data && r.data.error) || r.status);
+    // V2 loads this once at start-up: repaint only if Create (the only V2 screen showing styles) is on screen, so the load never
+    // re-renders a different form (Edit, Voice...) while someone is typing into it.
+    if (this.state.version === 2 && (this.state.screens || {})[2] !== 'create') return;
     this.caSync();
   };
   P.caStyleNote = function (text) { this._sty().note = text; this.caSync(); };
@@ -356,8 +359,10 @@
       h('pre', { className: 'ca-code', 'data-dex-field': 'style-preview-prompt', style: { whiteSpace: 'pre-wrap', margin: 0 } }, st.preview.prompt),
       h('pre', { className: 'ca-code', 'data-dex-field': 'style-preview-negative', style: { whiteSpace: 'pre-wrap', margin: 0 } }, st.preview.negative_prompt || '(no negative prompt)'),
       st.preview.syntax_error ? h('div', { className: 'ca-note', role: 'alert', 'data-dex-field': 'style-syntax-error' }, st.preview.syntax_error) : null) : null;
-    return h('details', { className: 'ca-field', 'data-dex-field': 'styles-panel', open: !!st.open },
-      h('summary', { onClick: e => { e.preventDefault(); st.open = !st.open; if (st.open && !st.loaded) this.caLoadStyles(); else this.caSync(); } }, 'Prompt styles' + (st.list.length ? ' (' + st.list.length + ')' : '')),
+    // V2 uses a plain native <details> (synchronous toggle, keyboard-native); V4 keeps its state-owned toggle.
+    const nat = this.state.version === 2;
+    return h('details', Object.assign({ className: 'ca-field', 'data-dex-field': 'styles-panel', open: !!st.open }, nat ? { onToggle: e => { st.open = !!e.target.open; } } : {}),
+      h('summary', nat ? { onClick: e => { const d = e.target.closest('details'); st.open = !(d && d.open); } } : { onClick: e => { e.preventDefault(); st.open = !st.open; if (st.open && !st.loaded) this.caLoadStyles(); else this.caSync(); } }, 'Prompt styles' + (st.list.length ? ' (' + st.list.length + ')' : '')),
       h('div', { className: 'ca-stack' }, h('div', { className: 'ca-list' }, ...rows),
         h('div', { className: 'ca-form-actions' },
           h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'style-preview-button', onClick: () => this.caPreviewStyles() }, 'Preview'),
@@ -374,10 +379,11 @@
     const effective = D.canonicalSamplerId(s.sampler);
     const etaOk = D.ETA_SAMPLERS.includes(effective);
     const input = (label, value, onInput, extra) => h('label', { className: 'ca-field' }, h('span', null, label), h('input', Object.assign({ value: String(value ?? ''), onInput, onChange: onInput }, extra || {})));
-    return h('details', { className: 'ca-field', 'data-dex-field': 'advanced-sampling', open: !!this._ca().advSampling },
+    const nat = s.version === 2;
+    return h('details', Object.assign({ className: 'ca-field', 'data-dex-field': 'advanced-sampling', open: !!this._ca().advSampling }, nat ? { onToggle: e => { this._ca().advSampling = !!e.target.open; } } : {}),
       // Open state is owned by app state and flipped synchronously on click (the native 'toggle' event is async and
       // loses a race with a re-render that rebuilds the element).
-      h('summary', { onClick: e => { e.preventDefault(); const ca = this._ca(); ca.advSampling = !ca.advSampling; this.caSync(); } }, 'Advanced sampling'),
+      h('summary', nat ? { onClick: e => { const d = e.target.closest('details'); this._ca().advSampling = !(d && d.open); } } : { onClick: e => { e.preventDefault(); const ca = this._ca(); ca.advSampling = !ca.advSampling; this.caSync(); } }, 'Advanced sampling'),
       h('div', { className: 'ca-stack' },
         ctl.eta ? input('Eta — noise multiplier (blank = sampler default)', s.eta, e => { this.state.eta = e.target.value; }, { type: 'number', min: 0, max: 2, step: 0.05, 'data-dex-field': 'eta', disabled: !etaOk, title: etaOk ? '' : 'Eta only affects ' + D.ETA_SAMPLERS.join(', ') }) : null,
         ctl.eta && !etaOk ? h('div', { className: 'ca-note', 'data-dex-field': 'eta-note' }, 'Eta has no effect with the ' + effective + ' sampler. It applies to: ' + D.ETA_SAMPLERS.join(', ') + '.') : null,
@@ -389,8 +395,9 @@
   P.buildSettingsGuide = function () {
     const H = window.DexSettingsHelp; if (!H) return null;
     const ca = this._ca();
-    return h('details', { className: 'ca-field', 'data-dex-field': 'settings-guide', open: !!ca.guide },
-      h('summary', { onClick: e => { e.preventDefault(); ca.guide = !ca.guide; this.caSync(); } }, 'What do these settings do?'),
+    const nat = this.state.version === 2;
+    return h('details', Object.assign({ className: 'ca-field', 'data-dex-field': 'settings-guide', open: !!ca.guide }, nat ? { onToggle: e => { ca.guide = !!e.target.open; } } : {}),
+      h('summary', nat ? { onClick: e => { const d = e.target.closest('details'); ca.guide = !(d && d.open); } } : { onClick: e => { e.preventDefault(); ca.guide = !ca.guide; this.caSync(); } }, 'What do these settings do?'),
       h('div', { className: 'ca-stack' }, ...H.GROUPS.map(g => h('section', { key: g.id, 'data-guide-group': g.id, className: 'ca-stack' },
         h('b', null, g.title), ...g.items.map(([name, text]) => h('div', { key: name, className: 'ca-muted' }, h('b', null, name + ': '), text))))));
   };
@@ -418,6 +425,36 @@
       h('div', { className: 'ca-form-actions' }, h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'preview-button', onClick: () => this.caLoadPreview() }, 'Preview request')), body);
   };
 
+  // V2 Create: the same sampling controls, effective-settings readout and request preview V4 uses, built from the shared
+  // DexClient choice tables and the server's /api/preview/generation. Controls the selected backend cannot honour are
+  // replaced by an explanation and are never sent (see _createBody).
+  P.buildEffectiveSettings = function () {
+    const s = this.state, ctl = this._controls(), target = this._targetSpec() || {}, D = window.DexClient;
+    const row = (label, value) => h('div', { key: label, style: { display: 'flex', justifyContent: 'space-between', gap: 10, padding: '5px 0', borderBottom: '1px solid rgba(148,163,184,.1)', fontSize: 11 } }, h('span', { style: { color: '#91a2b4' } }, label), h('b', { style: { color: '#dbe7f3', textAlign: 'right', overflowWrap: 'anywhere' } }, value == null || value === '' ? '—' : String(value)));
+    const eta = ctl.eta && s.eta !== '' && s.eta != null && D.ETA_SAMPLERS.includes(D.canonicalSamplerId(s.sampler)) ? s.eta : null;
+    return h('div', { 'data-studio-effective-settings': 'true', role: 'group', 'aria-label': 'Effective settings', style: { display: 'grid' } },
+      row('Target', target.label || s.target),
+      row('Canvas', (s.width || '—') + ' × ' + (s.height || '—')),
+      row('Steps / seed', (s.steps || '—') + ' / ' + (s.seed === '' || s.seed == null || String(s.seed) === '-1' ? 'random' : s.seed)),
+      row('Sampler', ctl.sampler ? D.canonicalSamplerId(s.sampler) : 'Fixed (flow-match Euler)'),
+      row('CLIP skip / tiling', ctl.clipSkip ? ((s.clipSkip === '' || s.clipSkip == null ? 'model default' : s.clipSkip) + ' / ' + (s.tiling ? 'VAE tiling on' : 'off')) : 'Not available for this target'),
+      ctl.eta ? row('Eta / RNG', (eta == null ? 'sampler default' : eta) + ' / ' + (s.rng || 'default')) : null);
+  };
+  P.buildV2Sampling = function () {
+    const s = this.state, ctl = this._controls(), target = this._targetSpec() || {}, D = window.DexClient;
+    const input = (label, value, onInput, extra) => h('label', { className: 'ca-field' }, h('span', null, label), h('input', Object.assign({ value: String(value ?? ''), onInput, onChange: onInput }, extra || {})));
+    const note = !ctl.sampler ? h('div', { className: 'ca-note', 'data-dex-field': 'sampling-note' }, (target.label || s.target) + ' uses a fixed flow-match Euler sampler. Sampler, CLIP skip and VAE tiling are unavailable and will not be sent.') : null;
+    const controls = h('div', { className: 'ca-form-grid', style: { gridTemplateColumns: 'repeat(2,minmax(0,1fr))' } },
+      ctl.sampler ? h('label', { className: 'ca-field' }, h('span', null, 'Sampler'), h('select', { 'aria-label': 'Sampler', value: D.canonicalSamplerId(s.sampler), 'data-dex-field': 'sampler', onChange: e => this.setCreateLoraField('sampler', e.target.value) }, ...D.SAMPLER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null,
+      ctl.scheduler ? h('label', { className: 'ca-field' }, h('span', null, 'Scheduler'), h('select', { 'aria-label': 'Scheduler', value: s.scheduler, 'data-dex-field': 'scheduler', onChange: e => this.setCreateLoraField('scheduler', e.target.value) }, ...D.SCHEDULER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null,
+      ctl.clipSkip ? input('CLIP skip (blank = model default)', s.clipSkip, e => { this.state.clipSkip = e.target.value; }, { type: 'number', min: 1, max: 12, step: 1, 'data-dex-field': 'clip-skip' }) : null,
+      ctl.tiling ? h('label', { className: 'ca-check-row' }, h('input', { type: 'checkbox', checked: !!s.tiling, 'data-dex-field': 'tiling', onChange: e => this.setState({ tiling: e.target.checked }) }), h('span', null, 'VAE tiling (lower memory for large images)')) : null);
+    return h('div', { className: 'ca-stack', 'data-dex-field': 'v2-sampling' },
+      note, controls, this.buildAdvancedSampling(),
+      h('div', { className: 'ca-muted', style: { marginTop: 4 } }, 'Effective settings'), this.buildEffectiveSettings(),
+      this.buildRequestPreview(), this.buildSettingsGuide());
+  };
+
   P.buildConceptGenerate = function (vals, accent) {
     const s = this.state, ctl = this._controls(), targets = s.modelTargets || [], target = this._targetSpec() || {};
     const input = (label, value, onInput, extra) => h('label', { className: 'ca-field' }, h('span', null, label), h('input', Object.assign({ value: String(value ?? ''), onInput, onChange: onInput }, extra || {})));
@@ -439,8 +476,8 @@
     const samplingNote = !ctl.sampler ? h('div', { className: 'ca-note', 'data-dex-field': 'sampling-note' }, (target.label || s.target) + ' uses a fixed flow-match Euler sampler. Sampler, CLIP skip and VAE tiling are unavailable and will not be sent.') : null;
     const targetSelect = h('label', { className: 'ca-field' }, h('span', null, 'Model target'), h('select', { value: s.target, onChange: e => this.onSelectTarget(e.target.value) }, ...(targets.length ? targets : [{ id: s.target, label: s.target, status: 'UNKNOWN' }]).map(t => h('option', { key: t.id, value: t.id }, (t.label || t.id) + ' · ' + (t.status || 'UNKNOWN')))));
     const basic = h('div', { className: 'ca-form-grid' },
-      input('Steps', s.steps, e => { this.state.steps = e.target.value; }, { type: 'number', min: 1, max: 150 }),
-      ctl.cfg ? input('CFG', s.cfg, e => { this.state.cfg = e.target.value; }, { type: 'number', min: 1, max: 30, step: .5 }) : null,
+      input('Steps', s.steps, e => this.setCreateLoraField('steps', e.target.value), { type: 'number', min: 1, max: 150 }),
+      ctl.cfg ? input('CFG', s.cfg, e => this.setCreateLoraField('cfg', e.target.value), { type: 'number', min: 0, max: 30, step: .5 }) : null,
       h('label', { className: 'ca-field', 'data-dex-field': 'seed-row' }, h('span', null, 'Seed'),
         h('span', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
           h('input', { type: 'number', value: String(s.seed ?? ''), 'data-dex-field': 'seed', 'aria-label': 'Seed (-1 = random)', style: { flex: '1 1 90px', minWidth: 0 }, onInput: e => { this.state.seed = e.target.value; }, onChange: e => this.setState({ seed: e.target.value }) }),
@@ -454,14 +491,14 @@
       input('Width', s.width, e => { this.state.width = e.target.value; }, { type: 'number', min: 256, step: 8 }),
       input('Height', s.height, e => { this.state.height = e.target.value; }, { type: 'number', min: 256, step: 8 }),
       h('div', { className: 'ca-muted', 'data-dex-field': 'pixel-size', role: 'status' }, (parseInt(s.width, 10) || 0) + ' × ' + (parseInt(s.height, 10) || 0) + ' px · ' + (((parseInt(s.width, 10) || 0) * (parseInt(s.height, 10) || 0)) / 1e6).toFixed(2) + ' MP · ' + ((parseInt(s.width, 10) || 0) === (parseInt(s.height, 10) || 0) ? 'square' : (parseInt(s.width, 10) || 0) > (parseInt(s.height, 10) || 0) ? 'landscape' : 'portrait')),
-      ctl.sampler ? h('label', { className: 'ca-field' }, h('span', null, 'Sampler'), h('select', { value: window.DexClient.canonicalSamplerId(s.sampler), 'data-dex-field': 'sampler', onChange: e => this.setState({ sampler: e.target.value }) }, ...window.DexClient.SAMPLER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null,
+      ctl.sampler ? h('label', { className: 'ca-field' }, h('span', null, 'Sampler'), h('select', { value: window.DexClient.canonicalSamplerId(s.sampler), 'data-dex-field': 'sampler', onChange: e => this.setCreateLoraField('sampler', e.target.value) }, ...window.DexClient.SAMPLER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null,
       ctl.clipSkip ? input('CLIP skip (blank = model default)', s.clipSkip, e => { this.state.clipSkip = e.target.value; }, { type: 'number', min: 1, max: 12, step: 1, 'data-dex-field': 'clip-skip' }) : null,
       ctl.tiling ? h('label', { className: 'ca-check-row' }, h('input', { type: 'checkbox', checked: !!s.tiling, 'data-dex-field': 'tiling', onChange: e => this.setState({ tiling: e.target.checked }) }), h('span', null, 'VAE tiling (lower memory for large images)')) : null,
-      ctl.scheduler ? h('label', { className: 'ca-field' }, h('span', null, 'Scheduler'), h('select', { value: s.scheduler, onChange: e => this.setState({ scheduler: e.target.value }) }, ...window.DexClient.SCHEDULER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null);
+      ctl.scheduler ? h('label', { className: 'ca-field' }, h('span', null, 'Scheduler'), h('select', { value: s.scheduler, onChange: e => this.setCreateLoraField('scheduler', e.target.value) }, ...window.DexClient.SCHEDULER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null);
     const generate = h('button', { type: 'button', className: 'ca-primary', onClick: () => this.onGenerate(), disabled: s.jobStatus === 'generating' }, s.jobStatus === 'generating' ? (vals.generateLabel || 'Generating…') : 'Generate Image');
     const interrupt = s.jobStatus === 'generating' && this._ws().activeJobId ? h('button', { type: 'button', className: 'ca-secondary', 'data-interrupt': 'true', onClick: () => this.interruptGeneration(), disabled: !!this._ws().interrupting, title: 'Cancel this generation and confirm the Big Mac process has stopped', 'aria-label': 'Cancel generation' }, this._ws().interrupting ? 'Cancelling…' : 'Cancel') : null;
     const modelPicker = vals.targetSelectV1 || targetSelect;
-    const workbench = s.screens[s.version] === 'batch' ? this.buildBatchWorkspace() : h('div', { className: 'ca-generate-form' }, panel('Prompt and target', h('div', { className: 'ca-stack' }, prompt, vals.promptTools || null, modelPicker, targetSelect, negative, samplingNote, basic, this.buildAdvancedSampling(), this.buildSettingsGuide(), this.buildStylesPanel(), vals.createResources || null, vals.createPresets || null, h('div', { className: 'ca-form-actions' }, generate, interrupt), this.buildRequestPreview()), accent), this.buildCreateWorkbench(vals.modelsListDisplay));
+    const workbench = s.screens[s.version] === 'batch' ? this.buildBatchWorkspace() : h('div', { className: 'ca-generate-form' }, panel('Prompt and target', h('div', { className: 'ca-stack' }, prompt, vals.promptTools || null, modelPicker, targetSelect, negative, samplingNote, basic, this.buildAdvancedSampling(), this.buildSettingsGuide(), this.buildStylesPanel(), vals.createResources || null, vals.createPresets || null, this.buildCreateLoraControls(), h('div', { className: 'ca-form-actions' }, generate, interrupt), this.buildRequestPreview()), accent), this.buildCreateWorkbench(vals.modelsListDisplay));
     return h('div', { className: 'ca-generate-layout' }, h('section', { className: 'ca-results-column' }, panel('Preview and result', this.buildResultStaging(), accent), s.screens[s.version] === 'batch' ? null : panel('Advanced workflows', h('div', { className: 'ca-muted' }, 'Batch / Sweep, prompt drafts, wildcards, enhancement, recipes, macros, and reproducibility remain available in their existing controls. Use Preview request below the form to inspect the exact request and worker command.'), accent)), h('section', { className: 'ca-main-column' }, workbench));
   };
 

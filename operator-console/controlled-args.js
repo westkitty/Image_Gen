@@ -161,6 +161,10 @@ function buildControlledArgs(spec, params, { seedValue, isDiscovered = false, re
     if (params.tiling) args.push('--tiling');
     if (params.eta !== undefined && params.eta !== null && params.eta !== '') args.push('--eta', String(params.eta));
     if (params.rng) args.push('--rng', String(params.rng));
+    if (params.lora_apply_mode) args.push('--lora-apply-mode', String(params.lora_apply_mode));
+    if (params.backend_override) args.push('--backend-override', String(params.backend_override));
+  } else if (params.mflux_lora_id === 'pixelart_lora') {
+    args.push('--lora-id', 'pixelart_lora', '--lora-strength', String(params.mflux_lora_strength));
   }
   args.push('--save-prompts', params.save_prompts ? 'true' : 'false');
   return args;

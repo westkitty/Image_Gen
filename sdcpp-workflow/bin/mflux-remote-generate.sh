@@ -6,7 +6,8 @@
 #   $2 steps  $3 seed (>= 0)  $4 width  $5 height
 #   $6 cache root (HF_HOME/XDG)  $7 mflux-generate-flux2 binary
 #      ($6/$7 may be relative; they are resolved against Big Mac's $HOME)
-#   $8 optional model dir (default: Big Mac internal 4-bit Klein path)
+#   $8 adapter id (empty or pixelart_lora)  $9 strength  $10 converter source (base64)
+#   $11 optional model dir (default: Big Mac internal 4-bit Klein path)
 #
 # Contract:
 #   stdout = PNG bytes only; every log line goes to stderr.
@@ -25,7 +26,7 @@ set -uo pipefail
 tstamp() { echo "MFLUX_REMOTE_T: $1 $(perl -MTime::HiRes=time -e 'printf "%.3f", time' 2>/dev/null || date +%s)" >&2; }
 tstamp script-start
 
-model_dir="${8:-$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit}"
+model_dir="${11:-$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit}"
 case "$6" in /*) cache_root="$6" ;; *) cache_root="$HOME/$6" ;; esac
 case "$7" in /*) mflux_bin="$7" ;; *) mflux_bin="$HOME/$7" ;; esac
 
@@ -95,9 +96,29 @@ mkdir -p "$cache_root/huggingface" "$cache_root/xdg"
 export HF_HOME="$cache_root/huggingface" XDG_CACHE_HOME="$cache_root/xdg" TOKENIZERS_PARALLELISM=false HF_HUB_OFFLINE=1
 prompt="$(printf %s "$1" | base64 --decode)" || { echo "MFLUX_REMOTE_FAIL: generator-exit prompt decode failed" >&2; exit 21; }
 
+lora_derived=""
+if [ -n "${8:-}" ]; then
+  [ "$8" = "pixelart_lora" ] || { echo "MFLUX_REMOTE_FAIL: generator-exit unapproved adapter id" >&2; exit 23; }
+  awk -v n="${9:-}" 'BEGIN { if (n !~ /^[0-9]+([.][0-9]+)?$/ || n < 0.25 || n > 1.5) exit 1 }' \
+    || { echo "MFLUX_REMOTE_FAIL: generator-exit invalid adapter strength" >&2; exit 23; }
+  [ -n "${10:-}" ] || { echo "MFLUX_REMOTE_FAIL: generator-exit rsLoRA converter source missing" >&2; exit 23; }
+  lora_source="/Volumes/wc2tb/dex-imagegen/models/loras/pixelart_lora.safetensors"
+  lora_derived="$HOME/Library/Caches/DexDiffusion/mflux/loras/pixelart_lora-rslora-r128-a64.safetensors"
+  converter="$tmp/mflux-rslora-convert.py"
+  printf '%s' "${10}" | base64 --decode > "$converter" || { echo "MFLUX_REMOTE_FAIL: generator-exit rsLoRA converter decode failed" >&2; exit 23; }
+  "$HOME/Library/Caches/DexDiffusion/mflux/venv/bin/python" "$converter" "$lora_source" "$lora_derived" >&2 \
+    || { echo "MFLUX_REMOTE_FAIL: generator-exit rsLoRA conversion verification failed" >&2; exit 23; }
+  echo "MFLUX_REMOTE_LORA: pixelart_lora strength=$9 derived=$lora_derived" >&2
+fi
+
 tstamp generate-start
-"$mflux_bin" --model "$model_dir" --base-model flux2-klein-4b \
-  --prompt "$prompt" --steps "$2" --seed "$3" --width "$4" --height "$5" --output "$tmp/out.png" >&2 &
+if [ -n "$lora_derived" ]; then
+  "$mflux_bin" --model "$model_dir" --base-model flux2-klein-4b --lora "$lora_derived" "$9" \
+    --prompt "$prompt" --steps "$2" --seed "$3" --width "$4" --height "$5" --output "$tmp/out.png" >&2 &
+else
+  "$mflux_bin" --model "$model_dir" --base-model flux2-klein-4b \
+    --prompt "$prompt" --steps "$2" --seed "$3" --width "$4" --height "$5" --output "$tmp/out.png" >&2 &
+fi
 # Foreground children defer bash's HUP/TERM traps until they exit; waiting on a background job lets the traps fire at once
 # (finish() then stops the generator), so a dropped ssh session or a cancel cannot leave MFLUX running.
 gen_pid=$!

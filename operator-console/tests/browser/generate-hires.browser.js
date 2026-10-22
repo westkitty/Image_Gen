@@ -3,7 +3,7 @@
 // "not available" note, truthful per-target visibility, and the real server validator. No inference runs.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, runner, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, installModelSnapshots, runner, launchBrowser, runCleanups, openStudio, chooseModel } = require('./helpers');
 
 const { test, results, exitCode } = runner('generate-hires');
 const ENDPOINT = '**/api/actions/generate-controlled';
@@ -13,25 +13,22 @@ async function open(page, base) {
   const errors = [], bodies = [];
   page.on('pageerror', e => errors.push(String(e)));
   await installModelSnapshots(page, base);
-  await page.route('**/api/models/secondary/activate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ modelState: {} }) }));
+    await page.route('**/api/models/secondary/activate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ modelState: {} }) }));
   await page.route(ENDPOINT, route => { bodies.push(JSON.parse(route.request().postData() || '{}')); route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'intercepted by test' }) }); });
-  await page.goto(base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
-  if (!(await page.locator('.ca-shell').count())) await page.locator('[data-vbtn="4"]').click();
-  await page.waitForSelector('.ca-shell');
-  await page.locator('.ca-nav-item', { hasText: 'Create' }).click();
-  await page.waitForSelector('.ca-shell[data-ca-module="generate"]');
+  await openStudio(page, base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
+
+  await page.locator('[data-studio-nav]').waitFor();
+  await page.locator('[data-studio-category="create"]').click();
+  await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
   return { errors, bodies };
 }
 async function chooseTarget(page, id) {
-  const select = page.locator('select', { has: page.locator(`option[value="${id}"]`) }).first();
-  await select.waitFor({ state: 'visible' });
-  await select.selectOption(id);
-  await page.waitForTimeout(500);
+  await chooseModel(page, id);
 }
 async function generateOnce(page, bodies) {
   const before = bodies.length;
-  await page.locator('.ca-generate-form textarea').first().fill('a red fox in snow');
-  await page.locator('.ca-generate-form .ca-primary').click();
+  await page.getByRole('textbox', { name: 'Describe your image', exact: true }).fill('a red fox in snow');
+  await page.getByRole('button', { name: 'Generate image', exact: true }).click();
   for (let i = 0; i < 40 && bodies.length === before; i++) await page.waitForTimeout(100);
   assert.equal(bodies.length, before + 1, 'exactly one generation request was sent');
   return bodies[bodies.length - 1];
@@ -56,8 +53,8 @@ const enable = page => page.locator('label', { hasText: 'High-Res Refine' }).loc
       await f('target').selectOption('sdxl-base');
       await f('sampler').selectOption('heun');
       await f('denoise').fill('0.35'); await page.keyboard.press('Tab');
-      await page.locator('.ca-generate-form textarea').first().fill('a red fox in snow');
-      await page.locator('.ca-generate-form .ca-primary').click();
+      await page.getByRole('textbox', { name: 'Describe your image', exact: true }).fill('a red fox in snow');
+      await page.getByRole('button', { name: 'Generate image', exact: true }).click();
       for (let i = 0; i < 40 && !sent.length; i++) await page.waitForTimeout(100);
       assert.equal(sent.length, 1, 'one hires-2pass request');
       assert.deepEqual(sent[0].second_pass, { prompt: 'a detailed red fox', target: 'sdxl-base', sampler: 'heun', denoise: 0.35 }, 'only explicitly chosen fields; the rest inherit server-side');

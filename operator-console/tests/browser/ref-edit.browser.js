@@ -2,7 +2,7 @@
 // P14: FLUX.2 reference edit card (Enhance) and the real /api/actions/flux2-edit validators. No image is generated.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups, openStudio } = require('./helpers');
 
 const FX = { 'fx-landscape.png': { w: 800, h: 500, meta: { operation: 'txt2img', target: 'sd15', seed: 1, steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', vae: 'auto', loras: [], gen_schema: 1, prompt_saved: false } } };
 const { test, results, exitCode } = runner('ref-edit');
@@ -16,7 +16,7 @@ async function newPage(browser, base) {
   await installImageFixtures(page, FX);
   await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: [], vaes: [], embeddings: { count: 0, items: [] } } }));
   await page.route('**/api/actions/flux2-edit', r => { posts.push(r.request().postDataJSON()); r.fulfill({ status: 400, json: { error: 'intercepted by test' } }); });
-  await page.goto(base + '/dexdiffusion/');
+  await openStudio(page, base + '/dexdiffusion/');
   await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
   await page.evaluate(() => __dex.sendToEnhance('fx-landscape.png'));
   await page.waitForSelector('[data-refedit-card]');

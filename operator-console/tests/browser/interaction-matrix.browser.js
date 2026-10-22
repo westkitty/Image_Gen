@@ -3,12 +3,16 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright-core');
-const { startServer, launchBrowser, installImageFixtures, runCleanups } = require('./helpers');
+const { startServer, launchBrowser, installImageFixtures, runCleanups, installStudioProfile, installDeveloperShellProfile } = require('./helpers');
 const spec = require('./interaction-matrix.spec.json');
 const { resolveOutputDir, createOwnedWriter } = require('./safe-output');
 // Never defaults into a historical report directory: either the explicit directory (existing files are never replaced) or a fresh unique one.
 const out = resolveOutputDir(process.env.DEX_MATRIX_OUTPUT_DIR, { label: 'matrix' }), writer = createOwnedWriter(out);
 const select = (process.env.DEX_MATRIX_SLICE || '').split(',').filter(Boolean);
+// V2 is the product gate. Comparative audits explicitly name preserved shells.
+const shells = process.env.DEX_MATRIX_SHELLS ? process.env.DEX_MATRIX_SHELLS.split(',').map(Number) : [2];
+if (!shells.length || shells.some(v => !spec.shells.includes(v)) || new Set(shells).size !== shells.length) throw new Error('Invalid DEX_MATRIX_SHELLS');
+const requiredBaseCells = shells.length * spec.viewports.length * spec.screens.length;
 const cells = [];
 const apiSnapshots = new Map();
 const network = new WeakMap();
@@ -60,9 +64,10 @@ async function configure(page, base, screen, shell) {
     if(!apiSnapshots.has(key))apiSnapshots.set(key,(async()=>{const response=await r.fetch({timeout:20000});return{status:response.status(),headers:response.headers(),body:await response.body()};})());
     await r.fulfill(await apiSnapshots.get(key));
   });
-  await page.addInitScript(v => localStorage.setItem('dex_version', String(v)), shell);
+  if (shell === 2) await installStudioProfile(page);
+  else await installDeveloperShellProfile(page, shell);
   await page.goto(base + '/dexdiffusion/', {timeout:30000});
-  await page.waitForFunction(() => window.__dex && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData, null, { timeout: 30000 }).catch(async error => {
+  await page.waitForFunction(v => window.__dex && __dex.state.version === v && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData, shell, { timeout: 30000 }).catch(async error => {
     const state = await page.evaluate(() => ({
       dexMounted: !!window.__dex,
       version: window.__dex && __dex.state.version,
@@ -84,7 +89,11 @@ async function configure(page, base, screen, shell) {
     if (key === 'enhance') await page.evaluate(id => __dex.sendToEnhance(id), fixture);
     if (key === 'create') await page.evaluate(id => { __dex.wsSet({results:[{index:0,status:'DONE',imageId:id,imageUrl:'/api/images/'+id,width:640,height:384,target:'sd15',seed:42}],activeIndex:0}); __dex.setState({currentImageSrc:'/api/images/'+id,lastSeed:42}); }, fixture);
   }
-  await page.waitForFunction(v => document.querySelector('[data-v]')?.getAttribute('data-v') === String(v), shell);
+  await page.waitForFunction(v => document.querySelector('[data-v]')?.getAttribute('data-v') === String(v), shell).catch(async error => {
+    if (process.env.DEX_MATRIX_DEBUG !== '1') throw error;
+    const state = await page.evaluate(() => ({ version: __dex?.state.version, storedVersion: localStorage.getItem('dex_version'), developer: localStorage.getItem('dex_developer'), root: document.querySelector('#app-root')?.innerHTML.slice(0,300) }));
+    throw new Error(`Shell ${shell} did not render: ${JSON.stringify(state)} (${error.message})`);
+  });
   // A reused page's lifecycle networkidle refers to its old navigation. Await
   // actual outstanding requests after each screen's lazy capability loads.
   await settle(page);
@@ -149,9 +158,11 @@ async function forms(page, m) {
     const escaped = [...c.name].map(char => '.+*?^$()[]{}|\\'.includes(char) ? '\\' + char : char).join('');
     const matcher = c.name.length >= 110 ? new RegExp('^' + escaped) : c.name;
     const named=page.getByRole(c.type,{name:matcher,exact:c.name.length<110});
-    const loc=await named.count()===1?named:page.locator(`[data-matrix-control="${c.i}"]`); await loc.focus();
+    const selector = await named.count()===1 ? null : `[data-matrix-control="${c.i}"]`;
+    const loc = () => selector ? page.locator(selector) : page.getByRole(c.type,{name:matcher,exact:c.name.length<110});
+    await loc().focus();
     const checked = async phase => {
-      try { return await loc.isChecked({ timeout: 1500 }); }
+      try { return await loc().isChecked({ timeout: 1500 }); }
       catch (err) {
         const present = await page.evaluate(() => [...document.querySelectorAll('input[type="checkbox"],input[type="radio"]')].map(n => ({
           i: n.getAttribute('data-matrix-control'), kind: n.type, name: n.getAttribute('aria-label') || n.labels?.[0]?.textContent?.trim() || ''
@@ -163,7 +174,7 @@ async function forms(page, m) {
     await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
     const after=await checked('after'); if (c.type==='checkbox' && before===after) failures.push('Space did not toggle: '+c.name);
     if (c.type==='radio' && !after) failures.push('Space did not select: '+c.name);
-    if (c.type==='checkbox') {await loc.focus();await page.keyboard.press('Space');await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));} measures.toggles++;
+    if (c.type==='checkbox') {await loc().focus();await page.keyboard.press('Space');await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));} measures.toggles++;
   }
   for (const c of m.constraints) {
     await measure(page);
@@ -289,7 +300,7 @@ async function studioGeometryContract(page){
   const srv=process.env.DEX_TEST_BASE?{base:process.env.DEX_TEST_BASE}:await startServer();
   const browser=await launchBrowser({launch:opts=>chromium.launch({...opts,timeout:60000,...(process.env.DEX_MATRIX_DISABLE_GPU==='1'?{args:['--disable-gpu']}:{} )})});
   try{
-    for(const shell of spec.shells)for(const [width,height]of spec.viewports){
+    for(const shell of shells)for(const [width,height]of spec.viewports){
       if(select.length&&!spec.screens.some(screen=>select.some(s=>`V${shell}/${width}x${height}/${screen}`.includes(s))))continue;
       const ctx=await browser.newContext({viewport:{width,height}}),page=await ctx.newPage();page.setDefaultTimeout(5000);
       for(const screen of spec.screens){
@@ -310,15 +321,15 @@ async function studioGeometryContract(page){
         const sized=m.controls.filter(c=>['BUTTON','SELECT','TEXTAREA'].includes(c.tag)||c.tag==='INPUT'&&!['range','checkbox','radio','file'].includes(c.type));
         check(checks,'typography',sized.length>0,sized.flatMap(c=>[...(c.height+1.5<m.minimumHeight?['Undersized '+c.name+' '+c.height]:[]),...(c.tag==='BUTTON'&&c.width+1.5<m.minimumHeight?['Narrow target '+c.name+' '+c.width]:[]),...(c.tag==='BUTTON'&&c.clipped&&c.overflowX!=='auto'?['Clipped '+c.name]:[])]),{minimumHeight:m.minimumHeight,minObservedHeight:Math.min(...sized.map(c=>c.height)),minObservedButtonWidth:Math.min(...sized.filter(c=>c.tag==='BUTTON').map(c=>c.width)),controls:sized.length});
         if(errors.length)check(checks,'runtime',true,errors,{});
-      }catch(e){checks.push({contract:'execution',status:'BLOCKED',failures:[e.message.split('\n')[0]]});}
+      }catch(e){checks.push({contract:'execution',status:'BLOCKED',failures:[e.message.split('\n')[0], ...(process.env.DEX_MATRIX_DEBUG === '1' ? [String(e.stack || '').split('\n').slice(1,5).join(' | ')] : [])]});}
       const status=checks.some(c=>c.status==='BLOCKED')?'BLOCKED':checks.some(c=>c.status==='FAIL')?'FAIL':'PASS';cells.push({id,screen,shell,viewport:[width,height],status,checks});
       console.log(id+' '+status+' '+checks.filter(c=>c.status==='FAIL'||c.status==='BLOCKED').map(c=>c.contract+': '+c.failures.slice(0,3).join('; ')).join(' | '));
-      writer.write('interaction-matrix.json',JSON.stringify({specVersion:spec.version,started,requiredBaseCells:180,partial:!!select.length,cells},null,2)+'\n');
+      writer.write('interaction-matrix.json',JSON.stringify({specVersion:spec.version,started,requiredBaseCells,partial:!!select.length,cells},null,2)+'\n');
       }
       await ctx.close();
     }
   }finally{await runCleanups();}
   const counts=Object.fromEntries(['PASS','FAIL','N/A','BLOCKED'].map(s=>[s,cells.filter(c=>c.status===s).length]));
-  const summary=['# Executable interaction matrix',`Specification version ${spec.version}. Required base cells: 180. Measured cells: ${cells.length}.`,JSON.stringify(counts),`Scope: ${spec.scope}`,'','| Cell | Status | Failed contracts |','|---|---|---|',...cells.map(c=>`| ${c.id} | ${c.status} | ${c.checks.filter(k=>['FAIL','BLOCKED'].includes(k.status)).map(k=>k.contract+': '+k.failures.join('; ')).join(' / ').replaceAll('|','/')} |`)];
+  const summary=['# Executable interaction matrix',`Specification version ${spec.version}. Required base cells: ${requiredBaseCells}. Measured cells: ${cells.length}.`,JSON.stringify(counts),`Scope: ${spec.scope}`,'','| Cell | Status | Failed contracts |','|---|---|---|',...cells.map(c=>`| ${c.id} | ${c.status} | ${c.checks.filter(k=>['FAIL','BLOCKED'].includes(k.status)).map(k=>k.contract+': '+k.failures.join('; ')).join(' / ').replaceAll('|','/')} |`)];
   writer.write('interaction-matrix-summary.md',summary.join('\n')+'\n');console.log('reports: '+Object.values(writer.owned()).join(', '));process.exitCode=counts.FAIL||counts.BLOCKED?1:0;
 })().catch(async e=>{console.error(e);await runCleanups();process.exitCode=2;});

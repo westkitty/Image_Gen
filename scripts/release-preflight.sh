@@ -86,7 +86,9 @@ else
     find tests -maxdepth 1 -type f -name '*.test.js' ! -iname '*style*' ! -iname '*wildcard*' -print | LC_ALL=C sort
   )
   step SKIP "protected unit files (*style*, *wildcard*)"
-  if [ "${#unit_files[@]}" -gt 0 ]; then run_logged unit node --test --test-concurrency=2 "${unit_files[@]}"; rc=$?
+  # Audio fixtures spawn real local FFmpeg processes; serialize test files so
+  # competing suites cannot consume each other's bounded production waits.
+  if [ "${#unit_files[@]}" -gt 0 ]; then run_logged unit node --test --test-concurrency=1 "${unit_files[@]}"; rc=$?
   else rc=2; RUN_LOG="$LOGDIR/unit.log"; printf 'no eligible unit files\n' >"$RUN_LOG"; fi
 fi
 tests=$(sed -n 's/^ℹ tests \([0-9][0-9]*\)$/\1/p' "$RUN_LOG" | tail -1)
@@ -110,6 +112,10 @@ if [ "${DEX_PREFLIGHT_UNIT_ONLY:-0}" != "1" ]; then
     # interaction-matrix writes into output/; keep it away from archived revisions
     run_logged "b-$s" env DEX_MATRIX_OUTPUT_DIR="$LOGDIR/matrix" DEX_RELEASE_OUTPUT_DIR="$LOGDIR/rel" timeout -k 15s 600s node "tests/browser/$s.browser.js"; rc=$?
     p=$(grep -c '^\[[^]]*\] PASS ' "$RUN_LOG"); f=$(grep -c '^\[[^]]*\] FAIL ' "$RUN_LOG")
+    if [ "$s" = "interaction-matrix" ]; then
+      p=$(grep -Ec '^V[1-5]/[0-9]+x[0-9]+/.* PASS([[:space:]]|$)' "$RUN_LOG")
+      f=$(grep -Ec '^V[1-5]/[0-9]+x[0-9]+/.* (FAIL|BLOCKED)([[:space:]]|$)' "$RUN_LOG")
+    fi
     if [ "$rc" -eq 0 ] && [ "$f" -eq 0 ] && [ "$p" -gt 0 ]; then step PASS "browser:$s ($p scenarios)"
     else step FAIL "browser:$s exit=$rc pass=$p fail=$f (log $RUN_LOG)"; fail=1; fi
   done

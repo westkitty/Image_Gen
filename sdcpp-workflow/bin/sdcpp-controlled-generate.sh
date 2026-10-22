@@ -29,6 +29,8 @@ SDXL_MODEL_ROOT='$HOME/sdcpp-staging/models'
 MODEL_LIBRARY_ROOT='/Volumes/wc2tb/dex-imagegen/models'
 
 ARG_TARGET=""
+ARG_LORA_APPLY_MODE=""
+ARG_BACKEND_OVERRIDE=""
 ARG_PROMPT="$PROMPT"
 ARG_NEG=""
 ARG_WIDTH=""
@@ -70,6 +72,8 @@ Usage: $(basename "$0") [options]
   --cfg N                     cfg scale (Flux uses the proven guidance value)
   --seed N|random|fixed       seed control
   --scheduler NAME            scheduler to use (discrete, karras, etc.)
+  --backend-override cpu|metal|gpu|MTL0
+                              explicit SDCPP device; metal maps to this host's verified MTL0
   --vae PATH                  path to standalone VAE model
   --api openai|sdapi|both|native
                               SD1.5 server-tunnel API path (default openai)
@@ -96,6 +100,8 @@ while [ "$#" -gt 0 ]; do
     --seed) ARG_SEED="${2:?}"; shift 2 ;;
     --api) ARG_API="${2:?}"; shift 2 ;;
     --scheduler) ARG_SCHEDULER="${2:?}"; shift 2 ;;
+    --lora-apply-mode) ARG_LORA_APPLY_MODE="${2:?}"; shift 2 ;;
+    --backend-override) ARG_BACKEND_OVERRIDE="${2:?}"; shift 2 ;;
     --sampler) ARG_SAMPLER="${2:?}"; shift 2 ;;
     --clip-skip) ARG_CLIP_SKIP="${2:?}"; shift 2 ;;
     --tiling) ARG_TILING="true"; shift ;;
@@ -116,6 +122,8 @@ while [ "$#" -gt 0 ]; do
 done
 
 ARG_TARGET="$(printf '%s' "$ARG_TARGET" | tr '[:upper:]' '[:lower:]')"
+case "$ARG_LORA_APPLY_MODE" in ''|auto|at_runtime|immediately) : ;; *) fail "lora-mode" "LoRA application mode must be auto, at_runtime, or immediately." ;; esac
+case "$ARG_BACKEND_OVERRIDE" in ''|cpu|metal|gpu|MTL0) : ;; *) fail "backend-override" "Backend override must be cpu, metal, gpu, or MTL0." ;; esac
 
 # UI sampler id -> sd-cli --sampling-method name (mirrors SDCLI_SAMPLER in operator-console/controlled-args.js; tested).
 if [ -n "$ARG_SAMPLER" ]; then
@@ -950,16 +958,23 @@ fi
 
 LORA_DIR_FLAG=""
 BACKEND_FLAG=""
+BACKEND_OVERRIDE_TOKEN="$ARG_BACKEND_OVERRIDE"
+# The CLI takes registered device names, not backend families. On this host,
+# `metal` is MTL0 (Apple M4); forwarding the word `metal` is rejected.
+[ "$BACKEND_OVERRIDE_TOKEN" != "metal" ] || BACKEND_OVERRIDE_TOKEN="MTL0"
 if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--lora-model-dir'; then
-  LORA_DIR_FLAG="--lora-model-dir /Volumes/wc2tb/ImageGen/loras"
+  LORA_DIR_FLAG="--lora-model-dir /Volumes/wc2tb/dex-imagegen/models/loras"
   if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--lora-apply-mode'; then
-    LORA_DIR_FLAG="$LORA_DIR_FLAG --lora-apply-mode immediately"
+    LORA_DIR_FLAG="$LORA_DIR_FLAG --lora-apply-mode ${ARG_LORA_APPLY_MODE:-immediately}"
   fi
   if printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
     if printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--backend'; then
-      BACKEND_FLAG="--backend cpu"
+      BACKEND_FLAG="--backend ${BACKEND_OVERRIDE_TOKEN:-cpu}"
     fi
   fi
+fi
+if [ -n "$ARG_BACKEND_OVERRIDE" ] && [ -z "$BACKEND_FLAG" ] && printf '%s\n' "$TARGET_HELP_OUTPUT" | grep -q -- '--backend'; then
+  BACKEND_FLAG="--backend $BACKEND_OVERRIDE_TOKEN"
 fi
 
 EMBD_DIR_FLAG=""

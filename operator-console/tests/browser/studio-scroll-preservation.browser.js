@@ -2,15 +2,15 @@
 // Regression: V2 Studio inspector scroll/focus survive local state and background refresh.
 const assert=require('node:assert/strict');
 const {chromium}=require('playwright-core');
-const {startServer,launchBrowser,runCleanups}=require('./helpers');
+const {startServer,launchBrowser,runCleanups, openStudio }=require('./helpers');
 (async()=>{
  const {base}=await startServer();const browser=await launchBrowser(chromium);
  const page=await browser.newPage({viewport:{width:390,height:844}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/**',r=>['GET','HEAD'].includes(r.request().method())?r.continue():r.fulfill({status:409,json:{error:'read only'}}));
- await page.goto(base+'/dexdiffusion/',{waitUntil:'domcontentloaded',timeout:30000});
+ await openStudio(page, base+'/dexdiffusion/',{waitUntil:'domcontentloaded',timeout:30000});
  await page.waitForFunction(()=>window.__dex && __dex.state.version===2,{timeout:14000});
- await page.locator('details[data-studio-advanced] summary').click();
+ await page.locator('details[data-studio-advanced] > summary').click();
  const prompt=page.getByRole('textbox',{name:'Describe your image'});
  await prompt.fill('A sapphire glass city under sunrise');
  const sample=()=>page.evaluate(()=>{
@@ -27,5 +27,5 @@ const {startServer,launchBrowser,runCleanups}=require('./helpers');
  assert.equal(final.advanced,true,'Advanced remains open');
  assert.equal(final.prompt,'A sapphire glass city under sunrise');
  assert.deepEqual(errors,[]);
- console.log('SCROLL_PRESERVATION_PASS',JSON.stringify({before:baseline.scroll,after:final.scroll,domPreserved:final.oldConnected,advanced:final.advanced}));
+ console.log('[studio-scroll-preservation.browser] PASS SCROLL_PRESERVATION_PASS',JSON.stringify({before:baseline.scroll,after:final.scroll,domPreserved:final.oldConnected,advanced:final.advanced}));
 })().catch(e=>{console.error('SCROLL_PRESERVATION_FAIL',e.stack);process.exitCode=1}).finally(runCleanups);

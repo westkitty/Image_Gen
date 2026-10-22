@@ -1,0 +1,9 @@
+# DexDiffusion Big Mac local engine worker
+
+The current architecture, installed paths, measured evidence and limits are owned by [the bridge receipt](../../docs/operations/local-engine-bridge-20261021.md). Current project state is indexed in [OPERATIONAL_STATE.md](../../OPERATIONAL_STATE.md).
+
+`build-registry.js` produces the closed installation snapshot from existing server-owned target/LoRA/asset registries. `engine-worker.py` owns private Unix IPC, job results, model access, engine lifecycle and output acknowledgment. `engine-child.py` gates inference on registered ownership and watches parent/deadline liveness. `EngineHost.swift` supplies the stable macOS helper identity. `install-remote.sh` is the user-session startup installer, executed only on Big Mac after these sources, the existing converter/secondary-slot script and generated registry have been staged under the private worker directory. It uses installed Python, Swift, SDCPP and MFLUX dependencies and does not download weights.
+
+The existing MacBook console owns validation, heavy-resource admission, cancellation arbitration and canonical publication. Its client is `operator-console/local-engine-client.js`; its generation adapter is `operator-console/bin/local-engine-generate.js`. Never replace this protocol with browser-provided commands or file paths. Do not rebuild the host or alter privacy settings merely to refresh Python source; a rebuilt host has its own authorization implications. Startup is a GUI LaunchAgent, not SSH or Terminal automation.
+
+Tests: `python3 -m unittest discover -s sdcpp-workflow/worker -p 'test_*.py' -v` from the repository root; `node --test tests/local-engine-bridge.test.js` from `operator-console`. They use owned temporary directories and fake engine processes, except where they exercise a real Unix socket. Live evidence remains separate.

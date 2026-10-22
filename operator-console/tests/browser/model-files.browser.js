@@ -2,7 +2,7 @@
 // P11: header-verified checkpoint files on the Models screen (stubbed inspector) and LoRA-tag validation by the real server.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups, openStudio } = require('./helpers');
 
 const FX = { 'fx-landscape.png': { w: 800, h: 500, meta: { operation: 'txt2img', target: 'sd15', seed: 1, steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', vae: 'auto', loras: [], gen_schema: 1, prompt_saved: false } } };
 const { test, results, exitCode } = runner('model-files');
@@ -21,9 +21,9 @@ async function newPage(browser, base, inspect) {
   await installImageFixtures(page, FX);
   await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: [], vaes: [], embeddings: { count: 0, items: [] } } }));
   await page.route('**/api/models/inspect', r => { posts.push(r.request().postDataJSON()); inspect(r); });
-  await page.goto(base + '/dexdiffusion/');
+  await openStudio(page, base + '/dexdiffusion/');
   await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
-  await page.evaluate(() => { __dex.setScreen('system'); const ca = __dex._ca(); ca.settingsTab = 'capabilities'; __dex.caSync(); });
+  await page.evaluate(() => { __dex.setScreen('models'); });
   await page.waitForSelector('[data-file-verification]');
   return { page, ctx, errors, posts };
 }

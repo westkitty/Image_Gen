@@ -181,7 +181,7 @@ VAE_FRAG=""
 LORA_FRAG=""
 BACKEND_FRAG=""
 if printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
-  LORA_FRAG="--lora-model-dir /Volumes/wc2tb/ImageGen/loras --lora-apply-mode immediately"
+  LORA_FRAG="--lora-model-dir /Volumes/wc2tb/dex-imagegen/models/loras --lora-apply-mode immediately"
   BACKEND_FRAG="--backend cpu"
 fi
 

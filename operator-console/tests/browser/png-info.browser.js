@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const zlib = require('node:zlib');
 const { chromium } = require('playwright-core');
 const PngText = require('../../png-text');
-const { startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups, openStudio } = require('./helpers');
 
 const FX = { 'fx-landscape.png': { w: 800, h: 500, meta: { operation: 'txt2img', target: 'sd15', seed: 1, steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', vae: 'auto', loras: [], gen_schema: 1, prompt_saved: false } } };
 const { test, results, exitCode } = runner('png-info');
@@ -25,7 +25,7 @@ async function newPage(browser, base) {
   await installImageFixtures(page, FX);
   await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: [], vaes: [], embeddings: { count: 0, items: [] } } }));
   await page.route('**/api/library/images**', r => r.fulfill({ json: { filter: 'all', total: 0, items: [] } }));
-  await page.goto(base + '/dexdiffusion/');
+  await openStudio(page, base + '/dexdiffusion/');
   await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
   await page.evaluate(() => __dex.setScreen('library'));
   await page.waitForSelector('[data-pnginfo-panel]');
@@ -33,7 +33,7 @@ async function newPage(browser, base) {
 }
 
 (async () => {
-  const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer({ seedCanonicalImage: { id: 'fixture-canonical.png', width: 32, height: 24 } });
+  const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer({ seedCanonicalImage: { id: 'fixture-canonical.png', width: 32, height: 24, recordIdentity: true } });
   const browser = await launchBrowser(chromium);
   try {
     await test('uploading an A1111 PNG lists every field with its state and Send to Create restores the supported ones', async () => {

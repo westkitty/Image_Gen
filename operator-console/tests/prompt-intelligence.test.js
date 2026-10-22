@@ -184,7 +184,7 @@ test('browser: successful enhancement is reviewed before Apply, with Cancel and 
       }) });
     });
     await page.goto('http://127.0.0.1:31337/dexdiffusion/');
-    const prompt = page.locator('textarea[placeholder="Describe the image. A1111 syntax supported."]').first();
+    const prompt = page.locator('textarea[aria-label="Describe your image"]').first();
     const original = 'lantern __lighting__';
     await prompt.fill(original);
     assert.equal(await page.getByText('autocomplete:', { exact: false }).count(), 0, 'completed wildcard does not open autocomplete');
@@ -199,16 +199,16 @@ test('browser: successful enhancement is reviewed before Apply, with Cancel and 
     await enhance.click();
     await page.getByText('ENHANCED', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Apply Enhancement' }).click();
-    await page.waitForFunction(() => document.querySelector('textarea[placeholder="Describe the image. A1111 syntax supported."]')?.value === 'A brass lantern under __lighting__ on a snowy porch.');
+    await page.waitForFunction(() => document.querySelector('textarea[aria-label="Describe your image"]')?.value === 'A brass lantern under __lighting__ on a snowy porch.');
     assert.equal(await prompt.inputValue(), 'A brass lantern under __lighting__ on a snowy porch.');
     await page.getByRole('button', { name: 'Undo Enhance' }).click();
-    await page.waitForFunction(() => document.querySelector('textarea[placeholder="Describe the image. A1111 syntax supported."]')?.value === 'lantern __lighting__');
+    await page.waitForFunction(() => document.querySelector('textarea[aria-label="Describe your image"]')?.value === 'lantern __lighting__');
     assert.equal(await prompt.inputValue(), original, 'Undo restores pre-Apply prompt');
     assert.equal(requests.length, 2);
     assert.ok(requests.every((request) => request.save_prompts === false));
     const geometry = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }));
     assert.ok(geometry.scrollWidth <= geometry.innerWidth, `mobile page overflow: ${JSON.stringify(geometry)}`);
-    assert.ok(await page.locator('.ca-nav .ca-nav-item').first().isVisible(), 'Concept A mobile screen navigation visible');
+    assert.ok(await page.getByRole('button', { name: 'Create', exact: true }).isVisible(), 'mobile Studio navigation remains visible');
   } finally {
     await browser.close();
   }

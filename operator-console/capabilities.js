@@ -44,6 +44,10 @@ const NON_RUNTIME_GATES = new Set(['args', 'prompt', 'seed', 'width', 'height', 
 
 function deriveStatus(cap, assets, evidence) {
   if (cap.implemented === false) return { status: STATUS.UNAVAILABLE, reason: cap.reason || 'not provided by the current architecture' };
+  if (assets && assets.localEngineEnabled && cap.job && cap.job.action === 'controlled-generate') {
+    const models = assets.localEngineModels || {};
+    assets = { ...assets, sdCli:!!assets.localEngineModels && assets.localEngineReady !== false, sd15Model:models.sd15 === true, sdxlBaseModel:models['sdxl-base'] === true, sdxlTurboModel:models['sdxl-turbo'] === true, photonicModel:models['sdxl-photonic'] === true, mfluxRuntime:!!assets.localEngineModels && assets.localEngineReady !== false, mfluxModel:models['flux2-klein-4b'] === true };
+  }
   const missing = (cap.needs || []).filter(n => assets && assets[n] === false);
   if (missing.length) return { status: STATUS.DORMANT, reason: 'missing asset: ' + missing.join(', ') };
   const ev = (evidence && evidence[cap.id]) || {};
@@ -182,6 +186,10 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
 
 // Runtime state for one model target, for the target list.
 function targetRuntime(target, assets, targetModels) {
+  if (assets && assets.localEngineEnabled) {
+    if (!assets.localEngineModels || assets.localEngineReady === false) return 'worker-unavailable';
+    return assets.localEngineModels[target.id] === true ? 'available' : 'model-inaccessible';
+  }
   if (!assets || !assets.reachable) return 'unknown';
   if ((target.backend || 'sdcpp') === 'mflux') {
     if (assets && (assets.mfluxRuntime === false || assets.mfluxModel === false)) return 'dormant';

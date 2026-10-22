@@ -227,8 +227,8 @@
     const clock = document.createElement('span'); clock.setAttribute('aria-live', 'off'); clock.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:12px;color:#cbd5e1;min-width:90px;display:inline-block'; clock.textContent = fmtT(audio ? audio.currentTime : 0) + ' / ' + fmtT(tl.length_s); dm.clockNode = clock;
     setTimeout(() => this._dmPlayhead(), 0);
     const toggle = () => { if (!dm.audioEl) { this.toast('Render the preview first', '#fbbf24'); return; } if (dm.audioEl.paused) dm.audioEl.play(); else dm.audioEl.pause(); };
-    return h('div', { style: { display: 'grid', gap: 12 } }, sceneTabs,
-      h('div', { 'data-timeline': tl.scene_id, style: css.panel },
+    return h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 12 } }, sceneTabs,
+      h('div', { 'data-timeline': tl.scene_id, style: Object.assign({}, css.panel, { minWidth: 0 }) },
         h('div', { style: Object.assign({}, css.row, { marginBottom: 6 }) }, h('div', { style: css.title }, tl.title), chip(tl.fresh ? 'preview is current' : tl.master ? 'preview out of date' : 'no preview yet', tl.fresh ? tone.ok : tone.warn), tl.incomplete ? chip('some lines have no current take', tone.bad) : null, h('div', { style: { flex: 1 } }),
           btn(dm.previewBusy ? 'Rendering…' : tl.fresh ? 'Preview (current)' : 'Render preview', () => this.dmPreviewScene(), tone.info, { disabled: !!dm.previewBusy || tl.incomplete, 'data-render-preview': '1' }),
           btn('⏮ 5s', () => { if (dm.audioEl) { dm.audioEl.currentTime = Math.max(0, dm.audioEl.currentTime - 5); this._dmPlayhead(); } }, '#94a3b8', { 'aria-label': 'Back 5 seconds' }), btn('▶/❚❚', toggle, '#65d66e', { 'data-transport': 'play', 'aria-label': 'Play or pause the preview (Space)' }), btn('5s ⏭', () => { if (dm.audioEl) { dm.audioEl.currentTime = Math.min(dm.audioEl.duration || 1e9, dm.audioEl.currentTime + 5); this._dmPlayhead(); } }, '#94a3b8', { 'aria-label': 'Forward 5 seconds' }), clock,

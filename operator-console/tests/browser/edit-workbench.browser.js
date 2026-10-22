@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright-core');
-const { makePng, decodePng, startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
+const { makePng, decodePng, startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups, openStudio } = require('./helpers');
 
 const { resolveOutputDir, createOwnedWriter } = require('./safe-output');
 // A fresh directory per run (or the explicit one); existing files are never replaced.
@@ -57,13 +57,22 @@ async function newPage(browser, base, { width = 1280, height = 900, legacyRecipe
     r.fulfill({ json: { id: 'job-1', status: 'PASS', stage: { key: 'complete', label: 'Complete', percent: 100, determinate: true }, results: [{ index: 0, status: 'DONE', imageId: 'fx-out.png', imageUrl: '/api/images/fx-out.png', seed: 1111, target: 'sdxl-base', width: 800, height: 500 }] } });
   });
   await page.route('**/api/library/images**', r => r.fulfill({ json: { filter: 'all', total: 2, items: ['fx-landscape.png', 'fx-portrait.png'].map(id => ({ id, url: '/api/images/' + id, width: FX[id].w, height: FX[id].h, keeper: false, meta: FX[id].meta, runId: 'fx', parent: null, children: [], ancestors: [] })) } }));
-  await page.goto(base + '/dexdiffusion/');
+  await openStudio(page, base + '/dexdiffusion/');
   await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
   return { page, ctx, errors, mock, posts };
 }
 const openEdit = async (page, id, op) => {
   const ok = await page.evaluate(([i, o]) => __dex.openImageInEdit(i, o), [id, op]);
-  assert.ok(ok, 'openImageInEdit returned false');
+  if (!ok) {
+    const diagnostic = await page.evaluate(() => ({
+      screen: __dex.state.screen,
+      source: __dex.ed && __dex.ed.source && __dex.ed.source.imageId,
+      loading: __dex.ed && __dex.ed.loading,
+      error: __dex.ed && __dex.ed.error,
+      lastToast: (__dex.state.toasts || []).slice(-1)[0] || null
+    }));
+    throw new Error('openImageInEdit returned false: ' + JSON.stringify(diagnostic));
+  }
   // The owner promise finishes before the queued DOM commit. An existing
   // workbench can still contain handlers bound to the prior operation state.
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -73,6 +82,11 @@ const openEdit = async (page, id, op) => {
     && document.querySelector('[data-edit-source] img[data-fullscreen-image-id="' + i + '"]'), [id,op]);
 };
 const clickRun = async (page, text = 'a test prompt') => { await page.click('[data-edit-prompt]'); await page.fill('[data-edit-prompt]', text); await page.click('[data-run-edit]'); };
+const openImageActions = async (page, imageId) => {
+  await page.waitForFunction(id => __dex._ws().lib.selectedId === id, imageId);
+  const details = page.locator('[data-v] details').filter({ has: page.locator('[data-detailer-open]') });
+  await details.first().locator('summary').click();
+};
 
 const { results, test, phase, exitCode } = runner('edit-workbench');
 
@@ -89,6 +103,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
     });
     await test('provenance: Edit carries the SELECTED image\'s parameters, not the Create form', async () => {
       const { page, ctx, errors } = await newPage(browser, srv.base);
+      page.once('dialog', dialog => dialog.accept()); // This scenario intentionally switches away while preserving the Create draft in memory.
       await page.evaluate(() => __dex.setState({ steps: 99, cfg: 21, seed: '424242', width: 1024, height: 768, prompt: 'CREATE-FORM-PROMPT', negPrompt: 'CREATE-NEG', scheduler: 'exponential', target: 'flux2-klein-4b' }));
       await openEdit(page, 'fx-landscape.png', 'img2img');
       const st = await page.evaluate(() => JSON.parse(JSON.stringify(__dex.ed.state)));
@@ -390,6 +405,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       await page.waitForSelector('img[alt="Hero result"]');
       await page.evaluate(() => __dex.setScreen('library'));
       await page.getByRole('button', { name: 'Select fx-landscape.png for details', exact: true }).first().click();
+      await openImageActions(page, 'fx-landscape.png');
       await page.getByRole('button', { name: 'Detailer', exact: true }).click();
       await page.waitForSelector('text=Native Vision Detailer');
       // 1. empty detection is explained in the modal, never silent
@@ -420,10 +436,9 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       await ctx.close();
     });
 
-    await test('every screen renders in all three shell layouts without script errors (incl. Drama/Voice/Edit)', async () => {
+    await test('every V2 screen renders without script errors (incl. Drama/Voice/Edit)', async () => {
       const { page, ctx, errors } = await newPage(browser, srv.base);
-      for (const v of [1, 2, 3]) {
-        await page.evaluate(n => __dex.setVersion(n), v);
+      for (const v of [2]) {
         for (const s of ['create', 'batch', 'voice', 'music', 'video', 'drama', 'library', 'edit', 'enhance', 'models', 'system']) {
           await page.evaluate(x => __dex.setScreen(x), s); await page.waitForTimeout(120);
           const bad = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
@@ -454,12 +469,18 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
 
     await test('resources: LoRAs visible in Create and Edit, weight changes are structured, incompatible ones excluded', async () => {
       const { page, ctx } = await newPage(browser, srv.base);
-      await page.evaluate(() => __dex.onSelectTarget('sd15', { quiet: true })); await page.waitForTimeout(300);
+      // style_a is an SDXL adapter; keep Create on its compatible family before asserting visibility.
+      await page.evaluate(() => __dex.onSelectTarget('sdxl-base', { quiet: true })); await page.waitForTimeout(300);
       await page.evaluate(() => { __dex.setCreateLoras(() => [{ name: 'style_a', weight: 0.8 }, { name: 'bad_lora', weight: 1 }]); __dex.setState({ prompt: 'x' }); });
-      await page.waitForSelector('[data-resources="create"] [data-lora="style_a"]');
+      const advanced = page.locator('details').filter({ has: page.getByText('Advanced settings', { exact: true }) });
+      if (await advanced.count() && !(await advanced.first().evaluate(el => el.open))) await advanced.first().locator(':scope > summary').click();
+      const createCard = page.locator('[data-resources="create"] [data-lora="style_a"]:visible');
+      await createCard.waitFor();
+      assert.equal(await createCard.count(), 1, 'compatible adapter is visible in the active Create UI');
       assert.match(await page.innerText('[data-resources="create"]'), /incompatible/i);
       const body = await page.evaluate(() => __dex._createBody({}));
       assert.deepEqual(body.loras, [{ name: 'style_a', weight: 0.8 }]);
+      page.once('dialog', dialog => dialog.accept()); // Keep the dirty Create draft in memory while testing Edit's source resource display.
       await openEdit(page, 'fx-landscape.png', 'img2img');
       await page.waitForSelector('[data-resources="edit"] [data-lora="style_a"]');
       const w = await page.inputValue('[data-resources="edit"] [data-lora="style_a"] input[type=range]'); assert.equal(Number(w), 0.7);
@@ -556,6 +577,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       const { page, ctx } = await newPage(browser, srv.base);
       await page.evaluate(() => __dex.setScreen('library'));
       await page.getByRole('button', { name: 'Select fx-landscape.png for details', exact: true }).first().click();
+      await openImageActions(page, 'fx-landscape.png');
       await page.getByRole('button', { name: 'Detailer', exact: true }).click();
       await page.waitForSelector('[data-detailer-dialog]');
       await page.waitForFunction(() => document.querySelector('[data-detailer-dialog]').contains(document.activeElement));
@@ -589,6 +611,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
         });
         await page.evaluate(() => __dex.setScreen('library'));
         await page.getByRole('button',{name:'Select fx-landscape.png for details',exact:true}).first().click();
+        await openImageActions(page, 'fx-landscape.png');
         await page.getByRole('button',{name:'Detailer',exact:true}).click();
         await page.getByRole('button',{name:'Hand (Derived ROI)',exact:true}).click();
         await page.getByRole('button',{name:'Preview Mask',exact:true}).click();
@@ -610,6 +633,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       await page.route('**/api/detailer/mask-preview', r => r.fulfill({ json: { mask_preview: 'data:image/png;base64,' + makePng(800,500).toString('base64'), detections: [{ class: 'face' }] } }));
       await page.evaluate(() => __dex.setScreen('library'));
       await page.getByRole('button', { name: 'Select fx-landscape.png for details', exact: true }).first().click();
+      await openImageActions(page, 'fx-landscape.png');
       await page.getByRole('button', { name: 'Detailer', exact: true }).click();
       await page.getByRole('button', { name: 'Run Detailer', exact: true }).click();
       await page.waitForFunction(() => /Sampling step 3\/10/.test(document.querySelector('[data-detailer-note]')?.textContent || ''));

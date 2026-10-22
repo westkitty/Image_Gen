@@ -11,7 +11,7 @@ const { chromium } = require('playwright-core');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-styles-browser-'));
 const stylesFile = path.join(tmp, 'styles.json');
 process.env.DEX_STYLES_FILE = stylesFile;
-const { startServer, installModelSnapshots, runner, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, installModelSnapshots, runner, launchBrowser, runCleanups, openStudio } = require('./helpers');
 
 const { test, results, exitCode } = runner('prompt-styles');
 
@@ -20,11 +20,10 @@ async function open(page, base) {
   page.on('pageerror', e => errors.push(String(e)));
   await installModelSnapshots(page, base);
   await page.route('**/api/models/secondary/activate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ modelState: {} }) }));
-  await page.goto(base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
-  if (!(await page.locator('.ca-shell').count())) await page.locator('[data-vbtn="4"]').click();
-  await page.waitForSelector('.ca-shell');
-  await page.locator('.ca-nav-item', { hasText: 'Create' }).click();
-  await page.waitForSelector('.ca-shell[data-ca-module="generate"]');
+  await openStudio(page, base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
+  await page.locator('[data-studio-nav]').waitFor();
+  await page.locator('[data-studio-category="create"]').click();
+  await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
   await page.locator('[data-dex-field="styles-panel"]').waitFor({ state: 'attached' });
   await page.waitForTimeout(300);
   return errors;
@@ -84,8 +83,8 @@ const openPanel = page => page.locator('[data-dex-field="styles-panel"] > summar
       await chooseTarget(page, 'sdxl-base');
       await openPanel(page);
       await page.waitForFunction(() => /No styles yet/.test(document.querySelector('[data-dex-field="styles-empty"]')?.textContent || ''));
-      await page.locator('[data-dex-field="prompt"]').fill('a red fox');
-      await page.locator('[data-dex-field="negative-prompt"]').fill('blurry');
+      await page.locator('[aria-label="Describe your image"]').fill('a red fox');
+      await page.locator('[aria-label="Negative prompt"]').fill('blurry');
       await page.locator('[data-dex-field="style-from-prompt"]').click();
       await page.locator('[data-dex-field="style-editor"]').waitFor({ state: 'visible' });
       assert.match(await page.locator('[data-dex-field="style-editor"]').innerText(), /saves the text below on disk/);
@@ -101,11 +100,11 @@ const openPanel = page => page.locator('[data-dex-field="styles-panel"] > summar
       await page.locator('[data-dex-field="style-preview-prompt"]').waitFor({ state: 'visible' });
       assert.equal(await page.locator('[data-dex-field="style-preview-prompt"]').innerText(), 'golden hour, a red fox, sharp focus');
       assert.equal(await page.locator('[data-dex-field="style-preview-negative"]').innerText(), 'blurry, lowres');
-      assert.equal(await page.locator('[data-dex-field="prompt"]').inputValue(), 'a red fox', 'preview does not change the prompt');
+      assert.equal(await page.locator('[aria-label="Describe your image"]').inputValue(), 'a red fox', 'preview does not change the prompt');
       // Apply writes the materialised text into both boxes.
       await page.locator('[data-dex-field="style-apply"]').click();
-      await page.waitForFunction(() => document.querySelector('[data-dex-field="prompt"]').value === 'golden hour, a red fox, sharp focus');
-      assert.equal(await page.locator('[data-dex-field="negative-prompt"]').inputValue(), 'blurry, lowres');
+      await page.waitForFunction(() => document.querySelector('[aria-label="Describe your image"]').value === 'golden hour, a red fox, sharp focus');
+      assert.equal(await page.locator('[aria-label="Negative prompt"]').inputValue(), 'blurry, lowres');
       // Edit + rename keeps the style, changes the name.
       await page.locator('[data-dex-field="style-edit"]').first().click();
       await page.locator('[data-dex-field="style-name"]').fill('Golden Hour');
@@ -135,12 +134,12 @@ const openPanel = page => page.locator('[data-dex-field="styles-panel"] > summar
       const errors = await open(page, srv.base);
       await chooseTarget(page, 'sdxl-base');
       await openPanel(page);
-      await page.locator('[data-dex-field="prompt"]').fill('a fox');
+      await page.locator('[aria-label="Describe your image"]').fill('a fox');
       await page.locator('[data-dex-field="style-check"]').first().check();
       await page.locator('[data-dex-field="style-apply"]').click();
       await page.locator('[data-dex-field="style-note"]').waitFor({ state: 'visible' });
       await page.waitForFunction(() => /Not applied/.test(document.querySelector('[data-dex-field="style-note"]')?.textContent || ''));
-      assert.equal(await page.locator('[data-dex-field="prompt"]').inputValue(), 'a fox', 'prompt unchanged when refused');
+      assert.equal(await page.locator('[aria-label="Describe your image"]').inputValue(), 'a fox', 'prompt unchanged when refused');
       assert.deepEqual(errors, []);
       await page.close();
       await api(srv.base, '/api/styles/' + made.data.style.id, 'DELETE');

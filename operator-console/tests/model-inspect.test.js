@@ -94,7 +94,7 @@ test('inferAssetFamily: "dev" must be a word, not a substring', () => {
 
 test('cards prefer the header family over the filename guess and say so', () => {
   const [c] = buildLoraCards([{ filename: 'devil_style.safetensors', header_family: 'sdxl', header_triggers: ['devil'] }], 'sdxl-base');
-  assert.equal(c.family, 'sdxl'); assert.equal(c.compatibility, 'Compatible'); assert.equal(c.family_source, 'header');
+  assert.equal(c.family, 'sdxl'); assert.equal(c.compatibility, 'Unproven'); assert.equal(c.family_source, 'header');
   assert.deepEqual(c.trigger_words, ['devil']); assert.match(c.trigger_source, /candidates/);
   assert.equal(buildLoraCards([{ filename: 'plain_sd15_lora.safetensors' }], 'sd15')[0].family_source, 'filename');
   assert.equal(familyFromArch('sd1x'), 'sd15');

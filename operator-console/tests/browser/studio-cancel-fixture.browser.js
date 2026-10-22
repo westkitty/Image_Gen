@@ -2,7 +2,7 @@
 // Verifies the actual active Create Generate/Cancel route without starting external work.
 const assert=require('node:assert/strict');
 const {chromium}=require('playwright-core');
-const {startServer,launchBrowser,runCleanups}=require('./helpers');
+const {startServer,launchBrowser,runCleanups, openStudio }=require('./helpers');
 (async()=>{
  const {base}=await startServer();const browser=await launchBrowser(chromium);const page=await browser.newPage({viewport:{width:1320,height:860}});
  const pageErrors=[];page.on('pageerror',e=>pageErrors.push(e.message));
@@ -11,7 +11,7 @@ const {startServer,launchBrowser,runCleanups}=require('./helpers');
  await page.route('**/api/actions/generate-controlled',r=>{generateCalls++;return r.fulfill({json:{job_id:'fixture-running-1',seeds:[91]}});});
  await page.route('**/api/jobs/fixture-running-1',r=>r.fulfill({json:{id:'fixture-running-1',status:'RUNNING',results:[],seeds:[91]}}));
  await page.route('**/api/jobs/fixture-running-1/cancel',r=>{cancelCalls++;return r.fulfill({status:202,json:{ok:false,accepted:true,terminationVerified:false,cancelState:'requested',remote_stop:'unverified',error:'Worker stop has not been verified'}});});
- await page.goto(base+'/dexdiffusion/',{waitUntil:'domcontentloaded',timeout:30000});
+ await openStudio(page, base+'/dexdiffusion/',{waitUntil:'domcontentloaded',timeout:30000});
  await page.waitForFunction(()=>window.__dex&&window.__dex.state.version===2,{timeout:15000});
  await page.getByRole('textbox',{name:'Describe your image'}).fill('A bright paper moon over a park');
  await page.getByRole('button',{name:'Generate image',exact:true}).click();
@@ -27,5 +27,5 @@ const {startServer,launchBrowser,runCleanups}=require('./helpers');
  await page.locator('[data-cancel-error]').waitFor({state:'visible'});
  assert.match(await page.locator('[data-cancel-error]').innerText(),/could not be confirmed stopped/i);
  assert.deepEqual(pageErrors,[]);
- console.log('CANCEL_FIXTURE_PASS',JSON.stringify({generateCalls,cancelCalls,activeJobId:'fixture-running-1',cancel:'unverified',state:'generating'}));
+ console.log('[studio-cancel-fixture.browser] PASS CANCEL_FIXTURE_PASS',JSON.stringify({generateCalls,cancelCalls,activeJobId:'fixture-running-1',cancel:'unverified',state:'generating'}));
 })().catch(e=>{console.error('CANCEL_FIXTURE_FAIL',e.stack);process.exitCode=1}).finally(runCleanups);

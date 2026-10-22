@@ -4,7 +4,7 @@
 // result size and refuse what the engine cannot do. Run POSTs are intercepted — no inference runs in this suite.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups, openStudio } = require('./helpers');
 
 const FX = { 'fx-square.png': { w: 512, h: 512, meta: { operation: 'txt2img', target: 'sdxl-photonic', seed: 1, steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', vae: 'auto', loras: [], gen_schema: 1, prompt_saved: false } } };
 const { test, results, exitCode } = runner('edit-scripts');
@@ -24,7 +24,7 @@ async function newPage(browser, base) {
     if (body.dry_run) return r.fulfill({ json: { ok: true, kind, passes: 3, result_size: '640x512' } });
     return r.fulfill({ status: 400, json: { error: 'intercepted by test', gate: 'test' } });
   });
-  await page.goto(base + '/dexdiffusion/');
+  await openStudio(page, base + '/dexdiffusion/');
   await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
   return { page, ctx, errors, posts };
 }

@@ -14,7 +14,7 @@ const os = require('os');
 const path = require('path');
 const { execSync } = require('child_process');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, makeWav, runner, launchBrowser } = require('./helpers');
+const { startServer, installModelSnapshots, makeWav, runner, launchBrowser, openStudio } = require('./helpers');
 const { test, exitCode } = runner('voice-clone-upload');
 
 function makeAudioFormats(sec = 2, hz = 440) {
@@ -60,7 +60,7 @@ function makeAudioFormats(sec = 2, hz = 440) {
       route.fulfill({ status: 200, json: { job_id: 'job-test-clone-001', status: 'QUEUED' } });
     });
 
-    await page.goto(srv.base + '/dexdiffusion/');
+    await openStudio(page, srv.base + '/dexdiffusion/');
     await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
 
     // Switch to Voice workspace -> Quick (one-shot) -> Voice Clone · Qwen Base

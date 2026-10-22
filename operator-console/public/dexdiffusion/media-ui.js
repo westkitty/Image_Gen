@@ -396,7 +396,7 @@
         h('span', { style: css.muted }, 'images ' + (c.image ?? '—') + ' · voice ' + (c.voice ?? 0) + ' · music ' + (c.music ?? 0) + ' · video ' + (c.video ?? 0))),
       h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, ...kinds.map(([k, l]) => btn(l, () => this.loadMediaLibrary(k), lib.kind === k ? '#38bdf8' : '#94a3b8')),
         h('label', { style: Object.assign({}, css.row, { fontSize: 11, color: '#94a3b8' }) }, h('input', { type: 'checkbox', checked: !!lib.showTest, onChange: e => { lib.showTest = e.target.checked; this.loadMediaLibrary(); } }), 'Show test artifacts')),
-      lib.items.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(84px,1fr))', gap: 6, maxHeight: 360, overflowY: 'auto' } }, ...lib.items.slice(0, 120).map(i => this._mediaCard(i)))
+      lib.items.length ? h('div', { 'data-media-library-grid': true, style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(84px,1fr))', gridAutoRows: 'max-content', alignContent: 'start', gap: 6, maxHeight: 360, overflowY: 'auto' } }, ...lib.items.slice(0, 120).map(i => this._mediaCard(i)))
         : h('div', { style: css.muted }, lib.loading ? 'Loading…' : (lib.kind === 'voice' || lib.kind === 'music' || lib.kind === 'video') ? 'No ' + lib.kind + ' yet — the worker is not installed.' : 'Nothing here.'),
       h('div', { style: Object.assign({}, css.muted, { marginTop: 6 }) }, 'Select an image to open its actions, lineage and compare tools below.'));
   };

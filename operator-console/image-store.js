@@ -595,6 +595,7 @@ function createImageStore({ root = CANONICAL_IMAGE_ROOT, runsRoot = path.resolve
     imageUrl,
     adoptFile,
     publishFile,
+    publishFiles,
     replacePublishedImage,
     inspectIntegrity,
     adoptRunImages,

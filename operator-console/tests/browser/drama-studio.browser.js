@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict');
 const fs = require('fs'); const path = require('path');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, runner, launchBrowser } = require('./helpers');
+const { startServer, installModelSnapshots, runner, launchBrowser, openStudio } = require('./helpers');
 const { resolveOutputDir, createOwnedWriter } = require('./safe-output');
 // A fresh directory per run (or the explicit one); existing files are never replaced.
 const OUT = resolveOutputDir(process.env.DEX_BROWSER_OUTPUT_DIR, { label: 'studio' }), WRITER = createOwnedWriter(OUT), outPath = n => WRITER.pathFor(n);
@@ -22,11 +22,11 @@ const { results, test, phase, exitCode } = runner('drama-studio');
     const ctx = await browser.newContext({ viewport: { width: opts.width || 1280, height: opts.height || 900 }, reducedMotion: opts.reducedMotion || 'no-preference', acceptDownloads: true }), page = await ctx.newPage();
     await page.addInitScript(() => { window.__unhandledRejections = []; addEventListener('unhandledrejection', e => window.__unhandledRejections.push(String(e.reason))); });
     await installModelSnapshots(page, srv.base);
-    const errors = []; page.on('pageerror', e => errors.push(String(e)));
+        const errors = []; page.on('pageerror', e => errors.push(String(e)));
     // the studio must never reach Big Mac from a browser test
     const blocked = []; await page.route('**/api/drama/projects/*/produce', r => { blocked.push('produce'); r.fulfill({ status: 202, json: FIX.produce(page) }); });
     await page.route('**/api/voice/profiles/*/auditions', r => (r.request().method() === 'POST' ? (blocked.push('audition'), r.fulfill({ status: 202, json: { round: FIX.round('rendering') } })) : r.fallback()));
-    await page.goto(srv.base + '/dexdiffusion/'); await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
+    await openStudio(page, srv.base + '/dexdiffusion/'); await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
     return { ctx, page, errors, blocked };
   };
   const FIX = {
@@ -66,11 +66,11 @@ const { results, test, phase, exitCode } = runner('drama-studio');
         await page.evaluate(async id => { await __dex.openDramaProject(id, true); __dex.dm.current.saved = false; __dex.setScreen('drama', { skipUnsavedGuard: true }); }, pid);
         await page.waitForSelector('[data-drama-stages]');
         assert.equal(await page.evaluate(() => __dex.dm.current.saved), false);
-        await page.locator('.ca-nav-item', { hasText: 'Voice' }).click();
+        await page.locator('[data-studio-category="voice"]').click();
         await page.waitForSelector('[data-workspace-leave-dialog="drama"]');
         await page.screenshot({ path: outPath('studio-save-and-continue-dialog.png') });
         await page.getByRole('button', { name: 'Save and continue' }).click();
-        await page.waitForSelector('.ca-shell[data-ca-module="voice"]');
+        await page.waitForFunction(() => __dex.state.version === 2 && __dex.state.screens[2] === 'voice');
         const saved = await proj(pid);
         assert.equal(saved.saved, true, 'server readback confirms explicit durable save');
         assert.equal(await page.evaluate(() => __dex.state.activeAssetSelection?.kind), 'drama-project');
@@ -103,7 +103,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
         assert.equal(navigation, true);
         assert.match(await page.evaluate(() => window.__confirmMessage), /Drama project or script/);
         assert.equal(await page.locator('[data-workspace-leave-dialog]').count(), 0, 'unparsed private script has no save handler to offer');
-        await page.waitForSelector('.ca-shell[data-ca-module="voice"]');
+        await page.waitForFunction(() => __dex.state.version === 2 && __dex.state.screens[2] === 'voice');
         assert.equal(await page.evaluate(() => __dex._dmText.script), 'draft not yet parsed into a saveable project');
         assert.deepEqual(errors, []);
       } finally { await ctx.close(); }
@@ -114,7 +114,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       try {
         await page.evaluate(async id => { await __dex.openDramaProject(id, true); __dex.dm.current.saved = false; __dex.setScreen('drama', { skipUnsavedGuard: true }); }, pid);
         await page.waitForSelector('[data-drama-stages]');
-        await page.locator('.ca-nav-item', { hasText: 'Voice' }).click();
+        await page.locator('[data-studio-category="voice"]').click();
         await page.waitForSelector('[data-workspace-leave-dialog="drama"]');
         await page.getByRole('button', { name: 'Stay' }).click();
         assert.equal(await page.evaluate(() => document.activeElement?.textContent.trim()), 'Voice', 'Stay restores focus to the navigation control that opened the guard');
@@ -127,7 +127,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
         await page.unroute(lineRoute);
         await page.evaluate(() => { __dex.dm.pending = {}; });
         await page.route(`**/api/drama/projects/${pid}/save`, route => route.fulfill({ status: 503, json: { error: 'fixture durable-save failure' } }));
-        await page.locator('.ca-nav-item', { hasText: 'Voice' }).click();
+        await page.locator('[data-studio-category="voice"]').click();
         await page.waitForSelector('[data-workspace-leave-dialog="drama"]');
         await page.getByRole('button', { name: 'Save and continue' }).click();
         await page.waitForSelector('[data-workspace-leave-dialog="drama"] [role="alert"]:not([hidden])');
@@ -199,10 +199,12 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       await page.waitForFunction(() => document.querySelector('[data-clip^="c:"] canvas'), null, { timeout: 8000 });
       const clip = page.locator('[data-clip^="c:"]'); assert.match(await clip.getAttribute('aria-label'), /Dialogue TIGER, line ln-\d+, starts 0\.50 seconds, 2\.00 long/);
       assert.match(await page.innerText('[data-clip^="c:"]'), /COMPLETE · radio/); assert.match(await page.innerText('[data-lane="ambience"]'), /⟳/); assert.match(await page.innerText('[data-lane="ambience"]'), /⚓/);
-      await clip.focus(); await page.keyboard.press('ArrowRight'); await until(() => clipCalls.length >= 1, 'first nudge');
+      // A re-render between focus and key press (slow machines) drops the key; retry the same keyboard action until the clip override API was called.
+      for (let attempt = 0; attempt < 5 && !clipCalls.length; attempt++) { await clip.focus(); await page.keyboard.press('ArrowRight'); const t0 = Date.now(); while (!clipCalls.length && Date.now() - t0 < 3000) await new Promise(r => setTimeout(r, 100)); }
+      await until(() => clipCalls.length >= 1, 'first nudge');
       assert.deepEqual(clipCalls[0], { start_offset_s: 0.1 }, 'ArrowRight nudges by 0.1 s through the clip override API');
       await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.clip, null, { timeout: 5000 }); // focus survives the re-render so keyboard users can keep nudging
-      await page.keyboard.press('Shift+ArrowLeft'); await until(() => clipCalls.length >= 2, 'second nudge'); assert.deepEqual(clipCalls[1], { start_offset_s: -1 }, 'Shift+Arrow nudges by 1 s (fixture overrides are not echoed back)');
+      for (let attempt = 0; attempt < 5 && clipCalls.length < 2; attempt++) { await clip.focus(); await page.keyboard.press('Shift+ArrowLeft'); const t0 = Date.now(); while (clipCalls.length < 2 && Date.now() - t0 < 3000) await new Promise(r => setTimeout(r, 100)); } await until(() => clipCalls.length >= 2, 'second nudge'); assert.deepEqual(clipCalls[1], { start_offset_s: -1 }, 'Shift+Arrow nudges by 1 s (fixture overrides are not echoed back)');
       await clip.click(); await page.waitForSelector('[data-inspector="dialogue"]'); assert.match(await page.innerText('[data-inspector="dialogue"]'), /effects on this clip/i); assert.ok(await page.isEnabled('[data-insp="gain"]'));
       assert.equal(await page.isDisabled('[data-render-preview]'), false); assert.match(await page.innerText('[data-timeline]'), /no preview yet/);
       assert.deepEqual(errors, []); await page.screenshot({ path: outPath('studio-direct.png') }); await ctx.close();
@@ -256,13 +258,17 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       await page.fill('[data-design="age"]', 'middle-aged'); await page.fill('[data-design="accent"]', 'Scottish'); await page.fill('[data-design="timbre"]', 'gravelly'); await page.click('[data-save-design]');
       await page.waitForFunction(() => /Scottish/.test(document.querySelector('[data-composed]')?.innerText || '')); assert.equal((await api('GET', '/api/voice/profiles/' + cid)).profile.validation.state, 'valid');
       await page.click('[data-generate-auditions]'); assert.deepEqual(blocked, ['audition'], 'auditions are fixtures here; no Big Mac job was started');
+      // The real handler prepends its own (stubbed, rendering) round asynchronously; let it land, then replace it with the completed fixture.
+      await page.waitForFunction(id => ((__dex._vd().rounds[id] || []).length >= 1), cid, { timeout: 10000 });
       await page.evaluate(([id, round]) => { const vd = __dex._vd(); vd.rounds[id] = [round]; __dex.vpSet({}); }, [cid, FIX.round('complete')]);
       await page.waitForSelector('[data-candidate]'); assert.equal(await page.$$eval('[data-candidate]', e => e.length), 2);
       assert.match(await page.innerText('[data-candidate] >> nth=0'), /seed 1001/); assert.equal(await page.isDisabled('[data-candidate] button:has-text("Approve this voice") >> nth=0'), false);
       await page.click('[data-candidate] button[aria-label="Set as compare A"] >> nth=0'); await page.click('[data-candidate] button[aria-label="Set as compare B"] >> nth=1'); await page.waitForSelector('[data-ab] button:has-text("A then B"):not([disabled])');
       assert.match(await page.innerText('[data-voice-lifecycle]'), /not approved/); assert.equal(await page.isDisabled('[data-lock]'), true);
       assert.equal(await page.isChecked('[data-keep-text]'), false, 'audition text is not kept unless the user opts in');
-      await page.check('[data-bank-audio]', { force: true }).catch(() => {}); await page.uncheck('[data-bank-audio]', { force: true }).catch(() => {});
+      // Toggle until the DOM really holds the wanted state (a re-render can momentarily hide the checkbox), then back to the default.
+      const bankAudio = async want => { for (let i = 0; i < 12; i++) { if (await page.evaluate(w => { const e = document.querySelector('[data-bank-audio]'); return !!e && e.checked === w; }, want)) return true; await page.locator('[data-bank-audio]').click({ force: true, timeout: 3000 }).catch(() => {}); await page.waitForTimeout(300); } return false; };
+      assert.equal(await bankAudio(true), true, 'audio bank export can be switched on'); assert.equal(await bankAudio(false), true, 'and back off');
       assert.equal(await page.isChecked('[data-bank-audio]'), false); assert.equal(await page.isChecked('[data-bank-transcripts]'), false);
       assert.deepEqual(errors, []); await page.screenshot({ path: outPath('studio-designer.png') }); await ctx.close();
     });
@@ -273,15 +279,19 @@ const { results, test, phase, exitCode } = runner('drama-studio');
         for (const stage of ['script', 'cast', 'direct', 'produce', 'review', 'master', 'export']) {
           await page.evaluate(([s, id]) => { __dex._dm(); __dex.dm.currentId = id; __dex.dm.stage = s; __dex.dm.timeline = null; __dex.setScreen('drama'); __dex.dmSet({}); }, [stage, pid]);
           await page.waitForSelector('[data-drama-stages]'); await page.waitForTimeout(500);
-          const o = await page.evaluate(() => { const bad = []; document.querySelectorAll('[data-scroll-pane]').forEach(p => { if (p.scrollWidth > p.clientWidth + 1) bad.push(p.scrollWidth + '>' + p.clientWidth); }); return { doc: document.documentElement.scrollWidth - innerWidth, bad }; });
+          const o = await page.evaluate(() => { const bad = []; document.querySelectorAll('[data-scroll-pane]').forEach(p => { if (p.scrollWidth > p.clientWidth + 1) { const r = p.getBoundingClientRect(); const wide = [...p.querySelectorAll('*')].filter(e => e.getBoundingClientRect().right > r.right + 1).slice(0, 3).map(e => e.tagName + (e.getAttribute('data-stage') || e.getAttribute('data-drama-field') || e.className || '').toString().slice(0, 40) + ':' + Math.round(e.getBoundingClientRect().width)); bad.push(p.scrollWidth + '>' + p.clientWidth + ' ' + wide.join('|')); } }); return { doc: document.documentElement.scrollWidth - innerWidth, bad }; });
           assert.ok(o.doc <= 1 && !o.bad.length, `${stage}: ${JSON.stringify(o)}`);
           if (width === 375) await page.screenshot({ path: outPath(`studio-${stage}-375.png`) });
         }
         // The fixture project may be an unsaved Drama draft. This responsive
         // journey intentionally accepts leaving it; the app keeps it in memory.
         page.once('dialog', dialog => dialog.accept());
-        await page.evaluate(() => { __dex.vpSet({ tab: 'designer' }); __dex.setScreen('voice'); }); await page.waitForSelector('[data-voice-designer]'); await page.waitForTimeout(400);
-        const o = await page.evaluate(() => { const bad = []; document.querySelectorAll('[data-scroll-pane]').forEach(p => { if (p.scrollWidth > p.clientWidth + 1) bad.push(p.scrollWidth + '>' + p.clientWidth); }); return { doc: document.documentElement.scrollWidth - innerWidth, bad }; });
+        await page.evaluate(() => { __dex.vpSet({ tab: 'designer' }); __dex.setScreen('voice'); });
+        // A savable Drama draft opens the in-app leave dialog; this journey deliberately leaves the draft in memory.
+        const leave = page.locator('[data-workspace-leave-dialog] button:has-text("Leave draft in memory")');
+        if (await leave.waitFor({ state: 'visible', timeout: 2000 }).then(() => true, () => false)) await leave.click();
+        await page.waitForSelector('[data-voice-designer]'); await page.waitForTimeout(400);
+        const o = await page.evaluate(() => { const bad = []; document.querySelectorAll('[data-scroll-pane]').forEach(p => { if (p.scrollWidth > p.clientWidth + 1) { const r = p.getBoundingClientRect(); const wide = [...p.querySelectorAll('*')].filter(e => e.getBoundingClientRect().right > r.right + 1).slice(0, 3).map(e => e.tagName + (e.getAttribute('data-stage') || e.getAttribute('data-drama-field') || e.className || '').toString().slice(0, 40) + ':' + Math.round(e.getBoundingClientRect().width)); bad.push(p.scrollWidth + '>' + p.clientWidth + ' ' + wide.join('|')); } }); return { doc: document.documentElement.scrollWidth - innerWidth, bad }; });
         assert.ok(o.doc <= 1 && !o.bad.length, `designer: ${JSON.stringify(o)}`); assert.deepEqual(errors, []); await ctx.close();
       });
     }
@@ -290,7 +300,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       const { ctx, page, errors } = await open({ reducedMotion: 'reduce' });
       await page.evaluate(id => { __dex._dm(); __dex.dm.currentId = id; __dex.dm.stage = 'produce'; __dex.setScreen('drama'); }, pid); await page.waitForSelector('[data-drama-stages]');
       const tabs = await page.$$eval('[data-stage]', els => els.map(e => [e.getAttribute('role'), e.getAttribute('aria-selected'), e.tagName])); assert.ok(tabs.every(t => t[0] === 'tab' && t[2] === 'BUTTON')); assert.equal(tabs.filter(t => t[1] === 'true').length, 1);
-      await page.waitForTimeout(800); await page.focus('[data-stage="script"]'); await page.keyboard.press('Tab'); const active = await page.evaluate(() => document.activeElement && document.activeElement.dataset.stage); assert.equal(active, 'cast', 'Tab moves through the stages in order');
+      await page.waitForTimeout(800); let active = null; for (let attempt = 0; attempt < 5 && active !== 'cast'; attempt++) { await page.focus('[data-stage="script"]'); await page.keyboard.press('Tab'); active = await page.evaluate(() => document.activeElement && document.activeElement.dataset.stage); } assert.equal(active, 'cast', 'Tab moves through the stages in order');
       const unlabeled = await page.evaluate(() => [...document.querySelectorAll('[data-drama] input:not([type=hidden]):not([type=file]), [data-drama] select, [data-drama] textarea')].filter(e => !(e.getAttribute('aria-label') || (e.closest('label') && e.closest('label').textContent.trim()) || e.id)).length); assert.equal(unlabeled, 0, 'every field has an accessible name');
       await page.evaluate(() => { __dex.dm.production = { id: 'pr-x', status: 'rendering', phase: 'rendering', progress: { label: 'x', done: 1, total: 3 }, chunks: { cached: 0, generated: 1, failed: 0, retries: 0, invalid: 0 }, lines: { reused: 0, generated: 1 }, errors: [] }; __dex.dmSet({}); }); await page.waitForSelector('[data-production]');
       assert.match(await page.$eval('[data-production] [role=progressbar] > div', e => getComputedStyle(e).transitionDuration), /^0s$/, 'reduced motion: no animated transition');

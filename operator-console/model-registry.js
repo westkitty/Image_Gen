@@ -514,6 +514,56 @@ const KNOWN_CURATED_CARDS = [
 
 const CURATED_BY_ID = new Map(KNOWN_CURATED_CARDS.map(c => [c.id, c]));
 
+// These are publisher model pages checked against the recorded model identity.
+// Keep the original publisher separate from a converted/quantized distribution.
+const VERIFIED_MODEL_SOURCES = Object.freeze({
+  'flux2-klein-4b': {
+    source_url: 'https://huggingface.co/black-forest-labs/FLUX.2-klein-4B',
+    distribution_url: 'https://huggingface.co/mlx-community/flux2-klein-4b-4bit',
+    source_status: 'verified'
+  },
+  'sdxl-turbo': {
+    source_url: 'https://huggingface.co/stabilityai/sdxl-turbo',
+    source_status: 'verified'
+  },
+  sd15: {
+    source_url: 'https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5',
+    source_status: 'verified'
+  },
+  'sdxl-base': {
+    source_url: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0',
+    source_status: 'verified'
+  },
+  'sdxl-realvisxl': {
+    source_url: 'https://huggingface.co/SG161222/RealVisXL_V5.0',
+    source_status: 'verified'
+  },
+  'sdxl-photonic': { source_url: 'https://civitai.com/models/683210?modelVersionId=1449179', source_status: 'verified' },
+  'sdxl-homochi': { source_url: 'https://civitai.com/models/2497338?modelVersionId=2877706', source_status: 'verified' },
+  'sdxl-pony': { source_url: 'https://civitai.com/models/257749?modelVersionId=290640', source_status: 'verified' },
+  'sd15-homofidelis': { source_url: 'https://civitai.com/models/126654?modelVersionId=958003', source_status: 'verified' },
+  'sdxl-juggernaut': { source_url: 'https://civitai.com/models/133005?modelVersionId=1759168', source_status: 'verified' },
+  'sdxl-epicrealism': { source_url: 'https://civitai.com/models/277058?modelVersionId=2514955', source_status: 'verified' },
+  'sdxl-biglust': { source_url: 'https://civitai.com/models/575395?modelVersionId=1081768', source_status: 'verified' },
+  'sdxl-lustify': { source_url: 'https://civitai.com/models/573152?modelVersionId=2808677', source_status: 'verified' },
+  'sdxl-biglove': { source_url: 'https://civitai.com/models/897413?modelVersionId=2857189', source_status: 'verified' },
+  'sdxl-biglove-photo1': { source_url: 'https://civitai.com/models/897413?modelVersionId=2117129', source_status: 'verified' },
+  'sdxl-biglove-photo45': { source_url: 'https://civitai.com/models/897413?modelVersionId=2503034', source_status: 'verified' },
+  'sd15-auto-v1-5-pruned-emaonly': {
+    source_url: 'https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5', source_status: 'verified'
+  }
+});
+
+function withSourceMetadata(card) {
+  const source = VERIFIED_MODEL_SOURCES[card.id];
+  return {
+    ...card,
+    source_url: source ? source.source_url : null,
+    distribution_url: source ? (source.distribution_url || null) : null,
+    source_status: source ? source.source_status : 'unavailable'
+  };
+}
+
 /**
  * Creates an honest, family-level fallback model card for any auto-discovered
  * or dynamically added target.
@@ -571,7 +621,9 @@ function createFallbackCard(target) {
     supports_lora: !isFlux,
     supports_embeddings: isSD15,
     prompt_profile: target.prompt_profile || `image.${family}`,
-    caveat: target.caveat || `Auto-discovered ${family.toUpperCase()} checkpoint. Experimental; no dedicated proof benchmark recorded.`
+    caveat: target.caveat || `Auto-discovered ${family.toUpperCase()} checkpoint. Experimental; no dedicated proof benchmark recorded.`,
+    source_url: null,
+    source_status: 'unavailable'
   };
 }
 
@@ -581,7 +633,7 @@ function createFallbackCard(target) {
  */
 function resolveAllModelCards(availableTargets = null) {
   if (!availableTargets || !Array.isArray(availableTargets) || availableTargets.length === 0) {
-    return [...KNOWN_CURATED_CARDS];
+    return KNOWN_CURATED_CARDS.map(withSourceMetadata);
   }
 
   const cards = [];
@@ -602,10 +654,13 @@ function resolveAllModelCards(availableTargets = null) {
         verification: target.lastPass || null,
         availability_reason: target.reason || null,
         primary: target.primary === true || curated.primary === true,
-        backend: target.backend || curated.backend
+        backend: target.backend || curated.backend,
+        source_url: VERIFIED_MODEL_SOURCES[curated.id]?.source_url || null,
+        distribution_url: VERIFIED_MODEL_SOURCES[curated.id]?.distribution_url || null,
+        source_status: VERIFIED_MODEL_SOURCES[curated.id] ? 'verified' : 'unavailable'
       });
     } else {
-      cards.push(createFallbackCard(target));
+      cards.push(withSourceMetadata(createFallbackCard(target)));
     }
     coveredIds.add(target.id);
   }
@@ -613,7 +668,7 @@ function resolveAllModelCards(availableTargets = null) {
   // Include any remaining curated cards that were not in availableTargets (for fallback/offline usage)
   for (const card of KNOWN_CURATED_CARDS) {
     if (!coveredIds.has(card.id)) {
-      cards.push(card);
+      cards.push(withSourceMetadata(card));
     }
   }
 
@@ -712,7 +767,7 @@ function checkModelSwitchWarnings(fromModelId, toModelId, activeResources = {}, 
 
 module.exports = {
   ModelSwitchWarning,
-  MODEL_CARDS: KNOWN_CURATED_CARDS,
+  MODEL_CARDS: KNOWN_CURATED_CARDS.map(withSourceMetadata),
   KNOWN_CURATED_CARDS,
   createFallbackCard,
   resolveAllModelCards,

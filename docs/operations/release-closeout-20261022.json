@@ -1,0 +1,551 @@
+{
+  "schema": "dexdiffusion.release-closeout.v1",
+  "date": "2026-10-22",
+  "status": "PARTIAL",
+  "target": {
+    "root": "/Users/andrew/Image_Gen",
+    "branch": "docs/dexdiffusion-omni-recovery-20261021",
+    "base_head": "d1d542631fd041ddf54b148a173da19415fa4dd6",
+    "origin": "git@github.com:westkitty/Image_Gen.git"
+  },
+  "storage": {
+    "initial_free_kib": 8645008,
+    "required_reserve_kib": 6291456,
+    "cleanup_performed": false,
+    "historical_disk_shortage_cause": "UNKNOWN; current reserve already sufficient on entry",
+    "canonical_images_root": "/Users/andrew/images_made",
+    "macbook_checkpoint_probe": "No .safetensors/.ckpt/.gguf/.part files found in repository or existing DexDiffusion/HuggingFace cache probe paths; not an exhaustive home-directory scan",
+    "final_free_kib": 8470116,
+    "final_free_gib": 8.078,
+    "release_reserve_admitted": true
+  },
+  "acquisition": {
+    "installed_assets": 5,
+    "verified_assets": 5,
+    "flux_checkpoint_bytes": 7751105712,
+    "sdxl_checkpoint_bytes": 6938078334,
+    "basis": "Fresh exact paths, sizes and one-byte reads; user-accepted prior FLUX SHA-256 and SDXL APFS clone/cmp reused without expensive copying or hashing",
+    "roles": "DexDiffusion/models is acquisition storage; worker registry retains ImageGen/checkpoints/sdxl source and internal MFLUX 4-bit model. These paths are intentionally distinct.",
+    "sdxl_partial_preserved_bytes": 3823506718,
+    "sdxl_partial_allocated_bytes": 1146499072,
+    "remote_receipt_update": "BLOCKED: existing .staging directory owned by andrew, mode0755; bigmac could read but could not create backup. Original receipt unchanged. This local verification supersedes its stale PARTIAL acquisition state.",
+    "allocation_caveat": "stat allocated bytes are not a measurement of unique reclaimable APFS clone extents; no model, partial or durable-data cleanup was performed.",
+    "preserved_remote_receipt_sha256": "3ff010d18fcd43ead19432039b32b70dfaac81e66ea4e095cb21be18ba51a8d9",
+    "readback_marker": "ACQUISITION_FIVE_READABLE"
+  },
+  "worker": {
+    "health": {
+      "ok": true,
+      "models": {
+        "sd15": true,
+        "sdxl-base": true,
+        "sdxl-turbo": true,
+        "flux-fp8": true,
+        "flux2-klein-4b": true,
+        "sdxl-photonic": true,
+        "sdxl-homochi": true,
+        "sdxl-pony": true,
+        "sd15-homofidelis": true,
+        "sdxl-juggernaut": true,
+        "sdxl-realvisxl": true,
+        "sdxl-cyberrealistic": true,
+        "sdxl-epicrealism": true,
+        "sdxl-biglust": true,
+        "sdxl-lustify": true,
+        "sdxl-biglove": true,
+        "sdxl-biglove-photo1": true,
+        "sdxl-biglove-photo45": true,
+        "sd15-auto-v1-5-pruned-emaonly": true
+      },
+      "secondary": {
+        "primaryModel": {
+          "id": "flux2-klein-4b",
+          "role": "protected-primary",
+          "backend": "mflux"
+        },
+        "activeSecondaryModel": "sd15",
+        "secondaryModelState": "active",
+        "sourcePath": "/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors",
+        "activePath": "/Users/bigmac/Library/Caches/DexDiffusion/secondary-model/current/model.safetensors",
+        "backend": "sdcpp",
+        "modelIdentity": {
+          "target": "sd15",
+          "filename": "v1-5-pruned-emaonly.safetensors",
+          "bytes": 4265146304
+        },
+        "lastSwitchResult": {
+          "status": "pass",
+          "at": 1792590701
+        }
+      },
+      "pid": 81338,
+      "uid": 503,
+      "active": null,
+      "access": {
+        "checkpoint": true,
+        "sdxl_lightning_4step_lora": true,
+        "hyper-sdxl-8steps-cfg-lora": true,
+        "lcm_sdxl": true,
+        "lcm_sd15": true,
+        "hyper-sd15-8steps-cfg-lora": true,
+        "pixelart_lora": true
+      },
+      "recovery_uncertain": []
+    },
+    "source_hashes_match_installed": true,
+    "architecture": "Big Mac GUI-session helper, private Unix socket0700 parent/0600 socket, SSH JSON client; MacBook heavy-compute arbiter and canonical store preserved",
+    "device_evidence_boundary": "Five SDCPP adapters have actual MTL0 initialization/tensor evidence; Pixel Art uses its separate recorded native MFLUX/MLX proof and has no SDCPP MTL0 marker.",
+    "host": "bigmac@bigmac",
+    "hardware": {
+      "cpu": "Apple M4",
+      "unified_memory_bytes": 34359738368
+    }
+  },
+  "reused_lora_proofs": [
+    {
+      "name": "Hyper-SDXL",
+      "run_id": "20261021-134644-controlled-sdxl-base-f44dec4f",
+      "status": "PASS",
+      "image_url": "/api/images/20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+      "sha256": "f26e62d21fec7072bd25084a3df49f169f38b704472b8e9d9ad1a2f89663605d",
+      "prior_hash_matches": true,
+      "dimensions": [
+        512,
+        512
+      ],
+      "remote_cleanup": true,
+      "sdcpp_mtl0_marker_present": true
+    },
+    {
+      "name": "LCM-SDXL",
+      "run_id": "20261021-134750-controlled-sdxl-base-257f891e",
+      "status": "PASS",
+      "image_url": "/api/images/20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+      "sha256": "04d6261fc772aa54f98d8604b69e2d5d8673d4ad10ca7de77ca2c1766ca3d31c",
+      "prior_hash_matches": true,
+      "dimensions": [
+        512,
+        512
+      ],
+      "remote_cleanup": true,
+      "sdcpp_mtl0_marker_present": true
+    },
+    {
+      "name": "LCM-SD1.5",
+      "run_id": "20261021-134831-controlled-sd15-727105b4",
+      "status": "PASS",
+      "image_url": "/api/images/20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+      "sha256": "694a48b5eb33b69f928df1ab2d017d15463b730a84ccfd07e71aa26b0aac347f",
+      "prior_hash_matches": true,
+      "dimensions": [
+        512,
+        512
+      ],
+      "remote_cleanup": true,
+      "sdcpp_mtl0_marker_present": true
+    },
+    {
+      "name": "Hyper-SD15",
+      "run_id": "20261021-135144-controlled-sd15-8c303aaf",
+      "status": "PASS",
+      "image_url": "/api/images/20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+      "sha256": "b84b315b9b2108d6e760ae250bedc04b665e294f861595a161c1b08cbe99097e",
+      "prior_hash_matches": true,
+      "dimensions": [
+        512,
+        512
+      ],
+      "remote_cleanup": true,
+      "sdcpp_mtl0_marker_present": true
+    },
+    {
+      "name": "Pixel Art 1.0",
+      "run_id": "20261021-135320-controlled-flux2-klein-4b-e56e9acc",
+      "status": "PASS",
+      "image_url": "/api/images/20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+      "sha256": "8edf5c7cff839f29442ed464074d030b78a2092f06b0f89a1adee548036f2a81",
+      "prior_hash_matches": true,
+      "dimensions": [
+        512,
+        512
+      ],
+      "remote_cleanup": true,
+      "sdcpp_mtl0_marker_present": false
+    },
+    {
+      "name": "Pixel Art 0.5",
+      "run_id": "20261021-135348-controlled-flux2-klein-4b-d774d2ef",
+      "status": "PASS",
+      "image_url": "/api/images/20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+      "sha256": "1b06638f83751906190877c053978261ab620921acee02237a446d2e9c278977",
+      "prior_hash_matches": true,
+      "dimensions": [
+        512,
+        512
+      ],
+      "remote_cleanup": true,
+      "sdcpp_mtl0_marker_present": false
+    },
+    {
+      "name": "FLUX.2 OFF",
+      "run_id": "20261021-135415-controlled-flux2-klein-4b-1f501a6a",
+      "status": "PASS",
+      "image_url": "/api/images/20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+      "sha256": "3d425eb2391b30db749e19acd8266e4360fcfb2e332489970ba08a6ebf579914",
+      "prior_hash_matches": true,
+      "dimensions": [
+        512,
+        512
+      ],
+      "remote_cleanup": true,
+      "sdcpp_mtl0_marker_present": false
+    },
+    {
+      "name": "SDXL Lightning",
+      "run_id": "20261021-134407-controlled-sdxl-base-2ab8aefe",
+      "sha256": "d6b1985bb6d8173000b8d90339f2cf7c23baa6368a00c3789274ef7f86673873",
+      "prior_hash_matches": true,
+      "image_url": "/api/images/20261021-134407-controlled-sdxl-base-2ab8aefe-s976936195-controlled-sdxl-base.png",
+      "remote_cleanup": true,
+      "sdcpp_mtl0_marker_present": true
+    }
+  ],
+  "sd15_fresh_proof": {
+    "job_id": "752bbda3-f41b-4549-8428-00366e2cd64d",
+    "run_id": "20261022-041325-controlled-sd15-e2700450",
+    "image_url": "/api/images/20261022-041325-controlled-sd15-e2700450-s732022-controlled-sd15.png",
+    "sha256": "30413eec2e2089a31d3f3a917c3e752af92bd3b6299b9ece03776317adfc822c",
+    "worker": {
+      "ok": true,
+      "run_id": "20261022-041325-controlled-sd15-e2700450",
+      "status": "complete",
+      "target": "sd15",
+      "started": 1792642406.7427762,
+      "batch_count": 1,
+      "cleanup": true,
+      "deadline": 1792644206.742777,
+      "model_read": true,
+      "engine_started": 1792642406.743527,
+      "pgid": 61132,
+      "engine_finished": 1792642585.240864,
+      "generation_seconds": 178.497,
+      "evidence": [
+        "  backend: \"MTL0\",",
+        "  lora_apply_mode: auto,",
+        "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+        "[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 178.13s"
+      ],
+      "engine_exit": 0,
+      "images": [
+        {
+          "sha256": "30413eec2e2089a31d3f3a917c3e752af92bd3b6299b9ece03776317adfc822c",
+          "bytes": 302802,
+          "dimensions": [
+            512,
+            512
+          ]
+        }
+      ],
+      "sha256": "30413eec2e2089a31d3f3a917c3e752af92bd3b6299b9ece03776317adfc822c",
+      "bytes": 302802,
+      "dimensions": [
+        512,
+        512
+      ],
+      "finished": 1792642585.409975
+    }
+  },
+  "repairs": [
+    "Acknowledge verified remote cleanup before synchronous canonical publication; lost ack/cancel regressions use real image store",
+    "Benchmark consumes owned structured worker evidence; CPU bridge benchmark explicitly refused before inference because CPU identity is not retained",
+    "LoRA selection/toggle state schedules render; checkbox requires valid selection; manual strength/focus preserved",
+    "Mixed-media Library uses content-sized grid rows to prevent overlap at full collection size",
+    "Release runner serializes FFmpeg-backed unit fixtures and recognizes matrix PASS/FAIL/BLOCKED cells without changing disk reserve"
+  ],
+  "tests": {
+    "initial_full_suite": {
+      "passed": 1000,
+      "failed": 5,
+      "skipped": 17,
+      "reason": "four production waits plus missing test Unix socket under overlong TMPDIR"
+    },
+    "focused_repair": {
+      "passed": 27,
+      "failed": 0
+    },
+    "full_after_dependency_restore": {
+      "passed": 1023,
+      "failed": 1,
+      "skipped": 0,
+      "remaining_failure": "LoRA DOM selection rerender; subsequently fixed and targeted regression passed"
+    },
+    "preflight_parser_regression": {
+      "passed": 8,
+      "failed": 0
+    },
+    "release_preflight": {
+      "default_run": "HISTORICAL: failed unit guard and legacy Concept A browser failures; owned run stopped exit143. Guard later passed10/10; Concept A subsequently resolved and passed14/14 exit0 in this continuation. See continuation_20261022 for the current separate create-controls blocker.",
+      "scoped_run": "FAIL exit1: unit138/138, Edit29/29, Library9/10 fixture race, matrix252/252. The Library fixture race was then repaired and standalone Library passed10/10 exit0. No aggregate run is relabeled PASS.",
+      "publication_gate": "BLOCKED: latest default gate stopped after create-controls mandatory failures, actual gate exit143; unit1014/1014 and Concept A14/14 passed."
+    },
+    "release_initial_unit": {
+      "passed": 1013,
+      "failed": 1,
+      "total": 1014,
+      "skipped": 0,
+      "failure": "old guard required exactly2 unit files, while safe runner now serializes1"
+    },
+    "scratch_guard_after_update": {
+      "passed": 10,
+      "failed": 0
+    },
+    "library_final": {
+      "passed": 10,
+      "failed": 0,
+      "exit": 0,
+      "fixture_repair": "mixed-media response is installed before navigation to prevent pending-fetch overwrite; suite now returns nonzero on scenario failure"
+    },
+    "scoped_unit": {
+      "passed": 138,
+      "failed": 0,
+      "skipped": 0,
+      "includes_python_worker_tests": 15
+    },
+    "edit_browser": {
+      "passed": 29,
+      "failed": 0
+    },
+    "default_release_blocker": "Current: create-controls browser has three observed mandatory failures; remaining scenario interrupted under stop condition. Prior Concept A blocker resolved: local14/14 exit0.",
+    "interaction_matrix": {
+      "passed": 252,
+      "failed": 0,
+      "blocked": 0,
+      "exit": 0,
+      "scope": "180 base plus72 supplemental cells, fixture browser scope; no real generation"
+    }
+  },
+  "native": {
+    "bundle": "local.image-gen.wrapper",
+    "path": "/Applications/DexDiffusion.app",
+    "architecture": "arm64",
+    "swift_source_matches": true,
+    "approved_icon_source_matches": true,
+    "dock_entries": 1,
+    "legacy_dock_entries": 0,
+    "launch_services": "/Applications/DexDiffusion.app/",
+    "observed": "Actual native WebKit Create and Library connected to loopback backend; full Library row repair visually verified, fresh green-cup output visible",
+    "final_wrapper_rebuild": "NOT PERFORMED: Git HEAD and native Swift/icon source are unchanged; existing installed wrapper matches. Console JavaScript is served dynamically from the uncommitted checkout.",
+    "source_head": "d1d542631fd041ddf54b148a173da19415fa4dd6",
+    "server_identity": {
+      "name": "Image_Gen Operator Console",
+      "version": "image-gen-console-2026-06-22-render-wrapper",
+      "gitHead": "d1d5426",
+      "pid": 882,
+      "cwd": "/Users/andrew/Image_Gen/operator-console",
+      "bind": "http://127.0.0.1:31337",
+      "workflowRoot": "/Users/andrew/Image_Gen/sdcpp-workflow",
+      "startedAt": "2026-10-22T04:53:39.357Z"
+    },
+    "listener_pids": [
+      882
+    ],
+    "dock_changed": false,
+    "doctor_overall": "WARN: optional LTX Video runtime missing; relevant image/app/storage/bridge/private-ingress checks PASS",
+    "canonical_storage_current_problems": 0,
+    "historical_missing_references": 738
+  },
+  "git": {
+    "commit": null,
+    "push": "NOT ATTEMPTED: release stop gate",
+    "preserved_unrelated": [
+      "ARENA_DEXDIFFUSION_V2_STUDIO_MASTER_EXECUTION_PROMPT_2026-10-20.md"
+    ],
+    "publication_held": "Latest mandatory create-controls browser failures; no staging, commit or push.",
+    "branch": "docs/dexdiffusion-omni-recovery-20261021",
+    "head_unchanged": "d1d542631fd041ddf54b148a173da19415fa4dd6",
+    "remote_branch_head": "d1d542631fd041ddf54b148a173da19415fa4dd6",
+    "merge": "NOT ATTEMPTED",
+    "staged_files": [],
+    "remaining_dirty_status": [
+      " M DEXDIFFUSION.md",
+      " M Image_Gen_Bible.md",
+      " M OPERATIONAL_STATE.md",
+      " M operator-console/capabilities.js",
+      " M operator-console/controlled-args.js",
+      " M operator-console/extra-networks.js",
+      " M operator-console/image-store.js",
+      " M operator-console/model-registry.js",
+      " M operator-console/public/dexdiffusion/component.js",
+      " M operator-console/public/dexdiffusion/concept-a.js",
+      " M operator-console/public/dexdiffusion/index.html",
+      " M operator-console/public/dexdiffusion/lightbox.js",
+      " M operator-console/public/dexdiffusion/media-ui.js",
+      " M operator-console/public/dexdiffusion/workstation-ui.js",
+      " M operator-console/public/model-presets.js",
+      " M operator-console/server.js",
+      " M operator-console/tests/browser/edit-workbench.browser.js",
+      " M operator-console/tests/browser/interaction-matrix.browser.js",
+      " M operator-console/tests/browser/library.browser.js",
+      " M operator-console/tests/controlled-args.test.js",
+      " M operator-console/tests/edit-resources-server.test.js",
+      " M operator-console/tests/extra-networks.test.js",
+      " M operator-console/tests/mflux-bridge.test.js",
+      " M operator-console/tests/model-cards.test.js",
+      " M operator-console/tests/model-inspect.test.js",
+      " M operator-console/tests/model-presets.test.js",
+      " M operator-console/tests/prompt-intelligence.test.js",
+      " M operator-console/tests/release-preflight.test.js",
+      " M operator-console/tests/scratch-lifecycle.test.js",
+      " M operator-console/tests/studio-shell.test.js",
+      " M operator-console/workstation.js",
+      " M scripts/release-preflight.sh",
+      " M sdcpp-workflow/bin/mflux-controlled-generate.sh",
+      " M sdcpp-workflow/bin/mflux-remote-generate.sh",
+      " M sdcpp-workflow/bin/sdcpp-cli-generate.sh",
+      " M sdcpp-workflow/bin/sdcpp-controlled-generate.sh",
+      " M sdcpp-workflow/bin/sdcpp-discover-assets.sh",
+      " M sdcpp-workflow/bin/sdcpp-img2img.sh",
+      " M sdcpp-workflow/bin/sdcpp-inpaint.sh",
+      " M sdcpp-workflow/bin/sdcpp-remote-cancel.sh",
+      "?? ARENA_DEXDIFFUSION_V2_STUDIO_MASTER_EXECUTION_PROMPT_2026-10-20.md",
+      "?? docs/operations/local-engine-bridge-20261021.json",
+      "?? docs/operations/local-engine-bridge-20261021.md",
+      "?? docs/operations/lora-assets-20261021.json",
+      "?? docs/operations/lora-metal-performance-20261021.json",
+      "?? docs/operations/model-source-coverage-20261021.json",
+      "?? docs/operations/release-closeout-20261022.json",
+      "?? operator-console/bin/local-engine-control.js",
+      "?? operator-console/bin/local-engine-generate.js",
+      "?? operator-console/local-engine-client.js",
+      "?? operator-console/local-engine-routing.js",
+      "?? operator-console/lora-runtime-policy.js",
+      "?? operator-console/tests/local-engine-bridge.test.js",
+      "?? operator-console/tests/lora-runtime-policy.test.js",
+      "?? output/closeout-20261022/",
+      "?? sdcpp-workflow/bin/mflux-rslora-convert.py",
+      "?? sdcpp-workflow/bin/sdcpp-lora-benchmark.mjs",
+      "?? sdcpp-workflow/worker/"
+    ]
+  },
+  "limitations": [
+    "Optional LTX Video runtime not installed; no installation attempted",
+    "Human image-quality acceptance, graphical logout/login and reboot persistence remain untested",
+    "738 historical missing image references preserved; current integrity problems0",
+    "Legacy FLUX.1 FP8 white-output failure remains outside this required six-LoRA closeout",
+    "CPU benchmark via graphical bridge intentionally unavailable until retained CPU identity evidence exists",
+    "Historical remote acquisition receipt remains unchanged because current SSH user cannot write its staging directory",
+    "Full default release preflight remains unresolved; no Git publication or final committed-release installation was performed."
+  ],
+  "post_repair_live_publication": {
+    "job_id": "580c52c8-4f44-4ccf-af9e-28b4b7e60dc6",
+    "run_id": "20261022-043033-controlled-sd15-02adcd84",
+    "image_url": "/api/images/20261022-043033-controlled-sd15-02adcd84-s732023-controlled-sd15.png",
+    "sha256": "19739e3a3aa309aa2031344767912a8b4a105fe6d56e37d320d60e378043e560",
+    "dimensions": [
+      256,
+      256
+    ],
+    "generation_seconds": 2.903,
+    "model_read": true,
+    "cleanup_verified": true,
+    "metal_evidence": [
+      "  backend: \"MTL0\",",
+      "  lora_apply_mode: auto,",
+      "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+      "[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 2.34s"
+    ],
+    "status": "PASS"
+  },
+  "local_host": {
+    "hostname": "MacBook-Air.local",
+    "computer_name": "MacBook Air",
+    "architecture": "arm64"
+  },
+  "preserved_file_hashes": {
+    "docs/operations/local-engine-bridge-20261021.json": "c8a08dd28b909ad8fc718d309d9a210b932c44ac418bb1a23a6c3ee5cb8524d3",
+    "docs/operations/lora-assets-20261021.json": "b4e4cbe004f2603f9a8ea476c44959fdf31f45a0fd6cc928c758a034bf20386a",
+    "docs/operations/lora-metal-performance-20261021.json": "19b66eb5f5990ff0c28f536b3e748c7ceeaa1c9812a61bdcf033153a3bc60933",
+    "docs/operations/model-source-coverage-20261021.json": "9ff4fc545f00170ff5327c7582dc0ca165a619b5a42a23fdde775813f393c93f",
+    "ARENA_DEXDIFFUSION_V2_STUDIO_MASTER_EXECUTION_PROMPT_2026-10-20.md": "1279459cdaf31bcaf1aa1aed7994f059de106bad4216a155f2e23f919bdee758"
+  },
+  "finished_at": "2026-10-22T05:46:50.036678+00:00",
+  "next_action": "Repair the create-controls browser fixture or implementation based on its three observed surface failures, then rerun the complete release gate before publication. The current bounded continuation stops without further repairs under its explicit stop condition. Remote acquisition receipt remains a separate owner-access administrative issue.",
+  "continuation_20261022": {
+    "at": "2026-10-22T05:46:50.036678+00:00",
+    "host": "MacBook-Air.local",
+    "concept_a": {
+      "passed": 14,
+      "failed": 0,
+      "exit": 0,
+      "scope": "Local MacBook focused npm suite; also 14 PASS in aggregate gate",
+      "profile": "Isolated developer V4 before navigation; no production visibility change"
+    },
+    "full_preflight": {
+      "status": "NOT COMPLETE",
+      "exit": 143,
+      "termination": "Owned gate stopped via SIGTERM under explicit mandatory-test-failure stop condition",
+      "check_exit": 0,
+      "unit": {
+        "passed": 1014,
+        "total": 1014,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "exit": 0
+      },
+      "browser_completed": {
+        "concept-a-refinement": {
+          "passed": 14,
+          "failed": 0
+        }
+      },
+      "browser_blocker": {
+        "suite": "create-controls",
+        "observed_failed": 3,
+        "passed": 0,
+        "fourth_scenario": "interrupted",
+        "failures": [
+          "pixel-size visibility wait timed out after 30000ms",
+          "Swap W\u2194H click timed out after 30000ms",
+          "VAE surface innerText empty; Default VAE assertion failed"
+        ],
+        "suite_exit": null,
+        "note": "No completed suite exit is claimed; gate was stopped after observed mandatory failures"
+      },
+      "remaining_browser_suites": "NOT RUN",
+      "reserve_kib": 6291456,
+      "logs": "output/closeout-20261022-continuation/; original logs /tmp/dex-preflight-9hOc09"
+    },
+    "git": {
+      "staged": false,
+      "committed": false,
+      "pushed": false,
+      "head": "d1d542631fd041ddf54b148a173da19415fa4dd6",
+      "remote_head": "d1d542631fd041ddf54b148a173da19415fa4dd6",
+      "reason": "mandatory release-test failure"
+    },
+    "native": {
+      "path": "/Applications/DexDiffusion.app",
+      "bundle": "local.image-gen.wrapper",
+      "architecture": "arm64",
+      "source_head": "d1d542631fd041ddf54b148a173da19415fa4dd6",
+      "source_fingerprint_matches": true,
+      "approved_icon_fingerprint_matches": true,
+      "dock_entries": 1,
+      "dock_index_zero_based": 19,
+      "launch_services": "/Applications/DexDiffusion.app/",
+      "native_visual": "Actual native WebKit Library visibly rendered and connected to loopback server",
+      "reinstalled": false,
+      "reason": "No new commit; installed Swift/icon source and existing HEAD stamp match",
+      "server_pid": 882,
+      "server_cwd": "/Users/andrew/Image_Gen/operator-console",
+      "listener_count": 1,
+      "status_exit": 0,
+      "doctor_exit": 0,
+      "doctor_overall": "WARN only optional LTX Video runtime missing"
+    },
+    "free_kib": 8470116,
+    "free_gib": 8.078,
+    "preservation": "No model acquisition, inference, cleanup, permission change, image-storage move, Dock change or unrelated software change"
+  }
+}

@@ -2,7 +2,7 @@
 // Library -> 3D / World handoffs retain exact selected canonical ID, never a newer run.
 const assert=require('node:assert/strict');
 const {chromium}=require('playwright-core');
-const {startServer,launchBrowser,installImageFixtures,runCleanups}=require('./helpers');
+const {startServer,launchBrowser,installImageFixtures,runCleanups, openStudio }=require('./helpers');
 (async()=>{
  const id='fixture-library-older.png';
  const {base}=await startServer();const browser=await launchBrowser(chromium);const page=await browser.newPage({viewport:{width:1440,height:900}});
@@ -10,7 +10,7 @@ const {startServer,launchBrowser,installImageFixtures,runCleanups}=require('./he
  await installImageFixtures(page,{[id]:{w:640,h:480,meta:{target:'sd15',seed:71}}});
  await page.route('**/api/**',r=>['GET','HEAD'].includes(r.request().method())?r.fallback():r.fulfill({status:409,json:{error:'read-only fixture'}}));
  await page.route('**/api/library/images**',r=>r.fulfill({json:{total:1,items:[{id,url:'/api/images/'+id,thumbnailUrl:'/api/images/'+id,width:640,height:480,meta:{target:'sd15',seed:71}}]}}));
- await page.goto(base+'/dexdiffusion/',{waitUntil:'domcontentloaded',timeout:30000});
+ await openStudio(page, base+'/dexdiffusion/',{waitUntil:'domcontentloaded',timeout:30000});
  await page.waitForFunction(()=>window.__dex?.state?.version===2,{timeout:15000});
  await page.evaluate(()=>__dex.setState({runs:[{id:'recent-different-run',imageFile:'fixture-newest.png',model:'sd15'}]}));
  await page.locator('[data-studio-category="library"]').click();
@@ -39,5 +39,5 @@ const {startServer,launchBrowser,installImageFixtures,runCleanups}=require('./he
  assert.equal(await worldSource.inputValue(),id,'World receives the older exact Library image');
  assert.equal(await page.evaluate(()=>__dex.state.activeAssetSelection.id),id);
  assert.deepEqual(errors,[]);
- console.log('LIBRARY_HANDOFF_PASS',JSON.stringify({source:id,createdRun:'fixture-newest.png',source3d:'exact',world:'exact',download:true}));
+ console.log('[studio-source-handoff.browser] PASS LIBRARY_HANDOFF_PASS',JSON.stringify({source:id,createdRun:'fixture-newest.png',source3d:'exact',world:'exact',download:true}));
 })().catch(e=>{console.error('LIBRARY_HANDOFF_FAIL',e.stack);process.exitCode=1}).finally(runCleanups);

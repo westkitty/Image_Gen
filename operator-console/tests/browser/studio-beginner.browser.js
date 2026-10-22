@@ -112,5 +112,5 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
   assert.equal(await download.getAttribute('download'),'fixture-studio.png');
 
   assert.equal(errors.length,0,'browser page errors: '+JSON.stringify(errors));
-  console.log('NOVICE_BROWSER_PASS',JSON.stringify({chips:labels.length,visiblePrompt:true,advanced:true,jobs:true,errors:0}));
+  console.log('[studio-beginner.browser] PASS NOVICE_BROWSER_PASS',JSON.stringify({chips:labels.length,visiblePrompt:true,advanced:true,jobs:true,errors:0}));
 })().catch(e=>{console.error('NOVICE_BROWSER_FAIL',e.stack);process.exitCode=1}).finally(runCleanups);

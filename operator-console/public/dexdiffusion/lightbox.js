@@ -52,7 +52,7 @@
     const col = o.collection && Array.isArray(o.collection.items) && o.collection.items.length ? o.collection : null;
     if (!o.src && !col) return false;
     close();
-    lastFocus = document.activeElement;
+    lastFocus = o.opener || document.activeElement;
     onCloseCb = typeof o.onClose === 'function' ? o.onClose : null;
     let idx = col ? Math.min(Math.max(0, o.collection.index | 0), col.items.length - 1) : 0;
     const cur = () => (col ? col.items[idx] : { src: o.src, caption: o.caption, downloadUrl: o.downloadUrl, id: null });
@@ -166,7 +166,7 @@
     // The delegated image is the opener. Clicks otherwise blur the previous
     // control to body, which cannot receive meaningful returned focus.
     if (t.tabIndex >= 0) t.focus();
-    const ok = open({ src, caption: t.getAttribute('data-fullscreen-caption') || id || '', alt: t.getAttribute('alt') || '', actions });
+    const ok = open({ src, caption: t.getAttribute('data-fullscreen-caption') || id || '', alt: t.getAttribute('alt') || '', actions, opener: t });
     if (ok && t.getAttribute('data-fullscreen') === 'only') { e.stopPropagation(); e.preventDefault(); }
   }
   document.addEventListener('click', onClick, true);

@@ -2,7 +2,7 @@
 // Create controls: real pixel readout, Square/Landscape/Portrait/Swap, Default VAE shown unless overridden, settings guide.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, runner, launchBrowser } = require('./helpers');
+const { startServer, installModelSnapshots, runner, launchBrowser, openStudio } = require('./helpers');
 const { test, exitCode } = runner('create-controls');
 
 (async () => {
@@ -14,9 +14,10 @@ const { test, exitCode } = runner('create-controls');
     const errors = []; page.on('pageerror', e => errors.push(String(e)));
     await installModelSnapshots(page, srv.base);
     await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: [], vaes: [{ name: 'fixture-vae', path: 'x' }], embeddings: { count: 0, items: [] } } }));
-    await page.goto(srv.base + '/dexdiffusion/');
-    await page.waitForFunction(() => window.__dex && __dex.state.capabilityData && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
+    await openStudio(page, srv.base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => window.__dex && __dex.state.version === 2 && __dex.state.capabilityData && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
     await page.evaluate(() => { __dex.setScreen('create'); __dex.setState({ target: 'sd15', width: '512', height: '768' }); });
+    await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
     const size = () => page.locator('[data-dex-field="pixel-size"]').innerText();
     await test('actual pixel dimensions, megapixels and orientation are shown and follow the inputs', async () => {
       await page.waitForSelector('[data-dex-field="pixel-size"]');

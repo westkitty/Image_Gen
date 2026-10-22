@@ -30,6 +30,7 @@ if [ "$MODE" = "scan" ]; then
   OUT="$(ssh_remote "bash -s" <<'REMOTE'
 ps -axo pid=,command= | awk '$2 != "awk" && $0 !~ /bash -s/ {
     if (match($0, /dexdiffusion-mflux-20[0-9]{6}-[0-9]{6}-[A-Za-z0-9_-]+/)) { s = substr($0, RSTART + 19, RLENGTH - 19); print "REMOTE_OWNED: run=" s }
+    else if ($0 ~ /[.]dexdiffusion-engine\/jobs\// && match($0, /20[0-9]{6}-[0-9]{6}-[A-Za-z0-9_-]+/)) { print "REMOTE_OWNED: run=" substr($0, RSTART, RLENGTH) }
     else if ($0 ~ /sdcpp-staging\// && match($0, /-20[0-9]{6}-[0-9]{6}-[A-Za-z0-9_-]+\.(png|log)/)) { s = substr($0, RSTART + 1, RLENGTH - 1); sub(/\.(png|log)$/, "", s); print "REMOTE_OWNED: run=" s }
   }' | sort -u
 printf 'REMOTE_SDSERVER: running=%s\n' "$(ps -axo command= | grep -E '(^|/)sd-server( |$)' | grep -v grep | grep -c . || true)"
@@ -42,6 +43,11 @@ REMOTE
   exit 0
 fi
 printf '%s' "$RUN_ID" | grep -Eq '^20[0-9]{6}-[0-9]{6}-[A-Za-z0-9_-]{1,80}$' || fail "run-id" "run id must look like 20261016-164245-controlled-sdxl-photonic"
+
+# Worker-owned runs use token-authenticated IPC; transport uncertainty remains a failure.
+if [ -f "$HOME/.dexdiffusion-engine-client/$RUN_ID.json" ]; then
+  exec node "$HERE/../../operator-console/bin/local-engine-control.js" "$MODE" "$RUN_ID"
+fi
 
 OUT_FILE="$(mktemp /tmp/sdcpp_rcancel_XXXXXX)"
 trap 'rm -f "$OUT_FILE"' EXIT

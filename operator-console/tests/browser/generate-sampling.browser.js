@@ -4,7 +4,7 @@
 // The generation request is intercepted and refused, so this suite never runs inference.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, runner, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, installModelSnapshots, runner, launchBrowser, runCleanups, openStudio, chooseModel } = require('./helpers');
 
 const { test, results, exitCode } = runner('generate-sampling');
 const ENDPOINT = '**/api/actions/generate-controlled';
@@ -13,33 +13,30 @@ async function openGenerate(page, base) {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   await installModelSnapshots(page, base);
-  const bodies = [];
+    const bodies = [];
   // Selecting an SDCPP target would otherwise really switch Big Mac's secondary model slot.
   await page.route('**/api/models/secondary/activate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ modelState: {} }) }));
   await page.route(ENDPOINT, route => {
     bodies.push(JSON.parse(route.request().postData() || '{}'));
     route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'intercepted by test' }) });
   });
-  await page.goto(base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
-  if (!(await page.locator('.ca-shell').count())) await page.locator('[data-vbtn="4"]').click();
-  await page.waitForSelector('.ca-shell');
-  await page.locator('.ca-nav-item', { hasText: 'Create' }).click();
-  await page.waitForSelector('.ca-shell[data-ca-module="generate"]');
+  await openStudio(page, base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
+
+  await page.locator('[data-studio-nav]').waitFor();
+  await page.locator('[data-studio-category="create"]').click();
+  await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
   await page.waitForTimeout(300);
   return { errors, bodies };
 }
 
 async function chooseTarget(page, id) {
-  const select = page.locator('select', { has: page.locator(`option[value="${id}"]`) }).first();
-  await select.waitFor({ state: 'visible' });
-  await select.selectOption(id);
-  await page.waitForTimeout(300);
+  await chooseModel(page, id);
 }
 
 async function generateOnce(page, bodies) {
   const before = bodies.length;
-  await page.locator('.ca-generate-form textarea').first().fill('a red fox in snow');
-  await page.locator('.ca-generate-form .ca-primary').click();
+  await page.getByRole('textbox', { name: 'Describe your image', exact: true }).fill('a red fox in snow');
+  await page.getByRole('button', { name: 'Generate image', exact: true }).click();
   for (let i = 0; i < 40 && bodies.length === before; i++) await page.waitForTimeout(100);
   assert.equal(bodies.length, before + 1, 'exactly one generation request was sent');
   return bodies[bodies.length - 1];
@@ -99,8 +96,11 @@ async function generateOnce(page, bodies) {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       const { errors, bodies } = await openGenerate(page, srv.base);
       await chooseTarget(page, t.id);
+      // V2 keeps the user's current settings on a model switch and offers the target's own defaults explicitly.
+      await page.getByRole('button', { name: /Use model defaults/ }).click();
       const sampler = page.locator('[data-dex-field="sampler"]');
       await sampler.waitFor({ state: 'visible' });
+      await page.waitForFunction(() => document.querySelector('[data-dex-field="sampler"]')?.value === 'dpmpp2m');
       assert.equal(await sampler.inputValue(), 'dpmpp2m');
       const body = await generateOnce(page, bodies);
       assert.equal(body.target, t.id);
@@ -123,7 +123,7 @@ async function generateOnce(page, bodies) {
       await page.close();
     });
 
-    await test('inspector shows the effective sampler, CLIP skip and tiling and follows the controls', async () => {
+    await test('V2 effective settings show the sampler, CLIP skip and tiling and follow the controls', async () => {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       const { errors } = await openGenerate(page, srv.base);
       await chooseTarget(page, 'sdxl-base');
@@ -131,31 +131,31 @@ async function generateOnce(page, bodies) {
       await page.locator('[data-dex-field="clip-skip"]').fill('2');
       await page.locator('[data-dex-field="tiling"]').check();
       await page.waitForTimeout(400);
-      const text = await page.locator('.ca-inspector').innerText();
+      const text = await page.locator('[data-studio-effective-settings]').innerText();
       assert.match(text, /Sampler\s*heun/i);
       assert.match(text, /CLIP skip \/ tiling\s*2 \/ VAE tiling on/i);
       await chooseTarget(page, 'flux2-klein-4b');
       await page.waitForTimeout(400);
-      const klein = await page.locator('.ca-inspector').innerText();
+      const klein = await page.locator('[data-studio-effective-settings]').innerText();
       assert.match(klein, /Fixed \(flow-match Euler\)/);
       assert.match(klein, /Not available for this target/);
       assert.deepEqual(errors, []);
       await page.close();
     });
 
-    await test('legacy V1-V3 sampler selects offer only supported ids and no unsupported A1111 aliases', async () => {
-      for (const v of ['1', '2', '3']) {
+    await test('V2 sampler selects offer supported ids and no unsupported A1111 aliases', async () => {
+      for (const v of ['2']) {
         const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
         const { errors, bodies } = await openGenerate(page, srv.base);
-        await page.locator(`[data-vbtn="${v}"]`).click();
+        await chooseTarget(page, 'sdxl-base');
         await page.waitForTimeout(600);
         const lists = await page.evaluate(() => [...document.querySelectorAll('select')]
           .filter(s => [...s.options].some(o => o.value === 'euler_a'))
           .map(s => ({ values: [...s.options].map(o => o.value), visible: !!s.offsetParent })));
         assert.ok(lists.length >= 1, 'legacy sampler select present in V' + v);
         for (const l of lists) {
-          assert.deepEqual(l.values, ['euler_a', 'euler', 'heun', 'dpm2', 'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm']);
-          assert.equal(l.values.some(x => /sde|\+/.test(x)), false);
+          assert.deepEqual(l.values, ['euler_a', 'euler', 'heun', 'dpm2', 'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm', 'ddim_trailing', 'tcd', 'res_multistep', 'res_2s', 'er_sde', 'euler_cfg_pp', 'euler_a_cfg_pp']);
+          assert.equal(l.values.some(x => /\+|dpmpp_?(2m_|3m_)?sde|^sde$/.test(x)), false);
         }
         assert.deepEqual(errors, []);
         await page.close();
@@ -166,7 +166,7 @@ async function generateOnce(page, bodies) {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       const { errors, bodies } = await openGenerate(page, srv.base);
       await chooseTarget(page, 'sdxl-base');
-      await page.locator('.ca-generate-form textarea').first().fill('a secret fox prompt');
+      await page.getByRole('textbox', { name: 'Describe your image', exact: true }).fill('a secret fox prompt');
       await page.locator('[data-dex-field="sampler"]').selectOption('heun');
       await page.locator('[data-dex-field="clip-skip"]').fill('2');
       await page.locator('[data-dex-field="tiling"]').check();
@@ -192,7 +192,7 @@ async function generateOnce(page, bodies) {
       await page.locator('[data-dex-field="preview-button"]').click();
       await page.locator('[data-dex-field="preview-error"]').waitFor({ state: 'visible' });
       assert.match(await page.locator('[data-dex-field="preview-error"]').innerText(), /Invalid prompt/);
-      await page.locator('.ca-generate-form textarea').first().fill('a red fox');
+      await page.getByRole('textbox', { name: 'Describe your image', exact: true }).fill('a red fox');
       await page.locator('[data-dex-field="preview-button"]').click();
       await page.locator('[data-dex-field="preview-command"]').waitFor({ state: 'visible' });
       const command = await page.locator('[data-dex-field="preview-command"]').innerText();

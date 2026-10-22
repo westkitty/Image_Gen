@@ -3,7 +3,7 @@
 // validators over HTTP. No image is generated (queue creation is intercepted).
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups, openStudio } = require('./helpers');
 
 const FX = { 'fx-landscape.png': { w: 800, h: 500, meta: { operation: 'txt2img', target: 'sd15', seed: 1, steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', vae: 'auto', loras: [], gen_schema: 1, prompt_saved: false } } };
 const { test, results, exitCode } = runner('xyz-plot');
@@ -19,7 +19,7 @@ async function newPage(browser, base) {
   await page.route('**/api/models/secondary/activate', r => r.fulfill({ json: { ok: true, activeSecondaryModel: 'sd15', modelState: {} } }));
   await page.route('**/api/xyz/plan', r => { plans.push(r.request().postDataJSON()); r.continue(); });
   await page.route('**/api/xyz', r => { starts.push(r.request().postDataJSON()); r.fulfill({ status: 400, json: { error: 'intercepted by test' } }); });
-  await page.goto(base + '/dexdiffusion/');
+  await openStudio(page, base + '/dexdiffusion/');
   await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
   await page.evaluate(() => { __dex.setState({ prompt: 'a red cat on a sofa', target: 'sd15' }); __dex.setScreen('batch'); });
   await page.waitForSelector('[data-xyz-panel]');

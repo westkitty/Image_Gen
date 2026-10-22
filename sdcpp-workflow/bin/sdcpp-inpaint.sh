@@ -229,9 +229,9 @@ VAE_FRAG=""
 # directory is missing instead of letting sd-cli mis-handle the tags.
 LORA_FRAG=""
 if printf '%s' "$ARG_PROMPT" | grep -qE '<lora:[^>]+>'; then
-  remote_test "test -d /Volumes/wc2tb/ImageGen/loras" \
-    || fail "lora-dir" "LoRA requested but /Volumes/wc2tb/ImageGen/loras does not exist on Big Mac"
-  LORA_FRAG="--lora-model-dir /Volumes/wc2tb/ImageGen/loras --lora-apply-mode immediately"
+  remote_test "test -d /Volumes/wc2tb/dex-imagegen/models/loras" \
+    || fail "lora-dir" "LoRA requested but /Volumes/wc2tb/dex-imagegen/models/loras does not exist on Big Mac"
+  LORA_FRAG="--lora-model-dir /Volumes/wc2tb/dex-imagegen/models/loras --lora-apply-mode at_runtime --backend MTL0"
 fi
 
 START_EPOCH="$(now_epoch)"

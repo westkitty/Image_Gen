@@ -3,7 +3,7 @@
 // validated operations), the new version opens in Library, and drag-to-pan moves a zoomed image. No pixel work is faked in the browser.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { makePng, startServer, installModelSnapshots, runner, launchBrowser } = require('./helpers');
+const { makePng, startServer, installModelSnapshots, runner, launchBrowser, openStudio } = require('./helpers');
 const { test, exitCode } = runner('transform');
 const PNG = makePng(64, 64), SRC = '20261017-100000-fx-src.png', NEW = '20261017-100001-fx-new-tf-abc.png';
 
@@ -23,7 +23,7 @@ const PNG = makePng(64, 64), SRC = '20261017-100000-fx-src.png', NEW = '20261017
     await page.route(/\/api\/images\/[^/]+\/meta$/, r => { const id = decodeURIComponent(r.request().url().split('/').slice(-2)[0]); r.fulfill({ json: Object.assign(item(id), { path: '/x', runId: 'r', parent: null, children: [], ancestors: [] }) }); });
     await page.route('**/api/actions/transform', r => { posts.push(r.request().postDataJSON()); r.fulfill({ json: { job_id: 'tf-1', status: 'running', result: { width: 480, height: 640 } } }); });
     await page.route('**/api/jobs/tf-1', r => r.fulfill({ json: { id: 'tf-1', status: 'PASS', results: [{ index: 0, status: 'DONE', imageId: NEW, imageUrl: '/api/images/' + NEW }] } }));
-    await page.goto(srv.base + '/dexdiffusion/');
+    await openStudio(page, srv.base + '/dexdiffusion/');
     await page.waitForFunction(() => window.__dex && __dex.state.capabilityData && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
     await page.evaluate(() => __dex.setScreen('library'));
     await page.waitForSelector('[data-lib-grid] [data-lib-thumb] img');

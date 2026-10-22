@@ -36,6 +36,7 @@ list_asset_dir "checkpoint"   "/Volumes/wc2tb/dex-imagegen/models/checkpoints"
 list_asset_dir "checkpoint"   "/Volumes/wc2tb/dex-imagegen/models/flux1/transformer"
 list_asset_dir "vae"          "$STAGE_ROOT/vaes"
 list_asset_dir "lora"         "$STAGE_ROOT/loras"
+list_asset_dir "lora"         "/Volumes/wc2tb/dex-imagegen/models/loras"
 list_asset_dir "embedding"    "$STAGING/embeddings"
 list_asset_dir "hypernetwork" "$STAGING/hypernetworks"
 printf '__DISCOVERY_DONE__\n'

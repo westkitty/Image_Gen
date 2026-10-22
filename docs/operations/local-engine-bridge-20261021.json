@@ -1,0 +1,3616 @@
+{
+  "schema": "dexdiffusion.local-engine-live-proof.v1",
+  "date": "2026-10-21",
+  "runs": [
+    {
+      "name": "Hyper-SDXL",
+      "job_id": "71a59099-289a-4c1f-b71a-f791d089cdba",
+      "params": {
+        "target": "sdxl-base",
+        "prompt": "[REDACTED]",
+        "width": 512,
+        "height": 512,
+        "steps": 8,
+        "cfg_scale": 6,
+        "sampler": "ddim_trailing",
+        "scheduler": "discrete",
+        "seed": 731960,
+        "save_prompts": false,
+        "loras": [
+          {
+            "name": "Hyper-SDXL-8steps-CFG-lora",
+            "weight": 1
+          }
+        ]
+      },
+      "job": {
+        "id": "71a59099-289a-4c1f-b71a-f791d089cdba",
+        "commandAction": "controlled-generate",
+        "commandSummary": "../operator-console/bin/local-engine-generate.js --target sdxl-base --prompt [REDACTED] --width 512 --height 512 --steps 8 --cfg 6 --seed 731960 --scheduler discrete --sampler ddim_trailing --lora-apply-mode at_runtime --backend-override MTL0 --save-prompts false",
+        "requestParams": {
+          "target": "sdxl-base",
+          "prompt": "[REDACTED]",
+          "negative_prompt": "[REDACTED]",
+          "width": 512,
+          "height": 512,
+          "steps": 8,
+          "cfg_scale": 6,
+          "seed": 731960,
+          "api": "openai",
+          "scheduler": "discrete",
+          "vae": "auto",
+          "save_prompts": false,
+          "quantity": 1,
+          "fast_batch": false,
+          "hires_scale": null,
+          "hires_steps": 0,
+          "hires_denoise": 0.5,
+          "hires_upscaler": "Latent",
+          "parent_image_id": null,
+          "operation": "txt2img",
+          "preset": "",
+          "loras": [
+            {
+              "name": "Hyper-SDXL-8steps-CFG-lora",
+              "weight": 1
+            }
+          ],
+          "lora_apply_mode": "at_runtime",
+          "backend_override": "MTL0",
+          "sampler": "ddim_trailing",
+          "clip_skip": "",
+          "tiling": false,
+          "restore_faces": false,
+          "eta": "",
+          "rng": "",
+          "hires_width": null,
+          "hires_height": null
+        },
+        "status": "PASS",
+        "progress": {
+          "totalRuns": 1,
+          "completedRuns": 1,
+          "currentRun": 1,
+          "currentRunPercent": 100,
+          "totalPercent": 100,
+          "runsLeft": 0,
+          "currentRunStartedAt": 1792590404531
+        },
+        "createdAt": 1792590404530,
+        "completedAt": 1792590465145,
+        "exitCode": 0,
+        "firstFailedGate": null,
+        "runId": "20261021-134644-controlled-sdxl-base-f44dec4f",
+        "remoteStop": "completed",
+        "remoteCancel": null,
+        "upscaledImage": null,
+        "upscaleManifest": null,
+        "controlledTarget": "sdxl-base",
+        "controlledOutputImage": "/Users/andrew/images_made/20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+        "controlledOutputImageUrl": "/api/images/20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+        "controlledManifest": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134644-controlled-sdxl-base-f44dec4f/controlled-manifest.json",
+        "hiresRunId": null,
+        "hiresBaseImage": null,
+        "hiresBaseImageUrl": null,
+        "hiresFinalImage": null,
+        "hiresFinalImageUrl": null,
+        "hiresManifest": null,
+        "upscaledImageUrl": null,
+        "results": [
+          {
+            "index": 0,
+            "status": "DONE",
+            "seed": 731960,
+            "target": "sdxl-base",
+            "runId": "20261021-134644-controlled-sdxl-base-f44dec4f",
+            "width": 512,
+            "height": 512,
+            "imageId": "20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+            "imageUrl": "/api/images/20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+            "operation": "txt2img",
+            "parentImageId": null
+          }
+        ],
+        "images": [
+          {
+            "image_id": "20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+            "url": "/api/images/20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+            "thumbnail_url": "/api/images/20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+            "seed": 731960,
+            "index": 0,
+            "run_id": "20261021-134644-controlled-sdxl-base-f44dec4f",
+            "target": "sdxl-base",
+            "width": 512,
+            "height": 512,
+            "status": "DONE",
+            "operation": "txt2img"
+          }
+        ],
+        "seeds": [
+          731960
+        ],
+        "nativeBatch": false,
+        "nativeFallback": false,
+        "sourceImageId": null,
+        "progressEstimated": false,
+        "resource": null,
+        "generic": {
+          "job_id": "71a59099-289a-4c1f-b71a-f791d089cdba",
+          "media_kind": "image",
+          "operation": "controlled-generate",
+          "worker_id": "sdcpp",
+          "model_id": "sdxl-base",
+          "status": "COMPLETE",
+          "stage_id": "completed",
+          "progress": null,
+          "artifact_required": true,
+          "artifact_validation": {
+            "canonical": true,
+            "validated": true,
+            "artifacts": [
+              {
+                "artifact_id": "20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+                "sha256": "f26e62d21fec7072bd25084a3df49f169f38b704472b8e9d9ad1a2f89663605d"
+              }
+            ]
+          },
+          "owned_resources": [],
+          "created_at": 1792590404530,
+          "started_at": 1792590404530,
+          "completed_at": 1792590465221,
+          "resource_class": "heavy",
+          "resource_lease": null,
+          "params": {
+            "target": "sdxl-base",
+            "prompt": "[REDACTED]",
+            "negative_prompt": "[REDACTED]",
+            "width": 512,
+            "height": 512,
+            "steps": 8,
+            "cfg_scale": 6,
+            "seed": 731960,
+            "api": "openai",
+            "scheduler": "discrete",
+            "vae": "auto",
+            "save_prompts": false,
+            "quantity": 1,
+            "fast_batch": false,
+            "hires_scale": null,
+            "hires_steps": 0,
+            "hires_denoise": 0.5,
+            "hires_upscaler": "Latent",
+            "parent_image_id": null,
+            "operation": "txt2img",
+            "preset": "",
+            "lora_apply_mode": "at_runtime",
+            "backend_override": "MTL0",
+            "sampler": "ddim_trailing",
+            "clip_skip": "",
+            "tiling": false,
+            "restore_faces": false,
+            "eta": "",
+            "rng": "",
+            "hires_width": null,
+            "hires_height": null
+          },
+          "artifacts": [
+            "20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png"
+          ],
+          "first_failed_gate": null,
+          "error": null,
+          "privacy": {
+            "persist_text": false
+          }
+        },
+        "stage": {
+          "key": "complete",
+          "label": "Complete",
+          "percent": 100,
+          "determinate": true
+        }
+      },
+      "log": {
+        "id": "71a59099-289a-4c1f-b71a-f791d089cdba",
+        "stdout": "\n--- Sequential Run 1 of 1 ---\nSDCPP_RUN_ID: 20261021-134644-controlled-sdxl-base-f44dec4f\nENGINE_RESULT: {\"ok\":true,\"run_id\":\"20261021-134644-controlled-sdxl-base-f44dec4f\",\"status\":\"complete\",\"target\":\"sdxl-base\",\"started\":1792590405.75295,\"cleanup\":true,\"deadline\":1792592205.75295,\"model_read\":true,\"pgid\":95199,\"evidence\":[\"  backend: \\\"MTL0\\\",\",\"  lora_apply_mode: at_runtime,\",\"    \\\"/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors\\\": \\\"1\\\"\",\"[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0\",\"[DEBUG] stable-diffusion.cpp:1532 - lora /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors:1.00\",\"[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors using safetensors format\",\"[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors', prefix = 'lora.'\",\"[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors'\",\"[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors\",\"[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors using safetensors format\",\"[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors', prefix = 'lora.'\",\"[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors'\",\"[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors\",\"[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors\",\"[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors using safetensors format\",\"[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors', prefix = 'lora.'\",\"[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors'\",\"[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors\",\"[INFO ] lora.hpp:892  - (2364 / 2364) LoRA tensors have been applied, lora_file_path = /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors\",\"[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 55.61s\"],\"engine_exit\":0,\"dimensions\":[512,512],\"sha256\":\"f26e62d21fec7072bd25084a3df49f169f38b704472b8e9d9ad1a2f89663605d\",\"bytes\":289808,\"finished\":1792590461.853225}\nSDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: sdxl-base\nCONTROLLED_OUTPUT_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134644-controlled-sdxl-base-f44dec4f/controlled-sdxl-base.png\nCONTROLLED_MANIFEST: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134644-controlled-sdxl-base-f44dec4f/controlled-manifest.json\n",
+        "stderr": ""
+      },
+      "retrieved": {
+        "image_id": "20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+        "bytes": 289808,
+        "sha256": "f26e62d21fec7072bd25084a3df49f169f38b704472b8e9d9ad1a2f89663605d"
+      },
+      "meta": {
+        "id": "20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+        "url": "/api/images/20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+        "path": "/Users/andrew/images_made/20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+        "width": 512,
+        "height": 512,
+        "runId": "20261021-134644-controlled-sdxl-base-f44dec4f",
+        "keeper": false,
+        "meta": {
+          "operation": "txt2img",
+          "runId": "20261021-134644-controlled-sdxl-base-f44dec4f",
+          "target": "sdxl-base",
+          "seed": 731960,
+          "width": 512,
+          "height": 512,
+          "steps": 8,
+          "cfg": 6,
+          "scheduler": "discrete",
+          "strength": 1,
+          "gen_schema": 1,
+          "sampler": "ddim_trailing",
+          "vae": "auto",
+          "loras": [
+            {
+              "name": "Hyper-SDXL-8steps-CFG-lora",
+              "weight": 1
+            }
+          ],
+          "prompt_saved": false,
+          "at": "2026-10-21T13:47:45.143Z"
+        },
+        "parent": null,
+        "children": [],
+        "ancestors": [],
+        "recall": {
+          "schema": "dexdiffusion.image_recall.v1",
+          "imageId": "20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+          "operation": "txt2img",
+          "parentId": null,
+          "runId": "20261021-134644-controlled-sdxl-base-f44dec4f",
+          "recorded": true,
+          "params": {
+            "target": "sdxl-base",
+            "seed": 731960,
+            "width": 512,
+            "height": 512,
+            "steps": 8,
+            "cfg": 6,
+            "sampler": "ddim_trailing",
+            "scheduler": "discrete",
+            "vae": "auto",
+            "strength": 1,
+            "loras": [
+              {
+                "name": "Hyper-SDXL-8steps-CFG-lora",
+                "weight": 1
+              }
+            ]
+          },
+          "missing": [
+            "preset"
+          ],
+          "prompt": {
+            "available": false,
+            "text": "",
+            "negative": "",
+            "reason": "Source prompt unavailable \u2014 prompt saving was off"
+          }
+        }
+      },
+      "worker_result": {
+        "ok": true,
+        "run_id": "20261021-134644-controlled-sdxl-base-f44dec4f",
+        "status": "complete",
+        "target": "sdxl-base",
+        "started": 1792590405.75295,
+        "cleanup": true,
+        "deadline": 1792592205.75295,
+        "model_read": true,
+        "pgid": 95199,
+        "evidence": [
+          "  backend: \"MTL0\",",
+          "  lora_apply_mode: at_runtime,",
+          "    \"/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors\": \"1\"",
+          "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+          "[DEBUG] stable-diffusion.cpp:1532 - lora /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors:1.00",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors",
+          "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors",
+          "[INFO ] lora.hpp:892  - (2364 / 2364) LoRA tensors have been applied, lora_file_path = /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SDXL-8steps-CFG-lora.safetensors",
+          "[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 55.61s"
+        ],
+        "engine_exit": 0,
+        "dimensions": [
+          512,
+          512
+        ],
+        "sha256": "f26e62d21fec7072bd25084a3df49f169f38b704472b8e9d9ad1a2f89663605d",
+        "bytes": 289808,
+        "finished": 1792590461.853225
+      }
+    },
+    {
+      "name": "LCM-SDXL",
+      "job_id": "bd08c186-ee21-4867-9252-fbdd3fdf00e4",
+      "params": {
+        "target": "sdxl-base",
+        "prompt": "[REDACTED]",
+        "width": 512,
+        "height": 512,
+        "steps": 4,
+        "cfg_scale": 1.5,
+        "sampler": "lcm",
+        "scheduler": "lcm",
+        "seed": 731960,
+        "save_prompts": false,
+        "loras": [
+          {
+            "name": "lcm_sdxl",
+            "weight": 1
+          }
+        ]
+      },
+      "job": {
+        "id": "bd08c186-ee21-4867-9252-fbdd3fdf00e4",
+        "commandAction": "controlled-generate",
+        "commandSummary": "../operator-console/bin/local-engine-generate.js --target sdxl-base --prompt [REDACTED] --width 512 --height 512 --steps 4 --cfg 1.5 --seed 731960 --scheduler lcm --sampler lcm --lora-apply-mode at_runtime --backend-override MTL0 --save-prompts false",
+        "requestParams": {
+          "target": "sdxl-base",
+          "prompt": "[REDACTED]",
+          "negative_prompt": "[REDACTED]",
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg_scale": 1.5,
+          "seed": 731960,
+          "api": "openai",
+          "scheduler": "lcm",
+          "vae": "auto",
+          "save_prompts": false,
+          "quantity": 1,
+          "fast_batch": false,
+          "hires_scale": null,
+          "hires_steps": 0,
+          "hires_denoise": 0.5,
+          "hires_upscaler": "Latent",
+          "parent_image_id": null,
+          "operation": "txt2img",
+          "preset": "",
+          "loras": [
+            {
+              "name": "lcm_sdxl",
+              "weight": 1
+            }
+          ],
+          "lora_apply_mode": "at_runtime",
+          "backend_override": "MTL0",
+          "sampler": "lcm",
+          "clip_skip": "",
+          "tiling": false,
+          "restore_faces": false,
+          "eta": "",
+          "rng": "",
+          "hires_width": null,
+          "hires_height": null
+        },
+        "status": "PASS",
+        "progress": {
+          "totalRuns": 1,
+          "completedRuns": 1,
+          "currentRun": 1,
+          "currentRunPercent": 100,
+          "totalPercent": 100,
+          "runsLeft": 0,
+          "currentRunStartedAt": 1792590469402
+        },
+        "createdAt": 1792590469398,
+        "completedAt": 1792590506488,
+        "exitCode": 0,
+        "firstFailedGate": null,
+        "runId": "20261021-134750-controlled-sdxl-base-257f891e",
+        "remoteStop": "completed",
+        "remoteCancel": null,
+        "upscaledImage": null,
+        "upscaleManifest": null,
+        "controlledTarget": "sdxl-base",
+        "controlledOutputImage": "/Users/andrew/images_made/20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+        "controlledOutputImageUrl": "/api/images/20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+        "controlledManifest": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134750-controlled-sdxl-base-257f891e/controlled-manifest.json",
+        "hiresRunId": null,
+        "hiresBaseImage": null,
+        "hiresBaseImageUrl": null,
+        "hiresFinalImage": null,
+        "hiresFinalImageUrl": null,
+        "hiresManifest": null,
+        "upscaledImageUrl": null,
+        "results": [
+          {
+            "index": 0,
+            "status": "DONE",
+            "seed": 731960,
+            "target": "sdxl-base",
+            "runId": "20261021-134750-controlled-sdxl-base-257f891e",
+            "width": 512,
+            "height": 512,
+            "imageId": "20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+            "imageUrl": "/api/images/20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+            "operation": "txt2img",
+            "parentImageId": null
+          }
+        ],
+        "images": [
+          {
+            "image_id": "20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+            "url": "/api/images/20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+            "thumbnail_url": "/api/images/20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+            "seed": 731960,
+            "index": 0,
+            "run_id": "20261021-134750-controlled-sdxl-base-257f891e",
+            "target": "sdxl-base",
+            "width": 512,
+            "height": 512,
+            "status": "DONE",
+            "operation": "txt2img"
+          }
+        ],
+        "seeds": [
+          731960
+        ],
+        "nativeBatch": false,
+        "nativeFallback": false,
+        "sourceImageId": null,
+        "progressEstimated": false,
+        "resource": null,
+        "generic": {
+          "job_id": "bd08c186-ee21-4867-9252-fbdd3fdf00e4",
+          "media_kind": "image",
+          "operation": "controlled-generate",
+          "worker_id": "sdcpp",
+          "model_id": "sdxl-base",
+          "status": "COMPLETE",
+          "stage_id": "completed",
+          "progress": null,
+          "artifact_required": true,
+          "artifact_validation": {
+            "canonical": true,
+            "validated": true,
+            "artifacts": [
+              {
+                "artifact_id": "20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+                "sha256": "04d6261fc772aa54f98d8604b69e2d5d8673d4ad10ca7de77ca2c1766ca3d31c"
+              }
+            ]
+          },
+          "owned_resources": [],
+          "created_at": 1792590469398,
+          "started_at": 1792590469399,
+          "completed_at": 1792590506588,
+          "resource_class": "heavy",
+          "resource_lease": null,
+          "params": {
+            "target": "sdxl-base",
+            "prompt": "[REDACTED]",
+            "negative_prompt": "[REDACTED]",
+            "width": 512,
+            "height": 512,
+            "steps": 4,
+            "cfg_scale": 1.5,
+            "seed": 731960,
+            "api": "openai",
+            "scheduler": "lcm",
+            "vae": "auto",
+            "save_prompts": false,
+            "quantity": 1,
+            "fast_batch": false,
+            "hires_scale": null,
+            "hires_steps": 0,
+            "hires_denoise": 0.5,
+            "hires_upscaler": "Latent",
+            "parent_image_id": null,
+            "operation": "txt2img",
+            "preset": "",
+            "lora_apply_mode": "at_runtime",
+            "backend_override": "MTL0",
+            "sampler": "lcm",
+            "clip_skip": "",
+            "tiling": false,
+            "restore_faces": false,
+            "eta": "",
+            "rng": "",
+            "hires_width": null,
+            "hires_height": null
+          },
+          "artifacts": [
+            "20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png"
+          ],
+          "first_failed_gate": null,
+          "error": null,
+          "privacy": {
+            "persist_text": false
+          }
+        },
+        "stage": {
+          "key": "complete",
+          "label": "Complete",
+          "percent": 100,
+          "determinate": true
+        }
+      },
+      "log": {
+        "id": "bd08c186-ee21-4867-9252-fbdd3fdf00e4",
+        "stdout": "\n--- Sequential Run 1 of 1 ---\nSDCPP_RUN_ID: 20261021-134750-controlled-sdxl-base-257f891e\nENGINE_RESULT: {\"ok\":true,\"run_id\":\"20261021-134750-controlled-sdxl-base-257f891e\",\"status\":\"complete\",\"target\":\"sdxl-base\",\"started\":1792590471.126647,\"cleanup\":true,\"deadline\":1792592271.126647,\"model_read\":true,\"pgid\":96687,\"evidence\":[\"  backend: \\\"MTL0\\\",\",\"  lora_apply_mode: at_runtime,\",\"    \\\"/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors\\\": \\\"1\\\"\",\"[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0\",\"[DEBUG] stable-diffusion.cpp:1532 - lora /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors:1.00\",\"[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors using safetensors format\",\"[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors', prefix = 'lora.'\",\"[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors'\",\"[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors\",\"[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors using safetensors format\",\"[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors', prefix = 'lora.'\",\"[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors'\",\"[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors\",\"[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors\",\"[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors using safetensors format\",\"[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors', prefix = 'lora.'\",\"[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors'\",\"[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors\",\"[INFO ] lora.hpp:892  - (2364 / 2364) LoRA tensors have been applied, lora_file_path = /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors\",\"[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 30.27s\"],\"engine_exit\":0,\"dimensions\":[512,512],\"sha256\":\"04d6261fc772aa54f98d8604b69e2d5d8673d4ad10ca7de77ca2c1766ca3d31c\",\"bytes\":281595,\"finished\":1792590501.9361129}\nSDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: sdxl-base\nCONTROLLED_OUTPUT_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134750-controlled-sdxl-base-257f891e/controlled-sdxl-base.png\nCONTROLLED_MANIFEST: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134750-controlled-sdxl-base-257f891e/controlled-manifest.json\n",
+        "stderr": ""
+      },
+      "retrieved": {
+        "image_id": "20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+        "bytes": 281595,
+        "sha256": "04d6261fc772aa54f98d8604b69e2d5d8673d4ad10ca7de77ca2c1766ca3d31c"
+      },
+      "meta": {
+        "id": "20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+        "url": "/api/images/20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+        "path": "/Users/andrew/images_made/20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+        "width": 512,
+        "height": 512,
+        "runId": "20261021-134750-controlled-sdxl-base-257f891e",
+        "keeper": false,
+        "meta": {
+          "operation": "txt2img",
+          "runId": "20261021-134750-controlled-sdxl-base-257f891e",
+          "target": "sdxl-base",
+          "seed": 731960,
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg": 1.5,
+          "scheduler": "lcm",
+          "strength": 1,
+          "gen_schema": 1,
+          "sampler": "lcm",
+          "vae": "auto",
+          "loras": [
+            {
+              "name": "lcm_sdxl",
+              "weight": 1
+            }
+          ],
+          "prompt_saved": false,
+          "at": "2026-10-21T13:48:26.482Z"
+        },
+        "parent": null,
+        "children": [],
+        "ancestors": [],
+        "recall": {
+          "schema": "dexdiffusion.image_recall.v1",
+          "imageId": "20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+          "operation": "txt2img",
+          "parentId": null,
+          "runId": "20261021-134750-controlled-sdxl-base-257f891e",
+          "recorded": true,
+          "params": {
+            "target": "sdxl-base",
+            "seed": 731960,
+            "width": 512,
+            "height": 512,
+            "steps": 4,
+            "cfg": 1.5,
+            "sampler": "lcm",
+            "scheduler": "lcm",
+            "vae": "auto",
+            "strength": 1,
+            "loras": [
+              {
+                "name": "lcm_sdxl",
+                "weight": 1
+              }
+            ]
+          },
+          "missing": [
+            "preset"
+          ],
+          "prompt": {
+            "available": false,
+            "text": "",
+            "negative": "",
+            "reason": "Source prompt unavailable \u2014 prompt saving was off"
+          }
+        }
+      },
+      "worker_result": {
+        "ok": true,
+        "run_id": "20261021-134750-controlled-sdxl-base-257f891e",
+        "status": "complete",
+        "target": "sdxl-base",
+        "started": 1792590471.126647,
+        "cleanup": true,
+        "deadline": 1792592271.126647,
+        "model_read": true,
+        "pgid": 96687,
+        "evidence": [
+          "  backend: \"MTL0\",",
+          "  lora_apply_mode: at_runtime,",
+          "    \"/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors\": \"1\"",
+          "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+          "[DEBUG] stable-diffusion.cpp:1532 - lora /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors:1.00",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors",
+          "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors",
+          "[INFO ] lora.hpp:892  - (2364 / 2364) LoRA tensors have been applied, lora_file_path = /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sdxl.safetensors",
+          "[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 30.27s"
+        ],
+        "engine_exit": 0,
+        "dimensions": [
+          512,
+          512
+        ],
+        "sha256": "04d6261fc772aa54f98d8604b69e2d5d8673d4ad10ca7de77ca2c1766ca3d31c",
+        "bytes": 281595,
+        "finished": 1792590501.9361129
+      }
+    },
+    {
+      "name": "LCM-SD1.5",
+      "job_id": "d36420ec-4a25-441c-8bcf-9c78fc922884",
+      "params": {
+        "target": "sd15",
+        "prompt": "[REDACTED]",
+        "width": 512,
+        "height": 512,
+        "steps": 4,
+        "cfg_scale": 1.5,
+        "sampler": "lcm",
+        "scheduler": "lcm",
+        "seed": 731960,
+        "save_prompts": false,
+        "loras": [
+          {
+            "name": "lcm_sd15",
+            "weight": 1
+          }
+        ]
+      },
+      "job": {
+        "id": "d36420ec-4a25-441c-8bcf-9c78fc922884",
+        "commandAction": "controlled-generate",
+        "commandSummary": "../operator-console/bin/local-engine-generate.js --target sd15 --prompt [REDACTED] --width 512 --height 512 --steps 4 --cfg 1.5 --seed 731960 --api openai --scheduler lcm --sampler lcm --lora-apply-mode at_runtime --backend-override MTL0 --save-prompts false",
+        "requestParams": {
+          "target": "sd15",
+          "prompt": "[REDACTED]",
+          "negative_prompt": "[REDACTED]",
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg_scale": 1.5,
+          "seed": 731960,
+          "api": "openai",
+          "scheduler": "lcm",
+          "vae": "auto",
+          "save_prompts": false,
+          "quantity": 1,
+          "fast_batch": false,
+          "hires_scale": null,
+          "hires_steps": 0,
+          "hires_denoise": 0.5,
+          "hires_upscaler": "Latent",
+          "parent_image_id": null,
+          "operation": "txt2img",
+          "preset": "",
+          "loras": [
+            {
+              "name": "lcm_sd15",
+              "weight": 1
+            }
+          ],
+          "lora_apply_mode": "at_runtime",
+          "backend_override": "MTL0",
+          "sampler": "lcm",
+          "clip_skip": "",
+          "tiling": false,
+          "restore_faces": false,
+          "eta": "",
+          "rng": "",
+          "hires_width": null,
+          "hires_height": null
+        },
+        "status": "PASS",
+        "progress": {
+          "totalRuns": 1,
+          "completedRuns": 1,
+          "currentRun": 1,
+          "currentRunPercent": 100,
+          "totalPercent": 100,
+          "runsLeft": 0,
+          "currentRunStartedAt": 1792590510559
+        },
+        "createdAt": 1792590510557,
+        "completedAt": 1792590698737,
+        "exitCode": 0,
+        "firstFailedGate": null,
+        "runId": "20261021-134831-controlled-sd15-727105b4",
+        "remoteStop": "completed",
+        "remoteCancel": null,
+        "upscaledImage": null,
+        "upscaleManifest": null,
+        "controlledTarget": "sd15",
+        "controlledOutputImage": "/Users/andrew/images_made/20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+        "controlledOutputImageUrl": "/api/images/20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+        "controlledManifest": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134831-controlled-sd15-727105b4/controlled-manifest.json",
+        "hiresRunId": null,
+        "hiresBaseImage": null,
+        "hiresBaseImageUrl": null,
+        "hiresFinalImage": null,
+        "hiresFinalImageUrl": null,
+        "hiresManifest": null,
+        "upscaledImageUrl": null,
+        "results": [
+          {
+            "index": 0,
+            "status": "DONE",
+            "seed": 731960,
+            "target": "sd15",
+            "runId": "20261021-134831-controlled-sd15-727105b4",
+            "width": 512,
+            "height": 512,
+            "imageId": "20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+            "imageUrl": "/api/images/20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+            "operation": "txt2img",
+            "parentImageId": null
+          }
+        ],
+        "images": [
+          {
+            "image_id": "20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+            "url": "/api/images/20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+            "thumbnail_url": "/api/images/20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+            "seed": 731960,
+            "index": 0,
+            "run_id": "20261021-134831-controlled-sd15-727105b4",
+            "target": "sd15",
+            "width": 512,
+            "height": 512,
+            "status": "DONE",
+            "operation": "txt2img"
+          }
+        ],
+        "seeds": [
+          731960
+        ],
+        "nativeBatch": false,
+        "nativeFallback": false,
+        "sourceImageId": null,
+        "progressEstimated": false,
+        "resource": null,
+        "generic": {
+          "job_id": "d36420ec-4a25-441c-8bcf-9c78fc922884",
+          "media_kind": "image",
+          "operation": "controlled-generate",
+          "worker_id": "sdcpp",
+          "model_id": "sd15",
+          "status": "COMPLETE",
+          "stage_id": "completed",
+          "progress": null,
+          "artifact_required": true,
+          "artifact_validation": {
+            "canonical": true,
+            "validated": true,
+            "artifacts": [
+              {
+                "artifact_id": "20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+                "sha256": "694a48b5eb33b69f928df1ab2d017d15463b730a84ccfd07e71aa26b0aac347f"
+              }
+            ]
+          },
+          "owned_resources": [],
+          "created_at": 1792590510557,
+          "started_at": 1792590510558,
+          "completed_at": 1792590698814,
+          "resource_class": "heavy",
+          "resource_lease": null,
+          "params": {
+            "target": "sd15",
+            "prompt": "[REDACTED]",
+            "negative_prompt": "[REDACTED]",
+            "width": 512,
+            "height": 512,
+            "steps": 4,
+            "cfg_scale": 1.5,
+            "seed": 731960,
+            "api": "openai",
+            "scheduler": "lcm",
+            "vae": "auto",
+            "save_prompts": false,
+            "quantity": 1,
+            "fast_batch": false,
+            "hires_scale": null,
+            "hires_steps": 0,
+            "hires_denoise": 0.5,
+            "hires_upscaler": "Latent",
+            "parent_image_id": null,
+            "operation": "txt2img",
+            "preset": "",
+            "lora_apply_mode": "at_runtime",
+            "backend_override": "MTL0",
+            "sampler": "lcm",
+            "clip_skip": "",
+            "tiling": false,
+            "restore_faces": false,
+            "eta": "",
+            "rng": "",
+            "hires_width": null,
+            "hires_height": null
+          },
+          "artifacts": [
+            "20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png"
+          ],
+          "first_failed_gate": null,
+          "error": null,
+          "privacy": {
+            "persist_text": false
+          }
+        },
+        "stage": {
+          "key": "complete",
+          "label": "Complete",
+          "percent": 100,
+          "determinate": true
+        }
+      },
+      "log": {
+        "id": "d36420ec-4a25-441c-8bcf-9c78fc922884",
+        "stdout": "\n--- Sequential Run 1 of 1 ---\nSDCPP_RUN_ID: 20261021-134831-controlled-sd15-727105b4\nENGINE_RESULT: {\"ok\":true,\"run_id\":\"20261021-134831-controlled-sd15-727105b4\",\"status\":\"complete\",\"target\":\"sd15\",\"started\":1792590512.395542,\"cleanup\":true,\"deadline\":1792592312.395542,\"model_read\":true,\"pgid\":97642,\"evidence\":[\"  backend: \\\"MTL0\\\",\",\"  lora_apply_mode: at_runtime,\",\"    \\\"/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors\\\": \\\"1\\\"\",\"[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0\",\"[DEBUG] stable-diffusion.cpp:1532 - lora /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors:1.00\",\"[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors using safetensors format\",\"[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors', prefix = 'lora.'\",\"[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors'\",\"[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors\",\"[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors using safetensors format\",\"[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors', prefix = 'lora.'\",\"[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors'\",\"[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors\",\"[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors\",\"[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors using safetensors format\",\"[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors', prefix = 'lora.'\",\"[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors'\",\"[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors\",\"[INFO ] lora.hpp:892  - (834 / 834) LoRA tensors have been applied, lora_file_path = /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors\",\"[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 182.49s\"],\"engine_exit\":0,\"dimensions\":[512,512],\"sha256\":\"694a48b5eb33b69f928df1ab2d017d15463b730a84ccfd07e71aa26b0aac347f\",\"bytes\":282040,\"finished\":1792590695.4128299}\nSDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: sd15\nCONTROLLED_OUTPUT_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134831-controlled-sd15-727105b4/controlled-sd15.png\nCONTROLLED_MANIFEST: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134831-controlled-sd15-727105b4/controlled-manifest.json\n",
+        "stderr": ""
+      },
+      "retrieved": {
+        "image_id": "20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+        "bytes": 282040,
+        "sha256": "694a48b5eb33b69f928df1ab2d017d15463b730a84ccfd07e71aa26b0aac347f"
+      },
+      "meta": {
+        "id": "20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+        "url": "/api/images/20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+        "path": "/Users/andrew/images_made/20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+        "width": 512,
+        "height": 512,
+        "runId": "20261021-134831-controlled-sd15-727105b4",
+        "keeper": false,
+        "meta": {
+          "operation": "txt2img",
+          "runId": "20261021-134831-controlled-sd15-727105b4",
+          "target": "sd15",
+          "seed": 731960,
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg": 1.5,
+          "scheduler": "lcm",
+          "strength": 1,
+          "gen_schema": 1,
+          "sampler": "lcm",
+          "vae": "auto",
+          "loras": [
+            {
+              "name": "lcm_sd15",
+              "weight": 1
+            }
+          ],
+          "prompt_saved": false,
+          "at": "2026-10-21T13:51:38.734Z"
+        },
+        "parent": null,
+        "children": [],
+        "ancestors": [],
+        "recall": {
+          "schema": "dexdiffusion.image_recall.v1",
+          "imageId": "20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+          "operation": "txt2img",
+          "parentId": null,
+          "runId": "20261021-134831-controlled-sd15-727105b4",
+          "recorded": true,
+          "params": {
+            "target": "sd15",
+            "seed": 731960,
+            "width": 512,
+            "height": 512,
+            "steps": 4,
+            "cfg": 1.5,
+            "sampler": "lcm",
+            "scheduler": "lcm",
+            "vae": "auto",
+            "strength": 1,
+            "loras": [
+              {
+                "name": "lcm_sd15",
+                "weight": 1
+              }
+            ]
+          },
+          "missing": [
+            "preset"
+          ],
+          "prompt": {
+            "available": false,
+            "text": "",
+            "negative": "",
+            "reason": "Source prompt unavailable \u2014 prompt saving was off"
+          }
+        }
+      },
+      "worker_result": {
+        "ok": true,
+        "run_id": "20261021-134831-controlled-sd15-727105b4",
+        "status": "complete",
+        "target": "sd15",
+        "started": 1792590512.395542,
+        "cleanup": true,
+        "deadline": 1792592312.395542,
+        "model_read": true,
+        "pgid": 97642,
+        "evidence": [
+          "  backend: \"MTL0\",",
+          "  lora_apply_mode: at_runtime,",
+          "    \"/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors\": \"1\"",
+          "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+          "[DEBUG] stable-diffusion.cpp:1532 - lora /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors:1.00",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors",
+          "[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors",
+          "[INFO ] lora.hpp:892  - (834 / 834) LoRA tensors have been applied, lora_file_path = /Volumes/wc2tb/dex-imagegen/models/loras/lcm_sd15.safetensors",
+          "[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 182.49s"
+        ],
+        "engine_exit": 0,
+        "dimensions": [
+          512,
+          512
+        ],
+        "sha256": "694a48b5eb33b69f928df1ab2d017d15463b730a84ccfd07e71aa26b0aac347f",
+        "bytes": 282040,
+        "finished": 1792590695.4128299
+      }
+    },
+    {
+      "name": "Hyper-SD15",
+      "job_id": "21c0f7d3-b0e7-4bec-9014-f6262a4e1716",
+      "params": {
+        "target": "sd15",
+        "prompt": "[REDACTED]",
+        "width": 512,
+        "height": 512,
+        "steps": 8,
+        "cfg_scale": 6,
+        "sampler": "ddim_trailing",
+        "scheduler": "discrete",
+        "seed": 731960,
+        "save_prompts": false,
+        "loras": [
+          {
+            "name": "Hyper-SD15-8steps-CFG-lora",
+            "weight": 1
+          }
+        ]
+      },
+      "job": {
+        "id": "21c0f7d3-b0e7-4bec-9014-f6262a4e1716",
+        "commandAction": "controlled-generate",
+        "commandSummary": "../operator-console/bin/local-engine-generate.js --target sd15 --prompt [REDACTED] --width 512 --height 512 --steps 8 --cfg 6 --seed 731960 --api openai --scheduler discrete --sampler ddim_trailing --lora-apply-mode at_runtime --backend-override MTL0 --save-prompts false",
+        "requestParams": {
+          "target": "sd15",
+          "prompt": "[REDACTED]",
+          "negative_prompt": "[REDACTED]",
+          "width": 512,
+          "height": 512,
+          "steps": 8,
+          "cfg_scale": 6,
+          "seed": 731960,
+          "api": "openai",
+          "scheduler": "discrete",
+          "vae": "auto",
+          "save_prompts": false,
+          "quantity": 1,
+          "fast_batch": false,
+          "hires_scale": null,
+          "hires_steps": 0,
+          "hires_denoise": 0.5,
+          "hires_upscaler": "Latent",
+          "parent_image_id": null,
+          "operation": "txt2img",
+          "preset": "",
+          "loras": [
+            {
+              "name": "Hyper-SD15-8steps-CFG-lora",
+              "weight": 1
+            }
+          ],
+          "lora_apply_mode": "at_runtime",
+          "backend_override": "MTL0",
+          "sampler": "ddim_trailing",
+          "clip_skip": "",
+          "tiling": false,
+          "restore_faces": false,
+          "eta": "",
+          "rng": "",
+          "hires_width": null,
+          "hires_height": null
+        },
+        "status": "PASS",
+        "progress": {
+          "totalRuns": 1,
+          "completedRuns": 1,
+          "currentRun": 1,
+          "currentRunPercent": 100,
+          "totalPercent": 100,
+          "runsLeft": 0,
+          "currentRunStartedAt": 1792590703637
+        },
+        "createdAt": 1792590703635,
+        "completedAt": 1792590742411,
+        "exitCode": 0,
+        "firstFailedGate": null,
+        "runId": "20261021-135144-controlled-sd15-8c303aaf",
+        "remoteStop": "completed",
+        "remoteCancel": null,
+        "upscaledImage": null,
+        "upscaleManifest": null,
+        "controlledTarget": "sd15",
+        "controlledOutputImage": "/Users/andrew/images_made/20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+        "controlledOutputImageUrl": "/api/images/20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+        "controlledManifest": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135144-controlled-sd15-8c303aaf/controlled-manifest.json",
+        "hiresRunId": null,
+        "hiresBaseImage": null,
+        "hiresBaseImageUrl": null,
+        "hiresFinalImage": null,
+        "hiresFinalImageUrl": null,
+        "hiresManifest": null,
+        "upscaledImageUrl": null,
+        "results": [
+          {
+            "index": 0,
+            "status": "DONE",
+            "seed": 731960,
+            "target": "sd15",
+            "runId": "20261021-135144-controlled-sd15-8c303aaf",
+            "width": 512,
+            "height": 512,
+            "imageId": "20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+            "imageUrl": "/api/images/20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+            "operation": "txt2img",
+            "parentImageId": null
+          }
+        ],
+        "images": [
+          {
+            "image_id": "20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+            "url": "/api/images/20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+            "thumbnail_url": "/api/images/20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+            "seed": 731960,
+            "index": 0,
+            "run_id": "20261021-135144-controlled-sd15-8c303aaf",
+            "target": "sd15",
+            "width": 512,
+            "height": 512,
+            "status": "DONE",
+            "operation": "txt2img"
+          }
+        ],
+        "seeds": [
+          731960
+        ],
+        "nativeBatch": false,
+        "nativeFallback": false,
+        "sourceImageId": null,
+        "progressEstimated": false,
+        "resource": null,
+        "generic": {
+          "job_id": "21c0f7d3-b0e7-4bec-9014-f6262a4e1716",
+          "media_kind": "image",
+          "operation": "controlled-generate",
+          "worker_id": "sdcpp",
+          "model_id": "sd15",
+          "status": "COMPLETE",
+          "stage_id": "completed",
+          "progress": null,
+          "artifact_required": true,
+          "artifact_validation": {
+            "canonical": true,
+            "validated": true,
+            "artifacts": [
+              {
+                "artifact_id": "20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+                "sha256": "b84b315b9b2108d6e760ae250bedc04b665e294f861595a161c1b08cbe99097e"
+              }
+            ]
+          },
+          "owned_resources": [],
+          "created_at": 1792590703635,
+          "started_at": 1792590703635,
+          "completed_at": 1792590742492,
+          "resource_class": "heavy",
+          "resource_lease": null,
+          "params": {
+            "target": "sd15",
+            "prompt": "[REDACTED]",
+            "negative_prompt": "[REDACTED]",
+            "width": 512,
+            "height": 512,
+            "steps": 8,
+            "cfg_scale": 6,
+            "seed": 731960,
+            "api": "openai",
+            "scheduler": "discrete",
+            "vae": "auto",
+            "save_prompts": false,
+            "quantity": 1,
+            "fast_batch": false,
+            "hires_scale": null,
+            "hires_steps": 0,
+            "hires_denoise": 0.5,
+            "hires_upscaler": "Latent",
+            "parent_image_id": null,
+            "operation": "txt2img",
+            "preset": "",
+            "lora_apply_mode": "at_runtime",
+            "backend_override": "MTL0",
+            "sampler": "ddim_trailing",
+            "clip_skip": "",
+            "tiling": false,
+            "restore_faces": false,
+            "eta": "",
+            "rng": "",
+            "hires_width": null,
+            "hires_height": null
+          },
+          "artifacts": [
+            "20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png"
+          ],
+          "first_failed_gate": null,
+          "error": null,
+          "privacy": {
+            "persist_text": false
+          }
+        },
+        "stage": {
+          "key": "complete",
+          "label": "Complete",
+          "percent": 100,
+          "determinate": true
+        }
+      },
+      "log": {
+        "id": "21c0f7d3-b0e7-4bec-9014-f6262a4e1716",
+        "stdout": "\n--- Sequential Run 1 of 1 ---\nSDCPP_RUN_ID: 20261021-135144-controlled-sd15-8c303aaf\nENGINE_RESULT: {\"ok\":true,\"run_id\":\"20261021-135144-controlled-sd15-8c303aaf\",\"status\":\"complete\",\"target\":\"sd15\",\"started\":1792590705.2265081,\"cleanup\":true,\"deadline\":1792592505.2265081,\"model_read\":true,\"pgid\":2493,\"evidence\":[\"  backend: \\\"MTL0\\\",\",\"  lora_apply_mode: at_runtime,\",\"    \\\"/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors\\\": \\\"1\\\"\",\"[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0\",\"[DEBUG] stable-diffusion.cpp:1532 - lora /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors:1.00\",\"[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors using safetensors format\",\"[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors', prefix = 'lora.'\",\"[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors'\",\"[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors\",\"[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors using safetensors format\",\"[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors', prefix = 'lora.'\",\"[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors'\",\"[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors\",\"[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors\",\"[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors using safetensors format\",\"[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors', prefix = 'lora.'\",\"[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors'\",\"[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors\",\"[INFO ] lora.hpp:892  - (834 / 834) LoRA tensors have been applied, lora_file_path = /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors\",\"[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 33.02s\"],\"engine_exit\":0,\"dimensions\":[512,512],\"sha256\":\"b84b315b9b2108d6e760ae250bedc04b665e294f861595a161c1b08cbe99097e\",\"bytes\":315955,\"finished\":1792590738.712841}\nSDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: sd15\nCONTROLLED_OUTPUT_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135144-controlled-sd15-8c303aaf/controlled-sd15.png\nCONTROLLED_MANIFEST: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135144-controlled-sd15-8c303aaf/controlled-manifest.json\n",
+        "stderr": ""
+      },
+      "retrieved": {
+        "image_id": "20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+        "bytes": 315955,
+        "sha256": "b84b315b9b2108d6e760ae250bedc04b665e294f861595a161c1b08cbe99097e"
+      },
+      "meta": {
+        "id": "20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+        "url": "/api/images/20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+        "path": "/Users/andrew/images_made/20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+        "width": 512,
+        "height": 512,
+        "runId": "20261021-135144-controlled-sd15-8c303aaf",
+        "keeper": false,
+        "meta": {
+          "operation": "txt2img",
+          "runId": "20261021-135144-controlled-sd15-8c303aaf",
+          "target": "sd15",
+          "seed": 731960,
+          "width": 512,
+          "height": 512,
+          "steps": 8,
+          "cfg": 6,
+          "scheduler": "discrete",
+          "strength": 1,
+          "gen_schema": 1,
+          "sampler": "ddim_trailing",
+          "vae": "auto",
+          "loras": [
+            {
+              "name": "Hyper-SD15-8steps-CFG-lora",
+              "weight": 1
+            }
+          ],
+          "prompt_saved": false,
+          "at": "2026-10-21T13:52:22.406Z"
+        },
+        "parent": null,
+        "children": [],
+        "ancestors": [],
+        "recall": {
+          "schema": "dexdiffusion.image_recall.v1",
+          "imageId": "20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+          "operation": "txt2img",
+          "parentId": null,
+          "runId": "20261021-135144-controlled-sd15-8c303aaf",
+          "recorded": true,
+          "params": {
+            "target": "sd15",
+            "seed": 731960,
+            "width": 512,
+            "height": 512,
+            "steps": 8,
+            "cfg": 6,
+            "sampler": "ddim_trailing",
+            "scheduler": "discrete",
+            "vae": "auto",
+            "strength": 1,
+            "loras": [
+              {
+                "name": "Hyper-SD15-8steps-CFG-lora",
+                "weight": 1
+              }
+            ]
+          },
+          "missing": [
+            "preset"
+          ],
+          "prompt": {
+            "available": false,
+            "text": "",
+            "negative": "",
+            "reason": "Source prompt unavailable \u2014 prompt saving was off"
+          }
+        }
+      },
+      "worker_result": {
+        "ok": true,
+        "run_id": "20261021-135144-controlled-sd15-8c303aaf",
+        "status": "complete",
+        "target": "sd15",
+        "started": 1792590705.2265081,
+        "cleanup": true,
+        "deadline": 1792592505.2265081,
+        "model_read": true,
+        "pgid": 2493,
+        "evidence": [
+          "  backend: \"MTL0\",",
+          "  lora_apply_mode: at_runtime,",
+          "    \"/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors\": \"1\"",
+          "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+          "[DEBUG] stable-diffusion.cpp:1532 - lora /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors:1.00",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors",
+          "[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 834/834 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors",
+          "[INFO ] lora.hpp:892  - (834 / 834) LoRA tensors have been applied, lora_file_path = /Volumes/wc2tb/dex-imagegen/models/loras/Hyper-SD15-8steps-CFG-lora.safetensors",
+          "[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 33.02s"
+        ],
+        "engine_exit": 0,
+        "dimensions": [
+          512,
+          512
+        ],
+        "sha256": "b84b315b9b2108d6e760ae250bedc04b665e294f861595a161c1b08cbe99097e",
+        "bytes": 315955,
+        "finished": 1792590738.712841
+      }
+    },
+    {
+      "name": "Pixel Art 1.0",
+      "job_id": "4f15a557-5bc7-4a83-be32-f90e6c021e94",
+      "params": {
+        "target": "flux2-klein-4b",
+        "prompt": "[REDACTED]",
+        "width": 512,
+        "height": 512,
+        "steps": 4,
+        "cfg_scale": 1,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "seed": 731960,
+        "save_prompts": false,
+        "loras": [
+          {
+            "name": "pixelart_lora",
+            "weight": 1
+          }
+        ]
+      },
+      "job": {
+        "id": "4f15a557-5bc7-4a83-be32-f90e6c021e94",
+        "commandAction": "controlled-generate",
+        "commandSummary": "../operator-console/bin/local-engine-generate.js --target flux2-klein-4b --prompt [REDACTED] --width 512 --height 512 --steps 4 --seed 731960 --lora-id pixelart_lora --lora-strength 1 --save-prompts false",
+        "requestParams": {
+          "target": "flux2-klein-4b",
+          "prompt": "[REDACTED]",
+          "negative_prompt": "[REDACTED]",
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg_scale": 1,
+          "seed": 731960,
+          "api": "openai",
+          "scheduler": "discrete",
+          "vae": "auto",
+          "save_prompts": false,
+          "quantity": 1,
+          "fast_batch": false,
+          "hires_scale": null,
+          "hires_steps": 0,
+          "hires_denoise": 0.5,
+          "hires_upscaler": "Latent",
+          "parent_image_id": null,
+          "operation": "txt2img",
+          "preset": "",
+          "loras": [
+            {
+              "name": "pixelart_lora",
+              "weight": 1
+            }
+          ],
+          "sampler": "euler",
+          "clip_skip": "",
+          "tiling": false,
+          "restore_faces": false,
+          "eta": "",
+          "rng": "",
+          "hires_width": null,
+          "hires_height": null,
+          "mflux_lora_id": "pixelart_lora",
+          "mflux_lora_strength": 1
+        },
+        "status": "PASS",
+        "progress": {
+          "totalRuns": 1,
+          "completedRuns": 1,
+          "currentRun": 1,
+          "currentRunPercent": 100,
+          "totalPercent": 100,
+          "runsLeft": 0,
+          "currentRunStartedAt": 1792590800440
+        },
+        "createdAt": 1792590800437,
+        "completedAt": 1792590826412,
+        "exitCode": 0,
+        "firstFailedGate": null,
+        "runId": "20261021-135320-controlled-flux2-klein-4b-e56e9acc",
+        "remoteStop": "completed",
+        "remoteCancel": null,
+        "upscaledImage": null,
+        "upscaleManifest": null,
+        "controlledTarget": "flux2-klein-4b",
+        "controlledOutputImage": "/Users/andrew/images_made/20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+        "controlledOutputImageUrl": "/api/images/20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+        "controlledManifest": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135320-controlled-flux2-klein-4b-e56e9acc/controlled-manifest.json",
+        "hiresRunId": null,
+        "hiresBaseImage": null,
+        "hiresBaseImageUrl": null,
+        "hiresFinalImage": null,
+        "hiresFinalImageUrl": null,
+        "hiresManifest": null,
+        "upscaledImageUrl": null,
+        "results": [
+          {
+            "index": 0,
+            "status": "DONE",
+            "seed": 731960,
+            "target": "flux2-klein-4b",
+            "runId": "20261021-135320-controlled-flux2-klein-4b-e56e9acc",
+            "width": 512,
+            "height": 512,
+            "imageId": "20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+            "imageUrl": "/api/images/20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+            "operation": "txt2img",
+            "parentImageId": null
+          }
+        ],
+        "images": [
+          {
+            "image_id": "20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+            "url": "/api/images/20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+            "thumbnail_url": "/api/images/20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+            "seed": 731960,
+            "index": 0,
+            "run_id": "20261021-135320-controlled-flux2-klein-4b-e56e9acc",
+            "target": "flux2-klein-4b",
+            "width": 512,
+            "height": 512,
+            "status": "DONE",
+            "operation": "txt2img"
+          }
+        ],
+        "seeds": [
+          731960
+        ],
+        "nativeBatch": false,
+        "nativeFallback": false,
+        "sourceImageId": null,
+        "progressEstimated": false,
+        "resource": null,
+        "generic": {
+          "job_id": "4f15a557-5bc7-4a83-be32-f90e6c021e94",
+          "media_kind": "image",
+          "operation": "controlled-generate",
+          "worker_id": "mflux",
+          "model_id": "flux2-klein-4b",
+          "status": "COMPLETE",
+          "stage_id": "completed",
+          "progress": null,
+          "artifact_required": true,
+          "artifact_validation": {
+            "canonical": true,
+            "validated": true,
+            "artifacts": [
+              {
+                "artifact_id": "20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+                "sha256": "8edf5c7cff839f29442ed464074d030b78a2092f06b0f89a1adee548036f2a81"
+              }
+            ]
+          },
+          "owned_resources": [],
+          "created_at": 1792590800437,
+          "started_at": 1792590800438,
+          "completed_at": 1792590826801,
+          "resource_class": "heavy",
+          "resource_lease": null,
+          "params": {
+            "target": "flux2-klein-4b",
+            "prompt": "[REDACTED]",
+            "negative_prompt": "[REDACTED]",
+            "width": 512,
+            "height": 512,
+            "steps": 4,
+            "cfg_scale": 1,
+            "seed": 731960,
+            "api": "openai",
+            "scheduler": "discrete",
+            "vae": "auto",
+            "save_prompts": false,
+            "quantity": 1,
+            "fast_batch": false,
+            "hires_scale": null,
+            "hires_steps": 0,
+            "hires_denoise": 0.5,
+            "hires_upscaler": "Latent",
+            "parent_image_id": null,
+            "operation": "txt2img",
+            "preset": "",
+            "sampler": "euler",
+            "clip_skip": "",
+            "tiling": false,
+            "restore_faces": false,
+            "eta": "",
+            "rng": "",
+            "hires_width": null,
+            "hires_height": null,
+            "mflux_lora_id": "pixelart_lora",
+            "mflux_lora_strength": 1
+          },
+          "artifacts": [
+            "20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png"
+          ],
+          "first_failed_gate": null,
+          "error": null,
+          "privacy": {
+            "persist_text": false
+          }
+        },
+        "stage": {
+          "key": "complete",
+          "label": "Complete",
+          "percent": 100,
+          "determinate": true
+        }
+      },
+      "log": {
+        "id": "4f15a557-5bc7-4a83-be32-f90e6c021e94",
+        "stdout": "\n--- Sequential Run 1 of 1 ---\nSDCPP_RUN_ID: 20261021-135320-controlled-flux2-klein-4b-e56e9acc\nENGINE_RESULT: {\"ok\":true,\"run_id\":\"20261021-135320-controlled-flux2-klein-4b-e56e9acc\",\"status\":\"complete\",\"target\":\"flux2-klein-4b\",\"started\":1792590801.9871612,\"batch_count\":1,\"cleanup\":true,\"deadline\":1792592601.987162,\"model_read\":true,\"pgid\":4177,\"engine_started\":1792590802.6206698,\"engine_finished\":1792590822.476623,\"generation_seconds\":19.856,\"evidence\":[\"\ud83d\udd27 Applying LoRA: pixelart_lora-rslora-r128-a64.safetensors (scale=1.0)\",\"\u2705 All LoRA weights applied successfully\"],\"engine_exit\":0,\"images\":[{\"sha256\":\"8edf5c7cff839f29442ed464074d030b78a2092f06b0f89a1adee548036f2a81\",\"bytes\":269805,\"dimensions\":[512,512]}],\"sha256\":\"8edf5c7cff839f29442ed464074d030b78a2092f06b0f89a1adee548036f2a81\",\"bytes\":269805,\"dimensions\":[512,512],\"finished\":1792590822.557405}\nMFLUX_TIMING: {\"remote_generate_s\":19.856}\nSDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: flux2-klein-4b\nCONTROLLED_OUTPUT_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135320-controlled-flux2-klein-4b-e56e9acc/controlled-flux2-klein-4b.png\nCONTROLLED_MANIFEST: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135320-controlled-flux2-klein-4b-e56e9acc/controlled-manifest.json\n",
+        "stderr": ""
+      },
+      "retrieved": {
+        "image_id": "20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+        "bytes": 269805,
+        "sha256": "8edf5c7cff839f29442ed464074d030b78a2092f06b0f89a1adee548036f2a81"
+      },
+      "meta": {
+        "id": "20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+        "url": "/api/images/20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+        "path": "/Users/andrew/images_made/20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+        "width": 512,
+        "height": 512,
+        "runId": "20261021-135320-controlled-flux2-klein-4b-e56e9acc",
+        "keeper": false,
+        "meta": {
+          "operation": "txt2img",
+          "runId": "20261021-135320-controlled-flux2-klein-4b-e56e9acc",
+          "target": "flux2-klein-4b",
+          "seed": 731960,
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg": 1,
+          "strength": 1,
+          "backend": "mflux",
+          "generation_seconds": 19.856,
+          "gen_schema": 1,
+          "sampler": "euler",
+          "loras": [
+            {
+              "name": "pixelart_lora",
+              "weight": 1
+            }
+          ],
+          "prompt_saved": false,
+          "at": "2026-10-21T13:53:46.409Z"
+        },
+        "parent": null,
+        "children": [],
+        "ancestors": [],
+        "recall": {
+          "schema": "dexdiffusion.image_recall.v1",
+          "imageId": "20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+          "operation": "txt2img",
+          "parentId": null,
+          "runId": "20261021-135320-controlled-flux2-klein-4b-e56e9acc",
+          "recorded": true,
+          "params": {
+            "target": "flux2-klein-4b",
+            "seed": 731960,
+            "width": 512,
+            "height": 512,
+            "steps": 4,
+            "cfg": 1,
+            "sampler": "euler",
+            "strength": 1,
+            "loras": [
+              {
+                "name": "pixelart_lora",
+                "weight": 1
+              }
+            ]
+          },
+          "missing": [
+            "scheduler",
+            "vae",
+            "preset"
+          ],
+          "prompt": {
+            "available": false,
+            "text": "",
+            "negative": "",
+            "reason": "Source prompt unavailable \u2014 prompt saving was off"
+          }
+        }
+      },
+      "worker_result": {
+        "ok": true,
+        "run_id": "20261021-135320-controlled-flux2-klein-4b-e56e9acc",
+        "status": "complete",
+        "target": "flux2-klein-4b",
+        "started": 1792590801.9871612,
+        "batch_count": 1,
+        "cleanup": true,
+        "deadline": 1792592601.987162,
+        "model_read": true,
+        "pgid": 4177,
+        "engine_started": 1792590802.6206698,
+        "engine_finished": 1792590822.476623,
+        "generation_seconds": 19.856,
+        "evidence": [
+          "\ud83d\udd27 Applying LoRA: pixelart_lora-rslora-r128-a64.safetensors (scale=1.0)",
+          "\u2705 All LoRA weights applied successfully"
+        ],
+        "engine_exit": 0,
+        "images": [
+          {
+            "sha256": "8edf5c7cff839f29442ed464074d030b78a2092f06b0f89a1adee548036f2a81",
+            "bytes": 269805,
+            "dimensions": [
+              512,
+              512
+            ]
+          }
+        ],
+        "sha256": "8edf5c7cff839f29442ed464074d030b78a2092f06b0f89a1adee548036f2a81",
+        "bytes": 269805,
+        "dimensions": [
+          512,
+          512
+        ],
+        "finished": 1792590822.557405
+      }
+    },
+    {
+      "name": "Pixel Art 0.5",
+      "job_id": "01502b3c-f732-4383-99de-b5fcd2c8027f",
+      "params": {
+        "target": "flux2-klein-4b",
+        "prompt": "[REDACTED]",
+        "width": 512,
+        "height": 512,
+        "steps": 4,
+        "cfg_scale": 1,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "seed": 731960,
+        "save_prompts": false,
+        "loras": [
+          {
+            "name": "pixelart_lora",
+            "weight": 0.5
+          }
+        ]
+      },
+      "job": {
+        "id": "01502b3c-f732-4383-99de-b5fcd2c8027f",
+        "commandAction": "controlled-generate",
+        "commandSummary": "../operator-console/bin/local-engine-generate.js --target flux2-klein-4b --prompt [REDACTED] --width 512 --height 512 --steps 4 --seed 731960 --lora-id pixelart_lora --lora-strength 0.5 --save-prompts false",
+        "requestParams": {
+          "target": "flux2-klein-4b",
+          "prompt": "[REDACTED]",
+          "negative_prompt": "[REDACTED]",
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg_scale": 1,
+          "seed": 731960,
+          "api": "openai",
+          "scheduler": "discrete",
+          "vae": "auto",
+          "save_prompts": false,
+          "quantity": 1,
+          "fast_batch": false,
+          "hires_scale": null,
+          "hires_steps": 0,
+          "hires_denoise": 0.5,
+          "hires_upscaler": "Latent",
+          "parent_image_id": null,
+          "operation": "txt2img",
+          "preset": "",
+          "loras": [
+            {
+              "name": "pixelart_lora",
+              "weight": 0.5
+            }
+          ],
+          "sampler": "euler",
+          "clip_skip": "",
+          "tiling": false,
+          "restore_faces": false,
+          "eta": "",
+          "rng": "",
+          "hires_width": null,
+          "hires_height": null,
+          "mflux_lora_id": "pixelart_lora",
+          "mflux_lora_strength": 0.5
+        },
+        "status": "PASS",
+        "progress": {
+          "totalRuns": 1,
+          "completedRuns": 1,
+          "currentRun": 1,
+          "currentRunPercent": 100,
+          "totalPercent": 100,
+          "runsLeft": 0,
+          "currentRunStartedAt": 1792590827766
+        },
+        "createdAt": 1792590827764,
+        "completedAt": 1792590854522,
+        "exitCode": 0,
+        "firstFailedGate": null,
+        "runId": "20261021-135348-controlled-flux2-klein-4b-d774d2ef",
+        "remoteStop": "completed",
+        "remoteCancel": null,
+        "upscaledImage": null,
+        "upscaleManifest": null,
+        "controlledTarget": "flux2-klein-4b",
+        "controlledOutputImage": "/Users/andrew/images_made/20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+        "controlledOutputImageUrl": "/api/images/20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+        "controlledManifest": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135348-controlled-flux2-klein-4b-d774d2ef/controlled-manifest.json",
+        "hiresRunId": null,
+        "hiresBaseImage": null,
+        "hiresBaseImageUrl": null,
+        "hiresFinalImage": null,
+        "hiresFinalImageUrl": null,
+        "hiresManifest": null,
+        "upscaledImageUrl": null,
+        "results": [
+          {
+            "index": 0,
+            "status": "DONE",
+            "seed": 731960,
+            "target": "flux2-klein-4b",
+            "runId": "20261021-135348-controlled-flux2-klein-4b-d774d2ef",
+            "width": 512,
+            "height": 512,
+            "imageId": "20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+            "imageUrl": "/api/images/20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+            "operation": "txt2img",
+            "parentImageId": null
+          }
+        ],
+        "images": [
+          {
+            "image_id": "20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+            "url": "/api/images/20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+            "thumbnail_url": "/api/images/20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+            "seed": 731960,
+            "index": 0,
+            "run_id": "20261021-135348-controlled-flux2-klein-4b-d774d2ef",
+            "target": "flux2-klein-4b",
+            "width": 512,
+            "height": 512,
+            "status": "DONE",
+            "operation": "txt2img"
+          }
+        ],
+        "seeds": [
+          731960
+        ],
+        "nativeBatch": false,
+        "nativeFallback": false,
+        "sourceImageId": null,
+        "progressEstimated": false,
+        "resource": null,
+        "generic": {
+          "job_id": "01502b3c-f732-4383-99de-b5fcd2c8027f",
+          "media_kind": "image",
+          "operation": "controlled-generate",
+          "worker_id": "mflux",
+          "model_id": "flux2-klein-4b",
+          "status": "COMPLETE",
+          "stage_id": "completed",
+          "progress": null,
+          "artifact_required": true,
+          "artifact_validation": {
+            "canonical": true,
+            "validated": true,
+            "artifacts": [
+              {
+                "artifact_id": "20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+                "sha256": "1b06638f83751906190877c053978261ab620921acee02237a446d2e9c278977"
+              }
+            ]
+          },
+          "owned_resources": [],
+          "created_at": 1792590827764,
+          "started_at": 1792590827764,
+          "completed_at": 1792590854676,
+          "resource_class": "heavy",
+          "resource_lease": null,
+          "params": {
+            "target": "flux2-klein-4b",
+            "prompt": "[REDACTED]",
+            "negative_prompt": "[REDACTED]",
+            "width": 512,
+            "height": 512,
+            "steps": 4,
+            "cfg_scale": 1,
+            "seed": 731960,
+            "api": "openai",
+            "scheduler": "discrete",
+            "vae": "auto",
+            "save_prompts": false,
+            "quantity": 1,
+            "fast_batch": false,
+            "hires_scale": null,
+            "hires_steps": 0,
+            "hires_denoise": 0.5,
+            "hires_upscaler": "Latent",
+            "parent_image_id": null,
+            "operation": "txt2img",
+            "preset": "",
+            "sampler": "euler",
+            "clip_skip": "",
+            "tiling": false,
+            "restore_faces": false,
+            "eta": "",
+            "rng": "",
+            "hires_width": null,
+            "hires_height": null,
+            "mflux_lora_id": "pixelart_lora",
+            "mflux_lora_strength": 0.5
+          },
+          "artifacts": [
+            "20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png"
+          ],
+          "first_failed_gate": null,
+          "error": null,
+          "privacy": {
+            "persist_text": false
+          }
+        },
+        "stage": {
+          "key": "complete",
+          "label": "Complete",
+          "percent": 100,
+          "determinate": true
+        }
+      },
+      "log": {
+        "id": "01502b3c-f732-4383-99de-b5fcd2c8027f",
+        "stdout": "\n--- Sequential Run 1 of 1 ---\nSDCPP_RUN_ID: 20261021-135348-controlled-flux2-klein-4b-d774d2ef\nENGINE_RESULT: {\"ok\":true,\"run_id\":\"20261021-135348-controlled-flux2-klein-4b-d774d2ef\",\"status\":\"complete\",\"target\":\"flux2-klein-4b\",\"started\":1792590829.3805509,\"batch_count\":1,\"cleanup\":true,\"deadline\":1792592629.380552,\"model_read\":true,\"pgid\":4924,\"engine_started\":1792590829.8038201,\"engine_finished\":1792590849.5138109,\"generation_seconds\":19.71,\"evidence\":[\"\ud83d\udd27 Applying LoRA: pixelart_lora-rslora-r128-a64.safetensors (scale=0.5)\",\"\u2705 All LoRA weights applied successfully\"],\"engine_exit\":0,\"images\":[{\"sha256\":\"1b06638f83751906190877c053978261ab620921acee02237a446d2e9c278977\",\"bytes\":308592,\"dimensions\":[512,512]}],\"sha256\":\"1b06638f83751906190877c053978261ab620921acee02237a446d2e9c278977\",\"bytes\":308592,\"dimensions\":[512,512],\"finished\":1792590849.599085}\nMFLUX_TIMING: {\"remote_generate_s\":19.71}\nSDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: flux2-klein-4b\nCONTROLLED_OUTPUT_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135348-controlled-flux2-klein-4b-d774d2ef/controlled-flux2-klein-4b.png\nCONTROLLED_MANIFEST: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135348-controlled-flux2-klein-4b-d774d2ef/controlled-manifest.json\n",
+        "stderr": ""
+      },
+      "retrieved": {
+        "image_id": "20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+        "bytes": 308592,
+        "sha256": "1b06638f83751906190877c053978261ab620921acee02237a446d2e9c278977"
+      },
+      "meta": {
+        "id": "20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+        "url": "/api/images/20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+        "path": "/Users/andrew/images_made/20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+        "width": 512,
+        "height": 512,
+        "runId": "20261021-135348-controlled-flux2-klein-4b-d774d2ef",
+        "keeper": false,
+        "meta": {
+          "operation": "txt2img",
+          "runId": "20261021-135348-controlled-flux2-klein-4b-d774d2ef",
+          "target": "flux2-klein-4b",
+          "seed": 731960,
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg": 1,
+          "strength": 0.5,
+          "backend": "mflux",
+          "generation_seconds": 19.71,
+          "gen_schema": 1,
+          "sampler": "euler",
+          "loras": [
+            {
+              "name": "pixelart_lora",
+              "weight": 0.5
+            }
+          ],
+          "prompt_saved": false,
+          "at": "2026-10-21T13:54:14.519Z"
+        },
+        "parent": null,
+        "children": [],
+        "ancestors": [],
+        "recall": {
+          "schema": "dexdiffusion.image_recall.v1",
+          "imageId": "20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+          "operation": "txt2img",
+          "parentId": null,
+          "runId": "20261021-135348-controlled-flux2-klein-4b-d774d2ef",
+          "recorded": true,
+          "params": {
+            "target": "flux2-klein-4b",
+            "seed": 731960,
+            "width": 512,
+            "height": 512,
+            "steps": 4,
+            "cfg": 1,
+            "sampler": "euler",
+            "strength": 0.5,
+            "loras": [
+              {
+                "name": "pixelart_lora",
+                "weight": 0.5
+              }
+            ]
+          },
+          "missing": [
+            "scheduler",
+            "vae",
+            "preset"
+          ],
+          "prompt": {
+            "available": false,
+            "text": "",
+            "negative": "",
+            "reason": "Source prompt unavailable \u2014 prompt saving was off"
+          }
+        }
+      },
+      "worker_result": {
+        "ok": true,
+        "run_id": "20261021-135348-controlled-flux2-klein-4b-d774d2ef",
+        "status": "complete",
+        "target": "flux2-klein-4b",
+        "started": 1792590829.3805509,
+        "batch_count": 1,
+        "cleanup": true,
+        "deadline": 1792592629.380552,
+        "model_read": true,
+        "pgid": 4924,
+        "engine_started": 1792590829.8038201,
+        "engine_finished": 1792590849.5138109,
+        "generation_seconds": 19.71,
+        "evidence": [
+          "\ud83d\udd27 Applying LoRA: pixelart_lora-rslora-r128-a64.safetensors (scale=0.5)",
+          "\u2705 All LoRA weights applied successfully"
+        ],
+        "engine_exit": 0,
+        "images": [
+          {
+            "sha256": "1b06638f83751906190877c053978261ab620921acee02237a446d2e9c278977",
+            "bytes": 308592,
+            "dimensions": [
+              512,
+              512
+            ]
+          }
+        ],
+        "sha256": "1b06638f83751906190877c053978261ab620921acee02237a446d2e9c278977",
+        "bytes": 308592,
+        "dimensions": [
+          512,
+          512
+        ],
+        "finished": 1792590849.599085
+      }
+    },
+    {
+      "name": "FLUX.2 OFF",
+      "job_id": "407a6da3-38e7-4edf-922f-be8662d72fdc",
+      "params": {
+        "target": "flux2-klein-4b",
+        "prompt": "[REDACTED]",
+        "width": 512,
+        "height": 512,
+        "steps": 4,
+        "cfg_scale": 1,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "seed": 731960,
+        "save_prompts": false,
+        "loras": []
+      },
+      "job": {
+        "id": "407a6da3-38e7-4edf-922f-be8662d72fdc",
+        "commandAction": "controlled-generate",
+        "commandSummary": "../operator-console/bin/local-engine-generate.js --target flux2-klein-4b --prompt [REDACTED] --width 512 --height 512 --steps 4 --seed 731960 --save-prompts false",
+        "requestParams": {
+          "target": "flux2-klein-4b",
+          "prompt": "[REDACTED]",
+          "negative_prompt": "[REDACTED]",
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg_scale": 1,
+          "seed": 731960,
+          "api": "openai",
+          "scheduler": "discrete",
+          "vae": "auto",
+          "save_prompts": false,
+          "quantity": 1,
+          "fast_batch": false,
+          "hires_scale": null,
+          "hires_steps": 0,
+          "hires_denoise": 0.5,
+          "hires_upscaler": "Latent",
+          "parent_image_id": null,
+          "operation": "txt2img",
+          "preset": "",
+          "loras": [],
+          "lora_apply_mode": "",
+          "backend_override": "",
+          "sampler": "euler",
+          "clip_skip": "",
+          "tiling": false,
+          "restore_faces": false,
+          "eta": "",
+          "rng": "",
+          "hires_width": null,
+          "hires_height": null
+        },
+        "status": "PASS",
+        "progress": {
+          "totalRuns": 1,
+          "completedRuns": 1,
+          "currentRun": 1,
+          "currentRunPercent": 100,
+          "totalPercent": 100,
+          "runsLeft": 0,
+          "currentRunStartedAt": 1792590855311
+        },
+        "createdAt": 1792590855306,
+        "completedAt": 1792590876857,
+        "exitCode": 0,
+        "firstFailedGate": null,
+        "runId": "20261021-135415-controlled-flux2-klein-4b-1f501a6a",
+        "remoteStop": "completed",
+        "remoteCancel": null,
+        "upscaledImage": null,
+        "upscaleManifest": null,
+        "controlledTarget": "flux2-klein-4b",
+        "controlledOutputImage": "/Users/andrew/images_made/20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+        "controlledOutputImageUrl": "/api/images/20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+        "controlledManifest": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135415-controlled-flux2-klein-4b-1f501a6a/controlled-manifest.json",
+        "hiresRunId": null,
+        "hiresBaseImage": null,
+        "hiresBaseImageUrl": null,
+        "hiresFinalImage": null,
+        "hiresFinalImageUrl": null,
+        "hiresManifest": null,
+        "upscaledImageUrl": null,
+        "results": [
+          {
+            "index": 0,
+            "status": "DONE",
+            "seed": 731960,
+            "target": "flux2-klein-4b",
+            "runId": "20261021-135415-controlled-flux2-klein-4b-1f501a6a",
+            "width": 512,
+            "height": 512,
+            "imageId": "20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+            "imageUrl": "/api/images/20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+            "operation": "txt2img",
+            "parentImageId": null
+          }
+        ],
+        "images": [
+          {
+            "image_id": "20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+            "url": "/api/images/20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+            "thumbnail_url": "/api/images/20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+            "seed": 731960,
+            "index": 0,
+            "run_id": "20261021-135415-controlled-flux2-klein-4b-1f501a6a",
+            "target": "flux2-klein-4b",
+            "width": 512,
+            "height": 512,
+            "status": "DONE",
+            "operation": "txt2img"
+          }
+        ],
+        "seeds": [
+          731960
+        ],
+        "nativeBatch": false,
+        "nativeFallback": false,
+        "sourceImageId": null,
+        "progressEstimated": false,
+        "resource": null,
+        "generic": {
+          "job_id": "407a6da3-38e7-4edf-922f-be8662d72fdc",
+          "media_kind": "image",
+          "operation": "controlled-generate",
+          "worker_id": "mflux",
+          "model_id": "flux2-klein-4b",
+          "status": "COMPLETE",
+          "stage_id": "completed",
+          "progress": null,
+          "artifact_required": true,
+          "artifact_validation": {
+            "canonical": true,
+            "validated": true,
+            "artifacts": [
+              {
+                "artifact_id": "20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+                "sha256": "3d425eb2391b30db749e19acd8266e4360fcfb2e332489970ba08a6ebf579914"
+              }
+            ]
+          },
+          "owned_resources": [],
+          "created_at": 1792590855306,
+          "started_at": 1792590855307,
+          "completed_at": 1792590877091,
+          "resource_class": "heavy",
+          "resource_lease": null,
+          "params": {
+            "target": "flux2-klein-4b",
+            "prompt": "[REDACTED]",
+            "negative_prompt": "[REDACTED]",
+            "width": 512,
+            "height": 512,
+            "steps": 4,
+            "cfg_scale": 1,
+            "seed": 731960,
+            "api": "openai",
+            "scheduler": "discrete",
+            "vae": "auto",
+            "save_prompts": false,
+            "quantity": 1,
+            "fast_batch": false,
+            "hires_scale": null,
+            "hires_steps": 0,
+            "hires_denoise": 0.5,
+            "hires_upscaler": "Latent",
+            "parent_image_id": null,
+            "operation": "txt2img",
+            "preset": "",
+            "lora_apply_mode": "",
+            "backend_override": "",
+            "sampler": "euler",
+            "clip_skip": "",
+            "tiling": false,
+            "restore_faces": false,
+            "eta": "",
+            "rng": "",
+            "hires_width": null,
+            "hires_height": null
+          },
+          "artifacts": [
+            "20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png"
+          ],
+          "first_failed_gate": null,
+          "error": null,
+          "privacy": {
+            "persist_text": false
+          }
+        },
+        "stage": {
+          "key": "complete",
+          "label": "Complete",
+          "percent": 100,
+          "determinate": true
+        }
+      },
+      "log": {
+        "id": "407a6da3-38e7-4edf-922f-be8662d72fdc",
+        "stdout": "\n--- Sequential Run 1 of 1 ---\nSDCPP_RUN_ID: 20261021-135415-controlled-flux2-klein-4b-1f501a6a\nENGINE_RESULT: {\"ok\":true,\"run_id\":\"20261021-135415-controlled-flux2-klein-4b-1f501a6a\",\"status\":\"complete\",\"target\":\"flux2-klein-4b\",\"started\":1792590856.597965,\"batch_count\":1,\"cleanup\":true,\"deadline\":1792592656.5979662,\"model_read\":true,\"engine_started\":1792590856.59876,\"pgid\":5488,\"engine_finished\":1792590873.772047,\"generation_seconds\":17.173,\"evidence\":[],\"engine_exit\":0,\"images\":[{\"sha256\":\"3d425eb2391b30db749e19acd8266e4360fcfb2e332489970ba08a6ebf579914\",\"bytes\":338924,\"dimensions\":[512,512]}],\"sha256\":\"3d425eb2391b30db749e19acd8266e4360fcfb2e332489970ba08a6ebf579914\",\"bytes\":338924,\"dimensions\":[512,512],\"finished\":1792590873.860506}\nMFLUX_TIMING: {\"remote_generate_s\":17.173}\nSDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: flux2-klein-4b\nCONTROLLED_OUTPUT_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135415-controlled-flux2-klein-4b-1f501a6a/controlled-flux2-klein-4b.png\nCONTROLLED_MANIFEST: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135415-controlled-flux2-klein-4b-1f501a6a/controlled-manifest.json\n",
+        "stderr": ""
+      },
+      "retrieved": {
+        "image_id": "20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+        "bytes": 338924,
+        "sha256": "3d425eb2391b30db749e19acd8266e4360fcfb2e332489970ba08a6ebf579914"
+      },
+      "meta": {
+        "id": "20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+        "url": "/api/images/20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+        "path": "/Users/andrew/images_made/20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+        "width": 512,
+        "height": 512,
+        "runId": "20261021-135415-controlled-flux2-klein-4b-1f501a6a",
+        "keeper": false,
+        "meta": {
+          "operation": "txt2img",
+          "runId": "20261021-135415-controlled-flux2-klein-4b-1f501a6a",
+          "target": "flux2-klein-4b",
+          "seed": 731960,
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg": 1,
+          "backend": "mflux",
+          "generation_seconds": 17.173,
+          "gen_schema": 1,
+          "sampler": "euler",
+          "loras": [],
+          "prompt_saved": false,
+          "at": "2026-10-21T13:54:36.854Z"
+        },
+        "parent": null,
+        "children": [],
+        "ancestors": [],
+        "recall": {
+          "schema": "dexdiffusion.image_recall.v1",
+          "imageId": "20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+          "operation": "txt2img",
+          "parentId": null,
+          "runId": "20261021-135415-controlled-flux2-klein-4b-1f501a6a",
+          "recorded": true,
+          "params": {
+            "target": "flux2-klein-4b",
+            "seed": 731960,
+            "width": 512,
+            "height": 512,
+            "steps": 4,
+            "cfg": 1,
+            "sampler": "euler",
+            "loras": []
+          },
+          "missing": [
+            "scheduler",
+            "vae",
+            "preset",
+            "strength"
+          ],
+          "prompt": {
+            "available": false,
+            "text": "",
+            "negative": "",
+            "reason": "Source prompt unavailable \u2014 prompt saving was off"
+          }
+        }
+      },
+      "worker_result": {
+        "ok": true,
+        "run_id": "20261021-135415-controlled-flux2-klein-4b-1f501a6a",
+        "status": "complete",
+        "target": "flux2-klein-4b",
+        "started": 1792590856.597965,
+        "batch_count": 1,
+        "cleanup": true,
+        "deadline": 1792592656.5979662,
+        "model_read": true,
+        "engine_started": 1792590856.59876,
+        "pgid": 5488,
+        "engine_finished": 1792590873.772047,
+        "generation_seconds": 17.173,
+        "evidence": [],
+        "engine_exit": 0,
+        "images": [
+          {
+            "sha256": "3d425eb2391b30db749e19acd8266e4360fcfb2e332489970ba08a6ebf579914",
+            "bytes": 338924,
+            "dimensions": [
+              512,
+              512
+            ]
+          }
+        ],
+        "sha256": "3d425eb2391b30db749e19acd8266e4360fcfb2e332489970ba08a6ebf579914",
+        "bytes": 338924,
+        "dimensions": [
+          512,
+          512
+        ],
+        "finished": 1792590873.860506
+      }
+    }
+  ],
+  "resources": {
+    "group": "bigmac-heavy-inference",
+    "capacity": 1,
+    "owner": null,
+    "waiting": [],
+    "external": {
+      "occupied": false,
+      "detail": null,
+      "checkedAt": 1792590875471
+    },
+    "quarantine": null,
+    "blocked_reason": null
+  },
+  "finished": "2026-10-21T13:54:37.716Z",
+  "pixel_art_effect": {
+    "strength_1_vs_half_mae": 25.421138763427734,
+    "strength_1_vs_off_mae": 38.603448232014976,
+    "strength_half_vs_off_mae": 27.759195963541668,
+    "scope": "matched prompt, seed 731960, 512x512, 4 steps; pixel differences, not subjective quality"
+  },
+  "native_lightning": {
+    "generic_job": {
+      "job_id": "ce515d14-d7d0-43da-ab46-7553bee81fe7",
+      "media_kind": "image",
+      "operation": "controlled-generate",
+      "worker_id": "sdcpp",
+      "model_id": "sdxl-base",
+      "status": "COMPLETE",
+      "stage_id": "completed",
+      "progress": null,
+      "artifact_required": true,
+      "artifact_validation": {
+        "canonical": true,
+        "validated": true,
+        "artifacts": [
+          {
+            "artifact_id": "20261021-134407-controlled-sdxl-base-2ab8aefe-s976936195-controlled-sdxl-base.png",
+            "sha256": "d6b1985bb6d8173000b8d90339f2cf7c23baa6368a00c3789274ef7f86673873"
+          }
+        ]
+      },
+      "owned_resources": [],
+      "created_at": 1792590247099,
+      "started_at": 1792590247104,
+      "completed_at": 1792590271316,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "target": "sdxl-base",
+        "prompt": "[REDACTED]",
+        "negative_prompt": "[REDACTED]",
+        "width": 512,
+        "height": 512,
+        "steps": 4,
+        "cfg_scale": 0,
+        "seed": -1,
+        "api": "openai",
+        "scheduler": "sgm_uniform",
+        "vae": "auto",
+        "save_prompts": false,
+        "quantity": 1,
+        "fast_batch": false,
+        "hires_scale": null,
+        "hires_steps": 0,
+        "hires_denoise": 0.5,
+        "hires_upscaler": "Latent",
+        "parent_image_id": null,
+        "operation": "txt2img",
+        "preset": "",
+        "lora_apply_mode": "at_runtime",
+        "backend_override": "MTL0",
+        "sampler": "euler",
+        "clip_skip": "",
+        "tiling": false,
+        "restore_faces": false,
+        "eta": "",
+        "rng": "",
+        "hires_width": null,
+        "hires_height": null
+      },
+      "artifacts": [
+        "20261021-134407-controlled-sdxl-base-2ab8aefe-s976936195-controlled-sdxl-base.png"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    "remote_worker": {
+      "job_id": "ce515d14-d7d0-43da-ab46-7553bee81fe7",
+      "action": "controlled-generate",
+      "kind": "per-run",
+      "target": "sdxl-base",
+      "run_ids": [
+        "20261021-134407-controlled-sdxl-base-2ab8aefe"
+      ],
+      "state": "completed",
+      "created_at": 1792590247105,
+      "updated_at": 1792590271135,
+      "stop_attempts": 0,
+      "evidence": [
+        {
+          "at": 1792590247105,
+          "kind": "started",
+          "detail": "controlled-generate (per-run)"
+        },
+        {
+          "at": 1792590248230,
+          "kind": "run-id",
+          "detail": "20261021-134407-controlled-sdxl-base-2ab8aefe"
+        },
+        {
+          "at": 1792590271135,
+          "kind": "finished",
+          "detail": "PASS"
+        }
+      ],
+      "resolved_at": 1792590271135
+    },
+    "worker_result": {
+      "ok": true,
+      "run_id": "20261021-134407-controlled-sdxl-base-2ab8aefe",
+      "status": "complete",
+      "target": "sdxl-base",
+      "started": 1792590248.75227,
+      "cleanup": true,
+      "deadline": 1792592048.7522712,
+      "model_read": true,
+      "pgid": 92220,
+      "evidence": [
+        "  backend: \"MTL0\",",
+        "  lora_apply_mode: at_runtime,",
+        "    \"/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors\": \"0.85\"",
+        "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+        "[DEBUG] stable-diffusion.cpp:1532 - lora /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors:0.85",
+        "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors using safetensors format",
+        "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors', prefix = 'lora.'",
+        "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors'",
+        "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors using safetensors format",
+        "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors', prefix = 'lora.'",
+        "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors'",
+        "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors using safetensors format",
+        "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors', prefix = 'lora.'",
+        "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors'",
+        "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[INFO ] lora.hpp:892  - (2364 / 2364) LoRA tensors have been applied, lora_file_path = /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 15.80s"
+      ],
+      "engine_exit": 0,
+      "dimensions": [
+        512,
+        512
+      ],
+      "sha256": "d6b1985bb6d8173000b8d90339f2cf7c23baa6368a00c3789274ef7f86673873",
+      "bytes": 360868,
+      "finished": 1792590265.096054,
+      "acknowledged": true
+    },
+    "manifest": {
+      "schema": "dexdiffusion.local-engine.v1",
+      "run_id": "20261021-134407-controlled-sdxl-base-2ab8aefe",
+      "status": "PASS",
+      "controlledTarget": "sdxl-base",
+      "backend": "sdcpp",
+      "controlledOutputImage": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134407-controlled-sdxl-base-2ab8aefe/controlled-sdxl-base.png",
+      "image_id": "20261021-134407-controlled-sdxl-base-2ab8aefe-s976936195-controlled-sdxl-base.png",
+      "local_png": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134407-controlled-sdxl-base-2ab8aefe/controlled-sdxl-base.png",
+      "width": 512,
+      "height": 512,
+      "steps": 4,
+      "seed_label": "976936195",
+      "prompt": "[REDACTED]",
+      "runtime_controlled_proven": true,
+      "worker": {
+        "ok": true,
+        "run_id": "20261021-134407-controlled-sdxl-base-2ab8aefe",
+        "status": "complete",
+        "target": "sdxl-base",
+        "started": 1792590248.75227,
+        "cleanup": true,
+        "deadline": 1792592048.7522712,
+        "model_read": true,
+        "pgid": 92220,
+        "evidence": [
+          "  backend: \"MTL0\",",
+          "  lora_apply_mode: at_runtime,",
+          "    \"/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors\": \"0.85\"",
+          "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+          "[DEBUG] stable-diffusion.cpp:1532 - lora /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors:0.85",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+          "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+          "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors using safetensors format",
+          "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors', prefix = 'lora.'",
+          "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors'",
+          "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+          "[INFO ] lora.hpp:892  - (2364 / 2364) LoRA tensors have been applied, lora_file_path = /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+          "[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 15.80s"
+        ],
+        "engine_exit": 0,
+        "dimensions": [
+          512,
+          512
+        ],
+        "sha256": "d6b1985bb6d8173000b8d90339f2cf7c23baa6368a00c3789274ef7f86673873",
+        "bytes": 360868,
+        "finished": 1792590265.096054
+      }
+    }
+  },
+  "native_cancel": {
+    "generic_job": {
+      "job_id": "1d7da39c-68b8-4bd4-b5f5-04a5403cce22",
+      "media_kind": "image",
+      "operation": "controlled-generate",
+      "worker_id": "sdcpp",
+      "model_id": "sdxl-base",
+      "status": "CANCELLED",
+      "stage_id": "cancelled",
+      "progress": null,
+      "artifact_required": true,
+      "artifact_validation": null,
+      "owned_resources": [],
+      "created_at": 1792590292905,
+      "started_at": 1792590292906,
+      "completed_at": 1792590307656,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "target": "sdxl-base",
+        "prompt": "[REDACTED]",
+        "negative_prompt": "[REDACTED]",
+        "width": 512,
+        "height": 512,
+        "steps": 4,
+        "cfg_scale": 0,
+        "seed": -1,
+        "api": "openai",
+        "scheduler": "sgm_uniform",
+        "vae": "auto",
+        "save_prompts": false,
+        "quantity": 1,
+        "fast_batch": false,
+        "hires_scale": null,
+        "hires_steps": 0,
+        "hires_denoise": 0.5,
+        "hires_upscaler": "Latent",
+        "parent_image_id": null,
+        "operation": "txt2img",
+        "preset": "",
+        "lora_apply_mode": "at_runtime",
+        "backend_override": "MTL0",
+        "sampler": "euler",
+        "clip_skip": "",
+        "tiling": false,
+        "restore_faces": false,
+        "eta": "",
+        "rng": "",
+        "hires_width": null,
+        "hires_height": null
+      },
+      "artifacts": [],
+      "first_failed_gate": "user-cancelled",
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    "remote_worker": {
+      "job_id": "1d7da39c-68b8-4bd4-b5f5-04a5403cce22",
+      "action": "controlled-generate",
+      "kind": "per-run",
+      "target": "sdxl-base",
+      "run_ids": [
+        "20261021-134453-controlled-sdxl-base-533b96a9"
+      ],
+      "state": "cancelled_verified",
+      "created_at": 1792590292906,
+      "updated_at": 1792590305395,
+      "stop_attempts": 1,
+      "evidence": [
+        {
+          "at": 1792590292906,
+          "kind": "started",
+          "detail": "controlled-generate (per-run)"
+        },
+        {
+          "at": 1792590294231,
+          "kind": "run-id",
+          "detail": "20261021-134453-controlled-sdxl-base-533b96a9"
+        },
+        {
+          "at": 1792590302581,
+          "kind": "cancel-requested",
+          "detail": "user"
+        },
+        {
+          "at": 1792590302584,
+          "kind": "stop-dispatched",
+          "detail": "20261021-134453-controlled-sdxl-base-533b96a9"
+        },
+        {
+          "at": 1792590305255,
+          "kind": "stop-result",
+          "detail": "20261021-134453-controlled-sdxl-base-533b96a9: found 1, left 0"
+        },
+        {
+          "at": 1792590305395,
+          "kind": "verified",
+          "detail": "identity-scoped liveness: 0 processes alive for 20261021-134453-controlled-sdxl-base-533b96a9"
+        }
+      ],
+      "resolved_at": 1792590305395
+    },
+    "worker_result": {
+      "ok": true,
+      "run_id": "20261021-134453-controlled-sdxl-base-533b96a9",
+      "status": "cancelled",
+      "target": "sdxl-base",
+      "started": 1792590294.379491,
+      "cleanup": true,
+      "deadline": 1792592094.379491,
+      "model_read": true,
+      "pgid": 93088,
+      "cancel_requested": true,
+      "evidence": [
+        "  backend: \"MTL0\",",
+        "  lora_apply_mode: at_runtime,",
+        "    \"/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors\": \"0.85\"",
+        "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+        "[DEBUG] stable-diffusion.cpp:1532 - lora /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors:0.85",
+        "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors using safetensors format",
+        "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors', prefix = 'lora.'",
+        "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors'",
+        "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors using safetensors format",
+        "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors', prefix = 'lora.'",
+        "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors'",
+        "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors using safetensors format",
+        "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors', prefix = 'lora.'",
+        "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors'",
+        "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors"
+      ],
+      "engine_exit": -15,
+      "finished": 1792590303.9769669
+    }
+  },
+  "native_recovery": {
+    "generic_job": {
+      "job_id": "b7385472-bec7-43d0-8df6-2f377abdb93f",
+      "media_kind": "image",
+      "operation": "controlled-generate",
+      "worker_id": "sdcpp",
+      "model_id": "sdxl-base",
+      "status": "COMPLETE",
+      "stage_id": "completed",
+      "progress": null,
+      "artifact_required": true,
+      "artifact_validation": {
+        "canonical": true,
+        "validated": true,
+        "artifacts": [
+          {
+            "artifact_id": "20261021-134605-controlled-sdxl-base-467534ef-s1306832389-controlled-sdxl-base.png",
+            "sha256": "035f9c414847ae0a789328d45b27a22f94f62453f4ca3b0873fe0d8e57d8c96f"
+          }
+        ]
+      },
+      "owned_resources": [],
+      "created_at": 1792590364675,
+      "started_at": 1792590364677,
+      "completed_at": 1792590383065,
+      "resource_class": "heavy",
+      "resource_lease": null,
+      "params": {
+        "target": "sdxl-base",
+        "prompt": "[REDACTED]",
+        "negative_prompt": "[REDACTED]",
+        "width": 512,
+        "height": 512,
+        "steps": 4,
+        "cfg_scale": 0,
+        "seed": -1,
+        "api": "openai",
+        "scheduler": "sgm_uniform",
+        "vae": "auto",
+        "save_prompts": false,
+        "quantity": 1,
+        "fast_batch": false,
+        "hires_scale": null,
+        "hires_steps": 0,
+        "hires_denoise": 0.5,
+        "hires_upscaler": "Latent",
+        "parent_image_id": null,
+        "operation": "txt2img",
+        "preset": "",
+        "lora_apply_mode": "",
+        "backend_override": "",
+        "sampler": "euler",
+        "clip_skip": "",
+        "tiling": false,
+        "restore_faces": false,
+        "eta": "",
+        "rng": "",
+        "hires_width": null,
+        "hires_height": null
+      },
+      "artifacts": [
+        "20261021-134605-controlled-sdxl-base-467534ef-s1306832389-controlled-sdxl-base.png"
+      ],
+      "first_failed_gate": null,
+      "error": null,
+      "privacy": {
+        "persist_text": false
+      }
+    },
+    "remote_worker": {
+      "job_id": "b7385472-bec7-43d0-8df6-2f377abdb93f",
+      "action": "controlled-generate",
+      "kind": "per-run",
+      "target": "sdxl-base",
+      "run_ids": [
+        "20261021-134605-controlled-sdxl-base-467534ef"
+      ],
+      "state": "completed",
+      "created_at": 1792590364677,
+      "updated_at": 1792590382982,
+      "stop_attempts": 0,
+      "evidence": [
+        {
+          "at": 1792590364677,
+          "kind": "started",
+          "detail": "controlled-generate (per-run)"
+        },
+        {
+          "at": 1792590365440,
+          "kind": "run-id",
+          "detail": "20261021-134605-controlled-sdxl-base-467534ef"
+        },
+        {
+          "at": 1792590382982,
+          "kind": "finished",
+          "detail": "PASS"
+        }
+      ],
+      "resolved_at": 1792590382982
+    },
+    "worker_result": {
+      "ok": true,
+      "run_id": "20261021-134605-controlled-sdxl-base-467534ef",
+      "status": "complete",
+      "target": "sdxl-base",
+      "started": 1792590366.429854,
+      "cleanup": true,
+      "deadline": 1792592166.429854,
+      "model_read": true,
+      "pgid": 94395,
+      "evidence": [
+        "  backend: \"MTL0\",",
+        "  lora_apply_mode: auto,",
+        "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+        "[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 11.93s"
+      ],
+      "engine_exit": 0,
+      "dimensions": [
+        512,
+        512
+      ],
+      "sha256": "035f9c414847ae0a789328d45b27a22f94f62453f4ca3b0873fe0d8e57d8c96f",
+      "bytes": 424544,
+      "finished": 1792590378.7986891,
+      "acknowledged": true
+    },
+    "manifest": {
+      "schema": "dexdiffusion.local-engine.v1",
+      "run_id": "20261021-134605-controlled-sdxl-base-467534ef",
+      "status": "PASS",
+      "controlledTarget": "sdxl-base",
+      "backend": "sdcpp",
+      "controlledOutputImage": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134605-controlled-sdxl-base-467534ef/controlled-sdxl-base.png",
+      "image_id": "20261021-134605-controlled-sdxl-base-467534ef-s1306832389-controlled-sdxl-base.png",
+      "local_png": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-134605-controlled-sdxl-base-467534ef/controlled-sdxl-base.png",
+      "width": 512,
+      "height": 512,
+      "steps": 4,
+      "seed_label": "1306832389",
+      "prompt": "[REDACTED]",
+      "runtime_controlled_proven": true,
+      "worker": {
+        "ok": true,
+        "run_id": "20261021-134605-controlled-sdxl-base-467534ef",
+        "status": "complete",
+        "target": "sdxl-base",
+        "started": 1792590366.429854,
+        "cleanup": true,
+        "deadline": 1792592166.429854,
+        "model_read": true,
+        "pgid": 94395,
+        "evidence": [
+          "  backend: \"MTL0\",",
+          "  lora_apply_mode: auto,",
+          "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+          "[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 11.93s"
+        ],
+        "engine_exit": 0,
+        "dimensions": [
+          512,
+          512
+        ],
+        "sha256": "035f9c414847ae0a789328d45b27a22f94f62453f4ca3b0873fe0d8e57d8c96f",
+        "bytes": 424544,
+        "finished": 1792590378.7986891
+      }
+    }
+  },
+  "initial_lightning_worker_proof": {
+    "schema": "dexdiffusion.local-engine.v1",
+    "run_id": "20261021-133609-controlled-sdxl-base-ef8b4e33",
+    "status": "PASS",
+    "controlledTarget": "sdxl-base",
+    "backend": "sdcpp",
+    "controlledOutputImage": "/Users/andrew/images_made/20261021-133609-controlled-sdxl-base-ef8b4e33-s731951-controlled-sdxl-base.png",
+    "image_id": "20261021-133609-controlled-sdxl-base-ef8b4e33-s731951-controlled-sdxl-base.png",
+    "local_png": "/Users/andrew/images_made/20261021-133609-controlled-sdxl-base-ef8b4e33-s731951-controlled-sdxl-base.png",
+    "width": 512,
+    "height": 512,
+    "steps": 4,
+    "seed_label": "731951",
+    "prompt": "[REDACTED]",
+    "runtime_controlled_proven": true,
+    "worker": {
+      "ok": true,
+      "run_id": "20261021-133609-controlled-sdxl-base-ef8b4e33",
+      "status": "complete",
+      "target": "sdxl-base",
+      "started": 1792589770.280614,
+      "cleanup": true,
+      "deadline": 1792591570.2806149,
+      "model_read": true,
+      "pgid": 81196,
+      "evidence": [
+        "  backend: \"MTL0\",",
+        "  lora_apply_mode: at_runtime,",
+        "    \"/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors\": \"0.85\"",
+        "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+        "[DEBUG] stable-diffusion.cpp:1532 - lora /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors:0.85",
+        "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors using safetensors format",
+        "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors', prefix = 'lora.'",
+        "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors'",
+        "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors using safetensors format",
+        "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors', prefix = 'lora.'",
+        "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors'",
+        "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[INFO ] model_loader.cpp:238  - load /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors using safetensors format",
+        "[DEBUG] model_loader.cpp:312  - init from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors', prefix = 'lora.'",
+        "[INFO ] lora.hpp:45   - loading LoRA from '/Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors'",
+        "[DEBUG] model_loader.cpp:990  - loading 2364/2364 tensors from /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[INFO ] lora.hpp:892  - (2364 / 2364) LoRA tensors have been applied, lora_file_path = /Volumes/wc2tb/dex-imagegen/models/loras/sdxl_lightning_4step_lora.safetensors",
+        "[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 304.84s"
+      ],
+      "engine_exit": 0,
+      "dimensions": [
+        512,
+        512
+      ],
+      "sha256": "f63b0b32e0cf81c061bac83677ac4d0cdc9b430c77c9cbe6511c509681c6ec0b",
+      "bytes": 385262,
+      "finished": 1792590075.8245099
+    }
+  },
+  "unavailable_worker": {
+    "job": {
+      "id": "d45aac4a-c676-4dbe-92e8-4a5f4a4a55cc",
+      "commandAction": "controlled-generate",
+      "commandSummary": "../operator-console/bin/local-engine-generate.js --target sd15 --prompt [REDACTED] --width 64 --height 64 --steps 1 --cfg 7 --seed 731970 --api openai --scheduler discrete --sampler euler --save-prompts false",
+      "requestParams": {
+        "target": "sd15",
+        "prompt": "[REDACTED]",
+        "negative_prompt": "[REDACTED]",
+        "width": 64,
+        "height": 64,
+        "steps": 1,
+        "cfg_scale": 7,
+        "seed": 731970,
+        "api": "openai",
+        "scheduler": "discrete",
+        "vae": "auto",
+        "save_prompts": false,
+        "quantity": 1,
+        "fast_batch": false,
+        "hires_scale": null,
+        "hires_steps": 0,
+        "hires_denoise": 0.5,
+        "hires_upscaler": "Latent",
+        "parent_image_id": null,
+        "operation": "txt2img",
+        "preset": "",
+        "loras": [],
+        "lora_apply_mode": "",
+        "backend_override": "",
+        "sampler": "euler",
+        "clip_skip": "",
+        "tiling": false,
+        "restore_faces": false,
+        "eta": "",
+        "rng": "",
+        "hires_width": null,
+        "hires_height": null
+      },
+      "status": "FAIL",
+      "progress": {
+        "totalRuns": 1,
+        "completedRuns": 0,
+        "currentRun": 1,
+        "currentRunPercent": 100,
+        "totalPercent": 100,
+        "runsLeft": 1,
+        "currentRunStartedAt": 1792591010090
+      },
+      "createdAt": 1792591010082,
+      "completedAt": 1792591011353,
+      "exitCode": 1,
+      "firstFailedGate": null,
+      "runId": null,
+      "remoteStop": "failed",
+      "remoteCancel": null,
+      "upscaledImage": null,
+      "upscaleManifest": null,
+      "controlledTarget": null,
+      "controlledOutputImage": null,
+      "controlledOutputImageUrl": null,
+      "controlledManifest": null,
+      "hiresRunId": null,
+      "hiresBaseImage": null,
+      "hiresBaseImageUrl": null,
+      "hiresFinalImage": null,
+      "hiresFinalImageUrl": null,
+      "hiresManifest": null,
+      "upscaledImageUrl": null,
+      "results": [
+        {
+          "index": 0,
+          "status": "FAILED",
+          "seed": 731970,
+          "target": "sd15",
+          "error": "failed"
+        }
+      ],
+      "images": [],
+      "seeds": [
+        731970
+      ],
+      "nativeBatch": false,
+      "nativeFallback": false,
+      "sourceImageId": null,
+      "progressEstimated": false,
+      "resource": null,
+      "generic": {
+        "job_id": "d45aac4a-c676-4dbe-92e8-4a5f4a4a55cc",
+        "media_kind": "image",
+        "operation": "controlled-generate",
+        "worker_id": "sdcpp",
+        "model_id": "sd15",
+        "status": "FAILED",
+        "stage_id": "failed",
+        "progress": null,
+        "artifact_required": true,
+        "artifact_validation": null,
+        "owned_resources": [],
+        "created_at": 1792591010082,
+        "started_at": 1792591010084,
+        "completed_at": 1792591011354,
+        "resource_class": "heavy",
+        "resource_lease": null,
+        "params": {
+          "target": "sd15",
+          "prompt": "[REDACTED]",
+          "negative_prompt": "[REDACTED]",
+          "width": 64,
+          "height": 64,
+          "steps": 1,
+          "cfg_scale": 7,
+          "seed": 731970,
+          "api": "openai",
+          "scheduler": "discrete",
+          "vae": "auto",
+          "save_prompts": false,
+          "quantity": 1,
+          "fast_batch": false,
+          "hires_scale": null,
+          "hires_steps": 0,
+          "hires_denoise": 0.5,
+          "hires_upscaler": "Latent",
+          "parent_image_id": null,
+          "operation": "txt2img",
+          "preset": "",
+          "lora_apply_mode": "",
+          "backend_override": "",
+          "sampler": "euler",
+          "clip_skip": "",
+          "tiling": false,
+          "restore_faces": false,
+          "eta": "",
+          "rng": "",
+          "hires_width": null,
+          "hires_height": null
+        },
+        "artifacts": [],
+        "first_failed_gate": null,
+        "error": "failed at gate unknown",
+        "privacy": {
+          "persist_text": false
+        }
+      },
+      "stage": {
+        "key": "failed",
+        "label": "Failed",
+        "percent": null,
+        "determinate": false,
+        "gate": null
+      }
+    },
+    "log": {
+      "id": "d45aac4a-c676-4dbe-92e8-4a5f4a4a55cc",
+      "stdout": "\n--- Sequential Run 1 of 1 ---\n",
+      "stderr": "Local engine generation failed: Big Mac local engine: Local engine unavailable: [Errno 2] No such file or directory. Restart the Big Mac worker in its authorized graphical session.\n"
+    },
+    "resources": {
+      "group": "bigmac-heavy-inference",
+      "capacity": 1,
+      "owner": null,
+      "waiting": [],
+      "external": {
+        "occupied": false,
+        "detail": null,
+        "checkedAt": 1792591000797
+      },
+      "quarantine": null,
+      "blocked_reason": null
+    },
+    "elapsed_ms": 1805
+  },
+  "native_batch": {
+    "job": {
+      "id": "4c5c81fc-c799-4e58-a02b-dc2cfacc74e1",
+      "commandAction": "controlled-generate",
+      "commandSummary": "../operator-console/bin/local-engine-generate.js --target sd15 --prompt [REDACTED] --width 512 --height 512 --steps 1 --cfg 7 --seed 731972 --api openai --scheduler discrete --sampler euler --save-prompts false (quantity: 2)",
+      "requestParams": {
+        "target": "sd15",
+        "prompt": "[REDACTED]",
+        "negative_prompt": "[REDACTED]",
+        "width": 512,
+        "height": 512,
+        "steps": 1,
+        "cfg_scale": 7,
+        "seed": 731972,
+        "api": "openai",
+        "scheduler": "discrete",
+        "vae": "auto",
+        "save_prompts": false,
+        "quantity": 2,
+        "fast_batch": true,
+        "hires_scale": null,
+        "hires_steps": 0,
+        "hires_denoise": 0.5,
+        "hires_upscaler": "Latent",
+        "parent_image_id": null,
+        "operation": "txt2img",
+        "preset": "",
+        "loras": [],
+        "lora_apply_mode": "",
+        "backend_override": "",
+        "sampler": "euler",
+        "clip_skip": "",
+        "tiling": false,
+        "restore_faces": false,
+        "eta": "",
+        "rng": "",
+        "hires_width": null,
+        "hires_height": null
+      },
+      "status": "PASS",
+      "progress": {
+        "totalRuns": 1,
+        "completedRuns": 1,
+        "currentRun": 1,
+        "currentRunPercent": 100,
+        "totalPercent": 100,
+        "runsLeft": 0,
+        "currentRunStartedAt": 1792591066106
+      },
+      "createdAt": 1792591066103,
+      "completedAt": 1792591188702,
+      "exitCode": 0,
+      "firstFailedGate": null,
+      "runId": "20261021-135747-controlled-sd15-9fa05e6f",
+      "remoteStop": "completed",
+      "remoteCancel": null,
+      "upscaledImage": null,
+      "upscaleManifest": null,
+      "controlledTarget": "sd15",
+      "controlledOutputImage": "/Users/andrew/images_made/20261021-135747-controlled-sd15-9fa05e6f-s731972-controlled-sd15-b00.png",
+      "controlledOutputImageUrl": "/api/images/20261021-135747-controlled-sd15-9fa05e6f-s731972-controlled-sd15-b00.png",
+      "controlledManifest": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135747-controlled-sd15-9fa05e6f/controlled-manifest.json",
+      "hiresRunId": null,
+      "hiresBaseImage": null,
+      "hiresBaseImageUrl": null,
+      "hiresFinalImage": null,
+      "hiresFinalImageUrl": null,
+      "hiresManifest": null,
+      "upscaledImageUrl": null,
+      "results": [
+        {
+          "index": 0,
+          "status": "DONE",
+          "seed": 731972,
+          "target": "sd15",
+          "runId": "20261021-135747-controlled-sd15-9fa05e6f",
+          "width": 512,
+          "height": 512,
+          "imageId": "20261021-135747-controlled-sd15-9fa05e6f-s731972-controlled-sd15-b00.png",
+          "imageUrl": "/api/images/20261021-135747-controlled-sd15-9fa05e6f-s731972-controlled-sd15-b00.png",
+          "operation": "txt2img",
+          "parentImageId": null
+        },
+        {
+          "index": 1,
+          "status": "DONE",
+          "seed": 731973,
+          "target": "sd15",
+          "runId": "20261021-135747-controlled-sd15-9fa05e6f",
+          "width": 512,
+          "height": 512,
+          "imageId": "20261021-135747-controlled-sd15-9fa05e6f-s731973-controlled-sd15-b01.png",
+          "imageUrl": "/api/images/20261021-135747-controlled-sd15-9fa05e6f-s731973-controlled-sd15-b01.png",
+          "operation": "txt2img",
+          "parentImageId": null
+        }
+      ],
+      "images": [
+        {
+          "image_id": "20261021-135747-controlled-sd15-9fa05e6f-s731972-controlled-sd15-b00.png",
+          "url": "/api/images/20261021-135747-controlled-sd15-9fa05e6f-s731972-controlled-sd15-b00.png",
+          "thumbnail_url": "/api/images/20261021-135747-controlled-sd15-9fa05e6f-s731972-controlled-sd15-b00.png",
+          "seed": 731972,
+          "index": 0,
+          "run_id": "20261021-135747-controlled-sd15-9fa05e6f",
+          "target": "sd15",
+          "width": 512,
+          "height": 512,
+          "status": "DONE",
+          "operation": "txt2img"
+        },
+        {
+          "image_id": "20261021-135747-controlled-sd15-9fa05e6f-s731973-controlled-sd15-b01.png",
+          "url": "/api/images/20261021-135747-controlled-sd15-9fa05e6f-s731973-controlled-sd15-b01.png",
+          "thumbnail_url": "/api/images/20261021-135747-controlled-sd15-9fa05e6f-s731973-controlled-sd15-b01.png",
+          "seed": 731973,
+          "index": 1,
+          "run_id": "20261021-135747-controlled-sd15-9fa05e6f",
+          "target": "sd15",
+          "width": 512,
+          "height": 512,
+          "status": "DONE",
+          "operation": "txt2img"
+        }
+      ],
+      "seeds": [
+        731972,
+        731973
+      ],
+      "nativeBatch": true,
+      "nativeFallback": false,
+      "sourceImageId": null,
+      "progressEstimated": false,
+      "resource": null,
+      "generic": {
+        "job_id": "4c5c81fc-c799-4e58-a02b-dc2cfacc74e1",
+        "media_kind": "image",
+        "operation": "controlled-generate",
+        "worker_id": "sdcpp",
+        "model_id": "sd15",
+        "status": "COMPLETE",
+        "stage_id": "completed",
+        "progress": null,
+        "artifact_required": true,
+        "artifact_validation": {
+          "canonical": true,
+          "validated": true,
+          "artifacts": [
+            {
+              "artifact_id": "20261021-135747-controlled-sd15-9fa05e6f-s731972-controlled-sd15-b00.png",
+              "sha256": "f40be6b304fb2ca2adc97af9d6d6a0dbc9b1901f6c40fb8f0e5a2da9a4337655"
+            },
+            {
+              "artifact_id": "20261021-135747-controlled-sd15-9fa05e6f-s731973-controlled-sd15-b01.png",
+              "sha256": "8c9920b87725d599c489a52011eb66fce789a2cfc4fad53f0f31e8ae6b8b5bc2"
+            }
+          ]
+        },
+        "owned_resources": [],
+        "created_at": 1792591066103,
+        "started_at": 1792591066105,
+        "completed_at": 1792591188851,
+        "resource_class": "heavy",
+        "resource_lease": null,
+        "params": {
+          "target": "sd15",
+          "prompt": "[REDACTED]",
+          "negative_prompt": "[REDACTED]",
+          "width": 512,
+          "height": 512,
+          "steps": 1,
+          "cfg_scale": 7,
+          "seed": 731972,
+          "api": "openai",
+          "scheduler": "discrete",
+          "vae": "auto",
+          "save_prompts": false,
+          "quantity": 2,
+          "fast_batch": true,
+          "hires_scale": null,
+          "hires_steps": 0,
+          "hires_denoise": 0.5,
+          "hires_upscaler": "Latent",
+          "parent_image_id": null,
+          "operation": "txt2img",
+          "preset": "",
+          "lora_apply_mode": "",
+          "backend_override": "",
+          "sampler": "euler",
+          "clip_skip": "",
+          "tiling": false,
+          "restore_faces": false,
+          "eta": "",
+          "rng": "",
+          "hires_width": null,
+          "hires_height": null
+        },
+        "artifacts": [
+          "20261021-135747-controlled-sd15-9fa05e6f-s731972-controlled-sd15-b00.png",
+          "20261021-135747-controlled-sd15-9fa05e6f-s731973-controlled-sd15-b01.png"
+        ],
+        "first_failed_gate": null,
+        "error": null,
+        "privacy": {
+          "persist_text": false
+        }
+      },
+      "stage": {
+        "key": "complete",
+        "label": "Complete",
+        "percent": 100,
+        "determinate": true
+      }
+    },
+    "log": {
+      "id": "4c5c81fc-c799-4e58-a02b-dc2cfacc74e1",
+      "stdout": "\n--- Native batch run: 2 images, seeds 731972..731973 ---\nSDCPP_RUN_ID: 20261021-135747-controlled-sd15-9fa05e6f\nENGINE_RESULT: {\"ok\":true,\"run_id\":\"20261021-135747-controlled-sd15-9fa05e6f\",\"status\":\"complete\",\"target\":\"sd15\",\"started\":1792591068.438624,\"batch_count\":2,\"cleanup\":true,\"deadline\":1792592868.438625,\"model_read\":true,\"engine_started\":1792591068.4396532,\"pgid\":8854,\"engine_finished\":1792591183.995183,\"generation_seconds\":115.556,\"evidence\":[\"  backend: \\\"MTL0\\\",\",\"  lora_apply_mode: auto,\",\"[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0\",\"[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 115.04s\"],\"engine_exit\":0,\"images\":[{\"sha256\":\"f40be6b304fb2ca2adc97af9d6d6a0dbc9b1901f6c40fb8f0e5a2da9a4337655\",\"bytes\":293970,\"dimensions\":[512,512]},{\"sha256\":\"8c9920b87725d599c489a52011eb66fce789a2cfc4fad53f0f31e8ae6b8b5bc2\",\"bytes\":352822,\"dimensions\":[512,512]}],\"sha256\":\"f40be6b304fb2ca2adc97af9d6d6a0dbc9b1901f6c40fb8f0e5a2da9a4337655\",\"bytes\":293970,\"dimensions\":[512,512],\"finished\":1792591184.144481}\nCONTROLLED_BATCH_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135747-controlled-sd15-9fa05e6f/controlled-sd15-b00.png\nCONTROLLED_BATCH_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135747-controlled-sd15-9fa05e6f/controlled-sd15-b01.png\nSDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: sd15\nCONTROLLED_OUTPUT_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135747-controlled-sd15-9fa05e6f/controlled-sd15-b00.png\nCONTROLLED_MANIFEST: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-135747-controlled-sd15-9fa05e6f/controlled-manifest.json\n",
+      "stderr": ""
+    }
+  },
+  "checks": {
+    "npm_check": "PASS",
+    "npm_test": {
+      "pass": 1005,
+      "skip": 17,
+      "fail": 0,
+      "total": 1022
+    },
+    "focused": {
+      "pass": 85,
+      "fail": 0
+    },
+    "python_worker_tests": 15,
+    "edit_browser": {
+      "pass": 29,
+      "total": 29
+    },
+    "library_browser": {
+      "pass": 8,
+      "total": 8
+    },
+    "matrix": {
+      "pass": 252,
+      "total": 252,
+      "report": "output/playwright/matrix-20261021T134052-68487-MyGSzv/interaction-matrix-summary.md"
+    },
+    "final_bridge_regressions": {
+      "pass": 7,
+      "fail": 0
+    }
+  },
+  "acceptance_limits": [
+    "No graphical logout/login or reboot was performed.",
+    "Image quality and preference acceptance remain human decisions.",
+    "Legacy Edit/ESRGAN paths remain separate and may still fail SSH removable-volume reads.",
+    "Existing historical storage/publication gaps were preserved.",
+    "Native batch has no additional pixel-equivalence claim beyond the real two-output proof."
+  ],
+  "target": {
+    "root": "/Users/andrew/Image_Gen",
+    "branch": "docs/dexdiffusion-omni-recovery-20261021",
+    "head": "d1d542631fd041ddf54b148a173da19415fa4dd6",
+    "native_bundle": "local.image-gen.wrapper",
+    "native_app": "/Applications/DexDiffusion.app",
+    "publication": "uncommitted; no push"
+  },
+  "native_ui_observation": {
+    "entry_point": "/Applications/DexDiffusion.app",
+    "generation": "Generate image clicked; generated result visible with Saved to Library and exact run ID",
+    "cancellation": "Cancel job clicked during active engine run; UI returned to idle",
+    "recovery": "Subsequent native Generate completed; recovery adapter was OFF",
+    "quality": "No human image-quality acceptance asserted"
+  },
+  "final_worker": {
+    "ok": true,
+    "models": {
+      "sd15": true,
+      "sdxl-base": true,
+      "sdxl-turbo": true,
+      "flux-fp8": true,
+      "flux2-klein-4b": true,
+      "sdxl-photonic": true,
+      "sdxl-homochi": true,
+      "sdxl-pony": true,
+      "sd15-homofidelis": true,
+      "sdxl-juggernaut": true,
+      "sdxl-realvisxl": true,
+      "sdxl-cyberrealistic": true,
+      "sdxl-epicrealism": true,
+      "sdxl-biglust": true,
+      "sdxl-lustify": true,
+      "sdxl-biglove": true,
+      "sdxl-biglove-photo1": true,
+      "sdxl-biglove-photo45": true,
+      "sd15-auto-v1-5-pruned-emaonly": true
+    },
+    "secondary": {
+      "primaryModel": {
+        "id": "flux2-klein-4b",
+        "role": "protected-primary",
+        "backend": "mflux"
+      },
+      "activeSecondaryModel": "sd15",
+      "secondaryModelState": "active",
+      "sourcePath": "/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors",
+      "activePath": "/Users/bigmac/Library/Caches/DexDiffusion/secondary-model/current/model.safetensors",
+      "backend": "sdcpp",
+      "modelIdentity": {
+        "target": "sd15",
+        "filename": "v1-5-pruned-emaonly.safetensors",
+        "bytes": 4265146304
+      },
+      "lastSwitchResult": {
+        "status": "pass",
+        "at": 1792590701
+      }
+    },
+    "pid": 24919,
+    "uid": 503,
+    "active": null,
+    "access": {
+      "checkpoint": true,
+      "sdxl_lightning_4step_lora": true,
+      "hyper-sdxl-8steps-cfg-lora": true,
+      "lcm_sdxl": true,
+      "lcm_sd15": true,
+      "hyper-sd15-8steps-cfg-lora": true,
+      "pixelart_lora": true
+    },
+    "recovery_uncertain": []
+  },
+  "final_version": {
+    "name": "Image_Gen Operator Console",
+    "version": "image-gen-console-2026-06-22-render-wrapper",
+    "gitHead": "d1d5426",
+    "pid": 19231,
+    "cwd": "/Users/andrew/Image_Gen/operator-console",
+    "bind": "http://127.0.0.1:31337",
+    "workflowRoot": "/Users/andrew/Image_Gen/sdcpp-workflow",
+    "startedAt": "2026-10-21T14:14:18.241Z"
+  },
+  "final_resources": {
+    "group": "bigmac-heavy-inference",
+    "capacity": 1,
+    "owner": null,
+    "waiting": [],
+    "external": {
+      "occupied": false,
+      "detail": null,
+      "checkedAt": 1792592080910
+    },
+    "quarantine": null,
+    "blocked_reason": null
+  },
+  "native_batch_atomic_publication": {
+    "job": {
+      "id": "4a7eab16-cc3b-461e-a633-24685a1b9bd3",
+      "commandAction": "controlled-generate",
+      "commandSummary": "../operator-console/bin/local-engine-generate.js --target sd15 --prompt [REDACTED] --width 512 --height 512 --steps 1 --cfg 7 --seed 731972 --api openai --scheduler discrete --sampler euler --save-prompts false (quantity: 2)",
+      "requestParams": {
+        "target": "sd15",
+        "prompt": "[REDACTED]",
+        "negative_prompt": "[REDACTED]",
+        "width": 512,
+        "height": 512,
+        "steps": 1,
+        "cfg_scale": 7,
+        "seed": 731972,
+        "api": "openai",
+        "scheduler": "discrete",
+        "vae": "auto",
+        "save_prompts": false,
+        "quantity": 2,
+        "fast_batch": true,
+        "hires_scale": null,
+        "hires_steps": 0,
+        "hires_denoise": 0.5,
+        "hires_upscaler": "Latent",
+        "parent_image_id": null,
+        "operation": "txt2img",
+        "preset": "",
+        "loras": [],
+        "lora_apply_mode": "",
+        "backend_override": "",
+        "sampler": "euler",
+        "clip_skip": "",
+        "tiling": false,
+        "restore_faces": false,
+        "eta": "",
+        "rng": "",
+        "hires_width": null,
+        "hires_height": null
+      },
+      "status": "PASS",
+      "progress": {
+        "totalRuns": 1,
+        "completedRuns": 1,
+        "currentRun": 1,
+        "currentRunPercent": 100,
+        "totalPercent": 100,
+        "runsLeft": 0,
+        "currentRunStartedAt": 1792591931313
+      },
+      "createdAt": 1792591931308,
+      "completedAt": 1792591950348,
+      "exitCode": 0,
+      "firstFailedGate": null,
+      "runId": "20261021-141212-controlled-sd15-f048f569",
+      "remoteStop": "completed",
+      "remoteCancel": null,
+      "upscaledImage": null,
+      "upscaleManifest": null,
+      "controlledTarget": "sd15",
+      "controlledOutputImage": "/Users/andrew/images_made/20261021-141212-controlled-sd15-f048f569-s731972-controlled-sd15-b00.png",
+      "controlledOutputImageUrl": "/api/images/20261021-141212-controlled-sd15-f048f569-s731972-controlled-sd15-b00.png",
+      "controlledManifest": "/Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-141212-controlled-sd15-f048f569/controlled-manifest.json",
+      "hiresRunId": null,
+      "hiresBaseImage": null,
+      "hiresBaseImageUrl": null,
+      "hiresFinalImage": null,
+      "hiresFinalImageUrl": null,
+      "hiresManifest": null,
+      "upscaledImageUrl": null,
+      "results": [
+        {
+          "index": 0,
+          "status": "DONE",
+          "seed": 731972,
+          "target": "sd15",
+          "runId": "20261021-141212-controlled-sd15-f048f569",
+          "width": 512,
+          "height": 512,
+          "imageId": "20261021-141212-controlled-sd15-f048f569-s731972-controlled-sd15-b00.png",
+          "imageUrl": "/api/images/20261021-141212-controlled-sd15-f048f569-s731972-controlled-sd15-b00.png",
+          "operation": "txt2img",
+          "parentImageId": null,
+          "retrieved_sha256": "f40be6b304fb2ca2adc97af9d6d6a0dbc9b1901f6c40fb8f0e5a2da9a4337655"
+        },
+        {
+          "index": 1,
+          "status": "DONE",
+          "seed": 731973,
+          "target": "sd15",
+          "runId": "20261021-141212-controlled-sd15-f048f569",
+          "width": 512,
+          "height": 512,
+          "imageId": "20261021-141212-controlled-sd15-f048f569-s731973-controlled-sd15-b01.png",
+          "imageUrl": "/api/images/20261021-141212-controlled-sd15-f048f569-s731973-controlled-sd15-b01.png",
+          "operation": "txt2img",
+          "parentImageId": null,
+          "retrieved_sha256": "8c9920b87725d599c489a52011eb66fce789a2cfc4fad53f0f31e8ae6b8b5bc2"
+        }
+      ],
+      "images": [
+        {
+          "image_id": "20261021-141212-controlled-sd15-f048f569-s731972-controlled-sd15-b00.png",
+          "url": "/api/images/20261021-141212-controlled-sd15-f048f569-s731972-controlled-sd15-b00.png",
+          "thumbnail_url": "/api/images/20261021-141212-controlled-sd15-f048f569-s731972-controlled-sd15-b00.png",
+          "seed": 731972,
+          "index": 0,
+          "run_id": "20261021-141212-controlled-sd15-f048f569",
+          "target": "sd15",
+          "width": 512,
+          "height": 512,
+          "status": "DONE",
+          "operation": "txt2img"
+        },
+        {
+          "image_id": "20261021-141212-controlled-sd15-f048f569-s731973-controlled-sd15-b01.png",
+          "url": "/api/images/20261021-141212-controlled-sd15-f048f569-s731973-controlled-sd15-b01.png",
+          "thumbnail_url": "/api/images/20261021-141212-controlled-sd15-f048f569-s731973-controlled-sd15-b01.png",
+          "seed": 731973,
+          "index": 1,
+          "run_id": "20261021-141212-controlled-sd15-f048f569",
+          "target": "sd15",
+          "width": 512,
+          "height": 512,
+          "status": "DONE",
+          "operation": "txt2img"
+        }
+      ],
+      "seeds": [
+        731972,
+        731973
+      ],
+      "nativeBatch": true,
+      "nativeFallback": false,
+      "sourceImageId": null,
+      "progressEstimated": false,
+      "resource": null,
+      "generic": {
+        "job_id": "4a7eab16-cc3b-461e-a633-24685a1b9bd3",
+        "media_kind": "image",
+        "operation": "controlled-generate",
+        "worker_id": "sdcpp",
+        "model_id": "sd15",
+        "status": "COMPLETE",
+        "stage_id": "completed",
+        "progress": null,
+        "artifact_required": true,
+        "artifact_validation": {
+          "canonical": true,
+          "validated": true,
+          "artifacts": [
+            {
+              "artifact_id": "20261021-141212-controlled-sd15-f048f569-s731972-controlled-sd15-b00.png",
+              "sha256": "f40be6b304fb2ca2adc97af9d6d6a0dbc9b1901f6c40fb8f0e5a2da9a4337655"
+            },
+            {
+              "artifact_id": "20261021-141212-controlled-sd15-f048f569-s731973-controlled-sd15-b01.png",
+              "sha256": "8c9920b87725d599c489a52011eb66fce789a2cfc4fad53f0f31e8ae6b8b5bc2"
+            }
+          ]
+        },
+        "owned_resources": [],
+        "created_at": 1792591931308,
+        "started_at": 1792591931309,
+        "completed_at": 1792591950558,
+        "resource_class": "heavy",
+        "resource_lease": null,
+        "params": {
+          "target": "sd15",
+          "prompt": "[REDACTED]",
+          "negative_prompt": "[REDACTED]",
+          "width": 512,
+          "height": 512,
+          "steps": 1,
+          "cfg_scale": 7,
+          "seed": 731972,
+          "api": "openai",
+          "scheduler": "discrete",
+          "vae": "auto",
+          "save_prompts": false,
+          "quantity": 2,
+          "fast_batch": true,
+          "hires_scale": null,
+          "hires_steps": 0,
+          "hires_denoise": 0.5,
+          "hires_upscaler": "Latent",
+          "parent_image_id": null,
+          "operation": "txt2img",
+          "preset": "",
+          "lora_apply_mode": "",
+          "backend_override": "",
+          "sampler": "euler",
+          "clip_skip": "",
+          "tiling": false,
+          "restore_faces": false,
+          "eta": "",
+          "rng": "",
+          "hires_width": null,
+          "hires_height": null
+        },
+        "artifacts": [
+          "20261021-141212-controlled-sd15-f048f569-s731972-controlled-sd15-b00.png",
+          "20261021-141212-controlled-sd15-f048f569-s731973-controlled-sd15-b01.png"
+        ],
+        "first_failed_gate": null,
+        "error": null,
+        "privacy": {
+          "persist_text": false
+        }
+      },
+      "stage": {
+        "key": "complete",
+        "label": "Complete",
+        "percent": 100,
+        "determinate": true
+      }
+    },
+    "log": {
+      "id": "4a7eab16-cc3b-461e-a633-24685a1b9bd3",
+      "stdout": "\n--- Native batch run: 2 images, seeds 731972..731973 ---\nSDCPP_RUN_ID: 20261021-141212-controlled-sd15-f048f569\nENGINE_RESULT: {\"ok\":true,\"run_id\":\"20261021-141212-controlled-sd15-f048f569\",\"status\":\"complete\",\"target\":\"sd15\",\"started\":1792591933.467652,\"batch_count\":2,\"cleanup\":true,\"deadline\":1792593733.467653,\"model_read\":true,\"engine_started\":1792591933.468471,\"pgid\":22329,\"engine_finished\":1792591944.2989922,\"generation_seconds\":10.831,\"evidence\":[\"  backend: \\\"MTL0\\\",\",\"  lora_apply_mode: auto,\",\"[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0\",\"[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 10.45s\"],\"engine_exit\":0,\"images\":[{\"sha256\":\"f40be6b304fb2ca2adc97af9d6d6a0dbc9b1901f6c40fb8f0e5a2da9a4337655\",\"bytes\":293970,\"dimensions\":[512,512]},{\"sha256\":\"8c9920b87725d599c489a52011eb66fce789a2cfc4fad53f0f31e8ae6b8b5bc2\",\"bytes\":352822,\"dimensions\":[512,512]}],\"sha256\":\"f40be6b304fb2ca2adc97af9d6d6a0dbc9b1901f6c40fb8f0e5a2da9a4337655\",\"bytes\":293970,\"dimensions\":[512,512],\"finished\":1792591944.438087}\nCONTROLLED_BATCH_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-141212-controlled-sd15-f048f569/controlled-sd15-b00.png\nCONTROLLED_BATCH_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-141212-controlled-sd15-f048f569/controlled-sd15-b01.png\nSDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: sd15\nCONTROLLED_OUTPUT_IMAGE: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-141212-controlled-sd15-f048f569/controlled-sd15-b00.png\nCONTROLLED_MANIFEST: /Users/andrew/Image_Gen/sdcpp-workflow/runs/20261021-141212-controlled-sd15-f048f569/controlled-manifest.json\n",
+      "stderr": ""
+    }
+  },
+  "doctor": {
+    "overall": "FAIL",
+    "bridge": "PASS",
+    "mflux_worker": "READY",
+    "sdcpp_worker": "READY",
+    "legacy_ssh_and_media_failures": "preserved; see operational limits",
+    "canonical_storage_current_problems": 0,
+    "historical_missing_references": 738
+  },
+  "independent_review": "Read-only review completed; identified privacy, ownership, recipe, quarantine and publication findings fixed; final atomic batch review found no concrete defects.",
+  "final_native_ui": "Connected V2 Studio observed after final console restart; SDXL base, Lightning enabled, strength restored to 0.85; no active job."
+}

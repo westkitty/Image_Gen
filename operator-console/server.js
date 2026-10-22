@@ -3,7 +3,9 @@ const { spawn, execFile, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { controlledScriptFor, buildControlledArgs, nativeBatchEligible, normalizeSamplingFields, validateSamplingFields, SDCLI_SAMPLER, normalizeHiresFields, validateHiresFields, hiresRequested } = require('./controlled-args');
+const localEngineRouting = require('./local-engine-routing');
+const controlledScriptFor = localEngineRouting.controlledScript;
+const { buildControlledArgs, nativeBatchEligible, normalizeSamplingFields, validateSamplingFields, SDCLI_SAMPLER, normalizeHiresFields, validateHiresFields, hiresRequested } = require('./controlled-args');
 const W = require('./workstation');
 const EC = require('./public/dexdiffusion/edit-core.js');
 const PromptParity = require('./public/dexdiffusion/prompt-parity.js');
@@ -31,6 +33,7 @@ const { enhancePrompt: runPromptEnhance, extractProtectedLiterals } = require('.
 const { PROFILES, resolvePromptProfile } = require('./prompt-profiles');
 const { getWildcardCatalog, expandWildcards: expandWildcardsUtil } = require('./wildcards');
 const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily } = require('./extra-networks');
+const { resolveLoraRuntimePolicy, routesFor } = require('./lora-runtime-policy');
 const { MODEL_CARDS, getModelCards, getModelCardById, checkModelSwitchWarnings } = require('./model-registry');
 const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt, ATTEMPT_TIMEOUT_MS } = require('./detailer');
 const { createEventBus } = require('./event-bus');
@@ -139,7 +142,7 @@ const ALLOWED_SAMPLERS = new Set([
   'euler_a', 'euler', 'heun', 'dpm2', 'dpm2_a', 'lms',
   'dpmpp2s_a', 'dpmpp2m', 'dpmpp2mv2', 'ipndm', 'ipndm_v', 'lcm'
 ]);
-const ALLOWED_SCHEDULERS = new Set(['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple', 'kl_optimal']);
+const ALLOWED_SCHEDULERS = new Set(['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple', 'kl_optimal', 'lcm']);
 const CONTROLLED_TARGET_IDS = new Set(['sd15', 'sdxl-base', 'sdxl-turbo', 'flux-fp8', 'flux2-klein-4b', 'sdxl-photonic', 'sdxl-homochi', 'sdxl-pony', 'sd15-homofidelis', 'sdxl-juggernaut', 'sdxl-realvisxl', 'sdxl-cyberrealistic', 'sdxl-epicrealism', 'sdxl-biglust', 'sdxl-lustify', 'sdxl-biglove', 'sdxl-biglove-photo1', 'sdxl-biglove-photo45']);
 const CONTROLLED_TARGETS = [
   {
@@ -609,6 +612,7 @@ function validateStructuredLoras(loras) {
   for (const l of loras) {
     if (!l || typeof l.name !== 'string' || !/^[A-Za-z0-9._ -]{1,120}$/.test(l.name)) return 'Invalid LoRA name';
     if (l.weight !== undefined && l.weight !== null && !Number.isFinite(Number(l.weight))) return 'Invalid LoRA weight';
+    if (l.weight !== undefined && l.weight !== null && (Number(l.weight) < 0 || Number(l.weight) > 2)) return 'LoRA weight must be within the validated 0.00–2.00 range';
   }
   return null;
 }
@@ -622,6 +626,24 @@ function resolveEditResources(body) {
   if (typeof body.prompt === 'string') body.prompt = rr.backendPrompt;
   body.__loras = rr.loras;
   delete body.loras;
+  return null;
+}
+function editLoraUnsupported(body) {
+  const loras = Array.isArray(body && body.__loras) ? body.__loras : [];
+  if (!loras.length) return null;
+  if (editWorkerTarget() !== 'sd15') return 'LoRA-backed edits are supported only when the edit worker uses the verified SD1.5 foundation checkpoint.';
+  if (loras.length !== 1) return 'LoRA-backed edits accept one verified SD1.5 adapter at a time.';
+  const name = String(loras[0].name || '').replace(/\.(safetensors|ckpt|pt|bin)$/i, '').toLowerCase();
+  const expected = name === 'lcm_sd15'
+    ? { steps: 4, cfg_scale: 1.5, sampler: 'lcm', scheduler: 'lcm' }
+    : name === 'hyper-sd15-8steps-cfg-lora'
+      ? { steps: 8, cfg_scale: 6, sampler: 'ddim_trailing', scheduler: 'discrete' }
+      : null;
+  if (!expected) return 'This adapter has no verified SD1.5 edit route.';
+  const actualSampler = String(body.sampler || '').toLowerCase();
+  if (Number(body.steps) !== expected.steps || Number(body.cfg_scale ?? body.cfg) !== expected.cfg_scale || actualSampler !== expected.sampler || String(body.scheduler || '').toLowerCase() !== expected.scheduler) {
+    return `This SD1.5 adapter requires its verified ${expected.steps}-step ${expected.sampler}/${expected.scheduler}, CFG ${expected.cfg_scale} edit recipe.`;
+  }
   return null;
 }
 // Effective generation record kept per canonical output (privacy-gated text).
@@ -1007,6 +1029,16 @@ async function refreshAssets() {
   const targetModels = { ...TARGET_MODELS };
   for (const target of Object.values(allControlledTargets())) if (target.modelPath) targetModels[target.id] = target.modelPath;
   const probed = await probeAssets({ sshTarget: SSH_TARGET_NAME, targetModels });
+  if (localEngineRouting.enabled()) {
+    probed.localEngineEnabled = true;
+    try {
+      const worker = await require('./local-engine-client').request({ op: 'health' });
+      probed.localEngineModels = worker.models;
+      probed.localEngineReady = !(worker.recovery_uncertain || []).length;
+      if (!probed.localEngineReady) probed.localEngineError = 'Worker recovery has unresolved process ownership';
+      probed.localEnginePid = worker.pid;
+    } catch (e) { probed.localEngineError = e.message; }
+  }
   assetCache = { ...probed, checkedAt: new Date().toISOString() };
   return assetCache;
 }
@@ -1583,7 +1615,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
     if (opts.onDone) { try { opts.onDone(job); } catch (_) {} }
   };
 
-  function pushResults(runStdout, runIndex, { requireOwner = false } = {}) {
+  function pushResults(runStdout, runIndex, { requireOwner = false, runStderr = '' } = {}) {
     const runMatch = runStdout.match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
     const runId = runMatch ? runMatch[1] : null;
     const reported = native
@@ -1607,16 +1639,27 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
       job.results.push(item);
       if (c) {
         try {
+          const timingMatch = spec.backend === 'mflux' && (runStdout + '\n' + runStderr).match(/MFLUX_TIMING:\s*(\{[^\n]*\})/);
+          let generationSeconds;
+          if (timingMatch) {
+            try {
+              const timings = JSON.parse(timingMatch[1]);
+              if (Number.isFinite(Number(timings.remote_generate_s))) generationSeconds = Number(timings.remote_generate_s);
+            } catch (_) {}
+          }
+          const loraStrength = (params.loras || []).length === 1 ? Number(params.loras[0].weight) : undefined;
           imageMeta.record(c.id, {
             operation: item.operation, parent: params.parent_image_id || undefined,
             detailed_from: params.detailed_from || undefined,
             runId, target: spec.id, seed,
             width: item.width, height: item.height, steps: params.steps || spec.defaultSteps,
-            cfg: spec.backend === 'mflux' ? undefined : params.cfg_scale, scheduler: spec.backend === 'mflux' ? undefined : params.scheduler,
+            cfg: spec.backend === 'mflux' ? 1 : params.cfg_scale, scheduler: spec.backend === 'mflux' ? undefined : params.scheduler,
+            backend: spec.backend, generation_seconds: generationSeconds,
+            strength: Number.isFinite(loraStrength) ? loraStrength : undefined,
             queueId: opts.queueId, batchNumber: opts.batchNumber,
             // Effective per-image generation record (exact recall source).
             gen_schema: 1,
-            sampler: spec.backend === 'mflux' ? undefined : EC.canonicalSampler(params.sampler || spec.defaultSampler),
+            sampler: spec.backend === 'mflux' ? 'euler' : EC.canonicalSampler(params.sampler || spec.defaultSampler),
             clip_skip: spec.backend === 'mflux' || params.clip_skip === '' ? undefined : params.clip_skip,
             tiling: spec.backend !== 'mflux' && params.tiling ? true : undefined,
             hires: spec.backend !== 'mflux' && hiresRequested(params)
@@ -1626,7 +1669,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
             rng: spec.backend === 'mflux' || !params.rng ? undefined : params.rng,
             vae: spec.backend === 'mflux' ? undefined : (params.vae || 'auto'),
             preset: params.preset || undefined,
-            loras: spec.backend === 'mflux' ? [] : (params.loras || []),
+            loras: params.loras || [],
             prompt_saved: !!params.save_prompts,
             prompt: params.save_prompts ? EC.stripLoraTags(params.prompt) : undefined,
             negative_prompt: params.save_prompts && !(spec.backend === 'mflux' || spec.noNegativePrompt) ? params.negative_prompt : undefined,
@@ -1718,7 +1761,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
             }
           } catch (_) {}
         }
-        if (publishedPass) pushResults(runStdout, runIndex, { requireOwner: true });
+        if (publishedPass) pushResults(runStdout, runIndex, { requireOwner: true, runStderr });
         if (job.cancelInFlight && publishedPass && quantity === 1 && job.results.some(r => r.status === 'DONE')) {
           // The run manifest and run-owned canonical index prove publication
           // completed before child close, even if cancellation killed the shell
@@ -1774,7 +1817,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
       if (controlledManifestMatch) job.controlledManifest = controlledManifestMatch[1];
       finalizeJobImages(job, runStdout);
       if (job.status === 'FAIL') { finish(); return; }
-      pushResults(runStdout, runIndex);
+      pushResults(runStdout, runIndex, { runStderr });
       updateSequentialProgress(job, { completedRuns: runNumber, currentRunPercent: 100 });
 
       if (!native && runIndex < quantity - 1) {
@@ -1852,7 +1895,9 @@ function normalizeControlledGenerationBody(body) {
     'hires_height',
     'parent_image_id',
     'operation',
-    'loras'
+    'loras',
+    'lora_apply_mode',
+    'backend_override'
   ]);
   for (const key of Object.keys(body || {})) {
     if (!allowedKeys.has(key)) {
@@ -1890,6 +1935,8 @@ function normalizeControlledGenerationBody(body) {
     operation: body.operation ? String(body.operation) : 'txt2img',
     preset: typeof body.preset === 'string' && /^[A-Za-z0-9_-]{1,24}$/.test(body.preset) ? body.preset : '',
     loras: body.loras,
+    lora_apply_mode: body.lora_apply_mode === undefined ? '' : String(body.lora_apply_mode),
+    backend_override: body.backend_override === undefined ? '' : String(body.backend_override),
     ...normalizeSamplingFields(body),
     ...normalizeHiresFields(body)
   };
@@ -1952,6 +1999,10 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   if (cfgScale < 0 || cfgScale > 30) return `Invalid cfg_scale for ${spec.label}`;
 
   if (params.target === 'flux-fp8' && cfgScale !== 1) return 'FLUX.1 Schnell requires cfg_scale 1';
+  if (params.lora_apply_mode && !['auto', 'at_runtime', 'immediately'].includes(params.lora_apply_mode)) return 'Invalid LoRA application mode';
+  if (params.backend_override && !['cpu', 'metal', 'gpu', 'MTL0'].includes(params.backend_override)) return 'Invalid backend override';
+  if (params.lora_apply_mode && !(params.loras || []).length) return 'LoRA application mode requires a structured LoRA';
+  if ((params.lora_apply_mode || params.backend_override) && cTgt.backend === 'mflux') return 'Backend override and SDCPP LoRA modes are unavailable for MFLUX';
   if (params.quantity !== undefined && params.quantity !== null) {
     if (!Number.isInteger(params.quantity) || params.quantity < 1 || params.quantity > 100) {
       return 'Quantity must be an integer between 1 and 100';
@@ -1962,6 +2013,14 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   if (!['txt2img', 'variation', 'seed-lab', 'prompt-ab', 'batch'].includes(params.operation)) return 'Invalid operation';
   if (params.parent_image_id && !imageStore.resolveImage(params.parent_image_id)) return 'parent_image_id is not a canonical image';
   if (W.isFixedSeedValue(params.seed) && parseInt(params.seed, 10) + (params.quantity || 1) - 1 > W.MAX_SEED) return 'seed + quantity exceeds the maximum seed';
+  const loraRoute = resolveLoraRuntimePolicy({ ...params, steps: steps, cfg_scale: cfgScale });
+  if (!loraRoute.ok) return loraRoute.error;
+  if (loraRoute.route) {
+    params.backend_override = loraRoute.route.backend_override;
+    params.lora_apply_mode = loraRoute.route.lora_apply_mode;
+    params.mflux_lora_id = loraRoute.route.mflux_lora_id;
+    params.mflux_lora_strength = loraRoute.route.mflux_lora_strength;
+  }
   return null;
 }
 
@@ -2781,6 +2840,13 @@ app.post('/api/models/secondary/activate', async (req, res) => {
   try {
     // Targeted only: this script closes the workflow control socket/tmux
     // session and explicitly leaves unrelated services alone.
+    if (localEngineRouting.enabled()) {
+      const client = require('./local-engine-client');
+      const run_id = new Date().toISOString().replace(/[-:]/g, '').replace('T','-').slice(0,15) + '-model-switch-' + crypto.randomBytes(4).toString('hex');
+      const reply = await client.request({ op: 'activate', target: targetId, run_id, token: crypto.randomBytes(32).toString('hex') });
+      const assets = await refreshAssets();
+      return res.json({ ok: true, ...reply.secondary, modelState: modelStateView(assets) });
+    }
     await execWorkflow(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-server-stop.sh'), [], 30000);
     const result = await execWorkflow(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-secondary-slot.sh'), ['activate', targetId, source], 30000);
     const state = JSON.parse(result.stdout.trim());
@@ -2963,6 +3029,32 @@ function withHeaderFacts(list) {
     return { ...a, header_family: hf === 'unknown' ? undefined : hf, header_triggers: h.trigger_candidates || [] };
   });
 }
+const LORA_ASSET_MANIFEST = path.join(path.resolve(__dirname, '..'), 'docs', 'operations', 'lora-assets-20261021.json');
+function withLoraProofs(list) {
+  let records = [];
+  try { records = JSON.parse(fs.readFileSync(LORA_ASSET_MANIFEST, 'utf8')).assets || []; } catch (_) {}
+  const byFilename = new Map(records.map(a => [String(a.filename || '').toLowerCase(), a]));
+  return (list || []).map(asset => {
+    const record = byFilename.get(String(asset.filename || '').toLowerCase());
+    const proof = record && record.inference_proof;
+    const metal = record && record.metal_inference;
+    return proof ? Object.assign({}, asset, {
+      proof_status: proof.status || 'FILE_INSTALLED_UNTESTED',
+      proof_target_ids: proof.target_ids || [], proof_backend: proof.backend || null,
+      proof_device: proof.device || null, proof_apply_modes: proof.apply_modes || [],
+      proof_run_ids: proof.run_ids || [],
+      mflux_rslora_verified: proof.rslora_conversion_verified === true,
+      metal_inference_status: metal && metal.status || 'UNTESTED',
+      metal_target_ids: metal && metal.target_id ? [metal.target_id] : [],
+      metal_backend: metal && metal.backend || null,
+      metal_apply_mode: metal && metal.apply_mode || null,
+      metal_performance_status: record.performance_measurement && record.performance_measurement.status || 'UNMEASURED',
+      metal_performance_summary: record.performance_measurement && record.performance_measurement.summary || null,
+      production_routes: Array.from(new Set([...(proof.target_ids || []), ...(metal && metal.target_id ? [metal.target_id] : [])]))
+        .flatMap(target => routesFor(target, asset.filename))
+    }) : asset;
+  });
+}
 const ASSET_KINDS = { checkpoint: 'checkpoints', lora: 'loras', vae: 'vaes', embedding: 'embeddings' };
 app.get('/api/models/headers', (req, res) => {
   const assets = readJsonCache(ASSETS_CACHE) || {};
@@ -2995,7 +3087,7 @@ app.post('/api/models/inspect', async (req, res) => {
 app.get('/api/extra-networks', (req, res) => {
   const targetId = req.query.target || 'flux2-klein-4b';
   const assets = readJsonCache(ASSETS_CACHE) || {};
-  const loras = buildLoraCards(withHeaderFacts(assets.loras), targetId);
+  const loras = buildLoraCards(withHeaderFacts(withLoraProofs(assets.loras)), targetId);
   const vaes = buildVaeCards(withHeaderFacts(assets.vaes), targetId);
   const embeddings = buildEmbeddingState(withHeaderFacts(assets.embeddings), targetId);
   res.json({ loras, vaes, embeddings });
@@ -3281,9 +3373,12 @@ app.post('/api/actions/generate-controlled', (req, res) => {
   if (loraShapeErr) return res.status(400).json({ error: loraShapeErr });
   if (!params.invalidKey) {
     params.prompt = expandWildcards(params.prompt);
-    const rr = EC.resolveResources({ prompt: params.prompt, loras: params.loras });
-    params.prompt = rr.backendPrompt;
-    params.loras = rr.loras;
+    const requestedSpec = allTargetById[params.target];
+    if (!requestedSpec || requestedSpec.backend !== 'mflux') {
+      const rr = EC.resolveResources({ prompt: params.prompt, loras: params.loras });
+      params.prompt = rr.backendPrompt;
+      params.loras = rr.loras;
+    }
   }
   const err = validateControlledGenerationParams(params, allTargetById);
   if (err) return res.status(400).json({ error: err });
@@ -3564,6 +3659,8 @@ app.post('/api/actions/img2img', (req, res) => {
   const body = { ...(req.body || {}) };
   const resErr = resolveEditResources(body);
   if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
+  const editLoraError = editLoraUnsupported(body);
+  if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
   const srcInfo = resolveImageSource(body);
   cleanupRejectedSource(res, srcInfo);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
@@ -3687,6 +3784,8 @@ function handleInpaint(req, res) {
   const inpaintOpts = inpaintReq.options;
   const resErr = resolveEditResources(body);
   if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
+  const editLoraError = editLoraUnsupported(body);
+  if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
   const srcInfo = resolveImageSource(body);
   cleanupRejectedSource(res, srcInfo);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
@@ -4071,6 +4170,8 @@ app.post('/api/actions/outpaint', (req, res) => {
   if (usedExtensionPrompt) body.prompt = body.extension_prompt.trim();
   const resErr = resolveEditResources(body);
   if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
+  const editLoraError = editLoraUnsupported(body);
+  if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
   if (src.error) return res.status(404).json({ error: src.error, gate: 'source' });
   if (!src.dims) return res.status(400).json({ error: 'Outpaint source must be a PNG image.' });
   const plan = planOutpaint(src.dims, body);
@@ -4547,15 +4648,20 @@ app.get('/api/library', (req, res) => {
 // ---- Workers / resources / generic jobs ----------------------------------------------
 const MEDIA_EVIDENCE_FILE = path.join(STATE_DIR, 'media-evidence.json');
 function readMediaEvidence() { try { return JSON.parse(fs.readFileSync(MEDIA_EVIDENCE_FILE, 'utf8')); } catch (_) { return {}; } }
+function localEngineProbe(a, target) {
+  if (!a.localEngineEnabled) return null;
+  const ready = a.localEngineReady === true && !!a.localEngineModels;
+  return { architecture_available:true, runtime_available:ready, model_available:ready && a.localEngineModels[target] === true, enabled:true, proven:false, state:ready ? 'READY · local engine bridge' : 'LOCAL ENGINE UNAVAILABLE' };
+}
 const workerRegistry = M.createWorkerRegistry({
   getEvidence: readMediaEvidence,
   imageAdapters: {
     mflux: {
-      probe: a => ({ architecture_available: true, runtime_available: a.mfluxRuntime !== false, model_available: a.mfluxModel !== false, enabled: true, proven: true, state: a.mfluxRuntime === false || a.mfluxModel === false ? 'MODEL/RUNTIME MISSING' : 'PROVEN' }),
+      probe: a => localEngineProbe(a, 'flux2-klein-4b') || ({ architecture_available: true, runtime_available: a.mfluxRuntime !== false, model_available: a.mfluxModel !== false, enabled: true, proven: true, state: a.mfluxRuntime === false || a.mfluxModel === false ? 'MODEL/RUNTIME MISSING' : 'PROVEN' }),
       capabilities: () => ({ generate: true, cancel_supported: true, cancel_scope: 'controlled generation', cancel_reason: 'Closing the SSH session does not stop MFLUX; Interrupt instead stops the run\'s own remote processes by run id and verifies none are left (proven live 2026-10-16).' }),
     },
     sdcpp: {
-      probe: a => ({ architecture_available: true, runtime_available: a.sdCli !== false, model_available: a.sd15Model !== false, enabled: true, proven: true, state: a.sdCli === false ? 'RUNTIME MISSING' : 'PROVEN' }),
+      probe: a => localEngineProbe(a, 'sd15') || ({ architecture_available: true, runtime_available: a.sdCli !== false, model_available: a.sd15Model !== false, enabled: true, proven: true, state: a.sdCli === false ? 'RUNTIME MISSING' : 'PROVEN' }),
       capabilities: () => ({ generate: true, img2img: true, inpaint: true, outpaint: true, hiresRefine: true, nativeBatch: true, controlNet: false, controlNet_state: 'ENGINE SUPPORTED — MODEL ASSET MISSING', cancel_supported: true, cancel_scope: 'controlled generation', cancel_reason: 'Interrupt stops the run\'s own remote sd-cli by run id and verifies none are left (proven live 2026-10-16). Edit, upscale and hires jobs are not covered: their Big Mac side cannot be verified, so use Stop After Current.' }),
     },
   },
@@ -4758,6 +4864,7 @@ app.get('/api/doctor', async (req, res) => {
     add('Big Mac', 'PASS', 'reachable via ssh ' + SSH_TARGET_NAME);
     add('Big Mac identity', a.identity === 'bigmac@bigmac' ? 'PASS' : 'WARN', a.identity || 'unknown');
     add('wc2tb mounted', a.wc2tb ? 'PASS' : 'FAIL', '/Volumes/wc2tb' + (a.wc2tb ? '' : ' not mounted'));
+    if (a.localEngineEnabled) add('Big Mac local engine bridge', a.localEngineReady ? 'PASS' : 'FAIL', a.localEngineReady ? `GUI worker pid ${a.localEnginePid}; private Unix socket; model reads occur locally` : a.localEngineError || 'worker unavailable');
     add('wc2tb readable by SSH worker', a.wc2tbReadable === true ? 'PASS' : a.wc2tbReadable === false ? 'FAIL' : 'WARN',
       a.wc2tbReadable === true ? 'remote SSH can list external model content' : 'mounted does not imply readable: DexDiffusion SSH cannot open /Volumes/wc2tb');
     add('MFLUX runtime', a.mfluxRuntime ? 'PASS' : 'FAIL', 'internal venv');
@@ -4766,7 +4873,7 @@ app.get('/api/doctor', async (req, res) => {
     add('SD1.5 model', a.sd15Model ? 'PASS' : 'FAIL', '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors');
     add('Real-ESRGAN model', a.esrganModel ? 'PASS' : 'FAIL', 'RealESRGAN_x4plus.pth');
     const missing = Object.entries(a.models || {}).filter(([, v]) => v === false).length;
-    add('Configured SDCPP targets', missing ? 'WARN' : 'PASS', missing ? `${missing} configured model file(s) absent (targets report model-missing)` : 'all present');
+    add('Configured SDCPP targets', missing ? 'WARN' : 'PASS', missing ? `${missing} configured paths inaccessible to legacy SSH probes; local bridge target status is separate` : 'all present');
   }
   try {
     const si = await getSystemInfo({ targets: liveModelTargets(), build: { ...getBuildInfo(), sshTarget: SSH_TARGET_NAME } });

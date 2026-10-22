@@ -31,6 +31,23 @@ test('the canonical 14 categories exist in the fixed product order', () => {
   assert.equal(Nav.CATEGORIES.length, 14);
 });
 
+test('the actual V2 template places LoRA controls directly before the persistent Generate action', () => {
+  const template = read('index.html');
+  const v2 = template.indexOf('<sc-if value="{{ isV2 }}"');
+  const v4 = template.indexOf('<sc-if value="{{ isV4 }}"');
+  const primary = template.indexOf('<div data-studio-primary-action', v2);
+  const controls = template.indexOf('{{ createLoraControls }}', primary);
+  const generate = template.indexOf('onClick="{{ onGenerate }}"', primary);
+  assert.ok(v2 >= 0 && v4 > v2 && primary > v2 && primary < v4, 'found the V2 persistent action region');
+  assert.ok(controls > primary && controls < generate, 'V2 mounts the functional LoRA controls immediately above Generate');
+  assert.match(read('workstation-ui.js'), /vals\.createLoraControls = curScreen === 'create' \? this\.buildCreateLoraControls\(\) : null/);
+  assert.match(template, /<script src="\.\.\/model-presets\.js"><\/script>\s*<script src="component\.js"><\/script>/, 'V2 loads acceleration recipes before the controls');
+  assert.match(read('component.js'), /this\.state\.target \|\| 'flux2-klein-4b'\) !== target\) return/, 'late asset discovery for an old target cannot overwrite current compatibility');
+  assert.match(read('component.js'), /onStepsChange: e=>this\.setCreateLoraField\('steps', e\.target\.value\)/, 'manual step changes are retained as active adapter overrides');
+  assert.match(read('component.js'), /onCfgChange: e=>this\.setCreateLoraField\('cfg', e\.target\.value\)/, 'manual CFG changes are retained as active adapter overrides');
+  assert.match(read('workstation-ui.js'), /LoRA off · current settings:/, 'disabled state describes the restored normal recipe');
+});
+
 test('chips carry a visible group tint and a real active state, not colour-only meaning', () => {
   const chips = Nav.chips({ activeScreen: 'library' });
   assert.equal(chips.length, 14);
@@ -352,6 +369,74 @@ test('Cancel is a separate control bound to the exact job id', { skip: needsDom 
     assert.equal(cancels.length, 1, 'exactly one cancel request');
     assert.match(cancels[0].url, /\/api\/jobs\/job-abc\/cancel$/);
     assert.equal(cancels[0].method, 'POST');
+  } finally { close(); }
+});
+
+test('V2 Create shows guarded LoRA controls, applies a recipe, and snapshots ON/OFF requests', { skip: needsDom }, async () => {
+  const { w, doc, inst, close } = boot();
+  try {
+    await settle(w);
+    const calls = apiStub(w);
+    const adapter = { id: 'lcm_sdxl_asset', name: 'lcm_sdxl', filename: 'lcm_sdxl.safetensors', family: 'sdxl', compatibility: 'Compatible', proof_status: 'PROVEN', proof_target_ids: ['sdxl-base'], default_weight: 1, min_weight: 0, max_weight: 2, step: 0.05 };
+    const unproven = { ...adapter, id: 'hyper_sdxl_asset', name: 'Hyper-SDXL-8steps-CFG-lora', compatibility: 'Unproven', proof_status: 'FILE_INSTALLED_UNTESTED' };
+    inst.setState({ target: 'sdxl-base', prompt: 'a quiet harbour at dawn', steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', assets: { loras: [adapter, unproven], vaes: [], embeddings: { count: 0, items: [] } } });
+    await settle(w);
+    const toggle = doc.querySelector('[data-dex-field="use-lora"]');
+    assert.ok(toggle, 'Use LoRA is present beside the persistent Generate action');
+    assert.ok(toggle.disabled, 'the checkbox stays disabled when nothing is selected');
+    const select = doc.querySelector('[data-dex-field="create-lora-adapter"]');
+    assert.ok([...select.options].some(o => o.textContent.includes('Installed; inference is not yet proven')));
+    select.value = adapter.id;
+    select.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await settle(w);
+    const enabledToggle = doc.querySelector('[data-dex-field="use-lora"]');
+    assert.equal(enabledToggle.disabled, false, JSON.stringify({ selected: inst.state.createLora, target: inst.state.target, options: inst._createLoraOptions() }));
+    enabledToggle.checked = true;
+    enabledToggle.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await settle(w);
+    assert.deepEqual([inst.state.steps, inst.state.cfg, inst.state.sampler, inst.state.scheduler], [4, 1.5, 'lcm', 'lcm']);
+    inst.setCreateLoraStrength(0.75, 0, 2);
+    await inst.onGenerate(); await settle(w, 80);
+    const on = calls.filter(c => c.url.includes('generate-controlled')).at(-1);
+    assert.deepEqual(JSON.parse(on.body).loras, [{ name: 'lcm_sdxl', weight: 0.75 }]);
+    inst.setState({ jobStatus: 'idle' });
+    inst.setCreateLoraField('steps', 6);
+    inst.setCreateLoraEnabled(false);
+    await settle(w);
+    assert.deepEqual([inst.state.steps, inst.state.cfg, inst.state.sampler, inst.state.scheduler], [6, 7, 'euler_a', 'discrete'], 'explicit edits made after activation survive recipe restoration');
+    await inst.onGenerate(); await settle(w, 80);
+    const off = calls.filter(c => c.url.includes('generate-controlled')).at(-1);
+    assert.equal(Object.hasOwn(JSON.parse(off.body), 'loras'), false, 'disabled state cannot leak into the next job');
+  } finally { close(); }
+});
+
+test('changing the selected adapter restores normal settings and preserves manual overrides', { skip: needsDom }, async () => {
+  const { w, doc, inst, close } = boot();
+  try {
+    await settle(w);
+    const adapter = { id: 'lcm_sdxl_asset', name: 'lcm_sdxl', filename: 'lcm_sdxl.safetensors', family: 'sdxl', compatibility: 'Compatible', proof_status: 'PROVEN', proof_target_ids: ['sdxl-base'], default_weight: 1, min_weight: 0, max_weight: 2, step: 0.05 };
+    const second = { ...adapter, id: 'lightning_asset', name: 'sdxl_lightning_4step_lora', filename: 'sdxl_lightning_4step_lora.safetensors' };
+    inst.setState({ target: 'sdxl-base', steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', assets: { loras: [adapter, second], vaes: [], embeddings: { count: 0, items: [] } } });
+    const selectAdapter = async id => {
+      await settle(w);
+      const select = doc.querySelector('[data-dex-field="create-lora-adapter"]');
+      select.value = id;
+      select.dispatchEvent(new w.Event('change', { bubbles: true }));
+      await settle(w);
+    };
+    await selectAdapter(adapter.id);
+    inst.setCreateLoraEnabled(true);
+    await selectAdapter(second.id);
+    assert.equal(inst.state.createLora.enabled, false);
+    assert.deepEqual([inst.state.steps, inst.state.cfg, inst.state.sampler, inst.state.scheduler], [20, 7, 'euler_a', 'discrete']);
+    inst.setCreateLoraEnabled(true);
+    inst.setCreateLoraField('steps', 6);
+    await selectAdapter(adapter.id);
+    assert.equal(inst.state.createLora.selectedId, adapter.id);
+    assert.deepEqual([inst.state.steps, inst.state.cfg, inst.state.sampler, inst.state.scheduler], [6, 7, 'euler_a', 'discrete'], 'explicit edits survive changing adapter');
+    inst.setState({ steps: 30 });
+    await selectAdapter(second.id);
+    assert.equal(inst.state.steps, 30, 'changing an inactive adapter preserves ordinary settings');
   } finally { close(); }
 });
 

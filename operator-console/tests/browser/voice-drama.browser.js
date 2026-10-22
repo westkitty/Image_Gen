@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const fs = require('fs'); const path = require('path');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, makeWav, runner, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, installModelSnapshots, makeWav, runner, launchBrowser, runCleanups, openStudio } = require('./helpers');
 const { resolveOutputDir, createOwnedWriter } = require('./safe-output');
 // A fresh directory per run (or the explicit one); existing files are never replaced.
 const OUT = resolveOutputDir(process.env.DEX_BROWSER_OUTPUT_DIR, { label: 'voice' }), WRITER = createOwnedWriter(OUT), outPath = n => WRITER.pathFor(n);
@@ -21,7 +21,7 @@ const { results, test, phase, exitCode } = runner('voice-drama');
     const ctx = await browser.newContext({ viewport: { width: opts.width || 1280, height: opts.height || 900 } }), page = await ctx.newPage();
     await installModelSnapshots(page, srv.base);
     const errors = []; page.on('pageerror', e => errors.push(String(e)));
-    await page.goto(srv.base + '/dexdiffusion/'); await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
+    await openStudio(page, srv.base + '/dexdiffusion/'); await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
     return { ctx, page, errors };
   };
   try {

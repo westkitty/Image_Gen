@@ -2,13 +2,13 @@
 // J04: a worker whose live contract refuses cancellation must disclose that before launch.
 const assert=require('node:assert/strict');
 const {chromium}=require('playwright-core');
-const {startServer,launchBrowser,runCleanups}=require('./helpers');
+const {startServer,launchBrowser,runCleanups, openStudio }=require('./helpers');
 (async()=>{
  const {base}=await startServer();const browser=await launchBrowser(chromium);
  const page=await browser.newPage({viewport:{width:1340,height:870}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/workers',r=>r.fulfill({json:{workers:[{id:'kokoro',enabled:true,proven:true,capabilities:{cancel_supported:false}},{id:'ace-step',enabled:true,proven:true,capabilities:{cancel_supported:false}}],options:{kokoro_voices:['af_heart']}}}));
- await page.goto(base+'/dexdiffusion/',{waitUntil:'domcontentloaded'});
+ await openStudio(page, base+'/dexdiffusion/',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.__dex?.state?.version===2,{timeout:15000});
  await page.locator('[data-studio-category="voice"]').click();
  await page.locator('[data-voice-tab="quick"]').click();
@@ -25,5 +25,5 @@ const {startServer,launchBrowser,runCleanups}=require('./helpers');
  const musicWarn=page.locator('[data-worker-cancel-warning="ace-step"]');
  await musicWarn.waitFor({state:'visible',timeout:4500});
  assert.deepEqual(errors,[]);
- console.log('UNSUPPORTED_CANCEL_WARNING_PASS',{voice:true,music:true,capabilityDriven:true});
+ console.log('[studio-unsupported-cancel.browser] PASS UNSUPPORTED_CANCEL_WARNING_PASS',{voice:true,music:true,capabilityDriven:true});
 })().catch(e=>{console.error('UNSUPPORTED_CANCEL_WARNING_FAIL',e.stack);process.exitCode=1}).finally(runCleanups);

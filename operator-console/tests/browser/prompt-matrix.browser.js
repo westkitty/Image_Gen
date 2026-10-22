@@ -3,7 +3,7 @@
 // plus the real server validators over HTTP. No image is generated (queue creation is intercepted).
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups, openStudio } = require('./helpers');
 
 const FX = { 'fx-landscape.png': { w: 800, h: 500, meta: { operation: 'txt2img', target: 'sd15', seed: 1, steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', vae: 'auto', loras: [], gen_schema: 1, prompt_saved: false } } };
 const { test, results, exitCode } = runner('prompt-matrix');
@@ -19,7 +19,7 @@ async function newPage(browser, base, prompt) {
   await page.route('**/api/models/secondary/activate', r => r.fulfill({ json: { ok: true, activeSecondaryModel: 'sd15', modelState: {} } }));
   await page.route(/\/api\/prompt(matrix|lines)\/plan$/, r => { plans.push({ url: r.request().url(), body: r.request().postDataJSON() }); r.continue(); });
   await page.route(/\/api\/prompt(matrix|lines)$/, r => { starts.push({ url: r.request().url(), body: r.request().postDataJSON() }); r.fulfill({ status: 400, json: { error: 'intercepted by test' } }); });
-  await page.goto(base + '/dexdiffusion/');
+  await openStudio(page, base + '/dexdiffusion/');
   await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
   await page.evaluate(p => { __dex.setState({ prompt: p, target: 'sd15' }); __dex.setScreen('batch'); }, prompt);
   await page.waitForSelector('[data-pmx-panel]');

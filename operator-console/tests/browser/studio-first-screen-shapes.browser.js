@@ -29,10 +29,10 @@ const {startServer,launchBrowser,runCleanups}=require('./helpers');
   await page.locator('[data-studio-shape="portrait"]').click({timeout:4500});
   await page.waitForFunction(()=>document.querySelector('[data-studio-shape="portrait"]')?.getAttribute('aria-pressed')==='true',null,{timeout:5000});
   assert.equal(await page.getByRole('combobox',{name:'Quality preset'}).isVisible(),true,'Quality is a visible first-use control');
-  await page.locator('details[data-studio-advanced] summary').click();
+  await page.locator('details[data-studio-advanced] > summary').click();
   assert.equal(await page.getByRole('textbox',{name:'Negative prompt'}).isVisible(),true,'Advanced still exposes negative prompt');
   assert.deepEqual(errors,[]);
-  console.log('FIRST_SCREEN_SHAPES_PASS',JSON.stringify({size:`${width}x${height}`,shapes:result.shapes.length,prompt:Math.round(result.prompt.bottom),model:Math.round(result.model.bottom),lastShape:Math.round(Math.max(...result.shapes.map(x=>x.box.bottom))),paneBottom:Math.round(result.pane.bottom)}));
+  console.log('[studio-first-screen-shapes.browser] PASS FIRST_SCREEN_SHAPES_PASS',JSON.stringify({size:`${width}x${height}`,shapes:result.shapes.length,prompt:Math.round(result.prompt.bottom),model:Math.round(result.model.bottom),lastShape:Math.round(Math.max(...result.shapes.map(x=>x.box.bottom))),paneBottom:Math.round(result.pane.bottom)}));
   await page.close();
  }
 })().catch(e=>{console.error('FIRST_SCREEN_SHAPES_FAIL',e.stack);process.exitCode=1}).finally(runCleanups);

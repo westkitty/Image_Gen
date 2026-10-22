@@ -3,7 +3,7 @@
 // mask blur, masked content — through the real UI, plus the server validator over HTTP. No inference runs.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { makePng, startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups } = require('./helpers');
+const { makePng, startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, runCleanups, openStudio } = require('./helpers');
 
 const FX = { 'fx-landscape.png': { w: 800, h: 500, meta: { operation: 'txt2img', target: 'sd15', seed: 1, steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', vae: 'auto', loras: [], gen_schema: 1, prompt_saved: false } } };
 const { test, results, exitCode } = runner('edit-inpaint-parity');
@@ -19,7 +19,7 @@ async function newPage(browser, base) {
   await page.route('**/api/models/secondary/activate', r => r.fulfill({ json: { ok: true, activeSecondaryModel: 'sd15', modelState: {} } }));
   await page.route('**/api/actions/inpaint', r => { posts.push(r.request().postDataJSON()); r.fulfill({ status: 400, json: { error: 'intercepted by test', gate: 'test' } }); });
   await page.route('**/api/library/images**', r => r.fulfill({ json: { filter: 'all', total: 1, items: [{ id: 'fx-landscape.png', url: '/api/images/fx-landscape.png', width: 800, height: 500, meta: FX['fx-landscape.png'].meta }] } }));
-  await page.goto(base + '/dexdiffusion/');
+  await openStudio(page, base + '/dexdiffusion/');
   try {
     await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData, null, { timeout: 30000 });
   } catch (err) {

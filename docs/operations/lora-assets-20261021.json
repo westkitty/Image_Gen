@@ -1,0 +1,662 @@
+{
+  "schema": 1,
+  "checked_at": "2026-10-21",
+  "installed_root": "/Volumes/wc2tb/dex-imagegen/models/loras",
+  "source_evidence": "Hugging Face model/revision and file metadata; each installed file SHA-256 matched upstream LFS SHA-256; safetensors header validated.",
+  "assets": [
+    {
+      "id": "sdxl-lightning-4step",
+      "filename": "sdxl_lightning_4step_lora.safetensors",
+      "source_model_id": "ByteDance/SDXL-Lightning",
+      "source_url": "https://huggingface.co/ByteDance/SDXL-Lightning",
+      "source_revision": "27dd02eecf35d9e1d6de2bf12904db3f1e37f2fb",
+      "source_file": "sdxl_lightning_4step_lora.safetensors",
+      "license": "OpenRAIL++",
+      "bytes": 393854592,
+      "sha256": "bf56cf2657efb15e465d81402ed481d1e11c4677e4bcce1bc11fe71ad8506b79",
+      "family": "sdxl",
+      "classification": "acceleration",
+      "status": "INFERENCE_PROVEN_CPU",
+      "inference_proof": {
+        "target_ids": [
+          "sdxl-base"
+        ],
+        "backend": "sdcpp",
+        "device": "cpu",
+        "apply_modes": [
+          "immediately"
+        ],
+        "run_ids": [
+          "20261021-023659-controlled-sdxl-base",
+          "20261021-025940-controlled-sdxl-base"
+        ],
+        "job_id": "f2b35ef5-3427-4809-8d9a-2c09651d92ad",
+        "baseline_run_id": null,
+        "applied_tensors": "2364/2364",
+        "wall_seconds": 94.75,
+        "steps": 4,
+        "cfg": 0,
+        "sampler": "euler",
+        "scheduler": "sgm_uniform",
+        "status": "PROVEN",
+        "output_sha256": "11386cfe23847564f07bccb8c2445ad947e438091b4b9d77d0899d0106ead21b",
+        "output_bytes": 418454,
+        "width": 512,
+        "height": 512,
+        "remote_output_cleaned": true,
+        "matched_baseline": "no",
+        "ui_submission": {
+          "job_id": "ea36392d-730a-4ca9-949c-9fa386eecd48",
+          "run_id": "20261021-025940-controlled-sdxl-base",
+          "entry_point": "native V2 Studio Create",
+          "strength": 0.85,
+          "backend": "sdcpp",
+          "device": "cpu",
+          "apply_mode": "immediately",
+          "applied_tensors": "2364/2364",
+          "wall_seconds": 111.37,
+          "output_sha256": "ae0736943817a39c8aca6711a693cb534c2e2694c493d64abd85042dd13a1eb8",
+          "output_bytes": 468339,
+          "width": 512,
+          "height": 512,
+          "remote_output_cleaned": true,
+          "prompt_persistence": false
+        }
+      },
+      "metal_inference": {
+        "status": "FUNCTIONAL_METAL",
+        "target_id": "sdxl-base",
+        "backend": "MTL0",
+        "device": "Apple M4",
+        "apply_mode": "at_runtime",
+        "job_id": "d97c8259-2cca-47f1-bd10-88da9dd85928",
+        "run_id": "20261021-041255-controlled-sdxl-base",
+        "applied_tensors": "2364/2364",
+        "apply_seconds": 16.1,
+        "engine_generation_seconds": 31.93,
+        "worker_elapsed_seconds": 42.18,
+        "output_sha256": "6d83cf82da41fd248c5f9fff80da4c84cf81f91b36b22b260635bd27388de8cc",
+        "output_bytes": 436111,
+        "width": 512,
+        "height": 512,
+        "remote_output_cleaned": true,
+        "matched_performance_baseline": false,
+        "quality_review": "pending"
+      },
+      "metal_mode_probes": {
+        "auto": {
+          "status": "FAILED",
+          "job_id": "c2fc375a-a64b-49b4-8120-3d024f3e352f",
+          "run_id": "20261021-041354-controlled-sdxl-base",
+          "backend": "MTL0",
+          "failure": "ggml_metal_op_encode_impl: unsupported op 'ADD'",
+          "remote_output_cleaned": true
+        },
+        "immediately": {
+          "status": "CANCELLED_VERIFIED",
+          "job_id": "6712371c-ce58-4eaa-b1be-acd3d49ffec8",
+          "run_id": "20261021-041418-controlled-sdxl-base",
+          "backend": "MTL0",
+          "reason": "repeated adapter-load stall; scoped cancellation completed",
+          "remote_cleanup": "SDCPP_REMOTE_CLEANUP: OK",
+          "remote_stop": "cancelled_verified",
+          "output_produced": false
+        }
+      },
+      "selected_production_route": {
+        "backend": "MTL0",
+        "apply_mode": "at_runtime",
+        "target_id": "sdxl-base",
+        "recipe": {
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg": 0,
+          "sampler": "euler",
+          "scheduler": "sgm_uniform"
+        }
+      },
+      "performance_measurement": {
+        "status": "MEASURED",
+        "benchmark_report": "sdcpp-workflow/runs/lora-performance-20261021-sdxl-base-mtl0.json",
+        "summary": "Lightning mean end-to-end time was 48.0% lower than matched normal 20-step MTL0; it was 3.48 s slower than the matched low-step no-LoRA control. Human quality review pending.",
+        "normal_quality_mean_end_to_end_seconds": 52.39,
+        "low_step_control_mean_end_to_end_seconds": 23.75,
+        "lora_mean_end_to_end_seconds": 27.23,
+        "matched_repeats": 3,
+        "quality_review": "pending human review"
+      }
+    },
+    {
+      "id": "hyper-sdxl-8step-cfg",
+      "filename": "Hyper-SDXL-8steps-CFG-lora.safetensors",
+      "source_model_id": "ByteDance/Hyper-SD",
+      "source_url": "https://huggingface.co/ByteDance/Hyper-SD",
+      "source_revision": "ebed5c7e77403044ba523e81a428cf599f4a9463",
+      "source_file": "Hyper-SDXL-8steps-CFG-lora.safetensors",
+      "license": "ByteDance Hyper-SD repository license (SD/SDXL terms in LICENSE.md)",
+      "bytes": 787359648,
+      "sha256": "55b51334c85061afff5eff7c550b61963c8b8607a5868bbe4f26db49374719b1",
+      "family": "sdxl",
+      "classification": "acceleration",
+      "recipe": {
+        "steps": 8,
+        "cfg_preserved": true
+      },
+      "status": "INFERENCE_PROVEN_CPU",
+      "inference_proof": {
+        "target_ids": [
+          "sdxl-base"
+        ],
+        "backend": "sdcpp",
+        "device": "cpu",
+        "apply_modes": [
+          "immediately"
+        ],
+        "run_ids": [
+          "20261021-023942-controlled-sdxl-base"
+        ],
+        "job_id": "4b414bd4-d867-4e65-90ff-aa4405801415",
+        "baseline_run_id": null,
+        "applied_tensors": "2364/2364",
+        "wall_seconds": 150.18,
+        "steps": 8,
+        "cfg": 6,
+        "sampler": "ddim_trailing",
+        "scheduler": "discrete",
+        "status": "PROVEN",
+        "output_sha256": "d50b9987895587e12c177e965db5d294eb6f8a5cafa23e18e42323016aee81ac",
+        "output_bytes": 333068,
+        "width": 512,
+        "height": 512,
+        "remote_output_cleaned": true,
+        "matched_baseline": "no"
+      },
+      "metal_inference": {
+        "status": "FUNCTIONAL_METAL",
+        "target_id": "sdxl-base",
+        "backend": "MTL0",
+        "device": "Apple M4",
+        "apply_mode": "at_runtime",
+        "job_id": "513e4363-e997-421f-ac98-5f47e8d72ec8",
+        "run_id": "20261021-050334-controlled-sdxl-base",
+        "applied_tensors": "2364/2364",
+        "engine_generation_seconds": 56.31,
+        "worker_elapsed_seconds": 65.94,
+        "recipe": {
+          "width": 512,
+          "height": 512,
+          "steps": 8,
+          "cfg": 6,
+          "sampler": "ddim_trailing",
+          "scheduler": "discrete"
+        },
+        "output_sha256": "b3513a7ca01cf56aa9cd675015bbef4b160b38f1022fc0ca9d355fb4f4613c18",
+        "output_bytes": 320890,
+        "output_dimensions": [
+          512,
+          512
+        ],
+        "remote_output_cleaned": true,
+        "source_file_sha256_verified_on_bigmac": true,
+        "matched_performance_baseline": false,
+        "quality_review": "pending human review"
+      },
+      "selected_production_route": {
+        "backend": "MTL0",
+        "apply_mode": "at_runtime",
+        "target_id": "sdxl-base",
+        "recipe": {
+          "width": 512,
+          "height": 512,
+          "steps": 8,
+          "cfg": 6,
+          "sampler": "ddim_trailing",
+          "scheduler": "discrete"
+        }
+      }
+    },
+    {
+      "id": "lcm-sdxl",
+      "filename": "lcm_sdxl.safetensors",
+      "source_model_id": "latent-consistency/lcm-lora-sdxl",
+      "source_url": "https://huggingface.co/latent-consistency/lcm-lora-sdxl",
+      "source_revision": "a18548dd4956b174ec5b0d78d340c8dae0a129cd",
+      "source_file": "pytorch_lora_weights.safetensors",
+      "license": "OpenRAIL++",
+      "bytes": 393855224,
+      "sha256": "a764e6859b6e04047cd761c08ff0cee96413a8e004c9f07707530cd776b19141",
+      "family": "sdxl",
+      "classification": "acceleration",
+      "recipe": {
+        "steps": 4,
+        "sampler": "lcm",
+        "cfg": 1.5
+      },
+      "status": "INFERENCE_PROVEN_CPU",
+      "inference_proof": {
+        "target_ids": [
+          "sdxl-base"
+        ],
+        "backend": "sdcpp",
+        "device": "cpu",
+        "apply_modes": [
+          "immediately"
+        ],
+        "run_ids": [
+          "20261021-022303-controlled-sdxl-base"
+        ],
+        "job_id": "382aa116-66dd-480c-b2d1-d00f2328189b",
+        "baseline_run_id": "20261021-023108-controlled-sdxl-base",
+        "applied_tensors": "2364/2364",
+        "wall_seconds": 363.99,
+        "steps": 4,
+        "cfg": 1.5,
+        "sampler": "lcm",
+        "scheduler": "lcm",
+        "status": "PROVEN",
+        "output_sha256": "e505f25bb3fcf82f70e5255647c281c0061f1f8c069ead6d548724c33f502c15",
+        "output_bytes": 317737,
+        "width": 512,
+        "height": 512,
+        "remote_output_cleaned": true,
+        "matched_baseline": "yes"
+      },
+      "metal_inference": {
+        "status": "FUNCTIONAL_METAL",
+        "target_id": "sdxl-base",
+        "backend": "MTL0",
+        "device": "Apple M4",
+        "apply_mode": "at_runtime",
+        "job_id": "f7d2bee0-247d-48b9-bdfc-12d742cfbbc4",
+        "run_id": "20261021-050442-controlled-sdxl-base",
+        "applied_tensors": "2364/2364",
+        "engine_generation_seconds": 31.2,
+        "worker_elapsed_seconds": 40.8,
+        "recipe": {
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg": 1.5,
+          "sampler": "lcm",
+          "scheduler": "lcm"
+        },
+        "output_sha256": "51799d0e1d3da06048c994e7e8d018e5c05c77b1937a961c7348c3237830e7b1",
+        "output_bytes": 223614,
+        "output_dimensions": [
+          512,
+          512
+        ],
+        "remote_output_cleaned": true,
+        "source_file_sha256_verified_on_bigmac": true,
+        "matched_performance_baseline": false,
+        "quality_review": "pending human review"
+      },
+      "selected_production_route": {
+        "backend": "MTL0",
+        "apply_mode": "at_runtime",
+        "target_id": "sdxl-base",
+        "recipe": {
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg": 1.5,
+          "sampler": "lcm",
+          "scheduler": "lcm"
+        }
+      }
+    },
+    {
+      "id": "flux2-klein-pixelart",
+      "filename": "pixelart_lora.safetensors",
+      "source_model_id": "adirik/pixel-art-lora-flux.2-klein-4B",
+      "source_url": "https://huggingface.co/adirik/pixel-art-lora-flux.2-klein-4B",
+      "source_revision": "788fc79c7482aacc27fcbc98079842e0cfc57f71",
+      "source_file": "pixelart_lora.safetensors",
+      "license": "Apache-2.0",
+      "bytes": 369644416,
+      "sha256": "eec52255dd0611861def82a2a7c8b0439a4b0748a77ca55802a097013176564a",
+      "family": "flux2-klein-4b",
+      "classification": "style",
+      "trigger_token": "PXART4",
+      "rs_lora": true,
+      "status": "INFERENCE_PROVEN_MFLUX_RSLORA",
+      "rslora_conversion": {
+        "method": "fold alpha/sqrt(rank) into each lora_B factor for MFLUX conventional loader; user strength remains CLI scale",
+        "rank": 128,
+        "alpha": 64,
+        "factor": 5.65685424949238,
+        "pairs": 80,
+        "matched_keys": "160/160",
+        "matched_layers": 100,
+        "representative_relative_max_error_after_bfloat16_rounding": 0.0016553540238439998,
+        "source_sha256": "eec52255dd0611861def82a2a7c8b0439a4b0748a77ca55802a097013176564a",
+        "derived_sha256": "414e5662d884f2d1353602a82d67b842eaa037f0b7df81cb16b08f2811c69ee5",
+        "derived_remote_path": "/Users/bigmac/Library/Caches/DexDiffusion/mflux/loras/pixelart_lora-rslora-r128-a64.safetensors",
+        "original_preserved": true,
+        "verified_cache_reuse": {
+          "status": "PASS",
+          "derived_sha256": "414e5662d884f2d1353602a82d67b842eaa037f0b7df81cb16b08f2811c69ee5",
+          "source_sha256_bound": "eec52255dd0611861def82a2a7c8b0439a4b0748a77ca55802a097013176564a",
+          "reused_without_source_read": true,
+          "limitation": "If the verified derived cache is absent or fails its hash/metadata checks, Big Mac must read the original removable-volume adapter to rebuild it; current worker receives Operation not permitted for that source."
+        }
+      },
+      "inference_proof": {
+        "status": "PROVEN",
+        "target_ids": [
+          "flux2-klein-4b"
+        ],
+        "backend": "mflux",
+        "device": "Apple M4",
+        "apply_modes": [
+          "baked"
+        ],
+        "run_ids": [
+          "20261021-064245-controlled-flux2-klein-4b",
+          "20261021-064000-controlled-flux2-klein-4b",
+          "20261021-064123-controlled-flux2-klein-4b",
+          "20261021-064151-controlled-flux2-klein-4b",
+          "20261021-071834-controlled-flux2-klein-4b"
+        ],
+        "output_dimensions": [
+          512,
+          512
+        ],
+        "seed": 731942,
+        "steps": 4,
+        "prompt_saved": false,
+        "applied_tensors": "160/160 keys; 100 layers; baked successfully",
+        "remote_output_cleaned": true,
+        "output_sha256": [
+          "0be65bdd4febc12945166dfc6e162355c9c115f6d812bae037dc98f7f463dc2a",
+          "730c320ef15b738a6eec2f633eedeb950ca0b999478315b40e2eaf45947cbe01",
+          "aad490fba6726011af7d0cb620323f1a19abe780c030c51d5d9e93e788fdddcb",
+          "0be65bdd4febc12945166dfc6e162355c9c115f6d812bae037dc98f7f463dc2a",
+          "03074276bffe07b1db465e4dec43ad0dd4fdaf1235004064b76ea16d7b2ded1e"
+        ],
+        "effect_check": {
+          "off_before_after_pixel_identical": true,
+          "strength_1_0_vs_off_mean_absolute_rgb_difference": 71.5236,
+          "strength_0_5_vs_off_mean_absolute_rgb_difference": 55.1958,
+          "strength_1_0_vs_0_5_mean_absolute_rgb_difference": 32.24,
+          "interpretation": "Both strengths change output pixels; results show effect only, not subjective quality approval or acceleration."
+        },
+        "quality_review": "pending human review",
+        "rslora_conversion_verified": true
+      },
+      "controlled_api_generation": {
+        "job_id": "4bd36aa6-0522-4410-946b-faeb084c2edd",
+        "run_id": "20261021-071834-controlled-flux2-klein-4b",
+        "entry_point": "live /api/actions/generate-controlled after console restart",
+        "target": "flux2-klein-4b",
+        "backend": "mflux",
+        "device": "Apple M4",
+        "strength": 0.75,
+        "seed": 731942,
+        "steps": 4,
+        "dimensions": [
+          512,
+          512
+        ],
+        "canonical_image": "/Users/andrew/images_made/20261021-071834-controlled-flux2-klein-4b-s731942-controlled-flux2-klein-4b.png",
+        "canonical_sha256": "03074276bffe07b1db465e4dec43ad0dd4fdaf1235004064b76ea16d7b2ded1e",
+        "remote_png_sha256": "719f40bb72603d4985a763b1ee7a74fc74aa64230cc5e6a5bf4c301b14a05f43",
+        "generation_seconds": 18.56,
+        "sampler": "euler",
+        "cfg": 1,
+        "applied_tensors": "160/160 keys; 100 layers; baked successfully",
+        "remote_output_cleaned": true,
+        "prompt_saved": false,
+        "metadata_fields_visible_in_api": [
+          "target",
+          "loras",
+          "strength",
+          "seed",
+          "steps",
+          "sampler",
+          "cfg",
+          "backend",
+          "generation_seconds"
+        ]
+      }
+    },
+    {
+      "id": "lcm-sd15",
+      "filename": "lcm_sd15.safetensors",
+      "source_model_id": "latent-consistency/lcm-lora-sdv1-5",
+      "source_url": "https://huggingface.co/latent-consistency/lcm-lora-sdv1-5",
+      "source_revision": "7bc50e80a3dfd5e318a09f678274d6b81bf25f13",
+      "source_file": "pytorch_lora_weights.safetensors",
+      "license": "OpenRAIL++",
+      "bytes": 134621556,
+      "sha256": "8f90d840e075ff588a58e22c6586e2ae9a6f7922996ee6649a7f01072333afe4",
+      "family": "sd15",
+      "classification": "acceleration",
+      "recipe": {
+        "steps": 4,
+        "sampler": "lcm",
+        "cfg": 1.5
+      },
+      "status": "INFERENCE_PROVEN_CPU",
+      "inference_proof": {
+        "status": "PROVEN",
+        "target_ids": [
+          "sd15"
+        ],
+        "backend": "sdcpp",
+        "device": "cpu",
+        "apply_modes": [
+          "immediately"
+        ],
+        "run_ids": [
+          "20261021-024222-controlled-sd15"
+        ],
+        "job_id": "152c6ddb-a793-4345-885e-a566de349ab3",
+        "baseline_run_id": null,
+        "matched_baseline": "no",
+        "applied_tensors": "834/834",
+        "wall_seconds": 229.75,
+        "steps": 4,
+        "cfg": 1.5,
+        "sampler": "lcm",
+        "scheduler": "lcm",
+        "width": 512,
+        "height": 512,
+        "output_sha256": "982907dcf42b369996f50fe63f4820d7ef278dc897508c1520b3099993b5dbfd",
+        "output_bytes": 356923,
+        "remote_output_cleaned": true
+      },
+      "metal_inference": {
+        "status": "FUNCTIONAL_METAL",
+        "target_id": "sd15",
+        "backend": "MTL0",
+        "device": "Apple M4",
+        "apply_mode": "at_runtime",
+        "job_id": "1e8320b5-de6a-4c6e-a742-d4402a32768e",
+        "run_id": "20261021-050525-controlled-sd15",
+        "applied_tensors": "834/834",
+        "engine_generation_seconds": 178.94,
+        "worker_elapsed_seconds": 188.1,
+        "recipe": {
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg": 1.5,
+          "sampler": "lcm",
+          "scheduler": "lcm"
+        },
+        "output_sha256": "c599ff96cc7073cbe575728bd949674d02809e980feb0114f158d48390099986",
+        "output_bytes": 380078,
+        "output_dimensions": [
+          512,
+          512
+        ],
+        "remote_output_cleaned": true,
+        "source_file_sha256_verified_on_bigmac": true,
+        "matched_performance_baseline": false,
+        "quality_review": "pending human review"
+      },
+      "selected_production_route": {
+        "backend": "MTL0",
+        "apply_mode": "at_runtime",
+        "target_id": "sd15",
+        "recipe": {
+          "width": 512,
+          "height": 512,
+          "steps": 4,
+          "cfg": 1.5,
+          "sampler": "lcm",
+          "scheduler": "lcm"
+        }
+      },
+      "edit_inference": {
+        "status": "FUNCTIONAL_METAL",
+        "target_id": "sd15",
+        "adapter": "lcm_sd15",
+        "backend": "MTL0",
+        "apply_mode": "at_runtime",
+        "recipe": {
+          "steps": 4,
+          "cfg_scale": 1.5,
+          "sampler": "lcm",
+          "scheduler": "lcm"
+        },
+        "strength": 0.85,
+        "source_run_id": "20261021-050525-controlled-sd15",
+        "img2img": {
+          "job_id": "ad25474c-00ca-4ca2-9c94-07ecf3ef5266",
+          "run_id": "20261021-052834-img2img",
+          "output_sha256": "e8de83243a375f5b80d4024aa23953cadd040ea02ab6f76b9a47af797fe61431",
+          "output_bytes": 369825,
+          "dimensions": [
+            512,
+            512
+          ],
+          "engine_seconds": 184.19,
+          "source_lineage_verified": true,
+          "remote_cleanup": "SDCPP_REMOTE_CLEANUP: OK"
+        },
+        "inpaint": {
+          "job_id": "0d62bd00-4983-426c-9f61-3bf011ff0c9f",
+          "run_id": "20261021-053225-inpaint",
+          "output_sha256": "2d636e5fcc5d34c40713161663d601d8501bd4c4395ecc7f030fe69abd544087",
+          "output_bytes": 379777,
+          "dimensions": [
+            512,
+            512
+          ],
+          "engine_seconds": 13.6,
+          "source_lineage_verified": true,
+          "outside_mask_mean_absolute_pixel_difference": 0.0132,
+          "remote_cleanup": "SDCPP_REMOTE_CLEANUP: OK"
+        },
+        "outpaint": {
+          "job_id": "69fab706-9694-4b66-b82f-b929a5223f9b",
+          "run_id": "20261021-053309-inpaint",
+          "output_sha256": "2f5c5ad7ce8bc1aff05ab5e1afadd1589147b3536ac5ea0a057a23115d69a6b1",
+          "output_bytes": 398330,
+          "dimensions": [
+            576,
+            512
+          ],
+          "engine_seconds": 15.19,
+          "source_lineage_verified": true,
+          "source_region_mean_absolute_pixel_difference": 0.2333,
+          "extension_standard_deviation": 63.22,
+          "remote_cleanup": "SDCPP_REMOTE_CLEANUP: OK"
+        },
+        "prompt_persistence": false
+      }
+    },
+    {
+      "id": "hyper-sd15-8step-cfg",
+      "filename": "Hyper-SD15-8steps-CFG-lora.safetensors",
+      "source_model_id": "ByteDance/Hyper-SD",
+      "source_url": "https://huggingface.co/ByteDance/Hyper-SD",
+      "source_revision": "ebed5c7e77403044ba523e81a428cf599f4a9463",
+      "source_file": "Hyper-SD15-8steps-CFG-lora.safetensors",
+      "license": "ByteDance Hyper-SD repository license (SD/SDXL terms in LICENSE.md)",
+      "bytes": 269127064,
+      "sha256": "f6123d5b950d5250ab6c33600e27f4dcf71b3099ebf888685e01e9e8117ce482",
+      "family": "sd15",
+      "classification": "acceleration",
+      "recipe": {
+        "steps": 8,
+        "cfg_preserved": true
+      },
+      "status": "INFERENCE_PROVEN_CPU",
+      "inference_proof": {
+        "status": "PROVEN",
+        "target_ids": [
+          "sd15"
+        ],
+        "backend": "sdcpp",
+        "device": "cpu",
+        "apply_modes": [
+          "immediately"
+        ],
+        "run_ids": [
+          "20261021-024613-controlled-sd15"
+        ],
+        "job_id": "3b4cad08-45a0-481a-9640-666475923ffb",
+        "baseline_run_id": null,
+        "matched_baseline": "no",
+        "applied_tensors": "834/834",
+        "wall_seconds": 108.25,
+        "steps": 8,
+        "cfg": 6,
+        "sampler": "ddim_trailing",
+        "scheduler": "discrete",
+        "width": 512,
+        "height": 512,
+        "output_sha256": "e1f2dba67c9502817b654c5eca5af66b061cc0ff50c0348a6d3607bf35dd0fa4",
+        "output_bytes": 308940,
+        "remote_output_cleaned": true
+      },
+      "metal_inference": {
+        "status": "FUNCTIONAL_METAL",
+        "target_id": "sd15",
+        "backend": "MTL0",
+        "device": "Apple M4",
+        "apply_mode": "at_runtime",
+        "job_id": "0cdcb974-aa53-4a26-8372-a8b9f1352118",
+        "run_id": "20261021-050835-controlled-sd15",
+        "applied_tensors": "834/834",
+        "engine_generation_seconds": 33.05,
+        "worker_elapsed_seconds": 41.66,
+        "recipe": {
+          "width": 512,
+          "height": 512,
+          "steps": 8,
+          "cfg": 6,
+          "sampler": "ddim_trailing",
+          "scheduler": "discrete"
+        },
+        "output_sha256": "0bceb17a0a804a274e94d62d7ee5c10262bac4546d42155bd77782e7947ff2fb",
+        "output_bytes": 354951,
+        "output_dimensions": [
+          512,
+          512
+        ],
+        "remote_output_cleaned": true,
+        "source_file_sha256_verified_on_bigmac": true,
+        "matched_performance_baseline": false,
+        "quality_review": "pending human review"
+      },
+      "selected_production_route": {
+        "backend": "MTL0",
+        "apply_mode": "at_runtime",
+        "target_id": "sd15",
+        "recipe": {
+          "width": 512,
+          "height": 512,
+          "steps": 8,
+          "cfg": 6,
+          "sampler": "ddim_trailing",
+          "scheduler": "discrete"
+        }
+      }
+    }
+  ]
+}

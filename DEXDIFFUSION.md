@@ -16,6 +16,14 @@ and keeps nothing afterwards.
 
 ## Architecture
 
+Controlled generation currently uses the Big Mac graphical-session engine helper
+over a private Unix socket reached through SSH. The helper opens installed models
+locally and runs the existing MFLUX or SDCPP Metal executable; the MacBook verifies
+the transferred output and publishes it in canonical storage. The diagram below
+shows the original SSH execution path, retained for legacy workflows. Current
+ownership, paths, cancellation and measured limits are in the
+[local-engine bridge record](docs/operations/local-engine-bridge-20261021.md).
+
 ```
 Browser or DexDiffusion.app (MacBook)          Tailnet device (browser)
         │ http://127.0.0.1:31337                     │ https://macbook-air.tailafb7e8.ts.net:8443

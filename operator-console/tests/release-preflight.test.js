@@ -15,3 +15,26 @@ test('a non-zero exit with an all-pass looking summary fails', () => { assert.eq
 test('a truncated run with no summary fails', () => { assert.equal(run('echo partial output').status, 1); });
 test('cancelled tests fail the gate', () => { assert.equal(run(summary(5, 5, 0, 1)).status, 1); });
 test('zero tests is not a pass', () => { assert.equal(run(summary(0, 0, 0)).status, 1); });
+
+test('matrix browser output is admitted only with passing cells and no blocked or failed cells', () => {
+  const fs = require('node:fs'), os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-gate-'));
+  try {
+    const stub = path.join(dir, 'timeout');
+    fs.writeFileSync(stub, '#!/bin/sh\nprintf "%s\\n" "$DEX_GATE_FIXTURE"\n', { mode: 0o700 });
+    for (const [output, expected] of [
+      ['V2/1280x800/Create PASS ', 0],
+      ['V2/1280x800/Create PASS \nV2/360x780/Edit Studio BLOCKED execution: timeout', 1],
+      ['V2/1280x800/Create FAIL controls: unnamed', 1],
+      ['no measured cells', 1],
+    ]) {
+      const result = spawnSync('bash', [SCRIPT], { encoding: 'utf8', env: {
+        ...process.env, PATH: dir + path.delimiter + process.env.PATH,
+        DEX_PREFLIGHT_SKIP_CHECK: '1', DEX_PREFLIGHT_UNIT_ONLY: '0',
+        DEX_PREFLIGHT_UNIT_CMD: summary(1, 1, 0), DEX_PREFLIGHT_BROWSER: 'interaction-matrix',
+        DEX_PREFLIGHT_MIN_FREE_KIB: '0', DEX_GATE_FIXTURE: output,
+      } });
+      assert.equal(result.status, expected, result.stdout + result.stderr);
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

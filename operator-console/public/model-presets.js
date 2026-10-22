@@ -24,7 +24,7 @@
         minCfg: 0,
         maxCfg: 2,
         sampler: 'lcm',
-        scheduler: 'simple',
+        scheduler: 'lcm',
         schedulerLabel: 'LCMScheduler',
         loraStrength: 1.0,
         notes: ['Negative prompts remain visible, but low CFG makes them weak.']
@@ -44,7 +44,7 @@
         minCfg: 0,
         maxCfg: 2,
         sampler: 'lcm',
-        scheduler: 'simple',
+        scheduler: 'lcm',
         schedulerLabel: 'LCMScheduler',
         loraStrength: 1.0,
         notes: ['Keep the LCM LoRA strength at 1.0 unless manually overridden.']
@@ -71,36 +71,34 @@
     {
       id: 'hyper_sd15_8steps_lora',
       label: 'Hyper-SD15 8-step',
-      match: ['hyper-sd15-8steps-lora', 'hyper_sd15_8steps_lora'],
+      match: ['hyper-sd15-8steps-lora', 'hyper_sd15_8steps_lora', 'Hyper-SD15-8steps-CFG-lora'],
       kind: 'lora',
       baseFamily: 'sd15',
       recommended: {
         steps: 8,
         exactSteps: true,
-        cfg: 0,
-        minCfg: 0,
-        maxCfg: 1,
-        sampler: 'ddim',
-        scheduler: 'trailing',
-        schedulerLabel: 'trailing timestep spacing',
+        cfg: 5,
+        minCfg: 5,
+        maxCfg: 8,
+        sampler: 'ddim_trailing',
+        schedulerLabel: 'DDIM trailing timestep method (engine default scheduler)',
         loraStrength: 1.0
       }
     },
     {
       id: 'hyper_sdxl_8steps_lora',
       label: 'Hyper-SDXL 8-step',
-      match: ['hyper-sdxl-8steps-lora', 'hyper_sdxl_8steps_lora'],
+      match: ['hyper-sdxl-8steps-lora', 'hyper_sdxl_8steps_lora', 'Hyper-SDXL-8steps-CFG-lora'],
       kind: 'lora',
       baseFamily: 'sdxl',
       recommended: {
         steps: 8,
         exactSteps: true,
-        cfg: 0,
-        minCfg: 0,
-        maxCfg: 1,
-        sampler: 'ddim',
-        scheduler: 'trailing',
-        schedulerLabel: 'trailing timestep spacing',
+        cfg: 5,
+        minCfg: 5,
+        maxCfg: 8,
+        sampler: 'ddim_trailing',
+        schedulerLabel: 'DDIM trailing timestep method (engine default scheduler)',
         loraStrength: 1.0
       }
     },

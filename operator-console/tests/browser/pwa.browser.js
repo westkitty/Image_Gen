@@ -2,7 +2,7 @@
 // PWA: valid manifest + icons, a service worker that caches static files only (never /api), and a truthful offline notice.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, runner, launchBrowser } = require('./helpers');
+const { startServer, installModelSnapshots, runner, launchBrowser, openStudio } = require('./helpers');
 const { test, exitCode } = runner('pwa');
 
 (async () => {
@@ -14,7 +14,7 @@ const { test, exitCode } = runner('pwa');
     const errors = []; page.on('pageerror', e => errors.push(String(e)));
     await installModelSnapshots(page, srv.base);
     await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: [], vaes: [], embeddings: { count: 0, items: [] } } }));
-    await page.goto(srv.base + '/dexdiffusion/');
+    await openStudio(page, srv.base + '/dexdiffusion/');
     await page.waitForFunction(() => window.__dex && __dex.state.capabilityData);
     await test('manifest is linked, valid, same-origin, scoped to /dexdiffusion/, with fetchable icons', async () => {
       const href = await page.getAttribute('link[rel="manifest"]', 'href');

@@ -28,6 +28,7 @@ const { spawnSync } = require('node:child_process');
 
 const BIN = path.join(__dirname, '..', '..', 'sdcpp-workflow', 'bin');
 const REMOTE = path.join(BIN, 'mflux-remote-generate.sh');
+const CONVERTER = fs.readFileSync(path.join(BIN, 'mflux-rslora-convert.py'), 'utf8');
 const BRIDGE = fs.readFileSync(path.join(BIN, 'mflux-controlled-generate.sh'), 'utf8');
 const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'), Buffer.alloc(64, 7)]);
 
@@ -54,7 +55,9 @@ esac
 `);
   fs.chmodSync(stub, 0o755);
   const b64 = Buffer.from(prompt, 'utf8').toString('base64');
-  const r = spawnSync('bash', ['-c', fs.readFileSync(REMOTE, 'utf8'), 'dexdiffusion-mflux', b64, '4', '7', '512', '512', path.join(base, 'cache'), stub, path.join(base, 'model')], {
+  // The remote contract reserves trailing slots for an optional adapter id,
+  // strength, and converter. Keep the no-LoRA fixture explicit.
+  const r = spawnSync('bash', ['-c', fs.readFileSync(REMOTE, 'utf8'), 'dexdiffusion-mflux', b64, '4', '7', '512', '512', path.join(base, 'cache'), stub, '', '', '', path.join(base, 'model')], {
     env: { ...process.env, TMPDIR: tmpdir, ...extraEnv }, encoding: 'buffer',
   });
   const stderr = r.stderr.toString('utf8');
@@ -120,6 +123,14 @@ test('6, 7, 8: bridge canonicalization contract and incoming cleanup', () => {
 test('9: remote temp path is restricted to the Dex MFLUX namespace', () => {
   const remoteCode = fs.readFileSync(REMOTE, 'utf8');
   assert.match(remoteCode, /"\$tmp_root"\/dexdiffusion-mflux\.\[A-Za-z0-9\]\*\)/);
+});
+
+test('rsLoRA conversion reuses only the previously verified source/output hash pair before opening the removable-volume source', () => {
+  assert.match(CONVERTER, /EXPECTED_SOURCE_SHA256 = "eec52255dd0611861def82a2a7c8b0439a4b0748a77ca55802a097013176564a"/);
+  assert.match(CONVERTER, /EXPECTED_DERIVED_SHA256 = "414e5662d884f2d1353602a82d67b842eaa037f0b7df81cb16b08f2811c69ee5"/);
+  assert.ok(CONVERTER.indexOf('if destination.is_file():') < CONVERTER.indexOf('source_hash = sha256(source)'), 'verified cache check precedes any source-file read');
+  assert.match(CONVERTER, /proof\.get\("source_sha256"\) == EXPECTED_SOURCE_SHA256/);
+  assert.match(CONVERTER, /cached_hash == EXPECTED_DERIVED_SHA256/);
 });
 
 test('10: cleanup is idempotent and safe when called repeatedly', () => {

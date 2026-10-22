@@ -75,6 +75,7 @@ class Component extends DCLogic {
     assets: { loras: [], vaes: [], embeddings: { count: 0, items: [], empty_state_message: 'No Textual Inversion embeddings discovered' } },
     loadingAssets: false, extraNetworksTab: 'loras',
     loraWeights: {}, createLoras: [],
+    createLora: (() => { try { return Object.assign({ enabled: false, selectedId: '', strength: 1, advanced: false, savedSettings: null, overrides: {} }, JSON.parse(localStorage.getItem('dex_create_lora_v1') || '{}')); } catch { return { enabled: false, selectedId: '', strength: 1, advanced: false, savedSettings: null, overrides: {} }; } })(),
     // Global
     backendUrl: (() => { try { return DexClient.resolveBackendBase(localStorage.getItem('dex_backend_url')); } catch { return ''; } })(),
     backendOnline: false,
@@ -531,6 +532,10 @@ class Component extends DCLogic {
       const r = await fetch(this.state.backendUrl + '/api/extra-networks?target=' + encodeURIComponent(target), { signal: AbortSignal.timeout(8000) });
       if (r.ok) {
         const d = await r.json();
+        // Startup can request the default target before loadModels restores the
+        // saved checkpoint. Do not let that slower response replace the newer
+        // target-scoped compatibility proof.
+        if ((this.state.target || 'flux2-klein-4b') !== target) return;
         this.setState({
           assets: {
             loras: d.loras || [],
@@ -539,6 +544,7 @@ class Component extends DCLogic {
           },
           loadingAssets: false
         });
+        if (typeof this._restoreCreateLoraSettings === 'function') this._restoreCreateLoraSettings();
       } else { this.setState({ loadingAssets: false }); }
     } catch { this.setState({ loadingAssets: false }); }
   }
@@ -861,6 +867,8 @@ class Component extends DCLogic {
 
   setVersion(v) { try { localStorage.setItem('dex_version', String(v)); } catch {} this.setState({ version: v }); }
   setScreen(s, opts) {
+    // V2 has no Workstation destination (the palette still lists it): land on Create, the V2 home, instead of an unrendered screen.
+    if (this.state.version === 2 && s === 'workstation') s = 'create';
     if (this._pendingWorkspaceNavigation && !(opts && opts.skipUnsavedGuard)) return false;
     if (!(opts && opts.skipUnsavedGuard) && !this._confirmWorkspaceLeave(s)) return false;
     const { version, screens } = this.state;
@@ -1039,6 +1047,11 @@ class Component extends DCLogic {
       if (target.minSteps && this.state.steps < target.minSteps) patch.steps = target.minSteps;
       if (target.fixedCfgScale != null) patch.cfg = target.fixedCfgScale;
       if ((target.backend || 'sdcpp') === 'mflux') patch.sampler = 'euler';
+      else {
+        // Leaving MFLUX: its forced 'euler' is not a user choice, so adopt the new target's own default sampler/scheduler.
+        const prev = (this.state.modelTargets || []).find(x => x.id === this.state.target);
+        if (prev && prev.backend === 'mflux' && target.defaultSampler) { patch.sampler = target.defaultSampler; patch.scheduler = target.defaultScheduler || 'discrete'; }
+      }
       this.setState(patch);
     } else {
       this.setState({ target: id, activeCheckpoint: id, availableModelDefaults: defaultsInfo });
@@ -1721,6 +1734,11 @@ class Component extends DCLogic {
           : React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 10 } },
               ...filteredCards.map(c => {
                 const isActive = activeCheckpoint === c.id || target === c.id;
+                let sourceUrl = null;
+                try {
+                  const parsed = new URL(c.source_url || '');
+                  if (parsed.protocol === 'https:' && parsed.hostname && !parsed.username && !parsed.password) sourceUrl = parsed.href;
+                } catch (_) {}
                 const provTone = c.preview_provenance === 'exact-model' ? '#10b981' : c.preview_provenance === 'family-sample' ? '#f59e0b' : '#64748b';
                 const provLabel = c.preview_provenance === 'exact-model' ? '✓ EXACT MODEL (LOCAL)' : c.preview_provenance === 'family-sample' ? 'FAMILY SAMPLE' : 'PLACEHOLDER';
                 const statusTone = c.status === 'PROVEN' ? '#65d66e' : '#fbbf24';
@@ -1753,6 +1771,30 @@ class Component extends DCLogic {
 
                     // Description (What is it)
                     React.createElement('div', { style: { fontSize: 11, color: '#94a3b8', lineHeight: 1.35 } }, c.description),
+                    React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' } },
+                      sourceUrl
+                        ? React.createElement('a', {
+                            href: sourceUrl,
+                            target: '_blank',
+                            rel: 'noopener noreferrer',
+                            'aria-label': 'Source for ' + c.display_name + ' (opens in a new tab)',
+                            onClick: event => event.stopPropagation(),
+                            style: { display: 'inline-flex', alignItems: 'center', border: '1px solid rgba(148,163,184,.38)', borderRadius: 5, padding: '3px 7px', color: '#cbd5e1', background: 'rgba(255,255,255,.035)', fontSize: 10, fontWeight: 700, textDecoration: 'none', outlineOffset: 2 }
+                          }, 'Source ↗')
+                        : React.createElement('span', { role: 'status', style: { color: '#64748b', fontSize: 10 } }, 'Source unavailable'),
+                      (() => {
+                        try {
+                          const distribution = new URL(c.distribution_url || '');
+                          if (distribution.protocol !== 'https:' || !distribution.hostname || distribution.username || distribution.password) return null;
+                          return React.createElement('a', {
+                            href: distribution.href, target: '_blank', rel: 'noopener noreferrer',
+                            'aria-label': 'Weight distribution for ' + c.display_name + ' (opens in a new tab)',
+                            onClick: event => event.stopPropagation(),
+                            style: { display: 'inline-flex', alignItems: 'center', border: '1px solid rgba(148,163,184,.38)', borderRadius: 5, padding: '3px 7px', color: '#cbd5e1', background: 'rgba(255,255,255,.035)', fontSize: 10, fontWeight: 700, textDecoration: 'none', outlineOffset: 2 }
+                          }, 'Weight distribution ↗');
+                        } catch (_) { return null; }
+                      })()
+                    ),
 
                     // Why use it
                     c.why_use ? React.createElement('div', { style: { fontSize: 11, color: '#cbd5e1', lineHeight: 1.35 } },
@@ -2068,7 +2110,8 @@ class Component extends DCLogic {
         lorasList.map(l => {
           const baseName = l.name.replace(/\.[^.]+$/, '');
           const inPrompt = (prompt || '').includes('<lora:' + baseName);
-          const activeWeight = (activeLoras.find(a => a.name === baseName) || {}).weight ?? (s.loraWeights[l.id] || l.default_weight || 0.8);
+          const activeWeight = (activeLoras.find(a => a.name === baseName) || {}).weight ?? s.loraWeights[l.id] ?? l.default_weight ?? 0.8;
+          const loraProven = l.proof_status === 'PROVEN';
           const compatTone = l.compatibility === 'Compatible' ? '#65d66e' : l.compatibility === 'Probably compatible' ? '#fbbf24' : l.compatibility === 'Incompatible' ? '#ef4444' : '#94a3b8';
 
           return React.createElement('div', {
@@ -2084,6 +2127,24 @@ class Component extends DCLogic {
               )
             ),
 
+            l.description ? React.createElement('div', { style: { fontSize: 10, lineHeight: 1.35, color: '#94a3b8' } }, l.description) : null,
+            React.createElement('div', { role: 'status', style: { color: loraProven ? '#65d66e' : '#fbbf24', fontSize: 10 } }, loraProven ? 'Generation verified' : 'File installed; generation not verified'),
+            (() => {
+              let url = null;
+              try {
+                const parsed = new URL(l.source_url || '');
+                if (parsed.protocol === 'https:' && parsed.hostname && !parsed.username && !parsed.password) url = parsed.href;
+              } catch (_) {}
+              return url
+                ? React.createElement('a', {
+                    href: url, target: '_blank', rel: 'noopener noreferrer',
+                    'aria-label': 'Source for LoRA ' + l.name + ' (opens in a new tab)',
+                    onClick: event => event.stopPropagation(),
+                    style: { alignSelf: 'flex-start', border: '1px solid rgba(148,163,184,.38)', borderRadius: 5, padding: '3px 7px', color: '#cbd5e1', background: 'rgba(255,255,255,.035)', fontSize: 10, fontWeight: 700, textDecoration: 'none', outlineOffset: 2 }
+                  }, 'Source ↗')
+                : React.createElement('span', { role: 'status', style: { color: '#64748b', fontSize: 10 } }, 'Source unavailable');
+            })(),
+
             // Weight controls
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
               React.createElement('span', { style: { fontSize: 10, color: '#7f8ca8', textTransform: 'uppercase' } }, 'Weight:'),
@@ -2093,6 +2154,7 @@ class Component extends DCLogic {
                 max: '2',
                 step: '0.05',
                 value: activeWeight,
+                disabled: !loraProven,
                 onChange: e => {
                   const val = parseFloat(e.target.value);
                   this.setState(st => ({ loraWeights: { ...st.loraWeights, [l.id]: val } }));
@@ -2109,6 +2171,7 @@ class Component extends DCLogic {
               ...l.trigger_words.map(tw => React.createElement('button', {
                 key: tw,
                 type: 'button',
+                disabled: !loraProven,
                 onClick: () => this.addTriggerWord(tw),
                 title: 'Click to add to prompt',
                 style: { border: '1px solid rgba(56,189,248,.3)', background: 'rgba(56,189,248,.08)', color: '#7dd3fc', borderRadius: 4, padding: '1px 6px', fontSize: 10, cursor: 'pointer' }
@@ -2125,11 +2188,13 @@ class Component extends DCLogic {
                   }, 'Remove from Prompt')
                 : React.createElement('button', {
                     type: 'button',
+                    disabled: !loraProven,
                     onClick: () => this.insertLora(l.filename || l.name, activeWeight),
                     style: { border: '1px solid ' + accent, background: accent + '18', color: accent, borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }
                   }, 'Add to Prompt'),
               React.createElement('button', {
                 type: 'button',
+                disabled: !loraProven,
                 onClick: () => {
                   this.setState(st => ({ loraWeights: { ...st.loraWeights, [l.id]: 0.8 } }));
                   if (inPrompt) this.setLoraWeight(baseName, 0.8);
@@ -2379,14 +2444,14 @@ class Component extends DCLogic {
       promptChevron: promptOpen ? '▴' : '▾',
       onTogglePrompt: ()=>this.setState(s => ({promptOpen: !s.promptOpen})),
       onNegChange: e=>this.setState({negPrompt:e.target.value}),
-      onStepsChange: e=>this.setState({steps:e.target.value}),
-      onCfgChange: e=>this.setState({cfg:e.target.value}),
+      onStepsChange: e=>this.setCreateLoraField('steps', e.target.value),
+      onCfgChange: e=>this.setCreateLoraField('cfg', e.target.value),
       onSeedChange: e=>this.setState({seed:e.target.value}),
       onWidthChange: e=>this.setState({width:e.target.value}),
       onHeightChange: e=>this.setState({height:e.target.value}),
       sampler, scheduler,
-      onSamplerChange: e=>this.setState({sampler:e.target.value}),
-      onSchedulerChange: e=>this.setState({scheduler:e.target.value}),
+      onSamplerChange: e=>this.setCreateLoraField('sampler', e.target.value),
+      onSchedulerChange: e=>this.setCreateLoraField('scheduler', e.target.value),
       shapeSquareSelected: Number(width) === 512 && Number(height) === 512,
       shapeLandscapeSelected: Number(width) === 768 && Number(height) === 512,
       shapePortraitSelected: Number(width) === 512 && Number(height) === 768,
@@ -2397,6 +2462,7 @@ class Component extends DCLogic {
       setDim1024: ()=>this.setState({width:1024,height:1024}),
       onGenerate: ()=>this.onGenerate(),
       onCancelJob: ()=>this.onCancelJob(),
+      onOpenPalette: ()=>{ const center=window.__DEX_V12; if(center && typeof center.toggleCommandPalette==='function') center.toggleCommandPalette(); else this.toast('Command palette is initializing. Try again in a moment.', '#fbbf24'); },
       onOpenJobCenter: ()=>{ const center=window.__DEX_V12; if(center && typeof center.toggleJobCenter==='function') center.toggleJobCenter(); else this.toast('Job Center is initializing. Try again in a moment.', '#fbbf24'); },
       activeJobCount: (() => { const c=window.__DEX_V12; return c ? ((c.activeJobCount || 0)+(c.queuedJobCount || 0)) : 0; })(),
       offlineWarning: !backendOnline,

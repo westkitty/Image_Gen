@@ -13,10 +13,14 @@ async function openConcept(page, base) {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   await installModelSnapshots(page, base);
+  // Concept A is a developer-only legacy shell. The normal Studio intentionally
+  // hides its version switch; select V4 in this isolated browser profile.
+  await page.addInitScript(() => {
+    localStorage.setItem('dex_studio_nav_migrated', '{"fixture":true}');
+    localStorage.setItem('dex_developer', '1');
+    localStorage.setItem('dex_version', '4');
+  });
   await page.goto(base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
-  if (!(await page.locator('.ca-shell').count())) {
-    await page.locator('[data-vbtn="4"]').click();
-  }
   await page.waitForSelector('.ca-shell');
   await page.waitForTimeout(250);
   return errors;

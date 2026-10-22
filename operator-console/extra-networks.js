@@ -17,6 +17,40 @@ const FAMILIES = {
   UNKNOWN: 'unknown'
 };
 
+const CURATED_LORA_PROVENANCE = Object.freeze({
+  'sdxl_lightning_4step_lora.safetensors': {
+    source_url: 'https://huggingface.co/ByteDance/SDXL-Lightning',
+    source_model_id: 'ByteDance/SDXL-Lightning', classification: 'acceleration', family: FAMILIES.SDXL,
+    description: 'SDXL Lightning 4-step acceleration adapter. Metal compatibility is not yet proven.'
+  },
+  'hyper-sdxl-8steps-cfg-lora.safetensors': {
+    source_url: 'https://huggingface.co/ByteDance/Hyper-SD',
+    source_model_id: 'ByteDance/Hyper-SD', classification: 'acceleration', family: FAMILIES.SDXL,
+    description: 'Hyper-SDXL 8-step CFG-preserved acceleration adapter. Metal compatibility is not yet proven.'
+  },
+  'lcm_sdxl.safetensors': {
+    source_url: 'https://huggingface.co/latent-consistency/lcm-lora-sdxl',
+    source_model_id: 'latent-consistency/lcm-lora-sdxl', classification: 'acceleration', family: FAMILIES.SDXL,
+    description: 'Latent Consistency Model SDXL acceleration adapter. Compatibility is not yet proven.'
+  },
+  'pixelart_lora.safetensors': {
+    source_url: 'https://huggingface.co/adirik/pixel-art-lora-flux.2-klein-4B',
+    source_model_id: 'adirik/pixel-art-lora-flux.2-klein-4B', classification: 'style', family: FAMILIES.FLUX2,
+    trigger_words: ['PXART4'], license: 'Apache-2.0', rs_lora: true,
+    description: 'STYLE adapter for FLUX.2 Klein. MFLUX applies verified rsLoRA-equivalent scaling; no acceleration claim.'
+  },
+  'lcm_sd15.safetensors': {
+    source_url: 'https://huggingface.co/latent-consistency/lcm-lora-sdv1-5',
+    source_model_id: 'latent-consistency/lcm-lora-sdv1-5', classification: 'acceleration', family: FAMILIES.SD15,
+    description: 'Latent Consistency Model SD 1.5 acceleration adapter. Current device compatibility is not yet proven.'
+  },
+  'hyper-sd15-8steps-cfg-lora.safetensors': {
+    source_url: 'https://huggingface.co/ByteDance/Hyper-SD',
+    source_model_id: 'ByteDance/Hyper-SD', classification: 'acceleration', family: FAMILIES.SD15,
+    description: 'Hyper-SD 1.5 8-step CFG-preserved acceleration adapter. Metal compatibility is not yet proven.'
+  }
+});
+
 /**
  * Infer the asset family from filename or metadata.
  */
@@ -70,7 +104,9 @@ function evaluateCompatibility(assetFamily, targetFamily, assetType = 'lora') {
 
   // Exact family match
   if (assetFamily === targetFamily && assetFamily !== FAMILIES.UNKNOWN) {
-    return 'Compatible';
+    // Family agreement narrows candidates, but does not prove that this adapter
+    // loads or produces valid output with the selected backend and checkpoint.
+    return assetType === 'lora' ? 'Unproven' : 'Compatible';
   }
 
   // Pony / SDXL cross-compatibility
@@ -100,9 +136,13 @@ function buildLoraCards(discoveredLoras = [], currentTargetId = 'flux2-klein-4b'
 
   return discoveredLoras.map(lora => {
     const filename = lora.filename || '';
+    const curated = CURATED_LORA_PROVENANCE[filename.toLowerCase()] || null;
     const baseName = filename.replace(/\.(safetensors|ckpt|pt|bin)$/i, '');
-    const family = lora.header_family || inferAssetFamily(filename);
-    const compatibility = evaluateCompatibility(family, targetFamily, 'lora');
+    const family = curated?.family || lora.header_family || inferAssetFamily(filename);
+    let compatibility = evaluateCompatibility(family, targetFamily, 'lora');
+    const proofTargetIds = Array.isArray(lora.proof_target_ids) ? lora.proof_target_ids : [];
+    const proofStatus = lora.proof_status || (lora.full_path ? 'FILE_INSTALLED_UNTESTED' : 'NOT_INSTALLED');
+    if (proofStatus === 'PROVEN' && proofTargetIds.includes(currentTargetId)) compatibility = 'Compatible';
 
     // Known trigger words and notes
     let triggerWords = [];
@@ -116,6 +156,8 @@ function buildLoraCards(discoveredLoras = [], currentTargetId = 'flux2-klein-4b'
     } else if (filename.includes('lcm')) {
       triggerWords = [];
       isSpeedAdapter = true;
+    } else if (curated?.trigger_words) {
+      triggerWords = curated.trigger_words;
     } else if (filename.includes('EmberPony')) {
       triggerWords = ['ember', 'warm light', 'glowing'];
     } else if (filename.includes('CAMoose')) {
@@ -134,11 +176,34 @@ function buildLoraCards(discoveredLoras = [], currentTargetId = 'flux2-klein-4b'
       trigger_source: lora.header_triggers && lora.header_triggers.length ? 'dataset tag frequency (kohya metadata) — candidates, not guaranteed trigger words' : 'built-in notes',
       is_speed_adapter: isSpeedAdapter,
       default_weight: 1.0,
-      min_weight: 0.0,
-      max_weight: 2.0,
+      min_weight: baseName === 'pixelart_lora' ? 0.25 : 0.0,
+      max_weight: baseName === 'pixelart_lora' ? 1.5 : 2.0,
       step: 0.05,
       status: lora.status || 'available',
-      provenance: lora.full_path ? 'local-wc2tb' : 'staged'
+      provenance: lora.full_path ? 'local-wc2tb' : 'staged',
+      description: proofStatus === 'PROVEN'
+        ? `${curated?.description || ''} CPU inference verified on ${proofTargetIds.join(', ')}${(lora.metal_target_ids || []).length ? `; Metal at_runtime verified on ${(lora.metal_target_ids || []).join(', ')}` : '; Metal remains unverified'}.`
+        : curated?.description || '',
+      classification: curated?.classification || 'unknown',
+      source_url: curated?.source_url || null,
+      source_model_id: curated?.source_model_id || null,
+      source_status: curated ? 'verified' : 'unavailable',
+      license: curated?.license || null,
+      rs_lora: curated?.rs_lora === true,
+      mflux_rslora_verified: lora.mflux_rslora_verified === true,
+      proof_status: proofStatus,
+      proof_target_ids: proofTargetIds,
+      proof_backend: lora.proof_backend || null,
+      proof_device: lora.proof_device || null,
+      proof_apply_modes: Array.isArray(lora.proof_apply_modes) ? lora.proof_apply_modes : [],
+      proof_run_ids: Array.isArray(lora.proof_run_ids) ? lora.proof_run_ids : [],
+      metal_inference_status: lora.metal_inference_status || 'UNTESTED',
+      metal_target_ids: Array.isArray(lora.metal_target_ids) ? lora.metal_target_ids : [],
+      metal_backend: lora.metal_backend || null,
+      metal_apply_mode: lora.metal_apply_mode || null,
+      metal_performance_status: lora.metal_performance_status || 'UNMEASURED',
+      metal_performance_summary: lora.metal_performance_summary || null,
+      production_routes: Array.isArray(lora.production_routes) ? lora.production_routes : []
     };
   });
 }

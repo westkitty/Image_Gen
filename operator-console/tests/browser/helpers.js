@@ -118,10 +118,19 @@ function runner(name, { testMs = Number(process.env.DEX_BROWSER_TEST_MS) || 1200
       await Promise.race([fn(), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`test exceeded ${Math.round(testMs / 1000)} s`)), testMs); })]);
       results.push(['PASS', title, Date.now() - t0]); log('PASS', title, `(${Date.now() - t0} ms)`);
     } catch (e) {
-      results.push(['FAIL', title, e.message]); log('FAIL', title, '\n   ', String(e.message).split('\n').slice(0, 5).join('\n    '));
+      const where = String(e.stack || '').split('\n').filter(l => /tests[\\/]browser[\\/][^\\/]+\.js:\d+/.test(l) && !/helpers\.js/.test(l)).slice(0, 2).map(l => l.trim().replace(/^.*(tests[\\/]browser[\\/])/, '$1').replace(/\)$/, '')).join(' <- ');
+      results.push(['FAIL', title, e.message]); log('FAIL', title, '\n   ', String(e.message).split('\n').slice(0, 16).join('\n    ') + (where ? '\n    at ' + where : ''));
     } finally { clearTimeout(timer); }
   };
-  return { results, test, log, phase: p => { current = p; log('PHASE', p); }, exitCode: failed => (aborted ? 3 : failed ? 1 : 0) };
+  // Failure is always derived from the recorded results; a caller-supplied count/boolean can only add failures,
+  // never mask them (an omitted argument previously made every suite exit 0).
+  const exitCode = failed => {
+    if (aborted) return 3;
+    const recorded = results.some(r => r[0] !== 'PASS');
+    const reported = typeof failed === 'number' ? failed > 0 : !!failed;
+    return recorded || reported ? 1 : 0;
+  };
+  return { results, test, log, phase: p => { current = p; log('PHASE', p); }, exitCode };
 }
 
 // Starts the console on a free private port. The server runs under a supervisor that kills it if this process dies.
@@ -178,17 +187,82 @@ async function startServer(preferred) {
       } }
     }));
   }
+  // Opt-in: vouch for the fixture's bytes the way canonical publication does (run index with the file's SHA-256), so the server
+  // is willing to expose its recorded settings. The run directory is test-owned (unique name, gitignored runs/) and removed on cleanup.
+  if (seedImage && seedImage.recordIdentity) {
+    const crypto = require('crypto');
+    const bytes = fs.readFileSync(path.join(imagesRoot, seedImage.id));
+    const runId = 'zz-fixture-' + crypto.randomBytes(5).toString('hex');
+    const runsRoot = path.resolve(__dirname, '../../../sdcpp-workflow/runs');
+    const runDir = path.join(runsRoot, runId);
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(runDir, 'canonical-images.json'), JSON.stringify({ schema: 'dexdiffusion.canonical_images.v1', root: imagesRoot, images: [
+      { image_id: seedImage.id, job_id: 'fixture-job', run_id: runId, run_file: 'fixture.png', sha256: crypto.createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length }] }));
+    onCleanup(() => { if (/^zz-fixture-[0-9a-f]{10}$/.test(runId) && path.dirname(runDir) === runsRoot) fs.rmSync(runDir, { recursive: true, force: true }); });
+  }
   const sup = spawn(process.execPath, [path.join(__dirname, 'server-supervisor.js'), String(process.pid), path.join(__dirname, '..', '..')], { env: Object.assign({}, process.env, stateEnv, imagesEnv, mediaEnv, { OPERATOR_CONSOLE_PORT: String(port) }), stdio: 'ignore' });
   const exited = new Promise(r => sup.on('exit', r));
-  const stop = () => { try { sup.kill('SIGTERM'); } catch (_) {} return Promise.race([exited, new Promise(r => setTimeout(r, 6000))]); };
+  let cancelRemoteForward = () => {};
+  const stop = () => { cancelRemoteForward(); try { sup.kill('SIGTERM'); } catch (_) {} return Promise.race([exited, new Promise(r => setTimeout(r, 6000))]); };
   onCleanup(stop);
   await waitHttp(`http://127.0.0.1:${port}/api/version`, 60000);
+  // Optional remote browser test transport: expose only this isolated suite port
+  // on the already-authorized Big Mac SSH control connection (loopback only).
+  if (process.env.DEX_BROWSER_SSH_CONTROL_SOCKET) {
+    const { execFileSync } = require('child_process');
+    const ctl = process.env.DEX_BROWSER_SSH_CONTROL_SOCKET;
+    const mapping = `127.0.0.1:${port}:127.0.0.1:${port}`;
+    const ssh = (action) => execFileSync('ssh',
+      ['-o', 'BatchMode=yes', '-S', ctl, '-O', action, '-R', mapping, 'westcat'],
+      { timeout: 8000, stdio: 'pipe' });
+    ssh('forward');
+    let forwarded = true;
+    cancelRemoteForward = () => {
+      if (!forwarded) return;
+      forwarded = false;
+      try { ssh('cancel'); } catch (err) { console.error('[suite] remote test tunnel cleanup failed: ' + err.message); }
+    };
+    onCleanup(cancelRemoteForward);
+    // Some legacy suites call process.exit() without runCleanups(). Undo the
+    // SSH listener synchronously even on their normal test completion path.
+    process.on('exit', cancelRemoteForward);
+  }
   return { base: `http://127.0.0.1:${port}`, stop, stateDir };   // stateDir: where this suite's server keeps jobs/media/voice/drama state
 }
 
 // Read-only real catalogue fixture, captured once per suite/base. UI tests do
 // not test bootstrap network latency; no target or availability is invented.
 const modelSnapshots = new Map(); const snapshotWriters = new Map();
+// Legacy-shell acceptance is explicit and confined to an isolated test profile.
+// Normal Studio suites keep the production first-run default.
+async function installDeveloperShellProfile(page, version = 4) {
+  if (![1, 2, 3, 4, 5].includes(version)) throw new Error('invalid fixture shell');
+  await page.addInitScript(v => {
+    localStorage.setItem('dex_studio_nav_migrated', '{"fixture":true}');
+    localStorage.setItem('dex_developer', '1');
+    localStorage.setItem('dex_version', String(v));
+  }, version);
+}
+
+// Product acceptance always selects Studio explicitly. Legacy comparisons opt into
+// installDeveloperShellProfile instead; neither helper changes the user's profile.
+async function installStudioProfile(page) {
+  await page.addInitScript(() => {
+    localStorage.setItem('dex_studio_nav_migrated', '{"fixture":true}');
+    localStorage.setItem('dex_developer', '0');
+    localStorage.setItem('dex_version', '2');
+  });
+}
+async function openStudio(page, url, options) {
+  await installStudioProfile(page);
+  await page.goto(url, options);
+  await page.waitForFunction(() => window.__dex && __dex.state.version === 2 &&
+    __dex.state.capabilityData && (__dex.state.modelTargets || []).length > 3,
+    null, { timeout: 30000 });
+  await page.locator('[data-studio-nav]').waitFor({ state: 'visible' });
+  page.setDefaultTimeout(5000);
+}
+
 async function installModelSnapshots(page, base) {
   if (!modelSnapshots.has(base)) modelSnapshots.set(base, Promise.all(['/api/capabilities','/api/models'].map(async endpoint => {
     const res = await fetch(base + endpoint, { signal: AbortSignal.timeout(60000) });
@@ -209,8 +283,13 @@ async function installModelSnapshots(page, base) {
 
 // Launches Chrome through playwright and guarantees it is closed on any exit path.
 async function launchBrowser(chromium) {
-  const browser = await chromium.launch(Object.assign({ headless: true, args: ['--disable-gpu'], timeout: 180000 }, process.env.DEX_BROWSER_PATH
-    ? { executablePath: process.env.DEX_BROWSER_PATH } : { channel: 'chrome' }));
+  // The default still launches local Chrome. A private Playwright WebSocket
+  // may be selected when a remote agent cannot start a GUI browser on MacBook.
+  const remoteChromium = typeof chromium.connect === 'function' ? chromium : require('playwright-core').chromium;
+  const browser = process.env.DEX_BROWSER_WS_ENDPOINT
+    ? await remoteChromium.connect(process.env.DEX_BROWSER_WS_ENDPOINT, { timeout: 30000 })
+    : await chromium.launch(Object.assign({ headless: true, args: ['--disable-gpu'], timeout: 180000 }, process.env.DEX_BROWSER_PATH
+      ? { executablePath: process.env.DEX_BROWSER_PATH } : { channel: 'chrome' }));
   onCleanup(() => browser.close());
   return browser;
 }
@@ -240,4 +319,15 @@ function makeWav(sec = 5, hz = 220, rate = 24000, amp = 0.4) {
   return Buffer.concat([h, data]);
 }
 
-module.exports = { makePng, decodePng, makeWav, startServer, installModelSnapshots, installImageFixtures, runner, launchBrowser, onCleanup, runCleanups, preserveSuiteState };
+// V2 Create selects a model through the searchable picker (a listbox, not a <select>). Opens it, picks the row for `id`
+// and waits until the app state really holds that target.
+async function chooseModel(page, id, ctx = 'create') {
+  const picker = page.locator(`[data-model-picker="${ctx}"]`).first();
+  const row = picker.locator(`[role="option"][data-model-id="${id}"]`);
+  if (!(await row.isVisible().catch(() => false))) await picker.locator('> button').click();
+  await row.waitFor({ state: 'visible', timeout: 5000 });
+  await row.click();
+  await page.waitForFunction(t => window.__dex && window.__dex.state.target === t, id, { timeout: 15000 });
+  await page.waitForTimeout(200);
+}
+module.exports = { chooseModel, makePng, decodePng, makeWav, startServer, installModelSnapshots, installDeveloperShellProfile, installStudioProfile, openStudio, installImageFixtures, runner, launchBrowser, onCleanup, runCleanups, preserveSuiteState };

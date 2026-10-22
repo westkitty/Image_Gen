@@ -24,8 +24,9 @@ test('extra-networks: infers families correctly from filenames', () => {
 
 test('extra-networks: evaluates family compatibility truthfully', () => {
   // Exact match
-  assert.equal(evaluateCompatibility(FAMILIES.SD15, FAMILIES.SD15), 'Compatible');
-  assert.equal(evaluateCompatibility(FAMILIES.SDXL, FAMILIES.SDXL), 'Compatible');
+  assert.equal(evaluateCompatibility(FAMILIES.SD15, FAMILIES.SD15, 'lora'), 'Unproven');
+  assert.equal(evaluateCompatibility(FAMILIES.SDXL, FAMILIES.SDXL, 'lora'), 'Unproven');
+  assert.equal(evaluateCompatibility(FAMILIES.SD15, FAMILIES.SD15, 'vae'), 'Compatible');
 
   // Cross compatibility Pony <-> SDXL
   assert.equal(evaluateCompatibility(FAMILIES.PONY, FAMILIES.SDXL), 'Probably compatible');
@@ -61,4 +62,27 @@ test('extra-networks: serializes and parses LoRA tokens', () => {
   assert.equal(parsed[0].weight, 0.8);
   assert.equal(parsed[1].name, 'Hyper-SDXL-8steps-lora');
   assert.equal(parsed[1].weight, 1.0);
+});
+
+test('extra-networks: curated LoRAs expose verified source and honest untested state', () => {
+  const loras = buildLoraCards([
+    { filename: 'pixelart_lora.safetensors', full_path: '/approved/pixelart_lora.safetensors' },
+    { filename: 'sdxl_lightning_4step_lora.safetensors', full_path: '/approved/sdxl_lightning_4step_lora.safetensors',
+      metal_inference_status: 'FUNCTIONAL_METAL', metal_target_ids: ['sdxl-base'], metal_backend: 'MTL0', metal_apply_mode: 'at_runtime',
+      metal_performance_status: 'MEASURED', metal_performance_summary: 'Matched runtime measured; quality review pending' }
+  ], 'flux2-klein-4b');
+  const pixel = loras.find(l => l.name === 'pixelart_lora');
+  assert.equal(pixel.family, FAMILIES.FLUX2);
+  assert.equal(pixel.compatibility, 'Unproven');
+  assert.equal(pixel.trigger_words[0], 'PXART4');
+  assert.equal(pixel.rs_lora, true);
+  assert.equal(pixel.proof_status, 'FILE_INSTALLED_UNTESTED');
+  assert.equal(new URL(pixel.source_url).protocol, 'https:');
+  const lightning = loras.find(l => l.name === 'sdxl_lightning_4step_lora');
+  assert.equal(lightning.classification, 'acceleration');
+  assert.equal(lightning.family, FAMILIES.SDXL);
+  assert.equal(lightning.metal_inference_status, 'FUNCTIONAL_METAL');
+  assert.equal(lightning.metal_target_ids[0], 'sdxl-base');
+  assert.equal(lightning.metal_performance_status, 'MEASURED');
+  assert.match(lightning.metal_performance_summary, /quality review pending/);
 });

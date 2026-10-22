@@ -1,0 +1,304 @@
+{
+  "schema": 1,
+  "checked_at": "2026-10-21",
+  "catalog_count": 19,
+  "verified_count": 17,
+  "unresolved_count": 2,
+  "models": [
+    {
+      "id": "sd15",
+      "display_name": "SD1.5 standard",
+      "family": "sd15",
+      "source_url": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
+      "distribution_url": null,
+      "source_status": "verified"
+    },
+    {
+      "id": "sdxl-base",
+      "display_name": "SDXL base 1.0",
+      "family": "sdxl",
+      "source_url": "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
+      "distribution_url": null,
+      "source_status": "verified"
+    },
+    {
+      "id": "sdxl-turbo",
+      "display_name": "SDXL Turbo",
+      "family": "sdxl_turbo",
+      "source_url": "https://huggingface.co/stabilityai/sdxl-turbo",
+      "distribution_url": null,
+      "source_status": "verified"
+    },
+    {
+      "id": "flux-fp8",
+      "display_name": "FLUX.1 Schnell FP8 (Q8_0 runtime)",
+      "family": "flux1",
+      "source_url": null,
+      "distribution_url": null,
+      "source_status": "unavailable",
+      "provenance_verdict": "header supports Flux.1-schnell / Black Forest Labs attribution; exact source revision and staged-to-Q8_0 runtime conversion provenance remain unresolved",
+      "header_evidence": {
+        "staged_file": "/Users/bigmac/sdcpp-staging/models/flux1-schnell-fp8.safetensors",
+        "runtime_file": "/Volumes/wc2tb/dex-imagegen/models/flux1/transformer/flux1-schnell-fp8.safetensors",
+        "both_sizes_bytes": 17236328572,
+        "observed_metadata": {
+          "title": "Flux.1-schnell",
+          "author": "Black Forest Labs",
+          "architecture": "Flux.1-schnell",
+          "implementation": "https://github.com/black-forest-labs/flux",
+          "modelspec_hash_sha256": "d314672fc69812592e2731adcf4a046962ddf46c943925383d8ecfa58e1d88ce",
+          "tensor_count": 1438
+        },
+        "limitations": "Header metadata supports the base model family and publisher attribution, but does not establish exact source repository revision, whether the header hash identifies these exact file bytes, or the Q8_0 conversion recipe/receipt. No runtime source URL assigned."
+      }
+    },
+    {
+      "id": "flux2-klein-4b",
+      "display_name": "FLUX.2 Klein 4B (MFLUX)",
+      "family": "flux2",
+      "source_url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4B",
+      "distribution_url": "https://huggingface.co/mlx-community/flux2-klein-4b-4bit",
+      "source_status": "verified"
+    },
+    {
+      "id": "sdxl-photonic",
+      "display_name": "Photonic Fusion SDXL",
+      "family": "sdxl",
+      "source_url": "https://civitai.com/models/683210?modelVersionId=1449179",
+      "distribution_url": null,
+      "source_status": "verified",
+      "verified_identity": {
+        "publisher_model": "Photonic Fusion SDXL",
+        "version": "Finale",
+        "filename": "photonicFusionSDXL_final.safetensors",
+        "upstream_sha256": "3D781844E3CB1968E1BA96E87969E8699E8A1B08E35DF04AB8880B25EB816B41",
+        "local_sha256": "not_checked_this_pass",
+        "evidence": "CivitAI official API model/version/file metadata matched exact installed filename."
+      },
+      "provenance_verdict": "exact model/version and filename source identified; local bytes hash not recomputed in this continuation"
+    },
+    {
+      "id": "sdxl-homochi",
+      "display_name": "Homochi XL v2",
+      "family": "sdxl",
+      "source_url": "https://civitai.com/models/2497338?modelVersionId=2877706",
+      "distribution_url": null,
+      "source_status": "verified",
+      "verified_identity": {
+        "publisher_model": "Homochi XL | Male Focused Anime SDXL Model",
+        "version": "2.0",
+        "filename": "homochiXLMaleFocused_20.safetensors",
+        "upstream_sha256": "BFFA59EEF5597D3A53DC96EC10C621779BF98F4C77CE78C353DE2AC88C3CDA94",
+        "local_sha256": "not_checked_this_pass",
+        "evidence": "CivitAI official API model/version/file metadata matched exact installed filename."
+      },
+      "provenance_verdict": "exact model/version and filename source identified; local bytes hash not recomputed in this continuation"
+    },
+    {
+      "id": "sdxl-pony",
+      "display_name": "Pony Diffusion V6 XL",
+      "family": "pony",
+      "source_url": "https://civitai.com/models/257749?modelVersionId=290640",
+      "distribution_url": null,
+      "source_status": "verified",
+      "verified_identity": {
+        "publisher_model": "Pony Diffusion V6 XL",
+        "version": "V6 (start with this one)",
+        "filename": "ponyDiffusionV6XL_v6StartWithThisOne.safetensors",
+        "upstream_sha256": "67AB2FD8EC439A89B3FEDB15CC65F54336AF163C7EB5E4F2ACC98F090A29B0B3",
+        "local_sha256": "not_checked_this_pass",
+        "evidence": "CivitAI official API model/version/file metadata matched exact installed filename."
+      },
+      "provenance_verdict": "exact model/version and filename source identified; local bytes hash not recomputed in this continuation"
+    },
+    {
+      "id": "sd15-homofidelis",
+      "display_name": "HomoFidelis v5",
+      "family": "sd15",
+      "source_url": "https://civitai.com/models/126654?modelVersionId=958003",
+      "distribution_url": null,
+      "source_status": "verified",
+      "verified_identity": {
+        "publisher_model": "HomoFidelis",
+        "version": "v5.0",
+        "filename": "homofidelis_v50.safetensors",
+        "upstream_sha256": "8391342199CDF63B45BCE9FDD9B6E7B76CDA51922E4646D50C910AA79ADA7186",
+        "local_sha256": "not_checked_this_pass",
+        "evidence": "CivitAI official API model/version/file metadata matched exact installed filename."
+      },
+      "provenance_verdict": "exact model/version and filename source identified; local bytes hash not recomputed in this continuation"
+    },
+    {
+      "id": "sdxl-juggernaut",
+      "display_name": "Juggernaut XL Ragnarok",
+      "family": "sdxl",
+      "source_url": "https://civitai.com/models/133005?modelVersionId=1759168",
+      "distribution_url": null,
+      "source_status": "verified",
+      "verified_identity": {
+        "publisher_model": "Juggernaut XL",
+        "version": "Ragnarok",
+        "filename": "juggernautXL_ragnarok.safetensors",
+        "upstream_sha256": "DD08FA32F98D05A2443CA1419E46DF1575A0811F6E3B246D9DD47FF20F5EB66A",
+        "local_sha256": "not_checked_this_pass",
+        "evidence": "CivitAI official API model/version/file metadata matched exact installed filename."
+      },
+      "provenance_verdict": "exact model/version and filename source identified; local bytes hash not recomputed in this continuation"
+    },
+    {
+      "id": "sdxl-realvisxl",
+      "display_name": "RealVisXL V5.0 (BakedVAE, FP16)",
+      "family": "sdxl",
+      "source_url": "https://huggingface.co/SG161222/RealVisXL_V5.0",
+      "distribution_url": null,
+      "source_status": "verified"
+    },
+    {
+      "id": "sdxl-cyberrealistic",
+      "display_name": "CyberRealistic XL V10",
+      "family": "sdxl",
+      "source_url": null,
+      "distribution_url": null,
+      "source_status": "unavailable",
+      "candidate_source": "CivitAI CyberRealistic XL v10.0 model 312530 version 2840768",
+      "candidate_source_url": "https://civitai.com/models/312530?modelVersionId=2840768",
+      "candidate_filename_mismatch": "Official version lists cyberrealisticXL_v100_2728755.safetensors and cyberrealisticXL_v100_2727591.safetensors; installed registry file cyberrealisticXL_v100_pruned_fp16.safetensors differs; source not assigned.",
+      "installed_file_evidence": {
+        "path": "/Volumes/wc2tb/dex-imagegen/models/checkpoints/cyberrealisticXL_v100_pruned_fp16.safetensors",
+        "size_bytes": 6938041288,
+        "observed_header": {
+          "author": "Cyberdelia",
+          "homepage": "https://civitai.com/user/Cyberdelia",
+          "tensor_count": 2515
+        },
+        "candidate_version_url": "https://civitai.com/models/312530?modelVersionId=2840768",
+        "candidate_version_files": [
+          "cyberrealisticXL_v100_2728755.safetensors",
+          "cyberrealisticXL_v100_2727591.safetensors"
+        ],
+        "limitations": "Installed filename differs from both candidate files. Header attribution does not prove exact version or transformation/rename lineage; source URL remains unset."
+      },
+      "provenance_verdict": "header supports Cyberdelia attribution, but exact model version and installed-file lineage are unresolved; no source URL assigned"
+    },
+    {
+      "id": "sdxl-epicrealism",
+      "display_name": "epiCRealism XL Pure_fix",
+      "family": "sdxl",
+      "source_url": "https://civitai.com/models/277058?modelVersionId=2514955",
+      "distribution_url": null,
+      "source_status": "verified",
+      "verified_identity": {
+        "publisher_model": "epiCRealism XL",
+        "version": "Pure_fix",
+        "filename": "epicrealismXL_pureFix.safetensors",
+        "upstream_sha256": "DD21ADCC3A04A4A631DCB5D6F48608C506701E6B7A978093230441C71BCAD3B6",
+        "local_sha256": "not_checked_this_pass",
+        "evidence": "CivitAI official API model/version/file metadata matched exact installed filename."
+      },
+      "provenance_verdict": "exact model/version and filename source identified; local bytes hash not recomputed in this continuation"
+    },
+    {
+      "id": "sdxl-biglust",
+      "display_name": "Big Lust v1.6 (bigASP + LUSTIFY / BigAspLustify)",
+      "family": "sdxl",
+      "source_url": "https://civitai.com/models/575395?modelVersionId=1081768",
+      "distribution_url": null,
+      "source_status": "verified",
+      "verified_identity": {
+        "publisher_model": "Big Lust",
+        "version": "v1.6",
+        "filename": "bigLust_v16.safetensors",
+        "upstream_sha256": "4C1E096B9493DBB5C0AB84FD80FD20AA64817544E565DDA95A45C637FC839AAF",
+        "local_sha256": "not_checked_this_pass",
+        "evidence": "CivitAI official API model/version/file metadata matched exact installed filename."
+      },
+      "provenance_verdict": "exact model/version and filename source identified; local bytes hash not recomputed in this continuation"
+    },
+    {
+      "id": "sdxl-lustify",
+      "display_name": "LUSTIFY! APEX V8",
+      "family": "sdxl",
+      "source_url": "https://civitai.com/models/573152?modelVersionId=2808677",
+      "distribution_url": null,
+      "source_status": "verified",
+      "verified_identity": {
+        "publisher_model": "LUSTIFY! [NSFW checkpoint]",
+        "version": "APEX (V8)",
+        "filename": "lustifyNSFWCheckpoint_apexV8.safetensors",
+        "upstream_sha256": "6D2828E22E259D25CC5B965E47A8C53647A7E6EDD3406560D2559D1128171BDB",
+        "local_sha256": "not_checked_this_pass",
+        "evidence": "CivitAI official API model/version/file metadata matched exact installed filename."
+      },
+      "provenance_verdict": "exact model/version and filename source identified; local bytes hash not recomputed in this continuation"
+    },
+    {
+      "id": "sdxl-biglove",
+      "display_name": "Big Love Photo6",
+      "family": "sdxl",
+      "source_url": "https://civitai.com/models/897413?modelVersionId=2857189",
+      "distribution_url": null,
+      "source_status": "verified",
+      "verified_identity": {
+        "publisher_model": "Big Love",
+        "version": "Photo6",
+        "filename": "bigLove_photo6.safetensors",
+        "upstream_sha256": "B3E1B526D1DB4213521F369025C50134257345EA260C29B2AC5B501BD328D907",
+        "local_sha256": "not_checked_this_pass",
+        "evidence": "CivitAI official API model/version/file metadata matched exact installed filename."
+      },
+      "provenance_verdict": "exact model/version and filename source identified; local bytes hash not recomputed in this continuation"
+    },
+    {
+      "id": "sdxl-biglove-photo1",
+      "display_name": "Big Love Photo1",
+      "family": "sdxl",
+      "source_url": "https://civitai.com/models/897413?modelVersionId=2117129",
+      "distribution_url": null,
+      "source_status": "verified",
+      "verified_identity": {
+        "publisher_model": "Big Love",
+        "version": "Photo1",
+        "filename": "bigLove_photo1.safetensors",
+        "upstream_sha256": "6AF6BCD7B83A594F6F6C77956911C87F8EF40A68E27A3E8816A58E4E6DE060A2",
+        "local_sha256": "not_checked_this_pass",
+        "evidence": "CivitAI official API model/version/file metadata matched exact installed filename."
+      },
+      "provenance_verdict": "exact model/version and filename source identified; local bytes hash not recomputed in this continuation"
+    },
+    {
+      "id": "sdxl-biglove-photo45",
+      "display_name": "Big Love Photo4.5",
+      "family": "sdxl",
+      "source_url": "https://civitai.com/models/897413?modelVersionId=2503034",
+      "distribution_url": null,
+      "source_status": "verified",
+      "verified_identity": {
+        "publisher_model": "Big Love",
+        "version": "Photo4.5",
+        "filename": "bigLove_photo45.safetensors",
+        "upstream_sha256": "9087D0DEE20630945434718F98990B555E92DAB3828BDC73796719D82C9D4D2C",
+        "local_sha256": "not_checked_this_pass",
+        "evidence": "CivitAI official API model/version/file metadata matched exact installed filename."
+      },
+      "provenance_verdict": "exact model/version and filename source identified; local bytes hash not recomputed in this continuation"
+    },
+    {
+      "id": "sd15-auto-v1-5-pruned-emaonly",
+      "display_name": "Stable Diffusion 1.5 (same-checkpoint alias)",
+      "family": "sd15",
+      "source_url": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
+      "distribution_url": null,
+      "source_status": "verified",
+      "verified_identity": {
+        "publisher_model": "Stable Diffusion v1.5",
+        "version": "same-checkpoint alias of sd15",
+        "filename": "v1-5-pruned-emaonly.safetensors",
+        "upstream_sha256": null,
+        "local_sha256": "not_checked_this_pass",
+        "evidence": "Registry aliasOf points to sd15; same-checkpoint identity is declared in the controlled target."
+      },
+      "provenance_verdict": "exact model/version and filename source identified; local bytes hash not recomputed in this continuation"
+    }
+  ],
+  "investigation_note": "Official CivitAI REST model/version/file metadata checked for exact candidate identities. Source pages were added only for exact installed filename matches or a declared same-checkpoint alias. Local checkpoint byte hashes were not recomputed in this continuation."
+}

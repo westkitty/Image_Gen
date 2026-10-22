@@ -3,7 +3,7 @@
 // Uses synthetic wildcard names only.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, runner, launchBrowser } = require('./helpers');
+const { startServer, installModelSnapshots, runner, launchBrowser, openStudio } = require('./helpers');
 const { test, exitCode } = runner('wildcard-placement');
 
 (async () => {
@@ -15,7 +15,7 @@ const { test, exitCode } = runner('wildcard-placement');
     const errors = []; page.on('pageerror', e => errors.push(String(e)));
     await installModelSnapshots(page, srv.base);
     await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: [], vaes: [], embeddings: { count: 0, items: [] } } }));
-    await page.goto(srv.base + '/dexdiffusion/');
+    await openStudio(page, srv.base + '/dexdiffusion/');
     await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
     await page.evaluate(() => __dex.setScreen('create'));
     const prompts = () => page.evaluate(() => ({ p: __dex.state.prompt, n: __dex.state.negPrompt }));

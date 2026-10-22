@@ -80,6 +80,25 @@ test('reports unsupported scheduler and sampler without emitting invalid setting
   assert.match(result.warnings.join(' '), /trailing/);
 });
 
+test('acceleration presets preserve supported engine values and zero CFG', () => {
+  const lightning = presets.resolveModelPreset('sdxl_lightning_4step_lora');
+  assert.equal(lightning.recommended.cfg, 0);
+  const lightningChanges = presets.computePresetChanges(lightning, {
+    supportedSamplers: ['euler'], supportedSchedulers: ['sgm_uniform']
+  });
+  assert.ok(lightningChanges.changes.some(change => change.field === 'cfg_scale' && change.value === 0));
+
+  const hyper = presets.resolveModelPreset('Hyper-SDXL-8steps-CFG-lora');
+  assert.equal(hyper.recommended.steps, 8);
+  assert.equal(hyper.recommended.cfg, 6);
+  assert.equal(hyper.recommended.minCfg, 5);
+  assert.equal(hyper.recommended.maxCfg, 8);
+  assert.equal(hyper.recommended.sampler, 'ddim_trailing');
+  assert.equal(hyper.recommended.scheduler, undefined);
+
+  assert.equal(presets.resolveModelPreset('lcm_sdxl').recommended.scheduler, 'lcm');
+});
+
 test('checkpoint and video entries produce routing warnings instead of LoRA changes', () => {
   const zImage = presets.buildPresetRecommendation({
     modelName: 'Z-Image-Turbo-NSFW-Photorealistic-ZIT.fp16',

@@ -31,6 +31,8 @@ ARG_HEIGHT="1024"
 ARG_STEPS="4"
 ARG_SEED=""
 ARG_SAVE_PROMPTS="false"
+ARG_LORA_ID=""
+ARG_LORA_STRENGTH="1.0"
 
 usage() {
   cat <<'USAGE'
@@ -42,6 +44,7 @@ Usage: mflux-controlled-generate.sh [options]
   --steps N
   --seed N|random|fixed
   --save-prompts true|false
+  --lora-id pixelart_lora --lora-strength 0.25-1.50
 USAGE
 }
 
@@ -54,6 +57,8 @@ while [ "$#" -gt 0 ]; do
     --steps) ARG_STEPS="${2:?}"; shift 2 ;;
     --seed) ARG_SEED="${2:?}"; shift 2 ;;
     --save-prompts) ARG_SAVE_PROMPTS="${2:?}"; shift 2 ;;
+    --lora-id) ARG_LORA_ID="${2:?}"; shift 2 ;;
+    --lora-strength) ARG_LORA_STRENGTH="${2:?}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) fail "args" "Unknown argument: $1" ;;
   esac
@@ -62,6 +67,11 @@ done
 [ "$ARG_TARGET" = "flux2-klein-4b" ] || fail "target" "Unsupported MFLUX target: $ARG_TARGET"
 [ -n "$ARG_PROMPT" ] || fail "prompt" "Prompt is required."
 case "$ARG_SAVE_PROMPTS" in true|false) : ;; *) fail "args" "--save-prompts must be true|false" ;; esac
+if [ -n "$ARG_LORA_ID" ]; then
+  [ "$ARG_LORA_ID" = "pixelart_lora" ] || fail "lora" "Unsupported MFLUX adapter id."
+  awk -v n="$ARG_LORA_STRENGTH" 'BEGIN { if (n !~ /^[0-9]+([.][0-9]+)?$/ || n < 0.25 || n > 1.5) exit 1 }' \
+    || fail "lora-strength" "Pixel Art strength must be 0.25-1.50."
+fi
 
 is_uint() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
 is_uint "$ARG_WIDTH" || fail "width" "Width must be an integer."
@@ -147,12 +157,13 @@ PROMPT_B64="$(python3 -c 'import base64,sys; print(base64.b64encode(sys.argv[1].
 # PNG, stderr carries markers incl. MFLUX_REMOTE_EXIT, since Tailscale SSH on
 # Big Mac always reports exit-status 0).
 REMOTE_SCRIPT="$(cat "$HERE/mflux-remote-generate.sh")"
+REMOTE_CONVERTER_B64="$(base64 < "$HERE/mflux-rslora-convert.py" | tr -d '\n')"
 
 log "=== Generating FLUX.2 Klein 4B on BigMac (MFLUX, ephemeral remote image) ==="
 T_SSH_START="$(now)"
 set +e
 # shellcheck disable=SC2086
-ssh -o ConnectTimeout=15 ${SDCPP_SSH_EXTRA_OPTS:-} "$SSH_TARGET" "bash -c $(printf '%q' "$REMOTE_SCRIPT") dexdiffusion-mflux-$RUN_ID $PROMPT_B64 $ARG_STEPS $SEED_VALUE $ARG_WIDTH $ARG_HEIGHT $(printf '%q' "$REMOTE_CACHE_REL") $(printf '%q' "$REMOTE_MFLUX_REL")" \
+ssh -o ConnectTimeout=15 ${SDCPP_SSH_EXTRA_OPTS:-} "$SSH_TARGET" "bash -c $(printf '%q' "$REMOTE_SCRIPT") dexdiffusion-mflux-$RUN_ID $PROMPT_B64 $ARG_STEPS $SEED_VALUE $ARG_WIDTH $ARG_HEIGHT $(printf '%q' "$REMOTE_CACHE_REL") $(printf '%q' "$REMOTE_MFLUX_REL") $(printf '%q' "$ARG_LORA_ID") $(printf '%q' "$ARG_LORA_STRENGTH") $(printf '%q' "$REMOTE_CONVERTER_B64")" \
   > "$INCOMING" 2> "$RAW_STDERR"
 SSH_RC=$?   # transport-level only (255 = ssh failed); remote status is in-band
 set -e
@@ -250,10 +261,10 @@ export DEX_TIMINGS_JSON="$TIMINGS_JSON"
 
 python3 - "$MANIFEST" "$RUN_DIR" "$CREATED_AT" "$FINISHED_AT" "$ELAPSED" \
   "$LOCAL_PNG" "$REMOTE_PNG" "$PNG_BYTES" "$ARG_WIDTH" "$ARG_HEIGHT" \
-  "$ARG_STEPS" "$SEED_LABEL" "$REPORT_PROMPT" <<'PY'
+  "$ARG_STEPS" "$SEED_LABEL" "$REPORT_PROMPT" "$ARG_LORA_ID" "$ARG_LORA_STRENGTH" <<'PY'
 import json, os, sys
 (manifest, run_dir, created, finished, elapsed, local_png, remote_png, png_bytes,
- width, height, steps, seed, prompt) = sys.argv[1:]
+ width, height, steps, seed, prompt, lora_id, lora_strength) = sys.argv[1:]
 obj = {
     "schema": "dexdiffusion.mflux.controlled_generate.v1",
     "run_id": run_dir.rsplit("/", 1)[-1],
@@ -274,6 +285,7 @@ obj = {
     "backend": "mflux",
     "model": "mlx-community/flux2-klein-4b-4bit",
     "base_model": "flux2-klein-4b",
+    "lora": ({"id": lora_id, "strength": float(lora_strength), "scaling": "rsLoRA alpha/sqrt(rank), equivalent factor folded into B"} if lora_id else None),
     "width": int(width),
     "height": int(height),
     "steps": int(steps),

@@ -2,7 +2,7 @@
 // Completion notifications: one ding per successful job (no repeat after SSE replay), none for failed/cancelled jobs, mute respected.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, runner, launchBrowser } = require('./helpers');
+const { startServer, installModelSnapshots, runner, launchBrowser, openStudio } = require('./helpers');
 const { test, exitCode } = runner('notifications');
 
 (async () => {
@@ -24,7 +24,7 @@ const { test, exitCode } = runner('notifications');
     });
     await installModelSnapshots(page, srv.base);
     await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: [], vaes: [], embeddings: { count: 0, items: [] } } }));
-    await page.goto(srv.base + '/dexdiffusion/');
+    await openStudio(page, srv.base + '/dexdiffusion/');
     await page.waitForFunction(() => window.__dex && window.DexNotify && window.__es.length > 0 && window.__es.some(e => (e.l['job.completed'] || []).length));
     const fire = (type, data) => page.evaluate(([t, d]) => { for (const es of window.__es) (es.l[t] || []).forEach(f => f({ data: JSON.stringify(d) })); }, [type, data]);
     const osc = () => page.evaluate(() => window.__osc);
