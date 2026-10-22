@@ -16,7 +16,10 @@ test('every product browser suite targets V2, with only named comparative and fi
       continue;
     }
     assert.match(source, /openStudio\(page,/, file + ' must use the explicit V2 entry');
-    assert.doesNotMatch(source, /await page\.goto\(/, file + ' bypasses the V2 entry');
+    // Standalone viewer pages (asset3d-viewer.html, world-viewer.html) are not the Studio shell; opening them directly is how they are
+    // tested. Every other direct navigation is still a bypass of the explicit V2 entry.
+    const withoutViewerPages = source.replace(/await page\.goto\([^()]*-viewer\.html[^()]*\);/g, '');
+    assert.doesNotMatch(withoutViewerPages, /await page\.goto\(/, file + ' bypasses the V2 entry');
     assert.doesNotMatch(source, /installDeveloperShellProfile|setVersion\(|data-vbtn|\.ca-shell|\.ca-primary|\.ca-nav-item/, file + ' contains a legacy product target');
   }
 });
