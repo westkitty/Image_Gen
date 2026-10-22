@@ -1997,6 +1997,7 @@
       if (!st.loaded && !st.tried) { st.tried = true; setTimeout(() => this.caLoadStyles(), 0); }
     }
     vals.createStyles = curScreen === 'create' && this.buildStylesPanel ? this.buildStylesPanel() : null;
+    vals.v2Drawer = this.buildV2Drawer ? this.buildV2Drawer() : null;
     vals.createSampling = curScreen === 'create' && this.buildV2Sampling ? this.buildV2Sampling() : null;
     vals.fileVerificationPanel = curScreen === 'models' ? this.buildFileVerificationPanel() : null;
     vals.pixelSizeText = (() => { const w = parseInt(s.width, 10) || 0, hh = parseInt(s.height, 10) || 0; return w + ' × ' + hh + ' px · ' + ((w * hh) / 1e6).toFixed(2) + ' MP · ' + (w === hh ? 'square' : w > hh ? 'landscape' : 'portrait'); })();

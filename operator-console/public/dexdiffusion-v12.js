@@ -391,6 +391,17 @@
     container.innerHTML = html;
   }
 
+  // Read-only job details (a disclosure per card). Open state survives snapshot re-renders.
+  V12.openJobDetails = V12.openJobDetails || new Set();
+  V12.jobDetailToggle = function (id, open) { if (open) V12.openJobDetails.add(id); else V12.openJobDetails.delete(id); };
+  function jobDetails(j) {
+    const rows = [['Job ID', j.id], ['Operation', j.operation], ['Worker', j.worker || 'local'], ['Media', j.mediaKind], ['Status', j.status],
+      ['First failed gate', j.firstFailedGate], ['Remote stop', j.remoteStop], ['Cancel capability', j.cancelCapability],
+      ['Results', Array.isArray(j.results) ? j.results.length : null], ['Created', j.createdAt ? new Date(j.createdAt).toLocaleString() : null]]
+      .filter(r => r[1] != null && r[1] !== '');
+    return `<details data-job-detail="${escapeHtml(j.id)}" ${V12.openJobDetails.has(j.id) ? 'open' : ''} ontoggle="window.__DEX_V12.jobDetailToggle(this.getAttribute('data-job-detail'), this.open)" style="margin-top:8px;font-size:11px;color:#94a3b8;"><summary style="cursor:pointer;min-height:24px;">Details</summary><dl style="margin:6px 0 0;display:grid;grid-template-columns:auto 1fr;gap:2px 10px;">${rows.map(r => `<dt style="color:#64748b;">${escapeHtml(r[0])}</dt><dd style="margin:0;color:#cbd5e1;overflow-wrap:anywhere;">${escapeHtml(String(r[1]))}</dd>`).join('')}</dl></details>`;
+  }
+
   function renderJobCard(j, isActive) {
     const pct = progressPercent(j.progress);
     const canCancel = j.canCancel;
@@ -423,6 +434,7 @@
           <span style="font-size:10px;color:#64748b;">${new Date(j.createdAt).toLocaleTimeString()}</span>
           ${canCancel ? `<button type="button" data-job-cancel-id="${escapeHtml(j.id)}" aria-label="${cancelAria}" style="background:#ef4444;border:none;color:#fff;padding:7px 10px;min-height:36px;border-radius:4px;font-size:12px;cursor:pointer;">${cancelLabel}</button>` : ''}
         </div>
+        ${jobDetails(j)}
       </div>
     `;
   }
@@ -443,6 +455,7 @@
           ${j.firstFailedGate ? `<span style="color:#f87171;">Gate: ${escapeHtml(j.firstFailedGate)}</span>` : ''}
           ${j.elapsedMs ? `<span>${Math.round(j.elapsedMs / 1000)}s</span>` : ''}
         </div>
+        ${jobDetails(j)}
       </div>
     `;
   }

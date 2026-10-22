@@ -200,6 +200,26 @@ async function startServer(preferred) {
       { image_id: seedImage.id, job_id: 'fixture-job', run_id: runId, run_file: 'fixture.png', sha256: crypto.createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length }] }));
     onCleanup(() => { if (/^zz-fixture-[0-9a-f]{10}$/.test(runId) && path.dirname(runDir) === runsRoot) fs.rmSync(runDir, { recursive: true, force: true }); });
   }
+  // Several synthetic canonical images with recorded settings, each vouched for by a test-owned run index (see recordIdentity).
+  const seedList = preferred && typeof preferred === 'object' && Array.isArray(preferred.seedCanonicalImages) ? preferred.seedCanonicalImages : null;
+  if (seedList) {
+    if (!imagesRoot || process.env.DEX_STATE_DIR || process.env.DEX_SUITE_SHARED_STATE === '1') throw new Error('canonical test fixtures require an owned, isolated state directory');
+    const crypto = require('crypto');
+    const runId = 'zz-fixture-' + crypto.randomBytes(5).toString('hex');
+    const runsRoot = path.resolve(__dirname, '../../../sdcpp-workflow/runs'), runDir = path.join(runsRoot, runId);
+    fs.mkdirSync(runDir, { recursive: true });
+    const images = {}, index = [];
+    seedList.forEach((it, i) => {
+      if (typeof it.id !== 'string' || !/^fixture-[a-z0-9-]+\.png$/.test(it.id)) throw new Error('invalid synthetic fixture id');
+      const bytes = makePng(it.width || 32, it.height || 24);
+      fs.writeFileSync(path.join(imagesRoot, it.id), bytes, { flag: 'wx' });
+      images[it.id] = Object.assign({ operation: 'txt2img', target: 'sd15', seed: 100 + i, steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', vae: 'auto', gen_schema: 1, prompt_saved: false, at: new Date(Date.UTC(2026, 9, 22, 12, i)).toISOString() }, it.meta || {});
+      index.push({ image_id: it.id, job_id: 'fixture-job', run_id: runId, run_file: it.id, sha256: crypto.createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length });
+    });
+    fs.writeFileSync(path.join(stateDir, 'image-meta.json'), JSON.stringify({ schema: 'dexdiffusion.image_meta.v1', images }));
+    fs.writeFileSync(path.join(runDir, 'canonical-images.json'), JSON.stringify({ schema: 'dexdiffusion.canonical_images.v1', root: imagesRoot, images: index }));
+    onCleanup(() => { if (/^zz-fixture-[0-9a-f]{10}$/.test(runId) && path.dirname(runDir) === runsRoot) fs.rmSync(runDir, { recursive: true, force: true }); });
+  }
   const sup = spawn(process.execPath, [path.join(__dirname, 'server-supervisor.js'), String(process.pid), path.join(__dirname, '..', '..')], { env: Object.assign({}, process.env, stateEnv, imagesEnv, mediaEnv, { OPERATOR_CONSOLE_PORT: String(port) }), stdio: 'ignore' });
   const exited = new Promise(r => sup.on('exit', r));
   let cancelRemoteForward = () => {};

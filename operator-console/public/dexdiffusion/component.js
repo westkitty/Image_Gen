@@ -2462,6 +2462,8 @@ class Component extends DCLogic {
       setDim1024: ()=>this.setState({width:1024,height:1024}),
       onGenerate: ()=>this.onGenerate(),
       onCancelJob: ()=>this.onCancelJob(),
+      onOpenHelp: e=>this.v2OpenDrawer && this.v2OpenDrawer('help', e),
+      onOpenContext: e=>this.v2OpenDrawer && this.v2OpenDrawer('context', e),
       onOpenPalette: ()=>{ const center=window.__DEX_V12; if(center && typeof center.toggleCommandPalette==='function') center.toggleCommandPalette(); else this.toast('Command palette is initializing. Try again in a moment.', '#fbbf24'); },
       onOpenJobCenter: ()=>{ const center=window.__DEX_V12; if(center && typeof center.toggleJobCenter==='function') center.toggleJobCenter(); else this.toast('Job Center is initializing. Try again in a moment.', '#fbbf24'); },
       activeJobCount: (() => { const c=window.__DEX_V12; return c ? ((c.activeJobCount || 0)+(c.queuedJobCount || 0)) : 0; })(),

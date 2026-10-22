@@ -538,7 +538,8 @@
     return h('div', { className: 'ca-settings' }, h('div', { className: 'ca-tabs', role: 'tablist' }, ...tabs), body);
   };
 
-  P.buildConceptInspector = function (moduleId, accent) {
+  // Shared by the V4 inspector and the V2 Context drawer: the module's live context, read from existing state only.
+  P._ctxModel = function (moduleId) {
     const s = this.state, target = this._targetSpec() || {}, v12 = window.__DEX_V12 || {}, snap = v12.snapshot || {};
     const row = (label, value) => h('div', { className: 'ca-inspector-row', key: label }, h('span', null, label), h('b', null, value == null || value === '' ? '—' : String(value)));
     const empty = text => h('div', { className: 'ca-empty' }, text);
@@ -588,9 +589,77 @@
     } else {
       heading = 'Workstation context'; body = [row('Recent runs', (s.runs || []).length), row('World projects', (s.worldProjects || []).length), row('Active jobs', (snap.active || []).length), row('Queued jobs', (snap.queue || []).length)];
     }
+    if (activeAsset) body.unshift(row('Active asset · ' + activeAsset.kind, activeAsset.id));
+    return { heading, intro, body, snap };
+  };
+
+  // ── V2 Help / Context drawer ─────────────────────────────────────────────────────────────────────────────
+  // A non-modal side drawer (V2 header buttons). Help reuses the module tutorials above; Context reuses _ctxModel.
+  // Nothing here creates a record: it only reads existing state and tutorial text.
+  P.v2OpenDrawer = function (tab, ev) {
+    const ca = this._ca();
+    ca.v2d = { open: true, tab: tab === 'context' ? 'context' : 'help', opener: tab === 'context' ? 'context' : 'help' };
+    this.caSync();
+    setTimeout(() => { const d = document.querySelector('[data-v2-drawer]'); if (d) d.focus(); }, 30);
+  };
+  P.v2CloseDrawer = function () {
+    const ca = this._ca(), kind = ca.v2d && ca.v2d.opener;
+    ca.v2d = { open: false, tab: (ca.v2d && ca.v2d.tab) || 'help' };
+    this.caSync();
+    // The header re-renders, so return focus to the opener by identity (its data attribute), not by node reference.
+    setTimeout(() => { const o = kind && document.querySelector('[data-studio-' + kind + ']'); if (o) o.focus(); }, 30);
+  };
+  P._v2DrawerVnode = function () {
+    const ca = this._ca(), d = ca.v2d;
+    if (!d || !d.open) return null;
+    const s = this.state, screen = (s.screens && s.screens[s.version]) || 'create', mod = moduleFor(screen);
+    const meta = MODULES.find(m => m.id === mod) || { label: 'This screen' };
+    const tabBtn = (id, label) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(d.tab === id), 'data-v2-drawer-tab': id, className: 'ca-secondary', style: { flex: 1, minHeight: 44, fontWeight: d.tab === id ? 800 : 500, borderColor: d.tab === id ? '#7dd3fc' : undefined },
+      onClick: () => { ca.v2d = Object.assign({}, ca.v2d, { tab: id }); this.caSync(); } }, label);
+    let body;
+    if (d.tab === 'help') {
+      const H = HELP[mod];
+      const list = (title, items, ordered) => items && items.length ? h('section', { key: title, 'data-help-section': title.toLowerCase() }, h('h3', { style: { fontSize: 12, textTransform: 'uppercase', letterSpacing: '.07em', color: '#91a2b4', margin: '12px 0 6px' } }, title),
+        h(ordered ? 'ol' : 'ul', { style: { margin: 0, paddingLeft: 20, lineHeight: 1.55, fontSize: 13 } }, ...items.map((t, i) => h('li', { key: i, style: { marginBottom: 6 } }, t)))) : null;
+      body = H ? h('div', { 'data-help-module': mod },
+        h('p', { style: { fontSize: 13, lineHeight: 1.55, margin: '4px 0 8px' } }, H.what),
+        list('Quick start', H.quick), list('Steps', H.steps, true), list('Tips', H.tips), list('FAQ', H.faq))
+        : h('div', { className: 'ca-empty' }, 'No tutorial is available for this screen.');
+    } else {
+      const M = this._ctxModel(mod);
+      body = h('div', { 'data-context-module': mod, className: 'ca-inspector-context' }, h('div', { className: 'ca-note' }, M.intro), ...M.body);
+    }
+    // A div, not an aside: a global narrow-screen rule hides every non-navigation aside.
+    return h('div', { role: 'dialog', 'aria-modal': 'false', 'aria-label': (d.tab === 'help' ? 'Help — ' : 'Context — ') + meta.label, 'data-v2-drawer': d.tab, tabIndex: -1,
+      onKeyDown: e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.v2CloseDrawer(); } },
+      style: { position: 'fixed', top: 52, right: 0, bottom: 0, width: 'min(380px,100vw)', zIndex: 11000, background: '#14161b', borderLeft: '1px solid #454a54', boxShadow: '-12px 0 40px #0008', overflowY: 'auto', padding: 14, color: '#e5edf5', boxSizing: 'border-box' } },
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 } }, h('b', { style: { flex: 1, fontSize: 15 } }, meta.label),
+        h('button', { type: 'button', className: 'ca-secondary', 'data-v2-drawer-close': '1', 'aria-label': 'Close ' + (d.tab === 'help' ? 'help' : 'context'), style: { minWidth: 44, minHeight: 44 }, onClick: () => this.v2CloseDrawer() }, '×')),
+      h('div', { role: 'tablist', 'aria-label': 'Drawer sections', style: { display: 'flex', gap: 6, marginBottom: 6 } }, tabBtn('help', 'Help'), tabBtn('context', 'Context')),
+      body);
+  };
+
+  // The slot value is ONE persistent DOM node (like the model picker): re-renders must not rebuild the drawer under a keyboard
+  // user. Its contents are swapped only when the rendered HTML really changes, and focus is restored by identity.
+  P.buildV2Drawer = function () {
+    const shell = this._v2dShell || (this._v2dShell = document.createElement('div'));
+    shell.setAttribute('data-v2-drawer-host', '');
+    const vnode = this._v2DrawerVnode();
+    if (!vnode) { if (shell.firstChild) shell.replaceChildren(); shell._html = ''; shell.style.display = 'none'; return shell; }
+    shell.style.display = '';
+    const next = window.DCRuntime.renderVNode(vnode), html = next.outerHTML;
+    if (shell._html === html) return shell;
+    const ae = document.activeElement, inside = ae && shell.contains(ae);
+    const key = inside ? (ae.hasAttribute('data-v2-drawer-tab') ? '[data-v2-drawer-tab="' + ae.getAttribute('data-v2-drawer-tab') + '"]' : ae.hasAttribute('data-v2-drawer-close') ? '[data-v2-drawer-close]' : '[data-v2-drawer]') : null;
+    shell.replaceChildren(next); shell._html = html;
+    if (key) { const el = shell.querySelector(key); if (el) el.focus(); }
+    return shell;
+  };
+
+  P.buildConceptInspector = function (moduleId, accent) {
+    const M = this._ctxModel(moduleId), heading = M.heading, intro = M.intro, body = M.body, snap = M.snap;
     const helpButton = moduleId === 'settings' ? null : h('button', { type: 'button', className: 'ca-secondary', 'data-ca-open-help': moduleId, onClick: e => this.caOpenHelp(moduleId, e) }, 'How to use ' + (MODULES.find(m => m.id === moduleId)?.label || 'this section'));
     const ca = this._ca();
-    if (activeAsset) body.unshift(row('Active asset · ' + activeAsset.kind, activeAsset.id));
     return h(React.Fragment, null,
       ca.inspectorOpen ? h('button', { type: 'button', tabIndex: -1, 'aria-hidden': 'true', className: 'ca-inspector-backdrop', onClick: () => this.caCloseInspector() }) : null,
       h('aside', { className: 'ca-inspector' + (ca.inspectorOpen ? ' is-open' : ''), 'aria-label': 'Contextual inspector', role: ca.inspectorOpen ? 'dialog' : undefined, 'aria-modal': ca.inspectorOpen ? 'true' : undefined, 'aria-hidden': String(!ca.inspectorOpen && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1100px)').matches) },
