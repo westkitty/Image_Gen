@@ -1,0 +1,133 @@
+{
+  "schema": "dexdiffusion.v2_runtime_evidence.v1",
+  "date": "2026-10-22",
+  "note": "Deliberate real-runtime checks run outside the release gate. Music jobs ran through the console API on an isolated state directory (nothing was published to the user's library) against the proven Big Mac workers. The viewer checks were read-only against existing real artifacts; the World viewer's PATCH was intercepted so no project record changed. Pass/fail here is about artifact validity and renderer behaviour, not audio or visual quality.",
+  "music_runtime": {
+    "started": "2026-10-22T18:36:27.526Z",
+    "finished": "2026-10-22T18:43:08.562Z",
+    "jobs": [
+      {
+        "worker": "magenta-rt",
+        "status": "COMPLETE",
+        "seconds": 44,
+        "artifact": {
+          "id": "20261022-183712-magenta-rt-music.wav",
+          "duration": 4,
+          "seed": null
+        },
+        "file": {
+          "bytes": 768044,
+          "riff": "RIFF",
+          "wave": "WAVE",
+          "sha256": "cd75911937a7e0a1b1b9051d56459a963b2b35667eb1bbe40ee1c5a935ac0528",
+          "declaredSha": "cd75911937a7e0a1b1b9051d56459a963b2b35667eb1bbe40ee1c5a935ac0528",
+          "channels": 2,
+          "rate": 48000,
+          "bits": 16,
+          "seconds": 4
+        }
+      },
+      {
+        "worker": "ace-step",
+        "status": "COMPLETE",
+        "seconds": 355,
+        "artifact": {
+          "id": "20261022-184307-ace-step-song.wav",
+          "duration": 10,
+          "seed": 7
+        },
+        "file": {
+          "bytes": 1920044,
+          "riff": "RIFF",
+          "wave": "WAVE",
+          "sha256": "b2ccd126e5169f035c1c0c4d977807cf37a2ed5a533359aeca595859f120f7bd",
+          "declaredSha": "b2ccd126e5169f035c1c0c4d977807cf37a2ed5a533359aeca595859f120f7bd",
+          "channels": 2,
+          "rate": 48000,
+          "bits": 16,
+          "seconds": 10
+        }
+      }
+    ]
+  },
+  "real_3d_viewer": [
+    {
+      "id": "asset3d-mesh.glb",
+      "bytes": 6324096,
+      "magic": "glTF",
+      "version": 2,
+      "declaredLen": 6324096,
+      "jsonChunk": true,
+      "binChunk": true,
+      "meshes": 1,
+      "textures": 0,
+      "verts": 175654,
+      "shaMatchesRegistry": true,
+      "downloadIdentical": true,
+      "viewerStatus": "3D Asset asset3d-mesh.glb \u00b7 175,654 vertices \u00b7 GLB mesh",
+      "render": {
+        "litPct": 12.71,
+        "orbitChangedCells": 251,
+        "resetChangedCells": 0
+      }
+    },
+    {
+      "id": "asset3d-mesh-2.glb",
+      "bytes": 5346696,
+      "magic": "glTF",
+      "version": 2,
+      "declaredLen": 5346696,
+      "jsonChunk": true,
+      "binChunk": true,
+      "meshes": 1,
+      "textures": 0,
+      "verts": 148504,
+      "shaMatchesRegistry": true,
+      "downloadIdentical": true,
+      "viewerStatus": "3D Asset asset3d-mesh-2.glb \u00b7 148,504 vertices \u00b7 GLB mesh",
+      "render": {
+        "litPct": 12.41,
+        "orbitChangedCells": 256,
+        "resetChangedCells": 0
+      }
+    },
+    {
+      "id": "asset3d-textured.glb",
+      "bytes": 14653172,
+      "magic": "glTF",
+      "version": 2,
+      "declaredLen": 14653172,
+      "jsonChunk": true,
+      "binChunk": true,
+      "meshes": 1,
+      "textures": 1,
+      "verts": 235283,
+      "shaMatchesRegistry": true,
+      "downloadIdentical": true,
+      "viewerStatus": "3D Asset asset3d-textured.glb \u00b7 235,283 vertices \u00b7 textured GLB",
+      "render": {
+        "litPct": 12.67,
+        "orbitChangedCells": 241,
+        "resetChangedCells": 0
+      }
+    }
+  ],
+  "real_world_viewer": {
+    "project": "wp-5689d7e3",
+    "status": "PARTIAL",
+    "mode": "complete360",
+    "plyBytes": 418529,
+    "plySha": "3a0f9bc8146b81e67e07ab0e782fbb01f8b1f14e18912aa91251ec7727b6c68a",
+    "viewerStatus": "Complete 360 World \u00b7 Progressive Preview PLY 27890 vertices \u00b7 displaying 27890 points",
+    "litPct": 3.65,
+    "moveChangedCells": 261,
+    "resetChangedCells": 0,
+    "patchesIntercepted": 1
+  },
+  "not_executed": [
+    "real Hunyuan3D generation",
+    "real Blender launch",
+    "long-form voice render",
+    "audio or visual quality judgement"
+  ]
+}

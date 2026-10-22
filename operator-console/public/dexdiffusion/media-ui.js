@@ -293,7 +293,7 @@
   const langSelect = (m, set) => h('select', { style: css.input, value: m.language || 'en', onChange: e => set({ language: e.target.value }) },
     ...['en', 'zh', 'ja', 'ko', 'de', 'fr', 'es', 'it', 'pt', 'ru'].map(l => h('option', { value: l }, l)));
   // Visually marks a control group as not used by the selected worker (still readable, not interactive).
-  const notUsed = (applies, note, node) => applies ? node : h('div', { 'aria-disabled': 'true', title: note, style: { opacity: 0.4, pointerEvents: 'none' } }, node);
+  const notUsed = (applies, note, node) => applies ? node : h('div', { 'aria-disabled': 'true', inert: true, title: note, 'data-not-used': 'true', style: { opacity: 0.4, pointerEvents: 'none' } }, node);   // inert: also out of the tab order, so nothing unsent can be edited
 
   // ── Voice ─────────────────────────────────────────────────────────
   P.buildVoiceWorkspace = function () {

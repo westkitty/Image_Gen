@@ -50,7 +50,9 @@ async function runAndCapture(page, posts) {
       await openEdit(page, 'img2img');
       assert.deepEqual(await f(page, 'kind').locator('option').allTextContents(), ['None', 'SD upscale', 'Loopback']);
       await f(page, 'kind').selectOption('sd-upscale');
-      await f(page, 'scale').fill('1.5'); await page.keyboard.press('Tab');
+      // A re-render between fill and commit can merge the typed text with the old value; retry the same entry until it reads back exactly.
+      for (let i = 0; i < 20 && (await f(page, 'scale').inputValue()) !== '1.5'; i++) { await f(page, 'scale').fill('1.5'); await page.waitForTimeout(100); }
+      assert.equal(await f(page, 'scale').inputValue(), '1.5'); await page.keyboard.press('Tab');
       await f(page, 'upscaler').selectOption('nearest');
       await page.click('[data-script-preview]');
       await page.waitForSelector('[data-script-plan]');

@@ -135,6 +135,36 @@ const clickFilter = async (page, label) => { await page.locator('[data-lib-contr
       assert.deepEqual(errors, []);
       await page.close();
     });
+
+    await test('row 8: a durable Drama project is listed after a reload and reopens with its script and scenes', async () => {
+      const page = await browser.newPage({ viewport: { width: 1348, height: 900 } });
+      const SCRIPT = 'INT. WAREHOUSE - NIGHT\nTIGER: I warned you about the lamp.\nCODEC: I know that already.\n\nEXT. ROOFTOP - DAWN\nNARRATOR: And so it ended.';
+      const made = await (await fetch(srv.base + '/api/drama/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'ZZ Resume Project', script: SCRIPT }) })).json();
+      assert.ok(made.project && made.project.id, 'the project was stored by the server');
+      try {
+        const errors = await open(page, srv.base);
+        await page.evaluate(() => __dex.setScreen('drama'));
+        const pick = page.getByLabel('Open project');
+        await pick.waitFor();
+        await page.waitForFunction(id => [...document.querySelectorAll('select[aria-label="Open project"] option')].some(o => o.value === id), made.project.id, { timeout: 15000 });
+        await pick.selectOption(made.project.id);
+        await page.waitForFunction(id => __dex.dm && __dex.dm.current && __dex.dm.current.id === id, made.project.id, { timeout: 15000 });
+        assert.equal(await page.evaluate(() => __dex.dm.current.title), 'ZZ Resume Project');
+        assert.equal(await page.evaluate(() => (__dex.dm.current.scenes || []).length), 2, 'both scenes are restored');
+        assert.match(await page.locator('body').innerText(), /ZZ Resume Project/);
+        // After a full reload the project is still listed and reopens (state lives on the server, not in the page).
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.__dex && __dex.state.version === 2 && __dex.state.modelTargets?.length > 3);
+        await page.evaluate(() => __dex.setScreen('drama'));
+        await page.waitForFunction(id => [...document.querySelectorAll('select[aria-label="Open project"] option')].some(o => o.value === id), made.project.id, { timeout: 15000 });
+        await page.getByLabel('Open project').selectOption(made.project.id);
+        await page.waitForFunction(id => __dex.dm && __dex.dm.current && __dex.dm.current.id === id, made.project.id, { timeout: 15000 });
+        assert.deepEqual(errors, []);
+      } finally {
+        await fetch(srv.base + '/api/drama/projects/' + made.project.id, { method: 'DELETE' }).catch(() => {});
+        await page.close();
+      }
+    });
   } finally {
     await runCleanups();
   }
