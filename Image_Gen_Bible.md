@@ -2857,3 +2857,10 @@ Local and origin recovery branch remain `d1d542631fd041ddf54b148a173da19415fa4dd
 - V2 Studio gained the sampling/scheduler (`kl_optimal`), request-preview, effective-settings, CFG 0, pixel-size, Settings-guide, Verify-files, prompt-guidance, style-manager and Search/Cmd-K surfaces, plus first-screen and 375 px layout fixes. The unchanged release preflight exited 0 (unit 1021/1021; 38/38 browser suites) with storage above the 6 GiB reserve.
 - Big Mac `registry.json` lists `kl_optimal`; the running worker's scheduler validation accepts it (backup preserved). No KL Optimal generation was verified.
 - Parity ledger (`docs/operations/v2-functional-parity-20261022.*`): 34 of 53 rows verified by V2 suites, 15 source-only, 2 unavailable by design, 2 unverified; PARTIAL_NOT_CERTIFIED. Legacy interfaces are retained; retirement needs separate explicit approval.
+
+## Entry 21 — V2 functional parity phase (2026-10-22; branch `feat/v2-functional-parity-20261022`)
+
+- Built on the published release `8b0df46` without changing it. The unchanged release preflight exited 0 (unit 1021/1021; 44/44 browser suites). The baseline log had 39 browser suites, not 38.
+- 53-row ledger: 51 verified_pass, 2 unavailable (stems/mastering, video). Parity is PARTIAL_NOT_CERTIFIED because several runtime proofs were not executed (Drama audio correctness, long-form render, fresh Hunyuan3D generation, Blender launch, quality judgement) and two legacy-workbench-only features were not ported. Legacy shells are retained; retirement needs separate approval.
+- New V2 surfaces: Help/Context drawer, Job Center Details, narrow-width header utilities. Tests found and fixed a World viewer movement bug and keyboard-editable inert music controls. Tutorials no longer promise unavailable World scene editing.
+- Real runtime: one short real generation per music engine and read-only real-artifact viewer checks, recorded in `docs/operations/v2-runtime-evidence-20261022.json`.

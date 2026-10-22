@@ -13,7 +13,7 @@
     "docs/feature-function-inventory.md"
   ],
   "source_snapshot_note": "Line references describe the inspected working tree; source can evolve during main-task conversion. Reconcile moved lines against symbols. Historical crosswalk labels and suite names are preserved as provenance, not fresh evidence.",
-  "evidence_level": "V2_RUNTIME_PARTIAL",
+  "evidence_level": "V2_RUNTIME",
   "source_status_counts": {
     "present": 39,
     "partial": 9,
@@ -35,9 +35,10 @@
   "audit_mutations": "Only this Markdown and JSON audit documentation created; no app, runtime, configuration, model, image or Git mutation.",
   "tests_run_by_auditor": [],
   "browser_runtime_evidence": {
-    "source": "output/final-recovery-20261022/release-preflight-claude.log",
+    "source": "output/v2-parity-20261022/release-preflight-parity3.log",
     "updated": "2026-10-22",
-    "note": "Suite results are from the unchanged release preflight (all mandatory browser suites). Status verified_pass means a passing V2-targeted suite exercises the row's stated V2 task; see v2_runtime_scope. Mapped rows are not a universal parity PASS."
+    "runtime_evidence_file": "docs/operations/v2-runtime-evidence-20261022.json",
+    "note": "verified_pass means a passing V2-targeted suite exercises the row's stated V2 task (see v2_runtime_scope). Suites do not run live inference; real-runtime checks are recorded separately in the runtime evidence file."
   },
   "browser_runtime_evidence_owner": "Main task to append actual V2 browser results after conversion; historical or V4 results must not be relabeled V2.",
   "definitions": {
@@ -185,7 +186,16 @@
         "relevant_test_as_recorded": "`tests/browser/concept-a-refinement.browser.js`",
         "evidence_as_recorded": "Source + coverage; asset hashes recorded in this turn"
       },
-      "v2_runtime_status": "source_only"
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-prompt-assets",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Approved artwork is fingerprinted (SHA-256) and must load at desktop and mobile sizes; visual taste is not machine-judged."
     },
     {
       "id": 2,
@@ -220,13 +230,13 @@
           "suite": "studio-beginner",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "interaction-matrix",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ],
       "v2_runtime_scope": "14 category chips and V2 matrix cells."
@@ -274,10 +284,16 @@
           "suite": "v2-parity-extras",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        },
+        {
+          "suite": "v2-parity-assistance",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ],
-      "v2_runtime_scope": "Visible Search entry, Cmd/Ctrl+K and Workstation->Create mapping only; other palette commands not individually exercised."
+      "v2_runtime_scope": "Visible Search entry (reachable at every width), Cmd/Ctrl+K, Workstation->Create mapping; individual palette commands beyond navigation are not each exercised."
     },
     {
       "id": 4,
@@ -311,7 +327,16 @@
         "relevant_test_as_recorded": "`tests/browser/concept-a-refinement.browser.js`, `tests/browser/interaction-matrix.browser.js`",
         "evidence_as_recorded": "Source + coverage"
       },
-      "v2_runtime_status": "source_only"
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-assistance",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Active/queued/recent, truthful progress, read-only Details, cancel request vs confirmed stop; recovery of quarantined remote stops is covered by existing worker tests, not re-run here."
     },
     {
       "id": 5,
@@ -350,8 +375,22 @@
         "relevant_test_as_recorded": "`tests/browser/concept-a-refinement.browser.js`",
         "evidence_as_recorded": "Source + coverage"
       },
-      "v2_runtime_status": "source_only",
-      "open_gap": "No V2 tutorial/help index; only the Settings guide in Create (create-controls)."
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-assistance",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        },
+        {
+          "suite": "create-controls",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Module tutorials (reusing the existing text, corrected where it overpromised) plus the Settings guide; non-modal, keyboard and 390px operable."
     },
     {
       "id": 6,
@@ -390,8 +429,16 @@
         "relevant_test_as_recorded": "`tests/browser/concept-a-refinement.browser.js`, `tests/browser/edit-workbench.browser.js`, `tests/browser/drama-studio.browser.js`",
         "evidence_as_recorded": "Browser fixtures cover Edit cancel/replacement/Back/reload, Drama Back, and Drama Save-and-Continue success/failure/delay; the app has no History API router"
       },
-      "v2_runtime_status": "source_only",
-      "open_gap": "Module-aware contextual inspector is still V4-only; leave guard retained."
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-assistance",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Context drawer reads the shared context model (Create, Library selection, System, etc.); unsaved-work guard unchanged and exercised."
     },
     {
       "id": 7,
@@ -435,8 +482,22 @@
         "relevant_test_as_recorded": "`tests/browser/interaction-matrix.browser.js`, `tests/capabilities.test.js`",
         "evidence_as_recorded": "Source + coverage; live console is down"
       },
-      "v2_runtime_status": "source_only",
-      "open_gap": "V4 event-stream badge/resource dock not mirrored in V2 global chrome."
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-assistance",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        },
+        {
+          "suite": "model-files",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Offline/recovery, event-stream and queue state, Doctor rows incl. failures; no fabricated online state."
     },
     {
       "id": 8,
@@ -480,8 +541,22 @@
         "relevant_test_as_recorded": "`tests/browser/concept-a-refinement.browser.js`",
         "evidence_as_recorded": "Source + coverage; saved-project resume not independently proven"
       },
-      "v2_runtime_status": "source_only",
-      "open_gap": "No V2 Workstation resume/start aggregation; Library and categories provide launches."
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-library-flow",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        },
+        {
+          "suite": "progressive-batch",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Resume paths that exist: reload re-attach of running batches, Library Reuse Settings/handoffs, reopening durable Drama projects. No separate Workstation home is created (not a V2 destination)."
     },
     {
       "id": 9,
@@ -520,7 +595,16 @@
         "relevant_test_as_recorded": "`tests/browser/concept-a-refinement.browser.js`, `tests/browser/interaction-matrix.browser.js`",
         "evidence_as_recorded": "Source + coverage"
       },
-      "v2_runtime_status": "source_only"
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-library-flow",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Library selection, recorded metadata, keeper persistence, Reuse Settings and handoffs to Edit/Enhance/3D/World."
     },
     {
       "id": 10,
@@ -560,10 +644,10 @@
           "suite": "edit-workbench",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ],
-      "v2_runtime_scope": "Prompt-saving-off storage exclusion (edit-workbench)."
+      "v2_runtime_scope": "Prompt-saving-off storage exclusion."
     },
     {
       "id": 11,
@@ -608,13 +692,13 @@
           "suite": "form-stability",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "prompt-language",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -660,14 +744,22 @@
         "relevant_test_as_recorded": "`tests/browser/wildcard-placement.browser.js`, `tests/prompt-matrix.test.js`",
         "evidence_as_recorded": "Source + coverage"
       },
-      "v2_runtime_status": "source_only",
-      "open_gap": "Style manager reachable (open/load/new editor) in V2 Create; apply/save/delete flows and wildcard ordering not exercised by the V2 runner.",
-      "v2_partial_runtime_evidence": [
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-prompt-assets",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        },
         {
           "suite": "v2-parity-extras",
-          "result": "PASS"
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
-      ]
+      ],
+      "v2_runtime_scope": "Create/edit/preview/apply/delete/persist styles against the real isolated server, ordered application, validation refusal. Wildcard ordering is covered by the protected wildcard suite (excluded from the V2 runner by design)."
     },
     {
       "id": 13,
@@ -722,16 +814,16 @@
           "suite": "model-favorites",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "model-files",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ],
-      "v2_runtime_scope": "Picker, favorites and file verification (headers via stubbed inspect); real registered-model access is a live-worker matter."
+      "v2_runtime_scope": "Picker, favorites, file verification (headers via stubbed inspect)."
     },
     {
       "id": 14,
@@ -801,22 +893,22 @@
           "suite": "generate-sampling",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "create-controls",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "v2-parity-extras",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ],
-      "v2_runtime_scope": "Sampler/scheduler (incl. kl_optimal)/CLIP skip/tiling/eta/RNG, effective settings, CFG 0; requests intercepted (no inference)."
+      "v2_runtime_scope": "Sampler/scheduler incl. kl_optimal, CLIP skip, tiling, eta, RNG, CFG 0, effective settings; requests intercepted (no inference)."
     },
     {
       "id": 15,
@@ -866,7 +958,7 @@
           "suite": "edit-workbench",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -923,10 +1015,16 @@
           "suite": "generate-sampling",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        },
+        {
+          "suite": "v2-parity-library-flow",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ],
-      "v2_runtime_scope": "Normalized request + worker command preview; historical settings-JSON import remains an unresolved historical gap."
+      "v2_runtime_scope": "Normalized request + worker-command preview, Reuse Settings. Arbitrary settings-JSON import exists only in the legacy public/app.js workbench (not a V1-V4 shell): documented boundary, no V2 equivalent invented. PNG Info and Reuse Settings are the V2 routes."
     },
     {
       "id": 17,
@@ -981,22 +1079,22 @@
           "suite": "interrupt",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "studio-generate-fixture",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "studio-cancel-fixture",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ],
-      "v2_runtime_scope": "Fixture/intercepted generation and cancel truth states; no live inference in the suite."
+      "v2_runtime_scope": "Fixture/intercepted generation and cancel truth states; no live inference in the suites."
     },
     {
       "id": 18,
@@ -1036,7 +1134,7 @@
           "suite": "progressive-batch",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1088,13 +1186,13 @@
           "suite": "xyz-plot",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "prompt-matrix",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1146,13 +1244,13 @@
           "suite": "edit-upload",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "studio-source-handoff",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1189,7 +1287,7 @@
           "suite": "edit-img2img-parity",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1226,7 +1324,7 @@
           "suite": "edit-inpaint-parity",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1263,7 +1361,7 @@
           "suite": "edit-workbench",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1305,7 +1403,7 @@
           "suite": "edit-inpaint-parity",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1357,10 +1455,10 @@
           "suite": "edit-workbench",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ],
-      "v2_runtime_scope": "Detailer dialog focus/ownership only; detection correctness is covered by unit tests, not V2 browser runs."
+      "v2_runtime_scope": "Detailer dialog focus/ownership only; detection correctness is unit-tested."
     },
     {
       "id": 26,
@@ -1410,13 +1508,13 @@
           "suite": "extras",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "generate-hires",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1453,16 +1551,16 @@
           "suite": "edit-scripts",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "ref-edit",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ],
-      "v2_runtime_scope": "Edit scripts and reference edit; Puppet Master suite is excluded from the V2 runner."
+      "v2_runtime_scope": "Edit scripts and reference edit; Puppet Master suite is not part of the V2 runner."
     },
     {
       "id": 28,
@@ -1502,7 +1600,7 @@
           "suite": "transform",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1544,7 +1642,7 @@
           "suite": "library",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1580,7 +1678,16 @@
         "relevant_test_as_recorded": "`tests/browser/library.browser.js`",
         "evidence_as_recorded": "Source + coverage"
       },
-      "v2_runtime_status": "source_only"
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-library-flow",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Server-side filters (keepers, target, operation), sort, empty state, selection persistence on a seeded real server. Free-text search over images does not exist in the Library; the run filter narrows loaded runs."
     },
     {
       "id": 31,
@@ -1620,7 +1727,7 @@
           "suite": "library",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1672,13 +1779,19 @@
           "suite": "library",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "png-info",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        },
+        {
+          "suite": "v2-parity-library-flow",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1735,7 +1848,7 @@
           "suite": "library",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1792,7 +1905,7 @@
           "suite": "library",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1839,10 +1952,9 @@
           "suite": "library",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
-      ],
-      "v2_runtime_scope": "Mixed-media collection layout in Library."
+      ]
     },
     {
       "id": 36,
@@ -1887,7 +1999,7 @@
           "suite": "voice-drama",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1924,13 +2036,13 @@
           "suite": "drama-studio",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "voice-drama",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -1972,7 +2084,7 @@
           "suite": "voice-clone-upload",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -2009,7 +2121,7 @@
           "suite": "voice-drama",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ],
       "v2_runtime_scope": "Long-form estimate/gating only; no long-form render executed."
@@ -2047,13 +2159,13 @@
           "suite": "drama-studio",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         },
         {
           "suite": "voice-drama",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -2095,7 +2207,7 @@
           "suite": "voice-drama",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -2137,7 +2249,7 @@
           "suite": "drama-studio",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -2168,7 +2280,28 @@
         "relevant_test_as_recorded": "`tests/drama-service-incremental.test.js`, `tests/drama-fingerprint.test.js`",
         "evidence_as_recorded": "Source + coverage"
       },
-      "v2_runtime_status": "source_only"
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "drama-studio",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        },
+        {
+          "suite": "studio-drama-stop-after-current",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Lifecycle: fingerprints, one-line/one-voice invalidation, outdated takes kept, stale refused, safe-boundary cancel, V2 Produce/stop UI with fixtures. Audio correctness is NOT verified from UI evidence.",
+      "unit_evidence": [
+        "tests/drama-fingerprint.test.js",
+        "tests/drama-service-incremental.test.js",
+        "tests/drama-cancel-policy.test.js",
+        "tests/drama-production-routes.test.js"
+      ]
     },
     {
       "id": 44,
@@ -2208,7 +2341,7 @@
           "suite": "drama-studio",
           "result": "PASS",
           "target": "V2",
-          "kind": "isolated real console server; worker/generation calls intercepted or stubbed (no live inference)"
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
         }
       ]
     },
@@ -2249,7 +2382,20 @@
         "relevant_test_as_recorded": "`tests/browser/interaction-matrix.browser.js`, `tests/media-bridge.test.js`",
         "evidence_as_recorded": "Source + coverage; live audio generation not performed"
       },
-      "v2_runtime_status": "source_only"
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-music",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Hermetic V2 UI (engine-specific controls and ranges, exact request, gating, job lifecycle, failure) + unit validation + one REAL short generation through the console API (see real_runtime_evidence).",
+      "unit_evidence": [
+        "tests/media-bridge.test.js"
+      ],
+      "real_runtime_evidence": "music_runtime"
     },
     {
       "id": 46,
@@ -2283,7 +2429,20 @@
         "relevant_test_as_recorded": "`tests/browser/concept-a-refinement.browser.js`, `tests/media-bridge.test.js`",
         "evidence_as_recorded": "Source + coverage; live audio generation not performed"
       },
-      "v2_runtime_status": "source_only"
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-music",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "As row 45 for Magenta (prompt + duration only; cannot be stopped once started: warning shown).",
+      "unit_evidence": [
+        "tests/media-bridge.test.js"
+      ],
+      "real_runtime_evidence": "music_runtime"
     },
     {
       "id": 47,
@@ -2313,7 +2472,15 @@
         "evidence_as_recorded": "Unavailable unless the runtime ledger proves otherwise; no false controls intended"
       },
       "v2_runtime_status": "unavailable_with_reason",
-      "v2_runtime_scope": "V4 stems/mastering tabs are disabled Planned entries; no working legacy operation was found to port into V2 Music."
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-music",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "hermetic V2 browser (no inference)"
+        }
+      ],
+      "v2_runtime_scope": "V2 Music exposes no stems or mastering control; Help states the boundary. No working legacy operation exists to port (V4 shows disabled Planned entries)."
     },
     {
       "id": 48,
@@ -2347,7 +2514,16 @@
         "relevant_test_as_recorded": "`tests/asset3d-bridge.test.js`, `tests/browser/interaction-matrix.browser.js`",
         "evidence_as_recorded": "Source + coverage; live worker acceptance not performed"
       },
-      "v2_runtime_status": "source_only"
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-3d-world",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Source required, exact requests per mode, job tracking, viewer/Blender request, GLB download validity; hermetic. Real Hunyuan3D generation was not re-run (existing real assets verified instead)."
     },
     {
       "id": 49,
@@ -2381,7 +2557,17 @@
         "relevant_test_as_recorded": "`tests/asset3d-bridge.test.js`, `tests/browser/interaction-matrix.browser.js`",
         "evidence_as_recorded": "Source + coverage; no new 3D job run"
       },
-      "v2_runtime_status": "source_only"
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-3d-world",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Viewer renders real pixels, orbit/zoom/reset, refusal of corrupt/empty/non-GLB/missing files; three REAL GLBs (one textured) validated, matched to registry SHA-256, downloaded byte-identical and rendered. Real Blender launch was not executed (GUI side effect).",
+      "real_runtime_evidence": "real_3d_viewer"
     },
     {
       "id": 50,
@@ -2415,7 +2601,16 @@
         "relevant_test_as_recorded": "`tests/world-project.test.js`, `tests/world-tab-navigation.test.js`",
         "evidence_as_recorded": "Source + coverage; live rendering not performed"
       },
-      "v2_runtime_status": "unverified"
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-3d-world",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Project list with real statuses/failures, explicit source, exact Make 3D/Make World requests, Retry, Reload, Open Focus. No scene-object placement or property editing exists in any legacy shell (older help text promised it and was corrected)."
     },
     {
       "id": 51,
@@ -2449,7 +2644,17 @@
         "relevant_test_as_recorded": "`tests/world-project.test.js`, `tests/browser/interaction-matrix.browser.js`",
         "evidence_as_recorded": "Source + coverage; visual scene acceptance not performed"
       },
-      "v2_runtime_status": "unverified"
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-3d-world",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Point-cloud rendering by pixels, W/drag/R, viewer-opened record, refusal states; a REAL project (27,890-point PLY) rendered and navigated with its PATCH intercepted.",
+      "real_runtime_evidence": "real_world_viewer"
     },
     {
       "id": 52,
@@ -2503,8 +2708,28 @@
         "relevant_test_as_recorded": "`tests/capabilities.test.js`, `tests/browser/interaction-matrix.browser.js`",
         "evidence_as_recorded": "Source + coverage; live console is down"
       },
-      "v2_runtime_status": "source_only",
-      "open_gap": "Verify files entry added (Models); legacy general/help preferences and section-visibility customisation have no V2 equivalent."
+      "v2_runtime_status": "verified_pass",
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-prompt-assets",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        },
+        {
+          "suite": "v2-parity-assistance",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        },
+        {
+          "suite": "model-files",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "isolated real console server; worker/generation calls intercepted or stubbed unless stated (no live inference)"
+        }
+      ],
+      "v2_runtime_scope": "Doctor, worker health, access/bind, storage, launcher, model verification (Models), prompt-privacy preference. Section-visibility customisation exists only in the legacy public/app.js workbench: documented boundary."
     },
     {
       "id": 53,
@@ -2544,7 +2769,15 @@
         "evidence_as_recorded": "Unavailable/planned; route does not establish a video-generation capability"
       },
       "v2_runtime_status": "unavailable_with_reason",
-      "v2_runtime_scope": "V2 Video destination explicitly reports generation not implemented and shows the dormant worker boundary."
+      "v2_runtime_evidence": [
+        {
+          "suite": "v2-parity-music",
+          "result": "PASS",
+          "target": "V2",
+          "kind": "hermetic V2 browser (no inference)"
+        }
+      ],
+      "v2_runtime_scope": "V2 Video states generation is not implemented, shows the missing LTX runtime and sends nothing; the dormant worker slot is preserved."
     }
   ],
   "historical_inventory_date": "2026-06-24",
@@ -2775,9 +3008,16 @@
     "Unit tests, synthetic UI results and source reachability do not substitute for real generation or human acceptance."
   ],
   "runtime_status_counts": {
-    "source_only": 15,
-    "verified_pass": 34,
-    "unavailable_with_reason": 2,
-    "unverified": 2
-  }
+    "verified_pass": 51,
+    "unavailable_with_reason": 2
+  },
+  "remaining_runtime_proofs": [
+    "Row 43: Drama audio production correctness (listening/QA) is not verifiable from UI or fixtures; only the lifecycle is.",
+    "Row 39: a real long-form voice render was not executed in this phase.",
+    "Row 48: a fresh real Hunyuan3D generation was not run (existing real GLB assets were verified instead).",
+    "Row 49: a real Blender launch was not executed (GUI side effect); only the request is verified.",
+    "Rows 45/46: one short real generation per engine only; no audio-quality judgement.",
+    "Legacy-workbench-only features without a V1-V4 shell counterpart (arbitrary settings-JSON import, section-visibility preferences) were not ported: boundary requiring a user decision.",
+    "Row 8: no standalone Workstation home exists in V2 by design; resume paths are Jobs, Library handoffs and reopened projects."
+  ]
 }

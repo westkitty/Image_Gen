@@ -119,35 +119,35 @@ Main task may append actual V2 results below and populate `browser_runtime_evide
 
 Pending main-task conversion and readback. No fresh browser results supplied by this audit.
 
-## V2 runtime evidence update — 2026-10-22 (preflight exit 0)
+## V2 parity completion — 2026-10-22 (branch `feat/v2-functional-parity-20261022`)
 
-Evidence level: **V2_RUNTIME_PARTIAL**. Functional parity: **PARTIAL_NOT_CERTIFIED**. Legacy retirement: **NOT_AUTHORIZED** (V1/V3/V4 are retained).
+Evidence level: **V2_RUNTIME**. Functional parity: **PARTIAL_NOT_CERTIFIED**. Legacy retirement: **NOT_AUTHORIZED** (V1, V3 and V4 are retained).
 
-Source: `output/final-recovery-20261022/release-preflight-claude.log` — unchanged `scripts/release-preflight.sh`, **exit 0**: unit suite **1021/1021** (fail 0, cancelled 0, skipped 0) and **38/38** browser suites. Suites run against an isolated real console server; generation and worker calls are intercepted or stubbed, so **no suite performs live inference**.
+Runtime status of the 53 rows: **51 verified_pass**, **2 unavailable_with_reason**. The earlier source-only audit above (39 present / 9 partial / 1 missing / 2 unavailable / 2 unverified) and the first runtime update (34 verified_pass / 15 source_only / 2 unavailable / 2 unverified) are kept as history.
 
-`verified_pass` means a passing V2-targeted suite exercises the row's stated V2 task (see Scope). It is not a claim of universal parity. Rows 1, 4, 5, 6, 7, 8, 9, 12, 30, 43, 45, 46, 48, 49 and 52 remain `source_only` (no V2 browser assertion is tied to the row's full task, or a known gap is open).
+Gate: unchanged `scripts/release-preflight.sh` **exit 0** — unit suite **1021/1021** (fail 0, cancelled 0, skipped 0) and **44/44** browser suites (log `output/v2-parity-20261022/release-preflight-parity3.log`, uncommitted runtime evidence). Browser suites run against an isolated real console server; generation and worker calls are intercepted or stubbed unless a row says otherwise, so **the suites perform no live inference**. Deliberate real-runtime checks are recorded in [`v2-runtime-evidence-20261022.json`](v2-runtime-evidence-20261022.json): one short real ACE-Step and one real Magenta generation through the console API, and read-only checks of three real GLB assets and a real World project in the viewers.
 
-Counts: source_only 15, unavailable_with_reason 2, unverified 2, verified_pass 34
+`verified_pass` means a passing V2-targeted suite exercises the row's stated V2 task, as bounded by its Scope column. It is not a universal parity claim.
 
-| # | Capability | Runtime status | Evidence (suites) | Scope / open gap |
+| # | Capability | Runtime status | Evidence (suites) | Scope |
 |---|---|---|---|---|
-| 1 | Dexter identity and original artwork | source_only | — |  |
+| 1 | Dexter identity and original artwork | verified_pass | v2-parity-prompt-assets | Approved artwork is fingerprinted (SHA-256) and must load at desktop and mobile sizes; visual taste is not machine-judged. |
 | 2 | Ten-workspace navigation | verified_pass | studio-beginner, interaction-matrix | 14 category chips and V2 matrix cells. |
-| 3 | Search and command palette | verified_pass | v2-parity-extras | Visible Search entry, Cmd/Ctrl+K and Workstation->Create mapping only; other palette commands not individually exercised. |
-| 4 | Global Jobs center | source_only | — |  |
-| 5 | Help and tutorials | source_only | — | **Gap:** No V2 tutorial/help index; only the Settings guide in Create (create-controls). |
-| 6 | Contextual inspector and transition safety | source_only | — | **Gap:** Module-aware contextual inspector is still V4-only; leave guard retained. |
-| 7 | Console, worker, model, and resource truth | source_only | — | **Gap:** V4 event-stream badge/resource dock not mirrored in V2 global chrome. |
-| 8 | Workstation resume and start actions | source_only | — | **Gap:** No V2 Workstation resume/start aggregation; Library and categories provide launches. |
-| 9 | Active jobs and recent canonical assets | source_only | — |  |
-| 10 | Prompt privacy and prompt persistence | verified_pass | edit-workbench | Prompt-saving-off storage exclusion (edit-workbench). |
+| 3 | Search and command palette | verified_pass | v2-parity-extras, v2-parity-assistance | Visible Search entry (reachable at every width), Cmd/Ctrl+K, Workstation->Create mapping; individual palette commands beyond navigation are not each exercised. |
+| 4 | Global Jobs center | verified_pass | v2-parity-assistance | Active/queued/recent, truthful progress, read-only Details, cancel request vs confirmed stop; recovery of quarantined remote stops is covered by existing worker tests, not re-run here. |
+| 5 | Help and tutorials | verified_pass | v2-parity-assistance, create-controls | Module tutorials (reusing the existing text, corrected where it overpromised) plus the Settings guide; non-modal, keyboard and 390px operable. |
+| 6 | Contextual inspector and transition safety | verified_pass | v2-parity-assistance | Context drawer reads the shared context model (Create, Library selection, System, etc.); unsaved-work guard unchanged and exercised. |
+| 7 | Console, worker, model, and resource truth | verified_pass | v2-parity-assistance, model-files | Offline/recovery, event-stream and queue state, Doctor rows incl. failures; no fabricated online state. |
+| 8 | Workstation resume and start actions | verified_pass | v2-parity-library-flow, progressive-batch | Resume paths that exist: reload re-attach of running batches, Library Reuse Settings/handoffs, reopening durable Drama projects. No separate Workstation home is created (not a V2 destination). |
+| 9 | Active jobs and recent canonical assets | verified_pass | v2-parity-library-flow | Library selection, recorded metadata, keeper persistence, Reuse Settings and handoffs to Edit/Enhance/3D/World. |
+| 10 | Prompt privacy and prompt persistence | verified_pass | edit-workbench | Prompt-saving-off storage exclusion. |
 | 11 | Prompt composition and caret preservation | verified_pass | form-stability, prompt-language |  |
-| 12 | Prompt styles, wildcards, and prompt ordering | source_only | v2-parity-extras (partial) | **Gap:** Style manager reachable (open/load/new editor) in V2 Create; apply/save/delete flows and wildcard ordering not exercised by the V2 runner. |
-| 13 | Model registry, selection, and readiness | verified_pass | model-favorites, model-files | Picker, favorites and file verification (headers via stubbed inspect); real registered-model access is a live-worker matter. |
-| 14 | Sampling, dimensions, seed, scheduler, and noise settings | verified_pass | generate-sampling, create-controls, v2-parity-extras | Sampler/scheduler (incl. kl_optimal)/CLIP skip/tiling/eta/RNG, effective settings, CFG 0; requests intercepted (no inference). |
+| 12 | Prompt styles, wildcards, and prompt ordering | verified_pass | v2-parity-prompt-assets, v2-parity-extras | Create/edit/preview/apply/delete/persist styles against the real isolated server, ordered application, validation refusal. Wildcard ordering is covered by the protected wildcard suite (excluded from the V2 runner by design). |
+| 13 | Model registry, selection, and readiness | verified_pass | model-favorites, model-files | Picker, favorites, file verification (headers via stubbed inspect). |
+| 14 | Sampling, dimensions, seed, scheduler, and noise settings | verified_pass | generate-sampling, create-controls, v2-parity-extras | Sampler/scheduler incl. kl_optimal, CLIP skip, tiling, eta, RNG, CFG 0, effective settings; requests intercepted (no inference). |
 | 15 | LoRA, VAE, embeddings, and supported model extras | verified_pass | edit-workbench |  |
-| 16 | Generation preview, request normalization, and replay | verified_pass | generate-sampling | Normalized request + worker command preview; historical settings-JSON import remains an unresolved historical gap. |
-| 17 | Single-image generation and result recovery | verified_pass | interrupt, studio-generate-fixture, studio-cancel-fixture | Fixture/intercepted generation and cancel truth states; no live inference in the suite. |
+| 16 | Generation preview, request normalization, and replay | verified_pass | generate-sampling, v2-parity-library-flow | Normalized request + worker-command preview, Reuse Settings. Arbitrary settings-JSON import exists only in the legacy public/app.js workbench (not a V1-V4 shell): documented boundary, no V2 equivalent invented. PNG Info and Reuse Settings are the V2 routes. |
+| 17 | Single-image generation and result recovery | verified_pass | interrupt, studio-generate-fixture, studio-cancel-fixture | Fixture/intercepted generation and cancel truth states; no live inference in the suites. |
 | 18 | Batch generation | verified_pass | progressive-batch |  |
 | 19 | X/Y/Z sweeps and prompt matrices | verified_pass | xyz-plot, prompt-matrix |  |
 | 20 | Source selection, typed active-asset context, and compatible Edit handoff | verified_pass | edit-upload, studio-source-handoff |  |
@@ -155,17 +155,17 @@ Counts: source_only 15, unavailable_with_reason 2, unverified 2, verified_pass 3
 | 22 | Inpaint and mask geometry | verified_pass | edit-inpaint-parity |  |
 | 23 | Mask brush, zoom, pan, undo, and redo | verified_pass | edit-workbench |  |
 | 24 | Outpaint and canvas extension | verified_pass | edit-inpaint-parity |  |
-| 25 | Detailer | verified_pass | edit-workbench | Detailer dialog focus/ownership only; detection correctness is covered by unit tests, not V2 browser runs. |
+| 25 | Detailer | verified_pass | edit-workbench | Detailer dialog focus/ownership only; detection correctness is unit-tested. |
 | 26 | Resize, Pillow upscale, ESRGAN, and hires workflows | verified_pass | extras, generate-hires |  |
-| 27 | Edit scripts, Puppet Master pose, and supported references | verified_pass | edit-scripts, ref-edit | Edit scripts and reference edit; Puppet Master suite is excluded from the V2 runner. |
+| 27 | Edit scripts, Puppet Master pose, and supported references | verified_pass | edit-scripts, ref-edit | Edit scripts and reference edit; Puppet Master suite is not part of the V2 runner. |
 | 28 | Source/result identity and derivative lineage | verified_pass | transform |  |
 | 29 | Image Library grid/list and density | verified_pass | library |  |
-| 30 | Image Library search/filter/sort | source_only | — |  |
+| 30 | Image Library search/filter/sort | verified_pass | v2-parity-library-flow | Server-side filters (keepers, target, operation), sort, empty state, selection persistence on a seeded real server. Free-text search over images does not exist in the Library; the run filter narrows loaded runs. |
 | 31 | Image Library paging and thumbnail requests | verified_pass | library |  |
-| 32 | Keepers, collections, and image metadata | verified_pass | library, png-info |  |
+| 32 | Keepers, collections, and image metadata | verified_pass | library, png-info, v2-parity-library-flow |  |
 | 33 | Fullscreen viewer, comparison, and navigation | verified_pass | library |  |
 | 34 | Original image download and export variants | verified_pass | library |  |
-| 35 | Distinct image and mixed-media indexes | verified_pass | library | Mixed-media collection layout in Library. |
+| 35 | Distinct image and mixed-media indexes | verified_pass | library |  |
 | 36 | Voice profiles, samples, and approvals | verified_pass | voice-drama |  |
 | 37 | Voice Designer and supported voice creation | verified_pass | drama-studio, voice-drama |  |
 | 38 | Voice cloning, auditions, and evaluation | verified_pass | voice-clone-upload |  |
@@ -173,23 +173,32 @@ Counts: source_only 15, unavailable_with_reason 2, unverified 2, verified_pass 3
 | 40 | Drama projects and script identity | verified_pass | drama-studio, voice-drama |  |
 | 41 | Drama parsing, cast, and voice assignments | verified_pass | voice-drama |  |
 | 42 | Drama direction, takes, and phrase controls | verified_pass | drama-studio |  |
-| 43 | Incremental Drama production and fingerprints | source_only | — |  |
+| 43 | Incremental Drama production and fingerprints | verified_pass | drama-studio, studio-drama-stop-after-current + unit | Lifecycle: fingerprints, one-line/one-voice invalidation, outdated takes kept, stale refused, safe-boundary cancel, V2 Produce/stop UI with fixtures. Audio correctness is NOT verified from UI evidence. [unit: drama-fingerprint.test.js, drama-service-incremental.test.js, drama-cancel-policy.test.js, drama-production-routes.test.js] |
 | 44 | Drama QA, master, timeline, and export | verified_pass | drama-studio |  |
-| 45 | ACE-Step music generation | source_only | — |  |
-| 46 | Magenta instrumental generation | source_only | — |  |
-| 47 | Stems and mastering capabilities | unavailable_with_reason | — | V4 stems/mastering tabs are disabled Planned entries; no working legacy operation was found to port into V2 Music. |
-| 48 | 3D individual asset source, generation, and validation | source_only | — |  |
-| 49 | 3D formats, viewer, and export | source_only | — |  |
-| 50 | World projects and scene construction | unverified | — |  |
-| 51 | World viewer and supported rendering | unverified | — |  |
-| 52 | System Doctor, privacy, storage, network, and preferences | source_only | — | **Gap:** Verify files entry added (Models); legacy general/help preferences and section-visibility customisation have no V2 equivalent. |
-| 53 | Video workspace boundary | unavailable_with_reason | — | V2 Video destination explicitly reports generation not implemented and shows the dormant worker boundary. |
+| 45 | ACE-Step music generation | verified_pass | v2-parity-music + unit | Hermetic V2 UI (engine-specific controls and ranges, exact request, gating, job lifecycle, failure) + unit validation + one REAL short generation through the console API (see real_runtime_evidence). [unit: media-bridge.test.js; real runtime: music_runtime] |
+| 46 | Magenta instrumental generation | verified_pass | v2-parity-music + unit | As row 45 for Magenta (prompt + duration only; cannot be stopped once started: warning shown). [unit: media-bridge.test.js; real runtime: music_runtime] |
+| 47 | Stems and mastering capabilities | unavailable_with_reason | v2-parity-music | V2 Music exposes no stems or mastering control; Help states the boundary. No working legacy operation exists to port (V4 shows disabled Planned entries). |
+| 48 | 3D individual asset source, generation, and validation | verified_pass | v2-parity-3d-world | Source required, exact requests per mode, job tracking, viewer/Blender request, GLB download validity; hermetic. Real Hunyuan3D generation was not re-run (existing real assets verified instead). |
+| 49 | 3D formats, viewer, and export | verified_pass | v2-parity-3d-world | Viewer renders real pixels, orbit/zoom/reset, refusal of corrupt/empty/non-GLB/missing files; three REAL GLBs (one textured) validated, matched to registry SHA-256, downloaded byte-identical and rendered. Real Blender launch was not executed (GUI side effect). [real runtime: real_3d_viewer] |
+| 50 | World projects and scene construction | verified_pass | v2-parity-3d-world | Project list with real statuses/failures, explicit source, exact Make 3D/Make World requests, Retry, Reload, Open Focus. No scene-object placement or property editing exists in any legacy shell (older help text promised it and was corrected). |
+| 51 | World viewer and supported rendering | verified_pass | v2-parity-3d-world | Point-cloud rendering by pixels, W/drag/R, viewer-opened record, refusal states; a REAL project (27,890-point PLY) rendered and navigated with its PATCH intercepted. [real runtime: real_world_viewer] |
+| 52 | System Doctor, privacy, storage, network, and preferences | verified_pass | v2-parity-prompt-assets, v2-parity-assistance, model-files | Doctor, worker health, access/bind, storage, launcher, model verification (Models), prompt-privacy preference. Section-visibility customisation exists only in the legacy public/app.js workbench: documented boundary. |
+| 53 | Video workspace boundary | unavailable_with_reason | v2-parity-music | V2 Video states generation is not implemented, shows the missing LTX runtime and sends nothing; the dormant worker slot is preserved. |
 
-### Material remaining gaps
+### Implemented in this phase
 
-- Row 5 (Help and tutorials): no V2 tutorial index; the Settings guide in Create is the only V2 help surface.
-- Rows 6, 7, 8: contextual inspector, global event-stream/resource dock and Workstation resume/start aggregation are not mirrored in V2.
-- Row 12: style manager reachable; apply/save/delete and wildcard ordering are not exercised by the V2 runner. Row 16: historical settings-JSON import remains unresolved.
-- Row 52: Verify files added; legacy general/help preferences have no V2 equivalent.
-- Rows 47 and 53 remain unavailable by documented design (no stems/mastering operation; no video generator). Rows 50 and 51 (World) remain unverified.
-- Deployed scheduler: `kl_optimal` passes the running Big Mac worker's scheduler validation (bogus IDs are rejected earlier). **No KL Optimal image generation has been performed or verified.**
+- Help and Context drawer (rows 5, 6): persistent focus-stable node, module tutorials reused (World and 3D text corrected where it promised scene placement/editing), Escape closes from anywhere.
+- Job Center read-only Details and a header Search/Help/Context/Jobs cluster reachable at every width (rows 3, 4, 7).
+- Library, style, privacy and artwork evidence (rows 1, 8, 9, 12, 30, 52); Drama lifecycle (row 43); music (rows 45, 46) and the stems/video boundaries (rows 47, 53); 3D and World (rows 48-51).
+- Product fixes found by the new tests: the World viewer never called its movement function (WASD did nothing); Magenta's unused music controls were keyboard-editable (now inert).
+
+### Remaining (why this is PARTIAL, not certified)
+
+- Row 43: Drama audio production correctness (listening/QA) is not verifiable from UI or fixtures; only the lifecycle is.
+- Row 39: a real long-form voice render was not executed in this phase.
+- Row 48: a fresh real Hunyuan3D generation was not run (existing real GLB assets were verified instead).
+- Row 49: a real Blender launch was not executed (GUI side effect); only the request is verified.
+- Rows 45/46: one short real generation per engine only; no audio-quality judgement.
+- Legacy-workbench-only features without a V1-V4 shell counterpart (arbitrary settings-JSON import, section-visibility preferences) were not ported: boundary requiring a user decision.
+- Row 8: no standalone Workstation home exists in V2 by design; resume paths are Jobs, Library handoffs and reopened projects.
+- Rows 47 and 53 remain unavailable by documented design and were not changed.
