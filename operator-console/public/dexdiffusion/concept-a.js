@@ -598,6 +598,12 @@
   // Nothing here creates a record: it only reads existing state and tutorial text.
   P.v2OpenDrawer = function (tab, ev) {
     const ca = this._ca();
+    // Escape closes the drawer wherever focus is (focus moves into it on a short timer). Inner widgets that handle Escape themselves
+    // call preventDefault first, so this bubbling listener only acts when nothing else claimed the key.
+    if (!this._v2dEscBound) {
+      this._v2dEscBound = true;
+      document.addEventListener('keydown', e => { const d = this._ca().v2d; if (e.key === 'Escape' && d && d.open && !e.defaultPrevented) { e.preventDefault(); this.v2CloseDrawer(); } });
+    }
     ca.v2d = { open: true, tab: tab === 'context' ? 'context' : 'help', opener: tab === 'context' ? 'context' : 'help' };
     this.caSync();
     setTimeout(() => { const d = document.querySelector('[data-v2-drawer]'); if (d) d.focus(); }, 30);

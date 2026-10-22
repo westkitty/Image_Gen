@@ -65,6 +65,25 @@ async function open(page, base, { jobs = false } = {}) {
       });
     }
 
+    await test('row 5: Escape closes the drawer even when focus is not inside it', async () => {
+      const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+      const errors = await open(page, srv.base);
+      for (const kind of ['help', 'context']) {
+        const btn = page.locator(`[data-studio-${kind}]`);
+        await btn.focus();
+        await page.keyboard.press('Enter');
+        await page.locator('[data-v2-drawer]').waitFor({ state: 'visible' });
+        await page.waitForTimeout(200);   // let the drawer take focus, then move focus out of it (to <body>): Escape must still close it
+        await page.evaluate(() => { if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); });
+        assert.equal(await page.evaluate(() => !document.querySelector('[data-v2-drawer-host]').contains(document.activeElement)), true, 'focus is outside the drawer');
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => !document.querySelector('[data-v2-drawer]') || !document.querySelector('[data-v2-drawer]').offsetParent, null, { timeout: 5000 });
+        await page.waitForFunction(k => document.activeElement && document.activeElement.hasAttribute('data-studio-' + k), kind, { timeout: 5000 });
+      }
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
     await test('row 6: Context follows the real Create state and the selected library asset, without changing either', async () => {
       const page = await browser.newPage({ viewport: { width: 1348, height: 735 } });
       const errors = await open(page, srv.base);
