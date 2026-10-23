@@ -28,7 +28,28 @@ IMAGES_ROOT="/Users/andrew/images_made"
 SSH_TARGET="${DEX_SSH_TARGET:-westcat}"   # DEX_SSH_TARGET: test-only override
 REMOTE_VENV='$HOME/Library/Caches/DexDiffusion/mflux/venv'
 REMOTE_MODEL='$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit'
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+export PATH="${DEX_PATH_PREPEND:+$DEX_PATH_PREPEND:}/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"   # DEX_PATH_PREPEND: test-only (fake dependencies)
+
+# Every status probe that can block (lsof, tailscale, defaults, ssh, ...) runs under bounded(): a hard wall-clock limit that needs
+# neither GNU timeout nor coreutils. The command runs in its own process group; on expiry that group (and only it) gets TERM, then KILL.
+# Exit status 124 means "timed out"; callers must report such a dependency as unknown, never as down/absent/stopped. 125 means the
+# bound could not be enforced (no perl), in which case the command is NOT run: there is no unbounded fallback.
+PROBE_TIMEOUT="${DEX_PROBE_TIMEOUT:-4}"   # DEX_PROBE_TIMEOUT: seconds per local probe (ssh gets 3x); tests shorten it
+bounded() {
+  local secs="$1"; shift
+  command -v perl >/dev/null 2>&1 || return 125
+  perl -e '
+    my $t = shift @ARGV; my $pid = fork(); exit 125 unless defined $pid;
+    if (!$pid) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV or exit 127; }
+    my $timed_out = 0;
+    $SIG{ALRM} = sub { $timed_out = 1; kill "TERM", -$pid; select(undef, undef, undef, 0.5); kill "KILL", -$pid; };
+    alarm $t;
+    my $r; do { $r = waitpid($pid, 0); } while ($r == -1 && !$!{ECHILD});
+    alarm 0;
+    exit 124 if $timed_out;
+    exit(($? & 127) ? 128 + ($? & 127) : ($? >> 8));
+  ' "$secs" "$@" </dev/null
+}
 
 port_pid() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1; }
 version_json() { curl -fsS --max-time 2 "$BASE/api/version" 2>/dev/null; }
@@ -37,7 +58,7 @@ json_field() { python3 -c 'import json,sys; d=json.load(sys.stdin); v=d.get(sys.
 # Prints the pid if the port owner is this project's console, else nothing.
 owned_pid() {
   local pid v cwd vpid
-  pid="$(port_pid)"; [ -n "$pid" ] || return 1
+  pid="${1-$(port_pid)}"; [ -n "$pid" ] || return 1   # optional $1: an already-probed listener pid (status passes its bounded probe)
   v="$(version_json)" || return 1
   cwd="$(printf '%s' "$v" | json_field cwd)"
   vpid="$(printf '%s' "$v" | json_field pid)"
@@ -49,7 +70,11 @@ healthy() { curl -fsS --max-time 3 -o /dev/null "$BASE/api/capabilities" 2>/dev/
 
 tailnet_url() {
   command -v tailscale >/dev/null 2>&1 || return 1
-  tailscale serve status --json 2>/dev/null | python3 -c '
+  local raw rc=0
+  raw="$(bounded "$PROBE_TIMEOUT" tailscale serve status --json 2>/dev/null)" || rc=$?
+  [ "$rc" -eq 124 ] || [ "$rc" -eq 125 ] && return 124
+  [ "$rc" -eq 0 ] || return 1
+  printf '%s' "$raw" | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
 for hp, web in (d.get("Web") or {}).items():
@@ -92,8 +117,11 @@ cmd_start() {
     echo "DexDiffusion started (pid $pid)."
   fi
   echo "  local:   $LOCAL_URL"
-  if t="$(tailnet_url)"; then
+  local trc=0; t="$(tailnet_url)" || trc=$?
+  if [ "$trc" -eq 0 ]; then
     echo "  tailnet: $(printf '%s' "$t" | cut -f1)  ($(printf '%s' "$t" | cut -f2))"
+  elif [ "$trc" -eq 124 ]; then
+    echo "  tailnet: unknown (Tailscale probe timed out)"
   else
     echo "  tailnet: Tailscale Serve route not found (see DEXDIFFUSION.md → Tailnet URL unavailable)"
   fi
@@ -126,14 +154,23 @@ cmd_stop() {
 
 cmd_status() {
   local up="DOWN" pid="" head=""
-  if pid="$(owned_pid)" && healthy; then
+  local lraw lrc=0 lpid
+  lraw="$(bounded "$PROBE_TIMEOUT" lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null)" || lrc=$?
+  lpid="$(printf '%s\n' "$lraw" | head -1)"
+  if [ "$lrc" -eq 124 ] || [ "$lrc" -eq 125 ]; then
+    up="UNKNOWN (port probe timed out)"
+  elif pid="$(owned_pid "$lpid")" && healthy; then
     up="UP"; head="$(version_json | json_field gitHead)"
-  elif [ -n "$(port_pid)" ]; then
+  elif [ -n "$lpid" ]; then
     up="PORT HELD BY FOREIGN PROCESS"
   fi
-  local ts ts_url="not configured" ts_scope="-"
-  if ts="$(tailnet_url)"; then ts_url="$(printf '%s' "$ts" | cut -f1)"; ts_scope="$(printf '%s' "$ts" | cut -f2)"; fi
-  local bind; bind="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $9; exit}' || true)"
+  local ts ts_url="not configured" ts_scope="-" tsrc=0
+  ts="$(tailnet_url)" || tsrc=$?
+  if [ "$tsrc" -eq 0 ]; then ts_url="$(printf '%s' "$ts" | cut -f1)"; ts_scope="$(printf '%s' "$ts" | cut -f2)"
+  elif [ "$tsrc" -eq 124 ]; then ts_url="unknown (tailscale probe timed out)"; fi
+  local bind braw brc=0
+  braw="$(bounded "$PROBE_TIMEOUT" lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null)" || brc=$?
+  if [ "$brc" -eq 124 ] || [ "$brc" -eq 125 ]; then bind="unknown (probe timed out)"; else bind="$(printf '%s\n' "$braw" | awk 'NR>1{print $9; exit}')"; fi
 
   local primary="(server down)"
   if [ "$up" = "UP" ]; then
@@ -144,7 +181,7 @@ print("%s [%s, %s]" % (t[0]["label"], t[0]["id"], t[0]["status"]) if t else "non
   fi
 
   local app="MISSING" icon="-" dock="MISSING" app_rev="-" app_build="-" app_root="-"
-  local repo_head; repo_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || printf 'unknown')"
+  local repo_head; repo_head="$(bounded "$PROBE_TIMEOUT" git -C "$ROOT" rev-parse HEAD 2>/dev/null || printf 'unknown')"
   local swift_fp; swift_fp="$(shasum -a 256 "$ROOT/native/macos/Image_Gen/ImageGenApp.swift" 2>/dev/null | cut -d' ' -f1 || true)"
   local icon_source_fp; icon_source_fp="$(shasum -a 256 "$ROOT/operator-console/public/dexdiffusion/uploads/grok_image_1775521844329.jpg" 2>/dev/null | cut -d' ' -f1 || true)"
   if [ -f "$APP_PATH/Contents/Info.plist" ]; then
@@ -178,15 +215,22 @@ print("%s [%s, %s]" % (t[0]["label"], t[0]["id"], t[0]["status"]) if t else "non
       icon="MISSING"
     fi
   fi
-  local dockdump; dockdump="$(defaults read com.apple.dock persistent-apps 2>/dev/null || true)"
-  local n; n="$(printf '%s' "$dockdump" | grep -c "file://$APP_PATH/" || true)"
-  if [ "$n" = "1" ]; then dock="INSTALLED (1 entry, file://$APP_PATH/)"; elif [ "${n:-0}" -gt 1 ] 2>/dev/null; then dock="DUPLICATE ($n entries)"; fi
-  printf '%s' "$dockdump" | grep -q "Image_Gen.app/\|Image_Gen%20Launcher.app/" && dock="$dock; STALE Image_Gen entry present"
+  local dockdump drc=0; dockdump="$(bounded "$PROBE_TIMEOUT" defaults read com.apple.dock persistent-apps 2>/dev/null)" || drc=$?
+  if [ "$drc" -eq 124 ] || [ "$drc" -eq 125 ]; then
+    dock="UNKNOWN (dock probe timed out)"
+  else
+    local n; n="$(printf '%s' "$dockdump" | grep -c "file://$APP_PATH/" || true)"
+    if [ "$n" = "1" ]; then dock="INSTALLED (1 entry, file://$APP_PATH/)"; elif [ "${n:-0}" -gt 1 ] 2>/dev/null; then dock="DUPLICATE ($n entries)"; fi
+    printf '%s' "$dockdump" | grep -q "Image_Gen.app/\|Image_Gen%20Launcher.app/" && dock="$dock; STALE Image_Gen entry present"
+  fi
 
   local ssh_state="DOWN" mflux="unknown" model="unknown"
-  local remote
-  if remote="$(ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
-      "printf 'HOST=%s\n' \"\$(hostname)\"; test -x $REMOTE_VENV/bin/mflux-generate-flux2 && printf 'MFLUX=PRESENT\n' || printf 'MFLUX=MISSING\n'; test -s $REMOTE_MODEL/transformer/model.safetensors.index.json && printf 'MODEL=PRESENT\n' || printf 'MODEL=MISSING\n'; bd=\$(cat \$HOME/sdcpp-staging/build_dir.txt 2>/dev/null); test -n \"\$bd\" && test -x \"\$bd/bin/sd-cli\" && printf 'SDCLI=PRESENT\n' || printf 'SDCLI=MISSING\n'; test -s \/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors && printf 'SD15=PRESENT\n' || printf 'SD15=MISSING\n'; test -s /Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth && printf 'ESRGAN=PRESENT\n' || printf 'ESRGAN=MISSING\n'" 2>/dev/null)"; then
+  local remote src=0
+  remote="$(bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 -o ConnectionAttempts=1 "$SSH_TARGET" \
+      "printf 'HOST=%s\n' \"\$(hostname)\"; test -x $REMOTE_VENV/bin/mflux-generate-flux2 && printf 'MFLUX=PRESENT\n' || printf 'MFLUX=MISSING\n'; test -s $REMOTE_MODEL/transformer/model.safetensors.index.json && printf 'MODEL=PRESENT\n' || printf 'MODEL=MISSING\n'; bd=\$(cat \$HOME/sdcpp-staging/build_dir.txt 2>/dev/null); test -n \"\$bd\" && test -x \"\$bd/bin/sd-cli\" && printf 'SDCLI=PRESENT\n' || printf 'SDCLI=MISSING\n'; test -s \/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors && printf 'SD15=PRESENT\n' || printf 'SD15=MISSING\n'; test -s /Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth && printf 'ESRGAN=PRESENT\n' || printf 'ESRGAN=MISSING\n'" 2>/dev/null)" || src=$?
+  if [ "$src" -eq 124 ] || [ "$src" -eq 125 ]; then
+    ssh_state="UNKNOWN (probe timed out)"
+  elif [ "$src" -eq 0 ]; then
     ssh_state="UP ($(printf '%s' "$remote" | sed -n 's/^HOST=//p'))"
     mflux="$(printf '%s' "$remote" | sed -n 's/^MFLUX=//p')"
     model="$(printf '%s' "$remote" | sed -n 's/^MODEL=//p')"
@@ -202,7 +246,9 @@ for c in json.load(sys.stdin).get("capabilities", []):
     extra = ("last pass " + c["lastPass"]["at"][:16]) if c.get("lastPass") and c["status"] == "proven" else c.get("reason", "")
     print("  %-34s %-10s %s" % (c["label"], c["status"].upper(), extra))' 2>/dev/null || echo "  (capability status unavailable)")"
   fi
-  local latest; latest="$(ls -t "$IMAGES_ROOT" 2>/dev/null | grep -v '^\.' | head -1 || true)"
+  local latest lsraw lsrc=0
+  lsraw="$(bounded "$PROBE_TIMEOUT" ls -t "$IMAGES_ROOT" 2>/dev/null)" || lsrc=$?
+  if [ "$lsrc" -eq 124 ] || [ "$lsrc" -eq 125 ]; then latest="unavailable (probe timed out)"; else latest="$(printf '%s\n' "$lsraw" | grep -v '^\.' | head -1 || true)"; fi
 
   cat <<EOF
 DEXDIFFUSION STATUS
