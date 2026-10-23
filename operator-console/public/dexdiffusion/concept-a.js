@@ -606,7 +606,8 @@
     }
     ca.v2d = { open: true, tab: tab === 'context' ? 'context' : 'help', opener: tab === 'context' ? 'context' : 'help' };
     this.caSync();
-    setTimeout(() => { const d = document.querySelector('[data-v2-drawer]'); if (d) d.focus(); }, 30);
+    // Only take focus when it is not already inside the drawer: a keyboard user may have reached a tab/close control in the interim.
+    setTimeout(() => { const d = document.querySelector('[data-v2-drawer]'); if (d && !d.contains(document.activeElement)) d.focus(); }, 30);
   };
   P.v2CloseDrawer = function () {
     const ca = this._ca(), kind = ca.v2d && ca.v2d.opener;

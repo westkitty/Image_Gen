@@ -18,6 +18,33 @@ const JOBS = {
   resources: {},
 };
 
+// Row 6 (Context follows the real Create state) has timed out intermittently with no reproduced cause. On that timeout only, attach the
+// state that separates the candidate causes (wrong target/sampler, swallowed render error, throttled animation frames, console errors)
+// and rethrow the original error: the assertion and its timeout are unchanged.
+async function failWithEvidence(page, consoleLog, err) {
+  let evidence;
+  try {
+    evidence = await page.evaluate(async () => {
+      const d = window.__dex, out = {};
+      const grab = (k, f) => { try { out[k] = f(); } catch (e) { out[k] = 'unreadable: ' + e; } };
+      grab('target', () => d.state.target); grab('sampler', () => d.state.sampler);
+      grab('controlsSampler', () => d._controls().sampler);
+      grab('fluxTarget', () => { const t = (d.state.modelTargets || []).find(x => x.id === 'flux2-klein-4b'); return t && { backend: t.backend, runtime: t.runtime, status: t.status }; });
+      grab('dexTarget', () => localStorage.getItem('dex_target'));
+      grab('drawerText', () => (document.querySelector('[data-v2-drawer="context"]') || {}).innerText);
+      grab('visibility', () => document.visibilityState);
+      grab('renderError', () => d.__renderError && String(d.__renderError.stack || d.__renderError).slice(0, 600));
+      grab('renderFailures', () => d.__renderFailures);
+      let raf = 'STARVED';
+      await new Promise(res => { requestAnimationFrame(() => { raf = 'alive'; res(); }); setTimeout(res, 1500); });
+      out.rafProbe = raf;
+      return out;
+    });
+  } catch (e) { evidence = { captureFailed: String(e) }; }
+  err.message += '\nROW6-CONTEXT-EVIDENCE ' + JSON.stringify({ ...evidence, console: consoleLog });
+  throw err;
+}
+
 async function open(page, base, { jobs = false } = {}) {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
@@ -84,8 +111,35 @@ async function open(page, base, { jobs = false } = {}) {
       await page.close();
     });
 
+    await test('row 5: the drawer\'s delayed focus never steals focus from a control the user already reached inside it', async () => {
+      const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+      const errors = await open(page, srv.base);
+      // Hold the drawer's 30ms focus timer so its firing can be ordered deterministically against the user's own focus move.
+      await page.evaluate(() => {
+        window.__heldFocus = []; window.__realSetTimeout = window.setTimeout;
+        window.setTimeout = (fn, ms, ...a) => { if (ms === 30) { window.__heldFocus.push(fn); return 0; } return window.__realSetTimeout(fn, ms, ...a); };
+      });
+      await page.locator('[data-studio-context]').focus(); await page.keyboard.press('Enter');
+      await page.locator('[data-v2-drawer="context"]').waitFor({ state: 'visible' });
+      await page.evaluate(() => { window.setTimeout = window.__realSetTimeout; });
+      assert.ok(await page.evaluate(() => window.__heldFocus.length) >= 1, 'the drawer scheduled its delayed focus');
+      // Focus still outside the drawer: the timer must still move focus in (keyboard users land in the dialog).
+      await page.evaluate(() => window.__heldFocus.forEach(f => f()));
+      assert.equal(await page.evaluate(() => document.activeElement.hasAttribute('data-v2-drawer')), true, 'drawer takes focus when it is not already inside');
+      // The user moves to a tab control before a late timer fires: the timer must leave that focus alone.
+      await page.locator('[data-v2-drawer-tab="help"]').focus();
+      await page.evaluate(() => window.__heldFocus.forEach(f => f()));
+      assert.equal(await page.evaluate(() => document.activeElement.getAttribute('data-v2-drawer-tab')), 'help', 'late focus timer must not steal focus from the tab control');
+      await page.keyboard.press('Enter');
+      await page.locator('[data-v2-drawer="help"]').waitFor({ state: 'visible' });
+      await page.keyboard.press('Escape'); await page.locator('[data-v2-drawer]').waitFor({ state: 'hidden' });
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
     await test('row 6: Context follows the real Create state and the selected library asset, without changing either', async () => {
       const page = await browser.newPage({ viewport: { width: 1348, height: 735 } });
+      const consoleLog = []; page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') consoleLog.push(m.type() + ': ' + m.text().slice(0, 300)); });
       const errors = await open(page, srv.base);
       await chooseModel(page, 'sdxl-base');
       await page.evaluate(() => __dex.setState({ sampler: 'heun', steps: '17', prompt: 'keep me' }));
@@ -96,7 +150,8 @@ async function open(page, base, { jobs = false } = {}) {
       assert.match(text, /Target\s*SDXL/i); assert.match(text, /Steps \/ seed\s*17/); assert.match(text, /Sampler\s*heun/i);
       // The drawer is a non-modal overlay on the right; drive the model change through app state while it is open.
       await page.evaluate(() => __dex.onSelectTarget('flux2-klein-4b', { quiet: true, preserveSettings: true }));
-      await page.waitForFunction(() => /Fixed \(flow-match Euler\)/.test(document.querySelector('[data-v2-drawer="context"]').innerText), null, { timeout: 15000 });
+      await page.waitForFunction(() => /Fixed \(flow-match Euler\)/.test(document.querySelector('[data-v2-drawer="context"]').innerText), null, { timeout: 15000 })
+        .catch(err => failWithEvidence(page, consoleLog, err));
       assert.equal(await page.evaluate(() => __dex.state.prompt), 'keep me', 'opening Context never edits the form');
       assert.notEqual(before.t, await page.evaluate(() => __dex.state.target));
       // Library: nothing selected -> honest empty state.
@@ -119,6 +174,8 @@ async function open(page, base, { jobs = false } = {}) {
       await page.locator('[data-studio-context]').focus(); await page.keyboard.press('Enter');
       const drawer = page.locator('[data-v2-drawer="context"]'); await drawer.waitFor({ state: 'visible' });
       const b = await drawer.boundingBox(); assert.ok(b.x >= -1 && b.x + b.width <= 391);
+      // The drawer takes focus on a short timer after it opens; wait for that real event so it cannot land between the tab focus and Enter.
+      await page.waitForFunction(() => document.activeElement && document.activeElement.hasAttribute('data-v2-drawer'), null, { timeout: 5000 });
       await page.locator('[data-v2-drawer-tab="help"]').focus(); await page.keyboard.press('Enter');
       await page.locator('[data-v2-drawer="help"]').waitFor({ state: 'visible' });
       await page.keyboard.press('Escape'); await page.locator('[data-v2-drawer]').waitFor({ state: 'hidden' });
