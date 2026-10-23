@@ -2864,3 +2864,10 @@ Local and origin recovery branch remain `d1d542631fd041ddf54b148a173da19415fa4dd
 - 53-row ledger: 51 verified_pass, 2 unavailable (stems/mastering, video). Parity is PARTIAL_NOT_CERTIFIED because several runtime proofs were not executed (Drama audio correctness, long-form render, fresh Hunyuan3D generation, Blender launch, quality judgement) and two legacy-workbench-only features were not ported. Legacy shells are retained; retirement needs separate approval.
 - New V2 surfaces: Help/Context drawer, Job Center Details, narrow-width header utilities. Tests found and fixed a World viewer movement bug and keyboard-editable inert music controls. Tutorials no longer promise unavailable World scene editing.
 - Real runtime: one short real generation per music engine and read-only real-artifact viewer checks, recorded in `docs/operations/v2-runtime-evidence-20261022.json`.
+
+## Entry 22 — Pre-redesign repository baseline (2026-10-23)
+
+- Verified source baseline `126a9b9` (this entry is added by a following docs-only commit; the preflight was not re-run for it). Running console still reports `04486d9`; installed native app is stamped `d1d5426`.
+- `main` promoted by fast-forward to `126a9b9` after a single fresh passing release preflight (after two earlier failed runs) (unit 1027/1027, 44 browser suites; Style/Wildcard excluded by design). Record, branch/PR dispositions, capability proof levels, entrypoint inventory and rollback: `docs/operations/pre-redesign-readiness-20261023.md`.
+- Corrections made during this pass: the V2 drawer's delayed focus timer now respects focus already inside the drawer (confirmed race, regression-tested); `bin/dexdiffusion status` bounds blocking probes and reports timed-out dependencies as UNKNOWN.
+- Open and not claimed fixed: Row 6 Context-drawer timeout (`Fixed (flow-match Euler)`), undiagnosed; the original `status` hang cause. Native app not rebuilt (installed `d1d5426`). Legacy retirement and the Chat/UI redesign were not started.

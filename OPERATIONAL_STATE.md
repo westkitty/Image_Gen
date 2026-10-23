@@ -445,3 +445,13 @@ The saving is the removed handshakes (microbenchmark, 6 reps: old 3 calls 3.1–
 - **No enabled no-ops in the V2 shell:** the four inert Models actions and five further inert shell buttons were removed; an automated test fails if any enabled V2 button lacks a handler.
 - **Verification:** unit suite 960 tests → 792 pass / 88 fail / 80 skipped, with the failing set byte-identical to the pre-change baseline (environmental: `ffmpeg`, Python libraries, macOS paths, live fixtures). Browser suites are **skipped** (no Chromium); the native wrapper change is **source-only** (no Swift toolchain).
 - **Not verified here:** WKWebView dialogs, Big Mac stop/render, Dock/first-run, three unfamiliar users, V2 scroll reproduction. See `docs/operations/arena-v2-studio-20261020/EXECUTION_LEDGER.md` §9 for the exact owner steps and §4 for gate status.
+
+## Pre-redesign baseline — `main` promoted (2026-10-23)
+
+- Additive entry; earlier sections are unchanged. Full record: `docs/operations/pre-redesign-readiness-20261023.md`. The verified source baseline is `126a9b9`; the commit that adds this entry is docs-only, with `126a9b9` as its parent, and the preflight was not re-run for it.
+- Three identities: published source `126a9b9` (+ docs-only commit); running console pid 4170 still reports `gitHead 04486d9` (not restarted); installed native app is stamped `d1d5426` (not rebuilt).
+- Remote `main` was fast-forwarded (no force) from `cab2a6e` to `126a9b9` (10 commits, 120 files), read back with `git ls-remote`. `feat/v2-functional-parity-20261022` is the same commit. PRs #3 and #5 stay open (historical, DO NOT MERGE); no branch deleted.
+- Fresh release preflight on the promoted source: exit 0, unit 1027/1027, 44 browser suites passed (Style/Wildcard excluded by design). Two earlier runs failed intermittently first; see the record.
+- **Open diagnostic concern (unresolved):** `v2-parity-assistance` Row 6 ("Fixed (flow-match Euler)" in the Context drawer) timed out intermittently and has not been reproduced or diagnosed; the test now attaches `ROW6-CONTEXT-EVIDENCE` on that timeout. The one `bin/dexdiffusion status` 30 s hang is also undiagnosed; `status` now bounds its probes and reports UNKNOWN on timeout.
+- Fixed: Help/Context drawer delayed focus no longer steals focus from a control the user already reached.
+- Not done: native app rebuild (installed app is `d1d5426`, reported OUTDATED), service restart (console process still reports `04486d9`), live generation, human acceptance (E6).
