@@ -61,7 +61,7 @@ const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
 const HOST = '127.0.0.1';
 const APP_VERSION = 'image-gen-console-2026-06-22-render-wrapper';
 
-const WORKFLOW_ROOT = path.resolve(__dirname, '../sdcpp-workflow');
+const WORKFLOW_ROOT = process.env.DEX_WORKFLOW_ROOT ? path.resolve(process.env.DEX_WORKFLOW_ROOT) : path.resolve(__dirname, '../sdcpp-workflow');
 const RUNS_DIR = path.join(WORKFLOW_ROOT, 'runs');
 const imageStore = createImageStore({ root: process.env.DEX_IMAGES_ROOT_OVERRIDE || undefined, runsRoot: RUNS_DIR });
 imageStore.ensureRoot();

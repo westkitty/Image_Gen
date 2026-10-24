@@ -30,6 +30,15 @@ REMOTE_VENV='$HOME/Library/Caches/DexDiffusion/mflux/venv'
 REMOTE_MODEL='$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit'
 export PATH="${DEX_PATH_PREPEND:+$DEX_PATH_PREPEND:}/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"   # DEX_PATH_PREPEND: test-only (fake dependencies)
 
+if [ -z "${DEX_WORKFLOW_ROOT:-}" ]; then
+  if [ -d "$ROOT/../Image_Gen/sdcpp-workflow" ]; then
+    export DEX_WORKFLOW_ROOT="$(cd "$ROOT/../Image_Gen/sdcpp-workflow" && pwd)"
+  else
+    export DEX_WORKFLOW_ROOT="$ROOT/sdcpp-workflow"
+  fi
+fi
+export DEX_CHAT_ENABLED="${DEX_CHAT_ENABLED:-1}"
+
 # Every status probe that can block (lsof, tailscale, defaults, ssh, ...) runs under bounded(): a hard wall-clock limit that needs
 # neither GNU timeout nor coreutils. The command runs in its own process group; on expiry that group (and only it) gets TERM, then KILL.
 # Exit status 124 means "timed out"; callers must report such a dependency as unknown, never as down/absent/stopped. 125 means the
