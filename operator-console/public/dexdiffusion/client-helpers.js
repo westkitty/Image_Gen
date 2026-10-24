@@ -173,10 +173,12 @@
     const c = (target && target.capabilities) || {};
     const mflux = c.backend ? c.backend === 'mflux' : (target && target.backend) === 'mflux';
     const on = (k, dflt) => (k in c ? !!c[k] : dflt);
+    const targetId = (target && target.id) || '';
+    const loraDefault = mflux ? targetId === 'flux2-klein-4b' : targetId !== 'flux-fp8';
     return {
       backend: mflux ? 'mflux' : 'sdcpp',
       negativePrompt: on('negativePrompt', !mflux), cfg: on('cfg', !mflux), scheduler: on('scheduler', !mflux),
-      vae: on('vae', !mflux), lora: on('lora', !mflux), hiresRefine: on('hiresRefine', !mflux),
+      vae: on('vae', !mflux), lora: on('lora', loraDefault), hiresRefine: on('hiresRefine', !mflux),
       img2img: on('img2img', false), inpaint: on('inpaint', false), outpaint: on('outpaint', false), controlNet: on('controlNet', false),
       nativeBatch: on('nativeBatch', !mflux),
       sampler: on('sampler', !mflux), clipSkip: on('clipSkip', !mflux), tiling: on('tiling', !mflux), eta: on('eta', !mflux), rng: on('rng', !mflux),

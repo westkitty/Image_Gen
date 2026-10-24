@@ -31,15 +31,21 @@ test('the canonical 14 categories exist in the fixed product order', () => {
   assert.equal(Nav.CATEGORIES.length, 14);
 });
 
-test('the actual V2 template places LoRA controls directly before the persistent Generate action', () => {
+test('the actual V2 template places LoRA controls in the prompt composer and negative prompt in the main create body', () => {
   const template = read('index.html');
   const v2 = template.indexOf('<sc-if value="{{ isV2 }}"');
   const v4 = template.indexOf('<sc-if value="{{ isV4 }}"');
+  const promptRow = template.indexOf('data-prompt-tools-row', v2);
+  const promptTools = template.indexOf('{{ promptTools }}', promptRow);
+  const negContainer = template.indexOf('data-negative-prompt-container', v2);
   const primary = template.indexOf('<div data-studio-primary-action', v2);
-  const controls = template.indexOf('{{ createLoraControls }}', primary);
   const generate = template.indexOf('onClick="{{ onGenerate }}"', primary);
-  assert.ok(v2 >= 0 && v4 > v2 && primary > v2 && primary < v4, 'found the V2 persistent action region');
-  assert.ok(controls > primary && controls < generate, 'V2 mounts the functional LoRA controls immediately above Generate');
+
+  assert.ok(v2 >= 0 && v4 > v2 && promptRow > v2 && promptRow < v4, 'found V2 prompt composer region');
+  assert.ok(promptTools > promptRow, 'promptTools mounted in prompt row');
+  assert.ok(negContainer > promptRow && negContainer < primary, 'negative prompt is in the main Create composer before primary actions');
+  assert.equal(template.indexOf('{{ createLoraControls }}', primary), -1, 'old footer LoRA dropdown is removed from primary actions');
+  assert.ok(generate > primary, 'V2 mounts persistent Generate action in primary action region');
   assert.match(read('workstation-ui.js'), /vals\.createLoraControls = curScreen === 'create' \? this\.buildCreateLoraControls\(\) : null/);
   assert.match(template, /<script src="\.\.\/model-presets\.js"><\/script>\s*<script src="component\.js"><\/script>/, 'V2 loads acceleration recipes before the controls');
   assert.match(read('component.js'), /this\.state\.target \|\| 'flux2-klein-4b'\) !== target\) return/, 'late asset discovery for an old target cannot overwrite current compatibility');
@@ -379,21 +385,17 @@ test('V2 Create shows guarded LoRA controls, applies a recipe, and snapshots ON/
     const calls = apiStub(w);
     const adapter = { id: 'lcm_sdxl_asset', name: 'lcm_sdxl', filename: 'lcm_sdxl.safetensors', family: 'sdxl', compatibility: 'Compatible', proof_status: 'PROVEN', proof_target_ids: ['sdxl-base'], default_weight: 1, min_weight: 0, max_weight: 2, step: 0.05 };
     const unproven = { ...adapter, id: 'hyper_sdxl_asset', name: 'Hyper-SDXL-8steps-CFG-lora', compatibility: 'Unproven', proof_status: 'FILE_INSTALLED_UNTESTED' };
-    inst.setState({ target: 'sdxl-base', prompt: 'a quiet harbour at dawn', steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', assets: { loras: [adapter, unproven], vaes: [], embeddings: { count: 0, items: [] } } });
+    inst.setState({ target: 'sdxl-base', prompt: 'a quiet harbour at dawn', steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', assets: { loras: [adapter, unproven], vaes: [], embeddings: { count: 0, items: [] } }, showLoraPicker: true });
     await settle(w);
-    const toggle = doc.querySelector('[data-dex-field="use-lora"]');
-    assert.ok(toggle, 'Use LoRA is present beside the persistent Generate action');
-    assert.ok(toggle.disabled, 'the checkbox stays disabled when nothing is selected');
-    const select = doc.querySelector('[data-dex-field="create-lora-adapter"]');
+    const pickerBtn = doc.querySelector('[data-dex-field="open-lora-picker"]');
+    assert.ok(pickerBtn, 'LoRA button is present in prompt composer');
+    const select = doc.querySelector('[data-dex-field="lora-picker-select"]');
+    assert.ok(select, 'LoRA picker select is rendered in popover');
     assert.ok([...select.options].some(o => o.textContent.includes('Installed; inference is not yet proven')));
     select.value = adapter.id;
     select.dispatchEvent(new w.Event('change', { bubbles: true }));
     await settle(w);
-    const enabledToggle = doc.querySelector('[data-dex-field="use-lora"]');
-    assert.equal(enabledToggle.disabled, false, JSON.stringify({ selected: inst.state.createLora, target: inst.state.target, options: inst._createLoraOptions() }));
-    enabledToggle.checked = true;
-    enabledToggle.dispatchEvent(new w.Event('change', { bubbles: true }));
-    await settle(w);
+    assert.equal(inst.state.createLora.enabled, true, 'selecting an adapter enables it in a single action');
     assert.deepEqual([inst.state.steps, inst.state.cfg, inst.state.sampler, inst.state.scheduler], [4, 1.5, 'lcm', 'lcm']);
     inst.setCreateLoraStrength(0.75, 0, 2);
     await inst.onGenerate(); await settle(w, 80);
@@ -401,7 +403,7 @@ test('V2 Create shows guarded LoRA controls, applies a recipe, and snapshots ON/
     assert.deepEqual(JSON.parse(on.body).loras, [{ name: 'lcm_sdxl', weight: 0.75 }]);
     inst.setState({ jobStatus: 'idle' });
     inst.setCreateLoraField('steps', 6);
-    inst.setCreateLoraEnabled(false);
+    inst.selectCreateLora('');
     await settle(w);
     assert.deepEqual([inst.state.steps, inst.state.cfg, inst.state.sampler, inst.state.scheduler], [6, 7, 'euler_a', 'discrete'], 'explicit edits made after activation survive recipe restoration');
     await inst.onGenerate(); await settle(w, 80);
@@ -416,27 +418,28 @@ test('changing the selected adapter restores normal settings and preserves manua
     await settle(w);
     const adapter = { id: 'lcm_sdxl_asset', name: 'lcm_sdxl', filename: 'lcm_sdxl.safetensors', family: 'sdxl', compatibility: 'Compatible', proof_status: 'PROVEN', proof_target_ids: ['sdxl-base'], default_weight: 1, min_weight: 0, max_weight: 2, step: 0.05 };
     const second = { ...adapter, id: 'lightning_asset', name: 'sdxl_lightning_4step_lora', filename: 'sdxl_lightning_4step_lora.safetensors' };
-    inst.setState({ target: 'sdxl-base', steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', assets: { loras: [adapter, second], vaes: [], embeddings: { count: 0, items: [] } } });
+    inst.setState({ target: 'sdxl-base', steps: 20, cfg: 7, sampler: 'euler_a', scheduler: 'discrete', assets: { loras: [adapter, second], vaes: [], embeddings: { count: 0, items: [] } }, showLoraPicker: true });
     const selectAdapter = async id => {
       await settle(w);
-      const select = doc.querySelector('[data-dex-field="create-lora-adapter"]');
+      const select = doc.querySelector('[data-dex-field="lora-picker-select"]');
       select.value = id;
       select.dispatchEvent(new w.Event('change', { bubbles: true }));
       await settle(w);
     };
     await selectAdapter(adapter.id);
-    inst.setCreateLoraEnabled(true);
-    await selectAdapter(second.id);
+    assert.equal(inst.state.createLora.enabled, true);
+    await selectAdapter('');
     assert.equal(inst.state.createLora.enabled, false);
     assert.deepEqual([inst.state.steps, inst.state.cfg, inst.state.sampler, inst.state.scheduler], [20, 7, 'euler_a', 'discrete']);
-    inst.setCreateLoraEnabled(true);
+    await selectAdapter(second.id);
+    assert.equal(inst.state.createLora.enabled, true);
     inst.setCreateLoraField('steps', 6);
-    await selectAdapter(adapter.id);
-    assert.equal(inst.state.createLora.selectedId, adapter.id);
+    await selectAdapter('');
+    assert.equal(inst.state.createLora.enabled, false);
     assert.deepEqual([inst.state.steps, inst.state.cfg, inst.state.sampler, inst.state.scheduler], [6, 7, 'euler_a', 'discrete'], 'explicit edits survive changing adapter');
     inst.setState({ steps: 30 });
     await selectAdapter(second.id);
-    assert.equal(inst.state.steps, 30, 'changing an inactive adapter preserves ordinary settings');
+    assert.equal(inst.state.steps, 4, 'second adapter recipe applies on selection');
   } finally { close(); }
 });
 

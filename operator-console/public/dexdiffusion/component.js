@@ -41,6 +41,7 @@ class Component extends DCLogic {
     target: 'sd15',
     prompt: '', negPrompt: '',
     promptOpen: true,
+    negPromptOpen: false,
     settingsOpen: false, compactMode: localStorage.getItem('dex_compact_mode') === 'true',
     selectedVae: 'default', favoriteName: '',
     // Recipes (formerly Favorite presets). Prompt text persists only when prompt saving is on;
@@ -83,12 +84,15 @@ class Component extends DCLogic {
     // Ollama prompt enhance
     ollamaOnline: false, ollamaModel: '', enhancingPrompt: false,
     enhancementResult: null, previousPrompt: null,
+    enhancingNegPrompt: false, negEnhancementResult: null, previousNegPrompt: null,
     // Wildcards
     wildcards: [], showWildcards: false, wildcardFilter: '',
+    showNegWildcards: false, negWildcardFilter: '',
     // Extra networks / LoRA
     assets: { loras: [], vaes: [], embeddings: { count: 0, items: [], empty_state_message: 'No Textual Inversion embeddings discovered' } },
     loadingAssets: false, extraNetworksTab: 'loras',
     loraWeights: {}, createLoras: [],
+    showLoraPicker: false, loraSearchQuery: '',
     createLora: (() => { try { return Object.assign({ enabled: false, selectedId: '', strength: 1, advanced: false, savedSettings: null, overrides: {} }, JSON.parse(localStorage.getItem('dex_create_lora_v1') || '{}')); } catch { return { enabled: false, selectedId: '', strength: 1, advanced: false, savedSettings: null, overrides: {} }; } })(),
     // Global
     backendUrl: (() => { try { return DexClient.resolveBackendBase(localStorage.getItem('dex_backend_url')); } catch { return ''; } })(),
@@ -279,6 +283,13 @@ class Component extends DCLogic {
         else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { e.preventDefault(); first?.focus(); }
       }
       return;
+    }
+    if (e.key === 'Escape') {
+      if (this.state.showLoraPicker || this.state.showWildcards || this.state.showNegWildcards) {
+        e.preventDefault();
+        this.setState({ showLoraPicker: false, showWildcards: false, showNegWildcards: false });
+        return;
+      }
     }
     const tag = (e.target && e.target.tagName || '').toLowerCase();
     const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
@@ -615,19 +626,50 @@ class Component extends DCLogic {
     this.setCreateLoras(a => a.filter(x => x.name !== base).concat([{ name: base, weight: Number(weight) || 0.8 }]));
     this.toast('Added LoRA ' + base + ' · ' + DexEdit.formatWeight(weight), '#38bdf8');
   }
+  insertTriggerPhrase(triggers) {
+    const phrase = Array.isArray(triggers) ? triggers[0] : String(triggers || '');
+    if (!phrase) return;
+    const prompt = this.state.prompt || '';
+    const textarea = document.querySelector('textarea[data-dex-field="prompt"]');
+    if (textarea && textarea.selectionStart != null && textarea.selectionEnd != null) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const prefix = prompt.slice(0, start);
+      const suffix = prompt.slice(end);
+      const sep = prefix.length && !prefix.endsWith(' ') && !prefix.endsWith(', ') ? ', ' : '';
+      const nextPrompt = prefix + sep + phrase + (suffix.length && !suffix.startsWith(' ') && !suffix.startsWith(',') ? ', ' : ' ') + suffix;
+      this.setState({ prompt: nextPrompt });
+      setTimeout(() => {
+        textarea.focus();
+        const nextPos = start + sep.length + phrase.length;
+        textarea.setSelectionRange(nextPos, nextPos);
+      }, 20);
+    } else {
+      const sep = prompt.length && !prompt.endsWith(' ') && !prompt.endsWith(', ') ? ', ' : '';
+      this.setState({ prompt: prompt + sep + phrase });
+    }
+    this.toast('Inserted trigger phrase: ' + phrase, '#65d66e');
+  }
   getActiveLoras() {
     const prompt = this.state.prompt || '';
     const re = /<lora:([^:>]+)(?::([0-9.]+))?>/g;
     const loras = [];
-    const knownLoras = Array.isArray(this.state.loras) ? this.state.loras : [];
+    const knownLoras = (this.state.assets && this.state.assets.loras) || (Array.isArray(this.state.loras) ? this.state.loras : []);
+    const effective = typeof this.getEffectiveCreateLoras === 'function' ? this.getEffectiveCreateLoras() : [];
+    for (const l of effective) {
+      loras.push({ name: l.name, weight: l.weight, family: l.family || 'unknown', token: '<lora:' + l.name + ':' + (l.weight != null ? Number(l.weight).toFixed(2) : '1.00') + '>' });
+    }
+    for (const l of (this.state.createLoras || [])) {
+      if (!loras.some(x => x.name.toLowerCase() === l.name.toLowerCase())) {
+        loras.push({ name: l.name, weight: l.weight, family: 'unknown', token: '<lora:' + l.name + ':' + DexEdit.formatWeight(l.weight) + '>' });
+      }
+    }
     let m;
-    // structured resources first, then any tags typed into the prompt that are not already structured
-    for (const l of (this.state.createLoras || [])) loras.push({ name: l.name, weight: l.weight, family: 'unknown', token: '<lora:' + l.name + ':' + DexEdit.formatWeight(l.weight) + '>' });
     while ((m = re.exec(prompt)) !== null) {
       const name = m[1];
-      if (loras.some(x => x.name === name)) continue;
+      if (loras.some(x => x.name.toLowerCase() === name.toLowerCase())) continue;
       const weight = m[2] != null ? parseFloat(m[2]) : 1.0;
-      const found = knownLoras.find(k => k.name === name || (k.filename && k.filename.replace(/\.[^.]+$/, '') === name));
+      const found = knownLoras.find(k => (k.name && k.name.toLowerCase() === name.toLowerCase()) || (k.filename && k.filename.replace(/\.[^.]+$/, '').toLowerCase() === name.toLowerCase()));
       let family = found && found.family ? found.family : null;
       if (!family) {
         const lower = name.toLowerCase();
@@ -653,6 +695,15 @@ class Component extends DCLogic {
     return wcs;
   }
   setLoraWeight(name, weight) {
+    const createLora = this.state.createLora;
+    if (createLora && createLora.selectedId) {
+      const options = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
+      const sel = options.find(l => l.id === createLora.selectedId);
+      if (sel && (sel.name.toLowerCase() === name.toLowerCase() || sel.id.toLowerCase() === name.toLowerCase())) {
+        this.setCreateLoraStrength(weight, sel.min_weight, sel.max_weight);
+        return;
+      }
+    }
     if ((this.state.createLoras || []).some(x => x.name === name)) { this.setCreateLoras(a => a.map(x => x.name === name ? { ...x, weight: DexEdit.clampWeight(weight) } : x)); return; }
     const prompt = this.state.prompt || '';
     const w = Number(weight).toFixed(2).replace(/\.?0+$/, '');
@@ -667,6 +718,17 @@ class Component extends DCLogic {
   }
   removeLora(token) {
     const named = /^<lora:([^:>]+)/.exec(String(token || ''));
+    const name = named ? named[1] : '';
+    const createLora = this.state.createLora;
+    if (createLora && createLora.selectedId) {
+      const options = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
+      const sel = options.find(l => l.id === createLora.selectedId);
+      if (sel && (sel.name.toLowerCase() === name.toLowerCase() || sel.id.toLowerCase() === name.toLowerCase() || String(token).includes(sel.name))) {
+        this.selectCreateLora('');
+        this.toast('Removed adapter ' + sel.name, '#94a3b8');
+        return;
+      }
+    }
     if (named && (this.state.createLoras || []).some(x => x.name === named[1])) this.setCreateLoras(a => a.filter(x => x.name !== named[1]));
     const prompt = this.state.prompt || '';
     const next = prompt.replace(token, '').replace(/\s{2,}/g, ' ').trim();
@@ -834,6 +896,100 @@ class Component extends DCLogic {
   }
   dismissEnhancement() {
     this.setState({ enhancementResult: null });
+  }
+  async enhanceNegativePrompt() {
+    const { negPrompt, target, backendUrl, ollamaModel, enhancingNegPrompt } = this.state;
+    if (enhancingNegPrompt) return;
+    if (!negPrompt || !negPrompt.trim()) { this.toast('Write a negative prompt to enhance first', '#fbbf24'); return; }
+    this.setState({ enhancingNegPrompt: true, negEnhancementResult: null });
+    const ctrl = this._enhanceNegAbort = new AbortController();
+    const timeout = AbortSignal.timeout(60000);
+    try {
+      const r = await fetch(backendUrl + '/api/ollama/enhance', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ negative_prompt: negPrompt, field: 'negative', target, model: ollamaModel || undefined, save_prompts: !!this.state.savePrompts }),
+        signal: AbortSignal.any([ctrl.signal, timeout]),
+      });
+      if (!r.ok) {
+        const failure = await r.json().catch(() => ({}));
+        this.setState({ enhancingNegPrompt: false });
+        this.toast(failure.error || ('Negative enhancement failed (' + r.status + ')'), '#ef4444');
+        return;
+      }
+      const d = await r.json();
+      const enhanced = d.enhanced_prompt || d.negative_prompt || d.enhanced;
+      if (enhanced) {
+        const result = {
+          ...d,
+          enhanced,
+          original: d.original_prompt || negPrompt,
+          explanation: d.notes || d.explanation || '',
+        };
+        this.setState({ enhancingNegPrompt: false, negEnhancementResult: result });
+        this.toast('Negative enhancement ready for review', '#65d66e');
+        setTimeout(() => {
+          const rev = document.querySelector('[data-negative-enhancement-review]');
+          if (rev) rev.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 60);
+      } else {
+        this.setState({ enhancingNegPrompt: false });
+        this.toast('No negative enhancement returned', '#fbbf24');
+      }
+    } catch (e) {
+      this.setState({ enhancingNegPrompt: false });
+      if (ctrl.signal.aborted) this.toast('Negative enhance cancelled; prompt unchanged', '#94a3b8');
+      else if (timeout.aborted) this.toast('Negative enhance timed out after 60 s; prompt unchanged', '#ef4444');
+      else this.toast('Negative enhance failed: ' + e.message, '#ef4444');
+    } finally { if (this._enhanceNegAbort === ctrl) this._enhanceNegAbort = null; }
+  }
+  cancelNegEnhance() { if (this._enhanceNegAbort) this._enhanceNegAbort.abort(); }
+  applyNegEnhancement() {
+    const { negPrompt, negEnhancementResult } = this.state;
+    if (!negEnhancementResult || !negEnhancementResult.enhanced) return;
+    this.setState({
+      negPrompt: negEnhancementResult.enhanced,
+      previousNegPrompt: negPrompt,
+      negEnhancementResult: null
+    });
+    this.toast('Negative prompt updated (Undo available)', '#65d66e');
+  }
+  appendNegEnhancement() {
+    const { negPrompt, negEnhancementResult } = this.state;
+    if (!negEnhancementResult || !negEnhancementResult.enhanced) return;
+    this.setState({
+      negPrompt: (negPrompt ? negPrompt + ', ' : '') + negEnhancementResult.enhanced,
+      previousNegPrompt: negPrompt,
+      negEnhancementResult: null
+    });
+    this.toast('Negative prompt appended (Undo available)', '#65d66e');
+  }
+  undoNegEnhancement() {
+    const { previousNegPrompt } = this.state;
+    if (previousNegPrompt != null) {
+      this.setState({ negPrompt: previousNegPrompt, previousNegPrompt: null });
+      this.toast('Restored previous negative prompt', '#38bdf8');
+    }
+  }
+  dismissNegEnhancement() {
+    this.setState({ negEnhancementResult: null });
+  }
+  insertNegWildcard(name) {
+    const token = '__' + name + '__';
+    const negPrompt = this.state.negPrompt || '';
+    const textarea = document.querySelector('textarea[data-dex-field="negative-prompt"]');
+    if (textarea && textarea.selectionStart != null && textarea.selectionEnd != null) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const prefix = negPrompt.slice(0, start);
+      const suffix = negPrompt.slice(end);
+      const sep = prefix.length && !prefix.endsWith(' ') && !prefix.endsWith(', ') ? ', ' : '';
+      const nextNeg = prefix + sep + token + (suffix.length && !suffix.startsWith(' ') && !suffix.startsWith(',') ? ', ' : ' ') + suffix;
+      this.setState({ negPrompt: nextNeg, showNegWildcards: false });
+    } else {
+      const sep = negPrompt.length && !negPrompt.endsWith(' ') && !negPrompt.endsWith(', ') ? ', ' : '';
+      this.setState({ negPrompt: negPrompt + sep + token, showNegWildcards: false });
+    }
+    this.toast('Inserted ' + token + ' into negative prompt', '#65d66e');
   }
   applySuggestedSettings(settings) {
     if (!settings) return;
@@ -1507,6 +1663,22 @@ class Component extends DCLogic {
     }
 
     this.loadAssets();
+    // Check active Create LoRA compatibility with the new target
+    const currentLoraState = this.state.createLora;
+    if (currentLoraState && currentLoraState.selectedId && currentLoraState.enabled !== false) {
+      const optionsForNewTarget = typeof this._createLoraOptions === 'function' ? this._createLoraOptions(id) : [];
+      const matching = optionsForNewTarget.find(l => l.id === currentLoraState.selectedId);
+      if (!matching || !matching.use_enabled) {
+        const reason = matching ? matching.unavailable_reason : 'Incompatible with the selected checkpoint';
+        const name = matching ? matching.name : currentLoraState.selectedId;
+        this.toast(`Disabled ${name}: ${reason}`, '#fbbf24');
+        if (typeof this.selectCreateLora === 'function') {
+          this.selectCreateLora('');
+        } else if (typeof this.setCreateLoraEnabled === 'function') {
+          this.setCreateLoraEnabled(false);
+        }
+      }
+    }
     if (!options.quiet) this.toast('Target set: ' + id, '#38bdf8');
   }
 
@@ -2352,7 +2524,7 @@ class Component extends DCLogic {
         libLoadingMore ? 'Loading…' : 'Load More') : null,
       React.createElement('span', { style: { fontSize: 11, color: '#6090a8', marginLeft: 10 } }, runs.length + ' of ' + (libTotal || runs.length) + ' runs'));
 
-    // ── Prompt tools (Enhance via Ollama + Wildcards + Active Resource Chips) ─
+    // ── Prompt tools (Enhance via Ollama + Wildcards + LoRA + Active Resource Chips) ─
     const wcFiltered = wildcardFilter
       ? wildcards.filter(w => w.name.toLowerCase().includes(wildcardFilter.toLowerCase()))
       : wildcards;
@@ -2360,6 +2532,19 @@ class Component extends DCLogic {
     const activeLoras = this.getActiveLoras();
     const activeWildcards = this.getActiveWildcards();
     const hasActiveResources = activeLoras.length > 0 || activeWildcards.length > 0 || this.getNegWildcards().length > 0;
+
+    // Active Create LoRA for quick display
+    const currentCreateLora = this.state.createLora || {};
+    const loraOptions = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
+    const selectedLora = loraOptions.find(l => l.id === currentCreateLora.selectedId) || null;
+    const isLoraActive = !!(currentCreateLora.enabled && selectedLora && selectedLora.use_enabled);
+    const loraStrength = Number(currentCreateLora.strength ?? (selectedLora && selectedLora.default_weight) ?? 1);
+
+    // LoRA Search Filtering
+    const loraQuery = (this.state.loraSearchQuery || '').toLowerCase().trim();
+    const filteredLoraOptions = loraOptions.filter(l => !loraQuery || (l.name || l.id || '').toLowerCase().includes(loraQuery) || (l.classification || '').toLowerCase().includes(loraQuery));
+    const provenLoraOptions = filteredLoraOptions.filter(l => l.use_enabled);
+    const unprovenLoraOptions = filteredLoraOptions.filter(l => !l.use_enabled);
 
     const promptTools = React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4, width: '100%' } },
       // Top Controls Row
@@ -2376,6 +2561,21 @@ class Component extends DCLogic {
           onClick: () => this.setState(s => ({ showWildcards: !s.showWildcards, wildcardFilter: '' })),
           style: { border: '1px solid ' + (showWildcards ? accent : 'rgba(148,163,184,.18)'), background: 'transparent', color: showWildcards ? accent : '#b8c7d6', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }
         }, wildcardFilter ? ('__ ' + wildcardFilter + '… (' + wcFiltered.length + ')') : ('⊞ Wildcards (' + wildcards.length + ')')),
+
+        React.createElement('button', {
+          type: 'button',
+          'data-dex-field': 'open-lora-picker',
+          'aria-expanded': !!this.state.showLoraPicker,
+          'aria-haspopup': 'dialog',
+          onClick: () => this.setState(st => ({ showLoraPicker: !st.showLoraPicker, loraSearchQuery: '' })),
+          style: {
+            border: '1px solid ' + (isLoraActive ? '#65d66e' : this.state.showLoraPicker ? accent : 'rgba(148,163,184,.18)'),
+            background: isLoraActive ? 'rgba(101,214,110,.1)' : this.state.showLoraPicker ? 'rgba(255,255,255,.05)' : 'transparent',
+            color: isLoraActive ? '#86efac' : this.state.showLoraPicker ? accent : '#b8c7d6',
+            borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+            fontWeight: isLoraActive ? 700 : 400, display: 'inline-flex', alignItems: 'center', gap: 5
+          }
+        }, isLoraActive ? `⚡ LoRA: ${selectedLora.name} (${loraStrength.toFixed(2)})` : '⚡ LoRA'),
 
         s.previousPrompt != null ? React.createElement('button', {
           onClick: () => this.undoEnhancement(),
@@ -2396,6 +2596,117 @@ class Component extends DCLogic {
             React.createElement('span', null, '__' + w.name + '__'),
             React.createElement('span', { style: { color: '#64748b', fontSize: 10 } }, (w.count || 0) + ' items')
           )) : React.createElement('div', { style: { fontSize: 12, color: '#5a6678', padding: 6 } }, wildcardFilter ? 'No match for "' + wildcardFilter + '"' : 'No wildcards')
+        ) : null,
+
+        // LoRA picker popover
+        this.state.showLoraPicker ? React.createElement('div', {
+          'data-dex-field': 'lora-picker-popover',
+          role: 'dialog',
+          'aria-label': 'Select LoRA',
+          style: {
+            position: 'absolute', top: '110%', left: 0, zIndex: 65,
+            background: '#0c1018', border: '1px solid rgba(148,163,184,.25)',
+            borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column',
+            gap: 8, minWidth: 320, maxWidth: 420, width: '100%',
+            boxShadow: '0 12px 32px rgba(0,0,0,.6)'
+          }
+        },
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+            React.createElement('span', { style: { fontSize: 11, fontWeight: 800, color: '#e2e8f0', letterSpacing: '.06em', textTransform: 'uppercase' } }, 'Select LoRA'),
+            React.createElement('button', {
+              type: 'button',
+              'aria-label': 'Close LoRA picker',
+              onClick: () => this.setState({ showLoraPicker: false }),
+              style: { border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: 14, padding: '0 4px' }
+            }, '✕')
+          ),
+          React.createElement('input', {
+            type: 'text',
+            placeholder: 'Search installed adapters…',
+            'data-dex-field': 'lora-search-input',
+            'aria-label': 'Search installed adapters',
+            value: this.state.loraSearchQuery || '',
+            onInput: e => this.setState({ loraSearchQuery: e.target.value }),
+            style: { width: '100%', border: '1px solid rgba(148,163,184,.2)', background: 'rgba(255,255,255,.05)', color: '#f1f5f9', borderRadius: 6, padding: '6px 8px', fontSize: 12, outline: 'none', fontFamily: "'DM Sans',sans-serif" }
+          }),
+          React.createElement('select', {
+            'aria-label': 'Adapter',
+            'data-dex-field': 'lora-picker-select',
+            value: currentCreateLora.selectedId || '',
+            disabled: this.state.jobStatus === 'generating',
+            style: { width: '100%', border: '1px solid rgba(148,163,184,.2)', background: '#141418', color: '#f1f5f9', borderRadius: 6, padding: '6px 8px', fontSize: 12, outline: 'none' },
+            onChange: e => this.selectCreateLora(e.target.value)
+          },
+            React.createElement('option', { value: '' }, '(None — LoRA disabled)'),
+            provenLoraOptions.length ? React.createElement('optgroup', { label: 'Compatible & Proven' },
+              ...provenLoraOptions.map(l => React.createElement('option', { key: l.id, value: l.id }, `${l.name} (${l.classification || 'STYLE'}) · PROVEN`))
+            ) : null,
+            unprovenLoraOptions.length ? React.createElement('optgroup', { label: 'Incompatible or Unverified' },
+              ...unprovenLoraOptions.map(l => React.createElement('option', { key: l.id, value: l.id, disabled: true }, `${l.name} · ${l.unavailable_reason}`))
+            ) : null
+          ),
+          selectedLora ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 7, marginTop: 4, borderTop: '1px solid rgba(148,163,184,.15)', paddingTop: 8 } },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+              React.createElement('span', { style: { fontSize: 11, color: '#94a3b8', fontWeight: 600 } }, 'Strength · ' + loraStrength.toFixed(2)),
+              React.createElement('input', {
+                type: 'number',
+                'data-dex-field': 'lora-strength-number',
+                'aria-label': 'Exact LoRA strength',
+                min: selectedLora.min_weight, max: selectedLora.max_weight, step: selectedLora.step,
+                value: loraStrength,
+                disabled: !isLoraActive,
+                onInput: e => this.setCreateLoraStrength(e.target.value, selectedLora.min_weight, selectedLora.max_weight),
+                style: { width: 64, border: '1px solid rgba(148,163,184,.2)', background: 'rgba(255,255,255,.05)', color: '#f1f5f9', borderRadius: 4, padding: '3px 6px', fontSize: 11, textAlign: 'right' }
+              })
+            ),
+            React.createElement('input', {
+              type: 'range',
+              'data-dex-field': 'lora-strength-slider',
+              'aria-label': 'LoRA strength',
+              min: selectedLora.min_weight, max: selectedLora.max_weight, step: selectedLora.step,
+              value: loraStrength,
+              disabled: !isLoraActive,
+              onInput: e => this.setCreateLoraStrength(e.target.value, selectedLora.min_weight, selectedLora.max_weight),
+              style: { width: '100%', cursor: 'pointer' }
+            }),
+            React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 2 } },
+              React.createElement('button', {
+                type: 'button',
+                'data-dex-field': 'remove-lora-btn',
+                onClick: () => this.selectCreateLora(''),
+                style: { border: '1px solid rgba(239,68,68,.3)', background: 'rgba(239,68,68,.08)', color: '#fca5a5', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }
+              }, 'Remove LoRA'),
+              selectedLora.trigger_words && selectedLora.trigger_words.length ? React.createElement('button', {
+                type: 'button',
+                'data-dex-field': 'insert-trigger-btn',
+                onClick: () => this.insertTriggerPhrase(selectedLora.trigger_words),
+                title: 'Insert "' + selectedLora.trigger_words[0] + '" into prompt',
+                style: { border: '1px solid rgba(56,189,248,.3)', background: 'rgba(56,189,248,.08)', color: '#38bdf8', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }
+              }, 'Insert trigger (' + selectedLora.trigger_words[0] + ')') : null
+            ),
+            React.createElement('div', {
+              'data-dex-field': 'lora-recipe',
+              style: { fontSize: 11, color: '#94a3b8', background: 'rgba(0,0,0,.3)', padding: 7, borderRadius: 6, lineHeight: 1.4 }
+            },
+              React.createElement('div', { style: { color: isLoraActive ? '#86efac' : '#fbbf24', fontWeight: 700, marginBottom: 2 } },
+                isLoraActive ? '● ' + selectedLora.route_status : 'LoRA off'
+              ),
+              React.createElement('div', null,
+                (() => {
+                  const r = typeof this._createLoraRecipe === 'function' ? this._createLoraRecipe(selectedLora) : null;
+                  const x = r && r.recommended || {};
+                  return isLoraActive
+                    ? `Effective recipe: ${x.steps || this.state.steps} steps · ${x.sampler || this.state.sampler} · ${x.scheduler || 'engine default'} · CFG ${x.cfg != null ? x.cfg : this.state.cfg}`
+                    : `Normal settings: ${this.state.steps} steps · ${this.state.sampler} · ${this.state.scheduler || 'engine default'} · CFG ${this.state.cfg}`;
+                })()
+              ),
+              isLoraActive ? React.createElement('button', {
+                type: 'button',
+                onClick: () => this.resetCreateLoraRecipe ? this.resetCreateLoraRecipe() : null,
+                style: { marginTop: 4, border: 'none', background: 'transparent', color: '#7dd3fc', cursor: 'pointer', fontSize: 10, padding: 0, textDecoration: 'underline' }
+              }, 'Reset to recommended settings') : null
+            )
+          ) : React.createElement('div', { style: { fontSize: 11, color: '#64748b', padding: '4px 0' } }, 'Select an adapter to configure strength and settings.')
         ) : null
       ),
 
@@ -2494,6 +2805,87 @@ class Component extends DCLogic {
             style: { border: 'none', background: 'transparent', color: '#c4b5fd', cursor: 'pointer', padding: '2px 4px', minWidth: 22, minHeight: 22, fontWeight: 700 } }, '→ pos')))
       ) : null
     );
+
+    // ── Negative prompt tools (Enhance via Ollama + Wildcards + Review) ──────
+    const controls = DexClient.controlsFor(target);
+    const targetObj = (this.state.modelTargets || []).find(t => t.id === target);
+    const targetCard = (this.state.modelCards || []).find(c => c.id === target);
+    const negativePromptSupported = !!controls.negativePrompt;
+    const negWildcards = this.getNegWildcards();
+    const negWcFiltered = (wildcards || []).filter(w => !this.state.negWildcardFilter || w.name.toLowerCase().includes(this.state.negWildcardFilter.toLowerCase()));
+
+    const negativePromptTools = negativePromptSupported ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4, width: '100%' } },
+      React.createElement('div', { style: { display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap', position: 'relative' } },
+        React.createElement('button', {
+          type: 'button',
+          onClick: () => (this.state.enhancingNegPrompt ? this.cancelNegEnhance() : this.enhanceNegativePrompt()),
+          'data-enhance-negative': 'true',
+          disabled: !ollamaOnline,
+          title: ollamaOnline ? ('Enhance negative prompt with ' + (ollamaModel || 'Ollama')) : 'Ollama offline',
+          style: { border: '1px solid ' + (ollamaOnline ? '#a78bfa' : 'rgba(148,163,184,.18)'), background: ollamaOnline ? 'rgba(167,139,250,.12)' : 'transparent', color: ollamaOnline ? '#c4b5fd' : '#5a6678', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: ollamaOnline ? 'pointer' : 'not-allowed', opacity: ollamaOnline ? 1 : .6, fontFamily: "'DM Sans',sans-serif", fontWeight: 700 }
+        }, this.state.enhancingNegPrompt ? '✕ Cancel enhance' : ('✨ Enhance Negative' + (ollamaModel ? ' (' + ollamaModel.replace(':latest', '') + ')' : ''))),
+
+        React.createElement('button', {
+          type: 'button',
+          onClick: () => this.setState(st => ({ showNegWildcards: !st.showNegWildcards, negWildcardFilter: '' })),
+          style: { border: '1px solid ' + (this.state.showNegWildcards ? accent : 'rgba(148,163,184,.18)'), background: 'transparent', color: this.state.showNegWildcards ? accent : '#b8c7d6', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }
+        }, this.state.negWildcardFilter ? ('__ ' + this.state.negWildcardFilter + '… (' + negWcFiltered.length + ')') : ('⊞ Wildcards (' + wildcards.length + ')')),
+
+        this.state.previousNegPrompt != null ? React.createElement('button', {
+          type: 'button',
+          onClick: () => this.undoNegEnhancement(),
+          title: 'Restore negative prompt before enhancement',
+          style: { border: '1px solid rgba(56,189,248,.3)', background: 'rgba(56,189,248,.08)', color: '#38bdf8', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }
+        }, '↺ Undo Enhance') : null,
+
+        this.state.showNegWildcards ? React.createElement('div', {
+          style: { position: 'absolute', top: '110%', left: 0, zIndex: 60, background: '#0c1018', border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, padding: 6, display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 240, overflowY: 'auto', minWidth: 260, boxShadow: '0 8px 24px rgba(0,0,0,.5)' }
+        },
+          this.state.negWildcardFilter ? React.createElement('div', { style: { fontSize: 10, color: '#5a6678', padding: '2px 6px 5px', borderBottom: '1px solid rgba(148,163,184,.1)', marginBottom: 3, fontFamily: "'IBM Plex Mono',monospace" } }, 'autocomplete: __' + this.state.negWildcardFilter + '…') : null,
+          negWcFiltered.length ? negWcFiltered.map(w => React.createElement('button', {
+            key: w.name,
+            type: 'button',
+            onClick: () => this.insertNegWildcard(w.name),
+            style: { textAlign: 'left', border: 'none', background: 'transparent', color: '#c0c0d8', borderRadius: 5, padding: '5px 8px', fontSize: 12, cursor: 'pointer', fontFamily: "'IBM Plex Mono',monospace", display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+          },
+            React.createElement('span', null, '__' + w.name + '__'),
+            React.createElement('span', { style: { color: '#64748b', fontSize: 10 } }, (w.count || 0) + ' items')
+          )) : React.createElement('div', { style: { fontSize: 12, color: '#5a6678', padding: 6 } }, this.state.negWildcardFilter ? 'No match for "' + this.state.negWildcardFilter + '"' : 'No wildcards')
+        ) : null
+      ),
+
+      this.state.negEnhancementResult ? React.createElement('div', {
+        'data-negative-enhancement-review': 'true',
+        style: { border: '1px solid rgba(167,139,250,.4)', background: 'rgba(167,139,250,.07)', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, overflowWrap: 'anywhere' }
+      },
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+          React.createElement('div', { style: { fontSize: 11, fontWeight: 800, color: '#c4b5fd' } }, '✨ Negative Prompt Enhancement Review'),
+          React.createElement('button', { type: 'button', onClick: () => this.dismissNegEnhancement(), style: { border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: 13 } }, '×')
+        ),
+        React.createElement('div', { style: { fontSize: 10, fontWeight: 700, color: '#94a3b8' } }, 'ORIGINAL'),
+        React.createElement('div', { style: { fontSize: 11, color: '#cbd5e1' } }, this.state.negEnhancementResult.original),
+        React.createElement('div', { style: { fontSize: 10, fontWeight: 700, color: '#c4b5fd' } }, 'ENHANCED (WHAT TO AVOID)'),
+        React.createElement('div', { style: { fontSize: 12, color: '#f1f5f9', background: 'rgba(0,0,0,.3)', padding: 6, borderRadius: 5, lineHeight: 1.4, maxHeight: 140, overflowY: 'auto' } }, this.state.negEnhancementResult.enhanced),
+        this.state.negEnhancementResult.explanation ? React.createElement('div', { style: { fontSize: 11, color: '#7dd3fc' } }, 'Why: ' + this.state.negEnhancementResult.explanation) : null,
+        React.createElement('div', { style: { display: 'flex', gap: 6, marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(167,139,250,.2)', flexWrap: 'wrap' } },
+          React.createElement('button', {
+            type: 'button',
+            onClick: () => this.applyNegEnhancement(),
+            style: { border: '1px solid rgba(167,139,250,.6)', background: 'rgba(167,139,250,.2)', color: '#e9d5ff', borderRadius: 6, padding: '5px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }
+          }, 'Apply Enhancement'),
+          React.createElement('button', {
+            type: 'button',
+            onClick: () => this.appendNegEnhancement(),
+            style: { border: '1px solid rgba(148,163,184,.2)', background: 'rgba(255,255,255,.05)', color: '#cbd5e1', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer' }
+          }, 'Append'),
+          React.createElement('button', {
+            type: 'button',
+            onClick: () => this.dismissNegEnhancement(),
+            style: { border: 'none', background: 'transparent', color: '#94a3b8', padding: '5px 8px', fontSize: 11, cursor: 'pointer' }
+          }, 'Cancel')
+        )
+      ) : null
+    ) : null;
 
     // ── Dynamic target selects (populated from /api/capabilities) ─
     const _makeTargetSelect = (labelStyle, selStyle) => {
@@ -2925,7 +3317,32 @@ class Component extends DCLogic {
       promptToggleLabel: promptOpen ? 'Hide prompt' : 'Show prompt',
       promptChevron: promptOpen ? '▴' : '▾',
       onTogglePrompt: ()=>this.setState(s => ({promptOpen: !s.promptOpen})),
-      onNegChange: e=>this.setState({negPrompt:e.target.value}),
+      negPanelDisplay: (s.negPromptOpen || false) ? 'block' : 'none',
+      negToggleLabel: (s.negPromptOpen || false) ? 'Hide' : 'Show',
+      negChevron: (s.negPromptOpen || false) ? '▴' : '▾',
+      onToggleNegPrompt: () => this.setState(st => ({ negPromptOpen: !st.negPromptOpen })),
+      onNegChange: e => {
+        const val = e.target.value;
+        if (/<lora:/i.test(val)) {
+          this.toast('LoRA adapters can only be applied in positive prompts or via the LoRA selector.', '#fbbf24');
+        }
+        const caret = e.target.selectionStart;
+        const before = caret != null ? val.slice(0, caret) : val;
+        const wcMatch = /__([A-Za-z0-9_-]*)$/.exec(before);
+        if (wcMatch) {
+          this.setState({ negPrompt: val, showNegWildcards: true, negWildcardFilter: wcMatch[1] });
+        } else {
+          this.setState({ negPrompt: val, negWildcardFilter: '' });
+        }
+      },
+      negPromptBadge: !controls.negativePrompt ? React.createElement('span', {
+        'data-dex-field': 'neg-prompt-notice',
+        style: { fontSize: 10, color: '#fbbf24', background: 'rgba(251,191,36,.12)', border: '1px solid rgba(251,191,36,.25)', borderRadius: 4, padding: '2px 6px' }
+      }, `Not supported by ${(targetCard && targetCard.display_name) || (targetObj && targetObj.label) || target} · draft preserved`) : null,
+      negPromptPlaceholder: !controls.negativePrompt ? 'Negative prompts are not supported by this checkpoint.' : 'Negative: what to avoid…',
+      negPromptDisabled: !controls.negativePrompt ? 'disabled' : null,
+      negPromptOpacity: !controls.negativePrompt ? '0.55' : '1',
+      negativePromptTools,
       onStepsChange: e=>this.setCreateLoraField('steps', e.target.value),
       onCfgChange: e=>this.setCreateLoraField('cfg', e.target.value),
       onSeedChange: e=>this.setState({seed:e.target.value}),

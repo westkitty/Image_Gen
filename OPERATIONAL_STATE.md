@@ -1,5 +1,41 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## P0 Create Studio UX Repair & LoRA Unification — 2026-10-24 (`main`, Release Complete)
+
+- **Release Status**: **TECHNICAL RELEASE COMPLETE & VERIFIED**.
+- **Repository & Branch**: `/Users/andrew/Image_Gen`, branch `main`.
+- **Delivered Capabilities & Unified Workflow**:
+  - **Canonical Prompt Composer LoRA Control**:
+    - Exactly ONE LoRA application entry point in the active Create composer, positioned directly beneath prompt text alongside Wildcards.
+    - Single-action adapter selection: choosing an adapter immediately enables it, applies validated recipe parameters (steps, CFG scale, sampler, scheduler), and saves previous user settings. Selecting (None) or clicking Remove cleanly disables the adapter and restores previous settings.
+    - Strength slider and numeric field reactivity: fully synchronized with `this.state.createLora`, clamped to adapter `[min_weight, max_weight]`.
+    - Trigger phrase insertion: accessible button inserts model-specific trigger words at prompt textarea caret.
+    - Searchable adapter picker: separates compatible/proven adapters from incompatible ones with clear, plain-language explanations.
+  - **Negative Prompt Integration & Parity**:
+    - Moved into the main Create experience below the positive prompt with clean disclosure toggle.
+    - Negative prompt enhancement: `enhanceNegativePrompt` leverages Ollama with avoidance instructions, full review card (Apply/Append/Cancel), and undo support.
+    - Negative wildcard support: caret insertion in frontend and full backend wildcard expansion (`expandWildcards`) in `POST /api/actions/generate-controlled`, `queueRunner`, and `xyzPlanFor`.
+    - Unsupported tag rejection: negative `<lora:...>` tags are rejected in validation and user-facing inputs with explanatory toasts.
+    - Model target gating: targets without negative prompt support (e.g. MFLUX / FLUX.2 Klein 4B) cleanly disable negative inputs with inline explanation while strictly preserving draft negative text in state.
+  - **Unified Serialization & Multi-Path Consistency**:
+    - `_createBody` canonically populates `body.loras` from effective Create LoRA state; duplicate/conflicting `createLora` vs `createLoras` serialization eliminated; removed destructive `delete body.loras` in `onGenerate`.
+    - Create, Generate Again, Batch sweep, Seed Lab, Prompt A/B, and X/Y/Z plot share the canonical effective adapter without leaking or dropping.
+    - Model switch validation (`onSelectTarget`): switching targets checks adapter compatibility; incompatible adapters are disabled with toast explanation and settings restored.
+  - **Empirical Verification**:
+    - `npm run check`: 0 errors.
+    - All modified JS files pass `node --check`.
+    - `npm test`: 1,172/1,172 tests PASS (duration: ~110s).
+    - `tests/studio-shell.test.js`: 30/30 tests PASS.
+    - `tests/lora-unification.test.js`: 3/3 tests PASS.
+    - `tests/browser/edit-workbench.browser.js`: 29/29 browser checks PASS.
+    - `tests/browser/studio-first-screen-shapes.browser.js`: PASS at 1348x735 and 390x844 viewports.
+    - `tests/browser/studio-beginner.browser.js`: PASS.
+    - `git diff --check`: 0 whitespace or formatting errors.
+- **Active Canonical Production Console**:
+  - Bound on `http://127.0.0.1:31337/dexdiffusion/` (PID 84412).
+  - Storage: Canonical images under `/Users/andrew/images_made`.
+  - Untracked files (`ARENA_...`, `PRODUCT.md`, `DESIGN.md`, `output/` runs) 100% preserved.
+
 ## Canonical Main-Branch Promotion, Unified Studio Release & Native Wrapper Cutover — 2026-10-24 (`main`, Canonical Production Complete)
 
 - **Release Status**: **CANONICAL RELEASE COMPLETE**.

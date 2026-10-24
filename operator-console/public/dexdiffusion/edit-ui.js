@@ -240,17 +240,22 @@
     const vae = cfg.showVae && cfg.setVae ? label('VAE', h('select', { value: cfg.vae || 'auto', style: css.input, onChange: e => cfg.setVae(e.target.value) },
       h('option', { value: 'auto' }, 'Default / backend-selected'), h('option', { value: 'none' }, 'None'), ...(cfg.vaes || []).map(v => h('option', { key: v.id || v.filename, value: v.id || v.filename }, v.name || v.filename)))) : null;
     const isCreate = cfg.scope === 'create';
-    const quickActive = isCreate && this.state.createLora && this.state.createLora.enabled;
-    const countText = quickActive
-      ? `${loras.length + 1} active (1 quick${loras.length ? ' + ' + loras.length + ' additional' : ''})`
+    const effLoras = isCreate && typeof this.getEffectiveCreateLoras === 'function' ? this.getEffectiveCreateLoras() : [];
+    const quickActive = isCreate && effLoras.length > 0;
+    const countText = isCreate
+      ? (quickActive ? `1 active (${effLoras[0].name} · ${effLoras[0].weight.toFixed(2)})` : 'None')
       : `${loras.length} active`;
-    const titleText = isCreate ? 'Additional LoRAs & VAE' : ('Resources · LoRA' + (cfg.showVae ? ' & VAE' : ''));
+    const titleText = isCreate ? 'Resources · VAE' : ('Resources · LoRA' + (cfg.showVae ? ' & VAE' : ''));
     return h('div', { 'data-resources': cfg.scope, style: { border: '1px solid rgba(167,139,250,.28)', borderRadius: 9, padding: 10, display: 'grid', gap: 8, background: 'rgba(14,10,28,.35)', minWidth: 0 } },
-      h('div', { style: css.row }, h('div', { style: css.title }, titleText), h('span', { style: pillStyle((loras.length || quickActive) ? '#a78bfa' : '#94a3b8') }, countText),
+      h('div', { style: css.row }, h('div', { style: css.title }, titleText), h('span', { style: pillStyle((isCreate ? quickActive : loras.length) ? '#a78bfa' : '#94a3b8') }, countText),
         h('div', { style: { flex: 1 } }), cfg.modelLabel ? h('span', { style: css.muted }, 'for ' + cfg.modelLabel) : null),
-      quickActive ? h('div', { style: { fontSize: 11, color: '#93c5fd', fontStyle: 'italic', padding: '2px 0' } }, '✓ Quick LoRA enabled (' + (this.state.createLora.selectedId || 'sdxl_lightning_4step_lora') + ') in primary actions.') : null,
+      isCreate ? (quickActive
+        ? h('div', { style: { fontSize: 11, color: '#93c5fd', padding: '2px 0' } }, `✓ LoRA "${effLoras[0].name}" active (${effLoras[0].weight.toFixed(2)}) — configured in prompt composer.`)
+        : h('div', { style: { fontSize: 11, color: '#94a3b8', padding: '2px 0' } }, 'LoRA selection is managed above in the prompt composer.'))
+        : null,
       ...rows,
-      add, !catalog.length ? h('div', { style: css.muted }, 'No LoRAs are installed on Big Mac (expected at /Volumes/wc2tb/ImageGen/loras), so none can be added. Active ones recalled from a source image still show above.') : null,
+      ...(isCreate ? [] : [add]),
+      !isCreate && !catalog.length ? h('div', { style: css.muted }, 'No LoRAs are installed on Big Mac (expected at /Volumes/wc2tb/ImageGen/loras), so none can be added. Active ones recalled from a source image still show above.') : null,
       vae);
   };
 
@@ -1020,7 +1025,7 @@
       setLoras: fn => this.setCreateLoras(fn), setVae: v => this.setState({ selectedVae: v === 'auto' ? 'default' : v }),
       quiet: (name, w) => { const l = this._createLoras().find(x => x.name === name); if (l) l.weight = w; }, onTrigger: w => this.addTriggerWord(w) });
   };
-  P.createPresetSettings = function () { const s = this.state; return { target: s.target, width: +s.width, height: +s.height, steps: +s.steps, cfg: +s.cfg, sampler: s.sampler, scheduler: s.scheduler, vae: s.selectedVae, preset: s.preset, quantity: this.ws ? this.ws.quantity : 1, loras: this._createLoras(), prompt: s.prompt, negPrompt: s.negPrompt }; };
+  P.createPresetSettings = function () { const s = this.state; const loras = typeof this.getEffectiveCreateLoras === 'function' ? this.getEffectiveCreateLoras().map(l => ({ name: l.name, weight: l.weight })) : []; return { target: s.target, width: +s.width, height: +s.height, steps: +s.steps, cfg: +s.cfg, sampler: s.sampler, scheduler: s.scheduler, vae: s.selectedVae, preset: s.preset, quantity: this.ws ? this.ws.quantity : 1, loras, prompt: s.prompt, negPrompt: s.negPrompt }; };
 
   // ── wiring ────────────────────────────────────────────────────────────
   const _onCreateDone = P._onCreateDone;
@@ -1030,9 +1035,7 @@
   };
   const _createBody = P._createBody;
   P._createBody = function (over) {
-    const body = _createBody.call(this, over);
-    if (this._controls().lora) { const eff = this._effectiveLoras(this._createLoras(), (this.state.assets && this.state.assets.loras) || []); if (eff.length) body.loras = eff; }
-    return body;
+    return _createBody.call(this, over);
   };
   const _renderVals = P.renderVals;
   P.renderVals = function () {

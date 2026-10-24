@@ -58,8 +58,9 @@ function createModelResolver(ollamaRequest) {
 
 function registerLegacyOllamaRoutes(app, { ollamaRequest, resolveModel, runPromptEnhance, getCompute, waitMs = LEGACY_WAIT_MS }) {
   app.post('/api/ollama/enhance', async (req, res) => {
-    const prompt = typeof req.body.prompt === 'string' ? req.body.prompt.trim() : '';
-    if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
+    const field = req.body.field === 'negative' ? 'negative' : 'positive';
+    const prompt = typeof req.body.prompt === 'string' ? req.body.prompt.trim() : (field === 'negative' && typeof req.body.negative_prompt === 'string' ? req.body.negative_prompt.trim() : '');
+    if (!prompt) return res.status(400).json({ error: field === 'negative' ? 'Negative prompt is required to enhance' : 'Prompt is required' });
     if (prompt.length > 12000) return res.status(400).json({ error: 'Prompt is too long' });
     const { model, resource_class, error: modelErr } = await resolveModel(req.body.model);
     if (modelErr) return res.status(503).json({ error: modelErr });
@@ -69,6 +70,7 @@ function registerLegacyOllamaRoutes(app, { ollamaRequest, resolveModel, runPromp
     const run = await getCompute().runExclusive({ operation: 'enhance', model, resource_class, signal: gone.signal, waitMs, call: signal => runPromptEnhance({
       prompt,
       negativePrompt: req.body.negative_prompt || req.body.negativePrompt || '',
+      field,
       mode: req.body.mode || 'balanced',
       target: req.body.target || 'flux2-klein-4b',
       generatorId: req.body.generatorId || '',
@@ -88,6 +90,7 @@ function registerLegacyOllamaRoutes(app, { ollamaRequest, resolveModel, runPromp
         model,
         prompt,
         enhanced_prompt: prompt,
+        field,
         profile: result.profile
       });
     }
@@ -95,6 +98,7 @@ function registerLegacyOllamaRoutes(app, { ollamaRequest, resolveModel, runPromp
     res.json({
       ok: true,
       model,
+      ...(field === 'negative' ? { field } : {}),
       prompt: result.enhanced_prompt,
       enhanced_prompt: result.enhanced_prompt,
       original_prompt: result.original_prompt,

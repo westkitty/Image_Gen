@@ -1963,6 +1963,9 @@ function validateGenerationParams(params) {
   const gTgt = params.target ? CONTROLLED_TARGETS.find(t => t.id === params.target) : null;
   const loraErr = validatePromptLoras(params.prompt, gTgt && gTgt.backend);
   if (!loraErr.ok) return loraErr.error;
+  if (params.negative_prompt && /<lora:[^>]+>/i.test(params.negative_prompt)) {
+    return 'LoRA tags are not supported in negative prompts; LoRA modifies model execution globally, not negative conditioning alone. Place LoRAs in the positive prompt or select them with the LoRA picker.';
+  }
   if (!validateNegativePrompt(params.negative_prompt)) return 'Invalid negative prompt';
   if (params.preset && !ALLOWED_PRESETS.has(params.preset)) return 'Invalid preset';
   if (params.mode && !ALLOWED_MODES.has(params.mode)) return 'Invalid mode';
@@ -1987,6 +1990,9 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   const cTgt = allTargetById[params.target] || CONTROLLED_TARGETS.find(t => t.id === params.target);
   const loraErr = validatePromptLoras(params.prompt, cTgt && cTgt.backend);
   if (!loraErr.ok) return loraErr.error;
+  if (params.negative_prompt && /<lora:[^>]+>/i.test(params.negative_prompt)) {
+    return 'LoRA tags are not supported in negative prompts; LoRA modifies model execution globally, not negative conditioning alone. Place LoRAs in the positive prompt or select them with the LoRA picker.';
+  }
   if (!validateNegativePrompt(params.negative_prompt)) return 'Invalid negative prompt';
   if (!validateSeed(params.seed)) return 'Invalid seed';
   if (!validateScheduler(params.scheduler)) return 'Invalid scheduler';
@@ -2608,7 +2614,7 @@ function targetCapabilities(target) {
   const samplingEditable = !mflux && target.id !== 'flux-fp8';
   return {
     backend: mflux ? 'mflux' : 'sdcpp',
-    negativePrompt: !mflux && !target.noNegativePrompt, cfg: !mflux && target.fixedCfgScale === undefined, scheduler: !mflux, sampler: samplingEditable, vae: !mflux, lora: !mflux,
+    negativePrompt: !mflux && !target.noNegativePrompt, cfg: !mflux && target.fixedCfgScale === undefined, scheduler: !mflux, sampler: samplingEditable, vae: !mflux, lora: mflux ? target.id === 'flux2-klein-4b' : target.id !== 'flux-fp8',
     img2img: sd15, inpaint: sd15, outpaint: sd15, controlNet: false, hiresRefine: !mflux, clipSkip: samplingEditable, tiling: samplingEditable, eta: samplingEditable, rng: samplingEditable,
     nativeBatch: !mflux, maxQuantity: 100,
   };
@@ -3300,6 +3306,9 @@ app.post('/api/actions/generate-controlled', (req, res) => {
   if (loraShapeErr) return res.status(400).json({ error: loraShapeErr });
   if (!params.invalidKey) {
     params.prompt = expandWildcards(params.prompt);
+    if (params.negative_prompt) {
+      params.negative_prompt = expandWildcards(params.negative_prompt);
+    }
     const requestedSpec = allTargetById[params.target];
     if (!requestedSpec || requestedSpec.backend !== 'mflux') {
       const rr = EC.resolveResources({ prompt: params.prompt, loras: params.loras });
@@ -4318,6 +4327,7 @@ const queueRunner = W.createQueueRunner({
     const priv = settings.private || {};
     const params = normalizeControlledGenerationBody({ ...settings.body, ...(it.overrides || {}), negative_prompt: typeof it.negative === 'string' ? it.negative : (priv.negative_prompt || ''), prompt, operation: 'batch' });
     params.prompt = expandWildcards(params.prompt);
+    if (params.negative_prompt) params.negative_prompt = expandWildcards(params.negative_prompt);
     const allTargetById = allControlledTargets();
     const err = validateControlledGenerationParams(params, allTargetById);
     if (err) return resolve({ ok: false, error: err, gate: 'validation' });
@@ -4338,7 +4348,8 @@ function xyzPlanFor(body) {
   const settings = { ...(body.settings || {}) };
   // Wildcards are expanded ONCE for the whole plot: expanding per cell would make cells differ by more than the axes.
   const prompt = expandWildcards(String(settings.prompt || body.prompt || ''));
-  const negative = String(settings.negative_prompt || settings.negativePrompt || '');
+  const rawNeg = String(settings.negative_prompt || settings.negativePrompt || '');
+  const negative = rawNeg ? expandWildcards(rawNeg) : '';
   if (!prompt.trim()) return { status: 400, error: 'Enter a prompt first' };
   const probe0 = normalizeControlledGenerationBody({ ...settings, prompt, negative_prompt: negative });
   const target = allControlledTargets()[probe0.target] || CONTROLLED_TARGETS.find(t => t.id === probe0.target);

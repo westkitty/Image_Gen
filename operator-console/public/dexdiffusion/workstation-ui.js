@@ -152,42 +152,78 @@
       if (ws.hiresMode === 'size') Object.assign(body, { hires_width: parseInt(ws.hiresW, 10), hires_height: parseInt(ws.hiresH, 10) });
       else body.hires_scale = +ws.hiresScale;
     }
+    if (ctl.lora) {
+      const eff = typeof this.getEffectiveCreateLoras === 'function' ? this.getEffectiveCreateLoras() : [];
+      if (eff.length) body.loras = eff.map(l => ({ name: l.name, weight: l.weight }));
+    }
     return Object.assign(body, over || {});
   };
 
   // V2 Create LoRA state is a single, target-scoped adapter. The API still
   // receives the existing structured `loras` contract; prompt tags are never
   // authored by the browser.
-  P._createLoraOptions = function () {
-    const target = this.state.target || 'sd15';
-    const targetSpec = typeof this._targetSpec === 'function' ? (this._targetSpec() || {}) : {};
+  P._createLoraOptions = function (targetOverride) {
+    const target = targetOverride || this.state.target || 'sd15';
+    const targetSpec = typeof this._targetSpec === 'function' ? (this._targetSpec(target) || {}) : {};
     return (this.state.assets && this.state.assets.loras || []).map(l => {
       const targetFamily = targetSpec.family || (target.indexOf('sdxl') === 0 ? 'sdxl' : target === 'sd15' || target.indexOf('sd15-') === 0 ? 'sd15' : target.indexOf('flux2-') === 0 ? 'flux2' : '');
       const familyMatches = l.family === targetFamily;
       const provenTarget = Array.isArray(l.proof_target_ids) && l.proof_target_ids.includes(target);
       const backendMatches = !l.proof_backend || l.proof_backend === (targetSpec.backend || 'sdcpp');
-      const modeAvailable = !l.proof_apply_modes || l.proof_apply_modes.includes('immediately');
+      const metalProven = ['AT_RUNTIME_ONLY_PROVEN', 'FUNCTIONAL_METAL'].includes(l.metal_inference_status) && (l.metal_target_ids || []).includes(target);
+      const modeAvailable = !l.proof_apply_modes || l.proof_apply_modes.includes('immediately') || metalProven;
       const route = (l.production_routes || []).find(r => r.target === target && (r.recipe && r.backend_override || targetSpec.backend === 'mflux' && r.backend === 'mflux' && r.rslora_equivalent)) || null;
       const mfluxStyle = targetSpec.backend === 'mflux' && l.name === 'pixelart_lora' && l.mflux_rslora_verified === true && route;
-      const enabled = !!mfluxStyle || l.proof_status === 'PROVEN' && l.compatibility === 'Compatible' && familyMatches && provenTarget && backendMatches && modeAvailable && !l.rs_lora;
-      const metalProven = ['AT_RUNTIME_ONLY_PROVEN', 'FUNCTIONAL_METAL'].includes(l.metal_inference_status) && (l.metal_target_ids || []).includes(target);
+      const hasProductionRoute = !!route && (route.production === true || !!route.backend_override || !!route.rslora_equivalent);
+      const enabled = !!mfluxStyle || (l.proof_status === 'PROVEN' && l.compatibility === 'Compatible' && familyMatches && (metalProven || hasProductionRoute || (provenTarget && backendMatches && modeAvailable)) && !l.rs_lora);
       const routeStatus = mfluxStyle
         ? 'STYLE · MFLUX · rsLoRA scaling verified; no acceleration claim'
         : metalProven
         ? (l.metal_performance_status === 'MEASURED'
           ? `Timing measured · ${l.metal_performance_summary || 'MTL0 / at_runtime; quality review pending'}`
           : 'Metal-compatible · MTL0 / at_runtime')
-        : provenTarget ? 'CPU-only · SDCPP / immediately' : 'Inference unavailable';
-      return Object.assign({}, l, { use_enabled: enabled, route_status: routeStatus, unavailable_reason: l.rs_lora && !mfluxStyle ? 'rsLoRA scaling is not verified on this backend.' : !familyMatches ? 'Adapter family does not match the selected checkpoint.' : !enabled ? 'Installed; inference is not yet proven for this checkpoint and backend.' : '', selected_route: route });
+        : provenTarget ? 'CPU-only · SDCPP / immediately' : (hasProductionRoute ? 'Verified production route' : 'Inference unavailable');
+      const classification = l.classification ? String(l.classification).toUpperCase() : (l.is_speed_adapter ? 'ACCELERATION' : 'STYLE');
+      return Object.assign({}, l, {
+        use_enabled: enabled,
+        route_status: routeStatus,
+        classification,
+        unavailable_reason: l.rs_lora && !mfluxStyle ? 'rsLoRA scaling is not verified on this backend.' : !familyMatches ? 'Adapter family does not match the selected checkpoint.' : !enabled ? 'Installed; inference is not yet proven for this checkpoint and backend.' : '',
+        selected_route: route
+      });
     });
   };
+
+  P.getEffectiveCreateLoras = function () {
+    const state = this.state.createLora;
+    if (state && state.selectedId && state.enabled !== false) {
+      const options = this._createLoraOptions();
+      const selected = options.find(l => l.id === state.selectedId && l.use_enabled);
+      if (selected) {
+        const rawStrength = state.strength !== undefined && state.strength !== null ? Number(state.strength) : (selected.default_weight || 1.0);
+        const min = selected.min_weight !== undefined ? selected.min_weight : 0.0;
+        const max = selected.max_weight !== undefined ? selected.max_weight : 2.0;
+        const strength = Number.isFinite(rawStrength) ? Math.min(max, Math.max(min, rawStrength)) : (selected.default_weight || 1.0);
+        return [{
+          name: selected.name,
+          weight: strength,
+          id: selected.id,
+          adapter: selected.filename || selected.name
+        }];
+      }
+    }
+    // Fallback: If createLoras array is set (e.g. from extra networks or legacy test harness), use effective compatible loras
+    if (Array.isArray(this.state.createLoras) && this.state.createLoras.length > 0 && typeof this._effectiveLoras === 'function') {
+      const catalog = (this.state.assets && this.state.assets.loras) || [];
+      const eff = this._effectiveLoras(this.state.createLoras, catalog);
+      if (eff.length) return eff.map(l => ({ name: l.name, weight: l.weight, id: l.name, adapter: l.name }));
+    }
+    return [];
+  };
+
   P._persistCreateLora = function (next) {
-    const previous = this.state.createLora || {};
-    // Selection/toggle changes affect enabled controls. Schedule that render
-    // before replacing state; direct assignment makes setState a no-op.
-    if (next.selectedId !== previous.selectedId || next.enabled !== previous.enabled) this.setState({ createLora: next });
-    else this.state.createLora = next;
     try { localStorage.setItem('dex_create_lora_v1', JSON.stringify(next)); } catch (_) {}
+    this.setState({ createLora: next });
   };
   P._createLoraRecipe = function (asset) {
     const presets = window.ImageGenModelPresets;
@@ -204,17 +240,52 @@
     if (Object.keys(patch).length) this.setState(patch);
     return patch;
   };
+  P.selectCreateLora = function (adapterId) {
+    const state = this.state.createLora || {};
+    if (!adapterId) {
+      if (state.enabled) {
+        const base = state.savedSettings || {}, overrides = state.overrides || {}, restore = {};
+        for (const field of ['steps', 'cfg', 'sampler', 'scheduler']) {
+          if (!Object.prototype.hasOwnProperty.call(overrides, field) && base[field] !== undefined) restore[field] = base[field];
+        }
+        if (Object.keys(restore).length) this.setState(restore);
+      }
+      const next = { enabled: false, selectedId: '', strength: 1.0, savedSettings: null, recipeSettings: null, overrides: {} };
+      this._persistCreateLora(next);
+      return;
+    }
+    const options = this._createLoraOptions();
+    const selected = options.find(l => l.id === adapterId);
+    if (!selected) return;
+    if (!selected.use_enabled) {
+      this.toast(selected.unavailable_reason || 'This adapter is not available for this checkpoint.', '#fbbf24');
+      return;
+    }
+    const savedSettings = state.savedSettings || { steps: this.state.steps, cfg: this.state.cfg, sampler: this.state.sampler, scheduler: this.state.scheduler };
+    const defaultWeight = selected.default_weight !== undefined ? selected.default_weight : 1.0;
+    const next = {
+      enabled: true,
+      selectedId: selected.id,
+      strength: defaultWeight,
+      savedSettings,
+      recipeSettings: null,
+      overrides: {}
+    };
+    const applied = this._applyCreateLoraRecipe(selected, savedSettings, {});
+    next.recipeSettings = applied;
+    this._persistCreateLora(next);
+  };
   P.setCreateLoraEnabled = function (enabled) {
     const state = Object.assign({ enabled: false, selectedId: '', strength: 1, advanced: false, savedSettings: null, overrides: {} }, this.state.createLora || {});
     const options = this._createLoraOptions(), selected = options.find(l => l.id === state.selectedId && l.use_enabled)
       || (enabled ? options.find(l => l.use_enabled) : null);
     if (enabled && !selected) { this.toast('No proven LoRA is available for this checkpoint.', '#fbbf24'); return; }
     if (enabled) {
-      const savedSettings = { steps: this.state.steps, cfg: this.state.cfg, sampler: this.state.sampler, scheduler: this.state.scheduler };
+      const savedSettings = state.savedSettings || { steps: this.state.steps, cfg: this.state.cfg, sampler: this.state.sampler, scheduler: this.state.scheduler };
       const next = Object.assign({}, state, { enabled: true, selectedId: selected.id, savedSettings, overrides: {} });
-      this._persistCreateLora(next);
       const applied = this._applyCreateLoraRecipe(selected, savedSettings, {});
-      next.recipeSettings = applied; this._persistCreateLora(next);
+      next.recipeSettings = applied;
+      this._persistCreateLora(next);
     } else {
       const base = state.savedSettings || {}, overrides = state.overrides || {}, restore = {};
       for (const field of ['steps', 'cfg', 'sampler', 'scheduler']) if (!Object.prototype.hasOwnProperty.call(overrides, field) && base[field] !== undefined) restore[field] = base[field];
@@ -241,15 +312,14 @@
   };
   P.setCreateLoraStrength = function (value, min, max) {
     const n = Number(value);
-    if (!Number.isFinite(n) || n < min || n > max) return;
-    this._persistCreateLora(Object.assign({}, this.state.createLora || {}, { strength: n }));
-    const root = document.querySelector('[data-dex-field="create-lora-controls"]');
-    if (!root) return;
-    const slider = root.querySelector('[data-dex-field="lora-strength-slider"]'), number = root.querySelector('[data-dex-field="lora-strength-number"]');
-    if (slider) slider.value = String(n);
-    if (number) number.value = String(n);
-    const label = root.querySelector('[data-dex-field="lora-strength-slider"]')?.closest('label')?.querySelector('span');
-    if (label) label.textContent = 'Strength · ' + n.toFixed(2);
+    if (!Number.isFinite(n)) return;
+    const state = this.state.createLora || {};
+    const selected = this._createLoraOptions().find(l => l.id === state.selectedId);
+    const lo = min !== undefined ? min : (selected ? selected.min_weight : 0.0);
+    const hi = max !== undefined ? max : (selected ? selected.max_weight : 2.0);
+    const clamped = Math.max(lo, Math.min(hi, n));
+    const next = Object.assign({}, state, { strength: clamped });
+    this._persistCreateLora(next);
   };
   P.buildCreateLoraControls = function () {
     const state = this.state.createLora || {}, options = this._createLoraOptions();
@@ -258,7 +328,21 @@
     const strength = Number(state.strength ?? (selected && selected.default_weight) ?? 1);
     const checkbox = h('label', { className: 'ca-check-row', style: { display: 'inline-flex', alignItems: 'center', gap: 7 }, title: enabledOptions.length ? 'Enable one proven adapter for this checkpoint.' : 'No adapter is proven for this checkpoint and backend.' },
       h('input', { type: 'checkbox', 'data-dex-field': 'use-lora', checked: !!state.enabled, disabled: !selected || !selected.use_enabled || this.state.jobStatus === 'generating', onChange: e => this.setCreateLoraEnabled(e.target.checked) }), h('span', null, 'Use LoRA'));
-    const select = h('label', { className: 'ca-field', style: { minWidth: 0, width: '100%', gridColumn: '1 / -1' } }, this.state.version === 2 ? null : h('span', null, 'Adapter'), h('select', { 'aria-label': 'Adapter', 'data-dex-field': 'create-lora-adapter', value: state.selectedId || '', disabled: this.state.jobStatus === 'generating', style: { width: '100%', minWidth: 0 }, onChange: e => { if ((this.state.createLora || {}).enabled) this.setCreateLoraEnabled(false); const l = options.find(x => x.id === e.target.value); const next = Object.assign({}, this.state.createLora || state, { selectedId: e.target.value, strength: l ? l.default_weight : 1, enabled: false, savedSettings: null, recipeSettings: null, overrides: {} }); this._persistCreateLora(next); this.setState({ createLora: next }); } },
+    const select = h('label', { className: 'ca-field', style: { minWidth: 0, width: '100%', gridColumn: '1 / -1' } }, this.state.version === 2 ? null : h('span', null, 'Adapter'), h('select', { 'aria-label': 'Adapter', 'data-dex-field': 'create-lora-adapter', value: state.selectedId || '', disabled: this.state.jobStatus === 'generating', style: { width: '100%', minWidth: 0 }, onChange: e => {
+      const val = e.target.value;
+      if (!val) {
+        this.selectCreateLora('');
+      } else {
+        const l = options.find(x => x.id === val);
+        if (l && l.use_enabled) {
+          this.selectCreateLora(val);
+        } else {
+          if ((this.state.createLora || {}).enabled) this.setCreateLoraEnabled(false);
+          const next = Object.assign({}, this.state.createLora || state, { selectedId: val, strength: l ? l.default_weight : 1, enabled: false, savedSettings: null, recipeSettings: null, overrides: {} });
+          this._persistCreateLora(next);
+        }
+      }
+    } },
       h('option', { value: '' }, options.length ? 'Select a compatible adapter' : 'No adapters discovered'), ...options.map(l => h('option', { key: l.id, value: l.id, disabled: !l.use_enabled }, l.name + (l.use_enabled ? ' · PROVEN' : ' · ' + l.unavailable_reason)))));
     const reason = !enabledOptions.length ? h('small', { className: 'ca-muted', role: 'status', 'data-dex-field': 'lora-unavailable', style: { gridColumn: '1 / -1', lineHeight: 1.25 } }, selected ? selected.unavailable_reason : 'Only adapters proven for this checkpoint and backend can be used.') : null;
     const advanced = h('details', { 'data-dex-field': 'lora-advanced', open: !!state.advanced, onToggle: e => this._persistCreateLora(Object.assign({}, this.state.createLora || {}, { advanced: e.target.open })), style: { flexBasis: '100%' } },
@@ -278,14 +362,15 @@
       return;
     }
     const body = this._createBody(over);
-    const loraState = this.state.createLora || {}, lora = this._createLoraOptions().find(x => x.id === loraState.selectedId && x.use_enabled);
-    // Build a fresh job snapshot from the explicit toggle. No stale adapter
-    // copied from Generate Again, Seed Lab, or another operation can leak.
-    delete body.loras;
-    if (loraState.enabled && lora) {
-      const strength = Number(loraState.strength);
-      if (!Number.isFinite(strength) || strength < lora.min_weight || strength > lora.max_weight) { this.toast('LoRA strength is outside the validated adapter range.', '#ef4444'); return; }
-      body.loras = [{ name: lora.name, weight: strength }];
+    if (body.loras && body.loras.length) {
+      const loraState = this.state.createLora || {}, lora = this._createLoraOptions().find(x => x.id === loraState.selectedId && x.use_enabled);
+      if (lora) {
+        const strength = Number(body.loras[0].weight);
+        if (!Number.isFinite(strength) || strength < lora.min_weight || strength > lora.max_weight) {
+          this.toast('LoRA strength is outside the validated adapter range.', '#ef4444');
+          return;
+        }
+      }
     }
     if (!body.prompt) { this.toast('Enter a prompt first', '#fbbf24'); return; }
     if (body.quantity >= 4) {

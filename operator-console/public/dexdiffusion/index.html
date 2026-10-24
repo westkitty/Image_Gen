@@ -553,7 +553,19 @@
             <div style="margin-bottom:2px;"><textarea rows="3" value="{{ prompt }}" onChange="{{ onPromptChange }}" data-dex-field="prompt" aria-label="Describe your image" placeholder="A quiet mountain cabin under the stars..." style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:9px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;line-height:1.5;display:block;"></textarea></div>
             <div data-prompt-tools-row style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:2px;"><span data-prompt-counter title="Characters in the prompt. 1000 is interface guidance, not a backend hard limit." style="font-size:10px;color:#8888b0;">{{ promptLen }} / 1000</span>{{ promptTools }}</div>
             {{ promptGuidance }}
-            
+          </div>
+        </div>
+        <div style="margin-bottom:6px;border:1px solid rgba(200,180,255,.14);border-radius:9px;padding:6px;background:rgba(17,10,30,.55);" data-negative-prompt-container>
+          <button type="button" onClick="{{ onToggleNegPrompt }}" style="width:100%;border:none;background:transparent;padding:0;display:flex;align-items:center;justify-content:space-between;color:#ddd6fe;cursor:pointer;font-family:'DM Sans',sans-serif;">
+            <span style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;">Negative prompt (what to avoid)</span>
+              {{ negPromptBadge }}
+            </span>
+            <span style="font-size:10px;color:#8888b0;">{{ negToggleLabel }} {{ negChevron }}</span>
+          </button>
+          <div style="display:{{ negPanelDisplay }};margin-top:6px;">
+            <div><textarea rows="2" value="{{ negPrompt }}" onChange="{{ onNegChange }}" data-ctl-off="{{ ctlNeg }}" data-dex-field="negative-prompt" aria-label="Negative prompt" placeholder="{{ negPromptPlaceholder }}" disabled="{{ negPromptDisabled }}" style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:9px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;display:block;opacity:{{ negPromptOpacity }};"></textarea></div>
+            <div style="margin-top:4px;">{{ negativePromptTools }}</div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-bottom:5px;">
@@ -566,8 +578,7 @@
 <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#ddd6fe;">Advanced settings</summary>
 <div style="margin-top:13px;">
 <label style="display:block;font-size:12px;font-weight:700;color:#ddd6fe;margin-bottom:6px;">Negative prompt (optional)</label>
-<div><textarea rows="2" value="{{ negPrompt }}" onChange="{{ onNegChange }}" data-ctl-off="{{ ctlNeg }}" data-dex-field="negative-prompt" aria-label="Negative prompt" placeholder="Negative: what to avoid…" style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:9px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;display:block;"></textarea></div>
-
+<div><textarea rows="2" value="{{ negPrompt }}" onChange="{{ onNegChange }}" data-ctl-off="{{ ctlNeg }}" data-dex-field="negative-prompt-adv" aria-label="Negative prompt" placeholder="Negative: what to avoid…" style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:9px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;display:block;"></textarea></div>
 <div>{{ createWorkbench }}</div><div>{{ settingsDrawer }}</div><div>{{ keyboardHelp }}</div>
         <div style="margin-bottom:12px;">{{ createResources }}</div><div>{{ createPresets }}</div>
                 <div style="font-size:10px;font-weight:700;color:#f59e0b;letter-spacing:.1em;text-transform:uppercase;padding-bottom:7px;border-bottom:1px solid rgba(245,158,11,.15);margin-bottom:10px;">Parameters</div>
@@ -587,7 +598,6 @@
       </div>
 <div data-studio-primary-action style="flex:0 0 auto;padding:6px 14px;background:#160f22;border-top:1px solid rgba(200,180,255,.16);">
       <div style="flex-shrink:0;padding:4px 0;background:#160f22;">
-        <div style="margin-bottom:6px;">{{ createLoraControls }}</div>
         <button onClick="{{ onGenerate }}" aria-label="Generate image" style="width:100%;background:{{ genBg2 }};color:#100f18;border:0;font-weight:800;border-radius:9px;padding:12px;cursor:{{ genCursor }};font-size:15px;font-family:'DM Sans',sans-serif;transition:opacity .2s;opacity:{{ genOpacity }};">{{ generateLabel }}</button>
         <sc-if value="{{ showCancel }}" hint-placeholder-val="{{ false }}">
           <button onClick="{{ onCancelJob }}" data-cancel-job="{{ activeCancelJobId }}" aria-label="Cancel job" aria-disabled="{{ cancelDisabled }}" style="margin-top:8px;width:100%;background:rgba(239,68,68,.12);color:#fecaca;border:1px solid rgba(239,68,68,.45);font-weight:700;border-radius:9px;padding:9px;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;">{{ cancelLabel }}</button>
