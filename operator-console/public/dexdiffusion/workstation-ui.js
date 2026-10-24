@@ -1862,12 +1862,15 @@
             p.imageId ? h('div', { style: css.row }, btn('Compare', () => this.toggleCompare(p.imageId), '#38bdf8'), btn('Keeper', () => this.toggleKeeper(p.imageId, !p.keeper, p), '#fbbf24')) : null))) : null,
         ab.held ? h('div', { style: css.mono }, 'Held constant: ' + Object.entries(ab.held).map(([k, v]) => k + '=' + v).join(' · ') + ' · Changed: prompt only') : null) : null);
 
-    if (!res.length && !lab.open) return h('div', { style: { marginTop: 8 } },
-      h('section', { 'aria-label': 'Image results', className: 'ca-empty-result', style: { border: '1px dashed rgba(148,163,184,.24)', borderRadius: 10, padding: 18, marginBottom: 10, background: 'rgba(16,27,39,.55)' } },
-        h('h3', { style: { fontSize: 14, fontWeight: 700, color: '#dbe7f3', margin: 0 } }, 'No image result in this workspace yet'),
-        h('p', { style: { color: '#91a2b4', fontSize: 12, lineHeight: 1.5, margin: '6px 0 12px' } }, 'Generated images appear here with their existing review, edit, compare, and export actions. No sample result is shown.'),
-        btn('Generate Image', () => this.onGenerate(), '#ef6f61')),
-      abPanel, detailerPanel);
+    if (!res.length && !lab.open) {
+      if (this.state.jobStatus === 'generating' || ws.activeJobId) return null;
+      return h('div', { style: { marginTop: 8 } },
+        h('section', { 'aria-label': 'Image results', className: 'ca-empty-result', style: { border: '1px dashed rgba(148,163,184,.24)', borderRadius: 10, padding: 18, marginBottom: 10, background: 'rgba(16,27,39,.55)' } },
+          h('h3', { style: { fontSize: 14, fontWeight: 700, color: '#dbe7f3', margin: 0 } }, 'No image result in this workspace yet'),
+          h('p', { style: { color: '#91a2b4', fontSize: 12, lineHeight: 1.5, margin: '6px 0 12px' } }, 'Generated images appear here with their existing review, edit, compare, and export actions. No sample result is shown.'),
+          btn('Generate Image', () => this.onGenerate(), '#ef6f61')),
+        abPanel, detailerPanel);
+    }
     return h('div', { 'data-results-anchor': '1', style: Object.assign({}, css.panel, { marginTop: 10 }) },
       res.length ? h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) },
         h('div', { style: css.title }, 'Workspace Results'),

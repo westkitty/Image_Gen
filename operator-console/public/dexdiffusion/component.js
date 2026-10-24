@@ -113,6 +113,31 @@ class Component extends DCLogic {
       e.preventDefault();
       e.returnValue = '';
     };
+    this._wheelHandler = (e) => {
+      const preview = document.querySelector('[data-studio-preview="create"]');
+      if (!preview || !preview.contains(e.target)) return;
+      let cur = e.target;
+      let targetCanScroll = false;
+      while (cur && cur !== preview) {
+        if (cur.scrollHeight > cur.clientHeight + 2) {
+          const oy = window.getComputedStyle(cur).overflowY;
+          if (oy === 'auto' || oy === 'scroll') {
+            if ((e.deltaY > 0 && cur.scrollTop + cur.clientHeight < cur.scrollHeight - 1) ||
+                (e.deltaY < 0 && cur.scrollTop > 1)) {
+              targetCanScroll = true;
+              break;
+            }
+          }
+        }
+        cur = cur.parentElement;
+      }
+      if (targetCanScroll) return;
+      const pane = document.querySelector('[data-studio-create] [data-scroll-pane]');
+      if (pane && pane.scrollHeight > pane.clientHeight) {
+        pane.scrollTop += e.deltaY;
+      }
+    };
+    window.addEventListener('wheel', this._wheelHandler, { passive: true });
     window.addEventListener('keydown', this._keyHandler);
     window.addEventListener('beforeunload', this._beforeUnloadHandler);
     this.pingBackend();
@@ -131,6 +156,7 @@ class Component extends DCLogic {
     this._pollGeneration = (this._pollGeneration || 0) + 1;
     for (const controller of this._jobWaitControllers || []) controller.abort();
     this._detailerDetectController?.abort();
+    if (this._wheelHandler) window.removeEventListener('wheel', this._wheelHandler);
     window.removeEventListener('keydown', this._keyHandler);
     window.removeEventListener('beforeunload', this._beforeUnloadHandler);
   }
@@ -266,9 +292,11 @@ class Component extends DCLogic {
 
   // ── Toast ─────────────────────────────────────────────────────
   toast(msg, color = '#65d66e') {
+    if (!msg) return;
+    if ((this.state.toasts || []).some(t => t.msg === msg)) return;
     const id = ++this._toastId;
-    this.setState(s => ({ toasts: [...s.toasts, { id, msg, color }] }));
-    setTimeout(() => this.setState(s => ({ toasts: s.toasts.filter(t => t.id !== id) })), 3200);
+    this.setState(s => ({ toasts: [...(s.toasts || []), { id, msg, color }] }));
+    setTimeout(() => this.setState(s => ({ toasts: (s.toasts || []).filter(t => t.id !== id) })), 3200);
   }
 
   // ── Backend ping ──────────────────────────────────────────────
@@ -372,6 +400,7 @@ class Component extends DCLogic {
     const SA = this._sourceAsset();
     if (!SA) { this.toast('Source resolution failed to load — reload Studio before starting 3D.', '#ef4444'); return; }
     const resolved = SA.resolveSource({ explicitId: this.state.asset3dSourceArtifact, selection: this.state.activeAssetSelection });
+    if (!resolved.ok) { try { document.querySelector('select[aria-label="3D source image"]')?.focus(); } catch (_) {} }
     if (!resolved.ok) { this.toast(resolved.message, '#fbbf24'); return; }
     const source = resolved.id;
     this.setState({ asset3dLoading: true, asset3dMode: mode });
@@ -417,6 +446,7 @@ class Component extends DCLogic {
     const SA = this._sourceAsset();
     if (!SA) { this.toast('Source resolution failed to load — reload Studio before starting World.', '#ef4444'); return; }
     const resolved = SA.resolveSource({ explicitId: sourceArtifactId || this.state.worldSourceArtifact, selection: this.state.activeAssetSelection });
+    if (!resolved.ok) { try { document.querySelector('select[aria-label="World source image"]')?.focus(); } catch (_) {} }
     if (!resolved.ok) { this.toast(resolved.message, '#fbbf24'); return; }
     const source = resolved.id;
     this.setState({ worldLoading: true });
@@ -759,6 +789,10 @@ class Component extends DCLogic {
         };
         this.setState({ enhancingPrompt: false, enhancementResult: result });
         this.toast('Enhancement ready for review', '#65d66e');
+        setTimeout(() => {
+          const rev = document.querySelector('[data-prompt-enhancement-review]');
+          if (rev) rev.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 60);
       } else {
         this.setState({ enhancingPrompt: false });
         this.toast('No enhancement returned', '#fbbf24');
@@ -894,6 +928,11 @@ class Component extends DCLogic {
     if (!(opts && opts.skipUnsavedGuard) && !this._confirmWorkspaceLeave(s)) return false;
     const { version, screens } = this.state;
     const from = screens[version];
+    this._workspaceScrollPositions = this._workspaceScrollPositions || {};
+    if (from) {
+      const activePane = document.querySelector('[data-scroll-pane]');
+      if (activePane) this._workspaceScrollPositions[from] = activePane.scrollTop;
+    }
     try { sessionStorage.setItem(version === 4 ? 'dex_concept_screen' : 'dex_screen', s); } catch {}
     const Nav = window.DexStudioNav;
     if (version !== 4 && Nav) Nav.rememberLeaf(s, sessionStorage);
@@ -911,6 +950,13 @@ class Component extends DCLogic {
     // module visible even though route state has changed. Reconcile this
     // explicit user action synchronously; background updates remain batched.
     if (version === 2 && typeof this.__render === 'function') this.__render();
+    const targetScroll = this._workspaceScrollPositions[s];
+    if (typeof targetScroll === 'number') {
+      requestAnimationFrame(() => {
+        const nextPane = document.querySelector('[data-scroll-pane]');
+        if (nextPane) nextPane.scrollTop = targetScroll;
+      });
+    }
     if (opts && opts.focusNav) this._focusNav(opts.focusNav);
     return true;
   }
@@ -1177,58 +1223,111 @@ class Component extends DCLogic {
     const h = React.createElement;
     const a = this.state.chatAvailability || {};
     const checking = a.phase !== 'done';
-    const row = (key, label, value, tone) => h('div', { 'data-chat-status': key, style: { display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', border: '1px solid rgba(148,163,184,.2)', borderRadius: 9, padding: '10px 12px', background: 'rgba(148,163,184,.05)' } },
-      h('span', { style: { color: '#cbd5e1', fontWeight: 600 } }, label), h('span', { 'data-chat-state': value.state, style: { color: tone, fontWeight: 700 } }, value.text));
+    const row = (key, label, value, tone) => h('div', { 'data-chat-status': key, style: { display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, padding: '7px 10px', background: 'rgba(148,163,184,.05)' } },
+      h('span', { style: { color: '#cbd5e1', fontWeight: 600, fontSize: 12 } }, label), h('span', { 'data-chat-state': value.state, style: { color: tone, fontWeight: 700, fontSize: 12 } }, value.text));
     const conn = checking ? { state: 'checking', text: 'Checking…' } : a.ollama === 'available' ? { state: 'available', text: 'Ollama connection available' } : { state: 'failed', text: 'Connection failed: Chat needs the managed Ollama tunnel on 127.0.0.1:11436' };
     const feat = checking ? { state: 'checking', text: 'Checking…' } : a.feature === 'not_activated' ? { state: 'not_activated', text: 'Chat feature not activated' } : a.feature === 'activated' ? { state: 'activated', text: 'Chat backend switched on' } : { state: 'unknown', text: 'Chat feature state could not be read' };
     const ready = a.feature === 'activated' && a.ollama === 'available' && this.state.chatModels.length > 0;
     const messages = this.state.chatMessages || [];
     const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant' && m.status === 'complete');
-    return h('section', { 'data-chat-workspace': 'true', 'aria-labelledby': 'dex-chat-title', style: { maxWidth: 820, display: 'grid', gap: 12, margin: '0 auto' } },
-      h('h2', { id: 'dex-chat-title', style: { margin: 0, fontSize: 18 } }, 'Chat'),
-      h('p', { style: { margin: 0, color: '#aab4c3', lineHeight: 1.5 } }, 'Temporary local conversation. Closing or reloading this page loses access to it; it is not saved in browser storage.'),
-      h('div', { role: 'status', 'aria-live': 'polite', style: { display: 'grid', gap: 8 } },
-        row('connection', 'Ollama', conn, conn.state === 'available' ? '#86efac' : conn.state === 'failed' ? '#fca5a5' : '#cbd5e1'),
-        row('feature', 'Chat feature', feat, '#fcd34d'),
-        row('generation', 'Chat generation', { state: ready ? 'ready' : 'unavailable', text: ready ? 'Ready for a temporary session' : 'Unavailable until Chat is enabled and an approved model is installed' }, ready ? '#86efac' : '#fcd34d')),
-      h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
-        h('button', { type: 'button', 'data-chat-refresh': 'true', onClick: () => this.loadChatAvailability(), disabled: checking && a.phase === 'checking' }, 'Check again'),
-        h('button', { type: 'button', 'data-chat-new': 'true', onClick: () => this.newChat(), disabled: this.state.chatRunning }, 'New temporary chat'),
-        h('button', { type: 'button', 'data-chat-delete': 'true', onClick: () => this.deleteChat(), disabled: !this.state.chatSessionId || this.state.chatRunning }, 'Delete chat'),
-        h('button', { type: 'button', 'data-chat-export': 'true', onClick: () => this.exportChat(), disabled: this.state.chatSessionMode !== 'saved' || !this.state.chatSessionId || this.state.chatRunning }, 'Export saved chat')),
-      h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' } },
-        h('label', { style: { display: 'grid', gap: 4, flex: '1 1 220px' } }, 'Saved-history credential (kept in this tab only)',
-          h('input', { type: 'password', 'data-chat-history-credential': 'true', value: this.state.chatHistoryCredential, autoComplete: 'off', onInput: e => this.setState({ chatHistoryCredential: e.target.value, chatSavedSessionsLoaded: false, chatSavedSessions: [], chatSaveNext: false }) })),
-        h('button', { type: 'button', 'data-chat-history-unlock': 'true', disabled: !this.state.chatHistoryCredential, onClick: () => this.loadSavedChats() }, 'Unlock saved history'),
-        h('label', null, 'Export format ', h('select', { 'data-chat-export-format': 'true', value: this.state.chatExportFormat, onChange: e => this.setState({ chatExportFormat: e.target.value }) },
-          h('option', { value: 'json' }, 'JSON'), h('option', { value: 'md' }, 'Markdown')))),
-      h('div', { role: 'status', 'data-chat-history-status': 'true' }, this.state.chatHistoryStatus),
-      h('label', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-        h('input', { type: 'checkbox', 'data-chat-save-next': 'true', checked: this.state.chatSaveNext, disabled: !!this.state.chatSessionId || this.state.chatRunning || !this.state.chatSavedSessionsLoaded,
-          onChange: e => this.setState({ chatSaveNext: e.target.checked }) }), 'Save the next conversation privately on this Mac (explicit opt-in)'),
-      this.state.chatSavedSessions.length > 0 && h('label', { style: { display: 'grid', gap: 5 } }, 'Saved conversations',
-        h('select', { 'data-chat-saved-list': 'true', value: '', disabled: this.state.chatRunning, onChange: e => { if (e.target.value) this.openSavedChat(e.target.value); } },
-          h('option', { value: '' }, 'Choose a saved conversation'),
-          this.state.chatSavedSessions.map(s => h('option', { key: s.session_id, value: s.session_id }, `${s.created_at} · ${s.model} · ${s.message_count} messages`)))),
-      h('label', { style: { display: 'grid', gap: 5 } }, 'Model', h('select', { 'data-chat-model': 'true', value: this.state.chatModel, disabled: !ready || this.state.chatRunning, onChange: e => this.setState({ chatModel: e.target.value }) },
-        this.state.chatModels.map(m => h('option', { key: m.name, value: m.name }, m.name)))),
-      h('div', { 'data-chat-messages': 'true', role: 'log', 'aria-live': 'off', style: { display: 'grid', gap: 8, minHeight: 100 } },
-        messages.map(m => h('article', { key: m.message_id, 'data-chat-message': m.role, 'data-chat-message-status': m.status, style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', border: '1px solid #334155', borderRadius: 8, padding: 10 } },
-          h('strong', null, m.role === 'user' ? 'You' : `Assistant · ${m.status}`), h('div', null, m.content),
-          m.role === 'assistant' && m.status === 'complete' && h('div', { style: { display: 'flex', gap: 8, marginTop: 8 } },
-            h('button', { type: 'button', 'data-chat-copy': 'true', onClick: () => this.copyText('Chat reply', m.content) }, 'Copy'),
-            h('button', { type: 'button', 'data-chat-to-create': 'replace', onClick: () => this.handoffChatToCreate(m.message_id, 'replace') }, 'Use in Create'),
-            h('button', { type: 'button', 'data-chat-to-create': 'append', onClick: () => this.handoffChatToCreate(m.message_id, 'append') }, 'Append to Create')))),
-        this.state.chatRunning && h('article', { 'data-chat-stream': 'true', style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', border: '1px solid #334155', borderRadius: 8, padding: 10 } }, this.state.chatStreamText || this.state.chatStatus)),
-      h('div', { role: 'status', 'aria-live': 'polite', 'data-chat-run-status': 'true' }, this.state.chatStatus),
-      this.state.chatError && h('p', { role: 'alert', 'data-chat-error': 'true' }, this.state.chatError),
-      h('label', { style: { display: 'grid', gap: 5 } }, 'Message', h('textarea', { 'data-chat-composer': 'true', value: this.state.chatDraft,
-        onInput: e => this.setState({ chatDraft: e.target.value }), onChange: e => this.setState({ chatDraft: e.target.value }), disabled: !ready, rows: 4,
-        placeholder: ready ? 'Write a message. Command or Control + Enter sends.' : 'Chat is unavailable.', style: { width: '100%', boxSizing: 'border-box', resize: 'vertical' } })),
-      h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
-        h('button', { type: 'button', 'data-chat-send': 'true', onClick: () => this.sendChat(), disabled: !ready || this.state.chatRunning || !this.state.chatDraft.trim() }, 'Send'),
-        h('button', { type: 'button', 'data-chat-stop': 'true', onClick: () => this.stopChat(), disabled: !this.state.chatRunning }, 'Stop'),
-        h('button', { type: 'button', 'data-chat-regenerate': 'true', onClick: () => this.sendChat(lastAssistant && lastAssistant.message_id), disabled: !ready || this.state.chatRunning || !lastAssistant }, 'Regenerate last reply')));
+
+    return h('section', {
+      'data-chat-workspace': 'true',
+      'aria-labelledby': 'dex-chat-title',
+      style: { width: '100%', maxWidth: 880, margin: '0 auto', display: 'flex', flexDirection: 'column', flex: 1, minHeight: '100%', gap: 10, padding: '12px 0 0' }
+    },
+      // Compact top bar: Title + Model select + Quick actions
+      h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+          h('h2', { id: 'dex-chat-title', style: { margin: 0, fontSize: 18, fontWeight: 750, color: '#f8fafc' } }, 'Chat'),
+          h('span', {
+            style: {
+              display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px',
+              background: ready ? 'rgba(101,214,110,.12)' : 'rgba(251,191,36,.12)',
+              color: ready ? '#86efac' : '#fcd34d', border: '1px solid ' + (ready ? 'rgba(101,214,110,.3)' : 'rgba(251,191,36,.3)')
+            }
+          }, ready ? ('● ' + (this.state.chatModel || 'Ready')) : checking ? '● Checking…' : '● Offline')
+        ),
+        h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' } },
+          h('label', { style: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#94a3b8' } },
+            'Model',
+            h('select', { 'data-chat-model': 'true', value: this.state.chatModel, disabled: !ready || this.state.chatRunning, onChange: e => this.setState({ chatModel: e.target.value }), style: { border: '1px solid rgba(148,163,184,.25)', background: '#111722', color: '#f8fafc', borderRadius: 6, padding: '3px 8px', fontSize: 11 } },
+              this.state.chatModels.map(m => h('option', { key: m.name, value: m.name }, m.name)))
+          ),
+          h('button', { type: 'button', 'data-chat-refresh': 'true', onClick: () => this.loadChatAvailability(), disabled: checking && a.phase === 'checking', style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Check again'),
+          h('button', { type: 'button', 'data-chat-new': 'true', onClick: () => this.newChat(), disabled: this.state.chatRunning, style: { border: '1px solid rgba(56,189,248,.35)', background: 'rgba(56,189,248,.1)', color: '#38bdf8', borderRadius: 6, padding: '3px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 600 } }, 'New temporary chat'),
+          h('button', { type: 'button', 'data-chat-delete': 'true', onClick: () => this.deleteChat(), disabled: !this.state.chatSessionId || this.state.chatRunning, style: { border: '1px solid rgba(239,68,68,.3)', background: 'transparent', color: '#fca5a5', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Delete chat'),
+          h('button', { type: 'button', 'data-chat-export': 'true', onClick: () => this.exportChat(), disabled: this.state.chatSessionMode !== 'saved' || !this.state.chatSessionId || this.state.chatRunning, style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Export saved chat')
+        )
+      ),
+      h('p', { style: { margin: 0, color: '#aab4c3', fontSize: 12, lineHeight: 1.5 } }, 'Temporary local conversation. Closing or reloading this page loses access to it; it is not saved in browser storage.'),
+      // Collapsible status / credentials panel
+      h('details', { 'data-chat-settings-details': 'true', open: true, style: { border: '1px solid rgba(148,163,184,.14)', borderRadius: 7, padding: '6px 10px', background: 'rgba(15,23,42,.35)' } },
+        h('summary', { style: { fontSize: 11, color: '#94a3b8', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+          h('span', { style: { fontWeight: 600 } }, '⚙ Connection & Saved History Settings'),
+          h('span', { style: { fontSize: 10, color: '#64748b' } }, 'click to collapse/expand')
+        ),
+        h('div', { style: { display: 'grid', gap: 6, marginTop: 8 } },
+          h('div', { role: 'status', 'aria-live': 'polite', style: { display: 'grid', gap: 5 } },
+            row('connection', 'Ollama', conn, conn.state === 'available' ? '#86efac' : conn.state === 'failed' ? '#fca5a5' : '#cbd5e1'),
+            row('feature', 'Chat feature', feat, '#fcd34d'),
+            row('generation', 'Chat generation', { state: ready ? 'ready' : 'unavailable', text: ready ? 'Ready for a temporary session' : 'Unavailable until Chat is enabled and an approved model is installed' }, ready ? '#86efac' : '#fcd34d')),
+          h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end', marginTop: 2 } },
+            h('label', { style: { display: 'grid', gap: 3, flex: '1 1 200px', fontSize: 11, color: '#cbd5e1' } }, 'Saved-history credential (kept in this tab only)',
+              h('input', { type: 'password', 'data-chat-history-credential': 'true', value: this.state.chatHistoryCredential, autoComplete: 'off', onInput: e => this.setState({ chatHistoryCredential: e.target.value, chatSavedSessionsLoaded: false, chatSavedSessions: [], chatSaveNext: false }), style: { border: '1px solid rgba(148,163,184,.25)', background: '#111722', color: '#f8fafc', borderRadius: 5, padding: '4px 8px', fontSize: 11 } })),
+            h('button', { type: 'button', 'data-chat-history-unlock': 'true', disabled: !this.state.chatHistoryCredential, onClick: () => this.loadSavedChats(), style: { border: '1px solid rgba(148,163,184,.3)', background: 'rgba(255,255,255,.05)', color: '#cbd5e1', borderRadius: 5, padding: '5px 10px', fontSize: 11, cursor: 'pointer' } }, 'Unlock saved history'),
+            h('label', { style: { fontSize: 11, color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: 4 } }, 'Export format ',
+              h('select', { 'data-chat-export-format': 'true', value: this.state.chatExportFormat, onChange: e => this.setState({ chatExportFormat: e.target.value }), style: { border: '1px solid rgba(148,163,184,.25)', background: '#111722', color: '#f8fafc', borderRadius: 5, padding: '3px 6px', fontSize: 11 } },
+                h('option', { value: 'json' }, 'JSON'), h('option', { value: 'md' }, 'Markdown')))),
+          h('div', { role: 'status', 'data-chat-history-status': 'true', style: { fontSize: 11, color: '#94a3b8' } }, this.state.chatHistoryStatus),
+          h('label', { style: { display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, color: '#cbd5e1' } },
+            h('input', { type: 'checkbox', 'data-chat-save-next': 'true', checked: this.state.chatSaveNext, disabled: !!this.state.chatSessionId || this.state.chatRunning || !this.state.chatSavedSessionsLoaded,
+              onChange: e => this.setState({ chatSaveNext: e.target.checked }) }), 'Save the next conversation privately on this Mac (explicit opt-in)'),
+          this.state.chatSavedSessions.length > 0 && h('label', { style: { display: 'grid', gap: 3, fontSize: 11, color: '#cbd5e1' } }, 'Saved conversations',
+            h('select', { 'data-chat-saved-list': 'true', value: '', disabled: this.state.chatRunning, onChange: e => { if (e.target.value) this.openSavedChat(e.target.value); }, style: { border: '1px solid rgba(148,163,184,.25)', background: '#111722', color: '#f8fafc', borderRadius: 5, padding: '4px 8px', fontSize: 11 } },
+              h('option', { value: '' }, 'Choose a saved conversation'),
+              this.state.chatSavedSessions.map(s => h('option', { key: s.session_id, value: s.session_id }, `${s.created_at} · ${s.model} · ${s.message_count} messages`))))
+        )
+      ),
+      // Transcript messages
+      h('div', { 'data-chat-messages': 'true', role: 'log', 'aria-live': 'off', style: { display: 'grid', gap: 8, minHeight: 60, flex: '1 0 auto' } },
+        messages.length ? messages.map(m => h('article', { key: m.message_id, 'data-chat-message': m.role, 'data-chat-message-status': m.status, style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', border: '1px solid rgba(148,163,184,.18)', borderRadius: 8, padding: 10, background: m.role === 'user' ? 'rgba(56,189,248,.05)' : 'rgba(15,23,42,.4)' } },
+          h('strong', { style: { fontSize: 12, color: m.role === 'user' ? '#7dd3fc' : '#c4b5fd' } }, m.role === 'user' ? 'You' : `Assistant · ${m.status}`),
+          h('div', { style: { fontSize: 13, color: '#f1f5f9', marginTop: 4, lineHeight: 1.5 } }, m.content),
+          m.role === 'assistant' && m.status === 'complete' && h('div', { style: { display: 'flex', gap: 6, marginTop: 8 } },
+            h('button', { type: 'button', 'data-chat-copy': 'true', onClick: () => this.copyText('Chat reply', m.content), style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Copy'),
+            h('button', { type: 'button', 'data-chat-to-create': 'replace', onClick: () => this.handoffChatToCreate(m.message_id, 'replace'), style: { border: '1px solid rgba(245,158,11,.4)', background: 'rgba(245,158,11,.1)', color: '#fbbf24', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 } }, 'Use in Create'),
+            h('button', { type: 'button', 'data-chat-to-create': 'append', onClick: () => this.handoffChatToCreate(m.message_id, 'append'), style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Append to Create')))) : h('div', { style: { fontSize: 12, color: '#64748b', fontStyle: 'italic', padding: '16px 0', textAlign: 'center' } }, 'No messages yet. Send a message below to start.'),
+        this.state.chatRunning && h('article', { 'data-chat-stream': 'true', style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', border: '1px solid rgba(56,189,248,.3)', borderRadius: 8, padding: 10, background: 'rgba(56,189,248,.06)' } }, this.state.chatStreamText || this.state.chatStatus)),
+      h('div', { role: 'status', 'aria-live': 'polite', 'data-chat-run-status': 'true', style: { fontSize: 11, color: '#94a3b8' } }, this.state.chatStatus),
+      this.state.chatError && h('p', { role: 'alert', 'data-chat-error': 'true', style: { color: '#fca5a5', fontSize: 12, margin: '4px 0' } }, this.state.chatError),
+
+      // PINNED BOTTOM COMPOSER: Always visible at bottom, never scrolled away!
+      h('footer', {
+        'data-chat-footer': 'true',
+        style: { position: 'sticky', bottom: 0, zIndex: 10, background: '#0d1117', borderTop: '1px solid rgba(148,163,184,.14)', padding: '10px 0 14px', marginTop: 'auto', display: 'grid', gap: 6 }
+      },
+        h('label', { style: { display: 'grid', gap: 4 } },
+          h('span', { style: { fontSize: 11, fontWeight: 600, color: '#cbd5e1' } }, 'Message'),
+          h('textarea', {
+            'data-chat-composer': 'true',
+            value: this.state.chatDraft,
+            onInput: e => this.setState({ chatDraft: e.target.value }),
+            onChange: e => this.setState({ chatDraft: e.target.value }),
+            disabled: !ready,
+            rows: 3,
+            placeholder: ready ? 'Write a message. Command or Control + Enter sends.' : 'Chat is unavailable.',
+            style: { width: '100%', boxSizing: 'border-box', resize: 'none', background: '#111722', color: '#f8fafc', border: '1px solid rgba(148,163,184,.25)', borderRadius: 7, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', lineHeight: 1.4 }
+          })
+        ),
+        h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
+          h('button', { type: 'button', 'data-chat-send': 'true', onClick: () => this.sendChat(), disabled: !ready || this.state.chatRunning || !this.state.chatDraft.trim(), style: { border: 'none', background: '#38bdf8', color: '#091420', fontWeight: 700, borderRadius: 6, padding: '6px 16px', fontSize: 12, cursor: ready && !this.state.chatRunning && this.state.chatDraft.trim() ? 'pointer' : 'default' } }, 'Send'),
+          h('button', { type: 'button', 'data-chat-stop': 'true', onClick: () => this.stopChat(), disabled: !this.state.chatRunning, style: { border: '1px solid rgba(239,68,68,.4)', background: 'rgba(239,68,68,.1)', color: '#fca5a5', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: this.state.chatRunning ? 'pointer' : 'default' } }, 'Stop'),
+          h('button', { type: 'button', 'data-chat-regenerate': 'true', onClick: () => this.sendChat(lastAssistant && lastAssistant.message_id), disabled: !ready || this.state.chatRunning || !lastAssistant, style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: ready && !this.state.chatRunning && lastAssistant ? 'pointer' : 'default' } }, 'Regenerate last reply'),
+          h('span', { style: { marginLeft: 'auto', fontSize: 11, color: '#64748b' } }, '⌘/Ctrl + Enter sends')
+        )
+      )
+    );
   }
 
   // ── Models — load from /api/capabilities & /api/models ───────
@@ -2302,6 +2401,7 @@ class Component extends DCLogic {
 
       // Prompt Enhancement Review Box
       s.enhancementResult ? React.createElement('div', {
+        'data-prompt-enhancement-review': 'true',
         style: { border: '1px solid rgba(167,139,250,.4)', background: 'rgba(167,139,250,.07)', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, overflowWrap: 'anywhere' }
       },
         React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
@@ -2311,13 +2411,13 @@ class Component extends DCLogic {
         React.createElement('div', { style: { fontSize: 10, fontWeight: 700, color: '#94a3b8' } }, 'ORIGINAL'),
         React.createElement('div', { style: { fontSize: 11, color: '#cbd5e1' } }, s.enhancementResult.original),
         React.createElement('div', { style: { fontSize: 10, fontWeight: 700, color: '#c4b5fd' } }, 'ENHANCED'),
-        React.createElement('div', { style: { fontSize: 12, color: '#f1f5f9', background: 'rgba(0,0,0,.3)', padding: 6, borderRadius: 5, lineHeight: 1.4 } }, s.enhancementResult.enhanced),
+        React.createElement('div', { style: { fontSize: 12, color: '#f1f5f9', background: 'rgba(0,0,0,.3)', padding: 6, borderRadius: 5, lineHeight: 1.4, maxHeight: 140, overflowY: 'auto' } }, s.enhancementResult.enhanced),
         s.enhancementResult.explanation ? React.createElement('div', { style: { fontSize: 11, color: '#7dd3fc' } }, 'Why: ' + s.enhancementResult.explanation) : null,
         s.enhancementResult.suggested_settings ? React.createElement('button', {
           onClick: () => this.applySuggestedSettings(s.enhancementResult.suggested_settings),
           style: { alignSelf: 'flex-start', border: '1px solid rgba(101,214,110,.4)', background: 'rgba(101,214,110,.1)', color: '#86efac', borderRadius: 5, padding: '3px 8px', fontSize: 10, cursor: 'pointer', fontWeight: 700 }
         }, '⚙ Apply suggested: ' + Object.entries(s.enhancementResult.suggested_settings).map(([k, v]) => k + '=' + v).join(', ')) : null,
-        React.createElement('div', { style: { display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' } },
+        React.createElement('div', { style: { display: 'flex', gap: 6, marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(167,139,250,.2)', flexWrap: 'wrap' } },
           React.createElement('button', {
             onClick: () => this.applyEnhancement(),
             style: { border: '1px solid rgba(167,139,250,.6)', background: 'rgba(167,139,250,.2)', color: '#e9d5ff', borderRadius: 6, padding: '5px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }

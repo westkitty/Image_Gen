@@ -33,7 +33,7 @@
     'no-source': 'Choose a source image first.',
     'not-canonical': 'That is not a canonical DexDiffusion image id, so it cannot be used as a source.',
     'staged': 'That image is a temporary upload, not a published library image. Save it to the Library first.',
-    'wrong-kind': 'That selection is not an image.',
+    'wrong-kind': 'Choose a source image to continue (that selection is not an image).',
     'not-image': 'That file is not a supported image (PNG, JPEG or WebP).',
     'stale': 'That image is no longer in the library. Pick another one.'
   });
