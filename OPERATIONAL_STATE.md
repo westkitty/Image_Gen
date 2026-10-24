@@ -3,21 +3,26 @@
 ## Unified Studio End-to-End Delivery, Live Certification, Production Cutover & Native Release — 2026-10-24 (`feat/chat-backend-stream-20261023`, Release Complete)
 
 - **Release Status**: **INSTALLED AND OPERATIONAL** across live console and native macOS wrapper.
-- **Repository & Target**: `/Users/andrew/Image_Gen_Chat`, branch `feat/chat-backend-stream-20261023`, HEAD commit `26d4f0b6d2472b3043aaecd42f3b8b7ab1ce4425` (pushed to origin).
+- **Repository & Target**: `/Users/andrew/Image_Gen_Chat`, branch `feat/chat-backend-stream-20261023`, HEAD commit `2c49d793fecc229c8a8b558cc41c56b6839b4f67` (matching `origin/feat/chat-backend-stream-20261023`).
 - **Active Production Console**:
-  - Bound on `http://127.0.0.1:31337/dexdiffusion/` (PID 75418, HEAD `26d4f0b`).
+  - Bound on `http://127.0.0.1:31337/dexdiffusion/` (PID 75418, HEAD `2c49d79`).
   - `workflowRoot`: `/Users/andrew/Image_Gen/sdcpp-workflow` (1,168 historical runs and 45 state files preserved via `DEX_WORKFLOW_ROOT`).
-  - Tailnet ingress: `https://macbook-air.tailafb7e8.ts.net:8443/dexdiffusion/` (tailnet-only Serve).
+  - Startup defaults: `bin/dexdiffusion` sets `DEX_CHAT_ENABLED="${DEX_CHAT_ENABLED:-1}"` so chat routes are active out-of-the-box, while the UI layout defaults to flat (14 chips) until the user opts into the 5-master layout via System utility or localStorage.
+- **Network Ingress & Exposure Reconciliation**:
+  - `127.0.0.1:31337`: Strict loopback-only bind for local console and native WebKit wrapper.
+  - `macbook-air.tailafb7e8.ts.net:8443`: Encrypted tailnet-only ingress (Tailscale Funnel is OFF; verified accessible from Big Mac).
+  - `macbook-air.tailafb7e8.ts.net:443`: Separate Funnel service proxying local port 8787 (DEX//REACH); completely distinct and untouched.
 - **Installed Native macOS App**:
   - Path: `/Applications/DexDiffusion.app` (Bundle ID: `local.image-gen.wrapper`).
-  - Plist stamp: `DexDiffusionSourceHead` = `26d4f0b6d2472b3043aaecd42f3b8b7ab1ce4425`.
+  - Plist stamp: `DexDiffusionSourceHead` = `2c49d793fecc229c8a8b558cc41c56b6839b4f67` (UP TO DATE with repo).
   - Project root: `DexDiffusionProjectRoot` = `/Users/andrew/Image_Gen_Chat`.
-  - Process: PID 77588, WebKit view loaded `http://127.0.0.1:31337/dexdiffusion/` successfully.
+  - Active Process: PID 93767, WebKit view loaded `http://127.0.0.1:31337/dexdiffusion/` successfully (window ID 11240 captured via CoreGraphics).
+  - Previous exit diagnosis: Verified via unified log (`NSPersistentUIManager`, `applicationShouldTerminate: YES`) as a standard, graceful user/system application termination, NOT a crash.
   - Dock: Exactly 1 tile pinned in Dock.
 - **Rollback Backups**:
   - Console rollback: `/Users/andrew/Image_Gen/bin/dexdiffusion start` (restores base commit `2fcbd2e`).
   - App bundle backup: `/Users/andrew/.gemini/antigravity/brain/1169eb92-37ff-40d2-b8d4-454071dbb15b/scratch/backup/DexDiffusion.app` (stamp `d1d542631fd041ddf54b148a173da19415fa4dd6`).
-  - Retired launcher archive: `/Users/andrew/Library/Application Support/DexDiffusion/retired-launchers/DexDiffusion-previous-20261024-064610.app`.
+  - Retired launcher archive: `/Users/andrew/Library/Application Support/DexDiffusion/retired-launchers/DexDiffusion-previous-20261024-064857.app`.
 - **Live Compute & Chat Proofs**:
   - B1 (Two-turn Gemma context): `gemma3:4b` recalled "PINEAPPLE", `eval_count: 4`, sustained unload verified.
   - B2 (Sequential 27B models): `qwen3.8:27b-mlx` (16.5s) and `hermes-qwen3.8-27b-64k:latest` (12.3s) completed with truthful single-word outputs; sustained unloads verified.
@@ -35,10 +40,11 @@
   - Unit tests: 1,158/1,158 PASS across 152 test files.
   - Browser tests: 45/45 non-protected suites PASS; `studio-masters-nav.browser.js` PASS (desktop/mobile).
   - Interaction matrix: 84/84 cells PASS across 7 viewports (360x780 to 1440x900) across all 12 destinations.
+  - Live Browser Acceptance: Verified across Desktop (1348x735), Tablet (820x1180), and Mobile (390x844) on running console with 0 errors and zero horizontal overflow.
 - **Post-Cutover Smoke Acceptance**:
   - Live query to `POST http://127.0.0.1:31337/api/ollama/chat/stream` (`gemma3:4b`): streamed deltas, exactly 1 `done` event (`eval_count: 4`, 1376ms), all 5 unload polls confirmed `models: []`.
 - **Acceptance Contracts**:
-  - C-01 through C-20: 20/20 VERIFIED with live receipts.
+  - C-01 through C-20: 19 PASS, 1 PARTIAL (C-13: tailnet ingress active and verified from Big Mac; production accounts fail closed; physical mobile unverified).
   - 53-Capability Crosswalk: All 53 rows mapped and verified against Unified Studio destinations.
 
 ## Unified Studio 19-file repair certification — 2026-10-24 (`feat/chat-backend-stream-20261023`, repair gate certified)
