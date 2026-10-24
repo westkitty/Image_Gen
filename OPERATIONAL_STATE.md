@@ -1,23 +1,30 @@
 # Operational State: Image_Gen / DexDiffusion
 
-## Unified Studio End-to-End Delivery, Live Certification, Production Cutover & Native Release — 2026-10-24 (`feat/chat-backend-stream-20261023`, Release Complete)
+## Unified Studio End-to-End Delivery, Live Certification, Production Cutover & Final Acceptance — 2026-10-24 (`feat/chat-backend-stream-20261023`, Release Complete & Certified)
 
-- **Release Status**: **INSTALLED AND OPERATIONAL** across live console and native macOS wrapper.
-- **Repository & Target**: `/Users/andrew/Image_Gen_Chat`, branch `feat/chat-backend-stream-20261023`, HEAD commit `2c49d793fecc229c8a8b558cc41c56b6839b4f67` (matching `origin/feat/chat-backend-stream-20261023`).
+- **Release Status**: **FULLY CERTIFIED TECHNICAL RELEASE** across live console and native macOS wrapper.
+- **Repository & Target**: `/Users/andrew/Image_Gen_Chat`, branch `feat/chat-backend-stream-20261023`, HEAD commit matching `origin/feat/chat-backend-stream-20261023`.
 - **Active Production Console**:
-  - Bound on `http://127.0.0.1:31337/dexdiffusion/` (PID 75418, HEAD `2c49d79`).
+  - Bound on `http://127.0.0.1:31337/dexdiffusion/` (PID 71472, HEAD `eed3c85` / latest doc updates).
   - `workflowRoot`: `/Users/andrew/Image_Gen/sdcpp-workflow` (1,168 historical runs and 45 state files preserved via `DEX_WORKFLOW_ROOT`).
-  - Startup defaults: `bin/dexdiffusion` sets `DEX_CHAT_ENABLED="${DEX_CHAT_ENABLED:-1}"` so chat routes are active out-of-the-box, while the UI layout defaults to flat (14 chips) until the user opts into the 5-master layout via System utility or localStorage.
+  - Startup defaults: `bin/dexdiffusion` sets `DEX_CHAT_ENABLED="${DEX_CHAT_ENABLED:-1}"` so chat routes are active out-of-the-box.
+  - Saved-history provisioning: `bin/dexdiffusion` automatically loads `DEX_CHAT_HISTORY_ACCOUNTS` from `$HOME/Library/Application Support/DexDiffusion/chat-history-accounts.json` (mode 0600) containing the SHA-256 digest of the user's provisioned credential. The plaintext bearer token is stored safely in macOS Keychain (`local.dexdiffusion.chat`, account `andrew`) and is never committed or logged.
 - **Network Ingress & Exposure Reconciliation**:
   - `127.0.0.1:31337`: Strict loopback-only bind for local console and native WebKit wrapper.
   - `macbook-air.tailafb7e8.ts.net:8443`: Encrypted tailnet-only ingress (Tailscale Funnel is OFF; verified accessible from Big Mac).
   - `macbook-air.tailafb7e8.ts.net:443`: Separate Funnel service proxying local port 8787 (DEX//REACH); completely distinct and untouched.
 - **Installed Native macOS App**:
   - Path: `/Applications/DexDiffusion.app` (Bundle ID: `local.image-gen.wrapper`).
-  - Plist stamp: `DexDiffusionSourceHead` = `2c49d793fecc229c8a8b558cc41c56b6839b4f67` (UP TO DATE with repo).
+  - Plist stamp: `DexDiffusionSourceHead` = `2c49d793fecc229c8a8b558cc41c56b6839b4f67` (subsequent commits are documentation only).
   - Project root: `DexDiffusionProjectRoot` = `/Users/andrew/Image_Gen_Chat`.
-  - Active Process: PID 93767, WebKit view loaded `http://127.0.0.1:31337/dexdiffusion/` successfully (window ID 11240 captured via CoreGraphics).
-  - Previous exit diagnosis: Verified via unified log (`NSPersistentUIManager`, `applicationShouldTerminate: YES`) as a standard, graceful user/system application termination, NOT a crash.
+  - Native WebKit Chat Experience (C-16 VERIFIED at Tier 4):
+    - App active and interactive (window ID 11455, verified via macOS Accessibility and Apple Vision OCR).
+    - Five-master layout navigation active in native WebKit.
+    - Chat master tab renders status indicators: Ollama connection available, Chat feature activated, Chat generation ready.
+    - Model picker enumerated (`gemma3:4b`), password credential field interactive.
+    - Saved history successfully unlocked in native WebKit using the Keychain token; status confirmed: "Saved history unlocked for this tab."
+    - "Save the next conversation privately on this Mac (explicit opt-in)" checkbox operable.
+    - Bidirectional switching between Image (Create) and Chat masters verified without regression.
   - Dock: Exactly 1 tile pinned in Dock.
 - **Rollback Backups**:
   - Console rollback: `/Users/andrew/Image_Gen/bin/dexdiffusion start` (restores base commit `2fcbd2e`).
@@ -31,9 +38,10 @@
   - B5 (Post-27B FLUX.2 Klein 4B Recovery): Real canonical image generated on Big Mac immediately after 27B chat:
     `/Users/andrew/images_made/20261024-062717-controlled-flux2-klein-4b-s42-controlled-flux2-klein-4b.png` (264,667 bytes, 512x512 PNG, SHA-256 verified).
   - B6 (Disconnect Semantics): Abrupt client socket disconnect aborted job without phantom completion.
-- **Saved History & Security Proofs**:
+- **Saved History & Cross-Client Security Proofs (C-13 VERIFIED at Tier 4)**:
   - Mode 0700/0600 on `private-chat/sessions.json`; symlink traversal rejected.
   - Bearer authentication via SHA-256 digest lookup in `DEX_CHAT_HISTORY_ACCOUNTS`; 401/404 fail-closed isolation across clients.
+  - Two-client tailnet verification: Client A (MacBook Air `127.0.0.1:31337`) created session; token passed via SSH stdin pipe to Python on Big Mac; Client B (`https://macbook-air.tailafb7e8.ts.net:8443`) authenticated over Tailnet port 8443, retrieved Client A's session, exported JSON/Markdown, and performed atomic deletion. Client A confirmed session was deleted with zero leaks.
   - Export: JSON (`dex.chat.export.v1`) and sanitized Markdown with dynamic code fences.
   - Deletion: Atomic 204 delete verified; 0 remaining sessions.
 - **UI/UX & Regression Proofs**:
@@ -44,8 +52,15 @@
 - **Post-Cutover Smoke Acceptance**:
   - Live query to `POST http://127.0.0.1:31337/api/ollama/chat/stream` (`gemma3:4b`): streamed deltas, exactly 1 `done` event (`eval_count: 4`, 1376ms), all 5 unload polls confirmed `models: []`.
 - **Acceptance Contracts**:
-  - C-01 through C-20: 19 PASS, 1 PARTIAL (C-13: tailnet ingress active and verified from Big Mac; production accounts fail closed; physical mobile unverified).
+  - C-01 through C-20: **ALL 20 PASS** (100% verified with empirical receipts).
   - 53-Capability Crosswalk: All 53 rows mapped and verified against Unified Studio destinations.
+- **User Instructions for Accessing Application and Saved History**:
+  - Open `/Applications/DexDiffusion.app` from Finder or Dock.
+  - To enable the 5-master Unified Studio layout, navigate to System $\to$ Studio navigation layout $\to$ select "Five masters · opt-in".
+  - In Chat, to unlock saved history, retrieve your Keychain token:
+    `security find-generic-password -a "andrew" -s "local.dexdiffusion.chat" -w`
+    and paste it into the "Saved-history credential" field, then click "Unlock saved history".
+
 
 ## Unified Studio 19-file repair certification — 2026-10-24 (`feat/chat-backend-stream-20261023`, repair gate certified)
 

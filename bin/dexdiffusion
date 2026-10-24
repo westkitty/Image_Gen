@@ -39,6 +39,13 @@ if [ -z "${DEX_WORKFLOW_ROOT:-}" ]; then
 fi
 export DEX_CHAT_ENABLED="${DEX_CHAT_ENABLED:-1}"
 
+if [ -z "${DEX_CHAT_HISTORY_ACCOUNTS:-}" ]; then
+  ACCOUNTS_FILE="$HOME/Library/Application Support/DexDiffusion/chat-history-accounts.json"
+  if [ -f "$ACCOUNTS_FILE" ]; then
+    export DEX_CHAT_HISTORY_ACCOUNTS="$(cat "$ACCOUNTS_FILE")"
+  fi
+fi
+
 # Every status probe that can block (lsof, tailscale, defaults, ssh, ...) runs under bounded(): a hard wall-clock limit that needs
 # neither GNU timeout nor coreutils. The command runs in its own process group; on expiry that group (and only it) gets TERM, then KILL.
 # Exit status 124 means "timed out"; callers must report such a dependency as unknown, never as down/absent/stopped. 125 means the

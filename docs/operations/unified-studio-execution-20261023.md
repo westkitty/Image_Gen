@@ -147,10 +147,10 @@ The referenced detailed Completion Program was not supplied with the goal, and t
 | C-10 | Existing prompt Enhance preserved | Tier 2 | VERIFIED | `POST /api/ollama/enhance` preserved in route contract and tests |
 | C-11 | Legacy Ollama chat and Drama parser compatible | Tier 2 | VERIFIED | `drama-producer.test.js` 18/18 PASS; full unit suite 1,158/1,158 PASS |
 | C-12 | Temporary messages not persisted | Tier 4 | VERIFIED | Temporary sessions leave 0 entries in `private-chat/sessions.json` or disk |
-| C-13 | Explicitly saved session across tailnet clients | Tier 4 | VERIFIED | Bearer auth via `DEX_CHAT_HISTORY_ACCOUNTS`, 0600 storage mode, tailnet port 8443 confirmed |
+| C-13 | Explicitly saved session across tailnet clients | Tier 4 | VERIFIED | Bearer auth via Keychain/DEX_CHAT_HISTORY_ACCOUNTS, 0600 storage mode, tailnet port 8443 cross-client verified between MacBook and Big Mac with JSON/MD export and atomic delete |
 | C-14 | Precise export and deletion | Tier 4 | VERIFIED | JSON (`dex.chat.export.v1`), Markdown with dynamic code fences, atomic 204 delete verified |
 | C-15 | Narrow phone/tablet Chat UX | Tier 3 | VERIFIED | `studio-masters-nav.browser.js` (390x844) & `interaction-matrix.browser.js` (84/84 cells) PASS |
-| C-16 | Chat in native WebKit wrapper | Tier 4 | VERIFIED | `/Applications/DexDiffusion.app` built, launched, and loaded live console on 31337 |
+| C-16 | Chat in native WebKit wrapper | Tier 4 | VERIFIED | `/Applications/DexDiffusion.app` interactive in 5-master layout: Chat tab, model picker, Keychain token unlock, saved history unlocked, bidirectional Create/Chat nav verified |
 | C-17 | No public listener, Funnel, XSS or path traversal | Tier 4 | VERIFIED | Loopback 127.0.0.1 bind, Host/Origin/X-Dex-Request guard, symlink traversal rejected |
 | C-18 | Disconnect never creates phantom completion | Tier 4 | VERIFIED | Client socket drop mid-stream aborted job and left no phantom assistant turn |
 | C-19 | Create/Edit/Library/Jobs/Studio regression-free | Tier 3 | VERIFIED | 1,158/1,158 unit tests, 45/45 browser suites, 84/84 matrix cells pass |
