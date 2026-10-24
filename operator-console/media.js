@@ -165,10 +165,10 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
 function createResourceArbiter({ group = 'bigmac-heavy-inference', capacity = 1, externalProbe = null, quarantineCheck = () => null, now = () => Date.now() } = {}) {
   const holders = new Map(); // jobId -> { since, label }
   const waiting = []; // { jobId, label, resolve, since }
-  let external = { occupied: false, detail: null, checkedAt: null };
+  let external = { occupied: externalProbe ? null : false, detail: externalProbe ? 'external probe pending' : null, checkedAt: null };
 
   function grantNext() {
-    while (holders.size < capacity && waiting.length && !external.occupied && !quarantineCheck()) {
+    while (holders.size < capacity && waiting.length && external.occupied === false && !quarantineCheck()) {
       const w = waiting.shift();
       holders.set(w.jobId, { since: now(), label: w.label });
       w.resolve({ granted: true, waitedMs: now() - w.since });
@@ -192,12 +192,12 @@ function createResourceArbiter({ group = 'bigmac-heavy-inference', capacity = 1,
     return had;
   }
   function setExternal(state) {
-    external = { occupied: !!(state && state.occupied), detail: (state && state.detail) || null, checkedAt: now() };
+    external = { occupied: state && typeof state.occupied === 'boolean' ? state.occupied : null, detail: (state && state.detail) || null, checkedAt: now() };
     grantNext();
   }
   async function refreshExternal() {
     if (!externalProbe) return external;
-    try { setExternal(await externalProbe()); } catch (_) { /* probe failure never blocks work */ }
+    try { setExternal(await externalProbe()); } catch (_) { setExternal({ occupied: null, detail: 'external probe failed' }); }
     return external;
   }
   function position(jobId) { const i = waiting.findIndex(w => w.jobId === jobId); return i < 0 ? null : i + 1; }
@@ -209,7 +209,7 @@ function createResourceArbiter({ group = 'bigmac-heavy-inference', capacity = 1,
       owner: owner ? { job_id: owner[0], label: owner[1].label, since: owner[1].since } : null,
       waiting: waiting.map((w, i) => ({ job_id: w.jobId, label: w.label, position: i + 1, since: w.since })),
       external, quarantine,
-      blocked_reason: quarantine ? quarantine : external.occupied ? `external heavy workload on Big Mac: ${external.detail}`
+      blocked_reason: quarantine ? quarantine : external.occupied === null ? `external heavy workload state unknown: ${external.detail || 'probe unavailable'}` : external.occupied ? `external heavy workload on Big Mac: ${external.detail}`
         : owner ? `Waiting for Big Mac — ${owner[1].label || 'another job'} currently owns heavy compute` : null,
     };
   }
@@ -219,6 +219,7 @@ function createResourceArbiter({ group = 'bigmac-heavy-inference', capacity = 1,
 // Read-only external heavy-load detection: an Ollama model loaded on Big Mac
 // at >= minGb counts as heavy. Nothing is ever unloaded or killed.
 function parseOllamaPs(text, minGb = 8) {
+  if (!/^NAME\s+ID\s+SIZE\b/.test(String(text || '').trimStart())) return { occupied: null, detail: 'Ollama ps output unrecognized' };
   const heavy = [];
   for (const line of String(text || '').split('\n').slice(1)) {
     const m = line.trim().match(/^(\S+)\s+\S+\s+([\d.]+)\s*(GB|MB)/);

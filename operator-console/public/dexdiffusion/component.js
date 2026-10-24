@@ -27,6 +27,7 @@ class Component extends DCLogic {
     })(),
     // Unified Studio navigation layout (rollback flag): 'flat' is the 14-chip row and stays the default.
     studioLayout: (() => { try { return window.DexStudioNav ? window.DexStudioNav.resolveLayout(localStorage) : 'flat'; } catch (_) { return 'flat'; } })(),
+    studioSubroute: (() => { try { const Nav = window.DexStudioNav; return Nav && Nav.resolveLayout(localStorage) === 'masters' ? Nav.resolveSubroute(sessionStorage.getItem(Nav.SUBROUTE_KEY), sessionStorage.getItem('dex_screen')) : null; } catch (_) { return null; } })(),
     // Cross-master handoff origin for the masters layout's Back control: { leaf } or null.
     navReturnTo: null,
     // Chat placeholder readiness, read from the server; never "ready" without the Chat UI (Phase 5).
@@ -34,6 +35,7 @@ class Component extends DCLogic {
     chatModels: [], chatModel: 'gemma3:4b', chatSessionId: null, chatMessages: [], chatDraft: '',
     chatRunning: false, chatStreamText: '', chatStatus: '', chatError: '', chatJobId: null,
     chatSessionMode: 'temporary', chatSaveNext: false, chatSavedSessions: [], chatSavedSessionsLoaded: false,
+    chatHistoryCredential: '', chatHistoryStatus: '', chatExportFormat: 'json',
     activeAssetSelection: null,
     // Create
     target: 'sd15',
@@ -896,7 +898,13 @@ class Component extends DCLogic {
     const Nav = window.DexStudioNav;
     if (version !== 4 && Nav) Nav.rememberLeaf(s, sessionStorage);
     const navPatch = version === 2 && this.state.studioLayout === 'masters' ? { navReturnTo: this._nextReturnTo(from, s, opts) } : {};
-    this.setState({ screens: { ...screens, [version]: s }, ...navPatch });
+    let subroute = null;
+    if (version === 2 && Nav && this.state.studioLayout === 'masters') {
+      try { subroute = Nav.resolveSubroute(opts && opts.subroute || sessionStorage.getItem(Nav.SUBROUTE_KEY), s); } catch (_) {}
+      if (opts && opts.subroute && subroute) { try { sessionStorage.setItem(Nav.SUBROUTE_KEY, subroute); } catch (_) {} }
+    }
+    this.setState({ screens: { ...screens, [version]: s }, studioSubroute: subroute, ...navPatch });
+    try { const menu = document.querySelector('[data-studio-mobile-nav]'); if (menu) menu.open = false; } catch (_) {}
     if (s === 'chat' && from !== 'chat') this.loadChatAvailability();
     // Category navigation must present the selected screen immediately.
     // On rapid transitions the global rAF batcher can leave the previous
@@ -935,6 +943,15 @@ class Component extends DCLogic {
     return this.setScreen(Nav.lastLeafFor(id, sessionStorage), { source: 'nav', focusNav: 'master' });
   }
   selectStudioLeaf(id) { return this.setScreen(id, { source: 'nav', focusNav: 'leaf' }); }
+  selectStudioSubroute(id) {
+    const Nav = window.DexStudioNav;
+    const route = Nav && Object.values(Nav.SUBROUTES).flat().find(r => r.id === id);
+    if (!route) return false;
+    const ok = this.setScreen(route.leaf, { source: 'nav', focusNav: 'leaf', subroute: id });
+    if (ok && route.tab && typeof this.vpSet === 'function') this.vpSet({ tab: route.tab });
+    if (ok && id === 'history') setTimeout(() => { const el = document.querySelector('[data-chat-history-credential]'); if (el) el.focus(); }, 0);
+    return ok;
+  }
   selectStudioUtility(id) {
     const Nav = window.DexStudioNav;
     const u = Nav && Nav.UTILITIES.find(x => x.id === id);
@@ -971,8 +988,10 @@ class Component extends DCLogic {
 
   // Chat text stays in process memory on the server and this mounted component only.
   async _chatJson(path, method, body) {
+    const headers = method === 'GET' ? {} : { 'Content-Type': 'application/json', 'X-Dex-Request': '1' };
+    if (this.state.chatHistoryCredential) headers.Authorization = 'Bearer ' + this.state.chatHistoryCredential;
     const r = await fetch(this.state.backendUrl + path, {
-      method, headers: method === 'GET' ? {} : { 'Content-Type': 'application/json', 'X-Dex-Request': '1' },
+      method, headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     let value = null;
@@ -1001,10 +1020,14 @@ class Component extends DCLogic {
   }
 
   async loadSavedChats() {
+    if (!this.state.chatHistoryCredential) {
+      this.setState({ chatSavedSessions: [], chatSavedSessionsLoaded: false, chatHistoryStatus: 'Enter your saved-history credential to unlock.' });
+      return;
+    }
     try {
       const value = await this._chatJson('/api/chat/sessions', 'GET');
-      this.setState({ chatSavedSessions: Array.isArray(value.sessions) ? value.sessions : [], chatSavedSessionsLoaded: true });
-    } catch (_) { this.setState({ chatSavedSessions: [], chatSavedSessionsLoaded: true }); }
+      this.setState({ chatSavedSessions: Array.isArray(value.sessions) ? value.sessions : [], chatSavedSessionsLoaded: true, chatHistoryStatus: 'Saved history unlocked for this tab.' });
+    } catch (e) { this.setState({ chatSavedSessions: [], chatSavedSessionsLoaded: false, chatHistoryStatus: 'Saved history unavailable: ' + e.message }); }
   }
 
   async openSavedChat(id) {
@@ -1024,10 +1047,14 @@ class Component extends DCLogic {
     const id = this.state.chatSessionId;
     if (!id || this.state.chatSessionMode !== 'saved' || this.state.chatRunning) return;
     try {
-      const value = await this._chatJson('/api/chat/sessions/' + encodeURIComponent(id) + '/export', 'GET');
-      const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }));
+      const format = this.state.chatExportFormat;
+      const path = '/api/chat/sessions/' + encodeURIComponent(id) + '/export?format=' + format;
+      const headers = { Authorization: 'Bearer ' + this.state.chatHistoryCredential };
+      const response = await fetch(this.state.backendUrl + path, { headers });
+      if (!response.ok) { const error = await response.json().catch(() => null); throw new Error(error && error.error || `HTTP ${response.status}`); }
+      const url = URL.createObjectURL(await response.blob());
       const a = document.createElement('a');
-      a.href = url; a.download = 'dexdiffusion-chat-' + id + '.json';
+      a.href = url; a.download = 'dexdiffusion-chat-' + id + '.' + format;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30000);
       this.setState({ chatStatus: 'Export download requested.' });
@@ -1037,7 +1064,7 @@ class Component extends DCLogic {
   async deleteChat() {
     const id = this.state.chatSessionId;
     if (!id || this.state.chatRunning) return;
-    if (!window.confirm('Delete this temporary conversation? This cannot be undone.')) return;
+    if (!window.confirm(`Delete this ${this.state.chatSessionMode} conversation? This cannot be undone.`)) return;
     try {
       await this._chatJson('/api/chat/sessions/' + encodeURIComponent(id), 'DELETE');
       this.setState({ chatSessionId: null, chatSessionMode: 'temporary', chatMessages: [], chatStreamText: '', chatStatus: 'Conversation deleted.', chatError: '' });
@@ -1053,7 +1080,14 @@ class Component extends DCLogic {
     if (!client) { this.setState({ chatError: 'Chat transport unavailable.' }); return; }
     let id = this.state.chatSessionId;
     let completed = false;
+    this._chatPendingDelta = '';
     this.setState({ chatRunning: true, chatStreamText: '', chatError: '', chatStatus: 'Connecting…', chatJobId: null });
+    const flushDelta = () => {
+      this._chatDeltaTimer = null;
+      const text = this._chatPendingDelta;
+      this._chatPendingDelta = '';
+      if (text) this.setState(s => ({ chatStreamText: s.chatStreamText + text }));
+    };
     try {
       if (!id) {
         const mode = this.state.chatSaveNext ? 'saved' : 'temporary';
@@ -1068,7 +1102,7 @@ class Component extends DCLogic {
         : { session_id: id, request_id: requestId, action: 'send', content, model: this.state.chatModel };
       this._chatAbort = new AbortController();
       const response = await fetch(this.state.backendUrl + '/api/ollama/chat/stream', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Dex-Request': '1' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Dex-Request': '1', ...(this.state.chatHistoryCredential ? { Authorization: 'Bearer ' + this.state.chatHistoryCredential } : {}) },
         body: JSON.stringify(body), signal: this._chatAbort.signal,
       });
       await client.readSse(response, ({ event, payload }) => {
@@ -1076,7 +1110,10 @@ class Component extends DCLogic {
         if (payload.job_id) this.setState({ chatJobId: payload.job_id });
         if (event === 'queued') this.setState({ chatStatus: `Queued${Number.isInteger(payload.position) ? ' · position ' + payload.position : ''}` });
         else if (event === 'started') this.setState({ chatStatus: 'Generating…' });
-        else if (event === 'delta') this.setState(s => ({ chatStreamText: s.chatStreamText + payload.text }));
+        else if (event === 'delta') {
+          this._chatPendingDelta += payload.text;
+          if (!this._chatDeltaTimer) this._chatDeltaTimer = setTimeout(flushDelta, 80);
+        }
         else if (event === 'done') { completed = true; this.setState({ chatStatus: 'Complete' }); }
         else if (event === 'stopped') this.setState({ chatStatus: payload.stop === 'verified' ? 'Stopped · verified' : 'Stop requested · verification pending' });
         else if (event === 'error') this.setState({ chatStatus: 'Failed', chatError: payload.code || 'stream-error' });
@@ -1085,6 +1122,8 @@ class Component extends DCLogic {
       // A transport loss is not a verified Stop. The draft remains available; the session refresh shows any accepted user turn.
       this.setState({ chatError: e.message, chatStatus: 'Connection ended · completion unverified' });
     } finally {
+      if (this._chatDeltaTimer) clearTimeout(this._chatDeltaTimer);
+      flushDelta();
       this._chatAbort = null;
       this.setState({ chatRunning: false, chatJobId: null, chatStreamText: '' });
       if (id) await this.refreshChatSession(id);
@@ -1157,8 +1196,15 @@ class Component extends DCLogic {
         h('button', { type: 'button', 'data-chat-new': 'true', onClick: () => this.newChat(), disabled: this.state.chatRunning }, 'New temporary chat'),
         h('button', { type: 'button', 'data-chat-delete': 'true', onClick: () => this.deleteChat(), disabled: !this.state.chatSessionId || this.state.chatRunning }, 'Delete chat'),
         h('button', { type: 'button', 'data-chat-export': 'true', onClick: () => this.exportChat(), disabled: this.state.chatSessionMode !== 'saved' || !this.state.chatSessionId || this.state.chatRunning }, 'Export saved chat')),
+      h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' } },
+        h('label', { style: { display: 'grid', gap: 4, flex: '1 1 220px' } }, 'Saved-history credential (kept in this tab only)',
+          h('input', { type: 'password', 'data-chat-history-credential': 'true', value: this.state.chatHistoryCredential, autoComplete: 'off', onInput: e => this.setState({ chatHistoryCredential: e.target.value, chatSavedSessionsLoaded: false, chatSavedSessions: [], chatSaveNext: false }) })),
+        h('button', { type: 'button', 'data-chat-history-unlock': 'true', disabled: !this.state.chatHistoryCredential, onClick: () => this.loadSavedChats() }, 'Unlock saved history'),
+        h('label', null, 'Export format ', h('select', { 'data-chat-export-format': 'true', value: this.state.chatExportFormat, onChange: e => this.setState({ chatExportFormat: e.target.value }) },
+          h('option', { value: 'json' }, 'JSON'), h('option', { value: 'md' }, 'Markdown')))),
+      h('div', { role: 'status', 'data-chat-history-status': 'true' }, this.state.chatHistoryStatus),
       h('label', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-        h('input', { type: 'checkbox', 'data-chat-save-next': 'true', checked: this.state.chatSaveNext, disabled: !!this.state.chatSessionId || this.state.chatRunning,
+        h('input', { type: 'checkbox', 'data-chat-save-next': 'true', checked: this.state.chatSaveNext, disabled: !!this.state.chatSessionId || this.state.chatRunning || !this.state.chatSavedSessionsLoaded,
           onChange: e => this.setState({ chatSaveNext: e.target.checked }) }), 'Save the next conversation privately on this Mac (explicit opt-in)'),
       this.state.chatSavedSessions.length > 0 && h('label', { style: { display: 'grid', gap: 5 } }, 'Saved conversations',
         h('select', { 'data-chat-saved-list': 'true', value: '', disabled: this.state.chatRunning, onChange: e => { if (e.target.value) this.openSavedChat(e.target.value); } },
@@ -1166,17 +1212,18 @@ class Component extends DCLogic {
           this.state.chatSavedSessions.map(s => h('option', { key: s.session_id, value: s.session_id }, `${s.created_at} · ${s.model} · ${s.message_count} messages`)))),
       h('label', { style: { display: 'grid', gap: 5 } }, 'Model', h('select', { 'data-chat-model': 'true', value: this.state.chatModel, disabled: !ready || this.state.chatRunning, onChange: e => this.setState({ chatModel: e.target.value }) },
         this.state.chatModels.map(m => h('option', { key: m.name, value: m.name }, m.name)))),
-      h('div', { 'data-chat-messages': 'true', role: 'log', 'aria-live': 'polite', style: { display: 'grid', gap: 8, minHeight: 100 } },
+      h('div', { 'data-chat-messages': 'true', role: 'log', 'aria-live': 'off', style: { display: 'grid', gap: 8, minHeight: 100 } },
         messages.map(m => h('article', { key: m.message_id, 'data-chat-message': m.role, 'data-chat-message-status': m.status, style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', border: '1px solid #334155', borderRadius: 8, padding: 10 } },
           h('strong', null, m.role === 'user' ? 'You' : `Assistant · ${m.status}`), h('div', null, m.content),
           m.role === 'assistant' && m.status === 'complete' && h('div', { style: { display: 'flex', gap: 8, marginTop: 8 } },
+            h('button', { type: 'button', 'data-chat-copy': 'true', onClick: () => this.copyText('Chat reply', m.content) }, 'Copy'),
             h('button', { type: 'button', 'data-chat-to-create': 'replace', onClick: () => this.handoffChatToCreate(m.message_id, 'replace') }, 'Use in Create'),
             h('button', { type: 'button', 'data-chat-to-create': 'append', onClick: () => this.handoffChatToCreate(m.message_id, 'append') }, 'Append to Create')))),
         this.state.chatRunning && h('article', { 'data-chat-stream': 'true', style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', border: '1px solid #334155', borderRadius: 8, padding: 10 } }, this.state.chatStreamText || this.state.chatStatus)),
       h('div', { role: 'status', 'aria-live': 'polite', 'data-chat-run-status': 'true' }, this.state.chatStatus),
       this.state.chatError && h('p', { role: 'alert', 'data-chat-error': 'true' }, this.state.chatError),
       h('label', { style: { display: 'grid', gap: 5 } }, 'Message', h('textarea', { 'data-chat-composer': 'true', value: this.state.chatDraft,
-        onInput: e => this.setState({ chatDraft: e.target.value }), onChange: e => this.setState({ chatDraft: e.target.value }), disabled: !ready || this.state.chatRunning, rows: 4,
+        onInput: e => this.setState({ chatDraft: e.target.value }), onChange: e => this.setState({ chatDraft: e.target.value }), disabled: !ready, rows: 4,
         placeholder: ready ? 'Write a message. Command or Control + Enter sends.' : 'Chat is unavailable.', style: { width: '100%', boxSizing: 'border-box', resize: 'vertical' } })),
       h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
         h('button', { type: 'button', 'data-chat-send': 'true', onClick: () => this.sendChat(), disabled: !ready || this.state.chatRunning || !this.state.chatDraft.trim() }, 'Send'),
@@ -2726,7 +2773,7 @@ class Component extends DCLogic {
       navChips: (() => {
         const Nav = window.DexStudioNav;
         if (!Nav) return [];
-        const key = version + '|' + screen;
+        const key = version + '|' + screen + '|' + (s.studioSubroute || '');
         if (!this._navChips || this._navChipsKey !== key) {
           this._navChipsKey = key;
           this._navChips = Nav.chips({ activeScreen: screen, onSelect: id => this.setScreen(id) });
@@ -2750,7 +2797,7 @@ class Component extends DCLogic {
           const m = Nav.MASTERS.find(x => x.id === master);
           this._navMastersBars = {
             navMasters: Nav.masters({ activeScreen: screen, onSelect: id => this.selectStudioMaster(id) }),
-            navSubnav: master ? Nav.subnav(master, screen, { onSelect: id => this.selectStudioLeaf(id) }) : [],
+            navSubnav: master ? Nav.subroutes(master, screen, s.studioSubroute, { onSelect: id => this.selectStudioSubroute(id) }) : [],
             // The Jobs utility is the existing Jobs drawer button (it carries the live job count), so it is not repeated here.
             navUtilities: Nav.utilities({ activeScreen: screen, onSelect: id => this.selectStudioUtility(id) }).filter(u => u.drawer !== 'true'),
             hasSubnav: !!master,
@@ -2764,6 +2811,7 @@ class Component extends DCLogic {
       onNavReturn: () => this.navReturn(),
       onMasterBarKeyDown: e => this.onStudioBarKeyDown(e, '[data-master-tab]'),
       onSubnavKeyDown: e => this.onStudioBarKeyDown(e, '[data-subnav-leaf]'),
+      onMobileMasterSelect: id => this.selectStudioMaster(id),
       chatWorkspace: version === 2 && s.studioLayout === 'masters' && screen === 'chat' ? this.buildChatPlaceholder() : null,
       navScrollBack: ()=>this.scrollStudioNav(-1),
       navScrollForward: ()=>this.scrollStudioNav(1),

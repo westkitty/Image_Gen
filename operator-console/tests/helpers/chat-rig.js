@@ -14,6 +14,7 @@ const { createGenericJobEventPublisher } = require('../../operational-jobs');
 const { createChatCompute } = require('../../chat-compute');
 const { registerChatRoutes } = require('../../chat-routes');
 const { startFakeOllama } = require('../fixtures/fake-ollama-ndjson');
+const { createHash } = require('node:crypto');
 
 const FAST_STREAM = { headersMs: 400, firstTokenLightMs: 400, firstTokenHeavyMs: 500, idleMs: 400, wallMs: 5000 };
 const FAST_COMPUTE = { probeTimeoutMs: 300, pollMs: 10, ownershipWaitMs: 150, unloadTimeoutMs: 300, unloadVerifyMs: 250, settleMs: 25 };
@@ -31,7 +32,7 @@ function stores(dir) {
   return { eventBus, jobStore, remoteWorkers, arbiter, cancelManager, logs, setCompute: c => { compute = c; } };
 }
 
-async function chatRig({ ps, unload, chat, gate, compute: computeOpts = {}, stream = FAST_STREAM, dir, savedFile } = {}) {
+async function chatRig({ ps, unload, chat, gate, compute: computeOpts = {}, stream = FAST_STREAM, dir, savedFile, historyAccounts = { andrew: createHash('sha256').update('a'.repeat(32)).digest('hex'), other: createHash('sha256').update('b'.repeat(32)).digest('hex') } } = {}) {
   dir = dir || fs.mkdtempSync(path.join(os.tmpdir(), 'dex-chat-p3-'));
   const fake = await startFakeOllama({ chat, ps, unload });
   const s = stores(dir);
@@ -41,11 +42,12 @@ async function chatRig({ ps, unload, chat, gate, compute: computeOpts = {}, stre
   const app = express(); app.use(express.json());
   const server = await new Promise(r => { const x = app.listen(0, '127.0.0.1', () => r(x)); });
   const port = server.address().port;
-  const mod = registerChatRoutes(app, { enabled: true, ollamaBaseUrl: fake.url, port, admit: compute.admit, log: m => s.logs.push(m), timeouts: stream, heartbeatMs: 60000, sessionOptions: savedFile ? { savedFile } : undefined, guardPolicy: { hosts: [`127.0.0.1:${port}`], origins: [`http://127.0.0.1:${port}`] } });
+  const mod = registerChatRoutes(app, { enabled: true, ollamaBaseUrl: fake.url, port, admit: compute.admit, log: m => s.logs.push(m), timeouts: stream, heartbeatMs: 60000, sessionOptions: savedFile ? { savedFile } : undefined, historyAccounts, guardPolicy: { hosts: [`127.0.0.1:${port}`], origins: [`http://127.0.0.1:${port}`] } });
   compute.attachRunner(mod.runner);
   const headers = { Origin: `http://127.0.0.1:${port}`, 'X-Dex-Request': '1', 'Content-Type': 'application/json' };
-  const request = (method, p, body, { onEvent } = {}) => new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, path: p, method, headers: body === undefined ? { Origin: headers.Origin, 'X-Dex-Request': '1' } : headers }, res => {
+  const request = (method, p, body, { onEvent, token = 'a'.repeat(32), headers: override = {} } = {}) => new Promise((resolve, reject) => {
+    const requestHeaders = { ...(body === undefined ? { Origin: headers.Origin, 'X-Dex-Request': '1' } : headers), ...(token ? { Authorization: 'Bearer ' + token } : {}), ...override };
+    const req = http.request({ host: '127.0.0.1', port, path: p, method, headers: requestHeaders }, res => {
       let raw = ''; const events = [];
       res.setEncoding('utf8');
       res.on('data', c => {
@@ -57,7 +59,7 @@ async function chatRig({ ps, unload, chat, gate, compute: computeOpts = {}, stre
           if (onEvent && onEvent(ev, events)) { req.destroy(); res.destroy(); return resolve({ status: res.statusCode, events, destroyed: true }); }
         }
       });
-      res.on('end', () => resolve({ status: res.statusCode, events, body: (res.headers['content-type'] || '').includes('json') && raw ? JSON.parse(raw) : null }));
+      res.on('end', () => resolve({ status: res.statusCode, events, body: (res.headers['content-type'] || '').includes('json') && raw ? JSON.parse(raw) : null, text: raw, headers: res.headers }));
       res.on('error', () => {});
     });
     req.on('error', e => (e.code === 'ECONNRESET' ? null : reject(e)));

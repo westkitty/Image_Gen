@@ -96,9 +96,27 @@ test('external-load detection parses ollama ps conservatively', () => {
   assert.match(r.detail, /llama3\.1:70b/);
   assert.ok(!/qwen2/.test(r.detail), 'small models are not heavy');
   assert.equal(M.parseOllamaPs('NAME    ID    SIZE    PROCESSOR    CONTEXT    UNTIL \n').occupied, false);
+  assert.equal(M.parseOllamaPs('').occupied, null);
   const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-  assert.match(src, /'ollama ps 2>\/dev\/null;/);
+  assert.match(src, /'ollama ps 2>\/dev\/null; rc=\$\?; printf/);
+  assert.match(src, /PROBE_DONE:0/);
   assert.doesNotMatch(src, /ollama (stop|rm)|pkill|killall/);
+});
+
+test('an unknown or failed external-load probe cannot grant a heavy lease', async () => {
+  const a = M.createResourceArbiter({ externalProbe: async () => { throw new Error('probe failed'); } });
+  let granted = false;
+  const wait = a.acquire('image-unknown').then(() => { granted = true; });
+  assert.equal(a.state().external.occupied, null);
+  await a.refreshExternal();
+  assert.equal(a.state().external.occupied, null);
+  assert.match(a.state().blocked_reason, /unknown/);
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(granted, false);
+  a.setExternal({ occupied: false });
+  await wait;
+  assert.equal(granted, true);
+  a.release('image-unknown');
 });
 
 // ---- Worker registry -----------------------------------------------------------------

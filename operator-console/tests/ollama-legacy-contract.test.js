@@ -3,7 +3,8 @@
 // GET /api/ollama/status, POST /api/ollama/enhance, POST /api/ollama/chat and the Drama LLM parse keep their exact success
 // shapes. AUTH-6 changes, asserted here explicitly: allowlisted models only, gemma3:4b default, keep_alive 0, no download
 // advice. The new stream route is off by default and, when switched on, runs only under the shared Big Mac lease.
-// Isolation: temp state/images/media dirs, a PATH-first `ssh` stub that always fails, no real Ollama, no model is ever loaded.
+// Isolation: temp state/images/media dirs, a PATH-first `ssh` stub that reports an explicit empty Ollama load for the arbiter,
+// no real Ollama, no model is ever loaded.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -12,7 +13,7 @@ const path = require('node:path');
 const net = require('node:net');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
-const { startFakeOllama, DEFAULT_TAGS } = require('./fixtures/fake-ollama-ndjson');
+const { startFakeOllama, DEFAULT_TAGS, delta, doneLine } = require('./fixtures/fake-ollama-ndjson');
 
 const SERVER_DIR = path.join(__dirname, '..');
 const ENHANCED = JSON.stringify({ enhanced_prompt: 'a red fox in snow, soft light', negative_prompt: '', setting_suggestions: {}, notes: [] });
@@ -20,7 +21,11 @@ const ENHANCED = JSON.stringify({ enhanced_prompt: 'a red fox in snow, soft ligh
 const freePort = () => new Promise((resolve, reject) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); s.on('error', reject); });
 
 function legacyChat(body, req, res) {
-  // Non-streaming legacy consumers only; a stream:true call here would be a fail-closed violation.
+  // Legacy requests remain non-streaming; the separate Chat test receives an actual terminal NDJSON frame.
+  if (body && body.stream === true) {
+    res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
+    return res.end(delta('reply') + doneLine());
+  }
   res.writeHead(200, { 'Content-Type': 'application/json' });
   const content = body && body.format === 'json' ? 'not json at all' : ENHANCED;
   res.end(JSON.stringify({ model: body && body.model, message: { role: 'assistant', content: '  ' + content + '  ' }, done: true }));
@@ -29,7 +34,7 @@ function legacyChat(body, req, res) {
 async function bootServer(fake, extraEnv = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ollama-legacy-'));
   const bin = path.join(root, 'bin'); fs.mkdirSync(bin);
-  fs.writeFileSync(path.join(bin, 'ssh'), '#!/bin/sh\nexit 255\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'ssh'), '#!/bin/sh\ncase "$*" in\n  *"ollama ps"*) printf "NAME ID SIZE PROCESSOR UNTIL\\nPROBE_DONE:0\\n";;\n  *) exit 255;;\nesac\n', { mode: 0o755 });
   for (const d of ['state', 'images', 'media']) fs.mkdirSync(path.join(root, d));
   const port = await freePort();
   const env = Object.assign({}, process.env, {

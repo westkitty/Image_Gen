@@ -1133,10 +1133,12 @@ for (const item of publicationRecoveryState.journal.unresolved) {
 const arbiter = M.createResourceArbiter({
   quarantineCheck: () => publicationRecoveryState.blocked ? 'canonical publication recovery unresolved' : remoteWorkers.quarantineReason(),
   externalProbe: () => new Promise(resolve => {
-    require('child_process').execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=6', SSH_TARGET_NAME, 'ollama ps 2>/dev/null; printf "\nPROBE_DONE\n"'],
-      { timeout: 12000, encoding: 'utf8' }, (err, out) => resolve(String(out || '').includes('PROBE_DONE') ? M.parseOllamaPs(out.split('PROBE_DONE')[0]) : { occupied: false, detail: null }));
+    require('child_process').execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=6', SSH_TARGET_NAME, 'ollama ps 2>/dev/null; rc=$?; printf "\nPROBE_DONE:%s\n" "$rc"'],
+      { timeout: 12000, encoding: 'utf8' }, (err, out) => resolve(!err && /PROBE_DONE:0(?:\r?\n|$)/.test(String(out || ''))
+        ? M.parseOllamaPs(String(out).split('PROBE_DONE:0')[0]) : { occupied: null, detail: 'Big Mac Ollama probe did not confirm success' }));
   }),
 });
+arbiter.refreshExternal().catch(() => {});
 const cancelManager = createCancellationManager({
   arbiter,
   jobStore,
@@ -3215,7 +3217,8 @@ chatCompute = require('./chat-compute').createChatCompute({
   publish: (event, data) => eventBus.publish(event, data),
   gate: () => (LEGACY_OLLAMA_CONSUMERS_ARBITRATED ? null : 'legacy-ollama-consumers-unarbitrated'),
 });
-chatCompute.attachRunner(require('./chat-routes').registerChatRoutes(app, { enabled: process.env.DEX_CHAT_ENABLED === '1', ollamaBaseUrl: OLLAMA_BASE_URL, port: PORT, admit: chatCompute.admit, log: m => console.log(m), sessionOptions: { savedFile: path.join(STATE_DIR, 'private-chat', 'sessions.json') } }).runner);
+const chatHistoryAuth = require('./chat-history-auth').createHistoryAuthenticator(require('./chat-history-auth').accountsFromEnvironment(process.env.DEX_CHAT_HISTORY_ACCOUNTS));
+chatCompute.attachRunner(require('./chat-routes').registerChatRoutes(app, { enabled: process.env.DEX_CHAT_ENABLED === '1', ollamaBaseUrl: OLLAMA_BASE_URL, port: PORT, admit: chatCompute.admit, log: m => console.log(m), sessionOptions: { savedFile: path.join(STATE_DIR, 'private-chat', 'sessions.json') }, historyAuth: chatHistoryAuth }).runner);
 
 app.post('/api/preview/generation', (req, res) => {
   const preview = buildGenerationPreview(req.body || {});
@@ -4939,7 +4942,16 @@ app.get('/api/operations/snapshot', (req, res) => {
 });
 
 // ---- F14: Safe Job Cancellation Route ----------------------------------------
-app.post('/api/jobs/:id/cancel', async (req, res) => {
+const chatCancelGuard = require('./request-guard').createRequestGuard(require('./request-guard').defaultPolicy(PORT));
+app.post('/api/jobs/:id/cancel', (req, res, next) => {
+  const generic = jobStore.get(req.params.id);
+  if (!generic || generic.media_kind !== 'chat') return next();
+  chatCancelGuard(req, res, () => {
+    const owner = chatCompute && chatCompute.ownerOfJob(req.params.id);
+    if (owner && chatHistoryAuth.identify(req.headers.authorization) !== owner) return res.status(404).json({ error: 'job-not-found' });
+    next();
+  });
+}, async (req, res) => {
   const jobId = req.params.id;
   const reason = (req.body && req.body.reason) || 'Cancelled by user';
   const job = jobs[jobId];

@@ -309,8 +309,8 @@ async function openStudio(page, url, options) {
   await page.waitForFunction(() => window.__dex && __dex.state.version === 2 &&
     __dex.state.capabilityData && (__dex.state.modelTargets || []).length > 3,
     null, { timeout: 30000 });
-  // The flat chip row is the default; the opt-in masters layout (dex_studio_layout=masters) shows the master bar instead.
-  await page.locator('[data-studio-nav], [data-master-bar]').first().waitFor({ state: 'visible' });
+  // The opt-in masters layout uses a disclosure at phone width.
+  await page.locator('[data-studio-nav]:visible, [data-master-bar]:visible, [data-studio-mobile-nav] summary:visible').first().waitFor({ state: 'visible' });
   page.setDefaultTimeout(5000);
 }
 

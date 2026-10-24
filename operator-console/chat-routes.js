@@ -7,6 +7,7 @@ const Models = require('./chat-models');
 const { createTemporarySessionStore } = require('./chat-sessions');
 const { createChatStreamRunner, denyAllAdmission, ollamaGetJson } = require('./chat-stream');
 const { createRequestGuard, defaultPolicy } = require('./request-guard');
+const { createHistoryAuthenticator } = require('./chat-history-auth');
 
 const STREAM_FIELDS = new Set(['session_id', 'request_id', 'action', 'content', 'regenerate_of', 'model', 'options']);
 const SESSION_FIELDS = new Set(['mode', 'model', 'consent']);
@@ -62,14 +63,24 @@ function validateStreamBody(body) {
 
 function registerChatRoutes(app, {
   enabled = false, ollamaBaseUrl, port, fetchImpl = fetch, admit = denyAllAdmission, log = () => {},
-  timeouts, heartbeatMs, maxBufferedBytes, undrainedMs, guardPolicy, sessionOptions,
+  timeouts, heartbeatMs, maxBufferedBytes, undrainedMs, guardPolicy, sessionOptions, historyAccounts, historyAuth: suppliedHistoryAuth,
 } = {}) {
   const store = createTemporarySessionStore(sessionOptions);
+  const historyAuth = suppliedHistoryAuth || createHistoryAuthenticator(historyAccounts);
   const runner = createChatStreamRunner({ fetchImpl, baseUrl: ollamaBaseUrl, admit, log, timeouts, heartbeatMs, maxBufferedBytes, undrainedMs });
   const guard = createRequestGuard(guardPolicy || defaultPolicy(port));
   const gate = (req, res, next) => (enabled ? next() : res.status(404).json({ error: 'chat-disabled' }));
   const send = (res, r) => res.status(r.status).json(r.body);
   const sessionError = e => fail(e.status, e.code, e.request_status ? { request_status: e.request_status, assistant_message_id: e.assistant_message_id } : null);
+  const ownerOf = req => historyAuth.identify(req.headers.authorization);
+  const ownerRequired = (req, res, next) => {
+    if (!historyAuth.configured) return send(res, fail(503, 'saved-history-unavailable'));
+    const owner = ownerOf(req);
+    if (!owner) return send(res, fail(401, 'saved-history-auth-required'));
+    req.chatOwner = owner;
+    next();
+  };
+  const ownsSaved = (req, result) => result.session.mode !== 'saved' || (req.chatOwner || ownerOf(req)) === result.owner && !!result.owner;
 
   async function installedTags() {
     if (!Models.isLoopbackBaseUrl(ollamaBaseUrl)) return { error: fail(503, 'loopback-required') };
@@ -92,24 +103,39 @@ function registerChatRoutes(app, {
     const mode = body.mode || 'temporary';
     if (mode !== 'temporary' && mode !== 'saved') return send(res, fail(400, 'invalid-mode'));
     if (mode === 'saved' && body.consent !== true) return send(res, fail(400, 'saved-history-consent-required'));
+    if (mode === 'saved' && !historyAuth.configured) return send(res, fail(503, 'saved-history-unavailable'));
+    if (mode === 'saved' && !ownerOf(req)) return send(res, fail(401, 'saved-history-auth-required'));
     if (mode === 'temporary' && body.consent !== undefined) return send(res, fail(400, 'field-not-allowed', { field: 'consent' }));
     const model = body.model === undefined ? Models.DEFAULT_CHAT_MODEL : body.model;
     if (!Models.isAllowlisted(model)) return send(res, fail(422, 'model-not-allowed'));
-    const r = store.create({ model, mode });
+    const r = store.create({ model, mode, owner: mode === 'saved' ? ownerOf(req) : null });
     if (r.error) return send(res, sessionError(r.error));
     const s = r.session;
     res.status(201).json({ session_id: s.session_id, mode: s.mode, model: s.model, created_at: s.created_at });
   });
 
-  app.get('/api/chat/sessions', gate, guard, (_req, res) => {
-    res.set('Cache-Control', 'no-store').json({ sessions: store.listSaved() });
+  app.get('/api/chat/sessions', gate, guard, ownerRequired, (req, res) => {
+    res.set('Cache-Control', 'no-store').json({ sessions: store.listSaved(req.chatOwner) });
   });
 
   app.get('/api/chat/sessions/:id/export', gate, guard, (req, res) => {
     const r = store.get(req.params.id);
     if (r.error) return send(res, sessionError(r.error));
     if (r.session.mode !== 'saved') return send(res, fail(409, 'temporary-session-not-exportable'));
+    if (!ownsSaved(req, r)) return send(res, fail(404, 'session-not-found'));
+    const format = req.query.format || 'json';
+    if (format !== 'json' && format !== 'md') return send(res, fail(400, 'invalid-export-format'));
     res.set('Cache-Control', 'no-store');
+    if (format === 'md') {
+      const lines = ['# DexDiffusion Chat export', ''];
+      for (const m of r.session.messages) {
+        const content = String(m.content || '');
+        const fence = '~'.repeat(Math.max(4, ...Array.from(content.matchAll(/~+/g), x => x[0].length + 1)));
+        lines.push(`## ${m.role === 'user' ? 'User' : 'Assistant'} · ${m.status}`, '', fence, content, fence, '');
+      }
+      res.set('Content-Disposition', `attachment; filename="dexdiffusion-chat-${r.session.session_id}.md"`);
+      return res.type('text/markdown; charset=utf-8').send(lines.join('\n'));
+    }
     res.set('Content-Disposition', `attachment; filename="dexdiffusion-chat-${r.session.session_id}.json"`);
     res.json({ schema: 'dex.chat.export.v1', exported_at: new Date().toISOString(), session: r.session });
   });
@@ -117,10 +143,15 @@ function registerChatRoutes(app, {
   app.get('/api/chat/sessions/:id', gate, guard, (req, res) => {
     const r = store.get(req.params.id);
     if (r.error) return send(res, sessionError(r.error));
+    if (!ownsSaved(req, r)) return send(res, fail(404, 'session-not-found'));
+    res.set('Cache-Control', 'no-store');
     res.json(r.session);
   });
 
   app.delete('/api/chat/sessions/:id', gate, guard, (req, res) => {
+    const found = store.get(req.params.id);
+    if (found.error) return send(res, sessionError(found.error));
+    if (!ownsSaved(req, found)) return send(res, fail(404, 'session-not-found'));
     const r = store.remove(req.params.id);
     if (r.error) return send(res, sessionError(r.error));
     res.status(204).end();
@@ -132,6 +163,7 @@ function registerChatRoutes(app, {
     const b = v.value;
     const existing = store.get(b.session_id);
     if (existing.error) return send(res, sessionError(existing.error));
+    if (!ownsSaved(req, existing)) return send(res, fail(404, 'session-not-found'));
     const tags = await installedTags();
     if (tags.error) return send(res, tags.error);
     const resolved = Models.resolveChatModel(b.model === undefined ? existing.session.model : b.model, tags.json);
@@ -140,7 +172,7 @@ function registerChatRoutes(app, {
       ? store.beginSend(b.session_id, { request_id: b.request_id, content: b.content, model: resolved.model })
       : store.beginRegenerate(b.session_id, { request_id: b.request_id, regenerate_of: b.regenerate_of, model: resolved.model });
     if (begun.error) return send(res, sessionError(begun.error));
-    await runner.run({ res, store, turn: begun.turn, resourceClass: resolved.resource_class, options: b.options });
+    await runner.run({ res, store, turn: begun.turn, resourceClass: resolved.resource_class, options: b.options, owner: existing.owner || null });
   });
 
   return { store, runner };

@@ -53,7 +53,7 @@ function createChatCompute({
 
   function blockedReason() {
     const st = arbiter.state();
-    return st.quarantine ? 'quarantine' : st.external && st.external.occupied ? 'external' : st.owner ? 'heavy-lease' : 'waiting';
+    return st.quarantine ? 'quarantine' : st.external && st.external.occupied === null ? 'unknown' : st.external && st.external.occupied ? 'external' : st.owner ? 'heavy-lease' : 'waiting';
   }
 
   // A request that never reached Ollama: provably not started.
@@ -70,7 +70,7 @@ function createChatCompute({
 
   // queueTimeoutMs / ownerWaitMs bound the wait for legacy callers (Chat streams wait until aborted).
   // onStop: how the cancel-manager stop hook aborts this request (default: the Chat stream runner).
-  async function admit({ session_id, request_id, model, resource_class, operation = 'chat-stream', signal, onQueued = () => {}, queueTimeoutMs = Infinity, ownerWaitMs = ownershipWaitMs, onStop = null }) {
+  async function admit({ session_id, request_id, model, resource_class, owner = null, operation = 'chat-stream', signal, onQueued = () => {}, queueTimeoutMs = Infinity, ownerWaitMs = ownershipWaitMs, onStop = null }) {
     const refusal = gate();
     if (refusal) return { admitted: false, code: 'compute_unavailable', reason: refusal };
     if (!arbiter || !jobStore || !remoteWorkers || !cancelManager) return { admitted: false, code: 'compute_unavailable', reason: 'compute-owner-missing' };
@@ -78,7 +78,7 @@ function createChatCompute({
     const job = jobStore.create({ media_kind: 'chat', operation, worker_id: 'ollama', model_id: model, resource_class, params: { request_id }, persist_text: false, artifact_required: false });
     let settle;
     const ctrl = {
-      job_id: job.job_id, request_id, model, resource_class, onStop, phase: 'queued', upstreamStarted: false, upstreamClosed: false,
+      job_id: job.job_id, request_id, model, resource_class, owner, onStop, phase: 'queued', upstreamStarted: false, upstreamClosed: false,
       cleanup: null, finalized: false, outcome: null, settled: new Promise(r => { settle = r; }), result: null,
     };
     ctrl.settle = r => { if (!ctrl.result) { ctrl.result = r; settle(r); } };
@@ -146,17 +146,17 @@ function createChatCompute({
     remoteWorkers.note(job.job_id, 'owner-clear', 'no model loaded before this request; DexDiffusion owns the next load');
     return {
       admitted: true, job_id: job.job_id, keep_alive: 0,
-      verifyStop: async () => ((await runCleanup(ctrl)).verified ? 'verified' : 'unverified'),
+      verifyStop: async ({ upstreamClosed = false } = {}) => ((await runCleanup(ctrl, upstreamClosed)).verified ? 'verified' : 'unverified'),
       release: (o) => finish(ctrl, o),
     };
   }
 
   // Unload what we loaded, then prove it is gone. Cached: double stop, disconnect and release share one cleanup.
-  function runCleanup(ctrl) {
+  function runCleanup(ctrl, upstreamClosed = false) {
+    if (upstreamClosed) ctrl.upstreamClosed = true;
     if (ctrl.cleanup) return ctrl.cleanup;
-    ctrl.upstreamClosed = true; // the runner calls this only after its upstream reader has closed
     ctrl.phase = 'releasing';
-    remoteWorkers.note(ctrl.job_id, 'upstream-closed', 'local upstream request ended');
+    if (ctrl.upstreamClosed) remoteWorkers.note(ctrl.job_id, 'upstream-closed', 'local upstream request ended');
     ctrl.cleanup = (async () => {
       let unloadAck = false;
       try {
@@ -191,11 +191,11 @@ function createChatCompute({
     }
   }
 
-  async function finish(ctrl, { outcome, code = null } = {}) {
+  async function finish(ctrl, { outcome, code = null, upstreamClosed = false } = {}) {
     if (ctrl.finalized) return ctrl.settled;
     ctrl.finalized = true;
     ctrl.outcome = { outcome, code };
-    const c = await runCleanup(ctrl);
+    const c = await runCleanup(ctrl, upstreamClosed);
     if (c.verified) {
       complete(ctrl);
     } else {
@@ -282,7 +282,7 @@ function createChatCompute({
       outcome = ac.signal.aborted ? 'stopped' : value && value.ok === false ? 'error' : 'done';
     } catch (e) { thrown = e; outcome = ac.signal.aborted ? 'stopped' : 'error'; }
     if (signal) signal.removeEventListener('abort', link);
-    const cleanup = lease.release({ outcome, code: outcome === 'error' ? 'upstream_error' : null });
+    const cleanup = lease.release({ outcome, code: outcome === 'error' ? 'upstream_error' : null, upstreamClosed: true });
     if (thrown) { thrown.cleanup = cleanup; throw thrown; }
     return { ok: true, value, stopped: outcome === 'stopped', job_id: lease.job_id, cleanup };
   }
@@ -291,6 +291,7 @@ function createChatCompute({
     admit, runExclusive, probe, stop, workerChanged, checkOllamaModel,
     attachRunner(r) { runner = r; },
     holdsLive: jobId => live.has(jobId),
+    ownerOfJob: jobId => live.has(jobId) ? live.get(jobId).owner : undefined,
     describe: () => [...live.values()].map(c => ({ job_id: c.job_id, model: c.model, phase: c.phase })),
   };
 }

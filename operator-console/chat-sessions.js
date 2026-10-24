@@ -11,6 +11,7 @@ const path = require('path');
 const SESSION_ID = /^cs_[0-9a-f]{32}$/;
 const MESSAGE_ID = /^cm_[0-9a-f]{32}$/;
 const REQUEST_ID = /^cr_[0-9a-f]{32}$/;
+const OWNER = /^[a-zA-Z0-9_-]{1,64}$/;
 const SYSTEM_PROMPT = 'You are a helpful local assistant inside DexDiffusion. Answer in plain text. You cannot run tools, commands or code, fetch URLs, or read or write files.';
 const ASSISTANT_TERMINAL = new Set(['complete', 'stopped', 'failed']);
 
@@ -22,14 +23,19 @@ function createTemporarySessionStore({
   savedFile = null, maxSavedSessions = 100,
 } = {}) {
   const sessions = new Map();
+  function privateDirectory(dir) {
+    const stat = fs.lstatSync(dir);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error('chat-state-symlink');
+    if ((stat.mode & 0o077) !== 0 || (typeof process.getuid === 'function' && stat.uid !== process.getuid())) throw new Error('chat-state-not-private');
+  }
 
   function save() {
     if (!savedFile) return;
     const dir = path.dirname(savedFile);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    if (fs.lstatSync(dir).isSymbolicLink()) throw new Error('chat-state-symlink');
+    privateDirectory(dir);
     const records = [...sessions.values()].filter(s => s.mode === 'saved').map(s => ({
-      session_id: s.session_id, mode: s.mode, model: s.model, created_at: s.created_at, touched: s.touched,
+      session_id: s.session_id, mode: s.mode, owner: s.owner, model: s.model, created_at: s.created_at, touched: s.touched,
       seq: s.seq, messages: s.messages, requests: [...s.requests],
     }));
     const tmp = savedFile + '.' + crypto.randomBytes(6).toString('hex') + '.tmp';
@@ -41,12 +47,15 @@ function createTemporarySessionStore({
   }
 
   if (savedFile && fs.existsSync(savedFile)) {
+    privateDirectory(path.dirname(savedFile));
     if (fs.lstatSync(savedFile).isSymbolicLink()) throw new Error('chat-state-symlink');
     if ((fs.statSync(savedFile).mode & 0o077) !== 0) throw new Error('chat-state-not-private');
     const data = JSON.parse(fs.readFileSync(savedFile, 'utf8'));
     if (data.schema !== 'dex.chat.saved.v1' || !Array.isArray(data.sessions) || data.sessions.length > maxSavedSessions) throw new Error('invalid-chat-state');
     for (const item of data.sessions) {
       if (!item || !SESSION_ID.test(item.session_id) || item.mode !== 'saved' || !Array.isArray(item.messages) || item.messages.length > maxMessages || !Array.isArray(item.requests)) throw new Error('invalid-chat-state');
+      // Old ownerless records are preserved on disk but are inaccessible through authenticated routes.
+      if (item.owner !== undefined && !OWNER.test(item.owner)) throw new Error('invalid-chat-state');
       const s = { ...item, requests: new Map(item.requests), inflight: null };
       for (const m of s.messages) if (m.status === 'incomplete') { m.status = 'failed'; m.done_reason = 'interrupted'; m.finished_at = new Date(now()).toISOString(); }
       sessions.set(s.session_id, s);
@@ -66,13 +75,14 @@ function createTemporarySessionStore({
     return { session: s };
   }
 
-  function create({ model, mode = 'temporary' }) {
+  function create({ model, mode = 'temporary', owner = null }) {
     sweep();
     if (mode !== 'temporary' && mode !== 'saved') return { error: { status: 400, code: 'invalid-mode' } };
     if (mode === 'saved' && !savedFile) return { error: { status: 400, code: 'saved-history-unavailable' } };
+    if (mode === 'saved' && (typeof owner !== 'string' || !OWNER.test(owner))) return { error: { status: 401, code: 'saved-history-owner-required' } };
     if ([...sessions.values()].filter(s => s.mode === mode).length >= (mode === 'saved' ? maxSavedSessions : maxSessions)) return { error: { status: 429, code: 'session-limit' } };
     const t = now();
-    const s = { session_id: newId('cs_'), mode, model, created_at: new Date(t).toISOString(), touched: t, seq: 0, messages: [], requests: new Map(), inflight: null };
+    const s = { session_id: newId('cs_'), mode, owner: mode === 'saved' ? owner : null, model, created_at: new Date(t).toISOString(), touched: t, seq: 0, messages: [], requests: new Map(), inflight: null };
     sessions.set(s.session_id, s);
     if (mode === 'saved') {
       try { save(); } catch (_) { sessions.delete(s.session_id); return { error: { status: 503, code: 'saved-history-write-failed' } }; }
@@ -80,8 +90,8 @@ function createTemporarySessionStore({
     return { session: view(s) };
   }
 
-  function listSaved() {
-    return [...sessions.values()].filter(s => s.mode === 'saved').sort((a, b) => b.touched - a.touched)
+  function listSaved(owner) {
+    return [...sessions.values()].filter(s => s.mode === 'saved' && s.owner === owner).sort((a, b) => b.touched - a.touched)
       .map(s => ({ session_id: s.session_id, model: s.model, created_at: s.created_at, updated_at: new Date(s.touched).toISOString(), message_count: s.messages.length }));
   }
 
@@ -94,7 +104,7 @@ function createTemporarySessionStore({
 
   function get(id) {
     const r = lookup(id);
-    return r.error ? r : { session: view(r.session) };
+    return r.error ? r : { session: view(r.session), owner: r.session.owner };
   }
 
   function remove(id) {

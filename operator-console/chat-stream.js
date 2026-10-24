@@ -42,11 +42,11 @@ function createChatStreamRunner({
 } = {}) {
   const active = new Map();
 
-  async function run({ res, store, turn, resourceClass, options = {} }) {
+  async function run({ res, store, turn, resourceClass, options = {}, owner = null }) {
     const t0 = now();
     const base = { v: SCHEMA, session_id: turn.session_id, request_id: turn.request_id, job_id: null, user_message_id: turn.user_message_id, assistant_message_id: turn.assistant_message_id };
     const upstream = new AbortController();
-    let n = 0, terminalSent = false, clientGone = false, abortCode = null, stopReason = null, partialChars = 0, lease = null, reader = null, notStarted = false;
+    let n = 0, terminalSent = false, clientGone = false, abortCode = null, stopReason = null, partialChars = 0, lease = null, reader = null, readerClosed = false, notStarted = false;
     const timers = new Set();
 
     res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', Connection: 'keep-alive' });
@@ -80,7 +80,7 @@ function createChatStreamRunner({
       if (!abortCode) {
         try {
           lease = await admit({
-            session_id: turn.session_id, request_id: turn.request_id, model: turn.model, resource_class: resourceClass,
+            session_id: turn.session_id, request_id: turn.request_id, model: turn.model, resource_class: resourceClass, owner,
             operation: 'chat-stream', signal: upstream.signal,
             onQueued: (position, blocked_reason) => write('queued', { position, blocked_reason }),
           });
@@ -103,13 +103,25 @@ function createChatStreamRunner({
       clearInterval(heartbeat);
       for (const t of timers) clearTimeout(t);
       timers.clear();
-      if (reader) { try { reader.cancel().catch(() => {}); } catch (_) {} }
+      if (outcome && outcome.event === 'done') readerClosed = true; // Ollama's explicit done marker is terminal evidence.
+      if (reader && !readerClosed) {
+        upstream.abort();
+        try {
+          const closed = await Promise.race([
+            Promise.resolve(reader.cancel()).then(() => true, () => false),
+            new Promise(resolve => setTimeout(() => resolve(false), 300)),
+          ]);
+          readerClosed = closed;
+        } catch (_) { readerClosed = false; }
+      } else if (reader) {
+        try { reader.cancel().catch(() => {}); } catch (_) {}
+      }
     }
 
     // Verified only when the lease (Phase 3) proves the owned model is gone; otherwise always unverified.
     if (outcome.event === 'stopped') {
       let verdict = notStarted ? 'verified' : 'unverified';
-      if (lease && typeof lease.verifyStop === 'function') { try { verdict = (await lease.verifyStop()) === 'verified' ? 'verified' : 'unverified'; } catch (_) {} }
+      if (lease && typeof lease.verifyStop === 'function') { try { verdict = (await lease.verifyStop({ upstreamClosed: !reader || readerClosed })) === 'verified' ? 'verified' : 'unverified'; } catch (_) {} }
       outcome.payload = { stop: verdict, reason: stopReason || 'user', partial_chars: partialChars };
     } else if (outcome.event === 'error') {
       outcome.payload = { code: outcome.code, partial_chars: partialChars };
@@ -127,7 +139,7 @@ function createChatStreamRunner({
     active.delete(turn.request_id);
     log(`chat-stream ${turn.request_id} ${outcome.event}${outcome.code ? ' ' + outcome.code : ''} model=${turn.model} chars=${partialChars}`);
     if (lease && typeof lease.release === 'function') {
-      try { await lease.release({ outcome: outcome.event, code: outcome.code || null, stop: outcome.payload && outcome.payload.stop || null }); } catch (_) { log(`chat-stream ${turn.request_id} release-failed`); }
+      try { await lease.release({ outcome: outcome.event, code: outcome.code || null, stop: outcome.payload && outcome.payload.stop || null, upstreamClosed: !reader || readerClosed }); } catch (_) { log(`chat-stream ${turn.request_id} release-failed`); }
     }
     return outcome.event;
 
@@ -169,6 +181,7 @@ function createChatStreamRunner({
           }
         }
         if (obj.done === true) {
+          if (obj.done_reason !== 'stop') return failure('upstream_done_reason_unverified');
           return {
             event: 'done', status: 'complete', done_reason: typeof obj.done_reason === 'string' ? obj.done_reason : null,
             eval_count: Number.isFinite(obj.eval_count) ? obj.eval_count : null, prompt_eval_count: Number.isFinite(obj.prompt_eval_count) ? obj.prompt_eval_count : null,
@@ -179,7 +192,8 @@ function createChatStreamRunner({
       };
       for (;;) {
         let chunk;
-        try { chunk = await reader.read(); } catch (_) { return stoppedOrFailure(); }
+        try { chunk = await reader.read(); } catch (_) { readerClosed = true; return stoppedOrFailure(); }
+        if (chunk.done) readerClosed = true;
         if (abortCode) return stoppedOrFailure();
         cancel(idle);
         const parsed = chunk.done ? parser.end() : parser.push(Buffer.from(chunk.value));

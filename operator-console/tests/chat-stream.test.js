@@ -124,8 +124,8 @@ test('send streams split NDJSON as ordered deltas and one done; upstream gets on
     const s = (await h.request('GET', '/api/chat/sessions/' + sid)).body;
     assert.deepEqual(s.messages.map(m => [m.role, m.status, m.content]), [['user', 'complete', 'hi there'], ['assistant', 'complete', 'Hello, wörld']]);
     assert.equal(s.messages[1].eval_count, 3);
-    assert.deepEqual(a.calls, [{ session_id: sid, request_id: r.events[0].data.request_id, model: 'gemma3:4b', resource_class: 'light', operation: 'chat-stream', signal: undefined, onQueued: undefined }]);
-    assert.deepEqual(a.releases, [{ outcome: 'done', code: null, stop: null }]);
+    assert.deepEqual(a.calls, [{ session_id: sid, request_id: r.events[0].data.request_id, model: 'gemma3:4b', resource_class: 'light', owner: null, operation: 'chat-stream', signal: undefined, onQueued: undefined }]);
+    assert.deepEqual(a.releases, [{ outcome: 'done', code: null, stop: null, upstreamClosed: true }]);
   } finally { await h.close(); }
 });
 
@@ -224,6 +224,20 @@ test('malformed upstream line -> error parse_error; the partial reply is failed 
   } finally { await h.close(); }
 });
 
+test('a non-success upstream done_reason is failed and excluded from later context', async () => {
+  const a = grantingAdmitter();
+  const h = await boot({ admit: a.admit, chat: scripted([{ write: delta('PART') }, { write: doneLine({ done_reason: 'length' }) }]) });
+  try {
+    const sid = await h.newSession();
+    const first = await h.send(sid, 'q');
+    assert.deepEqual(first.events.map(e => e.event), ['started', 'delta', 'error']);
+    assert.equal(first.events.at(-1).data.code, 'upstream_done_reason_unverified');
+    h.fake.setChat(scripted([{ write: doneLine() }]));
+    await h.send(sid, 'q2');
+    assert.ok(!JSON.stringify(h.fake.chatRequests()[1].body.messages).includes('PART'));
+  } finally { await h.close(); }
+});
+
 test('premature EOF, upstream error line, HTTP error and an oversized line are never reported as done', async () => {
   const cases = [
     [[{ write: delta('a') }, { write: delta('b') }], 'upstream_closed_early'],
@@ -276,7 +290,7 @@ test('client disconnect mid-stream aborts the upstream and records stopped/clien
     assert.ok(r.destroyed);
     await until(() => h.fake.chatRequests()[0].aborted);
     await until(() => a.releases.length === 1);
-    assert.deepEqual(a.releases[0], { outcome: 'stopped', code: null, stop: 'unverified' });
+    assert.deepEqual(a.releases[0], { outcome: 'stopped', code: null, stop: 'unverified', upstreamClosed: true });
     const m = (await h.request('GET', '/api/chat/sessions/' + sid)).body.messages[1];
     assert.deepEqual([m.status, m.content], ['stopped', 'one']);
     assert.equal(h.mod.runner.activeCount(), 0);
@@ -412,5 +426,21 @@ test('backpressure: the next upstream chunk is not read until the client drains;
   assert.equal(await done, 'stopped');
   assert.ok(res.destroyed);
   assert.equal(store.get(sid).session.messages[1].status, 'stopped');
-  assert.deepEqual(releases, [{ outcome: 'stopped', code: null, stop: 'unverified' }]);
+  assert.deepEqual(releases, [{ outcome: 'stopped', code: null, stop: 'unverified', upstreamClosed: true }]);
+});
+
+test('an unsettled upstream reader is not reported closed to the compute lease', async () => {
+  const { EventEmitter } = require('node:events');
+  const store = createTemporarySessionStore();
+  const sid = store.create({ model: 'gemma3:4b' }).session.session_id;
+  const turn = store.beginSend(sid, { request_id: rid(), content: 'q' }).turn;
+  const reader = { read: async () => ({ done: false, value: Buffer.from(line({ error: 'upstream failed' })) }), cancel: () => new Promise(() => {}) };
+  const fetchImpl = async () => ({ ok: true, body: { getReader: () => reader } });
+  const res = Object.assign(new EventEmitter(), { writableLength: 0, destroyed: false, writableEnded: false,
+    writeHead() {}, write() { return true; }, end() { this.writableEnded = true; } });
+  const released = [];
+  const runner = createChatStreamRunner({ fetchImpl, baseUrl: 'http://127.0.0.1:1', admit: async () => ({ admitted: true, job_id: 'j', release: async r => released.push(r) }), timeouts: FAST });
+  assert.equal(await runner.run({ res, store, turn, resourceClass: 'light' }), 'error');
+  assert.equal(released[0].upstreamClosed, false, 'uncertain reader closure must quarantine in the real compute owner');
+  assert.equal(store.get(sid).session.messages[1].status, 'failed');
 });

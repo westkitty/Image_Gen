@@ -66,6 +66,14 @@ test('masterOf, utilityOf and the initial-screen resolvers', () => {
   assert.equal(Nav.resolveInitialScreen('chat'), 'create', 'the flat resolver never restores Chat');
 });
 
+test('subroute restoration accepts only a route belonging to the restored leaf', () => {
+  assert.equal(Nav.resolveSubroute('voices', 'voice'), 'voices');
+  assert.equal(Nav.resolveSubroute('long-form', 'voice'), 'long-form');
+  assert.equal(Nav.resolveSubroute('voices', 'drama'), null);
+  assert.equal(Nav.resolveSubroute('history', 'chat'), 'history');
+  assert.equal(Nav.resolveSubroute('__proto__', 'voice'), null);
+});
+
 test('layout flag: only exactly "masters" opts in; anything else, or broken storage, is flat', () => {
   assert.equal(Nav.resolveLayout(memStorage({ dex_studio_layout: 'masters' })), 'masters');
   for (const v of ['flat', 'Masters', 'masters ', '1', 'true', '']) assert.equal(Nav.resolveLayout(memStorage({ dex_studio_layout: v })), 'flat', v);
@@ -179,7 +187,7 @@ test('opt-in masters layout: five tabs, the Image subnav, three utilities plus t
     assert.ok(tabs.every(t => t.getAttribute('role') === 'tab' && t.type === 'button'));
     assert.equal(q(doc, '[data-master-bar]').getAttribute('role'), 'tablist');
     const leaves = qa(doc, '[data-subnav-leaf]');
-    assert.deepEqual(leaves.map(l => l.textContent.trim()), ['Create', 'Batch', 'Swap', 'Edit', 'Enhance']);
+    assert.deepEqual(leaves.map(l => l.textContent.trim()), ['Create', 'Batch', 'Edit · Img2Img / Inpaint / Outpaint', 'Enhance', 'Swap']);
     assert.equal(q(doc, '[data-subnav-leaf][aria-current="page"]').textContent.trim(), 'Create');
     assert.equal(q(doc, '[data-studio-subnav]').getAttribute('aria-label'), 'Image screens');
     assert.deepEqual(qa(doc, '[data-studio-utility]').map(u => u.textContent.trim()), ['Library', 'Models', 'System']);
@@ -197,7 +205,7 @@ test('switching masters restores each master\'s remembered leaf and keeps sessio
     assert.equal(inst.state.screens[2], 'edit');
     click(w, q(doc, '[data-master-tab="audio"]')); await settle(w);
     assert.equal(inst.state.screens[2], 'voice', 'first leaf for a master never visited');
-    click(w, q(doc, '[data-subnav-leaf="drama"]')); await settle(w);
+    click(w, q(doc, '[data-subnav-leaf="script"]')); await settle(w);
     click(w, q(doc, '[data-master-tab="3d"]')); await settle(w);
     assert.equal(inst.state.screens[2], 'world');
     click(w, q(doc, '[data-master-tab="image"]')); await settle(w);
@@ -302,9 +310,9 @@ test('keyboard: arrow keys, Home and End rove within each bar; Enter or click ac
     assert.equal(inst.state.screens[2], 'create', 'moving focus does not navigate');
     click(w, q(doc, '[data-master-tab="audio"]')); await settle(w);
     assert.equal(doc.activeElement.getAttribute('data-master-tab'), 'audio', 'focus stays on the operated tab after the bar is rebuilt');
-    q(doc, '[data-subnav-leaf="voice"]').focus();
+    q(doc, '[data-subnav-leaf="clips"]').focus();
     key(doc.activeElement, 'ArrowLeft');
-    assert.equal(doc.activeElement.getAttribute('data-subnav-leaf'), 'music');
+    assert.equal(doc.activeElement.getAttribute('data-subnav-leaf'), 'voices');
   } finally { close(); }
 });
 

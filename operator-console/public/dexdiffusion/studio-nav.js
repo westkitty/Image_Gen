@@ -149,11 +149,29 @@
   const CHAT_LEAF = Object.freeze({ id: 'chat', label: 'Chat', group: 'chat' });
   // The 14 legacy leaves in their canonical order, plus chat: 15 screens.
   const SCREENS = Object.freeze(IDS.concat(['chat']));
+  // Product-level destinations reuse legacy screen IDs; a subroute may select an existing inner tab.
+  const SUBROUTES = Object.freeze({
+    chat: Object.freeze([{ id: 'conversation', label: 'Conversation', leaf: 'chat' }, { id: 'history', label: 'History', leaf: 'chat' }]),
+    image: Object.freeze([{ id: 'create', label: 'Create', leaf: 'create' }, { id: 'batch', label: 'Batch', leaf: 'batch' }, { id: 'edit', label: 'Edit · Img2Img / Inpaint / Outpaint', leaf: 'edit' }, { id: 'enhance', label: 'Enhance', leaf: 'enhance' }, { id: 'swap', label: 'Swap', leaf: 'swap' }]),
+    audio: Object.freeze([{ id: 'clips', label: 'Clips', leaf: 'voice', tab: 'quick' }, { id: 'script', label: 'Script', leaf: 'drama' }, { id: 'long-form', label: 'Long Form', leaf: 'voice', tab: 'profiles' }, { id: 'music', label: 'Music', leaf: 'music' }, { id: 'voices', label: 'Voices', leaf: 'voice', tab: 'designer' }]),
+    video: Object.freeze([{ id: 'readiness', label: 'Readiness', leaf: 'video' }]),
+    '3d': Object.freeze([{ id: 'assets', label: 'Assets', leaf: '3d' }, { id: 'worlds', label: 'Worlds', leaf: 'world' }]),
+  });
+  for (const routes of Object.values(SUBROUTES)) { for (const route of routes) Object.freeze(route); Object.freeze(routes); }
   const LAYOUT_KEY = 'dex_studio_layout';
   const MASTER_LAST_KEY = 'dex_master_last';
+  const SUBROUTE_KEY = 'dex_studio_subroute';
   const LAYOUTS = Object.freeze(['flat', 'masters']);
 
   function isScreen(id) { return SCREENS.indexOf(id) > -1; }
+  function resolveSubroute(id, leaf) {
+    if (typeof id !== 'string' || !isScreen(leaf)) return null;
+    for (const routes of Object.values(SUBROUTES)) {
+      const route = routes.find(r => r.id === id && r.leaf === leaf);
+      if (route) return route.id;
+    }
+    return null;
+  }
   function masterOf(id) {
     for (const m of MASTERS) if (m.leaves.indexOf(id) > -1) return m.id;
     return null;
@@ -241,6 +259,15 @@
       };
     });
   }
+  function subroutes(masterId, activeLeaf, activeRoute = null, { onSelect = null } = {}) {
+    const routes = SUBROUTES[masterId] || [];
+    const selected = routes.find(r => r.id === activeRoute && r.leaf === activeLeaf) || routes.find(r => r.leaf === activeLeaf) || routes[0];
+    return routes.map(r => ({ id: r.id, leaf: r.leaf, label: r.label, active: String(r === selected),
+      ariaCurrent: r === selected ? 'page' : 'false', tabIndex: r === selected ? '0' : '-1',
+      unavailable: UNAVAILABLE_EXECUTION[r.leaf] ? 'true' : 'false',
+      title: UNAVAILABLE_EXECUTION[r.leaf] ? r.label + ' — ' + UNAVAILABLE_EXECUTION[r.leaf] : r.label,
+      onClick: () => { if (typeof onSelect === 'function') onSelect(r.id); } }));
+  }
   function utilities({ activeScreen = 'create', onSelect = null } = {}) {
     return UTILITIES.map(u => {
       const active = !!u.leaf && u.leaf === activeScreen;
@@ -273,14 +300,18 @@
     MASTERS,
     UTILITIES,
     SCREENS,
+    SUBROUTES,
     LAYOUTS,
     LAYOUT_KEY,
     MASTER_LAST_KEY,
+    SUBROUTE_KEY,
     masterOf,
     utilityOf,
     isScreen,
+    resolveSubroute,
     leafLabel,
     subnav,
+    subroutes,
     masters,
     utilities,
     resolveInitialScreenV2,

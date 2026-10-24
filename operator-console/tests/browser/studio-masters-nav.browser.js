@@ -38,7 +38,7 @@ const overflow = page => page.evaluate(() => ({ scroll: document.documentElement
       await page.locator('[data-studio-category="system"]').click();
       await page.waitForFunction(() => window.__dex && __dex.state.screens[2] === 'system');
       await page.locator('[data-studio-layout-select]').selectOption('masters');
-      await page.locator('[data-master-bar]').waitFor({ state: 'visible' });
+      await page.locator(width < 700 ? '[data-studio-mobile-nav] summary' : '[data-master-bar]').waitFor({ state: 'visible' });
       assert.equal(await page.locator('[data-master-tab]').count(), 5, 'the opt-in is discoverable from System');
       await page.locator('[data-studio-layout-select]').selectOption('flat');
       await page.locator('[data-studio-nav]').waitFor({ state: 'visible' });
@@ -50,39 +50,42 @@ const overflow = page => page.evaluate(() => ({ scroll: document.documentElement
     // Opt-in masters layout.
     {
       const { page, errors } = await open(browser, base, { width, height, layout: 'masters' });
-      await page.locator('[data-master-bar]').waitFor({ state: 'visible' });
+      await page.locator(width < 700 ? '[data-studio-mobile-nav] summary' : '[data-master-bar]').waitFor({ state: 'visible' });
+      const selectMaster = async id => { if (width < 700) { await page.locator('[data-studio-mobile-nav] summary').click(); await page.locator('[data-mobile-master="' + id + '"]').click(); } else await page.locator('[data-master-tab="' + id + '"]').click(); };
+      const selectSubroute = async id => { if (width < 700) { await page.locator('[data-studio-mobile-nav] summary').click(); await page.locator('[data-mobile-subroute="' + id + '"]').click(); } else await page.locator('[data-subnav-leaf="' + id + '"]').click(); };
       assert.equal(await page.locator('[data-tab]').count(), 0, 'no flat chips in the masters layout');
       assert.deepEqual(await page.locator('[data-master-tab]').allTextContents(), ['Chat', 'Image', 'Audio', 'Video', '3D']);
-      assert.equal(await page.getByRole('tab', { name: 'Image' }).getAttribute('aria-selected'), 'true');
+      assert.equal(await page.locator('[data-master-tab="image"]').getAttribute('aria-selected'), 'true');
       assert.equal(await page.locator('[data-subnav-leaf][aria-current="page"]').textContent(), 'Create');
       // Pointer and touch-size targets are operable.
-      await page.getByRole('tab', { name: 'Audio' }).click();
+      await selectMaster('audio');
       await page.waitForFunction(() => __dex.state.screens[2] === 'voice');
-      await page.locator('[data-subnav-leaf="drama"]').click();
+      await selectSubroute('script');
       await page.waitForFunction(() => __dex.state.screens[2] === 'drama');
-      await page.getByRole('tab', { name: 'Image' }).click();
+      await selectMaster('image');
       await page.waitForFunction(() => __dex.state.screens[2] === 'create');
-      await page.getByRole('tab', { name: 'Audio' }).click();
+      await selectMaster('audio');
       await page.waitForFunction(() => __dex.state.screens[2] === 'drama');
-      const box = await page.getByRole('tab', { name: 'Audio' }).boundingBox();
+      const box = await page.locator(width < 700 ? '[data-studio-mobile-nav] summary' : '[data-master-tab="audio"]').boundingBox();
       assert.ok(box.height >= 36, 'master targets are at least 36 px tall: ' + JSON.stringify(box));
-      // Keyboard: roving focus and a visible focus indicator.
-      await page.getByRole('tab', { name: 'Audio' }).focus();
-      await page.keyboard.press('ArrowRight');
-      const focused = await page.evaluate(() => { const el = document.activeElement; const cs = getComputedStyle(el); return { id: el.getAttribute('data-master-tab'), tabindex: el.getAttribute('tabindex'), ring: cs.boxShadow, outline: cs.outlineStyle }; });
+      // Keyboard: roving focus in desktop bar; the phone uses a native keyboard disclosure.
+      if (width < 700) { await page.locator('[data-studio-mobile-nav] summary').focus(); await page.keyboard.press('Enter'); await page.locator('[data-mobile-master="video"]').focus(); }
+      else await page.locator('[data-master-tab="audio"]').focus();
+      if (width >= 700) await page.keyboard.press('ArrowRight');
+      const focused = await page.evaluate(() => { const el = document.activeElement; const cs = getComputedStyle(el); return { id: el.getAttribute('data-master-tab') || el.getAttribute('data-mobile-master'), tabindex: el.getAttribute('tabindex'), ring: cs.boxShadow, outline: cs.outlineStyle }; });
       assert.equal(focused.id, 'video');
-      assert.equal(focused.tabindex, '0');
+      if (width >= 700) assert.equal(focused.tabindex, '0');
       assert.ok(focused.ring !== 'none' || focused.outline !== 'none', 'focus is visible: ' + JSON.stringify(focused));
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => __dex.state.screens[2] === 'video');
       assert.match(await page.locator('[data-scroll-pane]').first().textContent(), /video/i);
       // Utilities and the Jobs drawer.
-      await page.locator('[data-studio-utility="library"]').click();
+      if (width < 700) { await page.locator('[data-studio-mobile-nav] summary').click(); await page.locator('[data-mobile-utility="library"]').click(); } else await page.locator('[data-studio-utility="library"]').click();
       await page.waitForFunction(() => __dex.state.screens[2] === 'library');
       assert.equal(await page.locator('[data-studio-utility="library"]').getAttribute('aria-current'), 'page');
       assert.equal(await page.locator('header [data-studio-jobs]').count(), 1);
       // Chat placeholder states (fixture Ollama: connected, feature off).
-      await page.getByRole('tab', { name: 'Chat' }).click();
+      await selectMaster('chat');
       await page.locator('[data-chat-status="feature"] [data-chat-state="not_activated"]').waitFor();
       assert.equal(await page.locator('[data-chat-status="connection"] [data-chat-state]').getAttribute('data-chat-state'), 'available');
       assert.equal(await page.locator('[data-chat-status="generation"] [data-chat-state]').getAttribute('data-chat-state'), 'unavailable');
@@ -93,7 +96,7 @@ const overflow = page => page.evaluate(() => ({ scroll: document.documentElement
       // Reload keeps the leaf and the layout.
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.waitForFunction(() => window.__dex && __dex.state.screens[2] === 'chat');
-      assert.equal(await page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'), 'true');
+      assert.equal(await page.locator('[data-master-tab="chat"]').getAttribute('aria-selected'), 'true');
       assert.deepEqual(errors, []);
       evidence.push({ layout: 'masters', size: `${width}x${height}`, masters: 5, focus: focused, overflow: o });
       await page.close();
@@ -134,7 +137,7 @@ const overflow = page => page.evaluate(() => ({ scroll: document.documentElement
     await page.getByRole('tab', { name: 'Chat' }).click();
     await page.locator('[data-chat-refresh]').click();
     await page.locator('[data-chat-status="generation"] [data-chat-state="ready"]').waitFor();
-    await page.waitForFunction(() => window.__dex && __dex.state.chatSavedSessionsLoaded);
+    assert.equal(await page.locator('[data-chat-save-next]').isDisabled(), true, 'saved history stays locked without a credential');
     await page.locator('[data-chat-model]').selectOption('qwen3.8:27b-mlx');
     await page.locator('[data-chat-composer]').fill('Fixture user text');
     await page.waitForFunction(() => window.__dex && __dex.state.chatDraft === 'Fixture user text');
@@ -148,6 +151,9 @@ const overflow = page => page.evaluate(() => ({ scroll: document.documentElement
     assert.equal(requestCount, 2);
     await page.locator('[data-chat-new]').click();
     await page.waitForFunction(() => document.querySelectorAll('[data-chat-message]').length === 0);
+    await page.locator('[data-chat-history-credential]').fill('fixture-credential-12345678901234567890');
+    await page.locator('[data-chat-history-unlock]').click();
+    await page.waitForFunction(() => __dex.state.chatSavedSessionsLoaded);
     await page.locator('[data-chat-save-next]').check();
     await page.locator('[data-chat-composer]').fill('Saved fixture text');
     await page.waitForFunction(() => window.__dex && __dex.state.chatDraft === 'Saved fixture text');
@@ -157,6 +163,36 @@ const overflow = page => page.evaluate(() => ({ scroll: document.documentElement
     assert.equal(await page.locator('[data-chat-export]').isEnabled(), true);
     await page.locator('[data-chat-saved-list]').waitFor();
     assert.equal(await page.locator('[data-chat-saved-list] option').count(), 2);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+  // The real component preserves a draft's focus and user scroll position across fragmented stream renders.
+  {
+    const { page, errors } = await open(browser, base, { width: 390, height: 844, layout: 'masters' });
+    await page.route('**/api/chat/models', r => r.fulfill({ json: { models: [{ name: 'gemma3:4b', installed: true }], default: 'gemma3:4b' } }));
+    await page.locator('[data-studio-mobile-nav] summary').click();
+    await page.locator('[data-mobile-master="chat"]').click();
+    await page.locator('[data-chat-refresh]').click();
+    await page.locator('[data-chat-status="generation"] [data-chat-state="ready"]').waitFor();
+    await page.locator('[data-chat-composer]').fill('Draft while reply streams');
+    await page.locator('[data-chat-composer]').focus();
+    const state = await page.evaluate(async () => {
+      const component = window.__dex;
+      const pane = document.querySelector('[data-scroll-pane]');
+      const messages = Array.from({ length: 18 }, (_, i) => ({ message_id: 'cm_' + String(i).padStart(32, '0'), role: 'user', status: 'complete', content: 'Earlier conversation '.repeat(30) }));
+      component.setState({ chatMessages: messages, chatRunning: true, chatStreamText: '' });
+      await new Promise(r => setTimeout(r, 120));
+      pane.scrollTop = Math.min(220, pane.scrollHeight - pane.clientHeight);
+      const before = pane.scrollTop;
+      for (let i = 1; i <= 20; i++) component.setState({ chatStreamText: 'fragment '.repeat(i) });
+      await new Promise(r => setTimeout(r, 150));
+      return { before, after: pane.scrollTop, focused: document.activeElement && document.activeElement.matches('[data-chat-composer]'), live: document.querySelector('[data-chat-messages]').getAttribute('aria-live'), draft: document.querySelector('[data-chat-composer]').value };
+    });
+    assert.ok(state.before > 0, 'fixture has a real scroll-away position');
+    assert.equal(state.after, state.before, 'stream renders preserve user scroll position');
+    assert.equal(state.focused, true, 'composer keeps focus during stream renders');
+    assert.equal(state.live, 'off', 'stream text is not announced token by token');
+    assert.equal(state.draft, 'Draft while reply streams');
     assert.deepEqual(errors, []);
     await page.close();
   }

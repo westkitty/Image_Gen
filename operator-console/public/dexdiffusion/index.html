@@ -42,7 +42,8 @@
 [data-v="2"] [data-master-tab][data-unavailable="true"],[data-v="2"] [data-subnav-leaf][data-unavailable="true"]{font-style:italic}
 [data-v="2"] [data-master-tab]:hover,[data-v="2"] [data-subnav-leaf]:hover,[data-v="2"] [data-studio-utility]:hover,[data-v="2"] [data-nav-return]:hover{color:#f8fafc}
 [data-v="2"] [data-master-tab]:focus-visible{outline:none;box-shadow:inset 0 0 0 2px #f59e0b}
-@media (max-width: 700px){[data-studio-layout="masters"] header > div:first-child span{display:none}[data-studio-layout="masters"] header > div:first-child{padding:0 8px!important}[data-studio-layout="masters"] header{height:auto!important;flex-wrap:wrap}[data-studio-layout="masters"] header [data-studio-masters]{order:3;flex:1 0 100%;min-height:44px;border-top:1px solid rgba(200,180,255,.1)}[data-studio-layout="masters"] header > div:last-child{min-height:48px}}
+[data-studio-mobile-nav]{display:none}
+@media (max-width: 700px){[data-studio-layout="masters"] header > div:first-child span{display:none}[data-studio-layout="masters"] header > div:first-child{padding:0 8px!important}[data-studio-layout="masters"] header{height:auto!important;flex-wrap:wrap}[data-studio-layout="masters"] header [data-studio-masters],[data-studio-layout="masters"] [data-studio-subnav-row]{display:none!important}[data-studio-layout="masters"] header > div:last-child{min-height:48px}[data-studio-layout="masters"] [data-studio-mobile-nav]{display:block;order:3;flex:1 0 100%;border-top:1px solid rgba(200,180,255,.1);padding:7px 12px}[data-studio-mobile-nav] summary{display:block;min-height:44px;padding:10px;border:1px solid rgba(245,158,11,.5);border-radius:8px;color:#f8fafc}[data-studio-mobile-nav] [data-mobile-nav-panel]{max-height:min(60vh,420px);overflow-y:auto;padding:8px 0;display:grid;gap:8px}[data-studio-mobile-nav] button{min-height:44px;text-align:left;border:1px solid rgba(148,163,184,.3);border-radius:8px;background:#201a2a;color:#f8fafc;padding:8px 12px}[data-studio-mobile-nav] button[aria-current="page"]{border-color:#f59e0b}}
 @media (prefers-reduced-motion: reduce){[data-v="2"] [data-master-tab],[data-v="2"] [data-subnav-leaf],[data-v="2"] [data-studio-utility]{transition:none!important;scroll-behavior:auto!important}}
 [data-dev-only="false"]{display:none!important}
     [data-v="3"] [data-rail][data-active="true"]{color:#a78bfa!important}
@@ -456,6 +457,21 @@
     </nav>
     </sc-if>
     <sc-if value="{{ isMastersLayout }}" hint-placeholder-val="{{ false }}">
+    <details data-studio-mobile-nav>
+      <summary>Studio areas and workspaces</summary>
+      <div data-mobile-nav-panel>
+        <div role="group" aria-label="Master workspaces" style="display:grid;gap:4px;">
+          <sc-for list="{{ navMasters }}" as="m"><button type="button" data-mobile-master="{{ m.id }}" aria-current="{{ m.active }}" title="{{ m.title }}" onClick="{{ m.onClick }}">{{ m.label }}</button></sc-for>
+        </div>
+        <nav aria-label="Current workspace routes" style="display:grid;gap:4px;">
+          <sc-for list="{{ navSubnav }}" as="leaf"><button type="button" data-mobile-subroute="{{ leaf.id }}" aria-current="{{ leaf.ariaCurrent }}" title="{{ leaf.title }}" onClick="{{ leaf.onClick }}">{{ leaf.label }}</button></sc-for>
+        </nav>
+        <div role="group" aria-label="Global utilities" style="display:grid;gap:4px;">
+          <sc-for list="{{ navUtilities }}" as="u"><button type="button" data-mobile-utility="{{ u.id }}" aria-current="{{ u.ariaCurrent }}" onClick="{{ u.onClick }}">{{ u.label }}</button></sc-for>
+          <button type="button" data-mobile-utility="jobs" onClick="{{ onOpenJobCenter }}">Jobs</button>
+        </div>
+      </div>
+    </details>
     <nav data-studio-masters aria-label="Studio areas" style="display:flex;align-items:stretch;gap:6px;padding:0 8px;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;">
       <div role="tablist" aria-label="Studio areas" data-master-bar onKeyDown="{{ onMasterBarKeyDown }}" style="display:flex;align-items:stretch;flex:0 0 auto;">
         <sc-for list="{{ navMasters }}" as="m">
