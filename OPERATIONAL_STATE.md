@@ -3,7 +3,14 @@
 ## Unified Studio End-to-End Delivery, Live Certification, Production Cutover & Final Acceptance — 2026-10-24 (`feat/chat-backend-stream-20261023`, Release Complete & Certified)
 
 - **Release Status**: **FULLY CERTIFIED TECHNICAL RELEASE** across live console and native macOS wrapper.
-- **Repository & Target**: `/Users/andrew/Image_Gen_Chat`, branch `feat/chat-backend-stream-20261023`, HEAD commit matching `origin/feat/chat-backend-stream-20261023`.
+- **Repository & Target**: `/Users/andrew/Image_Gen_Chat`, branch `feat/chat-backend-stream-20261023`, HEAD commit matching `origin/feat/chat-backend-stream-20261023` (`980ea31c44aaede2a58232bd153ec2793a72e951`).
+- **UI & Interaction Parity Repairs (2026-10-24)**:
+  - **UX-01 (P0 - Scroll Ownership)**: Wheel events over Create preview column forward smoothly to the settings inspector pane; overscroll trapping removed (`overscroll-behavior: auto`); per-workspace scroll positions preserved across tab switches.
+  - **UX-02 (P1 - Prompt Review Visibility)**: Prompt Enhancement Review card actions ("Apply Enhancement", "Append", "Cancel") reachable and styled with clear border; enhanced prompt text bounded to max-height 140px with internal scrolling; card auto-scrolls into view upon arrival.
+  - **UX-03 (P1 - Generating State CTA Suppression)**: During active generation, empty-state placeholder and duplicate Generate button in staging are cleanly suppressed.
+  - **UX-04 (P1 - Chat Hierarchy & Persistent Composer)**: Chat 3-zone layout with compact collapsible connection/credentials details panel, scrollable message transcript, and persistent pinned bottom composer (`position: sticky; bottom: 0`).
+  - **UX-05 (P2 - LoRA Presentation)**: Resources section titled "Additional LoRAs & VAE" with active quick LoRAs accurately reflected in count (`1 active (1 quick)`).
+  - **UX-06 (P2 - 3D Worlds Error Copy & Toast Spam)**: Source resolution error displays "Choose a source image to continue", automatically focuses the dropdown, and suppresses duplicate toasts.
 - **Active Production Console**:
   - Bound on `http://127.0.0.1:31337/dexdiffusion/` (PID 71472, HEAD `eed3c85` / latest doc updates).
   - `workflowRoot`: `/Users/andrew/Image_Gen/sdcpp-workflow` (1,168 historical runs and 45 state files preserved via `DEX_WORKFLOW_ROOT`).
