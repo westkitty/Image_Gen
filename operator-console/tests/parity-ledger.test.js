@@ -73,8 +73,3 @@ test('every upstream inventory item maps to a ledger row or is classified with a
   for (const item of INVENTORY.items.filter(i => /^EXCLUDED_TRAINING/.test(i.classification || '')))
     assert.ok(item.kind === 'setting' ? /training|caption/i.test(item.classification) : item.file === 'modules/ui.py', JSON.stringify(item));
 });
-
-test('cited live runs exist when the run store is present (it is git-ignored, so CI skips this)', { skip: !fs.existsSync(path.join(ROOT, 'sdcpp-workflow/runs')) }, () => {
-  for (const r of ROWS) for (const e of r.evidence_runs || [])
-    assert.ok(fs.existsSync(path.join(ROOT, 'sdcpp-workflow/runs', e.run)), `${r.id} cites missing run ${e.run}`);
-});

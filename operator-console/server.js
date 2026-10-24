@@ -1,3 +1,7 @@
+// Isolated automated-test safety mode (test-isolation.js). It must load before anything takes child_process references;
+// outside DEX_TEST_ISOLATION=1 it does nothing.
+const TestIsolation = require('./test-isolation');
+TestIsolation.install();
 const express = require('express');
 const { spawn, execFile, execFileSync } = require('child_process');
 const path = require('path');
@@ -52,6 +56,7 @@ const { createLibraryIndex } = require('./library-index');
 const { reconcileInterruptedPublications, historicalMissingJournal } = require('./publication-recovery');
 
 const app = express();
+if (TestIsolation.enabled()) app.use(TestIsolation.middleware);
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
 const HOST = '127.0.0.1';
 const APP_VERSION = 'image-gen-console-2026-06-22-render-wrapper';
@@ -1028,7 +1033,10 @@ let assetCache = null;
 async function refreshAssets() {
   const targetModels = { ...TARGET_MODELS };
   for (const target of Object.values(allControlledTargets())) if (target.modelPath) targetModels[target.id] = target.modelPath;
-  const probed = await probeAssets({ sshTarget: SSH_TARGET_NAME, targetModels });
+  // Isolated test mode never runs the SSH probe; it gets a labelled, fully-available simulation instead.
+  const probed = TestIsolation.enabled()
+    ? TestIsolation.simulatedAssetProbe({ targetModels, dormantKeys: M.WORKER_PROBE_PATHS.map(([k]) => k), unbridgedWorkerIds: M.createWorkerRegistry().describe({}).filter(w => w.dormant).map(w => w.id) })
+    : await probeAssets({ sshTarget: SSH_TARGET_NAME, targetModels });
   if (localEngineRouting.enabled()) {
     probed.localEngineEnabled = true;
     try {
@@ -1109,9 +1117,11 @@ function createJob(action, summary, requestParams = {}) {
 // reconciliation proves the Big Mac work stopped; nothing time-based ever releases them.
 const RemoteWorkers = require('./remote-workers');
 const { successfulPassAfterCancelSignal } = require('./cancellation-completion');
+// Chat compute owner (chat-compute.js), assigned where the Chat routes are registered; used by the hooks below.
+let chatCompute = null;
 const remoteWorkers = RemoteWorkers.createRemoteWorkerRegistry({
   file: path.join(STATE_DIR, 'remote-workers.json'),
-  onChange: r => { try { eventBus.publish('remote.worker', { job_id: r.job_id, state: r.state, action: r.action }); } catch (_) {} },
+  onChange: r => { try { eventBus.publish('remote.worker', { job_id: r.job_id, state: r.state, action: r.action }); } catch (_) {} try { if (chatCompute) chatCompute.workerChanged(r); } catch (_) {} },
 });
 publicationRecoveryState.journal.historical = [];
 for (const item of publicationRecoveryState.journal.unresolved) {
@@ -1167,7 +1177,9 @@ setInterval(() => {
   const img = jobs[st.owner.job_id], gen = jobStore.get(st.owner.job_id);
   const imageActive = img && (['queued', 'running'].includes(img.status) || holdsLease(img));
   const mediaActive = !img && gen && ['QUEUED', 'RUNNING', 'TRANSFERRING'].includes(gen.status);
-  if (!imageActive && !mediaActive) arbiter.release(st.owner.job_id);
+  // A Chat request owns its lease until its model cleanup is established, whatever its job record says.
+  const chatActive = !!(chatCompute && chatCompute.holdsLive(st.owner.job_id));
+  if (!imageActive && !mediaActive && !chatActive) arbiter.release(st.owner.job_id);
 }, 5000).unref();
 function leaseLabel(job) {
   const t = job.requestParams && job.requestParams.target;
@@ -1395,7 +1407,8 @@ function remoteScanOwned() {
     });
   });
 }
-const reconciler = RemoteWorkers.createReconciler({ registry: remoteWorkers, checkRun: remoteCheckRun, stopRun: remoteStopRun, scanOwned: remoteScanOwned, log: m => console.log('[op7] ' + m) });
+const reconciler = RemoteWorkers.createReconciler({ registry: remoteWorkers, checkRun: remoteCheckRun, stopRun: remoteStopRun, scanOwned: remoteScanOwned,
+  checkOllamaModel: r => (chatCompute ? chatCompute.checkOllamaModel(r) : Promise.resolve({ verified: false, detail: 'Chat compute not initialised' })), log: m => console.log('[op7] ' + m) });
 async function reconcileNow() {
   const out = await reconciler.tick();
   for (const r of remoteWorkers.list()) if (r.state === 'cancelled_verified' || r.state === 'released_by_operator') { const j = jobs[r.job_id]; if (j && j.remoteOrphan) delete j.remoteOrphan; try { arbiter.release(r.job_id); } catch (_) {} }
@@ -2890,47 +2903,10 @@ app.get('/api/model-compatibility', (req, res) => {
   res.json(readSchemaFile(MODEL_COMPATIBILITY_REGISTRY));
 });
 
-async function ollamaRequest(route, body = null, timeoutMs = 90000, externalSignal = null) {
-  const controller = new AbortController();
-  // A caller that goes away (browser Cancel, timeout, closed tab) aborts the upstream request so Big Mac stops generating.
-  if (externalSignal) { if (externalSignal.aborted) controller.abort(); else externalSignal.addEventListener('abort', () => controller.abort(), { once: true }); }
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const options = { signal: controller.signal };
-    if (body) {
-      options.method = 'POST';
-      options.headers = { 'Content-Type': 'application/json' };
-      options.body = JSON.stringify(body);
-    }
-    const response = await fetch(new URL(route, OLLAMA_BASE_URL), options);
-    const text = await response.text();
-    let json = null;
-    try { json = text ? JSON.parse(text) : null; } catch (_) { json = { raw: text }; }
-    if (!response.ok) {
-      const message = json && json.error ? json.error : (json && json.raw ? json.raw : text);
-      return { ok: false, status: response.status, error: message || response.statusText };
-    }
-    return { ok: true, json };
-  } catch (err) {
-    return { ok: false, status: 502, error: err.name === 'AbortError' ? 'Ollama request timed out' : err.message };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function resolveOllamaModel(requestedModel) {
-  const tags = await ollamaRequest('/api/tags', null, 10000);
-  if (!tags.ok) return { model: '', error: 'Ollama unreachable' };
-  const models = tags.json && Array.isArray(tags.json.models) ? tags.json.models : [];
-  const names = models.map(m => m.name);
-  const explicit = typeof requestedModel === 'string' ? requestedModel.trim() : '';
-  if (explicit) {
-    if (!names.includes(explicit)) return { model: '', error: `Model "${explicit}" is not installed. Run: ollama pull ${explicit}` };
-    return { model: explicit, error: null };
-  }
-  if (!names.length) return { model: '', error: 'No Ollama models installed. Run: ollama pull llama3.2' };
-  return { model: names[0], error: null };
-}
+// Ollama client and the AUTH-6 legacy consumers (ollama-legacy.js): allowlisted models, shared Big Mac lease, verified cleanup.
+const OllamaLegacy = require('./ollama-legacy');
+const ollamaRequest = OllamaLegacy.createOllamaRequest(OLLAMA_BASE_URL);
+const resolveOllamaModel = OllamaLegacy.createModelResolver(ollamaRequest);
 
 app.get('/api/prompt/profiles', (req, res) => {
   res.json({ profiles: PROFILES });
@@ -3228,70 +3204,18 @@ app.get('/api/ollama/status', async (req, res) => {
   res.json({ baseUrl: OLLAMA_BASE_URL, models: models.map(model => ({ name: model.name, modified_at: model.modified_at, size: model.size })) });
 });
 
-app.post('/api/ollama/enhance', async (req, res) => {
-  const prompt = typeof req.body.prompt === 'string' ? req.body.prompt.trim() : '';
-  if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
-  if (prompt.length > 12000) return res.status(400).json({ error: 'Prompt is too long' });
-  const { model, error: modelErr } = await resolveOllamaModel(req.body.model);
-  if (modelErr) return res.status(503).json({ error: modelErr });
+OllamaLegacy.registerLegacyOllamaRoutes(app, { ollamaRequest, resolveModel: resolveOllamaModel, runPromptEnhance, getCompute: () => chatCompute });
 
-  const gone = new AbortController();
-  res.on('close', () => { if (!res.writableFinished) gone.abort(); });
-  const result = await runPromptEnhance({
-    prompt,
-    negativePrompt: req.body.negative_prompt || req.body.negativePrompt || '',
-    mode: req.body.mode || 'balanced',
-    target: req.body.target || 'flux2-klein-4b',
-    generatorId: req.body.generatorId || '',
-    modality: req.body.modality || 'image',
-    operation: req.body.operation || 'txt2img',
-    ollamaRequester: (route, body, ms) => ollamaRequest(route, body, ms, gone.signal),
-    ollamaModel: model,
-    savePrompts: !!req.body.save_prompts
-  });
-
-  if (gone.signal.aborted) return;   // the client already left; nothing to send
-  if (!result.ok) {
-    return res.status(500).json({
-      error: result.error,
-      model,
-      prompt,
-      enhanced_prompt: prompt,
-      profile: result.profile
-    });
-  }
-
-  res.json({
-    ok: true,
-    model,
-    prompt: result.enhanced_prompt,
-    enhanced_prompt: result.enhanced_prompt,
-    original_prompt: result.original_prompt,
-    negative_prompt: result.negative_prompt,
-    setting_suggestions: result.setting_suggestions,
-    notes: result.notes,
-    profile: result.profile,
-    mode: result.mode
-  });
+// Streaming multi-turn Chat (chat-routes.js): off unless DEX_CHAT_ENABLED=1. Admission is the heavy-compute arbiter
+// (chat-compute.js). The gate stays shut unless the legacy Enhance, /api/ollama/chat and Drama-parse consumers also go
+// through it; AUTH-6 (ollama-legacy.js, tests/ollama-legacy-arbitration.test.js) put all three on the shared lease.
+const LEGACY_OLLAMA_CONSUMERS_ARBITRATED = true;
+chatCompute = require('./chat-compute').createChatCompute({
+  arbiter, jobStore, remoteWorkers, cancelManager, baseUrl: OLLAMA_BASE_URL, log: m => console.log(m),
+  publish: (event, data) => eventBus.publish(event, data),
+  gate: () => (LEGACY_OLLAMA_CONSUMERS_ARBITRATED ? null : 'legacy-ollama-consumers-unarbitrated'),
 });
-
-app.post('/api/ollama/chat', async (req, res) => {
-  const message = typeof req.body.message === 'string' ? req.body.message.trim() : '';
-  if (!message) return res.status(400).json({ error: 'Message is required' });
-  if (message.length > 12000) return res.status(400).json({ error: 'Message is too long' });
-  const { model, error: modelErr } = await resolveOllamaModel(req.body.model);
-  if (modelErr) return res.status(503).json({ error: modelErr });
-  const result = await ollamaRequest('/api/chat', {
-    model,
-    stream: false,
-    messages: [{ role: 'user', content: message }]
-  }, 120000);
-  if (!result.ok) return res.status(result.status).json({ error: result.error });
-  const reply = result.json && result.json.message && typeof result.json.message.content === 'string'
-    ? result.json.message.content.trim()
-    : '';
-  res.json({ model, reply });
-});
+chatCompute.attachRunner(require('./chat-routes').registerChatRoutes(app, { enabled: process.env.DEX_CHAT_ENABLED === '1', ollamaBaseUrl: OLLAMA_BASE_URL, port: PORT, admit: chatCompute.admit, log: m => console.log(m), sessionOptions: { savedFile: path.join(STATE_DIR, 'private-chat', 'sessions.json') } }).runner);
 
 app.post('/api/preview/generation', (req, res) => {
   const preview = buildGenerationPreview(req.body || {});
@@ -4682,13 +4606,7 @@ const voiceModule = require('./voice-routes').registerVoiceRoutes(app, {
   cancelJob: id => cancelManager.cancelJob(id), onJobStart: id => cancelManager.registerActiveJob(id, { target: 'drama-production' }), onJobEnd: id => cancelManager.unregisterActiveJob(id),
   probeFor: id => workerRegistry.get(id).probe(workerAssets()),
   // Optional local intelligent parse: strict-schema JSON from the managed Ollama tunnel (never rewrites dialogue; see drama.js).
-  llmChat: async messages => {
-    const { model, error } = await resolveOllamaModel();
-    if (error) throw new Error(error);
-    const r = await ollamaRequest('/api/chat', { model, stream: false, format: 'json', keep_alive: 0, options: { temperature: 0 }, messages }, 180000);
-    if (!r.ok) throw new Error(r.error || 'ollama request failed');
-    return r.json && r.json.message && r.json.message.content || '';
-  },
+  llmChat: OllamaLegacy.createLegacyLlmChat({ ollamaRequest, resolveModel: resolveOllamaModel, getCompute: () => chatCompute }),
 });
 setTimeout(() => { try { voiceModule.chunkStore.sweepOrphans({ knownProjects: voiceModule.dramaStore.list().map(x => x.id) }); } catch (_) {} }, 45000).unref();
 app.get('/api/workers', (req, res) => res.json({ workers: workerRegistry.describe(workerAssets()), options: { kokoro_voices: KOKORO_VOICES, languages: require('./media-bridge').LANGS } }));
@@ -5591,7 +5509,8 @@ app.get('/api/jobs/:jobId/log', (req, res) => {
 });
 
 app.get('/api/version', (req, res) => {
-  res.json(getBuildInfo());
+  // The isolated-test flag appears only in test mode, so production responses are unchanged.
+  res.json(TestIsolation.enabled() ? { ...getBuildInfo(), testIsolation: true } : getBuildInfo());
 });
 app.get('/api/publication-recovery', (req, res) => {
   res.json({ status: publicationRecoveryState.blocked ? 'BLOCKED' : 'CLEAR', ...publicationRecoveryState });

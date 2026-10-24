@@ -24,9 +24,11 @@ const clearStyles = async base => { for (const x of (await (await fetch(base + '
 async function openStyles(page) {
   // The style list loads once when Create first renders and repaints the form; wait for it before touching the panel.
   await page.waitForFunction(() => window.__dex && __dex._sty && __dex._sty().loaded, null, { timeout: 15000 });
+  // The load sets the flag, then repaints Create and replaces the panel element; wait until the CURRENT panel shows the
+  // loaded state so the locators below resolve to the live node, not the one the repaint detaches.
+  await page.waitForFunction(() => { const p = document.querySelector('[data-dex-field="styles-panel"]'); return !!(window.__dex && __dex._sty && __dex._sty().loaded && p && p.isConnected && !/Loading styles/.test(p.textContent)); }, null, { timeout: 15000 });
   await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
   const panel = page.locator('[data-dex-field="styles-panel"]');
-  await panel.scrollIntoViewIfNeeded();
   if (!(await panel.evaluate(e => e.open))) await panel.locator(':scope > summary').click();
   await page.waitForFunction(() => document.querySelector('[data-dex-field="style-new"]'));
   return panel;

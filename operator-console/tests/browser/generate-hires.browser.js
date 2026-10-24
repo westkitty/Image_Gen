@@ -97,8 +97,16 @@ const enable = page => page.locator('label', { hasText: 'High-Res Refine' }).loc
       await chooseTarget(page, 'sdxl-base');
       await enable(page);
       await page.locator('[data-dex-field="hires-mode"]').selectOption('size');
-      await page.locator('[data-dex-field="hires-width"]').fill('1280');
-      await page.locator('[data-dex-field="hires-height"]').fill('1152');
+      // Clear each controlled numeric field and wait for the state repaint before typing its replacement.
+      // Otherwise the old 1024 may be restored between Playwright's clear and type steps.
+      for (const [field, key, value] of [['hires-width', 'hiresW', '1280'], ['hires-height', 'hiresH', '1152']]) {
+        await page.locator(`[data-dex-field="${field}"]`).fill('');
+        await page.keyboard.press('Tab');
+        await page.waitForFunction(k => window.__dex && __dex._ws()[k] === '', key);
+        await page.locator(`[data-dex-field="${field}"]`).fill(value);
+        await page.keyboard.press('Tab');
+        await page.waitForFunction(({ k, v }) => window.__dex && __dex._ws()[k] === v, { k: key, v: value });
+      }
       await page.keyboard.press('Tab');
       await page.waitForTimeout(250);
       assert.match(await page.locator('[data-dex-field="hires-final"]').innerText(), /→ 1280×1152/);

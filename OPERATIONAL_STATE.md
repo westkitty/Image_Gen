@@ -1,5 +1,12 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## Unified Studio source delivery — 2026-10-23 (`feat/chat-backend-stream-20261023`, source gate passed)
+
+- Target checkout is `/Users/andrew/Image_Gen_Chat`, base `2fcbd2ed5463aa9cf50208d5bf9086fc6411ae08`. The primary `/Users/andrew/Image_Gen` checkout is outside this task's mutation scope. Full ledger: `docs/operations/unified-studio-execution-20261023.md`.
+- Source now includes the opt-in five-master layout, Chat backend and temporary UI, explicit saved sessions, guarded SSE, compute arbitration, private export/delete, and Chat-to-Create handoff. `DEX_CHAT_ENABLED` and the flat 14-chip layout remain defaults. No production listener was present in this pass; all browser generation traffic was fixture traffic.
+- Focused Chat/navigation and isolated browser checks passed. The initial parallel `npm test` had one Drama producer timeout and two environment-dependent skips; each was diagnosed. The final unchanged `bash scripts/release-preflight.sh` exited **0**: `npm run check` PASS, unit **1150/1150** with 0 failures/cancellations/skips, and **45/45 non-protected browser suites** PASS. The source and browser evidence is isolated-fixture evidence, not live inference or native-wrapper acceptance.
+- Commit and push remain pending the exact staged diff and secret review. No merge, native install, production restart or live inference occurred in this source continuation. Preserve all pre-existing work.
+
 ## V2 functional parity phase — 2026-10-22 (branch `feat/v2-functional-parity-20261022`, local; not pushed)
 
 - **Baseline:** published recovery branch `docs/dexdiffusion-omni-recovery-20261021` at `8b0df465c83acfc3f8703d1b71bee5b92a1f732f` is untouched. The earlier note that the baseline preflight had 38 browser suites was a miscount: its log has **39**.

@@ -252,8 +252,11 @@ const { results, test, phase, exitCode } = runner('drama-studio');
     await test('Voice Designer: capability truth, create → describe → (fixture audition) → compare → approve; bank export is metadata-only by default', async () => {
       const { ctx, page, errors, blocked } = await open();
       await page.evaluate(() => { __dex.vpSet({ tab: 'designer' }); __dex.setScreen('voice'); }); await page.waitForSelector('[data-voice-designer]');
-      await page.click('[data-new-character]'); await page.fill('[data-new-character-name]', 'ZZ-ST-Character'); await page.click('[data-create-character]');
-      await page.waitForSelector('[data-designer-form]'); const cid = (await api('GET', '/api/voice/profiles')).profiles.find(p => p.name === 'ZZ-ST-Character').id; made.profiles.push(cid);
+      await page.click('[data-new-character]'); await page.fill('[data-new-character-name]', 'ZZ-ST-Character');
+      const created = page.waitForResponse(r => r.url().endsWith('/api/voice/profiles') && r.request().method() === 'POST', { timeout: 15000 });
+      await page.click('[data-create-character]');
+      assert.equal((await created).status(), 201, 'the local profile creation succeeds before Designer renders it');
+      await page.waitForSelector('[data-designer-form]', { timeout: 15000 }); const cid = (await api('GET', '/api/voice/profiles')).profiles.find(p => p.name === 'ZZ-ST-Character').id; made.profiles.push(cid);
       assert.match(await page.innerText('[data-engine-controls]'), /cached voice prompt/); assert.match(await page.innerText('[data-engine-controls]'), /✗\s+cached voice prompt/);
       await page.fill('[data-design="age"]', 'middle-aged'); await page.fill('[data-design="accent"]', 'Scottish'); await page.fill('[data-design="timbre"]', 'gravelly'); await page.click('[data-save-design]');
       await page.waitForFunction(() => /Scottish/.test(document.querySelector('[data-composed]')?.innerText || '')); assert.equal((await api('GET', '/api/voice/profiles/' + cid)).profile.validation.state, 'valid');

@@ -136,11 +136,12 @@ function makeAudioFormats(sec = 2, hz = 440) {
 
       // 2. Oversize audio (> 40 MB)
       const bigBuf = Buffer.alloc(41 * 1024 * 1024);
+      // A 41 MB payload is transferred into the page before the input fires; bound it for that size (default is 5 s).
       await fileInput.setInputFiles({
         name: 'too-big.wav',
         mimeType: 'audio/wav',
         buffer: bigBuf
-      });
+      }, { timeout: 30000 });
 
       await page.waitForFunction(() => {
         const el = document.querySelector('[data-reference-error="voiceRef"]');

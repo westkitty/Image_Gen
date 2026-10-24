@@ -21,6 +21,8 @@ const CleanupOwner = require('./cleanup-owner');
 const { validateGlb } = require('./glb-validator');
 
 const MEDIA_KINDS = ['image', 'voice', 'music', 'video', 'world'];
+// Job-only kinds: durable job identity without a media root or artifacts (Chat).
+const JOB_ONLY_KINDS = ['chat'];
 const CANONICAL_ROOTS = {
   image: '/Users/andrew/images_made',
   voice: '/Users/andrew/audio_made/voice',
@@ -48,7 +50,9 @@ const FAILURE_GATES = ['worker-unavailable', 'runtime-missing', 'model-missing',
 // Keys never written to durable job state (private text), whatever the caller passes.
 const PRIVATE_KEYS = new Set(['prompt', 'negative_prompt', 'negativePrompt', 'extension_prompt', 'text', 'lyrics', 'description',
   'voice_description', 'reference_transcript', 'style_instruction', 'mask_data',
-  'instruct', 'ref_text', 'caption', 'style', 'genre', 'mood', 'instruments']);
+  'instruct', 'ref_text', 'caption', 'style', 'genre', 'mood', 'instruments',
+  // Chat transcript and titles (Phase 0 contract E.3).
+  'message', 'messages', 'content', 'reply', 'title']);
 
 function safeParams(params, persistText) {
   const out = {};
@@ -90,7 +94,7 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
   }
 
   function create({ job_id, media_kind, operation, worker_id, model_id = null, resource_class = 'light', params = {}, persist_text = false, artifact_required = true }) {
-    if (!MEDIA_KINDS.includes(media_kind)) throw new Error('unknown media kind ' + media_kind);
+    if (!MEDIA_KINDS.includes(media_kind) && !JOB_ONLY_KINDS.includes(media_kind)) throw new Error('unknown media kind ' + media_kind);
     const id = job_id || crypto.randomUUID();
     const j = {
       job_id: id, media_kind, operation, worker_id, model_id, status: 'QUEUED', stage_id: 'queued', progress: null, artifact_required: !!artifact_required, artifact_validation: null, owned_resources: [],
@@ -616,7 +620,7 @@ function createStaging({ root, limits = STAGING_LIMITS, now = () => Date.now() }
 }
 
 module.exports = {
-  MEDIA_KINDS, CANONICAL_ROOTS, JOB_STATES, FAILURE_GATES, PRIVATE_KEYS, safeParams,
+  MEDIA_KINDS, JOB_ONLY_KINDS, CANONICAL_ROOTS, JOB_STATES, FAILURE_GATES, PRIVATE_KEYS, safeParams,
   createJobStore, createResourceArbiter, parseOllamaPs, createWorkerRegistry, WORKER_PATHS, WORKER_PROBE_PATHS, createMediaStore, createStaging,
   sniff, imageDims, wavInfo, atomicWriteJson, STAGING_LIMITS, validateGlb,
 };

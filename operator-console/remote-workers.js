@@ -115,9 +115,18 @@ function createRemoteWorkerRegistry({ file = null, now = () => Date.now(), onCha
 //   checkRun(runId)  -> { alive: n }   (throws on transport failure)
 //   stopRun(runId)   -> { left: n, found: n } (throws on transport failure)
 //   scanOwned()      -> { runs: [ids], sdServer: n } (throws on transport failure)
-function createReconciler({ registry, checkRun, stopRun, scanOwned, maxStopAttempts = 5, log = () => {} }) {
+//   checkOllamaModel(record) -> { verified, detail } for kind 'ollama-model' (Chat); absent hook = cannot verify.
+function createReconciler({ registry, checkRun, stopRun, scanOwned, checkOllamaModel = null, maxStopAttempts = 5, log = () => {} }) {
   let busy = false;
   async function reconcileOne(r) {
+    // A Chat model record is never decided by the sd-cli/sd-server scan: only its own Ollama evidence counts.
+    if (r.kind === 'ollama-model') {
+      if (typeof checkOllamaModel !== 'function') throw new Error('no Ollama model check is configured');
+      const c = await checkOllamaModel(r);
+      if (c && c.verified === true) return registry.verified(r.job_id, c.detail || 'Ollama model cleanup verified');
+      return r.state === 'stop_unverified' ? registry.note(r.job_id, 'still-unverified', (c && c.detail) || 'Ollama model cleanup not confirmed')
+        : registry.unverified(r.job_id, (c && c.detail) || 'Ollama model cleanup not confirmed');
+    }
     if (r.kind === 'per-run' && r.run_ids.length) {
       const alive = [];
       for (const id of r.run_ids) {

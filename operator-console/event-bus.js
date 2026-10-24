@@ -39,7 +39,13 @@ const FORBIDDEN_CANARY_FIELDS = new Set([
   'lyrics',
   'caption',
   'ref_text',
-  'instruct'
+  'instruct',
+  // Chat transcript and titles (Phase 0 contract E.3)
+  'message',
+  'messages',
+  'content',
+  'reply',
+  'title'
 ]);
 
 function sanitizePayload(payload) {

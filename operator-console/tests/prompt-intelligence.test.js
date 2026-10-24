@@ -159,14 +159,12 @@ test('prompt enhancement: altered protected literal fails closed and preserves o
   assert.equal(res.enhanced_prompt, 'a hero __character__ fighting a dragon');
 });
 
-test('browser: successful enhancement is reviewed before Apply, with Cancel and Undo', async (t) => {
+test('browser: successful enhancement is reviewed before Apply, with Cancel and Undo', async () => {
   const browserPath = process.env.DEX_BROWSER_PATH || '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser';
-  if (!fs.existsSync(browserPath)) { t.skip('Brave browser unavailable'); return; }
-  try {
-    const health = await fetch('http://127.0.0.1:31337/api/version', { signal: AbortSignal.timeout(2000) });
-    if (!health.ok) { t.skip('supported DexDiffusion service unavailable'); return; }
-  } catch { t.skip('supported DexDiffusion service unavailable'); return; }
+  assert.ok(fs.existsSync(browserPath), 'Brave browser required for the source browser test');
+  const { startServer, runCleanups } = require('./browser/helpers');
   const { chromium } = require('playwright-core');
+  const { base, stop } = await startServer();
   const browser = await chromium.launch({ headless: true, executablePath: browserPath });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -183,7 +181,7 @@ test('browser: successful enhancement is reviewed before Apply, with Cancel and 
         negative_prompt: '', setting_suggestions: null, notes: 'Added setting.', profile: 'image.flux2'
       }) });
     });
-    await page.goto('http://127.0.0.1:31337/dexdiffusion/');
+    await page.goto(base + '/dexdiffusion/');
     const prompt = page.locator('textarea[aria-label="Describe your image"]').first();
     const original = 'lantern __lighting__';
     await prompt.fill(original);
@@ -211,5 +209,7 @@ test('browser: successful enhancement is reviewed before Apply, with Cancel and 
     assert.ok(await page.getByRole('button', { name: 'Create', exact: true }).isVisible(), 'mobile Studio navigation remains visible');
   } finally {
     await browser.close();
+    await stop();
+    await runCleanups();
   }
 });

@@ -77,9 +77,11 @@ async function open(page, base, bodies) {
     await test('row 12: the prompt-style manager is reachable in V2 Create (open, load from the server, create-editor opens)', async () => {
       const page = await browser.newPage({ viewport: { width: 1348, height: 735 } });
       const errors = await open(page, srv.base, []);
+      // Styles load once at start-up and the load repaints Create, replacing the panel element; wait until the CURRENT
+      // panel reflects the loaded state so the locators below resolve to the live node, not the one the repaint detaches.
+      await page.waitForFunction(() => { const p = document.querySelector('[data-dex-field="styles-panel"]'); return !!(window.__dex && __dex._sty && __dex._sty().loaded && p && p.isConnected && !/Loading styles/.test(p.textContent)); }, null, { timeout: 15000 });
       await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
       const styles = page.locator('details', { has: page.locator(':scope > summary', { hasText: /^Prompt styles/ }) }).first();
-      await styles.locator(':scope > summary').scrollIntoViewIfNeeded();
       await styles.locator(':scope > summary').click();
       await page.waitForFunction(() => document.querySelector('[data-dex-field="style-new"]'));
       await page.locator('[data-dex-field="style-new"]').click();

@@ -141,7 +141,16 @@ async function open(page, base, { jobs = false } = {}) {
       const page = await browser.newPage({ viewport: { width: 1348, height: 735 } });
       const consoleLog = []; page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') consoleLog.push(m.type() + ': ' + m.text().slice(0, 300)); });
       const errors = await open(page, srv.base);
+      // Selecting SDXL asks the server to switch Big Mac's secondary slot. That is simulated here: the real route
+      // stops the workflow server and activates a checkpoint (Phase 4C incident, 2026-10-23).
+      const activations = [];
+      await page.route('**/api/models/secondary/activate', r => {
+        const target = r.request().postDataJSON().target; activations.push(target);
+        r.fulfill({ json: { ok: true, activeSecondaryModel: target, secondaryModelState: 'active', modelState: { activeSecondaryModel: target, secondaryModelState: 'active' } } });
+      });
       await chooseModel(page, 'sdxl-base');
+      assert.deepEqual(activations, ['sdxl-base'], 'the simulated activation was requested exactly once');
+      assert.equal(await page.evaluate(() => __dex.state.modelState && __dex.state.modelState.activeSecondaryModel), 'sdxl-base', 'the UI took the simulated activation result');
       await page.evaluate(() => __dex.setState({ sampler: 'heun', steps: '17', prompt: 'keep me' }));
       const before = await page.evaluate(() => ({ t: __dex.state.target, p: __dex.state.prompt, s: __dex.state.steps }));
       await page.locator('[data-studio-context]').click();

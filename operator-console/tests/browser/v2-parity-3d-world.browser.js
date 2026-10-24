@@ -122,7 +122,7 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
       assert.deepEqual(reqs.slice(0, 1), [['3d', { mode: 'mesh', sourceArtifactId: SRC }]], 'exact mesh request');
       const pagePromise = page.context().waitForEvent('page');
       await page.getByRole('button', { name: 'Open 3D preview' }).click();
-      popup = await pagePromise; assert.match(popup.url(), /asset3d-viewer\.html\?artifact=syn-cube\.glb/); await popup.close();
+      popup = await pagePromise; await popup.waitForURL(/asset3d-viewer\.html\?artifact=syn-cube\.glb/); assert.match(popup.url(), /asset3d-viewer\.html\?artifact=syn-cube\.glb/); await popup.close();
       // Export: the Download GLB action delivers a structurally valid GLB (header, version, declared length, JSON + BIN chunks).
       await page.route('**/api/media/syn-cube.glb/download', r => r.fulfill({ contentType: 'model/gltf-binary', headers: { 'content-disposition': 'attachment; filename="syn-cube.glb"' }, body: GLB }));
       const dl = page.waitForEvent('download');
@@ -177,7 +177,7 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
       for (let i = 0; i < 40 && reqs.length === n; i++) await page.waitForTimeout(100);
       assert.deepEqual(reqs[n], ['post', { mode: 'complete360', sourceArtifactId: SRC, parameters: { seed: 42 } }]);
       const pop = page.context().waitForEvent('page'); await page.getByRole('button', { name: 'Open Focus' }).click();
-      const v = await pop; assert.match(v.url(), /world-viewer\.html\?project=wp-ok/); await v.close();
+      const v = await pop; await v.waitForURL(/world-viewer\.html\?project=wp-ok/); assert.match(v.url(), /world-viewer\.html\?project=wp-ok/); await v.close();
       assert.deepEqual(errors, []);
       await page.close();
     });

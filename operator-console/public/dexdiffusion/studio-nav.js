@@ -128,6 +128,132 @@
     return typeof storedScreen === 'string' && isCategory(storedScreen) ? storedScreen : 'create';
   }
 
+  // ── Hierarchical navigation (Unified Studio, Phase 0 contract B) ─────────────────────────
+  // Additive: five masters in fixed order, global utilities outside them, and 'chat' as a new leaf.
+  // Leaf ids stay the only persisted navigation identity; the active master is always derived.
+  // 'chat' is never a CATEGORY, an IDS entry or a chip, so the flat 14-chip row is unchanged.
+  const MASTERS = Object.freeze([
+    Object.freeze({ id: 'chat', label: 'Chat', leaves: Object.freeze(['chat']) }),
+    Object.freeze({ id: 'image', label: 'Image', leaves: Object.freeze(['create', 'batch', 'swap', 'edit', 'enhance']) }),
+    Object.freeze({ id: 'audio', label: 'Audio', leaves: Object.freeze(['voice', 'drama', 'music']) }),
+    Object.freeze({ id: 'video', label: 'Video', leaves: Object.freeze(['video']) }),
+    Object.freeze({ id: '3d', label: '3D', leaves: Object.freeze(['world', '3d']) })
+  ]);
+  // 'jobs' is the Job Center drawer, not a screen: it has no leaf id.
+  const UTILITIES = Object.freeze([
+    Object.freeze({ id: 'library', label: 'Library', leaf: 'library' }),
+    Object.freeze({ id: 'models', label: 'Models', leaf: 'models' }),
+    Object.freeze({ id: 'jobs', label: 'Jobs', leaf: null, drawer: true }),
+    Object.freeze({ id: 'system', label: 'System', leaf: 'system' })
+  ]);
+  const CHAT_LEAF = Object.freeze({ id: 'chat', label: 'Chat', group: 'chat' });
+  // The 14 legacy leaves in their canonical order, plus chat: 15 screens.
+  const SCREENS = Object.freeze(IDS.concat(['chat']));
+  const LAYOUT_KEY = 'dex_studio_layout';
+  const MASTER_LAST_KEY = 'dex_master_last';
+  const LAYOUTS = Object.freeze(['flat', 'masters']);
+
+  function isScreen(id) { return SCREENS.indexOf(id) > -1; }
+  function masterOf(id) {
+    for (const m of MASTERS) if (m.leaves.indexOf(id) > -1) return m.id;
+    return null;
+  }
+  function utilityOf(id) {
+    for (const u of UTILITIES) if (u.leaf && u.leaf === id) return u.id;
+    return null;
+  }
+  function leafLabel(id) {
+    if (id === 'chat') return CHAT_LEAF.label;
+    const c = CATEGORIES.find(x => x.id === id);
+    return c ? c.label : id;
+  }
+  // Like resolveInitialScreen, but 'chat' is also a valid remembered screen.
+  function resolveInitialScreenV2(storedScreen) {
+    return typeof storedScreen === 'string' && isScreen(storedScreen) ? storedScreen : 'create';
+  }
+  // Layout flag for rollback: anything but exactly 'masters' is the flat chip row (the default).
+  function resolveLayout(storage) {
+    try { return storage && storage.getItem(LAYOUT_KEY) === 'masters' ? 'masters' : 'flat'; } catch (_) { return 'flat'; }
+  }
+  function readMasterLast(storage) {
+    let raw = null;
+    try { raw = storage ? storage.getItem(MASTER_LAST_KEY) : null; } catch (_) { return {}; }
+    let parsed = null;
+    try { parsed = raw ? JSON.parse(raw) : null; } catch (_) { parsed = null; }
+    const out = {};
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      for (const m of MASTERS) if (typeof parsed[m.id] === 'string' && m.leaves.indexOf(parsed[m.id]) > -1) out[m.id] = parsed[m.id];
+    }
+    return out;
+  }
+  // Remembered leaf for a master, only if it is still one of that master's leaves; else its first leaf.
+  function lastLeafFor(masterId, storage) {
+    const m = MASTERS.find(x => x.id === masterId);
+    if (!m) return null;
+    return readMasterLast(storage)[m.id] || m.leaves[0];
+  }
+  // Records the leaf as its master's last leaf. Returns the cleaned map; a non-master leaf changes nothing.
+  function rememberLeaf(leaf, storage) {
+    const master = masterOf(leaf);
+    const map = readMasterLast(storage);
+    if (!master) return map;
+    map[master] = leaf;
+    try { if (storage) storage.setItem(MASTER_LAST_KEY, JSON.stringify(map)); } catch (_) {}
+    return map;
+  }
+
+  // Master bar items: tab semantics (aria-selected), roving tabIndex on the active master (or the first
+  // when a utility is open). Same caching rule as chips(): rebuild only when the active screen changes.
+  function masters({ activeScreen = 'create', onSelect = null } = {}) {
+    const activeMaster = masterOf(activeScreen);
+    const focusId = activeMaster || MASTERS[0].id;
+    return MASTERS.map(m => {
+      const active = m.id === activeMaster;
+      const note = m.leaves.every(l => UNAVAILABLE_EXECUTION[l]) ? UNAVAILABLE_EXECUTION[m.leaves[0]] : null;
+      return {
+        id: m.id, label: m.label,
+        active: String(active),
+        ariaSelected: active ? 'true' : 'false',
+        tabIndex: m.id === focusId ? '0' : '-1',
+        title: note ? m.label + ' — ' + note : m.label,
+        unavailable: note ? 'true' : 'false',
+        onClick: () => { if (typeof onSelect === 'function') onSelect(m.id); }
+      };
+    });
+  }
+  // Sub-navigation for one master: navigation semantics (aria-current="page" on the open leaf).
+  function subnav(masterId, activeLeaf, { onSelect = null, unavailable = UNAVAILABLE_EXECUTION } = {}) {
+    const m = MASTERS.find(x => x.id === masterId);
+    if (!m) return [];
+    const focusLeaf = m.leaves.indexOf(activeLeaf) > -1 ? activeLeaf : m.leaves[0];
+    return m.leaves.map(id => {
+      const active = id === activeLeaf;
+      const note = unavailable && unavailable[id];
+      const label = leafLabel(id);
+      return {
+        id, label, master: m.id,
+        active: String(active),
+        ariaCurrent: active ? 'page' : 'false',
+        tabIndex: id === focusLeaf ? '0' : '-1',
+        title: note ? label + ' — ' + note : label,
+        unavailable: note ? 'true' : 'false',
+        onClick: () => { if (typeof onSelect === 'function') onSelect(id); }
+      };
+    });
+  }
+  function utilities({ activeScreen = 'create', onSelect = null } = {}) {
+    return UTILITIES.map(u => {
+      const active = !!u.leaf && u.leaf === activeScreen;
+      return {
+        id: u.id, label: u.label, drawer: u.drawer ? 'true' : 'false',
+        active: String(active),
+        ariaCurrent: active ? 'page' : 'false',
+        title: u.drawer ? 'Open the Job Center' : u.label,
+        onClick: () => { if (typeof onSelect === 'function') onSelect(u.id); }
+      };
+    });
+  }
+
   return {
     STUDIO_VERSION,
     CATEGORIES,
@@ -142,6 +268,25 @@
     resolveInitialVersion,
     resolveInitialScreen,
     migratePreferences,
-    isDeveloperMode
+    isDeveloperMode,
+    // Hierarchical navigation (additive)
+    MASTERS,
+    UTILITIES,
+    SCREENS,
+    LAYOUTS,
+    LAYOUT_KEY,
+    MASTER_LAST_KEY,
+    masterOf,
+    utilityOf,
+    isScreen,
+    leafLabel,
+    subnav,
+    masters,
+    utilities,
+    resolveInitialScreenV2,
+    resolveLayout,
+    lastLeafFor,
+    rememberLeaf,
+    readMasterLast
   };
 });

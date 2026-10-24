@@ -20,8 +20,20 @@ class Component extends DCLogic {
       let s = 'create';
       try { s = window.DexStudioNav ? window.DexStudioNav.resolveInitialScreen(sessionStorage.getItem('dex_screen')) : (sessionStorage.getItem('dex_screen') || 'create'); } catch {}
       let ca = 'workstation'; try { ca = sessionStorage.getItem('dex_concept_screen') || 'workstation'; } catch {}
-      return { 1: s, 2: s, 3: s, 4: ca };
+      // Unified Studio: only the opt-in masters layout of V2 may restore the Chat leaf; V1/V3 never see it.
+      let s2 = s;
+      try { const Nav = window.DexStudioNav; if (Nav && Nav.resolveLayout(localStorage) === 'masters') s2 = Nav.resolveInitialScreenV2(sessionStorage.getItem('dex_screen')); } catch {}
+      return { 1: s, 2: s2, 3: s, 4: ca };
     })(),
+    // Unified Studio navigation layout (rollback flag): 'flat' is the 14-chip row and stays the default.
+    studioLayout: (() => { try { return window.DexStudioNav ? window.DexStudioNav.resolveLayout(localStorage) : 'flat'; } catch (_) { return 'flat'; } })(),
+    // Cross-master handoff origin for the masters layout's Back control: { leaf } or null.
+    navReturnTo: null,
+    // Chat placeholder readiness, read from the server; never "ready" without the Chat UI (Phase 5).
+    chatAvailability: { phase: 'idle', ollama: 'unknown', feature: 'unknown', checkedAt: null },
+    chatModels: [], chatModel: 'gemma3:4b', chatSessionId: null, chatMessages: [], chatDraft: '',
+    chatRunning: false, chatStreamText: '', chatStatus: '', chatError: '', chatJobId: null,
+    chatSessionMode: 'temporary', chatSaveNext: false, chatSavedSessions: [], chatSavedSessionsLoaded: false,
     activeAssetSelection: null,
     // Create
     target: 'sd15',
@@ -92,6 +104,7 @@ class Component extends DCLogic {
   _completedImageCache = { key: null, node: null };
 
   componentDidMount() {
+    if (this.state.version === 2 && this.state.screens[2] === 'chat') this.loadChatAvailability();
     this._keyHandler = (e) => this.onKeydown(e);
     this._beforeUnloadHandler = (e) => {
       if (!this._hasUnsavedWorkspaceWork()) return;
@@ -224,6 +237,10 @@ class Component extends DCLogic {
   }
 
   onKeydown(e) {
+    if (this.state.version === 2 && this.state.screens[2] === 'chat' && this.state.studioLayout === 'masters') {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && e.target && e.target.closest('[data-studio-chat]')) { e.preventDefault(); this.sendChat(); return; }
+      if (e.target && e.target.closest('[data-studio-chat]')) return;
+    }
     const dialog = document.querySelector('[data-detailer-dialog]');
     if (dialog) {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.closeDetailer(); return; }
@@ -869,17 +886,302 @@ class Component extends DCLogic {
   setScreen(s, opts) {
     // V2 has no Workstation destination (the palette still lists it): land on Create, the V2 home, instead of an unrendered screen.
     if (this.state.version === 2 && s === 'workstation') s = 'create';
+    // The Chat leaf exists only in the opt-in masters layout of V2.
+    if (s === 'chat' && !(this.state.version === 2 && this.state.studioLayout === 'masters')) s = 'create';
     if (this._pendingWorkspaceNavigation && !(opts && opts.skipUnsavedGuard)) return false;
     if (!(opts && opts.skipUnsavedGuard) && !this._confirmWorkspaceLeave(s)) return false;
     const { version, screens } = this.state;
+    const from = screens[version];
     try { sessionStorage.setItem(version === 4 ? 'dex_concept_screen' : 'dex_screen', s); } catch {}
-    this.setState({ screens: { ...screens, [version]: s } });
+    const Nav = window.DexStudioNav;
+    if (version !== 4 && Nav) Nav.rememberLeaf(s, sessionStorage);
+    const navPatch = version === 2 && this.state.studioLayout === 'masters' ? { navReturnTo: this._nextReturnTo(from, s, opts) } : {};
+    this.setState({ screens: { ...screens, [version]: s }, ...navPatch });
+    if (s === 'chat' && from !== 'chat') this.loadChatAvailability();
     // Category navigation must present the selected screen immediately.
     // On rapid transitions the global rAF batcher can leave the previous
     // module visible even though route state has changed. Reconcile this
     // explicit user action synchronously; background updates remain batched.
     if (version === 2 && typeof this.__render === 'function') this.__render();
+    if (opts && opts.focusNav) this._focusNav(opts.focusNav);
     return true;
+  }
+
+  // ── Unified Studio masters layout (opt-in; the flat chip row stays the default) ──────────
+  setStudioLayout(layout) {
+    if (this.state.version !== 2 || !['flat', 'masters'].includes(layout)) return false;
+    try { localStorage.setItem('dex_studio_layout', layout); } catch (_) { this.toast('Could not save Studio layout preference.', '#fca5a5'); return false; }
+    const screens = { ...this.state.screens };
+    if (layout === 'flat' && screens[2] === 'chat') { screens[2] = 'create'; try { sessionStorage.setItem('dex_screen', 'create'); } catch (_) {} }
+    this._navMastersKey = null;
+    this._navChipsKey = null;
+    this.setState({ studioLayout: layout, screens, navReturnTo: null });
+    return true;
+  }
+  // Area of a leaf: its master, or its utility for Library/Models/System.
+  _navArea(leaf) { const Nav = window.DexStudioNav; return Nav ? (Nav.masterOf(leaf) || Nav.utilityOf(leaf) || null) : null; }
+  // A programmatic jump into another area (Library → Edit, 3D → World, key L, palette) records where it came from;
+  // navigating with the bars themselves, or going back, clears it.
+  _nextReturnTo(from, to, opts) {
+    if (opts && (opts.source === 'nav' || opts.source === 'return')) return null;
+    if (!from || from === to || this._navArea(from) === this._navArea(to)) return this.state.navReturnTo;
+    return { leaf: from };
+  }
+  selectStudioMaster(id) {
+    const Nav = window.DexStudioNav;
+    if (!Nav) return false;
+    const current = this.state.screens[this.state.version];
+    if (Nav.masterOf(current) === id) return this._focusNav('master');
+    return this.setScreen(Nav.lastLeafFor(id, sessionStorage), { source: 'nav', focusNav: 'master' });
+  }
+  selectStudioLeaf(id) { return this.setScreen(id, { source: 'nav', focusNav: 'leaf' }); }
+  selectStudioUtility(id) {
+    const Nav = window.DexStudioNav;
+    const u = Nav && Nav.UTILITIES.find(x => x.id === id);
+    if (!u) return false;
+    if (u.drawer) { const center = window.__DEX_V12; if (center && typeof center.toggleJobCenter === 'function') center.toggleJobCenter(); else this.toast('Job Center is initializing. Try again in a moment.', '#fbbf24'); return true; }
+    return this.setScreen(u.leaf, { source: 'nav', focusNav: 'utility' });
+  }
+  navReturn() {
+    const back = this.state.navReturnTo;
+    if (!back) return false;
+    return this.setScreen(back.leaf, { source: 'return', focusNav: 'leaf' });
+  }
+  // Bars are rebuilt when the screen changes; keep keyboard focus on the control the user operated.
+  _focusNav(which) {
+    try {
+      const sel = which === 'master' ? '[data-master-tab][aria-selected="true"]' : which === 'utility' ? '[data-studio-utility][aria-current="page"]' : '[data-subnav-leaf][aria-current="page"]';
+      const el = document.querySelector(sel) || document.querySelector('[data-master-tab][tabindex="0"]');
+      if (el && el.focus) el.focus({ preventScroll: true });
+    } catch (_) {}
+    return true;
+  }
+  // Roving focus inside one bar: Arrow keys, Home and End move focus; Enter or Space activates.
+  onStudioBarKeyDown(e, selector) {
+    const keys = ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End'];
+    if (!keys.includes(e.key)) return;
+    const items = [...document.querySelectorAll(selector)];
+    const i = items.indexOf(document.activeElement);
+    if (i < 0 || !items.length) return;
+    e.preventDefault();
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : (i + ((e.key === 'ArrowRight' || e.key === 'ArrowDown') ? 1 : -1) + items.length) % items.length;
+    items.forEach((el, k) => el.setAttribute('tabindex', k === next ? '0' : '-1'));
+    items[next].focus();
+  }
+
+  // Chat text stays in process memory on the server and this mounted component only.
+  async _chatJson(path, method, body) {
+    const r = await fetch(this.state.backendUrl + path, {
+      method, headers: method === 'GET' ? {} : { 'Content-Type': 'application/json', 'X-Dex-Request': '1' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    let value = null;
+    if (r.status !== 204) { try { value = await r.json(); } catch (_) {} }
+    if (!r.ok) throw new Error(value && value.error || `HTTP ${r.status}`);
+    return value;
+  }
+
+  async refreshChatSession(id = this.state.chatSessionId) {
+    if (!id) return;
+    try {
+      const session = await this._chatJson('/api/chat/sessions/' + encodeURIComponent(id), 'GET');
+      if (this.state.chatSessionId === id) this.setState({ chatMessages: session.messages || [], chatSessionMode: session.mode });
+    } catch (e) { this.setState({ chatError: e.message }); }
+  }
+
+  async newChat() {
+    if (this.state.chatRunning) return;
+    if (this.state.chatDraft.trim() && !window.confirm('Discard the unsent Chat draft?')) return;
+    const oldId = this.state.chatSessionId;
+    if (oldId && this.state.chatSessionMode === 'temporary') {
+      try { await this._chatJson('/api/chat/sessions/' + encodeURIComponent(oldId), 'DELETE'); }
+      catch (e) { this.setState({ chatError: 'Could not discard the current session: ' + e.message }); return; }
+    }
+    this.setState({ chatSessionId: null, chatSessionMode: 'temporary', chatSaveNext: false, chatMessages: [], chatDraft: '', chatStreamText: '', chatStatus: '', chatError: '' });
+  }
+
+  async loadSavedChats() {
+    try {
+      const value = await this._chatJson('/api/chat/sessions', 'GET');
+      this.setState({ chatSavedSessions: Array.isArray(value.sessions) ? value.sessions : [], chatSavedSessionsLoaded: true });
+    } catch (_) { this.setState({ chatSavedSessions: [], chatSavedSessionsLoaded: true }); }
+  }
+
+  async openSavedChat(id) {
+    if (this.state.chatRunning) return;
+    if (this.state.chatDraft.trim() && !window.confirm('Discard the unsent Chat draft?')) return;
+    try {
+      const session = await this._chatJson('/api/chat/sessions/' + encodeURIComponent(id), 'GET');
+      if (session.mode !== 'saved') throw new Error('not-a-saved-session');
+      if (this.state.chatSessionId && this.state.chatSessionMode === 'temporary')
+        await this._chatJson('/api/chat/sessions/' + encodeURIComponent(this.state.chatSessionId), 'DELETE');
+      this.setState({ chatSessionId: id, chatSessionMode: 'saved', chatMessages: session.messages || [], chatModel: session.model,
+        chatDraft: '', chatStreamText: '', chatError: '', chatStatus: 'Saved conversation opened.' });
+    } catch (e) { this.setState({ chatError: e.message }); }
+  }
+
+  async exportChat() {
+    const id = this.state.chatSessionId;
+    if (!id || this.state.chatSessionMode !== 'saved' || this.state.chatRunning) return;
+    try {
+      const value = await this._chatJson('/api/chat/sessions/' + encodeURIComponent(id) + '/export', 'GET');
+      const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = 'dexdiffusion-chat-' + id + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      this.setState({ chatStatus: 'Export download requested.' });
+    } catch (e) { this.setState({ chatError: e.message }); }
+  }
+
+  async deleteChat() {
+    const id = this.state.chatSessionId;
+    if (!id || this.state.chatRunning) return;
+    if (!window.confirm('Delete this temporary conversation? This cannot be undone.')) return;
+    try {
+      await this._chatJson('/api/chat/sessions/' + encodeURIComponent(id), 'DELETE');
+      this.setState({ chatSessionId: null, chatSessionMode: 'temporary', chatMessages: [], chatStreamText: '', chatStatus: 'Conversation deleted.', chatError: '' });
+      this.loadSavedChats();
+    } catch (e) { this.setState({ chatError: e.message }); }
+  }
+
+  async sendChat(regenerateOf = null) {
+    if (this.state.chatRunning || this.state.chatAvailability.feature !== 'activated') return;
+    const content = this.state.chatDraft.trim();
+    if (!regenerateOf && !content) return;
+    const client = window.DexChatClient;
+    if (!client) { this.setState({ chatError: 'Chat transport unavailable.' }); return; }
+    let id = this.state.chatSessionId;
+    let completed = false;
+    this.setState({ chatRunning: true, chatStreamText: '', chatError: '', chatStatus: 'Connecting…', chatJobId: null });
+    try {
+      if (!id) {
+        const mode = this.state.chatSaveNext ? 'saved' : 'temporary';
+        const session = await this._chatJson('/api/chat/sessions', 'POST', { mode, model: this.state.chatModel, ...(mode === 'saved' ? { consent: true } : {}) });
+        id = session.session_id;
+        this.setState({ chatSessionId: id, chatSessionMode: mode });
+        if (mode === 'saved') this.loadSavedChats();
+      }
+      const requestId = client.requestId();
+      const body = regenerateOf
+        ? { session_id: id, request_id: requestId, action: 'regenerate', regenerate_of: regenerateOf, model: this.state.chatModel }
+        : { session_id: id, request_id: requestId, action: 'send', content, model: this.state.chatModel };
+      this._chatAbort = new AbortController();
+      const response = await fetch(this.state.backendUrl + '/api/ollama/chat/stream', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Dex-Request': '1' },
+        body: JSON.stringify(body), signal: this._chatAbort.signal,
+      });
+      await client.readSse(response, ({ event, payload }) => {
+        if (payload.request_id !== requestId || payload.session_id !== id) throw new Error('chat-event-mismatch');
+        if (payload.job_id) this.setState({ chatJobId: payload.job_id });
+        if (event === 'queued') this.setState({ chatStatus: `Queued${Number.isInteger(payload.position) ? ' · position ' + payload.position : ''}` });
+        else if (event === 'started') this.setState({ chatStatus: 'Generating…' });
+        else if (event === 'delta') this.setState(s => ({ chatStreamText: s.chatStreamText + payload.text }));
+        else if (event === 'done') { completed = true; this.setState({ chatStatus: 'Complete' }); }
+        else if (event === 'stopped') this.setState({ chatStatus: payload.stop === 'verified' ? 'Stopped · verified' : 'Stop requested · verification pending' });
+        else if (event === 'error') this.setState({ chatStatus: 'Failed', chatError: payload.code || 'stream-error' });
+      });
+    } catch (e) {
+      // A transport loss is not a verified Stop. The draft remains available; the session refresh shows any accepted user turn.
+      this.setState({ chatError: e.message, chatStatus: 'Connection ended · completion unverified' });
+    } finally {
+      this._chatAbort = null;
+      this.setState({ chatRunning: false, chatJobId: null, chatStreamText: '' });
+      if (id) await this.refreshChatSession(id);
+      if (completed && !regenerateOf && this.state.chatDraft === content) this.setState({ chatDraft: '' });
+      if (id && this.state.chatSessionMode === 'saved') this.loadSavedChats();
+    }
+  }
+
+  async stopChat() {
+    if (!this.state.chatRunning) return;
+    this.setState({ chatStatus: 'Stop requested · verification pending' });
+    if (this.state.chatJobId) {
+      try {
+        const result = await this._chatJson('/api/jobs/' + encodeURIComponent(this.state.chatJobId) + '/cancel', 'POST', { reason: 'Stopped by user' });
+        if (result && (result.remote_stop === 'verified' || result.remote_stop === 'not_started')) this.setState({ chatStatus: 'Stopped · verified' });
+      } catch (e) {
+        if (this._chatAbort) this._chatAbort.abort();
+        this.setState({ chatError: 'Stop confirmation failed: ' + e.message });
+      }
+    } else if (this._chatAbort) this._chatAbort.abort();
+  }
+
+  handoffChatToCreate(messageId, mode = 'replace') {
+    const m = this.state.chatMessages.find(x => x.message_id === messageId && x.role === 'assistant' && x.status === 'complete');
+    if (!m || !m.content.trim() || !['replace', 'append'].includes(mode)) return false;
+    const existing = this.state.prompt.trim();
+    if (mode === 'replace' && existing && !window.confirm('Replace the current Create prompt with this Chat reply?')) return false;
+    if (!this.setScreen('create')) return false;
+    this.setState({ prompt: mode === 'append' && existing ? existing + '\n\n' + m.content : m.content });
+    this.toast('Chat text copied to Create. Review it before generating.', '#86efac');
+    return true;
+  }
+
+  async loadChatAvailability() {
+    if (this._chatAvailabilityInFlight) return this._chatAvailabilityInFlight;
+    this.setState({ chatAvailability: { ...this.state.chatAvailability, phase: 'checking' } });
+    const base = this.state.backendUrl || '';
+    const get = async url => { try { const r = await fetch(base + url, { signal: AbortSignal.timeout(8000) }); let body = null; try { body = await r.json(); } catch (_) {} return { status: r.status, body }; } catch (_) { return { status: 0, body: null }; } };
+    this._chatAvailabilityInFlight = (async () => {
+      const [status, models] = await Promise.all([get('/api/ollama/status'), get('/api/chat/models')]);
+      const ollama = status.status === 200 && status.body && Array.isArray(status.body.models) ? 'available' : 'failed';
+      const feature = models.status === 404 && models.body && models.body.error === 'chat-disabled' ? 'not_activated' : models.status === 200 ? 'activated' : 'unknown';
+      const installed = models.status === 200 && models.body && Array.isArray(models.body.models) ? models.body.models.filter(m => m.installed) : [];
+      this.setState({ chatAvailability: { phase: 'done', ollama, feature, checkedAt: Date.now() }, chatModels: installed,
+        chatModel: installed.some(m => m.name === this.state.chatModel) ? this.state.chatModel : (installed[0] && installed[0].name || this.state.chatModel) });
+      if (feature === 'activated') this.loadSavedChats();
+    })().finally(() => { this._chatAvailabilityInFlight = null; });
+    return this._chatAvailabilityInFlight;
+  }
+  buildChatPlaceholder() {
+    const h = React.createElement;
+    const a = this.state.chatAvailability || {};
+    const checking = a.phase !== 'done';
+    const row = (key, label, value, tone) => h('div', { 'data-chat-status': key, style: { display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', border: '1px solid rgba(148,163,184,.2)', borderRadius: 9, padding: '10px 12px', background: 'rgba(148,163,184,.05)' } },
+      h('span', { style: { color: '#cbd5e1', fontWeight: 600 } }, label), h('span', { 'data-chat-state': value.state, style: { color: tone, fontWeight: 700 } }, value.text));
+    const conn = checking ? { state: 'checking', text: 'Checking…' } : a.ollama === 'available' ? { state: 'available', text: 'Ollama connection available' } : { state: 'failed', text: 'Connection failed: Chat needs the managed Ollama tunnel on 127.0.0.1:11436' };
+    const feat = checking ? { state: 'checking', text: 'Checking…' } : a.feature === 'not_activated' ? { state: 'not_activated', text: 'Chat feature not activated' } : a.feature === 'activated' ? { state: 'activated', text: 'Chat backend switched on' } : { state: 'unknown', text: 'Chat feature state could not be read' };
+    const ready = a.feature === 'activated' && a.ollama === 'available' && this.state.chatModels.length > 0;
+    const messages = this.state.chatMessages || [];
+    const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant' && m.status === 'complete');
+    return h('section', { 'data-chat-workspace': 'true', 'aria-labelledby': 'dex-chat-title', style: { maxWidth: 820, display: 'grid', gap: 12, margin: '0 auto' } },
+      h('h2', { id: 'dex-chat-title', style: { margin: 0, fontSize: 18 } }, 'Chat'),
+      h('p', { style: { margin: 0, color: '#aab4c3', lineHeight: 1.5 } }, 'Temporary local conversation. Closing or reloading this page loses access to it; it is not saved in browser storage.'),
+      h('div', { role: 'status', 'aria-live': 'polite', style: { display: 'grid', gap: 8 } },
+        row('connection', 'Ollama', conn, conn.state === 'available' ? '#86efac' : conn.state === 'failed' ? '#fca5a5' : '#cbd5e1'),
+        row('feature', 'Chat feature', feat, '#fcd34d'),
+        row('generation', 'Chat generation', { state: ready ? 'ready' : 'unavailable', text: ready ? 'Ready for a temporary session' : 'Unavailable until Chat is enabled and an approved model is installed' }, ready ? '#86efac' : '#fcd34d')),
+      h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+        h('button', { type: 'button', 'data-chat-refresh': 'true', onClick: () => this.loadChatAvailability(), disabled: checking && a.phase === 'checking' }, 'Check again'),
+        h('button', { type: 'button', 'data-chat-new': 'true', onClick: () => this.newChat(), disabled: this.state.chatRunning }, 'New temporary chat'),
+        h('button', { type: 'button', 'data-chat-delete': 'true', onClick: () => this.deleteChat(), disabled: !this.state.chatSessionId || this.state.chatRunning }, 'Delete chat'),
+        h('button', { type: 'button', 'data-chat-export': 'true', onClick: () => this.exportChat(), disabled: this.state.chatSessionMode !== 'saved' || !this.state.chatSessionId || this.state.chatRunning }, 'Export saved chat')),
+      h('label', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+        h('input', { type: 'checkbox', 'data-chat-save-next': 'true', checked: this.state.chatSaveNext, disabled: !!this.state.chatSessionId || this.state.chatRunning,
+          onChange: e => this.setState({ chatSaveNext: e.target.checked }) }), 'Save the next conversation privately on this Mac (explicit opt-in)'),
+      this.state.chatSavedSessions.length > 0 && h('label', { style: { display: 'grid', gap: 5 } }, 'Saved conversations',
+        h('select', { 'data-chat-saved-list': 'true', value: '', disabled: this.state.chatRunning, onChange: e => { if (e.target.value) this.openSavedChat(e.target.value); } },
+          h('option', { value: '' }, 'Choose a saved conversation'),
+          this.state.chatSavedSessions.map(s => h('option', { key: s.session_id, value: s.session_id }, `${s.created_at} · ${s.model} · ${s.message_count} messages`)))),
+      h('label', { style: { display: 'grid', gap: 5 } }, 'Model', h('select', { 'data-chat-model': 'true', value: this.state.chatModel, disabled: !ready || this.state.chatRunning, onChange: e => this.setState({ chatModel: e.target.value }) },
+        this.state.chatModels.map(m => h('option', { key: m.name, value: m.name }, m.name)))),
+      h('div', { 'data-chat-messages': 'true', role: 'log', 'aria-live': 'polite', style: { display: 'grid', gap: 8, minHeight: 100 } },
+        messages.map(m => h('article', { key: m.message_id, 'data-chat-message': m.role, 'data-chat-message-status': m.status, style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', border: '1px solid #334155', borderRadius: 8, padding: 10 } },
+          h('strong', null, m.role === 'user' ? 'You' : `Assistant · ${m.status}`), h('div', null, m.content),
+          m.role === 'assistant' && m.status === 'complete' && h('div', { style: { display: 'flex', gap: 8, marginTop: 8 } },
+            h('button', { type: 'button', 'data-chat-to-create': 'replace', onClick: () => this.handoffChatToCreate(m.message_id, 'replace') }, 'Use in Create'),
+            h('button', { type: 'button', 'data-chat-to-create': 'append', onClick: () => this.handoffChatToCreate(m.message_id, 'append') }, 'Append to Create')))),
+        this.state.chatRunning && h('article', { 'data-chat-stream': 'true', style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', border: '1px solid #334155', borderRadius: 8, padding: 10 } }, this.state.chatStreamText || this.state.chatStatus)),
+      h('div', { role: 'status', 'aria-live': 'polite', 'data-chat-run-status': 'true' }, this.state.chatStatus),
+      this.state.chatError && h('p', { role: 'alert', 'data-chat-error': 'true' }, this.state.chatError),
+      h('label', { style: { display: 'grid', gap: 5 } }, 'Message', h('textarea', { 'data-chat-composer': 'true', value: this.state.chatDraft,
+        onInput: e => this.setState({ chatDraft: e.target.value }), onChange: e => this.setState({ chatDraft: e.target.value }), disabled: !ready || this.state.chatRunning, rows: 4,
+        placeholder: ready ? 'Write a message. Command or Control + Enter sends.' : 'Chat is unavailable.', style: { width: '100%', boxSizing: 'border-box', resize: 'vertical' } })),
+      h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+        h('button', { type: 'button', 'data-chat-send': 'true', onClick: () => this.sendChat(), disabled: !ready || this.state.chatRunning || !this.state.chatDraft.trim() }, 'Send'),
+        h('button', { type: 'button', 'data-chat-stop': 'true', onClick: () => this.stopChat(), disabled: !this.state.chatRunning }, 'Stop'),
+        h('button', { type: 'button', 'data-chat-regenerate': 'true', onClick: () => this.sendChat(lastAssistant && lastAssistant.message_id), disabled: !ready || this.state.chatRunning || !lastAssistant }, 'Regenerate last reply')));
   }
 
   // ── Models — load from /api/capabilities & /api/models ───────
@@ -2431,6 +2733,38 @@ class Component extends DCLogic {
         }
         return this._navChips;
       })(),
+      // Unified Studio masters layout (opt-in). Cached per (version, screen) like navChips, so unrelated renders
+      // never rebuild the bars.
+      isMastersLayout: version === 2 && s.studioLayout === 'masters',
+      isFlatLayout: !(version === 2 && s.studioLayout === 'masters'),
+      studioLayout: s.studioLayout,
+      onStudioLayoutChange: e => this.setStudioLayout(e.target.value),
+      isChat: version === 2 && s.studioLayout === 'masters' && screen === 'chat',
+      ...(() => {
+        const Nav = window.DexStudioNav;
+        if (!Nav || version !== 2 || s.studioLayout !== 'masters') return { navMasters: [], navSubnav: [], navUtilities: [], hasSubnav: false, subnavLabel: '' };
+        const key = version + '|' + screen;
+        if (!this._navMastersBars || this._navMastersKey !== key) {
+          this._navMastersKey = key;
+          const master = Nav.masterOf(screen);
+          const m = Nav.MASTERS.find(x => x.id === master);
+          this._navMastersBars = {
+            navMasters: Nav.masters({ activeScreen: screen, onSelect: id => this.selectStudioMaster(id) }),
+            navSubnav: master ? Nav.subnav(master, screen, { onSelect: id => this.selectStudioLeaf(id) }) : [],
+            // The Jobs utility is the existing Jobs drawer button (it carries the live job count), so it is not repeated here.
+            navUtilities: Nav.utilities({ activeScreen: screen, onSelect: id => this.selectStudioUtility(id) }).filter(u => u.drawer !== 'true'),
+            hasSubnav: !!master,
+            subnavLabel: m ? m.label + ' screens' : '',
+          };
+        }
+        return this._navMastersBars;
+      })(),
+      hasNavReturn: !!(version === 2 && s.studioLayout === 'masters' && s.navReturnTo),
+      navReturnLabel: s.navReturnTo && window.DexStudioNav ? 'Back to ' + window.DexStudioNav.leafLabel(s.navReturnTo.leaf) : '',
+      onNavReturn: () => this.navReturn(),
+      onMasterBarKeyDown: e => this.onStudioBarKeyDown(e, '[data-master-tab]'),
+      onSubnavKeyDown: e => this.onStudioBarKeyDown(e, '[data-subnav-leaf]'),
+      chatWorkspace: version === 2 && s.studioLayout === 'masters' && screen === 'chat' ? this.buildChatPlaceholder() : null,
       navScrollBack: ()=>this.scrollStudioNav(-1),
       navScrollForward: ()=>this.scrollStudioNav(1),
       swapWorkspace: this.buildSwapWorkspace(),

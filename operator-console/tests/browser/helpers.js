@@ -89,6 +89,27 @@ process.on('exit', () => {
 });
 let cleaning = false;
 function onCleanup(fn) { cleanups.push(fn); }
+
+// One violations file per suite process. At exit, any refusal caused by a state-changing request fails the suite, whatever
+// exit code the suite itself chose; background probes that were refused are reported but are not the suite's fault.
+let violationsFile = null;
+function isolationViolationsFile() {
+  if (violationsFile) return violationsFile;
+  violationsFile = path.join(fs.mkdtempSync(path.join(require('os').tmpdir(), 'dex-suite-isolation-')), 'violations.jsonl');
+  fs.writeFileSync(violationsFile, '');
+  process.on('exit', () => {
+    const all = require('../../test-isolation').readViolations(violationsFile);
+    const fatal = all.filter(v => v.fatal), background = all.length - fatal.length;
+    if (background) console.error(`[dex-test-isolation] ${background} background remote probe(s) refused (not caused by this suite's requests)`);
+    if (fatal.length) {
+      console.error(`[dex-test-isolation] SUITE FAILED: ${fatal.length} request-caused remote/model/service operation(s) were refused. Add fixtures for:`);
+      for (const v of fatal) console.error('  ' + JSON.stringify({ origin: v.origin, command: v.command, reason: v.reason }));
+      process.exitCode = 1;
+    }
+  });
+  return violationsFile;
+}
+function isolationViolations() { return violationsFile ? require('../../test-isolation').readViolations(violationsFile) : []; }
 async function runCleanups() {
   if (cleaning) return; cleaning = true;
   for (const fn of cleanups.splice(0).reverse()) { try { await Promise.race([Promise.resolve(fn()), new Promise(r => setTimeout(r, 5000))]); } catch (_) {} }
@@ -141,14 +162,17 @@ const SEEDED_STATE_FILES = ['assets-cache.json', 'capability-evidence.json', '3d
   'flux-smoke-cache.json', 'image-edit-capabilities.json', 'model-inventory-cache.json', 'model-stage-cache.json', 'model-headers.json',
   'sdxl-smoke-cache.json', 'sdxl-turbo-smoke-cache.json', 'upscale-capabilities.json', 'media-evidence.json', 'world-panorama-evidence.json', 'timing-stats.json'];
 const LIVE_STATE_DIR = path.join(__dirname, '..', '..', '..', 'sdcpp-workflow', 'state');
+// Read-only seed source for those catalogue files. A fresh worktree has no workflow state of its own, so a run there may
+// point this at another checkout's state directory; files are only ever copied from it, never written.
+const SEED_STATE_DIR = process.env.DEX_SUITE_SEED_STATE_DIR ? path.resolve(process.env.DEX_SUITE_SEED_STATE_DIR) : LIVE_STATE_DIR;
 function createSuiteStateDir() {
   const fs = require('fs'), os = require('os');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-suite-state-'));
   ownedSuiteDirs.add(dir);
-  for (const name of SEEDED_STATE_FILES) { try { fs.copyFileSync(path.join(LIVE_STATE_DIR, name), path.join(dir, name)); } catch (e) { if (e.code !== 'ENOENT') throw e; } }
+  for (const name of SEEDED_STATE_FILES) { try { fs.copyFileSync(path.join(SEED_STATE_DIR, name), path.join(dir, name)); } catch (e) { if (e.code !== 'ENOENT') throw e; } }
   // Image records (settings/lineage only) let validator suites address a real canonical image. Prompt text is never copied.
   try {
-    const meta = JSON.parse(fs.readFileSync(path.join(LIVE_STATE_DIR, 'image-meta.json'), 'utf8'));
+    const meta = JSON.parse(fs.readFileSync(path.join(SEED_STATE_DIR, 'image-meta.json'), 'utf8'));
     for (const rec of Object.values(meta.images || {})) { delete rec.prompt; delete rec.negative_prompt; delete rec.negativePrompt; if ('prompt_saved' in rec) rec.prompt_saved = false; }
     fs.writeFileSync(path.join(dir, 'image-meta.json'), JSON.stringify(meta));
   } catch (e) { if (e.code !== 'ENOENT') throw e; }
@@ -220,12 +244,18 @@ async function startServer(preferred) {
     fs.writeFileSync(path.join(runDir, 'canonical-images.json'), JSON.stringify({ schema: 'dexdiffusion.canonical_images.v1', root: imagesRoot, images: index }));
     onCleanup(() => { if (/^zz-fixture-[0-9a-f]{10}$/.test(runId) && path.dirname(runDir) === runsRoot) fs.rmSync(runDir, { recursive: true, force: true }); });
   }
-  const sup = spawn(process.execPath, [path.join(__dirname, 'server-supervisor.js'), String(process.pid), path.join(__dirname, '..', '..')], { env: Object.assign({}, process.env, stateEnv, imagesEnv, mediaEnv, { OPERATOR_CONSOLE_PORT: String(port) }), stdio: 'ignore' });
+  // Every suite server runs in isolated test mode (test-isolation.js): Big Mac, model, service and Ollama mutations are
+  // refused server-side even when a browser fixture is missing, and any request-caused refusal fails this suite.
+  const isolationEnv = { DEX_TEST_ISOLATION: '1', DEX_TEST_VIOLATIONS_FILE: isolationViolationsFile(), DEX_LOCAL_ENGINE_BRIDGE: '0' };
+  const sup = spawn(process.execPath, [path.join(__dirname, 'server-supervisor.js'), String(process.pid), path.join(__dirname, '..', '..')], { env: Object.assign({}, process.env, stateEnv, imagesEnv, mediaEnv, isolationEnv, { OPERATOR_CONSOLE_PORT: String(port) }), stdio: 'ignore' });
   const exited = new Promise(r => sup.on('exit', r));
   let cancelRemoteForward = () => {};
   const stop = () => { cancelRemoteForward(); try { sup.kill('SIGTERM'); } catch (_) {} return Promise.race([exited, new Promise(r => setTimeout(r, 6000))]); };
   onCleanup(stop);
   await waitHttp(`http://127.0.0.1:${port}/api/version`, 60000);
+  // Fail closed: a suite never proceeds against a server that is not in isolated test mode.
+  const ver = await fetch(`http://127.0.0.1:${port}/api/version`).then(r => r.json());
+  if (ver.testIsolation !== true) throw new Error('suite server is not in isolated test mode; refusing to run');
   // Optional remote browser test transport: expose only this isolated suite port
   // on the already-authorized Big Mac SSH control connection (loopback only).
   if (process.env.DEX_BROWSER_SSH_CONTROL_SOCKET) {
@@ -279,7 +309,8 @@ async function openStudio(page, url, options) {
   await page.waitForFunction(() => window.__dex && __dex.state.version === 2 &&
     __dex.state.capabilityData && (__dex.state.modelTargets || []).length > 3,
     null, { timeout: 30000 });
-  await page.locator('[data-studio-nav]').waitFor({ state: 'visible' });
+  // The flat chip row is the default; the opt-in masters layout (dex_studio_layout=masters) shows the master bar instead.
+  await page.locator('[data-studio-nav], [data-master-bar]').first().waitFor({ state: 'visible' });
   page.setDefaultTimeout(5000);
 }
 
@@ -350,4 +381,4 @@ async function chooseModel(page, id, ctx = 'create') {
   await page.waitForFunction(t => window.__dex && window.__dex.state.target === t, id, { timeout: 15000 });
   await page.waitForTimeout(200);
 }
-module.exports = { chooseModel, makePng, decodePng, makeWav, startServer, installModelSnapshots, installDeveloperShellProfile, installStudioProfile, openStudio, installImageFixtures, runner, launchBrowser, onCleanup, runCleanups, preserveSuiteState };
+module.exports = { isolationViolations, chooseModel, makePng, decodePng, makeWav, startServer, installModelSnapshots, installDeveloperShellProfile, installStudioProfile, openStudio, installImageFixtures, runner, launchBrowser, onCleanup, runCleanups, preserveSuiteState };

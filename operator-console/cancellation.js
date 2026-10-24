@@ -51,6 +51,8 @@ function createCancellationManager({
       nonce: meta.nonce || null,
       remoteWorkDir: meta.remoteWorkDir || null,
       isRemote: Boolean(meta.isRemote),
+      // Job-owned stop that also finalizes its own job and lease (Chat): ({ reason }) => { ok, verified, leaseReleased, not_started }
+      stopHook: typeof meta.stopHook === 'function' ? meta.stopHook : null,
       startedAt: Date.now()
     });
   }
@@ -67,6 +69,7 @@ function createCancellationManager({
   // A process registration only counts as ownership when it names something we can stop and verify.
   function hasTerminationPath(active) {
     if (!active) return false;
+    if (active.stopHook) return true;
     if (active.isRemote) return Boolean(active.nonce && active.remoteWorkDir && typeof onRemoteTerminate === 'function');
     if (active.process && typeof active.process.kill === 'function') return true;
     if (active.pid && typeof onLocalTerminate === 'function') return true;
@@ -227,6 +230,30 @@ function createCancellationManager({
     // ---- 4. Active, job-owned stop ------------------------------------------------------
     let terminationVerified = false;
     let evidence = null;
+
+    // 4a. Owner-finalized stop (Chat): the owner proves the stop, transitions its own job and releases its own lease, so
+    // this manager neither finalizes nor releases. Unverified keeps the job, the lease and the quarantine.
+    if (active.stopHook) {
+      let res;
+      try { res = await active.stopHook({ reason }); } catch (err) {
+        return refuse(jobId, { gate: 'local-cancel-failed', cancelState: 'requested', status: currentStatus, error: err.message });
+      }
+      const after = jobStore && jobStore.get(jobId) ? normalizeStatus(jobStore.get(jobId).status) : currentStatus;
+      if (res && res.ok === true && res.verified === true) {
+        return {
+          ok: true, accepted: true, status: after, immediate: false,
+          alreadyTerminal: false, neverStarted: res.not_started === true, terminationVerified: true,
+          cancelState: res.not_started === true ? 'not_started' : 'verified_stopped', leaseReleased: res.leaseReleased === true,
+          evidence: { kind: res.not_started === true ? 'not_started' : 'verified', detail: res.not_started === true ? 'no upstream request was made' : 'upstream closed, unload acknowledged, model absent' }
+        };
+      }
+      return {
+        ok: false, accepted: !!(res && res.ok === true), status: after,
+        alreadyTerminal: false, neverStarted: false, terminationVerified: false,
+        cancelState: 'requested', leaseReleased: false, gate: 'remote-stop-unverified',
+        error: (res && res.error) || 'The stop was requested but the model cleanup on Big Mac is not confirmed. The job, its lease and the quarantine are kept until reconciliation.'
+      };
+    }
 
     if (active.isRemote) {
       // Remote contract: exact job-scoped nonce and remote work directory, never a broad kill.
