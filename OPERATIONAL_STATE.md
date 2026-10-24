@@ -1,5 +1,39 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## Canonical Main-Branch Promotion, Unified Studio Release & Native Wrapper Cutover — 2026-10-24 (`main`, Canonical Production Complete)
+
+- **Release Status**: **CANONICAL RELEASE COMPLETE**.
+- **Repository & Branch**: `/Users/andrew/Image_Gen`, branch `main`, commit matching `origin/main` (`650f4de5b3263a9a6f916a11de63345737a6d2b7`).
+- **Git Lineage & Promotion**:
+  - Fast-forward merge of `feat/chat-backend-stream-20261023` (10 commits ahead of pre-redesign baseline `2fcbd2e`) directly into `origin/main`.
+  - Ancestry strictly preserved: `2fcbd2e` $\to$ `94a0ec7` $\to$ ... $\to$ `980ea31` $\to$ `650f4de`.
+  - Feature worktree `/Users/andrew/Image_Gen_Chat` preserved intact with 0 data loss.
+  - Primary checkout untracked files (including `ARENA_...`, `PRODUCT.md`, `DESIGN.md`, `output/` runs) and `stash@{0}` 100% preserved.
+- **Active Canonical Production Console**:
+  - Bound on `http://127.0.0.1:31337/dexdiffusion/` (PID 84412, HEAD `650f4de`).
+  - Working directory (`cwd`): `/Users/andrew/Image_Gen/operator-console`.
+  - `workflowRoot`: `/Users/andrew/Image_Gen/sdcpp-workflow` (1,168 historical runs and 45 state files preserved).
+  - Storage: Canonical images in `/Users/andrew/images_made` preserved.
+  - Startup defaults: `bin/dexdiffusion` sets `DEX_CHAT_ENABLED="${DEX_CHAT_ENABLED:-1}"` and automatically loads credentials from `$HOME/Library/Application Support/DexDiffusion/chat-history-accounts.json`.
+- **Installed Native macOS App**:
+  - Path: `/Applications/DexDiffusion.app` (Bundle ID: `local.image-gen.wrapper`).
+  - Plist stamp: `DexDiffusionSourceHead` = `650f4de5b3263a9a6f916a11de63345737a6d2b7` (UP TO DATE).
+  - Project root: `DexDiffusionProjectRoot` = `/Users/andrew/Image_Gen`.
+  - Dock: Exactly 1 tile pinned in Dock (`local.image-gen.wrapper`).
+  - Native verification in Window 519:
+    - Footer displays: `Connected to DexDiffusion at http://127.0.0.1:31337/dexdiffusion/ • HEAD 650f4de5b3263a9a6f916a11de63345737a6d2b7`.
+    - Bidirectional switching between Image and Chat verified.
+    - Saved history successfully unlocked live via Keychain bearer token ("Saved history unlocked for this tab.").
+    - Wheel deltas over Create preview forward smoothly to inspector (verified 41px upward shift via `CGEvent` and `AXUIElement`).
+    - Chat composer remains pinned at bottom (`y:0.166–0.298`).
+- **Network Ingress & Exposure**:
+  - `127.0.0.1:31337`: Strict loopback-only bind for local console and native WebKit wrapper.
+  - `macbook-air.tailafb7e8.ts.net:8443`: Encrypted tailnet-only ingress (Tailscale Funnel OFF).
+  - `macbook-air.tailafb7e8.ts.net:443`: Separate Funnel service proxying local port 8787 (DEX//REACH); completely distinct and untouched.
+- **Rollback Readiness**:
+  - Pre-promotion native app backup: `/Users/andrew/.gemini/antigravity/brain/1169eb92-37ff-40d2-b8d4-454071dbb15b/scratch/backup/DexDiffusion-pre-promotion.app` and retired launchers.
+  - Feature worktree console backup: `/Users/andrew/Image_Gen_Chat/bin/dexdiffusion restart`.
+
 ## Unified Studio End-to-End Delivery, Live Certification, Production Cutover & Final Acceptance — 2026-10-24 (`feat/chat-backend-stream-20261023`, Release Complete & Certified)
 
 - **Release Status**: **FULLY CERTIFIED TECHNICAL RELEASE** across live console and native macOS wrapper.

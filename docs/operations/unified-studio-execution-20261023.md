@@ -180,3 +180,20 @@ Authorize a separate live-certification task for the committed `feat/chat-backen
 2. Verify the final documentation closeout branch head locally and on origin.
 3. If the referenced detailed Completion Program becomes available, reconcile it against the fourteen visible outcomes and record any additional requirements.
 4. A separate authorization is required for live model and installed-wrapper certification.
+
+## Canonical Main-Branch Promotion & Production Cutover Receipt — 2026-10-24
+
+- **Verdict**: `CANONICAL RELEASE COMPLETE`.
+- **Target Repository**: `westkitty/Image_Gen`, primary checkout `/Users/andrew/Image_Gen`, branch `main`.
+- **Promoted Head SHA**: `650f4de5b3263a9a6f916a11de63345737a6d2b7` (pushed fast-forward to `origin/main`).
+- **Feature Source Worktree**: `/Users/andrew/Image_Gen_Chat` (branch `feat/chat-backend-stream-20261023`, preserved clean and intact).
+- **Console Service**: Running from `/Users/andrew/Image_Gen/operator-console` (PID 84412, bind `127.0.0.1:31337`, `workflowRoot: /Users/andrew/Image_Gen/sdcpp-workflow`).
+- **Installed Native App**: `/Applications/DexDiffusion.app` (Bundle ID `local.image-gen.wrapper`, `DexDiffusionProjectRoot: /Users/andrew/Image_Gen`, `DexDiffusionSourceHead: 650f4de5b3263a9a6f916a11de63345737a6d2b7`, 1 Dock tile).
+- **Verified Invariants at Tier 4**:
+  - Live console `/api/version` correctly reflects promoted source and workflow root.
+  - Native WebKit Window 519 footer matches promoted HEAD `650f4de5b326`.
+  - Five-master navigation, Chat workspace, Keychain token saved-history unlock ("Saved history unlocked for this tab."), Create preview wheel-forwarding, and inspector scrolling verified in native runtime.
+  - Generating state duplicate Generate button suppression verified.
+- **Rollback Readiness**:
+  - Native app pre-promotion backup: `/Users/andrew/.gemini/antigravity/brain/1169eb92-37ff-40d2-b8d4-454071dbb15b/scratch/backup/DexDiffusion-pre-promotion.app` and retired launchers.
+  - Feature worktree console backup: `/Users/andrew/Image_Gen_Chat/bin/dexdiffusion restart`.
