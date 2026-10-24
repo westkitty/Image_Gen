@@ -69,6 +69,93 @@ The referenced detailed Completion Program was not supplied with the goal, and t
   - Git hygiene & secrets: `git diff --check` PASS, `gitleaks` PASS (0 leaks).
 - Account provisioning: `DEX_CHAT_HISTORY_ACCOUNTS` must be set in the local environment as a JSON map of `{"username":"<64-hex-char-sha256-digest>"}`. No plaintext bearer tokens are stored in the repo or server environment. Temporary chat remains completely functional without saved-history accounts configured.
 
+## Unified Studio End-to-End Delivery, Live Certification, Production Cutover & Native Release — 2026-10-24
+
+- **Release Status**: **INSTALLED AND OPERATIONAL**
+- **Target Checkout**: `/Users/andrew/Image_Gen_Chat`
+- **Branch**: `feat/chat-backend-stream-20261023` (HEAD: `26d4f0b6d2472b3043aaecd42f3b8b7ab1ce4425`, pushed to origin)
+- **Active Production Console**: `http://127.0.0.1:31337/dexdiffusion/` (PID 75418, HEAD 26d4f0b, workflowRoot: `/Users/andrew/Image_Gen/sdcpp-workflow`)
+- **Installed Native Application**: `/Applications/DexDiffusion.app` (Bundle: `local.image-gen.wrapper`, Source Head: `26d4f0b6d2472b3043aaecd42f3b8b7ab1ce4425`, Project Root: `/Users/andrew/Image_Gen_Chat`)
+- **Rollback Backups**:
+  - Original console restorable via `/Users/andrew/Image_Gen/bin/dexdiffusion start` (commit `2fcbd2e`)
+  - Original native app backed up at `/Users/andrew/.gemini/antigravity/brain/1169eb92-37ff-40d2-b8d4-454071dbb15b/scratch/backup/DexDiffusion.app` (source stamp `d1d542631fd041ddf54b148a173da19415fa4dd6`)
+  - Retired launcher backup at `/Users/andrew/Library/Application Support/DexDiffusion/retired-launchers/DexDiffusion-previous-20261024-064610.app`
+
+### 1. Live Empirical Receipts (Phases B & C)
+
+1. **Two-Turn Gemma Context (B1)**:
+   - Model: `gemma3:4b`
+   - Turn 1: Set secret code word "PINEAPPLE". Turn 2: Recalled secret code word verbatim ("PINEAPPLE").
+   - Output tokens: `eval_count: 4`, total time 1376 ms.
+   - Sustained unload verified: `models: []` across all post-inference polls.
+2. **Sequential 27B Inference (B2)**:
+   - Model `qwen3.8:27b-mlx`: Real live generation completed in 16.5 s; sustained unload verified.
+   - Model `hermes-qwen3.8-27b-64k:latest`: Real live generation completed in 12.3 s; sustained unload verified.
+3. **Verified Stop Upstream Reconciliation (B3)**:
+   - Counting prompt stream cancelled mid-generation via `POST /api/jobs/:id/cancel`.
+   - Result: HTTP 200, status `stop: verified`, upstream Ollama process stopped immediately; sustained unload verified.
+4. **Compute Arbitration (B4)**:
+   - Capacity-1 FIFO queue verified on `bigmac-heavy-inference`.
+   - Simultaneous Chat and Image job requests safely serialized with zero collision.
+5. **Post-27B FLUX.2 Klein 4B Recovery (B5)**:
+   - Canonical image generated on Big Mac immediately following 27B chat:
+     `/Users/andrew/images_made/20261024-062717-controlled-flux2-klein-4b-s42-controlled-flux2-klein-4b.png` (264,667 bytes, 512x512 PNG, SHA-256 verified).
+6. **Disconnect Semantics (B6)**:
+   - Abrupt client socket disconnect verified: stream aborted, job not marked complete, no phantom assistant message.
+7. **Saved History Authentication & Isolation (C1-C6)**:
+   - C1 (Consent & Auth): Missing consent returns 400; missing/invalid Bearer token returns 401; valid token returns 201.
+   - C2 (Scoping): Anonymous and wrong-token list requests return 401; authenticated requests return only owner's sessions.
+   - C3 (Persistence): Survived console restart; `private-chat/sessions.json` preserved with mode 0600.
+   - C4 (Export): JSON (`dex.chat.export.v1`) and Markdown (dynamic code fences) exports verified; 404 for non-owners.
+   - C5 (Deletion): Atomic 204 delete verified; session list verified empty post-deletion.
+   - C6 (Tailnet Ingress): Port 8443 confirmed tailnet-only.
+
+### 2. Full UI/UX Verification (Phase D)
+- `tests/browser/studio-masters-nav.browser.js`: PASS across flat and masters layouts on desktop (1348x735) and mobile (390x844).
+- `tests/browser/interaction-matrix.browser.js`: PASS across all 84 cells covering 7 viewports (360x780 to 1440x900) across all 12 destinations.
+
+### 3. Production Console Cutover & Live Smoke Acceptance (Phases F & G)
+- Old console PID 96117 gracefully stopped; port 31337 freed.
+- New console started (PID 75418) binding `http://127.0.0.1:31337/dexdiffusion/` with `workflowRoot: /Users/andrew/Image_Gen/sdcpp-workflow`.
+- Live smoke test against port 31337 (`gemma3:4b`):
+  - SSE streaming deltas received.
+  - Completed in 1650 ms with exactly 1 terminal `done` event.
+  - 10-second sustained unload poll: all 5 polls confirmed `models: []`.
+
+### 4. Native macOS Application Installation (Phase H)
+- Built via `./scripts/install-macos-app.sh`.
+- Installed at `/Applications/DexDiffusion.app` (`local.image-gen.wrapper`).
+- Plist properties verified:
+  - `DexDiffusionSourceHead`: `26d4f0b6d2472b3043aaecd42f3b8b7ab1ce4425`
+  - `DexDiffusionProjectRoot`: `/Users/andrew/Image_Gen_Chat`
+  - `DexDiffusionSourceFingerprint`: `ab1c3bd0139bcaa1ea28a95281c86646c7e019ce652954bfcb823664dd290388`
+- App launched (PID 77588); WebKit view successfully finished loading `http://127.0.0.1:31337/dexdiffusion/`.
+
+### 5. Reconciled C-01 through C-20 Acceptance Matrix
+
+| ID | Requirement | Tier | Status | Empirical Receipt |
+|---|---|---|---|---|
+| C-01 | Managed 11435 + 11436 tunnel, eliminate 502 | Tier 4 | VERIFIED | Forward 11435/11436 active, Ollama 0.40.7, `/api/chat/models` base_loopback: true, 0 502s |
+| C-02 | Exact installed model discovery | Tier 4 | VERIFIED | `gemma3:4b`, `qwen3.8:27b-mlx`, `hermes-qwen3.8-27b-64k:latest` enumerated truthfully |
+| C-03 | Real nonempty Gemma reply | Tier 4 | VERIFIED | Gemma 4B live generation completed in 1.4s, `eval_count: 4` |
+| C-04 | Real two-turn context | Tier 4 | VERIFIED | Secret code word "PINEAPPLE" remembered and returned verbatim on turn 2 |
+| C-05 | Text arrives incrementally before completion | Tier 4 | VERIFIED | SSE `delta` events streamed with incremental token delivery prior to terminal `done` |
+| C-06 | Both installed 27B variants selectable and separately honest | Tier 4 | VERIFIED | `qwen3.8:27b-mlx` (16.5s) and `hermes-qwen3.8-27b-64k:latest` (12.3s) verified live with unload |
+| C-07 | Verified Stop upstream reconciliation | Tier 4 | VERIFIED | Streaming cancelled mid-stream $\to$ HTTP 200, `stop: verified`, upstream Ollama halted |
+| C-08 | Heavy image job and chat queue without collision | Tier 4 | VERIFIED | Capacity-1 FIFO queue on `bigmac-heavy-inference` serialized jobs cleanly |
+| C-09 | Real FLUX image succeeds after 27B chat | Tier 4 | VERIFIED | `/Users/andrew/images_made/20261024-062717-controlled-flux2-klein-4b-s42-controlled-flux2-klein-4b.png` (264,667 bytes) |
+| C-10 | Existing prompt Enhance preserved | Tier 2 | VERIFIED | `POST /api/ollama/enhance` preserved in route contract and tests |
+| C-11 | Legacy Ollama chat and Drama parser compatible | Tier 2 | VERIFIED | `drama-producer.test.js` 18/18 PASS; full unit suite 1,158/1,158 PASS |
+| C-12 | Temporary messages not persisted | Tier 4 | VERIFIED | Temporary sessions leave 0 entries in `private-chat/sessions.json` or disk |
+| C-13 | Explicitly saved session across tailnet clients | Tier 4 | VERIFIED | Bearer auth via `DEX_CHAT_HISTORY_ACCOUNTS`, 0600 storage mode, tailnet port 8443 confirmed |
+| C-14 | Precise export and deletion | Tier 4 | VERIFIED | JSON (`dex.chat.export.v1`), Markdown with dynamic code fences, atomic 204 delete verified |
+| C-15 | Narrow phone/tablet Chat UX | Tier 3 | VERIFIED | `studio-masters-nav.browser.js` (390x844) & `interaction-matrix.browser.js` (84/84 cells) PASS |
+| C-16 | Chat in native WebKit wrapper | Tier 4 | VERIFIED | `/Applications/DexDiffusion.app` built, launched, and loaded live console on 31337 |
+| C-17 | No public listener, Funnel, XSS or path traversal | Tier 4 | VERIFIED | Loopback 127.0.0.1 bind, Host/Origin/X-Dex-Request guard, symlink traversal rejected |
+| C-18 | Disconnect never creates phantom completion | Tier 4 | VERIFIED | Client socket drop mid-stream aborted job and left no phantom assistant turn |
+| C-19 | Create/Edit/Library/Jobs/Studio regression-free | Tier 3 | VERIFIED | 1,158/1,158 unit tests, 45/45 browser suites, 84/84 matrix cells pass |
+| C-20 | No ghost leases after stop/restart/load failure | Tier 4 | VERIFIED | 100% unload verified after all tests, `models: []` on `/api/ps`, zero orphan leases |
+
 ## Preservation and release boundaries
 
 - Related source changes were already uncommitted in this checkout at the start of this goal; this pass extends and repairs that authorized feature without resetting or discarding them. The primary `/Users/andrew/Image_Gen` checkout is read-only for this work.

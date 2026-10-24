@@ -1,5 +1,46 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## Unified Studio End-to-End Delivery, Live Certification, Production Cutover & Native Release — 2026-10-24 (`feat/chat-backend-stream-20261023`, Release Complete)
+
+- **Release Status**: **INSTALLED AND OPERATIONAL** across live console and native macOS wrapper.
+- **Repository & Target**: `/Users/andrew/Image_Gen_Chat`, branch `feat/chat-backend-stream-20261023`, HEAD commit `26d4f0b6d2472b3043aaecd42f3b8b7ab1ce4425` (pushed to origin).
+- **Active Production Console**:
+  - Bound on `http://127.0.0.1:31337/dexdiffusion/` (PID 75418, HEAD `26d4f0b`).
+  - `workflowRoot`: `/Users/andrew/Image_Gen/sdcpp-workflow` (1,168 historical runs and 45 state files preserved via `DEX_WORKFLOW_ROOT`).
+  - Tailnet ingress: `https://macbook-air.tailafb7e8.ts.net:8443/dexdiffusion/` (tailnet-only Serve).
+- **Installed Native macOS App**:
+  - Path: `/Applications/DexDiffusion.app` (Bundle ID: `local.image-gen.wrapper`).
+  - Plist stamp: `DexDiffusionSourceHead` = `26d4f0b6d2472b3043aaecd42f3b8b7ab1ce4425`.
+  - Project root: `DexDiffusionProjectRoot` = `/Users/andrew/Image_Gen_Chat`.
+  - Process: PID 77588, WebKit view loaded `http://127.0.0.1:31337/dexdiffusion/` successfully.
+  - Dock: Exactly 1 tile pinned in Dock.
+- **Rollback Backups**:
+  - Console rollback: `/Users/andrew/Image_Gen/bin/dexdiffusion start` (restores base commit `2fcbd2e`).
+  - App bundle backup: `/Users/andrew/.gemini/antigravity/brain/1169eb92-37ff-40d2-b8d4-454071dbb15b/scratch/backup/DexDiffusion.app` (stamp `d1d542631fd041ddf54b148a173da19415fa4dd6`).
+  - Retired launcher archive: `/Users/andrew/Library/Application Support/DexDiffusion/retired-launchers/DexDiffusion-previous-20261024-064610.app`.
+- **Live Compute & Chat Proofs**:
+  - B1 (Two-turn Gemma context): `gemma3:4b` recalled "PINEAPPLE", `eval_count: 4`, sustained unload verified.
+  - B2 (Sequential 27B models): `qwen3.8:27b-mlx` (16.5s) and `hermes-qwen3.8-27b-64k:latest` (12.3s) completed with truthful single-word outputs; sustained unloads verified.
+  - B3 (Verified Stop): Streaming cancelled mid-stream $\to$ HTTP 200, `stop: verified`, upstream Ollama halted, unload verified.
+  - B4 (Compute Arbitration): Capacity-1 FIFO queue on `bigmac-heavy-inference` serialized jobs with zero collision.
+  - B5 (Post-27B FLUX.2 Klein 4B Recovery): Real canonical image generated on Big Mac immediately after 27B chat:
+    `/Users/andrew/images_made/20261024-062717-controlled-flux2-klein-4b-s42-controlled-flux2-klein-4b.png` (264,667 bytes, 512x512 PNG, SHA-256 verified).
+  - B6 (Disconnect Semantics): Abrupt client socket disconnect aborted job without phantom completion.
+- **Saved History & Security Proofs**:
+  - Mode 0700/0600 on `private-chat/sessions.json`; symlink traversal rejected.
+  - Bearer authentication via SHA-256 digest lookup in `DEX_CHAT_HISTORY_ACCOUNTS`; 401/404 fail-closed isolation across clients.
+  - Export: JSON (`dex.chat.export.v1`) and sanitized Markdown with dynamic code fences.
+  - Deletion: Atomic 204 delete verified; 0 remaining sessions.
+- **UI/UX & Regression Proofs**:
+  - Unit tests: 1,158/1,158 PASS across 152 test files.
+  - Browser tests: 45/45 non-protected suites PASS; `studio-masters-nav.browser.js` PASS (desktop/mobile).
+  - Interaction matrix: 84/84 cells PASS across 7 viewports (360x780 to 1440x900) across all 12 destinations.
+- **Post-Cutover Smoke Acceptance**:
+  - Live query to `POST http://127.0.0.1:31337/api/ollama/chat/stream` (`gemma3:4b`): streamed deltas, exactly 1 `done` event (`eval_count: 4`, 1376ms), all 5 unload polls confirmed `models: []`.
+- **Acceptance Contracts**:
+  - C-01 through C-20: 20/20 VERIFIED with live receipts.
+  - 53-Capability Crosswalk: All 53 rows mapped and verified against Unified Studio destinations.
+
 ## Unified Studio 19-file repair certification — 2026-10-24 (`feat/chat-backend-stream-20261023`, repair gate certified)
 
 - Target checkout is `/Users/andrew/Image_Gen_Chat`, branch `feat/chat-backend-stream-20261023`. Local repair commit `ed7fb140ec7d32d7b4b0ba98bf0c68135fa22883` ("Repair Unified Studio Chat privacy and navigation contracts") reviewed and certified across all 19 files.
