@@ -49,6 +49,26 @@ The referenced detailed Completion Program was not supplied with the goal, and t
 - The next complete preflight found browser action races in High-Res numeric entry, 3D/World popup navigation, and prompt-style panel repaint. The focused repaired suites passed. A subsequent complete preflight found one intermittent Drama Designer form timeout; its test now asserts the profile-create HTTP 201 before waiting for the form. The focused Drama suite passed 13/13.
 - Final unchanged `bash scripts/release-preflight.sh`: **PASS, exit 0**. `npm run check` passed; unit **1150/1150**, fail 0, cancelled 0, skipped 0; all **45/45 non-protected browser suites** passed. Protected Style/Wildcard suites are intentionally excluded by the unchanged script. This is source and isolated-fixture evidence, not live inference or installed-wrapper proof.
 
+## 19-file repair certification — 2026-10-24
+
+- Commit `ed7fb140ec7d32d7b4b0ba98bf0c68135fa22883`: "Repair Unified Studio Chat privacy and navigation contracts" (19 files).
+- Preceding Phase 8A scope deviation recorded and reviewed: nominally read-only assignment included commit `ed7fb14`. All changes verified justified:
+  1. Saved-history owner auth: bearer token SHA-256 digest lookup via `DEX_CHAT_HISTORY_ACCOUNTS`, timing-safe equality, 401/404 fail-closed boundary preventing cross-client transcript exposure.
+  2. Private state: 0700/0600 file modes and symlink rejection (`chat-state-symlink`) on `private-chat/sessions.json`.
+  3. Export: JSON and dynamically fenced Markdown export (`format=md`).
+  4. Stream terminal state: non-stop upstream `done_reason` marks assistant turn failed and excludes partial reply from context.
+  5. Reader shutdown: 300 ms race on `reader.cancel()` and truthful `upstreamClosed` signaling to compute lease.
+  6. Shared resource arbiter: fail-closed external probe handling (`occupied === null` blocks compute rather than guessing clear).
+  7. Mobile & subroute navigation: `<details data-studio-mobile-nav>` small-screen disclosure, subroute resolution, scroll position and composer focus preservation across streaming chunks.
+- Regressions on `ed7fb14`:
+  - `npm run check`: PASS.
+  - Focused suites: **122/122 PASS**, 0 fail, 0 cancelled, 0 skipped.
+  - Full source unit regression suite: **1,158/1,158 PASS**, 0 fail, 0 cancelled, 0 skipped across 152 test files (+8 tests added by the repair).
+  - Studio browser acceptance (`studio-masters-nav.browser.js`): PASS.
+  - Interaction matrix (`interaction-matrix.browser.js`): PASS (**84/84 cells**, 0 fail, 0 blocked).
+  - Git hygiene & secrets: `git diff --check` PASS, `gitleaks` PASS (0 leaks).
+- Account provisioning: `DEX_CHAT_HISTORY_ACCOUNTS` must be set in the local environment as a JSON map of `{"username":"<64-hex-char-sha256-digest>"}`. No plaintext bearer tokens are stored in the repo or server environment. Temporary chat remains completely functional without saved-history accounts configured.
+
 ## Preservation and release boundaries
 
 - Related source changes were already uncommitted in this checkout at the start of this goal; this pass extends and repairs that authorized feature without resetting or discarding them. The primary `/Users/andrew/Image_Gen` checkout is read-only for this work.

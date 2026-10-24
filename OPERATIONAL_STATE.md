@@ -1,5 +1,25 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## Unified Studio 19-file repair certification — 2026-10-24 (`feat/chat-backend-stream-20261023`, repair gate certified)
+
+- Target checkout is `/Users/andrew/Image_Gen_Chat`, branch `feat/chat-backend-stream-20261023`. Local repair commit `ed7fb140ec7d32d7b4b0ba98bf0c68135fa22883` ("Repair Unified Studio Chat privacy and navigation contracts") reviewed and certified across all 19 files.
+- The preceding Phase 8A assignment was nominally read-only; the 19-file repair commit was authored and committed locally. Independent review confirms the scope deviation was justified security and contract remediation:
+  - Saved-history authentication: owner-scoped digests via `DEX_CHAT_HISTORY_ACCOUNTS`, constant-time `crypto.timingSafeEqual`, 401/404 fail-closed isolation preventing cross-client transcript exposure.
+  - Private storage: 0700/0600 mode and symlink traversal validation on private chat state.
+  - Export: JSON and sanitized Markdown export (`format=md`) with dynamic code fences preventing injection.
+  - Streaming terminal-state correctness: non-success upstream `done_reason` marks assistant reply failed and excludes it from future context.
+  - Reader shutdown: explicit reader cancel race and `upstreamClosed` tracking for compute lease verification.
+  - Compute arbiter: fail-closed external probe handling (`occupied === null` blocks compute rather than guessing clear).
+  - Navigation: subroute resolution and mobile disclosure nav (`<details data-studio-mobile-nav>`) preserving draft focus and scroll position.
+- Regression verification:
+  - JavaScript syntax checks: `npm run check` PASS, all modified JS files `node --check` PASS.
+  - Focused test suite: **122/122 PASS** (0 failed, 0 cancelled, 0 skipped).
+  - Full source unit regression suite: **1,158/1,158 PASS** across 152 eligible test files (0 failed, 0 cancelled, 0 skipped; +8 tests over baseline 1,150).
+  - Studio browser acceptance: `tests/browser/studio-masters-nav.browser.js` PASS (desktop/mobile, layout opt-in/rollback, streaming scroll preservation, credential unlocking).
+  - Interaction matrix: `tests/browser/interaction-matrix.browser.js` PASS (**84/84 cells**, 0 FAIL, 0 BLOCKED).
+  - Git hygiene: `git diff --check` PASS, `gitleaks` 0 findings across ~53.8 KB.
+- Truth boundary: Isolated fixture evidence only (`DEX_TEST_ISOLATION=1`, `OLLAMA_BASE_URL=http://127.0.0.1:9`). No live inference, native wrapper installation, production listener restart, or merge to main was performed.
+
 ## Unified Studio source delivery — 2026-10-23 (`feat/chat-backend-stream-20261023`, source gate passed)
 
 - Target checkout is `/Users/andrew/Image_Gen_Chat`, base `2fcbd2ed5463aa9cf50208d5bf9086fc6411ae08`. The primary `/Users/andrew/Image_Gen` checkout is outside this task's mutation scope. Full ledger: `docs/operations/unified-studio-execution-20261023.md`.
