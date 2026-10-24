@@ -36,8 +36,8 @@ The referenced detailed Completion Program was not supplied with the goal, and t
 | 10 | Phase 4C fail-closed test isolation | `test-isolation.test.js`; fixture servers require isolation identity and fail on request-caused remote/model/service refusal. |
 | 11 | All mandatory source regressions | Unchanged `scripts/release-preflight.sh` exited 0: 1150/1150 unit tests, 0 skipped, 45/45 non-protected browser suites. |
 | 12 | Operational state and handoff docs | This ledger and `OPERATIONAL_STATE.md` updated with the source gate; Git delivery receipt below. |
-| 13 | Commit and push verified source | Pending final gate and exact staged review. |
-| 14 | Local and remote SHA verification | Pending publication. |
+| 13 | Commit and push verified source | Source milestone `94a0ec7f228b1324255a135734ad40eb1dfaa03f` committed and pushed to `origin/feat/chat-backend-stream-20261023`. |
+| 14 | Local and remote SHA verification | `git rev-parse HEAD` and `git ls-remote origin refs/heads/feat/chat-backend-stream-20261023` both returned `94a0ec7f228b1324255a135734ad40eb1dfaa03f` for the source milestone. The documentation closeout advances the final branch head; verify that separately. |
 
 ## Final source gate — PASS
 
@@ -56,9 +56,20 @@ The referenced detailed Completion Program was not supplied with the goal, and t
 - Saved transcript data belongs only in the private runtime state file or an explicit export. It must not enter Git, job records, event replay, logs, release records, or browser storage.
 - Commit and push only after the final source gate and exact diff/security review. Verify local and remote SHA separately. No native-app or live-model acceptance is claimed by source or fixture checks.
 
+## Source publication receipt
+
+- Source milestone: `94a0ec7f228b1324255a135734ad40eb1dfaa03f` (`feat: deliver Unified Studio chat and opt-in navigation`), 49 intended source/test/documentation files; exact staged diff check passed.
+- Staged `gitleaks git --staged --redact --no-banner`: 0 findings over about 324.7 KB. No credentials, conversation transcripts, models or generated media were staged.
+- Push: `git push origin HEAD:refs/heads/feat/chat-backend-stream-20261023` exited 0. Local and remote source SHA readback matched the full SHA above; checkout was clean after push.
+- The full branch head after this documentation closeout must be read back again. No PR, merge, deployment, native install, production restart, or live inference is part of this receipt.
+
+## Next phase authorization prompt
+
+Authorize a separate live-certification task for the committed `feat/chat-backend-stream-20261023` branch. Bind the actual MacBook checkout, running console listener and installed wrapper independently. Explicitly authorize any required controlled console restart, enabling `DEX_CHAT_ENABLED`, bounded Big Mac Ollama inference, and native-wrapper install before taking those actions. Verify the allowlisted models, real Chat streaming and Stop cleanup, saved-history persistence, Chat-to-Create handoff, V2 visual and keyboard behavior, and installed-wrapper rendering. Preserve other Big Mac workloads, model slots, canonical images and the primary checkout. Record source, live runtime, native install and human acceptance as separate outcomes; do not claim visual or human quality without a witness.
+
 ## Restart checkpoint
 
 1. Read this ledger and `OPERATIONAL_STATE.md`, then bind this exact checkout and branch.
-2. Review the exact diff including untracked files, check for transcript/credential/media leakage, and reconcile all fourteen outcomes.
-3. Stage only intended source/tests/docs, commit the verified milestone, push this feature branch, and read back its remote SHA.
+2. Verify the final documentation closeout branch head locally and on origin.
+3. If the referenced detailed Completion Program becomes available, reconcile it against the fourteen visible outcomes and record any additional requirements.
 4. A separate authorization is required for live model and installed-wrapper certification.
