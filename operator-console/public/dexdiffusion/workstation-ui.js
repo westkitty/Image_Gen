@@ -768,16 +768,17 @@
     const fit = v => Math.min(1536, Math.max(256, Math.round(v / 16) * 16));
     const w = fit(src.width), hgt = fit(src.height);
     const steps = Number(re.steps), okSteps = Number.isInteger(steps) && steps >= 1 && steps <= 8, okPrompt = String(re.prompt || '').trim().length > 0;
-    const run = () => { if (okSteps && okPrompt) this._runEnhance('/api/actions/flux2-edit', { image_id: src.id, prompt: re.prompt, steps, seed: re.seed === '' ? -1 : Number(re.seed), save_prompts: !!this.state.savePrompts }, 'FLUX.2 reference edit'); };
+    const seedStr = String(re.seed).trim(), okSeed = seedStr === '' || /^-?\d+$/.test(seedStr);
+    const run = () => { if (okSteps && okPrompt && okSeed) this._runEnhance('/api/actions/flux2-edit', { image_id: src.id, prompt: re.prompt, steps, seed: seedStr === '' ? -1 : Number(seedStr), save_prompts: !!this.state.savePrompts }, 'FLUX.2 reference edit'); };
     return h('div', { 'data-refedit-card': 'true', style: { border: '1px solid rgba(148,163,184,.14)', borderRadius: 8, padding: 10, display: 'grid', gap: 6, gridColumn: '1 / -1' } },
       h('div', { style: { fontWeight: 800, color: '#e2e8f0', fontSize: 13 } }, 'Reference edit · FLUX.2 Klein'),
       h('div', { style: css.muted }, 'Describe the change; the model keeps the scene of this image and applies it (MFLUX on Big Mac, ~1 min). This is reference editing, not ControlNet: no control weight, preprocessors or start/end fractions.'),
       h('textarea', { rows: 2, value: re.prompt, placeholder: 'e.g. the same fox, but with bright blue fur', style: Object.assign({}, css.input, { resize: 'vertical' }), 'data-refedit-field': 'prompt', 'aria-label': 'Reference edit prompt', onChange: e => setRe({ prompt: e.target.value }) }),
       h('div', { style: css.row },
-        h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, 'Steps (1–8)', h('input', { type: 'number', min: '1', max: '8', step: '1', value: String(re.steps), style: css.input, 'data-refedit-field': 'steps', onChange: e => setRe({ steps: e.target.value }) })),
-        h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, 'Seed (-1 random)', h('input', { type: 'number', step: '1', value: String(re.seed), style: css.input, 'data-refedit-field': 'seed', onChange: e => setRe({ seed: e.target.value }) }))),
-      h('div', { style: css.mono, 'data-refedit-field': 'preview' }, 'method: FLUX.2 reference edit · ' + src.width + '×' + src.height + ' → ' + w + '×' + hgt + (okSteps ? '' : ' · steps must be 1–8') + (okPrompt ? '' : ' · describe the edit')),
-      btn('Run reference edit', run, okSteps && okPrompt ? '#f59e0b' : '#64748b'));
+        h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, 'Steps (1–8)', h('input', { type: 'text', inputMode: 'numeric', value: String(re.steps), style: css.input, 'data-refedit-field': 'steps', onChange: e => setRe({ steps: e.target.value }) })),
+        h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, 'Seed (-1 random)', h('input', { type: 'text', inputMode: 'numeric', value: String(re.seed), style: css.input, 'data-refedit-field': 'seed', onChange: e => setRe({ seed: e.target.value }) }))),
+      h('div', { style: css.mono, 'data-refedit-field': 'preview' }, 'method: FLUX.2 reference edit · ' + src.width + '×' + src.height + ' → ' + w + '×' + hgt + (okSteps ? '' : ' · steps must be 1–8') + (okSeed ? '' : ' · seed must be a whole number') + (okPrompt ? '' : ' · describe the edit')),
+      btn('Run reference edit', run, okSteps && okPrompt && okSeed ? '#f59e0b' : '#64748b'));
   };
   P.buildEnhanceWorkbench = function () {
     const ws = this._ws(), src = ws.enhSource, base = this.state.backendUrl;
@@ -877,11 +878,15 @@
     const r = await this._api('/api/library/images?filter=' + encodeURIComponent(ws.lib.filter) + '&sort=' + ws.lib.sort + '&limit=500&offset=0', undefined);
     if (r.ok && r.data.items.some(x => x.id === id)) { items = r.data.items; index = items.findIndex(x => x.id === id); }
     if (index < 0) return;
-    const self = this;
+    const self = this, esc = s => (window.CSS && CSS.escape ? CSS.escape(s) : s);
+    // Any app re-render (e.g. the 3 s resource poll) rebuilds the Library DOM, detaching the thumbnail that opened the
+    // viewer; return focus to the live thumbnail for the same image instead of the detached node (which leaves focus on body).
+    const opener = () => document.querySelector('[data-lib-thumb="' + esc(id) + '"] [aria-label="' + esc('Open ' + id + ' full size') + '"]');
     window.DexLightbox.open({
       collection: { index, items: items.map(it => ({ id: it.id, src: base + it.url, caption: it.id, downloadUrl: base + (it.downloadUrl || '/api/images/' + encodeURIComponent(it.id) + '/export'), downloadName: it.id })),
         actionsFor: iid => (self.lightboxActions ? self.lightboxActions(iid) : []), onIndex: (i, c) => { self._libLastViewed = c.id; } },
-      onClose: () => { const last = self._libLastViewed; if (!last) return; setTimeout(() => { const el = document.querySelector('[data-lib-thumb="' + (window.CSS && CSS.escape ? CSS.escape(last) : last) + '"] img'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' }); }, 0); },
+      onClose: () => { const back = opener(); if (back) { try { back.focus({ preventScroll: true }); } catch (_) {} }
+        const last = self._libLastViewed; if (!last) return; setTimeout(() => { const el = document.querySelector('[data-lib-thumb="' + esc(last) + '"] img'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' }); }, 0); },
     });
   };
   P.selectLibraryImage = async function (id) {

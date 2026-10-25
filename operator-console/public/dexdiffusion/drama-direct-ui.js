@@ -62,10 +62,10 @@
           field('Default delivery direction' + (dirOk ? '' : ' — not supported'), h('input', { value: a.default_direction || '', disabled: !dirOk, placeholder: dirOk ? 'e.g. low, unhurried' : 'unavailable for this voice', title: dirOk ? '' : (pf.delivery_direction.reason || ''), style: Object.assign({}, css.input, dirOk ? {} : { opacity: 0.5 }), onInput: e => { clearTimeout(this._dmDirT); const v = e.target.value; this._dmDirT = setTimeout(() => this.dmActor(a, { default_direction: v }, true), 700); } }))),
         !dirOk ? h('div', { style: { color: tone.warn, fontSize: 11 } }, 'ℹ ' + pf.label + ' cannot apply delivery directions — the field is disabled rather than pretending. ' + (pf.delivery_direction.reason ? '(' + String(pf.delivery_direction.reason).slice(0, 140) + '…)' : '')) : null,
         pf ? h('div', { 'data-permitted': a.speaker_key, style: css.row }, chip(pf.label, '#22d3ee'), chip('direction ' + (pf.delivery_direction.ok ? 'yes' : 'no'), pf.delivery_direction.ok ? tone.ok : '#94a3b8'), chip('speed ' + (pf.speed.ok ? 'yes' : 'no'), pf.speed.ok ? tone.ok : '#94a3b8'), chip('seed ' + (pf.seed.ok ? 'yes' : 'no'), pf.seed.ok ? tone.ok : '#94a3b8'), chip('cached voice prompt: no', '#94a3b8'), chip('expressive tags: no', '#94a3b8')) : null,
-        h('details', { open: rules.length ? '' : null }, h('summary', { style: Object.assign({}, css.muted, { cursor: 'pointer', minHeight: 30, display: 'flex', alignItems: 'center' }) }, '▸ Pronunciation (' + rules.length + ') — respelled words are spoken, the script is never changed'),
+        h('details', { open: (dm.pronOpen && a.id in dm.pronOpen ? dm.pronOpen[a.id] : rules.length > 0) ? '' : null, onToggle: e => { (dm.pronOpen || (dm.pronOpen = {}))[a.id] = e.target.open; } }, h('summary', { onClick: e => { (dm.pronOpen || (dm.pronOpen = {}))[a.id] = !e.currentTarget.parentNode.open; }, style: Object.assign({}, css.muted, { cursor: 'pointer', minHeight: 30, display: 'flex', alignItems: 'center' }) }, '▸ Pronunciation (' + rules.length + ') — respelled words are spoken, the script is never changed'),
           h('div', { style: { display: 'grid', gap: 4, marginTop: 4 } }, ...rules.map((r, i) => h('div', { key: i, style: css.row }, h('span', { style: css.mono }, r.from + ' → ' + r.to + (r.ignore_case ? ' (any case)' : '')), btn('✕', () => this.dmActor(a, { pronunciation: rules.filter((_, j) => j !== i) }), '#f87171', { 'aria-label': 'Remove rule' }))),
-            h('div', { style: css.row }, h('input', { placeholder: 'word as written', 'aria-label': 'Word as written', style: Object.assign({}, css.input, { width: 150 }), id: 'pr-from-' + a.id }), h('input', { placeholder: 'how to say it (respelling)', 'aria-label': 'Respelling', style: Object.assign({}, css.input, { width: 190 }), id: 'pr-to-' + a.id }),
-              btn('Add', () => { const f = document.getElementById('pr-from-' + a.id), t = document.getElementById('pr-to-' + a.id); if (!f.value.trim() || !t.value.trim()) return; this.dmActor(a, { pronunciation: [...rules, { from: f.value.trim(), to: t.value.trim(), ignore_case: true }] }); }, '#65d66e', { 'data-pron-add': a.speaker_key })))),
+            h('div', { style: css.row }, h('input', { placeholder: 'word as written', 'aria-label': 'Word as written', value: ((dm.pronDraft || {})[a.id] || {}).from || '', onInput: e => { ((dm.pronDraft || (dm.pronDraft = {}))[a.id] || (dm.pronDraft[a.id] = {})).from = e.target.value; }, style: Object.assign({}, css.input, { width: 150 }), id: 'pr-from-' + a.id }), h('input', { placeholder: 'how to say it (respelling)', 'aria-label': 'Respelling', value: ((dm.pronDraft || {})[a.id] || {}).to || '', onInput: e => { ((dm.pronDraft || (dm.pronDraft = {}))[a.id] || (dm.pronDraft[a.id] = {})).to = e.target.value; }, style: Object.assign({}, css.input, { width: 190 }), id: 'pr-to-' + a.id }),
+              btn('Add', async () => { const d = (dm.pronDraft || {})[a.id] || {}; if (!(d.from || '').trim() || !(d.to || '').trim()) return; if (await this.dmActor(a, { pronunciation: [...rules, { from: d.from.trim(), to: d.to.trim(), ignore_case: true }] }) && dm.pronDraft) { delete dm.pronDraft[a.id]; this.dmSet({}); } }, '#65d66e', { 'data-pron-add': a.speaker_key })))),
         h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,230px),1fr))', gap: 8 } },
           field('Actor FX (non-destructive)', h('select', { 'data-fx-select': a.speaker_key, value: a.fx ? a.fx.preset : 'none', style: css.input, onChange: e => { delete dm.fxDraft?.[a.id]; this.dmActor(a, { fx: e.target.value === 'none' ? null : e.target.value }); } }, ...(fxData ? fxData.builtin.filter(x => x.id !== 'custom').map(x => h('option', { key: x.id, value: x.id }, x.label)) : [h('option', { key: 'none', value: 'none' }, 'None / Clean')]), a.fx && a.fx.preset === 'custom' ? h('option', { key: 'c', value: 'custom' }, 'Custom (edited)') : null,
             ...(fxData ? fxData.custom.map(c => h('option', { key: c.id, value: 'custom:' + c.id, disabled: true }, '★ ' + c.name + ' (apply from editor)')) : []))),
@@ -87,16 +87,25 @@
   // ── DIRECT ──────────────────────────────────────────────────────────────────────────────────────────
   P.dmLoadTimeline = async function (sceneId) {
     const dm = this._dm(), owner = this._dmProjectOwner(); if (!owner) return; sceneId = sceneId || dm.sceneId || (dm.current.scenes.find(s => s.lines.some(l => l.kind !== 'direction')) || dm.current.scenes[0] || {}).id; if (!sceneId) return;
-    const r = await this._vpApi(`/api/drama/projects/${owner.id}/scenes/${sceneId}/timeline`); if (!this._dmOwnsProject(owner)) return; if (!r.ok) { this.toast(r.data.error || 'Timeline unavailable', '#ef4444'); return; }
+    // Latest request wins: a slower earlier response must not replace a newer timeline.
+    const token = dm._tlReq = {};
+    const r = await this._vpApi(`/api/drama/projects/${owner.id}/scenes/${sceneId}/timeline`);
+    if (dm._tlReq !== token) return;
+    if (!this._dmOwnsProject(owner)) { if (dm._tlAsked === sceneId) dm._tlAsked = null; return; }
+    if (!r.ok) { this.toast(r.data.error || 'Timeline unavailable', '#ef4444'); return; }
     dm.sceneId = sceneId; this.dmSet({ timeline: r.data.timeline }, { skipIfTyping: true });
     for (const lane of r.data.timeline.lanes) for (const c of lane.clips) if (c.artifact_id && c.resolved !== false) U.peaks(this, c.artifact_id, 240).then(pk => { if (pk) this.dmSet({}, { skipIfTyping: true }); });
   };
   P.dmPreviewScene = async function () {
     const dm = this._dm(), owner = this._dmProjectOwner(); if (!owner) return; this.dmSet({ previewBusy: true });
-    const r = await this._vpApi(`/api/drama/projects/${owner.id}/scenes/${dm.sceneId}/preview`, {}); this.dmSet({ previewBusy: false });
+    const sceneId = dm.sceneId, asked = dm._tlAsked;
+    const r = await this._vpApi(`/api/drama/projects/${owner.id}/scenes/${sceneId}/preview`, {}); this.dmSet({ previewBusy: false });
     if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { this.toast((r.data.error || 'Preview failed') + (r.data.lines ? ' (' + r.data.lines.length + ' line(s) need speech)' : ''), '#ef4444'); return; }
-    this.dmSet({ timeline: r.data.timeline }); this.toast(r.data.reused ? 'Preview is current' : 'Preview rendered — this is the audio the export reuses', '#65d66e');
+    // Show the preview's timeline only while the user is still on the previewed scene with no other scene load pending;
+    // then it is the newest state, so loads already in flight (possibly pre-preview) are invalidated.
+    if (dm.sceneId === sceneId && dm._tlAsked === asked) { dm._tlReq = {}; this.dmSet({ timeline: r.data.timeline }); }
+    this.toast(r.data.reused ? 'Preview is current' : 'Preview rendered — this is the audio the export reuses', '#65d66e');
   };
   P.dmClip = async function (lineId, patch) {
     const owner = this._dmProjectOwner(); if (!owner) return false;

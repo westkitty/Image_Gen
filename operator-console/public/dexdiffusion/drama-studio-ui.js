@@ -110,7 +110,7 @@
     if (!this._dmOwnsProject(owner)) return;
     if (!r.ok && r.status !== 409) { this.dmSet({ parseResult: r.data }); this.toast((r.data.errors || [r.data.error])[0], '#ef4444'); return; }
     if (r.status === 409) { this.dmSet({ reparse: { preview: r.data.preview, needsConfirm: true } }); return; }
-    if (r.data.applied) { this._dmText = { script: '', title: '' }; this._dmResetEdits(); this._dmStopRunTracking(); this.dmSet({ current: r.data.project, reparse: null, parseResult: { ok: true } }); this.toast('Re-parsed; recordings were kept where the text still matches', '#65d66e'); }
+    if (r.data.applied) { this._dmText = { script: '', title: '' }; this._dmResetEdits(); this._dmStopRunTracking(); this._dmClearScene(); this.dmSet({ current: r.data.project, reparse: null, parseResult: { ok: true } }); this.toast('Re-parsed; recordings were kept where the text still matches', '#65d66e'); }
     else this.dmSet({ reparse: { preview: r.data.preview, needsConfirm: r.data.preview.requires_confirmation } });
   };
 

@@ -46,10 +46,19 @@
     const dm = this._dm();
     if (dm.currentId && !dm.current) this.openDramaProject(dm.currentId, true);
   };
+  // Scene-scoped Direct state belongs to one project's scene ids; clear it wherever the project (or its scenes) is replaced.
+  P._dmClearScene = function () {
+    const dm = this._dm();
+    dm.timeline = null; dm.sceneId = null; dm._tlAsked = null; dm._tlReq = null; dm.cues = null; dm._cuesAsked = false; dm.selClip = null; dm.suggest = null;
+  };
   P.openDramaProject = async function (id, quiet) {
     const dm = this._dm();
     if (!quiet && dm.currentId !== id && !this._confirmDramaDraftDiscard('open another project')) { this.dmSet({}); return false; }
-    if (dm.currentId !== id) { this._dmResetEdits(); this._dmStopRunTracking(); }
+    if (dm.currentId !== id) {
+      this._dmResetEdits(); this._dmStopRunTracking();
+      // Scene-scoped Direct state belongs to the previous project; stale ids would request B's timeline with A's scene.
+      this._dmClearScene();
+    }
     const request = this._dmOpenRequest = {};
     const r = await this._dmApi('/api/drama/projects/' + id);
     if (this._dmOpenRequest !== request) return false;
@@ -57,6 +66,8 @@
     try { sessionStorage.setItem(KEY, id); } catch (_) {}
     if (!this._vp().profiles) this.loadVoiceProfiles();
     if (this._dm().currentId !== id) this._dmResetEdits();
+    // A re-render during the fetch may have reloaded the previous project's scene state; drop it once B is applied.
+    if (this._dm().current && this._dm().current.id !== r.data.project.id) this._dmClearScene();
     this._dmText = { script: '', title: '' };
     this.dmSet({ current: r.data.project, currentId: id, assembled: null, run: null, parseResult: null });
     this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'drama-project', id: r.data.project.id });
@@ -75,6 +86,7 @@
     try { sessionStorage.setItem(KEY, r.data.project.id); } catch (_) {}
     this._dmResetEdits();
     this._dmStopRunTracking();
+    this._dmClearScene();
     this.dmSet({ current: r.data.project, currentId: r.data.project.id, parseResult: { ok: true, mode: r.data.mode }, assembled: null });
     this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'drama-project', id: r.data.project.id });
     if (!this._vp().profiles) this.loadVoiceProfiles();
@@ -90,6 +102,7 @@
     if (!r.ok) { this.dmSet({ parseResult: r.data }); this.toast((r.data.errors || [r.data.error])[0], '#ef4444'); return; }
     this._dmResetEdits();
     this._dmStopRunTracking();
+    this._dmClearScene();
     this.dmSet({ current: r.data.project, parseResult: { ok: true } });
   };
   P.dramaSave = async function (save) {

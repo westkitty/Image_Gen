@@ -18,8 +18,11 @@ const { results, test, phase, exitCode } = runner('drama-studio');
   const browser = await launchBrowser(chromium);
   const made = { profiles: [], projects: [] };
   const api = async (m, r, b) => { const x = await fetch(srv.base + r, { method: m, signal: AbortSignal.timeout(20000), headers: { 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); return x.json(); };
+  // Every context opened by a scenario is closed when that scenario ends, pass or fail, so a failed scenario never leaves a live page loading media behind the next one.
+  const openContexts = [];
+  const scenario = async (name, fn) => { try { return await test(name, fn); } finally { for (const c of openContexts.splice(0)) await c.close().catch(() => {}); } };
   const open = async (opts = {}) => {
-    const ctx = await browser.newContext({ viewport: { width: opts.width || 1280, height: opts.height || 900 }, reducedMotion: opts.reducedMotion || 'no-preference', acceptDownloads: true }), page = await ctx.newPage();
+    const ctx = await browser.newContext({ viewport: { width: opts.width || 1280, height: opts.height || 900 }, reducedMotion: opts.reducedMotion || 'no-preference', acceptDownloads: true }), page = await ctx.newPage(); openContexts.push(ctx);
     await page.addInitScript(() => { window.__unhandledRejections = []; addEventListener('unhandledrejection', e => window.__unhandledRejections.push(String(e.reason))); });
     await installModelSnapshots(page, srv.base);
         const errors = []; page.on('pageerror', e => errors.push(String(e)));
@@ -43,7 +46,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
     vA = (await api('POST', '/api/voice/profiles', { name: 'ZZ-ST-A', type: 'preset', preset_voice: 'af_heart' })).profile.id; vB = (await api('POST', '/api/voice/profiles', { name: 'ZZ-ST-B', type: 'preset', preset_voice: 'am_adam' })).profile.id; made.profiles.push(vA, vB);
     pid = (await api('POST', '/api/drama/projects', { title: 'ZZ-ST-Drama', script: SCRIPT })).project.id; made.projects.push(pid);
 
-    await test('Studio: seven stages inside one Drama module; state line; classification proof; re-parse previews before it changes anything', async () => {
+    await scenario('Studio: seven stages inside one Drama module; state line; classification proof; re-parse previews before it changes anything', async () => {
       const { ctx, page, errors } = await open();
       await page.evaluate(id => { __dex._dm(); __dex.dm.currentId = id; __dex.setScreen('drama'); }, pid); await page.waitForSelector('[data-drama-stages]');
       assert.equal(await page.$$eval('[data-stage]', e => e.map(x => x.dataset.stage).join()), 'script,cast,direct,produce,review,master,export');
@@ -60,7 +63,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       assert.deepEqual(errors, []); await page.screenshot({ path: outPath('studio-script.png') }); await ctx.close();
     });
 
-    await test('Save and Continue waits for durable Drama save and reads the saved project back', async () => {
+    await scenario('Save and Continue waits for durable Drama save and reads the saved project back', async () => {
       const { ctx, page, errors } = await open();
       try {
         await page.evaluate(async id => { await __dex.openDramaProject(id, true); __dex.dm.current.saved = false; __dex.setScreen('drama', { skipUnsavedGuard: true }); }, pid);
@@ -78,7 +81,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       } finally { await ctx.close(); }
     });
 
-    await test('browser Back during an unsaved Drama script is declined by beforeunload and preserves the draft', async () => {
+    await scenario('browser Back during an unsaved Drama script is declined by beforeunload and preserves the draft', async () => {
       const { ctx, page, errors } = await open();
       try {
         await page.evaluate(() => { __dex.setScreen('drama', { skipUnsavedGuard: true }); __dex._dmText.script = 'private unsaved browser-history draft'; });
@@ -94,7 +97,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       } finally { await ctx.close(); }
     });
 
-    await test('unparsed Drama script offers no fake Save action and remains in memory when switching modules', async () => {
+    await scenario('unparsed Drama script offers no fake Save action and remains in memory when switching modules', async () => {
       const { ctx, page, errors } = await open();
       try {
         const draftState = await page.evaluate(() => { __dex.setScreen('drama', { skipUnsavedGuard: true }); __dex._dmText.script = 'draft not yet parsed into a saveable project'; return { screen: __dex.state.screens[__dex.state.version], dirty: __dex._unsavedWorkspaceWork() }; });
@@ -109,7 +112,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       } finally { await ctx.close(); }
     });
 
-    await test('Save failure keeps Drama draft and pending navigation; delayed save accepts one continuation only', async () => {
+    await scenario('Save failure keeps Drama draft and pending navigation; delayed save accepts one continuation only', async () => {
       const { ctx, page, errors } = await open();
       try {
         await page.evaluate(async id => { await __dex.openDramaProject(id, true); __dex.dm.current.saved = false; __dex.setScreen('drama', { skipUnsavedGuard: true }); }, pid);
@@ -159,7 +162,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       } finally { await ctx.close(); }
     });
 
-    await test('Cast Bible: voices, role, pronunciation, FX rack, optional pacing; unsupported controls are disabled with the engine evidence', async () => {
+    await scenario('Cast Bible: voices, role, pronunciation, FX rack, optional pacing; unsupported controls are disabled with the engine evidence', async () => {
       const { ctx, page, errors } = await open();
       await page.evaluate(id => { __dex._dm(); __dex.dm.currentId = id; __dex.dm.stage = 'cast'; __dex.setScreen('drama'); }, pid); await page.waitForSelector('[data-drama-cast]');
       for (const k of ['TIGER', 'CODEC', 'NARRATOR']) await page.waitForSelector(`[data-actor="${k}"]`);
@@ -171,14 +174,18 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       await page.selectOption('[data-pacing-select="CODEC"]', 'fast_monologue'); await until(async () => (await proj(pid)).actors.find(a => a.speaker_key === 'CODEC').pacing?.target_wpm === 300, 'CODEC pacing 300 wpm');
       const tid = await page.evaluate(() => __dex.dm.current.actors.find(a => a.speaker_key === 'TIGER').id);
       await page.click(`[data-actor="TIGER"] details summary`); await page.fill('#pr-from-' + tid, 'lamp');
-      await page.fill('#pr-to-' + tid, 'lamb'); await page.click('[data-pron-add="TIGER"]'); await until(async () => (await proj(pid)).actors.find(a => a.speaker_key === 'TIGER').pronunciation.length === 1, 'pronunciation rule saved');
+      await page.fill('#pr-to-' + tid, 'lamb');
+      // a re-render (e.g. an earlier save response landing late) must not close the panel or clear what was typed
+      await page.evaluate(async () => { __dex.dmSet({}); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); });
+      assert.equal(await page.$eval('#pr-from-' + tid, e => e.closest('details').open), true, 'pronunciation panel stays open across a re-render'); assert.equal(await page.inputValue('#pr-from-' + tid), 'lamp'); assert.equal(await page.inputValue('#pr-to-' + tid), 'lamb');
+      await page.click('[data-pron-add="TIGER"]'); await until(async () => (await proj(pid)).actors.find(a => a.speaker_key === 'TIGER').pronunciation.length === 1, 'pronunciation rule saved');
       await page.click('[data-fx-open="TIGER"]'); await page.waitForSelector('[data-fx-editor="TIGER"]'); assert.ok(await page.$$eval('[data-fx-node]', e => e.length) >= 4, 'the radio chain is editable node by node');
       assert.match(await page.innerText('[data-fx-editor="TIGER"]'), /echo-tap room simulation/);
       const act = (await api('GET', '/api/drama/projects/' + pid)).project.actors; assert.ok(act.every(a => a.history.length >= 1));
       assert.deepEqual(errors, []); await page.screenshot({ path: outPath('studio-cast.png') }); await ctx.close();
     });
 
-    await test('Direct: script cues are cues (never speech), bound to a locally generated effect; timeline model, waveforms and keyboard editing work', async () => {
+    await scenario('Direct: script cues are cues (never speech), bound to a locally generated effect; timeline model, waveforms and keyboard editing work', async () => {
       const { ctx, page, errors } = await open();
       const [l1] = await lineIds(pid); const sceneId = (await api('GET', '/api/drama/projects/' + pid)).project.scenes[0].id; const clipCalls = [];
       await page.evaluate(id => { __dex._dm(); __dex.dm.currentId = id; __dex.dm.stage = 'direct'; __dex.setScreen('drama'); }, pid); await page.waitForSelector('[data-sound-director]');
@@ -186,6 +193,8 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       await page.click('[data-cue-suggest]'); await page.waitForSelector('[data-procedural="rain"]'); assert.match(await page.innerText('[data-sound-director]'), /nothing is downloaded/i);
       await page.click('[data-procedural="rain"]'); await until(async () => (await api('GET', '/api/drama/projects/' + pid + '/cues')).cues[0].status === 'resolved', 'cue bound', 30000);
       const cue = (await api('GET', '/api/drama/projects/' + pid + '/cues')).cues[0]; assert.equal(cue.track.loop, true); assert.ok(cue.artifact_id.startsWith('proc-rain')); assert.equal((await api('GET', '/api/library?kind=music')).items.find(i => i.artifact_id === cue.artifact_id).operation, 'procedural-sfx');
+      // The app reloads the real timeline after binding the cue; wait for that response to land (the bound cue shows in the ambience lane) so it cannot arrive after, and replace, the stub below.
+      await page.waitForFunction(() => { const t = __dex.dm.timeline; return !!t && t.lanes.some(l => l.id === 'ambience' && l.clips.some(c => String(c.artifact_id || '').startsWith('proc-rain'))); }, null, { timeout: 10000 });
       // timeline view model (fixture: no Big Mac takes exist in this hermetic run)
       const peaks = { bins: 240, min: Array.from({ length: 240 }, (_, i) => -Math.round(40 + 30 * Math.sin(i / 6))), max: Array.from({ length: 240 }, (_, i) => Math.round(40 + 30 * Math.sin(i / 6))), duration: 2 };
       await page.route('**/api/voice/peaks/**', r => r.fulfill({ json: peaks }));
@@ -210,7 +219,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       assert.deepEqual(errors, []); await page.screenshot({ path: outPath('studio-direct.png') }); await ctx.close();
     });
 
-    await test('Produce: the one-click button is gated by the plan; progress, cancel and resume are shown from real job state; nothing reaches Big Mac', async () => {
+    await scenario('Produce: the one-click button is gated by the plan; progress, cancel and resume are shown from real job state; nothing reaches Big Mac', async () => {
       const { ctx, page, errors, blocked } = await open();
       await page.evaluate(id => { __dex._dm(); __dex.dm.currentId = id; __dex.dm.stage = 'produce'; __dex.setScreen('drama'); }, pid); await page.waitForSelector('[data-produce]');
       await page.waitForFunction(() => !document.querySelector('[data-drama-unresolved]'));
@@ -228,7 +237,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       assert.deepEqual(errors, []); await page.screenshot({ path: outPath('studio-produce.png') }); await ctx.close();
     });
 
-    await test('Review / Master / Export: honest QA, persisted mastering & delivery settings, manual assembly refuses with named lines, private package, historical labels', async () => {
+    await scenario('Review / Master / Export: honest QA, persisted mastering & delivery settings, manual assembly refuses with named lines, private package, historical labels', async () => {
       const { ctx, page, errors } = await open();
       await page.evaluate(id => { __dex._dm(); __dex.dm.currentId = id; __dex.dm.stage = 'review'; __dex.setScreen('drama'); }, pid); await page.waitForSelector('[data-run-qa]');
       await page.waitForSelector('[data-asr-status]'); assert.match(await page.innerText('[data-asr-status]'), /UNAVAILABLE|ready/); assert.match(await page.innerText('[data-asr-status]'), /Silero not installed|energy detector/);
@@ -249,10 +258,10 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       assert.deepEqual(errors, []); await page.screenshot({ path: outPath('studio-export.png') }); await ctx.close();
     });
 
-    await test('Voice Designer: capability truth, create → describe → (fixture audition) → compare → approve; bank export is metadata-only by default', async () => {
+    await scenario('Voice Designer: capability truth, create → describe → (fixture audition) → compare → approve; bank export is metadata-only by default', async () => {
       const { ctx, page, errors, blocked } = await open();
       await page.evaluate(() => { __dex.vpSet({ tab: 'designer' }); __dex.setScreen('voice'); }); await page.waitForSelector('[data-voice-designer]');
-      await page.click('[data-new-character]'); await page.fill('[data-new-character-name]', 'ZZ-ST-Character');
+      await page.click('[data-new-character]'); await page.fill('[data-new-character-name]', 'ZZ-ST-Character'); await page.evaluate(async () => { __dex.vpSet({}); __dex.vdSet({}); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); }); assert.equal(await page.inputValue('[data-new-character-name]'), 'ZZ-ST-Character', 'a re-render (e.g. the profile list landing late) must not clear the typed character name');
       const created = page.waitForResponse(r => r.url().endsWith('/api/voice/profiles') && r.request().method() === 'POST', { timeout: 15000 });
       await page.click('[data-create-character]');
       assert.equal((await created).status(), 201, 'the local profile creation succeeds before Designer renders it');
@@ -277,7 +286,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
     });
 
     for (const width of [375, 768]) {
-      await test(`responsive @${width}px: every stage and the Designer have no horizontal page overflow`, async () => {
+      await scenario(`responsive @${width}px: every stage and the Designer have no horizontal page overflow`, async () => {
         const { ctx, page, errors } = await open({ width, height: 812 });
         for (const stage of ['script', 'cast', 'direct', 'produce', 'review', 'master', 'export']) {
           await page.evaluate(([s, id]) => { __dex._dm(); __dex.dm.currentId = id; __dex.dm.stage = s; __dex.dm.timeline = null; __dex.setScreen('drama'); __dex.dmSet({}); }, [stage, pid]);
@@ -299,7 +308,7 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       });
     }
 
-    await test('accessibility: tabs have roles/selection, every control is a labelled native control, reduced motion removes the progress animation', async () => {
+    await scenario('accessibility: tabs have roles/selection, every control is a labelled native control, reduced motion removes the progress animation', async () => {
       const { ctx, page, errors } = await open({ reducedMotion: 'reduce' });
       await page.evaluate(id => { __dex._dm(); __dex.dm.currentId = id; __dex.dm.stage = 'produce'; __dex.setScreen('drama'); }, pid); await page.waitForSelector('[data-drama-stages]');
       const tabs = await page.$$eval('[data-stage]', els => els.map(e => [e.getAttribute('role'), e.getAttribute('aria-selected'), e.tagName])); assert.ok(tabs.every(t => t[0] === 'tab' && t[2] === 'BUTTON')); assert.equal(tabs.filter(t => t[1] === 'true').length, 1);

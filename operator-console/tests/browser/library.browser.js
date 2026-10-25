@@ -55,15 +55,19 @@ const counter = page => page.locator('[data-lightbox-count]').innerText();
       const voice = { kind: 'voice', artifact_id: 'fixture-voice.wav', url: '/api/audio/fixture-voice.wav', download_url: '/api/audio/fixture-voice.wav', duration: 2 };
       const { page, ctx } = await newPage(browser, srv.base, undefined, [...images, voice]);
       await page.waitForSelector('[data-media-library-grid] [data-lib-thumb]');
-      const boxes = await page.locator('[data-media-library-grid] [data-lib-thumb]').evaluateAll(nodes => nodes.map(n => {
-        const b = n.getBoundingClientRect(); return { x: b.x, y: b.y, bottom: b.bottom, width: b.width, height: b.height };
-      }));
+      // App re-renders (e.g. the 3 s resource poll) rebuild the Library DOM, so a resolved handle can go stale between
+      // round trips (a detached grid measures 0/0). Measure the thumbnails and the scroll box in one atomic snapshot.
+      const { boxes, scroll } = await page.evaluate(() => {
+        const grid = document.querySelector('[data-media-library-grid]');
+        return { boxes: [...grid.querySelectorAll('[data-lib-thumb]')].map(n => {
+          const b = n.getBoundingClientRect(); return { x: b.x, y: b.y, bottom: b.bottom, width: b.width, height: b.height };
+        }), scroll: { height: grid.clientHeight, content: grid.scrollHeight } };
+      });
       assert.equal(boxes.length, N);
       assert.ok(boxes.every(b => b.height >= b.width - 2), 'image rows retain square thumbnail height');
       for (const a of boxes) for (const b of boxes) {
         if (b.y > a.y + 1) assert.ok(b.y >= a.bottom - 1, 'later rows do not overlap earlier thumbnails');
       }
-      const scroll = await page.locator('[data-media-library-grid]').evaluate(n => ({ height: n.clientHeight, content: n.scrollHeight }));
       assert.ok(scroll.height <= 361 && scroll.content > scroll.height, JSON.stringify(scroll));
       await ctx.close();
     });
