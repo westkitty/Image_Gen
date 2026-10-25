@@ -624,17 +624,29 @@ class Component extends DCLogic {
   insertLora(filename, weight = 0.8) {
     const base = String(filename || '').replace(/\.[^.]+$/, '');
     const options = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
-    const found = options.find(l => (l.filename && l.filename.replace(/\.[^.]+$/, '').toLowerCase() === base.toLowerCase()) || (l.name && l.name.toLowerCase() === base.toLowerCase()) || l.id === filename);
-    if (found && typeof this.selectCreateLora === 'function') {
-      this.selectCreateLora(found.id);
-      if (typeof this.setCreateLoraStrength === 'function') {
-        this.setCreateLoraStrength(weight, found.min_weight, found.max_weight);
-      }
-      this.setState({ createLoras: [] });
-      this.toast('Selected adapter ' + found.name + ' · ' + Number(weight).toFixed(2), '#38bdf8');
+    const found = options.find(l => (l.filename && l.filename.replace(/\.[^.]+$/, '').toLowerCase() === base.toLowerCase()) || (l.name && l.name.toLowerCase() === base.toLowerCase()) || l.id === filename || (l.filename && l.filename.toLowerCase() === String(filename || '').toLowerCase()));
+    if (!found || !found.use_enabled) {
+      const reason = (found && found.unavailable_reason) ? found.unavailable_reason : ('Adapter ' + (found ? found.name : base) + ' is not compatible or available with this checkpoint');
+      this.toast(reason, '#fbbf24');
       return;
     }
-    this.toast('Adapter ' + base + ' is not compatible or available with this checkpoint', '#fbbf24');
+    if (typeof this.selectCreateLora === 'function') {
+      this.selectCreateLora(found.id);
+      const cur = this.state.createLora;
+      if (cur && cur.enabled && cur.selectedId === found.id) {
+        const minW = typeof found.min_weight === 'number' ? found.min_weight : 0.0;
+        const maxW = typeof found.max_weight === 'number' ? found.max_weight : 2.0;
+        const numW = Number(weight);
+        const clamped = Math.max(minW, Math.min(maxW, Number.isFinite(numW) ? numW : ((found.default_weight !== undefined) ? found.default_weight : 0.8)));
+        if (typeof this.setCreateLoraStrength === 'function') {
+          this.setCreateLoraStrength(clamped, minW, maxW);
+        }
+        this.setState(st => ({ createLoras: [], loraWeights: { ...(st.loraWeights || {}), [found.id]: clamped } }));
+        this.toast('Selected adapter ' + found.name + ' · ' + Number(clamped).toFixed(2), '#38bdf8');
+        return;
+      }
+    }
+    this.toast('Adapter ' + (found ? found.name : base) + ' could not be activated', '#fbbf24');
   }
   insertTriggerPhrase(triggers) {
     const phrase = Array.isArray(triggers) ? triggers[0] : String(triggers || '');
@@ -705,12 +717,27 @@ class Component extends DCLogic {
   }
   setLoraWeight(name, weight) {
     const createLora = this.state.createLora;
+    const targetName = String(name || '').toLowerCase();
+    const baseTargetName = targetName.replace(/\.[^.]+$/, '');
     if (createLora && createLora.selectedId) {
       const options = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
       const sel = options.find(l => l.id === createLora.selectedId);
-      if (sel && (sel.name.toLowerCase() === name.toLowerCase() || sel.id.toLowerCase() === name.toLowerCase())) {
-        this.setCreateLoraStrength(weight, sel.min_weight, sel.max_weight);
-        return;
+      if (sel) {
+        const selName = String(sel.name || '').toLowerCase();
+        const selBase = selName.replace(/\.[^.]+$/, '');
+        const selFile = String(sel.filename || '').toLowerCase();
+        const selId = String(sel.id || '').toLowerCase();
+        if (selName === targetName || selBase === baseTargetName || selId === targetName || selFile === targetName) {
+          const numW = Number(weight);
+          const minW = typeof sel.min_weight === 'number' ? sel.min_weight : 0.0;
+          const maxW = typeof sel.max_weight === 'number' ? sel.max_weight : 2.0;
+          const clamped = Math.max(minW, Math.min(maxW, Number.isFinite(numW) ? numW : ((sel.default_weight !== undefined) ? sel.default_weight : 1.0)));
+          if (typeof this.setCreateLoraStrength === 'function') {
+            this.setCreateLoraStrength(clamped, minW, maxW);
+          }
+          this.setState(st => ({ loraWeights: { ...(st.loraWeights || {}), [sel.id]: clamped } }));
+          return;
+        }
       }
     }
     const prompt = this.state.prompt || '';
@@ -724,12 +751,24 @@ class Component extends DCLogic {
   removeLora(token) {
     const named = /^<lora:([^:>]+)/.exec(String(token || ''));
     const name = named ? named[1] : String(token || '');
+    const targetName = String(name || '').toLowerCase();
+    const baseTargetName = targetName.replace(/\.[^.]+$/, '');
     const createLora = this.state.createLora;
     if (createLora && (createLora.selectedId || createLora.enabled)) {
       const options = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
       const sel = options.find(l => l.id === createLora.selectedId);
-      if (!token || !sel || sel.name.toLowerCase() === name.toLowerCase() || sel.id.toLowerCase() === name.toLowerCase() || String(token).includes(sel.name)) {
-        this.selectCreateLora('');
+      if (
+        !token ||
+        !sel ||
+        sel.name.toLowerCase() === targetName ||
+        sel.name.replace(/\.[^.]+$/, '').toLowerCase() === baseTargetName ||
+        sel.id.toLowerCase() === targetName ||
+        (sel.filename && sel.filename.toLowerCase() === targetName) ||
+        String(token).includes(sel.name)
+      ) {
+        if (typeof this.selectCreateLora === 'function') {
+          this.selectCreateLora('');
+        }
         this.setState({ createLoras: [] });
         this.toast('Removed adapter' + (sel ? ' ' + sel.name : ''), '#94a3b8');
         return;
@@ -739,7 +778,7 @@ class Component extends DCLogic {
     const prompt = this.state.prompt || '';
     const next = prompt.replace(token, '').replace(/\s{2,}/g, ' ').trim();
     this.setState({ prompt: next });
-    this.toast('Removed ' + token, '#94a3b8');
+    this.toast('Removed adapter', '#94a3b8');
   }
   // Wildcard placement: reorder among the wildcards already in the prompt, or move one between positive and negative.
   // Operations are positional (by occurrence index) so repeated tokens stay unambiguous; only the tokens move, surrounding text is kept.
@@ -3015,103 +3054,112 @@ class Component extends DCLogic {
       extraNetworksTab === 'loras' ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380, overflowY: 'auto' } },
         loadingAssets ? React.createElement('div', { style: { fontSize: 12, color: '#38bdf8' } }, 'Scanning LoRAs…') :
         lorasList.length === 0 ? React.createElement('div', { style: { fontSize: 12, color: '#64748b', fontStyle: 'italic' } }, 'No LoRAs match search.') :
-        lorasList.map(l => {
-          const baseName = l.name.replace(/\.[^.]+$/, '');
-          const inPrompt = (prompt || '').includes('<lora:' + baseName);
-          const activeWeight = (activeLoras.find(a => a.name === baseName) || {}).weight ?? s.loraWeights[l.id] ?? l.default_weight ?? 0.8;
-          const loraProven = l.proof_status === 'PROVEN';
-          const compatTone = l.compatibility === 'Compatible' ? '#65d66e' : l.compatibility === 'Probably compatible' ? '#fbbf24' : l.compatibility === 'Incompatible' ? '#ef4444' : '#94a3b8';
+        (() => {
+          const loraOptions = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
+          const currentCreateLora = s.createLora || {};
+          return lorasList.map(l => {
+            const opt = loraOptions.find(o => o.id === l.id || o.name === l.name || (o.filename && o.filename === l.filename));
+            const isProven = !!(opt && opt.use_enabled);
+            const isSelected = !!(currentCreateLora.enabled && currentCreateLora.selectedId === l.id && isProven);
+            const activeWeight = isSelected
+              ? Number(currentCreateLora.strength ?? (opt && opt.default_weight) ?? l.default_weight ?? 1.0)
+              : Number((s.loraWeights && s.loraWeights[l.id]) ?? (opt && opt.default_weight) ?? l.default_weight ?? 1.0);
+            const compatTone = l.compatibility === 'Compatible' ? '#65d66e' : l.compatibility === 'Probably compatible' ? '#fbbf24' : l.compatibility === 'Incompatible' ? '#ef4444' : '#94a3b8';
 
-          return React.createElement('div', {
-            key: l.id,
-            style: { border: '1px solid rgba(148,163,184,.14)', background: 'rgba(9,20,32,.7)', borderRadius: 8, padding: 9, display: 'flex', flexDirection: 'column', gap: 6 }
-          },
-            // Title & compatibility badges
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-              React.createElement('div', { style: { fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: "'IBM Plex Mono',monospace" } }, l.name),
-              React.createElement('div', { style: { display: 'flex', gap: 4 } },
-                React.createElement('span', { style: { border: '1px solid rgba(148,163,184,.2)', background: 'rgba(255,255,255,.04)', color: '#94a3b8', borderRadius: 4, padding: '1px 5px', fontSize: 9 } }, l.family.toUpperCase()),
-                React.createElement('span', { style: { border: '1px solid ' + compatTone + '55', background: compatTone + '15', color: compatTone, borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700 } }, l.compatibility)
+            return React.createElement('div', {
+              key: l.id,
+              style: { border: '1px solid rgba(148,163,184,.14)', background: 'rgba(9,20,32,.7)', borderRadius: 8, padding: 9, display: 'flex', flexDirection: 'column', gap: 6 }
+            },
+              // Title & compatibility badges
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('div', { style: { fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: "'IBM Plex Mono',monospace" } }, l.name),
+                React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                  React.createElement('span', { style: { border: '1px solid rgba(148,163,184,.2)', background: 'rgba(255,255,255,.04)', color: '#94a3b8', borderRadius: 4, padding: '1px 5px', fontSize: 9 } }, l.family.toUpperCase()),
+                  React.createElement('span', { style: { border: '1px solid ' + compatTone + '55', background: compatTone + '15', color: compatTone, borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700 } }, l.compatibility)
+                )
+              ),
+
+              l.description ? React.createElement('div', { style: { fontSize: 10, lineHeight: 1.35, color: '#94a3b8' } }, l.description) : null,
+              React.createElement('div', { role: 'status', style: { color: isProven ? '#65d66e' : '#fbbf24', fontSize: 10 } },
+                isProven ? 'Generation verified' : (opt && opt.unavailable_reason ? opt.unavailable_reason : 'File installed; generation not verified for this checkpoint')
+              ),
+              (() => {
+                let url = null;
+                try {
+                  const parsed = new URL(l.source_url || '');
+                  if (parsed.protocol === 'https:' && parsed.hostname && !parsed.username && !parsed.password) url = parsed.href;
+                } catch (_) {}
+                return url
+                  ? React.createElement('a', {
+                      href: url, target: '_blank', rel: 'noopener noreferrer',
+                      'aria-label': 'Source for LoRA ' + l.name + ' (opens in a new tab)',
+                      onClick: event => event.stopPropagation(),
+                      style: { alignSelf: 'flex-start', border: '1px solid rgba(148,163,184,.38)', borderRadius: 5, padding: '3px 7px', color: '#cbd5e1', background: 'rgba(255,255,255,.035)', fontSize: 10, fontWeight: 700, textDecoration: 'none', outlineOffset: 2 }
+                    }, 'Source ↗')
+                  : React.createElement('span', { role: 'status', style: { color: '#64748b', fontSize: 10 } }, 'Source unavailable');
+              })(),
+
+              // Weight controls
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                React.createElement('span', { style: { fontSize: 10, color: '#7f8ca8', textTransform: 'uppercase' } }, 'Weight:'),
+                React.createElement('input', {
+                  type: 'range',
+                  min: String(opt && typeof opt.min_weight === 'number' ? opt.min_weight : 0),
+                  max: String(opt && typeof opt.max_weight === 'number' ? opt.max_weight : 2),
+                  step: '0.05',
+                  value: activeWeight,
+                  disabled: !isProven,
+                  onChange: e => {
+                    const val = parseFloat(e.target.value);
+                    this.setState(st => ({ loraWeights: { ...(st.loraWeights || {}), [l.id]: val } }));
+                    if (isSelected) this.setLoraWeight(l.name, val);
+                  },
+                  style: { flex: 1, accentColor: accent }
+                }),
+                React.createElement('span', { style: { fontSize: 11, color: '#38bdf8', fontFamily: "'IBM Plex Mono',monospace", width: 34 } }, activeWeight.toFixed(2))
+              ),
+
+              // Trigger words
+              l.trigger_words && l.trigger_words.length ? React.createElement('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: 10, color: '#64748b' } }, 'Triggers:'),
+                ...l.trigger_words.map(tw => React.createElement('button', {
+                  key: tw,
+                  type: 'button',
+                  disabled: !isProven,
+                  onClick: () => this.addTriggerWord(tw),
+                  title: 'Click to add to prompt',
+                  style: { border: '1px solid rgba(56,189,248,.3)', background: 'rgba(56,189,248,.08)', color: '#7dd3fc', borderRadius: 4, padding: '1px 6px', fontSize: 10, cursor: isProven ? 'pointer' : 'not-allowed' }
+                }, '+ ' + tw))
+              ) : null,
+
+              // Action Buttons
+              React.createElement('div', { style: { display: 'flex', gap: 6, marginTop: 2 } },
+                isSelected
+                  ? React.createElement('button', {
+                      type: 'button',
+                      onClick: () => this.removeLora(l.name),
+                      style: { border: '1px solid rgba(239,68,68,.4)', background: 'rgba(239,68,68,.1)', color: '#f87171', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }
+                    }, 'Remove Adapter')
+                  : React.createElement('button', {
+                      type: 'button',
+                      disabled: !isProven,
+                      onClick: () => this.insertLora(l.filename || l.name, activeWeight),
+                      style: { border: '1px solid ' + (isProven ? accent : 'rgba(148,163,184,.2)'), background: isProven ? (accent + '18') : 'rgba(255,255,255,.02)', color: isProven ? accent : '#64748b', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: isProven ? 'pointer' : 'not-allowed' }
+                    }, 'Select Adapter'),
+                React.createElement('button', {
+                  type: 'button',
+                  disabled: !isProven,
+                  onClick: () => {
+                    const defaultW = (opt && opt.default_weight !== undefined) ? opt.default_weight : (l.default_weight !== undefined ? l.default_weight : 0.8);
+                    this.setState(st => ({ loraWeights: { ...(st.loraWeights || {}), [l.id]: defaultW } }));
+                    if (isSelected) this.setLoraWeight(l.name, defaultW);
+                  },
+                  style: { border: '1px solid rgba(148,163,184,.18)', background: 'transparent', color: isProven ? '#94a3b8' : '#475569', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: isProven ? 'pointer' : 'not-allowed' }
+                }, 'Reset')
               )
-            ),
-
-            l.description ? React.createElement('div', { style: { fontSize: 10, lineHeight: 1.35, color: '#94a3b8' } }, l.description) : null,
-            React.createElement('div', { role: 'status', style: { color: loraProven ? '#65d66e' : '#fbbf24', fontSize: 10 } }, loraProven ? 'Generation verified' : 'File installed; generation not verified'),
-            (() => {
-              let url = null;
-              try {
-                const parsed = new URL(l.source_url || '');
-                if (parsed.protocol === 'https:' && parsed.hostname && !parsed.username && !parsed.password) url = parsed.href;
-              } catch (_) {}
-              return url
-                ? React.createElement('a', {
-                    href: url, target: '_blank', rel: 'noopener noreferrer',
-                    'aria-label': 'Source for LoRA ' + l.name + ' (opens in a new tab)',
-                    onClick: event => event.stopPropagation(),
-                    style: { alignSelf: 'flex-start', border: '1px solid rgba(148,163,184,.38)', borderRadius: 5, padding: '3px 7px', color: '#cbd5e1', background: 'rgba(255,255,255,.035)', fontSize: 10, fontWeight: 700, textDecoration: 'none', outlineOffset: 2 }
-                  }, 'Source ↗')
-                : React.createElement('span', { role: 'status', style: { color: '#64748b', fontSize: 10 } }, 'Source unavailable');
-            })(),
-
-            // Weight controls
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-              React.createElement('span', { style: { fontSize: 10, color: '#7f8ca8', textTransform: 'uppercase' } }, 'Weight:'),
-              React.createElement('input', {
-                type: 'range',
-                min: '0',
-                max: '2',
-                step: '0.05',
-                value: activeWeight,
-                disabled: !loraProven,
-                onChange: e => {
-                  const val = parseFloat(e.target.value);
-                  this.setState(st => ({ loraWeights: { ...st.loraWeights, [l.id]: val } }));
-                  if (inPrompt) this.setLoraWeight(baseName, val);
-                },
-                style: { flex: 1, accentColor: accent }
-              }),
-              React.createElement('span', { style: { fontSize: 11, color: '#38bdf8', fontFamily: "'IBM Plex Mono',monospace", width: 34 } }, activeWeight.toFixed(2))
-            ),
-
-            // Trigger words
-            l.trigger_words && l.trigger_words.length ? React.createElement('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' } },
-              React.createElement('span', { style: { fontSize: 10, color: '#64748b' } }, 'Triggers:'),
-              ...l.trigger_words.map(tw => React.createElement('button', {
-                key: tw,
-                type: 'button',
-                disabled: !loraProven,
-                onClick: () => this.addTriggerWord(tw),
-                title: 'Click to add to prompt',
-                style: { border: '1px solid rgba(56,189,248,.3)', background: 'rgba(56,189,248,.08)', color: '#7dd3fc', borderRadius: 4, padding: '1px 6px', fontSize: 10, cursor: 'pointer' }
-              }, '+ ' + tw))
-            ) : null,
-
-            // Action Buttons
-            React.createElement('div', { style: { display: 'flex', gap: 6, marginTop: 2 } },
-              inPrompt
-                ? React.createElement('button', {
-                    type: 'button',
-                    onClick: () => this.removeLora('<lora:' + baseName),
-                    style: { border: '1px solid rgba(239,68,68,.4)', background: 'rgba(239,68,68,.1)', color: '#f87171', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }
-                  }, 'Remove from Prompt')
-                : React.createElement('button', {
-                    type: 'button',
-                    disabled: !loraProven,
-                    onClick: () => this.insertLora(l.filename || l.name, activeWeight),
-                    style: { border: '1px solid ' + accent, background: accent + '18', color: accent, borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }
-                  }, 'Add to Prompt'),
-              React.createElement('button', {
-                type: 'button',
-                disabled: !loraProven,
-                onClick: () => {
-                  this.setState(st => ({ loraWeights: { ...st.loraWeights, [l.id]: 0.8 } }));
-                  if (inPrompt) this.setLoraWeight(baseName, 0.8);
-                },
-                style: { border: '1px solid rgba(148,163,184,.18)', background: 'transparent', color: '#94a3b8', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }
-              }, 'Reset')
-            )
-          );
-        })
+            );
+          });
+        })()
       ) : null,
 
       // Tab Content: Embeddings (Honest Empty State)

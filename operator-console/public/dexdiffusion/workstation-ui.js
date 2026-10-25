@@ -152,10 +152,13 @@
       if (ws.hiresMode === 'size') Object.assign(body, { hires_width: parseInt(ws.hiresW, 10), hires_height: parseInt(ws.hiresH, 10) });
       else body.hires_scale = +ws.hiresScale;
     }
-    const merged = Object.assign(body, over || {});
+    const cleanOver = Object.assign({}, over || {});
+    const isExactReplay = cleanOver.exactReplay === true;
+    delete cleanOver.exactReplay;
+    const merged = Object.assign(body, cleanOver);
     if (ctl.lora) {
-      if (over && over.exactReplay === true && Array.isArray(over.loras)) {
-        if (over.loras.length) merged.loras = over.loras;
+      if (isExactReplay && Array.isArray(cleanOver.loras)) {
+        if (cleanOver.loras.length) merged.loras = cleanOver.loras;
         else delete merged.loras;
       } else {
         const eff = typeof this.getEffectiveCreateLoras === 'function' ? this.getEffectiveCreateLoras() : [];
@@ -165,6 +168,7 @@
     } else {
       delete merged.loras;
     }
+    delete merged.exactReplay;
     return merged;
   };
 
@@ -199,7 +203,7 @@
         use_enabled: enabled,
         route_status: routeStatus,
         classification,
-        unavailable_reason: l.rs_lora && !mfluxStyle ? 'rsLoRA scaling is not verified on this backend.' : !familyMatches ? 'Adapter family does not match the selected checkpoint.' : !enabled ? 'Installed; inference is not yet proven for this checkpoint and backend.' : '',
+        unavailable_reason: l.unavailable_reason || (l.rs_lora && !mfluxStyle ? 'rsLoRA scaling is not verified on this backend.' : !familyMatches ? 'Adapter family does not match the selected checkpoint.' : !enabled ? 'Installed; inference is not yet proven for this checkpoint and backend.' : ''),
         selected_route: route
       });
     });

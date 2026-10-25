@@ -5906,7 +5906,17 @@ app.get('/api/images/:id', (req, res) => {
   res.sendFile(img.path);
 });
 
-app.listen(PORT, HOST, () => {
-  const build = getBuildInfo();
-  console.log(`SDCPP Workbench listening on ${build.bind} (${build.version}, HEAD ${build.gitHead}, pid ${build.pid})`);
-});
+if (require.main === module) {
+  app.listen(PORT, HOST, () => {
+    const build = getBuildInfo();
+    console.log(`SDCPP Workbench listening on ${build.bind} (${build.version}, HEAD ${build.gitHead}, pid ${build.pid})`);
+  });
+}
+
+module.exports = {
+  app,
+  normalizeControlledGenerationBody,
+  validateControlledGenerationParams,
+  allControlledTargets,
+  validateStructuredLoras,
+};

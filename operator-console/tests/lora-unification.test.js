@@ -5,6 +5,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
+const {
+  normalizeControlledGenerationBody,
+  validateControlledGenerationParams,
+  allControlledTargets
+} = require('../server');
 
 const DIR = path.join(__dirname, '..', 'public', 'dexdiffusion');
 const read = file => fs.readFileSync(path.join(DIR, file), 'utf8');
@@ -438,6 +443,26 @@ test('P0: Generate Again LoRA leakage prevention (ON -> generate -> OFF -> Gener
     const call4 = calls.filter(c => c.url.includes('generate-controlled')).at(-1);
     const body4 = JSON.parse(call4.body);
     assert.deepEqual(body4.loras, [{ name: 'lcm_sdxl', weight: 1.0 }], 'exactReplay preserves historical loras');
+    assert.equal(body4.exactReplay, undefined, 'exactReplay must NEVER leak into outbound API request');
+
+    // Defect 1 - Test D: Outbound exact-replay request is accepted by real API normalizer & validator
+    const norm4 = normalizeControlledGenerationBody(body4);
+    assert.equal(norm4.invalidKey, undefined, 'actual server normalization accepts outbound request');
+    const err4 = validateControlledGenerationParams(norm4, allControlledTargets());
+    assert.equal(err4, null, 'actual server validation accepts outbound request without unexpected-parameter error');
+
+    // Defect 1 - Test E: Confirm malformed / genuinely unexpected API fields are still rejected
+    const badExactReplay = Object.assign({}, body4, { exactReplay: true });
+    const normBad1 = normalizeControlledGenerationBody(badExactReplay);
+    assert.equal(normBad1.invalidKey, 'exactReplay', 'server rejects raw exactReplay parameter');
+    const errBad1 = validateControlledGenerationParams(normBad1, allControlledTargets());
+    assert.match(errBad1, /Unexpected field: exactReplay/);
+
+    const malformed = Object.assign({}, body4, { invalid_unknown_param: 'forbidden' });
+    const normBad2 = normalizeControlledGenerationBody(malformed);
+    assert.equal(normBad2.invalidKey, 'invalid_unknown_param', 'server rejects arbitrary unknown keys');
+    const errBad2 = validateControlledGenerationParams(normBad2, allControlledTargets());
+    assert.match(errBad2, /Unexpected field: invalid_unknown_param/);
   } finally {
     close();
   }
@@ -576,4 +601,130 @@ test('P1: Duplicate negative-prompt textarea in index.html is eliminated', () =>
   assert.equal(html.includes('data-dex-field="negative-prompt-adv"'), false, 'no duplicate negative-prompt-adv in index.html');
   const count = (html.match(/data-dex-field="negative-prompt"/g) || []).length;
   assert.equal(count, 1, 'exactly one negative prompt textarea in template');
+});
+
+test('Defect 2: Extra Networks incompatible adapter selection guard, state synchronization, and strength updates', async () => {
+  const { w, inst, close } = boot();
+  try {
+    await settle(w);
+    apiStub(w);
+    const adapterA = {
+      id: 'lcm_sdxl_asset',
+      name: 'lcm_sdxl',
+      filename: 'lcm_sdxl.safetensors',
+      family: 'sdxl',
+      compatibility: 'Compatible',
+      proof_status: 'PROVEN',
+      proof_target_ids: ['sdxl-base'],
+      default_weight: 1.0,
+      min_weight: 0.0,
+      max_weight: 2.0,
+    };
+    const adapterB = {
+      id: 'style_b_asset',
+      name: 'style_b',
+      filename: 'style_b.safetensors',
+      family: 'sdxl',
+      compatibility: 'Compatible',
+      proof_status: 'PROVEN',
+      proof_target_ids: ['sdxl-base'],
+      default_weight: 0.8,
+      min_weight: 0.0,
+      max_weight: 2.0,
+    };
+    const adapterC = {
+      id: 'flux_adapter_asset',
+      name: 'flux_realism',
+      filename: 'flux_realism.safetensors',
+      family: 'flux2',
+      compatibility: 'Incompatible',
+      proof_status: 'UNPROVEN',
+      proof_target_ids: ['flux2-klein-4b'],
+      default_weight: 0.9,
+      min_weight: 0.0,
+      max_weight: 2.0,
+      unavailable_reason: 'Incompatible with SDXL architecture',
+    };
+    inst.setState({
+      target: 'sdxl-base',
+      assets: { loras: [adapterA, adapterB, adapterC], vaes: [] },
+      loraWeights: {},
+    });
+    await settle(w);
+
+    const toasts = [];
+    inst.toast = (msg, tone) => toasts.push({ msg, tone });
+
+    // Step 1: Activate Adapter A at weight 1.2
+    inst.insertLora(adapterA.filename, 1.2);
+    await settle(w);
+    assert.equal(inst.state.createLora.enabled, true, 'Adapter A is enabled');
+    assert.equal(inst.state.createLora.selectedId, adapterA.id, 'Adapter A is selected');
+    assert.equal(inst.state.createLora.strength, 1.2, 'Adapter A strength is 1.2');
+    assert.ok(toasts.some(t => t.msg.includes('Selected adapter lcm_sdxl') && t.tone === '#38bdf8'), 'Success toast for Adapter A');
+    assert.equal(inst.getEffectiveCreateLoras()[0].name, 'lcm_sdxl');
+    assert.equal(inst.getEffectiveCreateLoras()[0].weight, 1.2);
+    assert.deepEqual(JSON.parse(JSON.stringify(inst._createBody().loras)), [{ name: 'lcm_sdxl', weight: 1.2 }]);
+
+    // Step 2 (Defect 2A): Attempt to select incompatible Adapter C while Adapter A is active
+    toasts.length = 0;
+    inst.insertLora(adapterC.filename, 0.9);
+    await settle(w);
+
+    // Canonical selection remains Adapter A
+    assert.equal(inst.state.createLora.enabled, true, 'Adapter A remains enabled');
+    assert.equal(inst.state.createLora.selectedId, adapterA.id, 'Adapter A remains selected; Adapter C rejected');
+    assert.equal(inst.state.createLora.strength, 1.2, 'Strength remains 1.2 for Adapter A, not overwritten by C');
+    assert.equal(inst.getEffectiveCreateLoras()[0].name, 'lcm_sdxl', 'Effective LoRAs still Adapter A');
+    assert.equal(inst.getEffectiveCreateLoras()[0].weight, 1.2);
+    assert.deepEqual(JSON.parse(JSON.stringify(inst._createBody().loras)), [{ name: 'lcm_sdxl', weight: 1.2 }], 'Outbound request still Adapter A');
+
+    // No success toast appeared; warning toast explaining incompatibility appeared
+    assert.equal(toasts.some(t => t.msg.includes('Selected adapter')), false, 'NO success toast for incompatible adapter');
+    assert.ok(toasts.some(t => t.msg.includes('Incompatible with SDXL architecture') && t.tone === '#fbbf24'), 'Warning toast displays honest incompatibility reason');
+
+    // Step 3 (Defect 2B): Select compatible proven Adapter B
+    toasts.length = 0;
+    inst.insertLora(adapterB.filename, 0.85);
+    await settle(w);
+
+    assert.equal(inst.state.createLora.enabled, true, 'Adapter B is enabled');
+    assert.equal(inst.state.createLora.selectedId, adapterB.id, 'Adapter B is selected');
+    assert.equal(inst.state.createLora.strength, 0.85, 'Adapter B strength is 0.85');
+    assert.ok(toasts.some(t => t.msg.includes('Selected adapter style_b') && t.tone === '#38bdf8'), 'Success toast for Adapter B');
+    assert.equal(inst.getEffectiveCreateLoras()[0].name, 'style_b');
+    assert.equal(inst.getEffectiveCreateLoras()[0].weight, 0.85);
+    assert.deepEqual(JSON.parse(JSON.stringify(inst._createBody().loras)), [{ name: 'style_b', weight: 0.85 }]);
+
+    // Step 4 (Defect 2C): Modify Adapter B's strength inside Extra Networks
+    inst.setLoraWeight('style_b', 1.45);
+    await settle(w);
+
+    assert.equal(inst.state.createLora.strength, 1.45, 'Canonical createLora.strength updated to 1.45');
+    assert.equal(inst.state.loraWeights[adapterB.id], 1.45, 'loraWeights state synchronized');
+    assert.equal(inst.getEffectiveCreateLoras()[0].name, 'style_b');
+    assert.equal(inst.getEffectiveCreateLoras()[0].weight, 1.45);
+    assert.deepEqual(JSON.parse(JSON.stringify(inst._createBody().loras)), [{ name: 'style_b', weight: 1.45 }], 'Outbound request updated with new strength');
+
+    // Step 5 (Defect 2D): Remove adapter in Extra Networks
+    toasts.length = 0;
+    inst.removeLora('style_b');
+    await settle(w);
+
+    assert.equal(inst.state.createLora.enabled, false, 'Canonical selection is disabled');
+    assert.equal(inst.getEffectiveCreateLoras().length, 0, 'No effective LoRAs');
+    assert.equal(inst._createBody().loras, undefined, 'Outbound request contains no LoRA');
+    assert.ok(toasts.some(t => t.msg.includes('Removed adapter') && t.tone === '#94a3b8'), 'Removed toast displayed');
+
+    // Also verify disabling via selectCreateLora('')
+    inst.insertLora(adapterB.filename, 0.8);
+    await settle(w);
+    assert.equal(inst.state.createLora.enabled, true);
+    inst.selectCreateLora('');
+    await settle(w);
+    assert.equal(inst.state.createLora.enabled, false);
+    assert.equal(inst._createBody().loras, undefined, 'No ghost adapter in request after selectCreateLora("")');
+  } finally {
+    close();
+  }
 });
