@@ -619,12 +619,22 @@ class Component extends DCLogic {
       this.toast('Asset discovery failed: ' + e.message, '#ef4444');
     }
   }
-  // LoRAs are structured resources (state.createLoras); they are serialized to <lora:…> tags
-  // only at the backend boundary. Tags typed into the prompt still work (merged on submit).
+  // LoRA selection routes through the canonical Create LoRA picker (state.createLora).
+  // The API receives structured body.loras; prompt tags are never authored by the browser.
   insertLora(filename, weight = 0.8) {
     const base = String(filename || '').replace(/\.[^.]+$/, '');
-    this.setCreateLoras(a => a.filter(x => x.name !== base).concat([{ name: base, weight: Number(weight) || 0.8 }]));
-    this.toast('Added LoRA ' + base + ' · ' + DexEdit.formatWeight(weight), '#38bdf8');
+    const options = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
+    const found = options.find(l => (l.filename && l.filename.replace(/\.[^.]+$/, '').toLowerCase() === base.toLowerCase()) || (l.name && l.name.toLowerCase() === base.toLowerCase()) || l.id === filename);
+    if (found && typeof this.selectCreateLora === 'function') {
+      this.selectCreateLora(found.id);
+      if (typeof this.setCreateLoraStrength === 'function') {
+        this.setCreateLoraStrength(weight, found.min_weight, found.max_weight);
+      }
+      this.setState({ createLoras: [] });
+      this.toast('Selected adapter ' + found.name + ' · ' + Number(weight).toFixed(2), '#38bdf8');
+      return;
+    }
+    this.toast('Adapter ' + base + ' is not compatible or available with this checkpoint', '#fbbf24');
   }
   insertTriggerPhrase(triggers) {
     const phrase = Array.isArray(triggers) ? triggers[0] : String(triggers || '');
@@ -659,28 +669,27 @@ class Component extends DCLogic {
     for (const l of effective) {
       loras.push({ name: l.name, weight: l.weight, family: l.family || 'unknown', token: '<lora:' + l.name + ':' + (l.weight != null ? Number(l.weight).toFixed(2) : '1.00') + '>' });
     }
-    for (const l of (this.state.createLoras || [])) {
-      if (!loras.some(x => x.name.toLowerCase() === l.name.toLowerCase())) {
-        loras.push({ name: l.name, weight: l.weight, family: 'unknown', token: '<lora:' + l.name + ':' + DexEdit.formatWeight(l.weight) + '>' });
+    // Only if no canonical Create adapter is active, check for up to one legacy prompt tag
+    if (loras.length === 0) {
+      let m;
+      while ((m = re.exec(prompt)) !== null) {
+        const name = m[1];
+        if (loras.some(x => x.name.toLowerCase() === name.toLowerCase())) continue;
+        const weight = m[2] != null ? parseFloat(m[2]) : 1.0;
+        const found = knownLoras.find(k => (k.name && k.name.toLowerCase() === name.toLowerCase()) || (k.filename && k.filename.replace(/\.[^.]+$/, '').toLowerCase() === name.toLowerCase()));
+        let family = found && found.family ? found.family : null;
+        if (!family) {
+          const lower = name.toLowerCase();
+          if (lower.includes('flux2')) family = 'flux2';
+          else if (lower.includes('flux')) family = 'flux1';
+          else if (lower.includes('pony')) family = 'pony';
+          else if (lower.includes('sd15') || lower.includes('sd_1_5') || lower.includes('homofidelis')) family = 'sd15';
+          else if (lower.includes('sdxl') || lower.includes('turbo') || lower.includes('photonic')) family = 'sdxl';
+          else family = 'unknown';
+        }
+        loras.push({ name, weight, family, token: m[0] });
+        break; // Never silently apply multiple adapters
       }
-    }
-    let m;
-    while ((m = re.exec(prompt)) !== null) {
-      const name = m[1];
-      if (loras.some(x => x.name.toLowerCase() === name.toLowerCase())) continue;
-      const weight = m[2] != null ? parseFloat(m[2]) : 1.0;
-      const found = knownLoras.find(k => (k.name && k.name.toLowerCase() === name.toLowerCase()) || (k.filename && k.filename.replace(/\.[^.]+$/, '').toLowerCase() === name.toLowerCase()));
-      let family = found && found.family ? found.family : null;
-      if (!family) {
-        const lower = name.toLowerCase();
-        if (lower.includes('flux2')) family = 'flux2';
-        else if (lower.includes('flux')) family = 'flux1';
-        else if (lower.includes('pony')) family = 'pony';
-        else if (lower.includes('sd15') || lower.includes('sd_1_5') || lower.includes('homofidelis')) family = 'sd15';
-        else if (lower.includes('sdxl') || lower.includes('turbo') || lower.includes('photonic')) family = 'sdxl';
-        else family = 'unknown';
-      }
-      loras.push({ name, weight, family, token: m[0] });
     }
     return loras;
   }
@@ -704,32 +713,29 @@ class Component extends DCLogic {
         return;
       }
     }
-    if ((this.state.createLoras || []).some(x => x.name === name)) { this.setCreateLoras(a => a.map(x => x.name === name ? { ...x, weight: DexEdit.clampWeight(weight) } : x)); return; }
     const prompt = this.state.prompt || '';
     const w = Number(weight).toFixed(2).replace(/\.?0+$/, '');
     const re = new RegExp('<lora:' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?::[0-9.]+)?\\>', 'g');
     if (re.test(prompt)) {
       const nextPrompt = prompt.replace(re, '<lora:' + name + ':' + w + '>');
-      this.setState({ prompt: nextPrompt });
-    } else {
-      const tag = '<lora:' + name + ':' + w + '>';
-      this.setState(s => ({ prompt: (s.prompt ? s.prompt + ' ' : '') + tag }));
+      this.setState({ prompt: nextPrompt, createLoras: [] });
     }
   }
   removeLora(token) {
     const named = /^<lora:([^:>]+)/.exec(String(token || ''));
-    const name = named ? named[1] : '';
+    const name = named ? named[1] : String(token || '');
     const createLora = this.state.createLora;
-    if (createLora && createLora.selectedId) {
+    if (createLora && (createLora.selectedId || createLora.enabled)) {
       const options = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
       const sel = options.find(l => l.id === createLora.selectedId);
-      if (sel && (sel.name.toLowerCase() === name.toLowerCase() || sel.id.toLowerCase() === name.toLowerCase() || String(token).includes(sel.name))) {
+      if (!token || !sel || sel.name.toLowerCase() === name.toLowerCase() || sel.id.toLowerCase() === name.toLowerCase() || String(token).includes(sel.name)) {
         this.selectCreateLora('');
-        this.toast('Removed adapter ' + sel.name, '#94a3b8');
+        this.setState({ createLoras: [] });
+        this.toast('Removed adapter' + (sel ? ' ' + sel.name : ''), '#94a3b8');
         return;
       }
     }
-    if (named && (this.state.createLoras || []).some(x => x.name === named[1])) this.setCreateLoras(a => a.filter(x => x.name !== named[1]));
+    this.setState({ createLoras: [] });
     const prompt = this.state.prompt || '';
     const next = prompt.replace(token, '').replace(/\s{2,}/g, ' ').trim();
     this.setState({ prompt: next });
@@ -901,6 +907,8 @@ class Component extends DCLogic {
     const { negPrompt, target, backendUrl, ollamaModel, enhancingNegPrompt } = this.state;
     if (enhancingNegPrompt) return;
     if (!negPrompt || !negPrompt.trim()) { this.toast('Write a negative prompt to enhance first', '#fbbf24'); return; }
+    const requestSnapshot = { prompt: negPrompt, target };
+    this._pendingNegEnhancement = requestSnapshot;
     this.setState({ enhancingNegPrompt: true, negEnhancementResult: null });
     const ctrl = this._enhanceNegAbort = new AbortController();
     const timeout = AbortSignal.timeout(60000);
@@ -919,14 +927,23 @@ class Component extends DCLogic {
       const d = await r.json();
       const enhanced = d.enhanced_prompt || d.negative_prompt || d.enhanced;
       if (enhanced) {
+        // Protect against stale draft or target changes while fetch was in flight
+        if (this.state.target !== requestSnapshot.target) {
+          this.setState({ enhancingNegPrompt: false, negEnhancementResult: null });
+          this.toast('Negative enhancement discarded: model target changed', '#fbbf24');
+          return;
+        }
+        const isDraftModified = this.state.negPrompt !== requestSnapshot.prompt;
         const result = {
           ...d,
           enhanced,
-          original: d.original_prompt || negPrompt,
+          original: requestSnapshot.prompt,
           explanation: d.notes || d.explanation || '',
+          isStale: isDraftModified,
+          staleWarning: isDraftModified ? 'Draft edited while enhancing (original: "' + requestSnapshot.prompt.slice(0, 40) + '…")' : null
         };
         this.setState({ enhancingNegPrompt: false, negEnhancementResult: result });
-        this.toast('Negative enhancement ready for review', '#65d66e');
+        this.toast(isDraftModified ? 'Negative enhancement ready (draft was edited in progress)' : 'Negative enhancement ready for review', isDraftModified ? '#fbbf24' : '#65d66e');
         setTimeout(() => {
           const rev = document.querySelector('[data-negative-enhancement-review]');
           if (rev) rev.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -940,9 +957,15 @@ class Component extends DCLogic {
       if (ctrl.signal.aborted) this.toast('Negative enhance cancelled; prompt unchanged', '#94a3b8');
       else if (timeout.aborted) this.toast('Negative enhance timed out after 60 s; prompt unchanged', '#ef4444');
       else this.toast('Negative enhance failed: ' + e.message, '#ef4444');
-    } finally { if (this._enhanceNegAbort === ctrl) this._enhanceNegAbort = null; }
+    } finally {
+      if (this._enhanceNegAbort === ctrl) this._enhanceNegAbort = null;
+      this._pendingNegEnhancement = null;
+    }
   }
-  cancelNegEnhance() { if (this._enhanceNegAbort) this._enhanceNegAbort.abort(); }
+  cancelNegEnhance() {
+    if (this._enhanceNegAbort) this._enhanceNegAbort.abort();
+    this.setState({ enhancingNegPrompt: false });
+  }
   applyNegEnhancement() {
     const { negPrompt, negEnhancementResult } = this.state;
     if (!negEnhancementResult || !negEnhancementResult.enhanced) return;
@@ -1604,6 +1627,13 @@ class Component extends DCLogic {
   async onSelectTarget(id, options = {}) {
     const target = (this.state.modelTargets || []).find(t => t.id === id);
     if (!target) return;
+    if (this._enhanceNegAbort) {
+      this._enhanceNegAbort.abort();
+      this._enhanceNegAbort = null;
+    }
+    if (this.state.negEnhancementResult || this.state.enhancingNegPrompt) {
+      this.setState({ enhancingNegPrompt: false, negEnhancementResult: null });
+    }
     if (!options.restoreOnly && (target.backend || 'sdcpp') !== 'mflux') {
       if (!options.quiet) this.toast('Switching secondary model…', '#fbbf24');
       try {
@@ -1733,9 +1763,10 @@ class Component extends DCLogic {
   applyFavoritePreset(id) {
     const p = this.state.favoritePresets.find(x => x.id === id);
     if (!p) return;
+    const target = p.target || this.state.target;
     // Settings only; the current prompt is kept unless the recipe carries one.
     this.setState({
-      target: p.target || this.state.target,
+      target,
       prompt: typeof p.prompt === 'string' ? p.prompt : this.state.prompt,
       negPrompt: typeof p.negPrompt === 'string' ? p.negPrompt : this.state.negPrompt,
       steps: p.steps || this.state.steps,
@@ -1745,10 +1776,46 @@ class Component extends DCLogic {
       sampler: p.sampler || this.state.sampler,
       scheduler: p.scheduler || this.state.scheduler,
       selectedVae: p.vae || 'default',
-      createLoras: DexEdit.normalizeLoras(p.loras),
+      createLoras: [],
       promptOpen: true
     });
     if (this.ws && p.quantity) this.ws.quantity = p.quantity;
+    const norm = DexEdit.normalizeLoras(p.loras);
+    if (norm.length > 0 && typeof this._createLoraOptions === 'function') {
+      const options = this._createLoraOptions(target);
+      const match = options.find(l => (l.name && l.name.toLowerCase() === norm[0].name.toLowerCase()) || (l.filename && l.filename.replace(/\.[^.]+$/, '').toLowerCase() === norm[0].name.toLowerCase()) || l.id === norm[0].name);
+      if (match && match.use_enabled) {
+        const defaultWeight = match.default_weight !== undefined ? match.default_weight : 1.0;
+        const rawWeight = norm[0].weight !== undefined ? Number(norm[0].weight) : defaultWeight;
+        const min = match.min_weight !== undefined ? match.min_weight : 0.0;
+        const max = match.max_weight !== undefined ? match.max_weight : 2.0;
+        const weight = Number.isFinite(rawWeight) ? Math.min(max, Math.max(min, rawWeight)) : defaultWeight;
+        const baseSettings = {
+          steps: p.steps || this.state.steps,
+          cfg: p.cfg ?? this.state.cfg,
+          sampler: p.sampler || this.state.sampler,
+          scheduler: p.scheduler || this.state.scheduler
+        };
+        const nextLora = {
+          enabled: true,
+          selectedId: match.id,
+          strength: weight,
+          savedSettings: baseSettings,
+          recipeSettings: null,
+          overrides: {}
+        };
+        if (typeof this._persistCreateLora === 'function') this._persistCreateLora(nextLora);
+        else this.setState({ createLora: nextLora });
+      } else {
+        const clearLora = { enabled: false, selectedId: '', strength: 1, savedSettings: null, recipeSettings: null, overrides: {} };
+        if (typeof this._persistCreateLora === 'function') this._persistCreateLora(clearLora);
+        else this.setState({ createLora: clearLora });
+      }
+    } else {
+      const clearLora = { enabled: false, selectedId: '', strength: 1, savedSettings: null, recipeSettings: null, overrides: {} };
+      if (typeof this._persistCreateLora === 'function') this._persistCreateLora(clearLora);
+      else this.setState({ createLora: clearLora });
+    }
     this.toast('Applied recipe: ' + p.name, '#65d66e');
   }
 

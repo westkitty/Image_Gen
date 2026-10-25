@@ -152,11 +152,20 @@
       if (ws.hiresMode === 'size') Object.assign(body, { hires_width: parseInt(ws.hiresW, 10), hires_height: parseInt(ws.hiresH, 10) });
       else body.hires_scale = +ws.hiresScale;
     }
+    const merged = Object.assign(body, over || {});
     if (ctl.lora) {
-      const eff = typeof this.getEffectiveCreateLoras === 'function' ? this.getEffectiveCreateLoras() : [];
-      if (eff.length) body.loras = eff.map(l => ({ name: l.name, weight: l.weight }));
+      if (over && over.exactReplay === true && Array.isArray(over.loras)) {
+        if (over.loras.length) merged.loras = over.loras;
+        else delete merged.loras;
+      } else {
+        const eff = typeof this.getEffectiveCreateLoras === 'function' ? this.getEffectiveCreateLoras() : [];
+        if (eff.length) merged.loras = eff.map(l => ({ name: l.name, weight: l.weight }));
+        else delete merged.loras;
+      }
+    } else {
+      delete merged.loras;
     }
-    return Object.assign(body, over || {});
+    return merged;
   };
 
   // V2 Create LoRA state is a single, target-scoped adapter. The API still
@@ -175,14 +184,16 @@
       const route = (l.production_routes || []).find(r => r.target === target && (r.recipe && r.backend_override || targetSpec.backend === 'mflux' && r.backend === 'mflux' && r.rslora_equivalent)) || null;
       const mfluxStyle = targetSpec.backend === 'mflux' && l.name === 'pixelart_lora' && l.mflux_rslora_verified === true && route;
       const hasProductionRoute = !!route && (route.production === true || !!route.backend_override || !!route.rslora_equivalent);
-      const enabled = !!mfluxStyle || (l.proof_status === 'PROVEN' && l.compatibility === 'Compatible' && familyMatches && (metalProven || hasProductionRoute || (provenTarget && backendMatches && modeAvailable)) && !l.rs_lora);
+      const isCompat = l.compatibility === 'Compatible';
+      const routeProven = metalProven || hasProductionRoute || (provenTarget && backendMatches && modeAvailable);
+      const enabled = !!mfluxStyle || (familyMatches && !l.rs_lora && isCompat && (routeProven || (!l.proof_status && !l.proof_target_ids)));
       const routeStatus = mfluxStyle
         ? 'STYLE · MFLUX · rsLoRA scaling verified; no acceleration claim'
         : metalProven
         ? (l.metal_performance_status === 'MEASURED'
           ? `Timing measured · ${l.metal_performance_summary || 'MTL0 / at_runtime; quality review pending'}`
           : 'Metal-compatible · MTL0 / at_runtime')
-        : provenTarget ? 'CPU-only · SDCPP / immediately' : (hasProductionRoute ? 'Verified production route' : 'Inference unavailable');
+        : provenTarget ? 'CPU-only · SDCPP / immediately' : (hasProductionRoute ? 'Verified production route' : (isCompat ? 'Compatible' : 'Inference unavailable'));
       const classification = l.classification ? String(l.classification).toUpperCase() : (l.is_speed_adapter ? 'ACCELERATION' : 'STYLE');
       return Object.assign({}, l, {
         use_enabled: enabled,
@@ -196,29 +207,41 @@
 
   P.getEffectiveCreateLoras = function () {
     const state = this.state.createLora;
-    if (state && state.selectedId && state.enabled !== false) {
-      const options = this._createLoraOptions();
-      const selected = options.find(l => l.id === state.selectedId && l.use_enabled);
-      if (selected) {
-        const rawStrength = state.strength !== undefined && state.strength !== null ? Number(state.strength) : (selected.default_weight || 1.0);
-        const min = selected.min_weight !== undefined ? selected.min_weight : 0.0;
-        const max = selected.max_weight !== undefined ? selected.max_weight : 2.0;
-        const strength = Number.isFinite(rawStrength) ? Math.min(max, Math.max(min, rawStrength)) : (selected.default_weight || 1.0);
-        return [{
-          name: selected.name,
-          weight: strength,
-          id: selected.id,
-          adapter: selected.filename || selected.name
-        }];
-      }
-    }
-    // Fallback: If createLoras array is set (e.g. from extra networks or legacy test harness), use effective compatible loras
-    if (Array.isArray(this.state.createLoras) && this.state.createLoras.length > 0 && typeof this._effectiveLoras === 'function') {
-      const catalog = (this.state.assets && this.state.assets.loras) || [];
-      const eff = this._effectiveLoras(this.state.createLoras, catalog);
-      if (eff.length) return eff.map(l => ({ name: l.name, weight: l.weight, id: l.name, adapter: l.name }));
-    }
-    return [];
+    if (!state || !state.selectedId || state.enabled === false) return [];
+    const options = this._createLoraOptions();
+    const selected = options.find(l => l.id === state.selectedId && l.use_enabled);
+    if (!selected) return [];
+    const rawStrength = state.strength !== undefined && state.strength !== null ? Number(state.strength) : (selected.default_weight || 1.0);
+    const min = selected.min_weight !== undefined ? selected.min_weight : 0.0;
+    const max = selected.max_weight !== undefined ? selected.max_weight : 2.0;
+    const strength = Number.isFinite(rawStrength) ? Math.min(max, Math.max(min, rawStrength)) : (selected.default_weight || 1.0);
+    return [{
+      name: selected.name,
+      weight: strength,
+      id: selected.id,
+      adapter: selected.filename || selected.name
+    }];
+  };
+
+  P.resetCreateLoraRecipe = function () {
+    const state = this.state.createLora || {};
+    if (!state.enabled || !state.selectedId) return false;
+    const options = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
+    const selected = options.find(l => l.id === state.selectedId && l.use_enabled);
+    if (!selected) return false;
+    const defaultWeight = selected.default_weight !== undefined ? selected.default_weight : 1.0;
+    const next = Object.assign({}, state, {
+      strength: defaultWeight,
+      overrides: {}
+    });
+    this._persistCreateLora(next);
+    const applied = this._applyCreateLoraRecipe(selected, next.savedSettings || {}, {});
+    next.recipeSettings = applied;
+    this._persistCreateLora(next);
+    const appliedSteps = applied.steps != null ? applied.steps : this.state.steps;
+    const appliedCfg = applied.cfg != null ? applied.cfg : this.state.cfg;
+    this.toast(`Reset ${selected.name} to recommended recipe (${appliedSteps} steps, CFG ${appliedCfg})`, '#65d66e');
+    return true;
   };
 
   P._persistCreateLora = function (next) {

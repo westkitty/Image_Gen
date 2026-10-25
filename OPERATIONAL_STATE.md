@@ -1,6 +1,53 @@
 # Operational State: Image_Gen / DexDiffusion
 
-## P0 Create Studio UX Repair & LoRA Unification — 2026-10-24 (`main`, Release Complete)
+## DexDiffusion Final LoRA Repair & Complete Live Acceptance — 2026-10-24 (`main`, Production Verified)
+
+- **Release Status**: **CANONICAL PRODUCTION RELEASE VERIFIED & PROVEN**.
+- **Repository & Branch**: `/Users/andrew/Image_Gen`, branch `main`.
+- **Delivered Corrections & Unifications**:
+  - **P0 Authoritative LoRA State Unification**:
+    - Eliminated competing state fallbacks: `getEffectiveCreateLoras()` in `workstation-ui.js` has no fallback to `createLoras` when the canonical selection is disabled or empty.
+    - Extra Networks unification: `insertLora()`, `removeLora()`, and `setLoraWeight()` in `component.js` manipulate the canonical Create selection (`selectCreateLora`, `setCreateLoraStrength`) and keep `createLoras: []` synchronized.
+    - Presets & Recipes: `applyFavoritePreset()` restores adapters directly into canonical `createLora` and applies recipe parameters cleanly without lingering legacy state.
+    - Active representation: `getActiveLoras()` strictly reads canonical effective LoRA state, falling back to at most 1 prompt tag only if no canonical LoRA is selected.
+  - **P0 Generate Again LoRA Leakage Prevention**:
+    - `_createBody(over)` enforces that `merged.loras` strictly follows the current effective Create LoRA state (`getEffectiveCreateLoras()`) unless `over?.exactReplay === true`.
+    - Tested and verified:
+      - Turning LoRA OFF and clicking Generate Again sends NO adapter in the request.
+      - Switching from Adapter A to Adapter B and clicking Generate Again sends Adapter B, overriding any stale previous request body.
+      - Exact replay preserves historical adapter parameters when explicitly requested.
+  - **P1 Elimination of Duplicate Negative Prompt**:
+    - Removed duplicate `<textarea data-dex-field="negative-prompt-adv">` from Advanced Settings in `index.html`.
+    - Exactly one negative-prompt editor exists on the Create screen, positioned directly beneath the prompt with an accessible disclosure toggle.
+  - **P1 Implementation of Reset Recipe Button**:
+    - Implemented `resetCreateLoraRecipe()` on `DexDiffusionComponent.prototype` in `workstation-ui.js`.
+    - Restores validated recipe parameters (steps, CFG scale, sampler, scheduler) and default adapter strength, updating controls, state, and request payloads with toast feedback.
+  - **P1 Hardened Negative Prompt Enhancement**:
+    - In `component.js`, `enhanceNegativePrompt()` snapshots `{ prompt, target }`.
+    - If the user changes model targets while an enhancement is in-flight, the stale response is discarded.
+    - If the user modifies draft text while in-flight, the result is flagged with `isStale: true` and an amber review warning.
+    - Apply and Append preserve the latest draft in `previousNegPrompt`, enabling clean 1-click Undo.
+  - **P1 Live Inference Acceptance (Proven on Big Mac Compute Worker)**:
+    - **Baseline Run (LoRA OFF)**:
+      - Job ID: `e7ffb775-ac34-4cb0-af3d-ff6666218794` (run `20261025-004905-controlled-flux2-klein-4b-0fb4c87f`)
+      - Target: `flux2-klein-4b`, Seed: `20261024`, Steps: `4`, Dimensions: `512x512`
+      - LoRA: None (`loras: []`)
+      - Result: Canonical PNG `/Users/andrew/images_made/20261025-004905-controlled-flux2-klein-4b-0fb4c87f-s20261024-controlled-flux2-klein-4b.png` (268,685 bytes, exit code `0`).
+    - **Matched Run (LoRA ON: `pixelart_lora` @ 0.8)**:
+      - Job ID: `5a33cd71-8446-47a8-958e-586c9740792e` (run `20261025-004933-controlled-flux2-klein-4b-dcfc7f19`)
+      - Target: `flux2-klein-4b`, Seed: `20261024`, Steps: `4`, Dimensions: `512x512`
+      - LoRA: `pixelart_lora` @ `0.8` (`mflux_lora_id: "pixelart_lora"`, `mflux_lora_strength: 0.8`)
+      - Worker Log Evidence: `🔧 Applying LoRA: pixelart_lora-rslora-r128-a64.safetensors (scale=0.8)` and `✅ All LoRA weights applied successfully`.
+      - Result: Canonical PNG `/Users/andrew/images_made/20261025-004933-controlled-flux2-klein-4b-dcfc7f19-s20261024-controlled-flux2-klein-4b.png` (137,464 bytes, SHA-256 `d6ae7a20ddf538f68f6f83e6943b3d9e233287edcafbdd431cc7c1e98e4e1837`, exit code `0`).
+      - Remote worker temp cleanup: `"cleanup": true` verified.
+- **Empirical Test Verification**:
+  - `npm run check`: 0 errors.
+  - `node --test tests/lora-unification.test.js`: 9/9 PASS.
+  - `node tests/browser/studio-beginner.browser.js`: PASS.
+  - `node tests/browser/studio-first-screen-shapes.browser.js`: PASS.
+  - `node tests/browser/edit-workbench.browser.js`: 29/29 browser checks PASS.
+  - `npm test`: 1,178/1,178 tests PASS.
+  - `git diff --check`: 0 errors.
 
 - **Release Status**: **TECHNICAL RELEASE COMPLETE & VERIFIED**.
 - **Repository & Branch**: `/Users/andrew/Image_Gen`, branch `main`.

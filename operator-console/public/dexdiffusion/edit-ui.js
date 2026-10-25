@@ -1014,9 +1014,28 @@
   };
 
   // ── Create integration ───────────────────────────────────────────────
-  P._createLoras = function () { return this.state.createLoras || []; };
+  P._createLoras = function () {
+    if (this.state.createLoras && this.state.createLoras.length) return this.state.createLoras;
+    const eff = typeof this.getEffectiveCreateLoras === 'function' ? this.getEffectiveCreateLoras() : [];
+    if (eff.length) return eff.map(l => ({ name: l.name, weight: l.weight }));
+    return [];
+  };
   P.setCreateLoras = function (fn) {
-    this.setState({ createLoras: E.normalizeLoras(fn(this._createLoras())) });
+    const nextList = E.normalizeLoras(fn(this._createLoras()));
+    this.setState({ createLoras: nextList });
+    if (nextList.length > 0) {
+      const first = nextList[0];
+      const options = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
+      const match = options.find(l => (l.name && l.name.toLowerCase() === first.name.toLowerCase()) || (l.filename && l.filename.replace(/\.[^.]+$/, '').toLowerCase() === first.name.toLowerCase()) || l.id === first.name);
+      if (match && match.use_enabled) {
+        if (typeof this.selectCreateLora === 'function') this.selectCreateLora(match.id);
+        if (typeof this.setCreateLoraStrength === 'function') this.setCreateLoraStrength(first.weight, match.min_weight, match.max_weight);
+      } else {
+        if (typeof this.selectCreateLora === 'function') this.selectCreateLora('');
+      }
+    } else {
+      if (typeof this.selectCreateLora === 'function') this.selectCreateLora('');
+    }
   };
   P.buildCreateResources = function () {
     const s = this.state, spec = this._targetSpec(), ctl = this._controls();
