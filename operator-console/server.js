@@ -36,7 +36,7 @@ const { rulesForTarget, validateDimensions } = require('./dimension-policy');
 const { enhancePrompt: runPromptEnhance, extractProtectedLiterals } = require('./prompt-enhancement');
 const { PROFILES, resolvePromptProfile } = require('./prompt-profiles');
 const { getWildcardCatalog, expandWildcards: expandWildcardsUtil } = require('./wildcards');
-const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily } = require('./extra-networks');
+const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily, resolveTargetFamily } = require('./extra-networks');
 const { resolveLoraRuntimePolicy, routesFor } = require('./lora-runtime-policy');
 const { MODEL_CARDS, getModelCards, getModelCardById, checkModelSwitchWarnings } = require('./model-registry');
 const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt, ATTEMPT_TIMEOUT_MS } = require('./detailer');
@@ -1268,7 +1268,7 @@ function syncGenericTerminal(job) {
   if (g.status === 'QUEUED') jobStore.transition(job.id, 'RUNNING');
   const result = jobStore.transition(job.id, st, {
     artifacts: st === 'COMPLETE' || st === 'CANCELLED' ? ids : [], artifact_validation: receipt,
-    first_failed_gate: job.firstFailedGate || null, error: st === 'FAILED' ? `failed at gate ${job.firstFailedGate || 'unknown'}` : null,
+    first_failed_gate: job.firstFailedGate || null, error: st === 'FAILED' ? `failed at gate ${job.firstFailedGate || 'unknown'}${job.failureReason ? ': ' + job.failureReason : ''}` : null,
   });
   if (result && result.error && !TERMINAL.has(result.status)) {
     job.status = 'FAIL'; job.firstFailedGate = job.firstFailedGate || 'job-contract-rejected';
@@ -1804,6 +1804,9 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
 
       if (!runPassed) {
         const gate = runGateFrom(combined, runStdout);
+        // The local-engine bridge prints a fixed-template, path-free reason (never prompt text); keep it for the job record.
+        const engineReason = (runStdout.match(/ENGINE_FAILURE_REASON:\s*(.+?)(?=\n|$)/) || [])[1];
+        job.failureReason = engineReason ? redactSensitiveText(engineReason.trim(), jobSensitives[jobId] || []).slice(0, 240) : null;
         finalizeJobImages(job, runStdout);
         // Native command could not be built (nothing generated): fall back to sequential.
         if (native && (gate === 'command' || gate === 'sd-cli-help')) {
@@ -2746,6 +2749,8 @@ app.get('/api/capabilities', (req, res) => {
     mode: target.mode,
     caveat: target.caveat,
     route: target.route,
+    // Same resolver the LoRA runtime policy uses; omitted when unknown so id-based fallbacks still apply.
+    family: resolveTargetFamily(target.id) !== 'unknown' ? resolveTargetFamily(target.id) : undefined,
     proofDerived: target.proofDerived,
     fullParityClaim: target.fullParityClaim,
     defaultWidth: target.defaultWidth,
@@ -3020,7 +3025,9 @@ function withHeaderFacts(list) {
   });
 }
 const LORA_ASSET_MANIFEST = path.join(path.resolve(__dirname, '..'), 'docs', 'operations', 'lora-assets-20261021.json');
-function withLoraProofs(list) {
+// targetId (optional): also attach the policy's route for that checkpoint, so a
+// same-family acceleration adapter carries its family-only (unproven) route.
+function withLoraProofs(list, targetId) {
   let records = [];
   try { records = JSON.parse(fs.readFileSync(LORA_ASSET_MANIFEST, 'utf8')).assets || []; } catch (_) {}
   const byFilename = new Map(records.map(a => [String(a.filename || '').toLowerCase(), a]));
@@ -3040,7 +3047,7 @@ function withLoraProofs(list) {
       metal_apply_mode: metal && metal.apply_mode || null,
       metal_performance_status: record.performance_measurement && record.performance_measurement.status || 'UNMEASURED',
       metal_performance_summary: record.performance_measurement && record.performance_measurement.summary || null,
-      production_routes: Array.from(new Set([...(proof.target_ids || []), ...(metal && metal.target_id ? [metal.target_id] : [])]))
+      production_routes: Array.from(new Set([...(proof.target_ids || []), ...(metal && metal.target_id ? [metal.target_id] : []), ...(targetId ? [targetId] : [])]))
         .flatMap(target => routesFor(target, asset.filename))
     }) : asset;
   });
@@ -3077,7 +3084,7 @@ app.post('/api/models/inspect', async (req, res) => {
 app.get('/api/extra-networks', (req, res) => {
   const targetId = req.query.target || 'flux2-klein-4b';
   const assets = readJsonCache(ASSETS_CACHE) || {};
-  const loras = buildLoraCards(withHeaderFacts(withLoraProofs(assets.loras)), targetId);
+  const loras = buildLoraCards(withHeaderFacts(withLoraProofs(assets.loras, targetId)), targetId);
   const vaes = buildVaeCards(withHeaderFacts(assets.vaes), targetId);
   const embeddings = buildEmbeddingState(withHeaderFacts(assets.embeddings), targetId);
   res.json({ loras, vaes, embeddings });
@@ -4351,7 +4358,7 @@ const queueRunner = W.createQueueRunner({
       queueId: q.id, batchNumber: it.number,
       onDone: job => resolve({
         ok: job.status === 'PASS' || job.status === 'PARTIAL', jobId, results: job.results, seeds: job.seeds,
-        gate: job.firstFailedGate, error: job.status === 'PASS' || job.status === 'PARTIAL' ? null : `failed at gate ${job.firstFailedGate || 'unknown'}`,
+        gate: job.firstFailedGate, error: job.status === 'PASS' || job.status === 'PARTIAL' ? null : `failed at gate ${job.firstFailedGate || 'unknown'}${job.failureReason ? ': ' + job.failureReason : ''}`,
       }),
     });
     it.jobId = jobId;

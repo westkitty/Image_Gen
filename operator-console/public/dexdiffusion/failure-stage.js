@@ -28,8 +28,25 @@
   ];
   // Where the image is still recoverable after a failure at this stage (output exists somewhere that is not yet lost).
   const OUTPUT_MAY_EXIST = { REMOTE_OUTPUT_VALIDATION: true, TRANSFER: true, CHECKSUM_VERIFICATION: true, CANONICALIZATION: true, METADATA_FINALIZATION: true, RESULT_PUBLICATION: true, CLEANUP: true };
+  // Gates whose cause is known exactly get a user-facing explanation and a next step instead of a generic stage line.
+  // Reasons emitted by bin/local-engine-generate.js (ENGINE_FAILURE_REASON) are already basename-only and prompt-free.
+  const EXPLAINED = [
+    [/^model-read-denied$/, { stage: 'PREFLIGHT', explanation: 'Big Mac cannot read the model file.',
+      nextStep: 'Check macOS file access for the DexDiffusion Engine Worker on Big Mac, then retry.' }],
+    [/^engine-failed$/, { stage: null, explanation: 'The Big Mac engine reported a failure before producing an image.',
+      nextStep: 'Review the engine reason, then retry; if it repeats, check the engine worker on Big Mac.' }],
+  ];
+  function engineReason(logText) {
+    const m = /ENGINE_FAILURE_REASON: ([^\r\n]+)/.exec(String(logText || ''));
+    return m ? m[1].trim().slice(0, 240).replace(/[.\s]+$/, '') : null;
+  }
   function classify(gate, logText) {
     const g = String(gate || '');
+    for (const [re, info] of EXPLAINED) if (re.test(g)) {
+      const reason = engineReason(logText);
+      return { stage: info.stage, label: info.stage ? LABEL[info.stage] : null, outputMayExist: false, gate: g, explanation: info.explanation,
+        nextStep: info.nextStep, reason, text: info.explanation + (reason && g !== 'model-read-denied' ? ' ' + reason + '.' : '') + ' ' + info.nextStep };
+    }
     let stage = null, matched = false;
     for (const [re, st] of RULES) if (re.test(g)) { stage = st; matched = true; break; }
     if (!matched && logText) {

@@ -1,5 +1,7 @@
 'use strict';
 
+const { FAMILIES, resolveTargetFamily } = require('./extra-networks');
+
 // Server-owned, evidence-backed SDCPP LoRA routes. Keep the tuple narrow:
 // adapter, checkpoint target, recipe, backend, and application mode were
 // validated together. A new adapter or recipe stays unavailable until added
@@ -41,6 +43,16 @@ const ADAPTERS = Object.freeze({
   },
 });
 
+// Acceleration adapters may also run on other checkpoints of the same
+// architecture. Those routes are accepted with the exact verified recipe but
+// stay labelled family-only: no inference receipt exists for that checkpoint.
+// SDXL Turbo is already distilled, so it is deliberately not listed.
+const FAMILY_TARGET_FAMILIES = Object.freeze({
+  sdxl: Object.freeze([FAMILIES.SDXL, FAMILIES.PONY]),
+  sd15: Object.freeze([FAMILIES.SD15]),
+});
+const FAMILY_ONLY_PROOF = 'family-compatible, not yet proven on this checkpoint';
+
 function adapterId(name) {
   return String(name || '').replace(/\.(safetensors|ckpt|pt|bin)$/i, '').toLowerCase();
 }
@@ -54,6 +66,16 @@ function recipeMatches(expected, params) {
   });
 }
 
+// 'verified' (explicit receipt-backed target), 'family' (same-architecture
+// acceleration adapter, unproven on this checkpoint) or null (no route).
+function targetSupport(spec, target) {
+  if (!spec || spec.disabled) return null;
+  if (spec.targets.includes(target)) return 'verified';
+  if (spec.backend === 'mflux' || !spec.recipe) return null;
+  const allowed = FAMILY_TARGET_FAMILIES[spec.family];
+  return allowed && allowed.includes(resolveTargetFamily(target)) ? 'family' : null;
+}
+
 function resolveLoraRuntimePolicy(params) {
   const loras = Array.isArray(params && params.loras) ? params.loras : [];
   if (!loras.length) return { ok: true, route: null };
@@ -62,7 +84,12 @@ function resolveLoraRuntimePolicy(params) {
   const spec = ADAPTERS[id];
   if (!spec) return { ok: false, error: `LoRA "${loras[0].name}" has no verified production route.` };
   if (spec.disabled) return { ok: false, error: `${loras[0].name} is unavailable: ${spec.disabled}` };
-  if (!spec.targets.includes(params.target)) return { ok: false, error: `${loras[0].name} is verified only with ${spec.targets.join(', ')}.` };
+  const support = targetSupport(spec, params.target);
+  if (!support) {
+    const family = FAMILY_TARGET_FAMILIES[spec.family] && spec.backend !== 'mflux' ? ` and accepted only on ${FAMILY_TARGET_FAMILIES[spec.family].join('/')}-family checkpoints` : '';
+    return { ok: false, error: `${loras[0].name} is verified only with ${spec.targets.join(', ')}${family}.` };
+  }
+  const familyOnly = support === 'family' ? { family_only: true } : {};
   if (spec.backend === 'mflux') {
     const strength = Number(loras[0].weight);
     if (!Number.isFinite(strength) || strength < spec.strength.min || strength > spec.strength.max) {
@@ -77,32 +104,36 @@ function resolveLoraRuntimePolicy(params) {
   const requestedBackend = String(params.backend_override || '').toLowerCase();
   const backend = requestedBackend === 'metal' || requestedBackend === 'mtl0' ? 'mtl0' : requestedBackend;
   const requestedMode = String(params.lora_apply_mode || '');
-  if (!backend && !requestedMode) return { ok: true, route: spec.production };
+  if (!backend && !requestedMode) return { ok: true, route: spec.production, ...familyOnly };
 
   const candidates = [spec.production, ...(spec.fallbacks || [])];
   const selected = candidates.find(candidate =>
     (!backend || candidate.backend_override.toLowerCase() === backend) &&
     (!requestedMode || candidate.lora_apply_mode === requestedMode));
-  if (selected) return { ok: true, route: selected, explicit: true };
+  if (selected) return { ok: true, route: selected, explicit: true, ...familyOnly };
 
   // Preserve diagnostic CPU/MTL0 override use only for proven combinations;
   // fail closed for the previously failing Metal modes.
   if (backend === 'mtl0' && requestedMode === 'auto') return { ok: false, error: 'Metal LoRA auto mode fails on unsupported ADD; use the verified at_runtime route.' };
   if (backend === 'mtl0' && requestedMode === 'immediately') return { ok: false, error: 'Metal LoRA immediately mode is not verified; Lightning stalled during adapter loading.' };
   if (backend === 'mtl0' && requestedMode === 'at_runtime' && id !== 'sdxl_lightning_4step_lora' && (spec.family === 'sdxl' || spec.family === 'sd15')) {
-    return { ok: true, route: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' }, diagnostic: true };
+    return { ok: true, route: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' }, diagnostic: true, ...familyOnly };
   }
   return { ok: false, error: 'The requested LoRA backend/application-mode combination has no verified route.' };
 }
 
 function routesFor(target, name) {
   const id = adapterId(name), spec = ADAPTERS[id];
-  if (!spec || spec.disabled || !spec.targets.includes(target)) return [];
+  const support = targetSupport(spec, target);
+  if (!support) return [];
   if (spec.backend === 'mflux') return [{ target, backend: 'mflux', rslora_equivalent: true, production: true }];
+  const proof = support === 'verified'
+    ? { verified: true }
+    : { verified: false, family_only: true, family: spec.family, verified_targets: [...spec.targets], proof: FAMILY_ONLY_PROOF };
   return [
-    { target, ...spec.production, production: true, recipe: { ...spec.recipe } },
-    ...(spec.fallbacks || []).map(route => ({ target, ...route, production: false, recipe: { ...spec.recipe } })),
+    { target, ...spec.production, production: true, recipe: { ...spec.recipe }, ...proof },
+    ...(spec.fallbacks || []).map(route => ({ target, ...route, production: false, recipe: { ...spec.recipe }, ...proof })),
   ];
 }
 
-module.exports = { ADAPTERS, adapterId, resolveLoraRuntimePolicy, routesFor };
+module.exports = { ADAPTERS, FAMILY_ONLY_PROOF, adapterId, targetSupport, resolveLoraRuntimePolicy, routesFor };

@@ -728,3 +728,138 @@ test('Defect 2: Extra Networks incompatible adapter selection guard, state synch
     close();
   }
 });
+
+// ---- Automatic accelerator highlighting (family-compatible acceleration LoRAs) ----
+const { buildLoraCards } = require('../extra-networks');
+const { routesFor } = require('../lora-runtime-policy');
+const ACCEL_FILES = [
+  ['sdxl_lightning_4step_lora.safetensors', 'sdxl-base'],
+  ['Hyper-SDXL-8steps-CFG-lora.safetensors', 'sdxl-base'],
+  ['lcm_sdxl.safetensors', 'sdxl-base'],
+  ['lcm_sd15.safetensors', 'sd15'],
+  ['pixelart_lora.safetensors', 'flux2-klein-4b'],
+];
+// Cards shaped exactly as GET /api/extra-networks?target=<target> builds them.
+function cardsFor(target) {
+  return buildLoraCards(ACCEL_FILES.map(([filename, proven]) => ({
+    id: filename.replace(/\.safetensors$/, ''), filename, full_path: '/wc2tb/loras/' + filename,
+    proof_status: 'PROVEN', proof_target_ids: [proven], proof_backend: 'sdcpp', proof_apply_modes: ['immediately'],
+    metal_inference_status: proven === 'flux2-klein-4b' ? 'UNTESTED' : 'FUNCTIONAL_METAL', metal_target_ids: proven === 'flux2-klein-4b' ? [] : [proven],
+    mflux_rslora_verified: proven === 'flux2-klein-4b',
+    production_routes: Array.from(new Set([proven, target])).flatMap(t => routesFor(t, filename)),
+  })), target);
+}
+const ACCEL_TARGETS = [
+  { id: 'sdxl-base', label: 'SDXL Base', backend: 'sdcpp', family: 'sdxl', defaultSteps: 20, defaultCfgScale: 7 },
+  { id: 'sdxl-lustify', label: 'LUSTIFY! APEX V8', backend: 'sdcpp', family: 'sdxl', defaultSteps: 30, defaultCfgScale: 5, defaultSampler: 'dpm++2m' },
+  { id: 'sdxl-pony', label: 'Pony Diffusion V6 XL', backend: 'sdcpp', family: 'pony', defaultSteps: 10, defaultCfgScale: 6.5, defaultSampler: 'dpm++2m' },
+  { id: 'sd15', label: 'SD 1.5', backend: 'sdcpp', family: 'sd15', defaultSteps: 20, defaultCfgScale: 7 },
+  { id: 'flux2-klein-4b', label: 'FLUX.2 Klein 4B', backend: 'mflux', family: 'flux2', defaultSteps: 4 },
+];
+function assetStub(w) {
+  const calls = [];
+  w.fetch = (url, opts = {}) => {
+    calls.push({ url: String(url), method: opts.method || 'GET', body: opts.body });
+    const m = String(url).match(/\/api\/extra-networks\?target=([^&]+)/);
+    const data = m ? { loras: cardsFor(decodeURIComponent(m[1])), vaes: [], embeddings: { count: 0, items: [] } }
+      : String(url).includes('generate-controlled') ? { ok: true, job_id: 'job-stub', seeds: [1] } : { ok: true };
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(data) });
+  };
+  return calls;
+}
+const chipIds = doc => [...doc.querySelectorAll('[data-accelerator-chip]')].map(b => b.getAttribute('data-accelerator-chip'));
+const settings = inst => [inst.state.steps, inst.state.cfg, inst.state.sampler, inst.state.scheduler];
+
+test('accelerator group lists only family-compatible accelerators for the selected model, labelled unproven off the base checkpoint', async () => {
+  const { w, doc, inst, close } = boot();
+  try {
+    await settle(w);
+    assetStub(w);
+    inst.setState({ modelTargets: ACCEL_TARGETS, target: 'sdxl-lustify', assets: { loras: cardsFor('sdxl-lustify'), vaes: [], embeddings: { count: 0, items: [] } }, showLoraPicker: true });
+    await settle(w);
+    const group = doc.querySelector('[data-dex-field="lora-accelerator-group"]');
+    assert.ok(group, 'accelerator group renders');
+    assert.match(group.textContent, /Acceleration for LUSTIFY! APEX V8/);
+    assert.deepEqual(chipIds(doc).sort(), ['Hyper-SDXL-8steps-CFG-lora', 'lcm_sdxl', 'sdxl_lightning_4step_lora']);
+    assert.equal(doc.querySelectorAll('[data-accelerator-unproven]').length, 3, 'family-only routes are badged unproven');
+    assert.match(doc.querySelector('[data-accelerator-chip="sdxl_lightning_4step_lora"]').textContent, /4 steps · euler · sgm_uniform · CFG 0/);
+    assert.equal(doc.querySelector('[data-dex-field="open-lora-picker"]').getAttribute('data-accelerators-available'), '3');
+
+    // On the verified checkpoint the chips are not badged unproven.
+    inst.setState({ target: 'sdxl-base', assets: { loras: cardsFor('sdxl-base'), vaes: [], embeddings: { count: 0, items: [] } } });
+    await settle(w);
+    assert.equal(chipIds(doc).length, 3);
+    assert.equal(doc.querySelectorAll('[data-accelerator-unproven]').length, 0);
+
+    // SD1.5 shows only its own accelerator; SDXL Turbo-free FLUX shows none.
+    inst.setState({ target: 'sd15', assets: { loras: cardsFor('sd15'), vaes: [], embeddings: { count: 0, items: [] } } });
+    await settle(w);
+    assert.deepEqual(chipIds(doc), ['lcm_sd15']);
+    inst.setState({ target: 'flux2-klein-4b', assets: { loras: cardsFor('flux2-klein-4b'), vaes: [], embeddings: { count: 0, items: [] } } });
+    await settle(w);
+    assert.equal(doc.querySelector('[data-dex-field="lora-accelerator-group"]'), null, 'no accelerators for an incompatible family');
+    assert.equal(doc.querySelector('[data-dex-field="open-lora-picker"]').hasAttribute('data-accelerators-available'), false);
+  } finally { close(); }
+});
+
+test('activating a highlighted accelerator applies its server recipe; turning it off restores settings', async () => {
+  const { w, doc, inst, close } = boot();
+  try {
+    await settle(w);
+    assetStub(w);
+    inst.setState({ modelTargets: ACCEL_TARGETS, target: 'sdxl-lustify', prompt: 'portrait', steps: 30, cfg: 5, sampler: 'dpm++2m', scheduler: 'karras', jobStatus: 'idle',
+      assets: { loras: cardsFor('sdxl-lustify'), vaes: [], embeddings: { count: 0, items: [] } }, showLoraPicker: true });
+    await settle(w);
+    doc.querySelector('[data-accelerator-chip="sdxl_lightning_4step_lora"]').click();
+    await settle(w);
+    assert.equal(inst.state.createLora.enabled, true);
+    assert.deepEqual(settings(inst), [4, 0, 'euler', 'sgm_uniform'], 'Lightning recipe (CFG 0) applied');
+    const chip = doc.querySelector('[data-accelerator-chip="sdxl_lightning_4step_lora"]');
+    assert.equal(chip.getAttribute('aria-pressed'), 'true');
+    assert.equal(chip.getAttribute('data-accelerator-active'), 'true');
+    assert.ok(!inst.validationMessages().some(([m]) => /CFG scale/.test(m)), 'CFG 0 is allowed for the active Lightning recipe');
+
+    // The outbound body is accepted by the real server validator for this checkpoint.
+    const body = inst._createBody();
+    assert.deepEqual(JSON.parse(JSON.stringify(body.loras)), [{ name: 'sdxl_lightning_4step_lora', weight: 1 }]);
+    const norm = normalizeControlledGenerationBody(JSON.parse(JSON.stringify(body)));
+    assert.equal(validateControlledGenerationParams(norm, allControlledTargets()), null);
+
+    // Switching accelerators keeps the original saved settings; Hyper uses the server recipe (CFG 6), not model-presets (5).
+    doc.querySelector('[data-accelerator-chip="Hyper-SDXL-8steps-CFG-lora"]').click();
+    await settle(w);
+    assert.deepEqual(settings(inst), [8, 6, 'ddim_trailing', 'discrete']);
+
+    doc.querySelector('[data-dex-field="accelerator-off-btn"]').click();
+    await settle(w);
+    assert.equal(inst.state.createLora.enabled, false);
+    assert.deepEqual(settings(inst), [30, 5, 'dpm++2m', 'karras'], 'previous settings restored');
+    inst.setState({ cfg: 0 });
+    assert.ok(inst.validationMessages().some(([m]) => /CFG scale/.test(m)), 'CFG 0 is still rejected without the Lightning recipe');
+  } finally { close(); }
+});
+
+test('model switch keeps a family-compatible accelerator (re-applying its recipe) and disables + restores otherwise', async () => {
+  const { w, inst, close } = boot();
+  try {
+    await settle(w);
+    assetStub(w);
+    inst.setState({ modelTargets: ACCEL_TARGETS, target: 'sdxl-lustify', assetsTarget: 'sdxl-lustify', steps: 30, cfg: 5, sampler: 'dpm++2m', scheduler: 'karras',
+      assets: { loras: cardsFor('sdxl-lustify'), vaes: [], embeddings: { count: 0, items: [] } } });
+    inst.selectCreateLora('lcm_sdxl');
+    await settle(w);
+    assert.deepEqual(settings(inst), [4, 1.5, 'lcm', 'lcm']);
+
+    await inst.onSelectTarget('sdxl-pony', { quiet: true });
+    await settle(w, 120);
+    assert.equal(inst.state.assetsTarget, 'sdxl-pony');
+    assert.equal(inst.state.createLora.enabled, true, 'SDXL accelerator stays on for a Pony checkpoint');
+    assert.deepEqual(settings(inst), [4, 1.5, 'lcm', 'lcm'], 'recipe re-applied after the target defaults');
+    assert.equal(inst.getEffectiveCreateLoras()[0].name, 'lcm_sdxl');
+
+    await inst.onSelectTarget('sd15', { quiet: true });
+    await settle(w, 120);
+    assert.equal(inst.state.createLora.enabled, false, 'SDXL accelerator disabled on SD1.5');
+    assert.deepEqual(settings(inst), [30, 5, 'dpm++2m', 'karras'], 'user settings from before activation restored');
+  } finally { close(); }
+});

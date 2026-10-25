@@ -292,9 +292,13 @@
     if (t.unsupported) return { key: 'unsupported', label: 'Not for this operation', ok: false };
     if (t.runtime === 'model-missing') return { key: 'missing', label: 'Model missing', ok: false };
     if (t.runtime === 'dormant') return { key: 'dormant', label: 'Dormant', ok: false };
+    // The worker cannot open the file: a past proof does not make the model usable right now.
+    if (t.runtime === 'model-inaccessible') return { key: 'inaccessible', label: 'Big Mac engine cannot read this model', ok: false };
+    if (t.runtime === 'worker-unavailable') return { key: 'engine-down', label: 'Local engine unavailable', ok: false };
     const st = String(t.status || '').toLowerCase();
     if (['proofed', 'proven', 'verified_working', 'repaired_and_verified'].includes(st)) return { key: 'proven', label: 'Proven', ok: true };
     if (st === 'broken' || st === 'failed_unresolved') return { key: 'broken', label: 'Broken', ok: false };
+    if (st === 'dormant') return { key: 'dormant', label: 'Dormant', ok: false };
     return { key: 'available', label: 'Available · unproven', ok: true };
   }
   // targets: capability targets; cards: model cards (optional, matched by id).

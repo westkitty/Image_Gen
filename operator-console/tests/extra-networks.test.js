@@ -86,3 +86,32 @@ test('extra-networks: curated LoRAs expose verified source and honest untested s
   assert.equal(lightning.metal_performance_status, 'MEASURED');
   assert.match(lightning.metal_performance_summary, /quality review pending/);
 });
+
+test('extra-networks: a family-route acceleration adapter is Compatible on that checkpoint but labelled unproven', () => {
+  const { routesFor } = require('../lora-runtime-policy');
+  const proven = { filename: 'sdxl_lightning_4step_lora.safetensors', full_path: '/x/sdxl_lightning_4step_lora.safetensors', proof_status: 'PROVEN', proof_target_ids: ['sdxl-base'] };
+  const withRoutes = target => ({ ...proven, production_routes: ['sdxl-base', target].flatMap(t => routesFor(t, proven.filename)) });
+
+  const [lustify] = buildLoraCards([withRoutes('sdxl-lustify')], 'sdxl-lustify');
+  assert.equal(lustify.compatibility, 'Compatible');
+  assert.equal(lustify.family_only, true);
+  assert.equal(lustify.is_speed_adapter, true);
+  assert.equal(lustify.target_proof, 'Unproven on this checkpoint');
+  assert.match(lustify.description, /Unproven on this checkpoint \(sdxl-lustify\)/);
+
+  const [pony] = buildLoraCards([withRoutes('sdxl-pony')], 'sdxl-pony');
+  assert.equal(pony.compatibility, 'Compatible');
+  assert.equal(pony.family_only, true);
+
+  const [base] = buildLoraCards([withRoutes('sdxl-base')], 'sdxl-base');
+  assert.equal(base.compatibility, 'Compatible');
+  assert.equal(base.family_only, false);
+  assert.equal(base.target_proof, 'PROVEN');
+
+  // No route for SD1.5 or SDXL Turbo: compatibility keeps its family verdict.
+  const [sd15] = buildLoraCards([withRoutes('sd15')], 'sd15');
+  assert.equal(sd15.compatibility, 'Incompatible');
+  assert.equal(sd15.family_only, false);
+  const [turbo] = buildLoraCards([withRoutes('sdxl-turbo')], 'sdxl-turbo');
+  assert.notEqual(turbo.compatibility, 'Compatible');
+});

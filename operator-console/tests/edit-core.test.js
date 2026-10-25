@@ -189,6 +189,21 @@ test('model selector groups by family, filters and searches', () => {
   assert.equal(E.groupModels(MT, [], {}).groups[0].items[0].readiness.label, 'Proven');
 });
 
+test('engine-access and dormant states are not ready and drop out of readyOnly', () => {
+  const inacc = { id: 'lustify-sdxl', label: 'LUSTIFY', backend: 'sdcpp', runtime: 'model-inaccessible', status: 'dormant' };
+  assert.deepEqual(E.readinessOf(inacc), { key: 'inaccessible', label: 'Big Mac engine cannot read this model', ok: false });
+  assert.equal(E.readinessOf({ id: 'p', status: 'proven', runtime: 'model-inaccessible' }).ok, false, 'a past proof does not make an unreadable model usable');
+  assert.deepEqual(E.readinessOf({ id: 'a', runtime: 'worker-unavailable' }), { key: 'engine-down', label: 'Local engine unavailable', ok: false });
+  assert.deepEqual(E.readinessOf({ id: 'b', runtime: 'available', status: 'dormant' }), { key: 'dormant', label: 'Dormant', ok: false });
+  assert.equal(E.readinessOf({ id: 'c', runtime: 'available' }).key, 'available', 'unproven available stays selectable');
+  assert.equal(E.readinessOf({ id: 'd', runtime: 'model-missing' }).key, 'missing');
+  const withBad = MT.concat([inacc, { id: 'sdxl-down', label: 'Down XL', backend: 'sdcpp', runtime: 'worker-unavailable' }]);
+  const ready = E.groupModels(withBad, [], { readyOnly: true });
+  assert.equal(ready.shown, 4);
+  assert.ok(!ready.groups.some(g => g.items.some(i => ['lustify-sdxl', 'sdxl-down'].includes(i.id))));
+  assert.equal(E.groupModels(withBad, [], {}).shown, 7, 'still listed when not filtering to ready');
+});
+
 // ── presets ─────────────────────────────────────────────────────────────
 test('legacy recipes migrate to v2 with mode create; prompts only when saving is on', () => {
   const legacy = { id: '1', name: 'Old', target: 'sd15', steps: 20, cfg: 7, prompt: 'secret', negPrompt: 'n' };

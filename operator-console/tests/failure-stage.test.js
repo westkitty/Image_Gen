@@ -20,3 +20,18 @@ test('when there is no gate, the log decides, and a VAE stage is never inferred 
   assert.equal(classify('', '=== Verifying remote PNG ===').stage, 'REMOTE_OUTPUT_VALIDATION');
   assert.equal(classify('', 'sampling step 20/20 100%').stage, null);
 });
+test('model-read-denied explains the cause and the next step, with no recoverable-image claim', () => {
+  const c = classify('model-read-denied', 'ENGINE_FAILURE_REASON: Big Mac engine cannot read the model file x.safetensors: Operation not permitted');
+  assert.equal(c.stage, 'PREFLIGHT');
+  assert.equal(c.outputMayExist, false);
+  assert.match(c.text, /Big Mac cannot read the model file\. Check macOS file access for the DexDiffusion Engine Worker on Big Mac, then retry\./);
+  assert.match(c.reason, /x\.safetensors/);
+  assert.doesNotMatch(c.text, /unknown|recoverable/);
+});
+test('engine-failed carries the sanitized engine reason without inventing a stage', () => {
+  const c = classify('engine-failed', 'ENGINE_RESULT: {}\nENGINE_FAILURE_REASON: sd-cli exited with code 3.\n');
+  assert.equal(c.stage, null);
+  assert.equal(c.reason, 'sd-cli exited with code 3');
+  assert.match(c.text, /engine reported a failure.*sd-cli exited with code 3\. Review the engine reason/);
+  assert.match(classify('engine-failed').text, /^The Big Mac engine reported a failure before producing an image\. Review/);
+});

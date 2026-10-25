@@ -123,6 +123,10 @@
       'tunnel-down': 'the SD1.5 server tunnel is down', route: 'Big Mac is unreachable', 'init-img': 'the source image could not be used', source: 'the source image could not be found',
     };
     const fs = window.DexFailureStage && window.DexFailureStage.classify(job.firstFailedGate, String(job.stderr || '') + '\n' + String(job.stdout || ''));
+    // The engine bridge reports a sanitized reason (fixed template, model filename only); the job record carries it after the gate.
+    const rm = /failed at gate [^:]+:\s*(.+)$/.exec(String(job.error || (job.generic && job.generic.error) || ''));
+    const reason = (fs && fs.reason) || (rm && rm[1]);
+    if (reason) return reason + (fs && fs.nextStep ? ' ' + fs.nextStep : '');
     return (fs && fs.stage ? fs.text + ' ' : '') + 'Failed at gate "' + g + '"' + (hints[g] ? ' — ' + hints[g] : '') + '.';
   };
 
@@ -180,12 +184,15 @@
     const targetSpec = typeof this._targetSpec === 'function' ? (this._targetSpec(target) || {}) : {};
     return (this.state.assets && this.state.assets.loras || []).map(l => {
       const targetFamily = targetSpec.family || (target.indexOf('sdxl') === 0 ? 'sdxl' : target === 'sd15' || target.indexOf('sd15-') === 0 ? 'sd15' : target.indexOf('flux2-') === 0 ? 'flux2' : '');
-      const familyMatches = l.family === targetFamily;
+      const route = (l.production_routes || []).find(r => r.target === target && (r.recipe && r.backend_override || targetSpec.backend === 'mflux' && r.backend === 'mflux' && r.rslora_equivalent)) || null;
+      // A server route for this exact checkpoint means the runtime policy already
+      // accepted the adapter family (e.g. an SDXL accelerator on a Pony checkpoint).
+      const familyMatches = l.family === targetFamily || !!route;
+      const familyOnly = !!route && route.verified === false;
       const provenTarget = Array.isArray(l.proof_target_ids) && l.proof_target_ids.includes(target);
       const backendMatches = !l.proof_backend || l.proof_backend === (targetSpec.backend || 'sdcpp');
       const metalProven = ['AT_RUNTIME_ONLY_PROVEN', 'FUNCTIONAL_METAL'].includes(l.metal_inference_status) && (l.metal_target_ids || []).includes(target);
       const modeAvailable = !l.proof_apply_modes || l.proof_apply_modes.includes('immediately') || metalProven;
-      const route = (l.production_routes || []).find(r => r.target === target && (r.recipe && r.backend_override || targetSpec.backend === 'mflux' && r.backend === 'mflux' && r.rslora_equivalent)) || null;
       const mfluxStyle = targetSpec.backend === 'mflux' && l.name === 'pixelart_lora' && l.mflux_rslora_verified === true && route;
       const hasProductionRoute = !!route && (route.production === true || !!route.backend_override || !!route.rslora_equivalent);
       const isCompat = l.compatibility === 'Compatible';
@@ -197,16 +204,52 @@
         ? (l.metal_performance_status === 'MEASURED'
           ? `Timing measured · ${l.metal_performance_summary || 'MTL0 / at_runtime; quality review pending'}`
           : 'Metal-compatible · MTL0 / at_runtime')
-        : provenTarget ? 'CPU-only · SDCPP / immediately' : (hasProductionRoute ? 'Verified production route' : (isCompat ? 'Compatible' : 'Inference unavailable'));
+        : provenTarget ? 'CPU-only · SDCPP / immediately'
+        : familyOnly ? 'Family-compatible · unproven on this checkpoint'
+        : (hasProductionRoute ? 'Verified production route' : (isCompat ? 'Compatible' : 'Inference unavailable'));
       const classification = l.classification ? String(l.classification).toUpperCase() : (l.is_speed_adapter ? 'ACCELERATION' : 'STYLE');
       return Object.assign({}, l, {
         use_enabled: enabled,
+        family_only: familyOnly,
+        accelerator: enabled && (classification === 'ACCELERATION' || l.is_speed_adapter === true),
         route_status: routeStatus,
         classification,
         unavailable_reason: l.unavailable_reason || (l.rs_lora && !mfluxStyle ? 'rsLoRA scaling is not verified on this backend.' : !familyMatches ? 'Adapter family does not match the selected checkpoint.' : !enabled ? 'Installed; inference is not yet proven for this checkpoint and backend.' : ''),
         selected_route: route
       });
     });
+  };
+
+  // Acceleration adapters usable on the selected checkpoint (server route +
+  // compatible card). Recomputed from state.assets on every render, so the
+  // highlight follows model switches once that target's cards arrive.
+  P.createLoraAccelerators = function (targetOverride) {
+    return this._createLoraOptions(targetOverride).filter(l => l.accelerator);
+  };
+  // Mirrors lora-runtime-policy FAMILY_TARGET_FAMILIES: could this accelerator
+  // still have a route on `target`? Only used while that target's cards load.
+  P._acceleratorFamilyMayFit = function (lora, target) {
+    if (!lora || !(String(lora.classification || '').toUpperCase() === 'ACCELERATION' || lora.is_speed_adapter)) return false;
+    const spec = typeof this._targetSpec === 'function' ? (this._targetSpec(target) || {}) : {};
+    const id = String(target || '');
+    const fam = spec.family || (id.indexOf('turbo') > -1 ? 'sdxl_turbo' : id.indexOf('pony') > -1 ? 'pony' : id.indexOf('sdxl') === 0 ? 'sdxl' : id === 'sd15' || id.indexOf('sd15-') === 0 ? 'sd15' : '');
+    return ({ sdxl: ['sdxl', 'pony'], sd15: ['sd15'] }[lora.family] || []).includes(fam);
+  };
+  P.createLoraRecipeSummary = function (lora) {
+    let r = this._createLoraRouteRecipe(lora);
+    if (!r) { const preset = this._createLoraRecipe(lora); r = preset && preset.kind === 'lora' ? preset.recommended || null : null; }
+    if (!r) return '';
+    return [r.steps != null ? r.steps + ' steps' : null, r.sampler, r.scheduler, r.cfg != null ? 'CFG ' + r.cfg : null].filter(Boolean).join(' · ');
+  };
+  P._activeCreateLoraRouteRecipe = function () {
+    const state = this.state.createLora || {};
+    if (!state.enabled || !state.selectedId) return null;
+    const selected = this._createLoraOptions().find(l => l.id === state.selectedId && l.use_enabled);
+    if (!selected) return null;
+    const route = this._createLoraRouteRecipe(selected);
+    if (route) return route;
+    const preset = this._createLoraRecipe(selected);
+    return preset && preset.kind === 'lora' ? preset.recommended || null : null;
   };
 
   P.getEffectiveCreateLoras = function () {
@@ -257,10 +300,21 @@
     const identity = asset && (asset.filename || asset.name || asset.id) || '';
     return presets && presets.resolveModelPreset(identity) || null;
   };
+  // The server route recipe is the one validation enforces; model-presets is a
+  // fallback for adapters without a server route.
+  P._createLoraRouteRecipe = function (asset) {
+    const r = asset && asset.selected_route && asset.selected_route.recipe;
+    if (!r) return null;
+    return { steps: r.steps, cfg: r.cfg_scale !== undefined ? r.cfg_scale : r.cfg, sampler: r.sampler, scheduler: r.scheduler };
+  };
   P._applyCreateLoraRecipe = function (asset, base, overrides) {
-    const recipe = this._createLoraRecipe(asset);
-    if (!recipe || recipe.kind !== 'lora') return {};
-    const rec = recipe.recommended || {}, patch = {};
+    let rec = this._createLoraRouteRecipe(asset);
+    if (!rec) {
+      const recipe = this._createLoraRecipe(asset);
+      if (!recipe || recipe.kind !== 'lora') return {};
+      rec = recipe.recommended || {};
+    }
+    const patch = {};
     for (const [field, value] of Object.entries({ steps: rec.steps, cfg: rec.cfg, sampler: rec.sampler, scheduler: rec.scheduler || 'discrete' })) {
       if (value !== undefined && !(overrides && overrides[field])) patch[field] = value;
     }
@@ -330,10 +384,15 @@
     if (!state.enabled) return;
     const selected = this._createLoraOptions().find(l => l.id === state.selectedId && l.use_enabled);
     if (!selected) {
-      this._persistCreateLora(Object.assign({}, state, { enabled: false, savedSettings: null, recipeSettings: null, overrides: {} }));
+      // The checkpoint changed under an active adapter: turn it off and give the
+      // user back the settings they had before the recipe was applied.
+      this.selectCreateLora('');
       return;
     }
+    // Still usable (e.g. a family-compatible accelerator): re-apply this
+    // checkpoint's route recipe, then the user's manual overrides.
     const patch = Object.assign({}, state.recipeSettings || {});
+    for (const [field, value] of Object.entries(this._createLoraRouteRecipe(selected) || {})) if (value !== undefined) patch[field] = value;
     for (const [field, value] of Object.entries(state.overrides || {})) if (['steps', 'cfg', 'sampler', 'scheduler'].includes(field)) patch[field] = value;
     if (Object.keys(patch).length) this.setState(patch);
   };

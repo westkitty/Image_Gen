@@ -58,7 +58,7 @@
   // Edit runs on the model the edit worker actually loads (server: editWorkerTarget = sdcpp.env REMOTE_MODEL), never the
   // secondary slot: offering other checkpoints here made the choice a silent no-op and mislabelled the results.
   P._editTargets = function () {
-    const usable = (this.state.modelTargets || []).filter(t => (t.backend || 'sdcpp') !== 'mflux' && !['model-missing', 'dormant'].includes(t.runtime) && String(t.status).toLowerCase() !== 'broken');
+    const usable = (this.state.modelTargets || []).filter(t => (t.backend || 'sdcpp') !== 'mflux' && !['model-missing', 'dormant', 'model-inaccessible', 'worker-unavailable'].includes(t.runtime) && !['broken', 'dormant'].includes(String(t.status).toLowerCase()));
     const worker = this.state.capabilityData && this.state.capabilityData.editWorkerTarget;
     return worker ? usable.filter(t => t.id === worker) : usable;
   };

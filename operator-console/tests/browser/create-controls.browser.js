@@ -48,6 +48,40 @@ const { test, exitCode } = runner('create-controls');
       const t = await page.locator('[data-dex-field="settings-guide"]').innerText();
       assert.match(t, /pixel space/); assert.match(t, /Just resize/); assert.match(t, /Default VAE/);
     });
+    await test('selecting LUSTIFY! APEX V8 highlights its accelerator LoRAs; a chip applies the server recipe and Off restores settings', async () => {
+      const { buildLoraCards } = require('../../extra-networks');
+      const { routesFor } = require('../../lora-runtime-policy');
+      const files = [['sdxl_lightning_4step_lora.safetensors', 'sdxl-base'], ['Hyper-SDXL-8steps-CFG-lora.safetensors', 'sdxl-base'], ['lcm_sdxl.safetensors', 'sdxl-base'], ['lcm_sd15.safetensors', 'sd15']];
+      const cardsFor = target => buildLoraCards(files.map(([filename, proven]) => ({ id: filename.replace(/\.safetensors$/, ''), filename, full_path: '/fixture/' + filename,
+        proof_status: 'PROVEN', proof_target_ids: [proven], proof_backend: 'sdcpp', proof_apply_modes: ['immediately'], metal_inference_status: 'FUNCTIONAL_METAL', metal_target_ids: [proven],
+        production_routes: Array.from(new Set([proven, target])).flatMap(t => routesFor(t, filename)) })), target);
+      await page.unroute('**/api/extra-networks**');
+      await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: cardsFor(new URL(r.request().url()).searchParams.get('target')), vaes: [], embeddings: { count: 0, items: [] } } }));
+      await page.route('**/api/models/secondary/activate', r => r.fulfill({ json: { ok: true, activeSecondaryModel: 'sdxl-lustify', modelState: {} } }));
+      const lustify = await page.evaluate(() => (__dex.state.modelTargets || []).find(t => t.id === 'sdxl-lustify'));
+      assert.ok(lustify, 'sdxl-lustify is in the real capability catalogue');
+      assert.equal(lustify.family, 'sdxl', 'capabilities expose the server-resolved family');
+      await page.evaluate(() => __dex.onSelectTarget('sdxl-lustify', { quiet: true }));
+      await page.waitForFunction(() => __dex.state.target === 'sdxl-lustify' && __dex.state.assetsTarget === 'sdxl-lustify');
+      await page.evaluate(() => __dex.setState({ steps: 30, cfg: 5, sampler: 'dpm++2m', scheduler: 'karras', createLora: { enabled: false, selectedId: '' } }));
+      await page.waitForSelector('[data-dex-field="open-lora-picker"][data-accelerators-available="3"]');
+      await page.click('[data-dex-field="open-lora-picker"]');
+      await page.waitForSelector('[data-dex-field="lora-accelerator-group"]');
+      assert.match(await page.locator('[data-dex-field="lora-accelerator-group"]').innerText(), /ACCELERATION FOR LUSTIFY! APEX V8/i);
+      const chips = await page.$$eval('[data-accelerator-chip]', els => els.map(e => e.getAttribute('data-accelerator-chip')).sort());
+      assert.deepEqual(chips, ['Hyper-SDXL-8steps-CFG-lora', 'lcm_sdxl', 'sdxl_lightning_4step_lora']);
+      assert.equal(await page.locator('[data-accelerator-unproven]').count(), 3, 'family-only routes are labelled unproven');
+      const settings = () => page.evaluate(() => [+__dex.state.steps, +__dex.state.cfg, __dex.state.sampler, __dex.state.scheduler]);
+      await page.click('[data-accelerator-chip="sdxl_lightning_4step_lora"]');
+      await page.waitForSelector('[data-accelerator-chip="sdxl_lightning_4step_lora"][aria-pressed="true"]');
+      assert.deepEqual(await settings(), [4, 0, 'euler', 'sgm_uniform']);
+      await page.click('[data-accelerator-chip="lcm_sdxl"]');
+      await page.waitForSelector('[data-accelerator-chip="lcm_sdxl"][data-accelerator-active="true"]');
+      assert.deepEqual(await settings(), [4, 1.5, 'lcm', 'lcm']);
+      await page.click('[data-dex-field="accelerator-off-btn"]');
+      await page.waitForFunction(() => !__dex.state.createLora.enabled);
+      assert.deepEqual(await settings(), [30, 5, 'dpm++2m', 'karras'], 'previous settings restored');
+    });
     assert.deepEqual(errors, []);
     await ctx.close();
   } finally { await srv.stop(); }

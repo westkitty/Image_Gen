@@ -602,6 +602,7 @@ class Component extends DCLogic {
             vaes: d.vaes || [],
             embeddings: d.embeddings || { count: 0, items: [], empty_state_message: 'No Textual Inversion embeddings discovered' }
           },
+          assetsTarget: target,
           loadingAssets: false
         });
         if (typeof this._restoreCreateLoraSettings === 'function') this._restoreCreateLoraSettings();
@@ -1741,13 +1742,18 @@ class Component extends DCLogic {
       this.applyTargetDefaults(id);
     }
 
+    const assetsWereForTarget = this.state.assetsTarget === id;
     this.loadAssets();
     // Check active Create LoRA compatibility with the new target
     const currentLoraState = this.state.createLora;
     if (currentLoraState && currentLoraState.selectedId && currentLoraState.enabled !== false) {
       const optionsForNewTarget = typeof this._createLoraOptions === 'function' ? this._createLoraOptions(id) : [];
       const matching = optionsForNewTarget.find(l => l.id === currentLoraState.selectedId);
-      if (!matching || !matching.use_enabled) {
+      // The loaded cards describe the previous checkpoint. A same-family accelerator
+      // may still have a route here: keep it until this target's cards arrive, when
+      // _restoreCreateLoraSettings either re-applies its recipe or restores settings.
+      const deferToTargetAssets = !assetsWereForTarget && matching && typeof this._acceleratorFamilyMayFit === 'function' && this._acceleratorFamilyMayFit(matching, id);
+      if (!deferToTargetAssets && (!matching || !matching.use_enabled)) {
         const reason = matching ? matching.unavailable_reason : 'Incompatible with the selected checkpoint';
         const name = matching ? matching.name : currentLoraState.selectedId;
         this.toast(`Disabled ${name}: ${reason}`, '#fbbf24');
@@ -1793,7 +1799,10 @@ class Component extends DCLogic {
     const out = [];
     if (!String(p.prompt || '').trim()) out.push(['Prompt required', 'warn']);
     if (!Number.isFinite(p.steps) || p.steps < 1 || p.steps > 150) out.push(['Steps must be 1-150', 'error']);
-    if (!Number.isFinite(p.cfg_scale) || p.cfg_scale < 1 || p.cfg_scale > 30) out.push(['CFG scale must be 1-30', 'error']);
+    // An active acceleration recipe may require CFG below 1 (SDXL Lightning runs at CFG 0).
+    const loraRecipe = typeof this._activeCreateLoraRouteRecipe === 'function' ? this._activeCreateLoraRouteRecipe() : null;
+    const minCfg = loraRecipe && Number.isFinite(Number(loraRecipe.cfg)) && Number(loraRecipe.cfg) < 1 && p.cfg_scale === Number(loraRecipe.cfg) ? Number(loraRecipe.cfg) : 1;
+    if (!Number.isFinite(p.cfg_scale) || p.cfg_scale < minCfg || p.cfg_scale > 30) out.push(['CFG scale must be 1-30', 'error']);
     const target = (this.state.modelTargets || []).find(t => t.id === p.target);
     const dimensionError = DexClient.dimensionIssue(target, p.width, p.height);
     if (dimensionError) out.push([dimensionError, 'error']);
@@ -2659,8 +2668,13 @@ class Component extends DCLogic {
     // LoRA Search Filtering
     const loraQuery = (this.state.loraSearchQuery || '').toLowerCase().trim();
     const filteredLoraOptions = loraOptions.filter(l => !loraQuery || (l.name || l.id || '').toLowerCase().includes(loraQuery) || (l.classification || '').toLowerCase().includes(loraQuery));
-    const provenLoraOptions = filteredLoraOptions.filter(l => l.use_enabled);
+    const provenLoraOptions = filteredLoraOptions.filter(l => l.use_enabled && !l.family_only);
+    const familyLoraOptions = filteredLoraOptions.filter(l => l.use_enabled && l.family_only);
     const unprovenLoraOptions = filteredLoraOptions.filter(l => !l.use_enabled);
+    // Accelerators for the selected checkpoint, highlighted automatically on model change.
+    const acceleratorOptions = loraOptions.filter(l => l.accelerator);
+    const activeAccelerator = isLoraActive && selectedLora.accelerator ? selectedLora : null;
+    const targetLabel = ((typeof this._targetSpec === 'function' && this._targetSpec(this.state.target)) || {}).label || this.state.target;
 
     const promptTools = React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4, width: '100%' } },
       // Top Controls Row
@@ -2681,17 +2695,24 @@ class Component extends DCLogic {
         React.createElement('button', {
           type: 'button',
           'data-dex-field': 'open-lora-picker',
+          'data-accelerators-available': acceleratorOptions.length ? String(acceleratorOptions.length) : null,
           'aria-expanded': !!this.state.showLoraPicker,
           'aria-haspopup': 'dialog',
+          title: acceleratorOptions.length && !isLoraActive ? `${acceleratorOptions.length} acceleration LoRA${acceleratorOptions.length === 1 ? '' : 's'} available for ${targetLabel}` : undefined,
           onClick: () => this.setState(st => ({ showLoraPicker: !st.showLoraPicker, loraSearchQuery: '' })),
           style: {
-            border: '1px solid ' + (isLoraActive ? '#65d66e' : this.state.showLoraPicker ? accent : 'rgba(148,163,184,.18)'),
-            background: isLoraActive ? 'rgba(101,214,110,.1)' : this.state.showLoraPicker ? 'rgba(255,255,255,.05)' : 'transparent',
-            color: isLoraActive ? '#86efac' : this.state.showLoraPicker ? accent : '#b8c7d6',
+            border: '1px solid ' + (isLoraActive ? '#65d66e' : this.state.showLoraPicker || acceleratorOptions.length ? accent : 'rgba(148,163,184,.18)'),
+            background: isLoraActive ? 'rgba(101,214,110,.1)' : this.state.showLoraPicker ? 'rgba(255,255,255,.05)' : acceleratorOptions.length ? accent + '14' : 'transparent',
+            color: isLoraActive ? '#86efac' : this.state.showLoraPicker || acceleratorOptions.length ? accent : '#b8c7d6',
             borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
             fontWeight: isLoraActive ? 700 : 400, display: 'inline-flex', alignItems: 'center', gap: 5
           }
-        }, isLoraActive ? `⚡ LoRA: ${selectedLora.name} (${loraStrength.toFixed(2)})` : '⚡ LoRA'),
+        }, isLoraActive ? `⚡ LoRA: ${selectedLora.name} (${loraStrength.toFixed(2)})` : '⚡ LoRA',
+          !isLoraActive && acceleratorOptions.length ? React.createElement('span', {
+            'data-dex-field': 'lora-accelerator-badge',
+            'aria-label': `${acceleratorOptions.length} accelerators available`,
+            style: { background: accent, color: '#0c1018', borderRadius: 999, padding: '0 6px', fontSize: 9, fontWeight: 800, lineHeight: '15px' }
+          }, String(acceleratorOptions.length)) : null),
 
         s.previousPrompt != null ? React.createElement('button', {
           onClick: () => this.undoEnhancement(),
@@ -2736,6 +2757,40 @@ class Component extends DCLogic {
               style: { border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: 14, padding: '0 4px' }
             }, '✕')
           ),
+          acceleratorOptions.length ? React.createElement('div', {
+            'data-dex-field': 'lora-accelerator-group',
+            role: 'group',
+            'aria-label': 'Acceleration for ' + targetLabel,
+            style: { display: 'flex', flexDirection: 'column', gap: 5, border: '1px solid ' + accent + '55', background: accent + '0d', borderRadius: 7, padding: 8 }
+          },
+            React.createElement('span', { style: { fontSize: 10, fontWeight: 800, color: accent, letterSpacing: '.06em', textTransform: 'uppercase' } }, 'Acceleration for ' + targetLabel),
+            ...acceleratorOptions.map(l => {
+              const active = !!(activeAccelerator && activeAccelerator.id === l.id);
+              return React.createElement('button', {
+                key: l.id,
+                type: 'button',
+                'data-accelerator-chip': l.id,
+                'data-accelerator-active': active ? 'true' : 'false',
+                'aria-pressed': active ? 'true' : 'false',
+                disabled: this.state.jobStatus === 'generating',
+                onClick: () => this.selectCreateLora(active ? '' : l.id),
+                title: active ? 'Turn acceleration off and restore your previous settings' : 'Use ' + l.name + ' and apply its recommended settings',
+                style: { textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 2, border: '1px solid ' + (active ? '#65d66e' : accent + '88'), background: active ? 'rgba(101,214,110,.12)' : accent + '1a', color: '#f1f5f9', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }
+              },
+                React.createElement('span', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 12, fontWeight: 700 } },
+                  (active ? '● ' : '⚡ ') + l.name,
+                  l.family_only ? React.createElement('span', { 'data-accelerator-unproven': 'true', style: { border: '1px solid rgba(251,191,36,.4)', color: '#fbbf24', borderRadius: 4, padding: '0 5px', fontSize: 9, fontWeight: 700 } }, 'family-compatible · unproven') : null
+                ),
+                React.createElement('span', { 'data-accelerator-recipe': 'true', style: { fontSize: 10, color: '#94a3b8', fontFamily: "'IBM Plex Mono',monospace" } }, this.createLoraRecipeSummary(l))
+              );
+            }),
+            activeAccelerator ? React.createElement('button', {
+              type: 'button',
+              'data-dex-field': 'accelerator-off-btn',
+              onClick: () => this.selectCreateLora(''),
+              style: { alignSelf: 'flex-start', border: 'none', background: 'transparent', color: '#7dd3fc', cursor: 'pointer', fontSize: 10, padding: 0, textDecoration: 'underline' }
+            }, 'Acceleration off · restore previous settings') : null
+          ) : null,
           React.createElement('input', {
             type: 'text',
             placeholder: 'Search installed adapters…',
@@ -2756,6 +2811,9 @@ class Component extends DCLogic {
             React.createElement('option', { value: '' }, '(None — LoRA disabled)'),
             provenLoraOptions.length ? React.createElement('optgroup', { label: 'Compatible & Proven' },
               ...provenLoraOptions.map(l => React.createElement('option', { key: l.id, value: l.id }, `${l.name} (${l.classification || 'STYLE'}) · PROVEN`))
+            ) : null,
+            familyLoraOptions.length ? React.createElement('optgroup', { label: 'Family-compatible · unproven on this checkpoint' },
+              ...familyLoraOptions.map(l => React.createElement('option', { key: l.id, value: l.id }, `${l.name} (${l.classification || 'STYLE'}) · UNPROVEN HERE`))
             ) : null,
             unprovenLoraOptions.length ? React.createElement('optgroup', { label: 'Incompatible or Unverified' },
               ...unprovenLoraOptions.map(l => React.createElement('option', { key: l.id, value: l.id, disabled: true }, `${l.name} · ${l.unavailable_reason}`))
@@ -2809,8 +2867,9 @@ class Component extends DCLogic {
               ),
               React.createElement('div', null,
                 (() => {
-                  const r = typeof this._createLoraRecipe === 'function' ? this._createLoraRecipe(selectedLora) : null;
-                  const x = r && r.recommended || {};
+                  const routeRecipe = typeof this._createLoraRouteRecipe === 'function' ? this._createLoraRouteRecipe(selectedLora) : null;
+                  const r = routeRecipe ? null : typeof this._createLoraRecipe === 'function' ? this._createLoraRecipe(selectedLora) : null;
+                  const x = routeRecipe || r && r.recommended || {};
                   return isLoraActive
                     ? `Effective recipe: ${x.steps || this.state.steps} steps · ${x.sampler || this.state.sampler} · ${x.scheduler || 'engine default'} · CFG ${x.cfg != null ? x.cfg : this.state.cfg}`
                     : `Normal settings: ${this.state.steps} steps · ${this.state.sampler} · ${this.state.scheduler || 'engine default'} · CFG ${this.state.cfg}`;
@@ -3076,22 +3135,25 @@ class Component extends DCLogic {
               : Number((s.loraWeights && s.loraWeights[l.id]) ?? (opt && opt.default_weight) ?? l.default_weight ?? 1.0);
             const compatTone = l.compatibility === 'Compatible' ? '#65d66e' : l.compatibility === 'Probably compatible' ? '#fbbf24' : l.compatibility === 'Incompatible' ? '#ef4444' : '#94a3b8';
 
+            const isAccelerator = !!(opt && opt.accelerator);
             return React.createElement('div', {
               key: l.id,
-              style: { border: '1px solid rgba(148,163,184,.14)', background: 'rgba(9,20,32,.7)', borderRadius: 8, padding: 9, display: 'flex', flexDirection: 'column', gap: 6 }
+              'data-accelerator-card': isAccelerator ? l.id : null,
+              style: { border: '1px solid ' + (isAccelerator ? accent + '77' : 'rgba(148,163,184,.14)'), background: isAccelerator ? accent + '0d' : 'rgba(9,20,32,.7)', borderRadius: 8, padding: 9, display: 'flex', flexDirection: 'column', gap: 6 }
             },
               // Title & compatibility badges
               React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
                 React.createElement('div', { style: { fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: "'IBM Plex Mono',monospace" } }, l.name),
                 React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                  isAccelerator ? React.createElement('span', { 'data-accelerator-badge': 'true', title: 'Acceleration adapter for the selected checkpoint', style: { border: '1px solid ' + accent + '77', background: accent + '22', color: accent, borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700 } }, '⚡ Accelerator') : null,
                   React.createElement('span', { style: { border: '1px solid rgba(148,163,184,.2)', background: 'rgba(255,255,255,.04)', color: '#94a3b8', borderRadius: 4, padding: '1px 5px', fontSize: 9 } }, l.family.toUpperCase()),
                   React.createElement('span', { style: { border: '1px solid ' + compatTone + '55', background: compatTone + '15', color: compatTone, borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700 } }, l.compatibility)
                 )
               ),
 
               l.description ? React.createElement('div', { style: { fontSize: 10, lineHeight: 1.35, color: '#94a3b8' } }, l.description) : null,
-              React.createElement('div', { role: 'status', style: { color: isProven ? '#65d66e' : '#fbbf24', fontSize: 10 } },
-                isProven ? 'Generation verified' : (opt && opt.unavailable_reason ? opt.unavailable_reason : 'File installed; generation not verified for this checkpoint')
+              React.createElement('div', { role: 'status', style: { color: isProven && !opt.family_only ? '#65d66e' : '#fbbf24', fontSize: 10 } },
+                isProven ? (opt.family_only ? 'Family-compatible · unproven on this checkpoint (verified recipe applied)' : 'Generation verified') : (opt && opt.unavailable_reason ? opt.unavailable_reason : 'File installed; generation not verified for this checkpoint')
               ),
               (() => {
                 let url = null;

@@ -75,6 +75,11 @@ function inferAssetFamily(filename) {
  */
 function resolveTargetFamily(targetId) {
   const t = String(targetId || '').toLowerCase();
+  // Auto-discovered checkpoints are named `<architecture>-auto-<filename>`: the architecture prefix comes from the
+  // directory the file was found in and must win over words that merely appear in the filename.
+  const auto = /^(sdxl|sd15)-auto-/.exec(t);
+  if (auto && auto[1] === 'sd15') return FAMILIES.SD15;
+  if (auto && auto[1] === 'sdxl') return t.includes('turbo') ? FAMILIES.SDXL_TURBO : t.includes('pony') ? FAMILIES.PONY : FAMILIES.SDXL;
   if (t.includes('flux2') || t.includes('klein')) return FAMILIES.FLUX2;
   if (t.includes('flux') || t.includes('schnell')) return FAMILIES.FLUX1;
   if (t.includes('turbo')) return FAMILIES.SDXL_TURBO;
@@ -143,6 +148,13 @@ function buildLoraCards(discoveredLoras = [], currentTargetId = 'flux2-klein-4b'
     const proofTargetIds = Array.isArray(lora.proof_target_ids) ? lora.proof_target_ids : [];
     const proofStatus = lora.proof_status || (lora.full_path ? 'FILE_INSTALLED_UNTESTED' : 'NOT_INSTALLED');
     if (proofStatus === 'PROVEN' && proofTargetIds.includes(currentTargetId)) compatibility = 'Compatible';
+    const productionRoutes = Array.isArray(lora.production_routes) ? lora.production_routes : [];
+    // A same-family acceleration route from the runtime policy makes the adapter
+    // usable on this checkpoint, but it is not proven here: keep that visible.
+    const familyRoute = curated && curated.classification === 'acceleration' && !proofTargetIds.includes(currentTargetId)
+      ? productionRoutes.find(r => r && r.target === currentTargetId && r.family_only === true && r.verified === false) || null
+      : null;
+    if (familyRoute) compatibility = 'Compatible';
 
     // Known trigger words and notes
     let triggerWords = [];
@@ -174,16 +186,18 @@ function buildLoraCards(discoveredLoras = [], currentTargetId = 'flux2-klein-4b'
       trigger_words: lora.header_triggers && lora.header_triggers.length ? lora.header_triggers : triggerWords,
       family_source: lora.header_family ? 'header' : 'filename',
       trigger_source: lora.header_triggers && lora.header_triggers.length ? 'dataset tag frequency (kohya metadata) — candidates, not guaranteed trigger words' : 'built-in notes',
-      is_speed_adapter: isSpeedAdapter,
+      is_speed_adapter: isSpeedAdapter || curated?.classification === 'acceleration',
+      family_only: !!familyRoute,
+      target_proof: familyRoute ? 'Unproven on this checkpoint' : (proofStatus === 'PROVEN' && proofTargetIds.includes(currentTargetId) ? 'PROVEN' : null),
       default_weight: 1.0,
       min_weight: baseName === 'pixelart_lora' ? 0.25 : 0.0,
       max_weight: baseName === 'pixelart_lora' ? 1.5 : 2.0,
       step: 0.05,
       status: lora.status || 'available',
       provenance: lora.full_path ? 'local-wc2tb' : 'staged',
-      description: proofStatus === 'PROVEN'
+      description: (proofStatus === 'PROVEN'
         ? `${curated?.description || ''} CPU inference verified on ${proofTargetIds.join(', ')}${(lora.metal_target_ids || []).length ? `; Metal at_runtime verified on ${(lora.metal_target_ids || []).join(', ')}` : '; Metal remains unverified'}.`
-        : curated?.description || '',
+        : curated?.description || '') + (familyRoute ? ` Unproven on this checkpoint (${currentTargetId}): family-compatible route with the verified recipe; no inference receipt yet.` : ''),
       classification: curated?.classification || 'unknown',
       source_url: curated?.source_url || null,
       source_model_id: curated?.source_model_id || null,
@@ -203,7 +217,7 @@ function buildLoraCards(discoveredLoras = [], currentTargetId = 'flux2-klein-4b'
       metal_apply_mode: lora.metal_apply_mode || null,
       metal_performance_status: lora.metal_performance_status || 'UNMEASURED',
       metal_performance_summary: lora.metal_performance_summary || null,
-      production_routes: Array.isArray(lora.production_routes) ? lora.production_routes : []
+      production_routes: productionRoutes
     };
   });
 }

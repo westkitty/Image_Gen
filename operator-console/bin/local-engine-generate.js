@@ -16,6 +16,26 @@ async function publishAfterAcknowledgment({ acknowledge, publish, isStopping }) 
   if (isStopping()) throw new Error('cancelled before publication');
   return publish();
 }
+// Classifies a failed engine result into a first failed gate plus a user-facing reason. The reason is built from fixed
+// templates and file basenames only: directory paths, the prompt and the negative prompt never reach it.
+const ABS_PATH = /(?<![\w.~\/])(?:~\/|\/)(?:[^\s'"`,;:()\[\]<>{}]*\/)*[^\s'"`,;:()\[\]<>{}\/]+/g;
+const MODEL_FILE = /[^\s'"`,;:()\[\]<>{}\/]+\.(?:safetensors|gguf|ckpt|bin|pt|pth)\b/i;
+function classifyEngineError(err, modelPath, { prompt, negativePrompt } = {}) {
+  const isObj = err && typeof err === 'object';
+  let message = String((isObj ? (err.error || err.message || err.status) : err) || 'unknown engine failure');
+  const modelRead = isObj ? !!err.model_read : false;
+  const modelBase = modelPath ? path.basename(String(modelPath)) : null;
+  const namesModel = !!modelBase && message.includes(modelBase);
+  if (/\[Errno (1|13)\]/.test(message) && (!modelRead || namesModel)) {
+    const found = MODEL_FILE.exec(message.replace(ABS_PATH, m => path.basename(m)));
+    const name = modelBase || (found && found[0]) || 'for this target';
+    return { gate: 'model-read-denied', reason: `Big Mac engine cannot read the model file ${name}: Operation not permitted (check macOS file access for the engine worker)` };
+  }
+  for (const secret of [prompt, negativePrompt]) if (secret && String(secret).trim().length >= 3) message = message.split(String(secret)).join('[REDACTED]');
+  message = message.replace(ABS_PATH, m => path.basename(m)).replace(/\s+/g, ' ').trim();
+  if (message.length > 200) message = message.slice(0, 199) + '…';
+  return { gate: 'engine-failed', reason: message || 'unknown engine failure' };
+}
 function parse(argv) {
   const args = {};
   const allowed = new Set(['target','prompt','negative-prompt','width','height','steps','seed','cfg','sampler','scheduler','save-prompts','lora-id','lora-strength','backend-override','lora-apply-mode','clip-skip','tiling','eta','rng','vae','model-path','api','hires-scale','hires-width','hires-height','hires-steps','hires-denoise','hires-upscaler','batch-count']);
@@ -88,7 +108,13 @@ async function main() {
     }
     console.log('ENGINE_RESULT: ' + JSON.stringify(state));
     if (spec.backend === 'mflux' && Number.isFinite(state.generation_seconds)) console.log('MFLUX_TIMING: '+JSON.stringify({remote_generate_s:state.generation_seconds}));
-    if (state.status !== 'complete' || stopping) throw new Error(state.error || state.status);
+    if (state.status !== 'complete' || stopping) {
+      if (state.status === 'failed') {
+        const failure = classifyEngineError(state, spec.path, { prompt, negativePrompt: req.negative_prompt });
+        console.log('First failed gate: ' + failure.gate + '\nENGINE_FAILURE_REASON: ' + failure.reason);
+      }
+      throw new Error(state.error || state.status);
+    }
     const store = createImageStore(process.env.DEX_IMAGES_ROOT_OVERRIDE ? { root: process.env.DEX_IMAGES_ROOT_OVERRIDE } : {});
     const downloads=[];
     stagingDir=fs.mkdtempSync(path.join(os.tmpdir(),'dex-engine-transfer-'));
@@ -131,4 +157,4 @@ async function main() {
   }
 }
 if (require.main === module) main().catch(e => { console.error('Local engine generation failed: ' + e.message); process.exitCode = 1; });
-module.exports = { parse, publishAfterAcknowledgment };
+module.exports = { parse, publishAfterAcknowledgment, classifyEngineError };

@@ -37,10 +37,10 @@
   // 3. the current selection (unchanged behaviour).
   function chooseInitialTarget(targets, savedId, currentId) {
     const list = Array.isArray(targets) ? targets : [];
-    const NOT_READY = new Set(['dormant', 'model-missing']);
+    const NOT_READY = new Set(['dormant', 'model-missing', 'model-inaccessible', 'worker-unavailable']);
     const has = id => !!id && list.some(t => t && t.id === id && !NOT_READY.has(t.runtime));
     if (has(savedId)) return savedId;
-    const primary = list.find(t => t && t.primary === true && ['proofed', 'proven'].includes(t.status));
+    const primary = list.find(t => t && t.primary === true && ['proofed', 'proven'].includes(t.status) && !NOT_READY.has(t.runtime));
     if (primary) return primary.id;
     return currentId;
   }
@@ -48,9 +48,14 @@
   // Dropdown label: marks the primary engine and dormant legacy targets.
   function targetOptionLabel(t) {
     const base = (t && (t.label || t.id)) || '';
-    if (t && t.primary) return base + ' — Primary';
+    // Engine-access reasons win even on the primary, so an unreadable model never looks selectable.
+    const engineReason = t && t.runtime === 'model-inaccessible' ? 'Big Mac engine cannot read this model'
+      : t && t.runtime === 'worker-unavailable' ? 'local engine unavailable' : null;
+    if (t && t.primary) return base + ' — Primary' + (engineReason ? ' — ' + engineReason : '');
+    if (engineReason) return base + ' — ' + engineReason;
     if (t && t.runtime === 'dormant') return base + ' — dormant';
     if (t && t.runtime === 'model-missing') return base + ' — model missing';
+    if (t && String(t.status || '').toLowerCase() === 'dormant') return base + ' — dormant';
     return base;
   }
 
