@@ -16,7 +16,9 @@
 
   // ── CAST ────────────────────────────────────────────────────────────────────────────────────────────
   P.dmActor = async function (actor, patch, quiet) {
-    const r = await this._vpApi(`/api/drama/projects/${this._dm().current.id}/actors/${actor.id}`, patch, 'PUT');
+    const owner = this._dmProjectOwner(); if (!owner) return false;
+    const r = await this._vpApi(`/api/drama/projects/${owner.id}/actors/${actor.id}`, patch, 'PUT');
+    if (!this._dmOwnsProject(owner)) return false;
     if (!r.ok) { this.toast(r.data.error || 'Could not update the actor', '#ef4444'); return false; }
     this.dmSet({ current: r.data.project }, { skipIfTyping: quiet }); return true;
   };
@@ -84,30 +86,37 @@
 
   // ── DIRECT ──────────────────────────────────────────────────────────────────────────────────────────
   P.dmLoadTimeline = async function (sceneId) {
-    const dm = this._dm(); if (!dm.current) return; sceneId = sceneId || dm.sceneId || (dm.current.scenes.find(s => s.lines.some(l => l.kind !== 'direction')) || dm.current.scenes[0] || {}).id; if (!sceneId) return;
-    const r = await this._vpApi(`/api/drama/projects/${dm.current.id}/scenes/${sceneId}/timeline`); if (!r.ok) { this.toast(r.data.error || 'Timeline unavailable', '#ef4444'); return; }
+    const dm = this._dm(), owner = this._dmProjectOwner(); if (!owner) return; sceneId = sceneId || dm.sceneId || (dm.current.scenes.find(s => s.lines.some(l => l.kind !== 'direction')) || dm.current.scenes[0] || {}).id; if (!sceneId) return;
+    const r = await this._vpApi(`/api/drama/projects/${owner.id}/scenes/${sceneId}/timeline`); if (!this._dmOwnsProject(owner)) return; if (!r.ok) { this.toast(r.data.error || 'Timeline unavailable', '#ef4444'); return; }
     dm.sceneId = sceneId; this.dmSet({ timeline: r.data.timeline }, { skipIfTyping: true });
     for (const lane of r.data.timeline.lanes) for (const c of lane.clips) if (c.artifact_id && c.resolved !== false) U.peaks(this, c.artifact_id, 240).then(pk => { if (pk) this.dmSet({}, { skipIfTyping: true }); });
   };
   P.dmPreviewScene = async function () {
-    const dm = this._dm(); this.dmSet({ previewBusy: true });
-    const r = await this._vpApi(`/api/drama/projects/${dm.current.id}/scenes/${dm.sceneId}/preview`, {}); this.dmSet({ previewBusy: false });
+    const dm = this._dm(), owner = this._dmProjectOwner(); if (!owner) return; this.dmSet({ previewBusy: true });
+    const r = await this._vpApi(`/api/drama/projects/${owner.id}/scenes/${dm.sceneId}/preview`, {}); this.dmSet({ previewBusy: false });
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { this.toast((r.data.error || 'Preview failed') + (r.data.lines ? ' (' + r.data.lines.length + ' line(s) need speech)' : ''), '#ef4444'); return; }
     this.dmSet({ timeline: r.data.timeline }); this.toast(r.data.reused ? 'Preview is current' : 'Preview rendered — this is the audio the export reuses', '#65d66e');
   };
   P.dmClip = async function (lineId, patch) {
-    const dm = this._dm(); const r = await this._vpApi(`/api/drama/projects/${dm.current.id}/lines/${lineId}/clip`, patch, 'PUT');
+    const owner = this._dmProjectOwner(); if (!owner) return false;
+    const r = await this._vpApi(`/api/drama/projects/${owner.id}/lines/${lineId}/clip`, patch, 'PUT');
+    if (!this._dmOwnsProject(owner)) return false;
     if (!r.ok) { this.toast(r.data.error || 'Edit rejected', '#ef4444'); return false; } this.dmSet({ current: r.data.project }); await this.dmLoadTimeline(); return true;
   };
   P.dmTrack = async function (trackId, patch) {
-    const dm = this._dm(); const r = await this._vpApi(`/api/drama/projects/${dm.current.id}/tracks/${trackId}`, patch, 'PUT');
+    const owner = this._dmProjectOwner(); if (!owner) return false;
+    const r = await this._vpApi(`/api/drama/projects/${owner.id}/tracks/${trackId}`, patch, 'PUT');
+    if (!this._dmOwnsProject(owner)) return false;
     if (!r.ok) { this.toast(r.data.error || 'Edit rejected', '#ef4444'); return false; } this.dmSet({ current: r.data.project }); await this.dmLoadTimeline(); return true;
   };
   P.dmCueAction = async function (lineId, what, body) {
-    const dm = this._dm(); const r = await this._vpApi(`/api/drama/projects/${dm.current.id}/cues/${encodeURIComponent(lineId)}${what}`, body, body === undefined ? 'DELETE' : (what === '' ? 'PUT' : 'POST'));
+    const owner = this._dmProjectOwner(); if (!owner) return null;
+    const r = await this._vpApi(`/api/drama/projects/${owner.id}/cues/${encodeURIComponent(lineId)}${what}`, body, body === undefined ? 'DELETE' : (what === '' ? 'PUT' : 'POST'));
+    if (!this._dmOwnsProject(owner)) return null;
     if (!r.ok) { this.toast(r.data.error || 'Cue update failed', '#ef4444'); return null; } if (r.data.project) this.dmSet({ current: r.data.project }); await this.dmLoadCues(); await this.dmLoadTimeline(); return r.data;
   };
-  P.dmLoadCues = async function () { const dm = this._dm(); const r = await this._vpApi(`/api/drama/projects/${dm.current.id}/cues`); if (r.ok) this.dmSet({ cues: r.data }, { skipIfTyping: true }); };
+  P.dmLoadCues = async function () { const owner = this._dmProjectOwner(); if (!owner) return; const r = await this._vpApi(`/api/drama/projects/${owner.id}/cues`); if (r.ok && this._dmOwnsProject(owner)) this.dmSet({ cues: r.data }, { skipIfTyping: true }); };
   P.dmSuggest = async function (lineId) { const r = await this._vpApi(`/api/drama/projects/${this._dm().current.id}/cues/${encodeURIComponent(lineId)}/suggest`); this.dmSet({ suggest: r.ok ? Object.assign({ line_id: lineId }, r.data) : { line_id: lineId, error: r.data.error } }); };
   P.dmProcedural = async function (lineId, recipe, seconds) {
     const r = await this._vpApi('/api/drama/procedural', { recipe, seconds }); if (!r.ok) { this.toast(r.data.error || 'Could not generate', '#ef4444'); return; }
@@ -160,7 +169,7 @@
           field('Effects on this clip', h('select', { 'data-insp': 'fx', value: o.fx_override === undefined ? 'inherit' : o.fx_override === null ? 'none' : o.fx_override.preset, style: css.input, onChange: e => this.dmClip(c.line_id, { fx_override: e.target.value }) }, h('option', { value: 'inherit' }, 'Inherit from actor'), h('option', { value: 'none' }, 'Clean (no effects)'), ...((dm.fx && dm.fx.builtin) || []).filter(x => !['none', 'custom'].includes(x.id)).map(x => h('option', { key: x.id, value: x.id }, x.label)))),
           field('Pacing on this clip', h('select', { 'data-insp': 'pacing', value: o.pacing === undefined ? 'inherit' : o.pacing.mode === 'off' ? 'off' : o.pacing.preset || 'custom', style: css.input, onChange: e => this.dmClip(c.line_id, { pacing: e.target.value }) }, h('option', { value: 'inherit' }, 'Inherit from actor'), h('option', { value: 'off' }, 'Off — as performed'), ...(dm.pacingPresets || []).filter(x => x.id !== 'off').map(x => h('option', { key: x.id, value: x.id }, x.label)))),
           field('Take for this clip', h('select', { 'data-insp': 'take', value: o.pinned_take_id || '', style: css.input, onChange: e => this.dmClip(c.line_id, { pinned_take_id: e.target.value || null }) }, h('option', { value: '' }, 'Automatic (selected take)'), ...takes.map((t, i) => h('option', { key: t.id, value: t.id, disabled: !(t.state && t.state.freshness === 'current') }, 'Take ' + (line.takes.indexOf(t) + 1) + ' · ' + (t.state ? t.state.label : t.status) + (t.seed != null ? ' · seed ' + t.seed : '')))))),
-        h('div', { style: css.row }, btn('Reset clip', () => this.dmClip(c.line_id, { reset: true }), '#94a3b8', { 'data-insp': 'reset' }), btn('Trim to speech (suggested)', async () => { const r = await this._vpApi(`/api/drama/projects/${p.id}/lines/${c.line_id}/apply-trim`, {}); this.toast(r.ok ? 'Trim applied to the clip (original untouched)' : (r.data.error || 'No clear boundaries'), r.ok ? '#65d66e' : '#fbbf24'); if (r.ok) { this.dmSet({ current: r.data.project }); this.dmLoadTimeline(); } }, '#94a3b8')));
+        h('div', { style: css.row }, btn('Reset clip', () => this.dmClip(c.line_id, { reset: true }), '#94a3b8', { 'data-insp': 'reset' }), btn('Trim to speech (suggested)', async () => { const owner = this._dmProjectOwner(); if (!owner || owner.id !== p.id) return; const r = await this._vpApi(`/api/drama/projects/${owner.id}/lines/${c.line_id}/apply-trim`, {}); if (!this._dmOwnsProject(owner)) return; this.toast(r.ok ? 'Trim applied to the clip (original untouched)' : (r.data.error || 'No clear boundaries'), r.ok ? '#65d66e' : '#fbbf24'); if (r.ok) { this.dmSet({ current: r.data.project }); this.dmLoadTimeline(); } }, '#94a3b8')));
     }
     const tr = (p.tracks || []).find(t => t.id === c.track_id); if (!tr) return null;
     const at = dm.audioEl ? dm.audioEl.currentTime : 0;
@@ -172,7 +181,7 @@
         num('Trim start (s)', 'ttrimstart', 0.1, () => tr.trim_start_s || 0, v => this.dmTrack(tr.id, { trim_start_s: v })), num('Length (s, blank=natural)', 'tlen', 0.1, () => (tr.length_s == null ? '' : tr.length_s), v => this.dmTrack(tr.id, { length_s: v || null })), num('Priority', 'tprio', 1, () => tr.priority || 0, v => this.dmTrack(tr.id, { priority: v }))),
       h('div', { style: css.row },
         ...[['loop', 'Loop to fill'], ['duck', 'Duck under dialogue'], ['required', 'Required for certification']].map(([k, l]) => h('label', { key: k, style: { display: 'flex', gap: 4, alignItems: 'center', fontSize: 12, color: '#cbd5e1', minHeight: 32 } }, h('input', { type: 'checkbox', checked: !!tr[k] || (k === 'required' && tr.required !== false), 'data-insp': k, onChange: e => this.dmTrack(tr.id, { [k]: e.target.checked }) }), l))),
-      h('div', { style: css.row }, btn('Split at playhead', async () => { const r = await this._vpApi(`/api/drama/projects/${p.id}/tracks/${tr.id}/split`, { at_s: at }); this.toast(r.ok ? 'Cue split' : (r.data.error || 'Cannot split here'), r.ok ? '#65d66e' : '#fbbf24'); if (r.ok) { this.dmSet({ current: r.data.project }); this.dmLoadTimeline(); } }, '#94a3b8', { 'data-insp': 'split' }), btn('Remove cue', async () => { const r = await this._vpApi(`/api/drama/projects/${p.id}/tracks/${tr.id}`, undefined, 'DELETE'); if (r.ok) { dm.selClip = null; this.dmSet({ current: r.data.project }); this.dmLoadTimeline(); } }, '#f87171')));
+      h('div', { style: css.row }, btn('Split at playhead', async () => { const owner = this._dmProjectOwner(); if (!owner || owner.id !== p.id) return; const r = await this._vpApi(`/api/drama/projects/${owner.id}/tracks/${tr.id}/split`, { at_s: at }); if (!this._dmOwnsProject(owner)) return; this.toast(r.ok ? 'Cue split' : (r.data.error || 'Cannot split here'), r.ok ? '#65d66e' : '#fbbf24'); if (r.ok) { this.dmSet({ current: r.data.project }); this.dmLoadTimeline(); } }, '#94a3b8', { 'data-insp': 'split' }), btn('Remove cue', async () => { const owner = this._dmProjectOwner(); if (!owner || owner.id !== p.id) return; const r = await this._vpApi(`/api/drama/projects/${owner.id}/tracks/${tr.id}`, undefined, 'DELETE'); if (!this._dmOwnsProject(owner)) return; if (r.ok) { dm.selClip = null; this.dmSet({ current: r.data.project }); this.dmLoadTimeline(); } }, '#f87171')));
   };
   P._dmCuePanel = function (p) {
     const dm = this._dm(), base = this.state.backendUrl, cues = dm.cues;

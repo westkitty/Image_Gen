@@ -201,6 +201,10 @@ function createChatStreamRunner({
           const r = await handle(obj);
           if (abortCode) return stoppedOrFailure();
           if (r) {
+            // A done marker must not hide malformed bytes already received in
+            // this batch, including a final unterminated line. Earlier deltas
+            // remain visible, but their turn must fail rather than enter context.
+            if (r.event === 'done' && (parsed.error || parser.end().error)) return failure('parse_error');
             if (r.event === 'done') r.payload = { done_reason: r.done_reason, eval_count: r.eval_count, prompt_eval_count: r.prompt_eval_count, total_ms: now() - t0 };
             return r;
           }

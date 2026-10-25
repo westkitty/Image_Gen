@@ -141,7 +141,10 @@ test('with DEX_CHAT_ENABLED=1 the real server streams only under the shared leas
     assert.equal(r.status, 200);
     assert.equal(r.headers['content-type'], 'text/event-stream; charset=utf-8');
     const events = r.raw.trim().split('\n\n').map(f => /^event: (.*)$/m.exec(f)[1]);
-    assert.deepEqual(events, ['started', 'delta', 'done']);
+    // A leading `queued` is legitimate while the arbiter's first external-Ollama observation is still pending after boot;
+    // what this test proves is that nothing streams before `started`, the lease grant.
+    assert.deepEqual(events.filter(e => e !== 'queued'), ['started', 'delta', 'done']);
+    assert.ok(events.indexOf('started') === events.lastIndexOf('queued') + 1 || !events.includes('queued'), 'queued events only precede started');
     const jobId = /"job_id":"([^"]+)"/.exec(r.raw)[1];
     assert.equal(fake.chatRequests().length, 1);
     assert.equal(fake.chatRequests()[0].body.keep_alive, 0);

@@ -950,6 +950,7 @@ class Component extends DCLogic {
     this._pendingNegEnhancement = requestSnapshot;
     this.setState({ enhancingNegPrompt: true, negEnhancementResult: null });
     const ctrl = this._enhanceNegAbort = new AbortController();
+    const ownsRequest = () => this._enhanceNegAbort === ctrl && !ctrl.signal.aborted;
     const timeout = AbortSignal.timeout(60000);
     try {
       const r = await fetch(backendUrl + '/api/ollama/enhance', {
@@ -959,11 +960,13 @@ class Component extends DCLogic {
       });
       if (!r.ok) {
         const failure = await r.json().catch(() => ({}));
+        if (!ownsRequest()) return;
         this.setState({ enhancingNegPrompt: false });
         this.toast(failure.error || ('Negative enhancement failed (' + r.status + ')'), '#ef4444');
         return;
       }
       const d = await r.json();
+      if (!ownsRequest()) return;
       const enhanced = d.enhanced_prompt || d.negative_prompt || d.enhanced;
       if (enhanced) {
         // Protect against stale draft or target changes while fetch was in flight
@@ -992,18 +995,24 @@ class Component extends DCLogic {
         this.toast('No negative enhancement returned', '#fbbf24');
       }
     } catch (e) {
+      if (!ownsRequest()) return;
       this.setState({ enhancingNegPrompt: false });
       if (ctrl.signal.aborted) this.toast('Negative enhance cancelled; prompt unchanged', '#94a3b8');
       else if (timeout.aborted) this.toast('Negative enhance timed out after 60 s; prompt unchanged', '#ef4444');
       else this.toast('Negative enhance failed: ' + e.message, '#ef4444');
     } finally {
-      if (this._enhanceNegAbort === ctrl) this._enhanceNegAbort = null;
-      this._pendingNegEnhancement = null;
+      if (this._enhanceNegAbort === ctrl) {
+        this._enhanceNegAbort = null;
+        this._pendingNegEnhancement = null;
+      }
     }
   }
   cancelNegEnhance() {
     if (this._enhanceNegAbort) this._enhanceNegAbort.abort();
+    this._enhanceNegAbort = null;
+    this._pendingNegEnhancement = null;
     this.setState({ enhancingNegPrompt: false });
+    this.toast('Negative enhance cancelled; prompt unchanged', '#94a3b8');
   }
   applyNegEnhancement() {
     const { negPrompt, negEnhancementResult } = this.state;
@@ -1669,6 +1678,7 @@ class Component extends DCLogic {
     if (this._enhanceNegAbort) {
       this._enhanceNegAbort.abort();
       this._enhanceNegAbort = null;
+      this._pendingNegEnhancement = null;
     }
     if (this.state.negEnhancementResult || this.state.enhancingNegPrompt) {
       this.setState({ enhancingNegPrompt: false, negEnhancementResult: null });
@@ -2913,8 +2923,8 @@ class Component extends DCLogic {
     );
 
     // ── Negative prompt tools (Enhance via Ollama + Wildcards + Review) ──────
-    const controls = DexClient.controlsFor(target);
     const targetObj = (this.state.modelTargets || []).find(t => t.id === target);
+    const controls = DexClient.controlsFor(targetObj);
     const targetCard = (this.state.modelCards || []).find(c => c.id === target);
     const negativePromptSupported = !!controls.negativePrompt;
     const negWildcards = this.getNegWildcards();

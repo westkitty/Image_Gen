@@ -165,10 +165,18 @@ function execP(cmd, args, timeoutMs = 120000) {
 // Stage an arbitrary staged audio reference as PCM WAV (mlx-audio / ACE-Step
 // read WAV reliably) in a private local temp file.
 async function referenceToWav(staged) {
-  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dexref-')), 'ref.wav');
-  const r = await execP('ffmpeg', ['-v', 'error', '-y', '-i', staged.path, '-ac', '1', '-ar', '24000', '-c:a', 'pcm_s16le', out]);
-  if (!r.ok || !fs.existsSync(out) || fs.statSync(out).size < 1024) return null;
-  return out;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dexref-'));
+  const out = path.join(dir, 'ref.wav');
+  let handedToCaller = false;
+  try {
+    const r = await execP('ffmpeg', ['-v', 'error', '-y', '-i', staged.path, '-ac', '1', '-ar', '24000', '-c:a', 'pcm_s16le', out]);
+    if (!r.ok || !fs.existsSync(out) || fs.statSync(out).size < 1024) return null;
+    handedToCaller = true;
+    return out;
+  } finally {
+    // Failed conversions return no path, so callers cannot reclaim their private scratch.
+    if (!handedToCaller) fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // ---- multi-item TTS (long-form chunks / drama lines) ----------------------------------

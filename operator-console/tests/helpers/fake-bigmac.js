@@ -41,7 +41,10 @@ function harness(opts = {}) {
       emit(`DEXMEDIA_ITEM_START=${i}\n`);
       if (state.failItem === i) { emit(`DEXMEDIA_FAIL_ITEM=${i}\nDEXMEDIA_FAIL=generation\nDEXMEDIA_ERROR=engine exploded on [REDACTED]\n`); return out; }
       const seed = rq.items[i].seed == null ? 0 : Number(rq.items[i].seed);
-      const sec = Math.min(20, 0.4 + String(rq.items[i].text || '').length * 0.06), a = tone(sec, 200 + i * 20 + (seed % 50)), buf = A.encodeWav(a); state.remoteItems.set(dirName + ':' + i, buf);
+      // Distinct (worker, seed, text) must never synthesize identical audio: pitch alone collides ~1 run in 50
+      // when a random voice-profile id lands a seed on the same residue as an equal-length line.
+      const salt = parseInt(sha(`${rq.worker}|${seed}|${rq.items[i].text || ''}`).slice(0, 6), 16) / 0xffffff;
+      const sec = Math.min(20, 0.4 + String(rq.items[i].text || '').length * 0.06), a = tone(sec, 200 + i * 20 + (seed % 50) + salt), buf = A.encodeWav(a); state.remoteItems.set(dirName + ':' + i, buf);
       emit(`DEXMEDIA_ITEM=${i}|${dir}/out/item-${String(i).padStart(3, '0')}.wav|${sha(buf)}|${buf.length}|${A.duration(a)}|24000|1\n`);
       if (state.lose && i === state.lose - 1) return out;     // connection lost: no DONE marker
     }

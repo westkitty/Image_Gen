@@ -8,11 +8,15 @@ const {startServer,launchBrowser,runCleanups, openStudio }=require('./helpers');
  const page=await browser.newPage({viewport:{width:390,height:844}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/**',r=>['GET','HEAD'].includes(r.request().method())?r.continue():r.fulfill({status:409,json:{error:'read only'}}));
+ // The startup Ollama status response relabels the Enhance button and can wrap the prompt-tools row above the pane;
+ // take the scroll baseline only after that network-dependent re-render has landed (register before navigation).
+ const ollamaSettled=page.waitForResponse(r=>r.url().includes('/api/ollama/status'),{timeout:20000});
  await openStudio(page, base+'/dexdiffusion/',{waitUntil:'domcontentloaded',timeout:30000});
  await page.waitForFunction(()=>window.__dex && __dex.state.version===2,{timeout:14000});
  await page.locator('details[data-studio-advanced] > summary').click();
  const prompt=page.getByRole('textbox',{name:'Describe your image'});
  await prompt.fill('A sapphire glass city under sunrise');
+ await ollamaSettled;await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  const sample=()=>page.evaluate(()=>{
    const header=document.querySelector('[data-screen-header="create"]');const pane=header?.closest('[data-scroll-pane]');
    return {pane,scroll:pane?.scrollTop||0,height:pane?.scrollHeight||0,client:pane?.clientHeight||0,advanced:document.querySelector('[data-studio-advanced]')?.open,prompt:document.querySelector('textarea[aria-label="Describe your image"]')?.value||''};

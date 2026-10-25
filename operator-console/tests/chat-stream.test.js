@@ -444,3 +444,28 @@ test('an unsettled upstream reader is not reported closed to the compute lease',
   assert.equal(released[0].upstreamClosed, false, 'uncertain reader closure must quarantine in the real compute owner');
   assert.equal(store.get(sid).session.messages[1].status, 'failed');
 });
+
+for (const [suffix, malformed] of [['{BAD\n', true], ['{"unfinished":', true], ['   ', false]]) {
+  test('a done marker validates same-chunk trailing bytes: ' + JSON.stringify(suffix), async () => {
+    const { EventEmitter } = require('node:events');
+    const store = createTemporarySessionStore();
+    const sid = store.create({ model: 'gemma3:4b' }).session.session_id;
+    const turn = store.beginSend(sid, { request_id: rid(), content: 'fixture question' }).turn;
+    const bytes = Buffer.from(delta('partial') + doneLine() + suffix);
+    const fetchImpl = async () => new Response(new ReadableStream({ start(c) { c.enqueue(bytes); c.close(); } }));
+    const res = Object.assign(new EventEmitter(), {
+      writes: [], writableLength: 0, destroyed: false, writableEnded: false,
+      writeHead() {}, write(s) { this.writes.push(s); return true; }, end() { this.writableEnded = true; },
+    });
+    const a = grantingAdmitter();
+    const runner = createChatStreamRunner({ fetchImpl, baseUrl: 'http://127.0.0.1:1', admit: a.admit, timeouts: FAST });
+    assert.equal(await runner.run({ res, store, turn, resourceClass: 'light' }), malformed ? 'error' : 'done');
+    const frames = res.writes.map(s => ({event: /^event: (.*)$/m.exec(s)[1], data: JSON.parse(/^data: (.*)$/m.exec(s)[1])}));
+    assert.deepEqual(frames.map(f => f.event), ['started', 'delta', malformed ? 'error' : 'done']);
+    if (malformed) assert.equal(frames.at(-1).data.code, 'parse_error');
+    const assistant = store.get(sid).session.messages[1];
+    assert.equal(assistant.content, 'partial', 'valid earlier delta remains visible');
+    assert.equal(assistant.status, malformed ? 'failed' : 'complete');
+    assert.equal(a.releases[0].outcome, malformed ? 'error' : 'done');
+  });
+}

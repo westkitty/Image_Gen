@@ -1982,8 +1982,14 @@ function validateGenerationParams(params) {
   return null;
 }
 
-function validateControlledGenerationParams(params, allTargetById = CONTROLLED_TARGET_BY_ID) {
+function validateControlledGenerationParams(params, allTargetById = CONTROLLED_TARGET_BY_ID, opts = {}) {
   if (params && params.invalidKey) return `Unexpected field: ${params.invalidKey}`;
+  // Callers that already validated the client list and then merged prompt tags
+  // into it (tags allow -2..2) pass loraShapeChecked to avoid re-judging the merge.
+  if (!opts.loraShapeChecked) {
+    const loraShapeError = validateStructuredLoras(params.loras);
+    if (loraShapeError) return loraShapeError;
+  }
   if (!validateControlledTarget(params.target, allTargetById)) return 'Invalid target';
   if (params.api && !ALLOWED_APIS.has(params.api)) return 'Invalid API';
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
@@ -3316,7 +3322,7 @@ app.post('/api/actions/generate-controlled', (req, res) => {
       params.loras = rr.loras;
     }
   }
-  const err = validateControlledGenerationParams(params, allTargetById);
+  const err = validateControlledGenerationParams(params, allTargetById, { loraShapeChecked: true });
   if (err) return res.status(400).json({ error: err });
 
   const { jobId, spec } = startControlledJob(params, allTargetById);
@@ -4329,7 +4335,17 @@ const queueRunner = W.createQueueRunner({
     params.prompt = expandWildcards(params.prompt);
     if (params.negative_prompt) params.negative_prompt = expandWildcards(params.negative_prompt);
     const allTargetById = allControlledTargets();
-    const err = validateControlledGenerationParams(params, allTargetById);
+    const loraShapeError = validateStructuredLoras(params.loras);
+    if (loraShapeError) return resolve({ ok: false, error: loraShapeError, gate: 'validation' });
+    // Match direct Create: SDCPP consumes prompt tags, while MFLUX consumes
+    // the structured adapters through its runtime policy.
+    const target = allTargetById[params.target];
+    if (target && target.backend !== 'mflux') {
+      const resources = EC.resolveResources({ prompt: params.prompt, loras: params.loras });
+      params.prompt = resources.backendPrompt;
+      params.loras = resources.loras;
+    }
+    const err = validateControlledGenerationParams(params, allTargetById, { loraShapeChecked: true });
     if (err) return resolve({ ok: false, error: err, gate: 'validation' });
     const { jobId } = startControlledJob(params, allTargetById, {
       queueId: q.id, batchNumber: it.number,
@@ -4589,7 +4605,9 @@ function readMediaEvidence() { try { return JSON.parse(fs.readFileSync(MEDIA_EVI
 function localEngineProbe(a, target) {
   if (!a.localEngineEnabled) return null;
   const ready = a.localEngineReady === true && !!a.localEngineModels;
-  return { architecture_available:true, runtime_available:ready, model_available:ready && a.localEngineModels[target] === true, enabled:true, proven:false, state:ready ? 'READY · local engine bridge' : 'LOCAL ENGINE UNAVAILABLE' };
+  const modelAvailable = ready && a.localEngineModels[target] === true;
+  return { architecture_available:true, runtime_available:ready, model_available:modelAvailable, enabled:modelAvailable, proven:false,
+    state:!ready ? 'LOCAL ENGINE UNAVAILABLE' : !modelAvailable ? 'MODEL INACCESSIBLE · local engine bridge' : 'READY · local engine bridge' };
 }
 const workerRegistry = M.createWorkerRegistry({
   getEvidence: readMediaEvidence,
@@ -5881,7 +5899,7 @@ app.get('/api/run-index', (req, res) => {
 
 app.get('/api/run-file', (req, res) => {
   const queryPath = req.query.path;
-  if (!queryPath) return res.status(400).send('Missing path');
+  if (typeof queryPath !== 'string' || !queryPath || queryPath.includes('\0')) return res.status(400).send('Invalid path');
   const fullPath = path.resolve(RUNS_DIR, queryPath);
   const relPath = path.relative(RUNS_DIR, fullPath);
   if (relPath.startsWith('..') || path.isAbsolute(relPath)) return res.status(403).send('Forbidden');
@@ -5894,7 +5912,18 @@ app.get('/api/run-file', (req, res) => {
     if (hit) return res.redirect(302, hit.url);
     return res.status(404).send('File not found');
   }
-  res.sendFile(fullPath);
+  // Lexical containment alone permits symlinks into private files outside
+  // runs/. Resolve both ends before serving any existing run attachment.
+  let resolvedPath, resolvedRoot;
+  try {
+    resolvedPath = fs.realpathSync(fullPath);
+    resolvedRoot = fs.realpathSync(RUNS_DIR);
+    const relative = path.relative(resolvedRoot, resolvedPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) return res.status(403).send('Forbidden');
+    // The allowlist above judged the requested name; a link must not smuggle a non-allowlisted target through it.
+    if (!allowedExts.includes(path.extname(resolvedPath).toLowerCase())) return res.status(403).send('Forbidden extension');
+  } catch (_) { return res.status(404).send('File not found'); }
+  res.sendFile(path.relative(resolvedRoot, resolvedPath), { root: resolvedRoot });
 });
 
 // Canonical generated images. Only plain filenames inside the fixed root are served.

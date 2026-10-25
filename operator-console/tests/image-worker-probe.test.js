@@ -1,0 +1,21 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const src = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+const start = src.indexOf('function localEngineProbe(');
+const probe = vm.runInNewContext(src.slice(start, src.indexOf('const workerRegistry', start)) + '\nlocalEngineProbe');
+test('image worker distinguishes bridge readiness from selected model availability', () => {
+  const missing = probe({ localEngineEnabled: true, localEngineReady: true, localEngineModels: { sd15: false } }, 'sd15');
+  assert.equal(missing.runtime_available, true);
+  assert.equal(missing.model_available, false);
+  assert.equal(missing.enabled, false);
+  assert.match(missing.state, /MODEL (MISSING|INACCESSIBLE)/);
+  assert.equal(missing.proven, false);
+  const ready = probe({ localEngineEnabled: true, localEngineReady: true, localEngineModels: { sd15: true } }, 'sd15');
+  assert.equal(ready.enabled, true); assert.match(ready.state, /READY/); assert.equal(ready.proven, false);
+  const down = probe({ localEngineEnabled: true, localEngineReady: false, localEngineModels: { sd15: true } }, 'sd15');
+  assert.equal(down.enabled, false); assert.equal(down.runtime_available, false); assert.match(down.state, /UNAVAILABLE/);
+});

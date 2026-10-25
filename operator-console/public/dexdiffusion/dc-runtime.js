@@ -40,6 +40,8 @@
     'strokeWidth',
   ]);
 
+  const BOOLEAN_ATTRIBUTES = new Set(['disabled', 'readonly', 'required', 'multiple', 'autofocus', 'hidden', 'open', 'selected']);
+
   function camelToKebab(s) {
     return s.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
   }
@@ -292,7 +294,11 @@
             const str = a.segs
               .map((s) => (s.t === 'lit' ? s.v : String(resolve(s.v, vals, scope) ?? '')))
               .join('');
-            if (str !== a.last) { el.setAttribute(a.name, str); a.last = str; }
+            if (str !== a.last) {
+              if (BOOLEAN_ATTRIBUTES.has(a.name.toLowerCase()) && (str === '' || str === 'false')) el.removeAttribute(a.name);
+              else el.setAttribute(a.name, str);
+              a.last = str;
+            }
           }
           if (valueExpr != null && document.activeElement !== el) {
             const v = resolve(valueExpr, vals, scope);

@@ -40,7 +40,7 @@ sdcpp-proof-*/**/sdcpp-native-submit-response.json
 !sdcpp-proof-*/final-proof-report.md
 
 # Operator Console UI
-operator-console/node_modules/
+operator-console/node_modules
 operator-console/dist/
 operator-console/.cache/
 operator-console/.env

@@ -68,8 +68,12 @@
   P.dmStage = function (stage) { this.dmSet({ stage }); };
   P.dmFollowProduction = function (id) {
     clearInterval(this._dmProdTimer); const self = this;
+    const projectId = this._dm().currentId, token = this._dmProdOwner = {};
+    const ownsProd = () => self._dmProdOwner === token && self._dm().currentId === projectId;
     const tick = async () => {
+      if (!ownsProd()) return;
       const r = await self._vpApi('/api/drama/productions/' + id);
+      if (!ownsProd()) return;
       if (!r.ok) { clearInterval(self._dmProdTimer); self.dmSet({ production: { id, status: 'failed', errors: [{ message: 'Lost track of the production (' + (r.data.error || r.status) + '). Finished work is kept; start again to resume.' }] } }); return; }
       self.dmSet({ production: r.data.production, current: r.data.project }, { skipIfTyping: true });
       if (TERMINAL.includes(r.data.production.status)) { clearInterval(self._dmProdTimer); self.loadMediaLibrary && self.loadMediaLibrary('voice'); self.dmLoadHistory(); self.toast('Production ' + r.data.production.status, r.data.production.status === 'complete' ? '#65d66e' : '#fbbf24'); }
@@ -77,8 +81,11 @@
     tick(); this._dmProdTimer = setInterval(tick, 1200);
   };
   P.dmProduce = async function (body) {
-    await this._dmFlush(); const dm = this._dm();
-    const r = await this._vpApi('/api/drama/projects/' + dm.current.id + '/produce', body || {});
+    const owner = this._dmProjectOwner();
+    if (!owner || await this._dmFlush() === false || !this._dmOwnsProject(owner)) return;
+    const dm = this._dm();
+    const r = await this._vpApi('/api/drama/projects/' + owner.id + '/produce', body || {});
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { dm.produceBlock = r.data; this.dmSet({ error: r.data.error }); this.toast((r.data.error || 'Production refused').slice(0, 140), '#ef4444'); return; }
     dm.produceBlock = null; this.dmSet({ current: r.data.project, production: r.data.production, error: null }); this.dmFollowProduction(r.data.production.id);
   };
@@ -87,19 +94,23 @@
     const r = await this._vpApi('/api/drama/productions/' + dm.production.id + '/cancel', {}); this.toast(r.ok ? 'Cancelling after the current Big Mac render…' : (r.data.error || 'Could not cancel'), r.ok ? '#fbbf24' : '#ef4444');
   };
   P.dmLoadHistory = async function () {
-    const dm = this._dm(); if (!dm.current) return;
-    const r = await this._vpApi('/api/drama/projects/' + dm.current.id + '/history'); if (r.ok) this.dmSet({ history: r.data.productions }, { skipIfTyping: true });
+    const owner = this._dmProjectOwner(); if (!owner) return;
+    const r = await this._vpApi('/api/drama/projects/' + owner.id + '/history'); if (r.ok && this._dmOwnsProject(owner)) this.dmSet({ history: r.data.productions }, { skipIfTyping: true });
   };
   P.dmSaveSettings = async function (what, body) {
-    const dm = this._dm(); const r = await this._vpApi('/api/drama/projects/' + dm.current.id + '/' + what, body, 'PUT');
+    const owner = this._dmProjectOwner(); if (!owner) return;
+    const r = await this._vpApi('/api/drama/projects/' + owner.id + '/' + what, body, 'PUT');
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { this.toast(r.data.error || 'Could not save', '#ef4444'); return; } this.dmSet({ current: r.data.project });
   };
   P.dmReparsePreview = async function (apply, confirm) {
     const dm = this._dm(), t = this._dmText; if (!dm.current || !String(t.script || '').trim()) { this.toast('Edit the script first', '#fbbf24'); return; }
-    const r = await this._vpApi('/api/drama/projects/' + dm.current.id + '/reparse', { script: t.script, mode: dm.mode, apply: !!apply, confirm: !!confirm });
+    const owner = this._dmProjectOwner();
+    const r = await this._vpApi('/api/drama/projects/' + owner.id + '/reparse', { script: t.script, mode: dm.mode, apply: !!apply, confirm: !!confirm });
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok && r.status !== 409) { this.dmSet({ parseResult: r.data }); this.toast((r.data.errors || [r.data.error])[0], '#ef4444'); return; }
     if (r.status === 409) { this.dmSet({ reparse: { preview: r.data.preview, needsConfirm: true } }); return; }
-    if (r.data.applied) { this._dmText = { script: '', title: '' }; this.dmSet({ current: r.data.project, reparse: null, parseResult: { ok: true } }); this.toast('Re-parsed; recordings were kept where the text still matches', '#65d66e'); }
+    if (r.data.applied) { this._dmText = { script: '', title: '' }; this._dmResetEdits(); this._dmStopRunTracking(); this.dmSet({ current: r.data.project, reparse: null, parseResult: { ok: true } }); this.toast('Re-parsed; recordings were kept where the text still matches', '#65d66e'); }
     else this.dmSet({ reparse: { preview: r.data.preview, needsConfirm: r.data.preview.requires_confirmation } });
   };
 
@@ -202,13 +213,16 @@
 
   // REVIEW ------------------------------------------------------------------------------------------
   P.dmRunQa = async function (asr) {
-    const dm = this._dm(); this.dmSet({ qaBusy: true });
-    const r = await this._vpApi('/api/drama/projects/' + dm.current.id + '/qa', { asr });
+    const dm = this._dm(), owner = this._dmProjectOwner(); if (!owner) return; this.dmSet({ qaBusy: true });
+    const r = await this._vpApi('/api/drama/projects/' + owner.id + '/qa', { asr });
+    if (!this._dmOwnsProject(owner)) { this.dmSet({ qaBusy: false }); return; }
     this.dmSet({ qaBusy: false, qa: r.ok ? r.data : null, current: r.ok ? r.data.project : dm.current });
     this.toast(r.ok ? 'Review finished: ' + r.data.summary.hard_failures.length + ' hard failure(s), speech check ' + r.data.summary.asr.state : (r.data.error || 'Review failed'), r.ok && !r.data.summary.hard_failures.length ? '#65d66e' : '#ef4444');
   };
   P.dmTakeAction = async function (lineId, takeId, what, body) {
-    const id = this._dm().current.id; const r = await this._vpApi(`/api/drama/projects/${id}/lines/${lineId}/takes/${takeId}/${what}`, body || {});
+    const owner = this._dmProjectOwner(); if (!owner) return;
+    const r = await this._vpApi(`/api/drama/projects/${owner.id}/lines/${lineId}/takes/${takeId}/${what}`, body || {});
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { this.toast(r.data.error || 'Action failed', '#ef4444'); return; } this.dmSet({ current: r.data.project });
   };
   P.dmPacingPreview = async function (lineId, tempo) {
@@ -241,7 +255,7 @@
             t.legacy && !t.adopted_legacy ? btn('Adopt (matches current text)', () => this.dmTakeAction(l.id, t.id, 'adopt'), tone.warn, { title: 'Pre-fingerprint recording: confirm it matches the line as written now' }) : null) : null))),
         q && q.asr && q.asr.status === 'REVIEW' ? h('div', { style: { fontSize: 12, color: tone.warn } }, 'Listen for: ' + [...(q.asr.missing || []).map(m => 'possibly missing “' + m.text + '” (word ' + (m.at_word + 1) + ')'), ...(q.asr.repeated || []).map(r => 'repeated “' + r.text + '”'), ...(q.asr.pronunciation_suspects || []).map(s => '“' + s.expected + '” heard as “' + s.heard + '”'), q.asr.incomplete ? 'the ending may be cut off' : null].filter(Boolean).join(' · ') + '. ' + (q.asr.limitations || '')) : null,
         q && q.advisory && q.advisory.length ? h('div', { style: { fontSize: 12, color: tone.warn } }, 'Advisory: ' + q.advisory.map(a => a.message).join('; ')) : null,
-        active && l.takes.some(t => t.status === 'complete') ? h('div', { style: css.row }, btn('Suggest trim (silence)', async () => { const r = await this._vpApi(`/api/drama/projects/${p.id}/lines/${l.id}/apply-trim`, {}); this.toast(r.ok ? 'Trim saved on the clip (original untouched)' : (r.data.error || 'No trim'), r.ok ? '#65d66e' : '#fbbf24'); if (r.ok) this.dmSet({ current: r.data.project }); }, '#94a3b8'),
+        active && l.takes.some(t => t.status === 'complete') ? h('div', { style: css.row }, btn('Suggest trim (silence)', async () => { const owner = this._dmProjectOwner(); if (!owner || owner.id !== p.id) return; const r = await this._vpApi(`/api/drama/projects/${owner.id}/lines/${l.id}/apply-trim`, {}); if (!this._dmOwnsProject(owner)) return; this.toast(r.ok ? 'Trim saved on the clip (original untouched)' : (r.data.error || 'No trim'), r.ok ? '#65d66e' : '#fbbf24'); if (r.ok) this.dmSet({ current: r.data.project }); }, '#94a3b8'),
           btn('Preview ×1.25 pace', () => this.dmPacingPreview(l.id, 1.25), '#94a3b8'), pace && pace.result ? h('span', { style: css.muted }, pace.original.wpm + ' → ' + pace.result.wpm + ' wpm (verified)') : null, pace && pace.error ? h('span', { style: { color: tone.warn, fontSize: 11 } }, pace.error) : null) : null,
         pace && pace.result ? h('div', { style: { display: 'grid', gap: 3 } }, this._mediaEl(base + pace.result.url, 'audio', 'pace-' + l.id), ...(pace.warnings || []).map((w, i) => h('div', { key: i, style: { color: tone.warn, fontSize: 11 } }, '⚠ ' + w))) : null);
     }));
@@ -314,9 +328,11 @@
   // Manual assembly: build an export from the existing takes without synthesising anything. Stale takes are refused unless the
   // user explicitly asks for a historical snapshot, which is labelled as such everywhere.
   P.dramaAssemble = async function (sceneId, historical) {
-    await this._dmFlush();
+    const owner = this._dmProjectOwner();
+    if (!owner || await this._dmFlush() === false || !this._dmOwnsProject(owner)) return;
     this.dmSet({ busy: true, assembled: null });
-    const r = await this._dmApi(`/api/drama/projects/${this._dm().current.id}/assemble`, { scene_id: sceneId, historical: !!historical });
+    const r = await this._dmApi(`/api/drama/projects/${owner.id}/assemble`, { scene_id: sceneId, historical: !!historical });
+    if (!this._dmOwnsProject(owner)) { this.dmSet({ busy: false }); return; }
     this.dmSet({ busy: false });
     if (!r.ok) { const miss = (r.data.missing || []).length; this.dmSet({ assembled: { error: r.data.error + (miss ? ' — ' + r.data.missing.slice(0, 6).map(m => m.speaker + ' ' + m.line_id + ' (' + m.state + ')').join(', ') + (miss > 6 ? '…' : '') : ''), canHistorical: (r.data.missing || []).some(m => m.state === 'stale') } }); this.toast(r.data.error || 'Assemble failed', '#ef4444'); return; }
     this.dmSet({ assembled: r.data, current: r.data.project }); this.loadMediaLibrary && this.loadMediaLibrary('voice'); this.dmLoadHistory();

@@ -49,10 +49,14 @@
   P.openDramaProject = async function (id, quiet) {
     const dm = this._dm();
     if (!quiet && dm.currentId !== id && !this._confirmDramaDraftDiscard('open another project')) { this.dmSet({}); return false; }
+    if (dm.currentId !== id) { this._dmResetEdits(); this._dmStopRunTracking(); }
+    const request = this._dmOpenRequest = {};
     const r = await this._dmApi('/api/drama/projects/' + id);
+    if (this._dmOpenRequest !== request) return false;
     if (!r.ok) { try { sessionStorage.removeItem(KEY); } catch (_) {} this.dmSet({ current: null, currentId: null }); if (!quiet) this.toast(r.data.error || 'Project not found', '#ef4444'); return; }
     try { sessionStorage.setItem(KEY, id); } catch (_) {}
     if (!this._vp().profiles) this.loadVoiceProfiles();
+    if (this._dm().currentId !== id) this._dmResetEdits();
     this._dmText = { script: '', title: '' };
     this.dmSet({ current: r.data.project, currentId: id, assembled: null, run: null, parseResult: null });
     this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'drama-project', id: r.data.project.id });
@@ -69,6 +73,8 @@
     await this.loadDramaProjects();
     this._dmText = { script: '', title: '' };
     try { sessionStorage.setItem(KEY, r.data.project.id); } catch (_) {}
+    this._dmResetEdits();
+    this._dmStopRunTracking();
     this.dmSet({ current: r.data.project, currentId: r.data.project.id, parseResult: { ok: true, mode: r.data.mode }, assembled: null });
     this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'drama-project', id: r.data.project.id });
     if (!this._vp().profiles) this.loadVoiceProfiles();
@@ -78,8 +84,12 @@
     const dm = this._dm(), t = this._dmText;
     if (!dm.current || !String(t.script || '').trim()) return;
     if (!window.confirm('Re-parse replaces the parsed lines (and their takes) with a fresh parse of this script. Continue?')) return;
-    const r = await this._dmApi('/api/drama/projects/' + dm.current.id + '/reparse', { script: t.script, mode: dm.mode });
+    const owner = this._dmProjectOwner(); if (!owner) return;
+    const r = await this._dmApi('/api/drama/projects/' + owner.id + '/reparse', { script: t.script, mode: dm.mode });
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { this.dmSet({ parseResult: r.data }); this.toast((r.data.errors || [r.data.error])[0], '#ef4444'); return; }
+    this._dmResetEdits();
+    this._dmStopRunTracking();
     this.dmSet({ current: r.data.project, parseResult: { ok: true } });
   };
   P.dramaSave = async function (save) {
@@ -106,21 +116,37 @@
     if (!window.confirm('Delete "' + dm.current.title + '" (' + (dm.current.saved ? 'saved file included' : 'unsaved') + ')? Generated audio stays in the Library.')) return;
     await this._dmApi('/api/drama/projects/' + dm.current.id, undefined, 'DELETE');
     try { sessionStorage.removeItem(KEY); } catch (_) {}
+    this._dmResetEdits();
+    this._dmStopRunTracking();
     this.dmSet({ current: null, currentId: null }); this.loadDramaProjects();
   };
 
   // debounced line edits (no re-render while typing)
+  P._dmResetEdits = function () {
+    clearTimeout(this._dmTimer); clearTimeout(this._dmDirT);
+    this._dmEditEpoch = (this._dmEditEpoch || 0) + 1;
+    this._dm().pending = {};
+    this._dmPendingProjectId = null;
+    this._dmFlushPromise = null;
+  };
   P._dmQueue = function (lineId, patch) {
-    const dm = this._dm(); dm.pending[lineId] = Object.assign(dm.pending[lineId] || {}, patch);
+    const dm = this._dm();
+    if (!dm.current) return;
+    // A reset already cleared pending edits; just claim them for this project without bumping the epoch,
+    // which would orphan in-flight same-project responses.
+    if (this._dmPendingProjectId != null && this._dmPendingProjectId !== dm.current.id) this._dmResetEdits();
+    this._dmPendingProjectId = dm.current.id;
+    dm.pending[lineId] = Object.assign(dm.pending[lineId] || {}, patch);
     clearTimeout(this._dmTimer); this._dmTimer = setTimeout(() => this._dmFlush(), 700);
   };
   P._dmFlush = async function () {
     clearTimeout(this._dmTimer);
     if (this._dmFlushPromise) return this._dmFlushPromise;
     const run = async () => {
-      const dm = this._dm(), projectId = dm.current && dm.current.id;
+      const dm = this._dm(), projectId = dm.current && dm.current.id, epoch = this._dmEditEpoch;
+      const ownsEdits = () => this._dmEditEpoch === epoch && this._dm().currentId === projectId;
       if (!projectId) return Object.keys(dm.pending || {}).length === 0;
-      while (Object.keys(dm.pending || {}).length) {
+      while (ownsEdits() && Object.keys(dm.pending || {}).length) {
         const batch = dm.pending; dm.pending = {};
         const entries = Object.entries(batch);
         for (let i = 0; i < entries.length; i++) {
@@ -128,6 +154,7 @@
           let r;
           try { r = await this._dmApi(`/api/drama/projects/${projectId}/lines/${lid}`, patch, 'PATCH'); }
           catch (e) { r = { ok: false, data: { error: e && e.message || 'request failed' } }; }
+          if (!ownsEdits()) return false;
           if (!r.ok) {
             const retry = Object.fromEntries(entries.slice(i));
             for (const [id, newer] of Object.entries(dm.pending)) retry[id] = Object.assign({}, retry[id] || {}, newer);
@@ -140,33 +167,50 @@
       }
       return true;
     };
-    this._dmFlushPromise = run().finally(() => { this._dmFlushPromise = null; });
-    return this._dmFlushPromise;
+    const promise = run().finally(() => { if (this._dmFlushPromise === promise) this._dmFlushPromise = null; });
+    this._dmFlushPromise = promise;
+    return promise;
+  };
+  P._dmProjectOwner = function () {
+    const dm = this._dm();
+    return dm.current ? { id: dm.current.id, epoch: this._dmEditEpoch } : null;
+  };
+  P._dmOwnsProject = function (owner) {
+    const dm = this._dm();
+    return !!(owner && dm.current && dm.current.id === owner.id && dm.currentId === owner.id && this._dmEditEpoch === owner.epoch);
   };
   P.dramaLine = async function (lineId, patch) {
-    await this._dmFlush();
-    const r = await this._dmApi(`/api/drama/projects/${this._dm().current.id}/lines/${lineId}`, patch, 'PATCH');
+    const owner = this._dmProjectOwner();
+    if (!owner || await this._dmFlush() === false || !this._dmOwnsProject(owner)) return;
+    const r = await this._dmApi(`/api/drama/projects/${owner.id}/lines/${lineId}`, patch, 'PATCH');
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { this.toast(r.data.error || 'Edit failed', '#ef4444'); return; }
     this.dmSet({ current: r.data.project });
   };
   P.dramaDeleteLine = async function (lineId) {
-    const r = await this._dmApi(`/api/drama/projects/${this._dm().current.id}/lines/${lineId}`, undefined, 'DELETE');
-    if (r.ok) this.dmSet({ current: r.data.project });
+    const owner = this._dmProjectOwner(); if (!owner) return;
+    const r = await this._dmApi(`/api/drama/projects/${owner.id}/lines/${lineId}`, undefined, 'DELETE');
+    if (this._dmOwnsProject(owner) && r.ok) this.dmSet({ current: r.data.project });
   };
   P.dramaBind = async function (actor, profileId, dir) {
-    const r = await this._dmApi(`/api/drama/projects/${this._dm().current.id}/actors/${actor.id}`, { voice_profile_id: profileId, default_direction: dir }, 'PUT');
+    const owner = this._dmProjectOwner(); if (!owner) return;
+    const r = await this._dmApi(`/api/drama/projects/${owner.id}/actors/${actor.id}`, { voice_profile_id: profileId, default_direction: dir }, 'PUT');
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { this.toast(r.data.error || 'Could not bind voice', '#ef4444'); return; }
     this.dmSet({ current: r.data.project }, { skipIfTyping: dir !== undefined });
   };
   P.dramaSelectTake = async function (lineId, takeId) {
-    const r = await this._dmApi(`/api/drama/projects/${this._dm().current.id}/lines/${lineId}/takes/${takeId}/select`, {});
+    const owner = this._dmProjectOwner(); if (!owner) return;
+    const r = await this._dmApi(`/api/drama/projects/${owner.id}/lines/${lineId}/takes/${takeId}/select`, {});
+    if (!this._dmOwnsProject(owner)) return;
     if (r.ok) this.dmSet({ current: r.data.project }); else this.toast(r.data.error, '#ef4444');
   };
   P.dramaTakeAction = async function (lineId, takeId, action) {
-    const dm = this._dm(), line = dm.current && dm.current.scenes.flatMap(s => s.lines).find(l => l.id === lineId);
+    const dm = this._dm(), owner = this._dmProjectOwner(), line = dm.current && dm.current.scenes.flatMap(s => s.lines).find(l => l.id === lineId);
     const target = takeId || (line && (line.active_take_id || line.takes.find(t => t.pinned)?.id));
-    if (!line || !target) return;
-    const r = await this._dmApi(`/api/drama/projects/${dm.current.id}/lines/${lineId}/takes/${target}/decision/${action}`, {});
+    if (!owner || !line || !target) return;
+    const r = await this._dmApi(`/api/drama/projects/${owner.id}/lines/${lineId}/takes/${target}/decision/${action}`, {});
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { this.toast(r.data.error || 'Take action failed', '#ef4444'); return; }
     this.dmSet({ current: r.data.project });
     this.toast(({ reject: 'Take rejected and retained in history', restore: 'Take restored', pin: 'Pin updated', undo: 'Take selection undone' })[action], '#65d66e');
@@ -189,15 +233,17 @@
     const delivery = window.prompt('Direction for the selected phrase', phrase.delivery || '');
     if (delivery == null) return;
     const phrases = line.performance_score.phrases.map(x => Object.assign({}, x, x.id === phrase.id ? { delivery } : {}));
-    const p = this._dm().current, r = await this._dmApi(`/api/drama/projects/${p.id}/lines/${line.id}/performance-score`, { phrases }, 'PUT');
+    const owner = this._dmProjectOwner(); if (!owner) return;
+    const r = await this._dmApi(`/api/drama/projects/${owner.id}/lines/${line.id}/performance-score`, { phrases }, 'PUT');
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { this.toast(r.data.error || 'Direction save failed', '#ef4444'); return; }
     this.dmSet({ current: r.data.project });
     await this.dramaRender({ scope: 'line', line_id: line.id, alternate: true });
   };
 
   P.dramaDirectSelection = async function (line, removeId) {
-    const dm = this._dm(), project = dm.current;
-    if (!project) return;
+    const owner = this._dmProjectOwner();
+    if (!owner) return;
     const score = line.performance_score && line.performance_score.source && line.performance_score.source.text === line.text ? line.performance_score : { phrases: [] };
     let phrases = (score.phrases || []).map(x => Object.assign({}, x));
     if (removeId === '*') phrases = [];
@@ -211,7 +257,8 @@
       phrases.push({ id: 'phrase-' + range.start + '-' + range.end, start: range.start, end: range.end, text: line.text.slice(range.start, range.end), delivery: delivery.trim() });
       phrases.sort((a, b) => a.start - b.start);
     }
-    const r = await this._dmApi(`/api/drama/projects/${project.id}/lines/${line.id}/performance-score`, { phrases }, 'PUT');
+    const r = await this._dmApi(`/api/drama/projects/${owner.id}/lines/${line.id}/performance-score`, { phrases }, 'PUT');
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { this.toast(r.data.error || 'Could not save phrase direction', '#ef4444'); return; }
     this.dmSet({ current: r.data.project });
     this.toast(removeId ? 'Phrase direction removed' : 'Phrase direction saved; exact dialogue retained', '#65d66e');
@@ -219,22 +266,34 @@
 
   // ── rendering runs ────────────────────────────────────────────────────────
   P.dramaRender = async function (opts) {
-    await this._dmFlush();
-    const dm = this._dm();
-    const r = await this._dmApi(`/api/drama/projects/${dm.current.id}/render`, opts);
+    const owner = this._dmProjectOwner();
+    if (!owner || await this._dmFlush() === false || !this._dmOwnsProject(owner)) return;
+    const r = await this._dmApi(`/api/drama/projects/${owner.id}/render`, opts);
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { this.toast((r.data.error || 'Render rejected') + (r.data.gate ? ' · ' + r.data.gate : ''), '#ef4444'); this.dmSet({ error: r.data.error }); return; }
     this.dmSet({ current: r.data.project, error: null });
-    if (r.data.run && r.data.run.id) this._followDramaRun(r.data.run.id); else this.toast(r.data.run.note || 'Nothing to render', '#38bdf8');
+    if (r.data.run && r.data.run.id) this._followDramaRun(r.data.run.id, owner.id); else this.toast(r.data.run.note || 'Nothing to render', '#38bdf8');
   };
-  P._followDramaRun = function (runId) {
+  P._dmStopRunTracking = function () {
     clearInterval(this._dmRunTimer);
+    this._dmRunOwner = null;
+    clearInterval(this._dmProdTimer);
+    this._dmProdOwner = null;
+  };
+  P._followDramaRun = function (runId, forProjectId) {
+    clearInterval(this._dmRunTimer); // only replaces the render-run poll; a production poll is independent
+    const projectId = forProjectId || this._dm().currentId, owner = this._dmRunOwner = {};
+    const ownsRun = () => this._dmRunOwner === owner && this._dm().currentId === projectId;
     const tick = async () => {
+      if (!ownsRun()) { clearInterval(timer); return; }
       const r = await this._dmApi('/api/drama/runs/' + runId);
+      if (!ownsRun()) { clearInterval(timer); return; }
       if (!r.ok) { clearInterval(this._dmRunTimer); this.dmSet({ run: { status: 'failed', errors: [{ error: 'Lost track of the render run (' + (r.data.error || r.status) + '). Takes already generated are kept.' }] } }); return; }
       this.dmSet({ run: r.data.run, current: r.data.project }, { skipIfTyping: true });
       if (r.data.run.status !== 'running') { clearInterval(this._dmRunTimer); this.toast('Render ' + r.data.run.status + ' · ' + r.data.run.done + ' ok' + (r.data.run.failed ? ', ' + r.data.run.failed + ' failed' : ''), r.data.run.failed ? '#fbbf24' : '#65d66e'); this.loadMediaLibrary && this.loadMediaLibrary('voice'); }
     };
-    tick(); this._dmRunTimer = setInterval(tick, 1500);
+    const timer = this._dmRunTimer = setInterval(tick, 1500);
+    tick();
   };
   P.dramaAssemble = async function (sceneId) {
     await this._dmFlush();
@@ -250,11 +309,17 @@
     this.dmSet({ musicLib: [...((m.data && m.data.items) || []), ...((v.data && v.data.items) || [])].filter(i => /\.(wav|mp3|m4a|m4b|flac)$/i.test(i.artifact_id)).slice(0, 80) });
   };
   P.dramaAddTrack = async function (form) {
-    const r = await this._dmApi(`/api/drama/projects/${this._dm().current.id}/tracks`, form);
+    const owner = this._dmProjectOwner(); if (!owner) return;
+    const r = await this._dmApi(`/api/drama/projects/${owner.id}/tracks`, form);
+    if (!this._dmOwnsProject(owner)) return;
     if (!r.ok) { this.toast(r.data.error, '#ef4444'); return; }
     this.dmSet({ current: r.data.project });
   };
-  P.dramaRemoveTrack = async function (id) { const r = await this._dmApi(`/api/drama/projects/${this._dm().current.id}/tracks/${id}`, undefined, 'DELETE'); if (r.ok) this.dmSet({ current: r.data.project }); };
+  P.dramaRemoveTrack = async function (id) {
+    const owner = this._dmProjectOwner(); if (!owner) return;
+    const r = await this._dmApi(`/api/drama/projects/${owner.id}/tracks/${id}`, undefined, 'DELETE');
+    if (r.ok && this._dmOwnsProject(owner)) this.dmSet({ current: r.data.project });
+  };
 
   // ── builders ───────────────────────────────────────────────────────────────
   P._dmBanner = function (p) {

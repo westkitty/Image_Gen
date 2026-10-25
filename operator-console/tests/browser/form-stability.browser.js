@@ -75,9 +75,14 @@ const stopStorm = page => page.evaluate(() => { window.__storm.stop = true; retu
     await test('other fields keep focus too: negative prompt text and numeric inputs', async () => {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       const errors = await open(page, srv.base);
+      await chooseModel(page, 'flux2-klein-4b');
+      await page.locator('[data-negative-prompt-container] > button').click();
+      assert.equal(await page.locator('[aria-label="Negative prompt"]').isEnabled(), false, 'MFLUX truthfully disables unsupported negative prompts');
       await chooseModel(page, 'sdxl-base');
-      await page.waitForTimeout(800);
-      await page.locator('[aria-label="Negative prompt"]').click();
+      const negativePrompt = page.locator('[aria-label="Negative prompt"]');
+      await negativePrompt.waitFor({ state: 'visible' });
+      assert.equal(await negativePrompt.isEnabled(), true, 'SDXL supports negative prompts');
+      await negativePrompt.click();
       await startStorm(page);
       await page.keyboard.type('blurry, low quality', { delay: 15 });
       // Keep the storm running for a measured number of renders, not a CPU-dependent typing duration.
@@ -85,6 +90,11 @@ const stopStorm = page => page.evaluate(() => { window.__storm.stop = true; retu
       const s1 = await stopStorm(page);
       assert.ok(s1.renders >= 10, JSON.stringify(s1));
       assert.equal(await page.locator('[aria-label="Negative prompt"]').inputValue(), 'blurry, low quality');
+      await chooseModel(page, 'flux2-klein-4b');
+      assert.equal(await negativePrompt.isEnabled(), false, 'switching to MFLUX disables unsupported negative prompts');
+      assert.equal(await negativePrompt.inputValue(), 'blurry, low quality', 'unsupported target preserves the negative draft');
+      await chooseModel(page, 'sdxl-base');
+      await page.waitForFunction(() => !document.querySelector('[aria-label="Negative prompt"]').disabled);
       await page.locator('[data-dex-field="clip-skip"]').click();   // click first: elements cannot be clicked mid-storm
       await startStorm(page);
       await page.keyboard.type('2', { delay: 15 });
