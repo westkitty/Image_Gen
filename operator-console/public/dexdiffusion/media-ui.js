@@ -12,6 +12,7 @@
   if (!C) return;
   const P = C.prototype;
   const h = (...a) => React.createElement(...a);
+  const numText = (window.DexUI && window.DexUI.numText) || (p => p);   // numeric text inputs (see DexUI.numText in workstation-ui.js)
   const css = {
     panel: { border: '1px solid rgba(148,163,184,.14)', background: 'rgba(6,10,16,.64)', borderRadius: 9, padding: 12, marginBottom: 12, minWidth: 0 },
     title: { fontSize: 12, fontWeight: 800, color: '#cbd5e1', letterSpacing: '.06em', textTransform: 'uppercase' },
@@ -289,7 +290,7 @@
   P._text = function (key, placeholder, rows) {
     return h('textarea', { rows: rows || 3, value: this._mtext[key] || '', placeholder, onChange: e => { this._mtext[key] = e.target.value; }, style: Object.assign({}, css.input, { resize: 'vertical' }) });
   };
-  P._input = function (key, attrs) { const m = this._mws(); return h('input', Object.assign({ value: String(m[key] ?? ''), onChange: e => this.mSet({ [key]: e.target.value }), style: css.input }, attrs || {})); };
+  P._input = function (key, attrs) { const m = this._mws(), props = Object.assign({ value: String(m[key] ?? ''), onChange: e => this.mSet({ [key]: e.target.value }), style: css.input }, attrs || {}); return h('input', props.numeric ? numText(props) : props); };
   const langSelect = (m, set) => h('select', { style: css.input, value: m.language || 'en', onChange: e => set({ language: e.target.value }) },
     ...['en', 'zh', 'ja', 'ko', 'de', 'fr', 'es', 'it', 'pt', 'ru'].map(l => h('option', { value: l }, l)));
   // Visually marks a control group as not used by the selected worker (still readable, not interactive).
@@ -305,17 +306,17 @@
       field('Text to speak', this._text('voiceText', 'What should be said…', 4)),
       h('div', { style: css.grid2 },
         field('Voice', h('select', { style: css.input, value: m.kokoroVoice || 'af_heart', onChange: e => this.mSet({ kokoroVoice: e.target.value }) }, ...voices.map(v => h('option', { value: v }, v)))),
-        field('Speed', this._input('speed', { type: 'number', min: '0.5', max: '2', step: '0.05' }))),
+        field('Speed', this._input('speed', { numeric: true, min: '0.5', max: '2', step: '0.05' }))),
       h('div', { style: css.muted }, 'Kokoro is deterministic (no seed). Language follows the voice (a = US English, b = UK English).'))
       : m.voiceMode === 'clone' ? h('div', { style: { display: 'grid', gap: 10 } },
         this.buildReferenceStager('voiceRef', 'Reference voice audio (required)'),
         field('Reference transcript (optional, improves cloning)', this._text('voiceTranscript', 'Exact words spoken in the reference', 2)),
         field('Text to speak', this._text('voiceText', 'What the cloned voice should say…', 3)),
-        h('div', { style: css.grid2 }, field('Language', langSelect(m, p => this.mSet(p))), field('Seed', this._input('vSeed', { type: 'number', min: '0', placeholder: 'random' }))))
+        h('div', { style: css.grid2 }, field('Language', langSelect(m, p => this.mSet(p))), field('Seed', this._input('vSeed', { numeric: true, min: '0', placeholder: 'random' }))))
       : h('div', { style: { display: 'grid', gap: 10 } },
         field('Voice description', this._text('voiceDescription', 'e.g. middle-aged, gravelly, British, measured pace', 3)),
         field('Text to speak', this._text('voiceText', 'Preview line…', 3)),
-        h('div', { style: css.grid2 }, field('Language', langSelect(m, p => this.mSet(p))), field('Seed', this._input('vSeed', { type: 'number', min: '0', placeholder: 'random' }))));
+        h('div', { style: css.grid2 }, field('Language', langSelect(m, p => this.mSet(p))), field('Seed', this._input('vSeed', { numeric: true, min: '0', placeholder: 'random' }))));
     return h('div', { style: { display: 'grid', gap: 12, minWidth: 0 } },
       h('div', { style: css.panel },
         h('div', { style: Object.assign({}, css.row, { marginBottom: 10 }) }, h('div', { style: css.title }, 'Voice'), ...modes.map(([k, l]) => btn(l, () => this.mSet({ voiceMode: k }), m.voiceMode === k ? '#a78bfa' : '#94a3b8'))),
@@ -347,10 +348,10 @@
             h('div', { style: css.grid2 },
               field('Style', this._input('style', { placeholder: 'e.g. lo-fi' })), field('Genre', this._input('genre', { placeholder: 'e.g. electronic' })),
               field('Mood', this._input('mood', { placeholder: 'e.g. wistful' })), field('Instrumentation', this._input('instruments', { placeholder: 'e.g. piano, pads, 808' })),
-              field('Seed', this._input('mSeed', { type: 'number', min: '0', placeholder: 'random' })), field('Vocal language', langSelect(m, p => this.mSet(p)))),
+              field('Seed', this._input('mSeed', { numeric: true, min: '0', placeholder: 'random' })), field('Vocal language', langSelect(m, p => this.mSet(p)))),
             this.buildReferenceStager('musicRef', 'Reference audio (optional · style influence)'),
             m.refs.musicRef ? field('Reference influence · ' + Number(m.influence).toFixed(2), h('input', { type: 'range', min: '0', max: '1', step: '0.05', value: String(m.influence), onChange: e => this.mSet({ influence: e.target.value }), style: { minHeight: 30 } })) : null)),
-          field('Duration (s)', ace ? this._input('aceDuration', { type: 'number', min: '10', max: '240', placeholder: '30' }) : this._input('magDuration', { type: 'number', min: '2', max: '60', placeholder: '8' }))),
+          field('Duration (s)', ace ? this._input('aceDuration', { numeric: true, min: '10', max: '240', placeholder: '30' }) : this._input('magDuration', { numeric: true, min: '2', max: '60', placeholder: '8' }))),
         h('div', { style: Object.assign({}, css.muted, { marginTop: 8 }) }, this.state.savePrompts ? 'Prompt saving is on: text may be kept with the job record.' : 'Prompt saving is off: description and lyrics are sent for this job only and never stored.'),
         this._generateBar(worker, 'music', ace ? 'song' : 'music')),
       this._jobPanel('music'), this._workerCard(worker), this._resultArea('music'));

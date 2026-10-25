@@ -503,7 +503,36 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
     });
 
     await test('presets: per-operation, versioned, privacy-aware, legacy migrated', async () => {
-      const { page, ctx } = await newPage(browser, srv.base, { legacyRecipes: [{ id: '1', name: 'Old', target: 'sd15', steps: 20, cfg: 7, prompt: 'SECRET-OLD', negPrompt: 'n' }] });
+      const { page, ctx, errors } = await newPage(browser, srv.base, { legacyRecipes: [{ id: '1', name: 'Old', target: 'sd15', steps: 20, cfg: 7, prompt: 'SECRET-OLD', negPrompt: 'n' }] });
+      const consoleErrors = [], apiRequests = [];
+      const presetDiagnostics = process.env.DEX_BROWSER_PRESET_DIAGNOSTICS === '1';
+      page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+      page.on('request', req => { if (new URL(req.url()).pathname.startsWith('/api/')) apiRequests.push({ method: req.method(), url: new URL(req.url()).pathname, status: 'pending' }); });
+      page.on('requestfinished', req => { const entry = [...apiRequests].reverse().find(x => x.status === 'pending' && x.url === new URL(req.url()).pathname); if (entry) entry.status = 'finished'; });
+      page.on('requestfailed', req => { const entry = [...apiRequests].reverse().find(x => x.status === 'pending' && x.url === new URL(req.url()).pathname); if (entry) entry.status = 'failed: ' + (req.failure()?.errorText || 'unknown'); });
+      await page.evaluate(enabled => {
+        window.__presetDiagRafPending = enabled ? 0 : null;
+        if (enabled) {
+          const raf = window.requestAnimationFrame.bind(window);
+          window.requestAnimationFrame = callback => { window.__presetDiagRafPending++; return raf(time => { window.__presetDiagRafPending--; callback(time); }); };
+        }
+        window.__presetDiagInputIds = new WeakMap(); window.__presetDiagNextInputId = 1;
+      }, presetDiagnostics);
+      const snapshot = () => page.evaluate(() => {
+        const steps = [...document.querySelectorAll('[data-edit-workbench] label')]
+          .filter(label => label.querySelector('span')?.textContent === 'Steps')
+          .map(label => {
+            const input = label.querySelector('input');
+            if (!input) return null;
+            if (!window.__presetDiagInputIds.has(input)) window.__presetDiagInputIds.set(input, window.__presetDiagNextInputId++);
+            return { id: window.__presetDiagInputIds.get(input), value: input.value, connected: input.isConnected, focused: document.activeElement === input, renderedValue: input.__dexRendered };
+          }).filter(Boolean);
+        const active = document.activeElement;
+        const select = document.querySelector('[data-edit-workbench] [data-presets] select[aria-label="Saved presets"]');
+        return { operation: __dex.ed.op, stateSteps: __dex.ed.state?.params?.steps, selectedPreset: select ? { value: select.value, label: select.selectedOptions[0]?.textContent } : null,
+          steps, active: active ? { tag: active.tagName, type: active.type || null, label: active.getAttribute('aria-label'), presetMode: active.closest('[data-presets]')?.dataset.presets || null } : null,
+          rafPending: window.__presetDiagRafPending, renderFailures: __dex.__renderFailures || 0, renderError: __dex.__renderError || null };
+      });
       const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem('dex_favorite_presets')));
       assert.equal(migrated[0].v, 2); assert.equal(migrated[0].mode, 'create'); assert.equal(migrated[0].prompt, undefined, 'prompt scrubbed (saving off)');
       await openEdit(page, 'fx-portrait.png', 'img2img');
@@ -516,7 +545,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       assert.ok(!JSON.stringify(list).includes('a saved prompt'), 'privacy off: no prompt text in any preset');
       for (const mode of ['inpaint', 'outpaint']) {
         await openEdit(page, 'fx-portrait.png', mode);
-        await page.getByRole('spinbutton', { name: 'Steps', exact: true }).fill('23');
+        await page.getByRole('textbox', { name: 'Steps', exact: true }).fill('23');
         await page.waitForFunction(() => __dex.ed.state.params.steps === '23');
         if (await page.locator('[data-section="presets"]').getAttribute('open') === null) await page.click('[data-section="presets"] summary');
         await page.fill(`[data-presets="${mode}"] input[aria-label="New preset name"]`, 'Closure ' + mode);
@@ -524,10 +553,23 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
         const saved = await page.evaluate(m => JSON.parse(localStorage.getItem('dex_favorite_presets')).find(r => r.name === 'Closure ' + m), mode);
         assert.equal(saved.mode, mode); assert.equal(saved.steps, '23');
         assert.equal(saved.prompt, undefined); assert.equal(saved.promptSaved, false);
-        await page.getByRole('spinbutton', { name: 'Steps', exact: true }).fill('9');
-        await page.selectOption(`[data-presets="${mode}"] select[aria-label="Saved presets"]`, saved.id);
-        await page.waitForFunction(() => __dex.ed.state.params.steps === '23' && Array.from(document.querySelectorAll('[data-edit-workbench] label')).find(el => el.querySelector('span')?.textContent === 'Steps')?.querySelector('input')?.value === '23');
-        assert.equal(await page.getByRole('spinbutton', { name: 'Steps', exact: true }).inputValue(), '23', mode + ' round trip');
+        await page.getByRole('textbox', { name: 'Steps', exact: true }).fill('9');
+        const beforeApply = await snapshot();
+        const requestIndex = apiRequests.length;
+        const presetSelect = page.locator(`[data-presets="${mode}"] select[aria-label="Saved presets"]`);
+        // selectOption changes the option without moving browser focus. A real user selecting the preset first focuses
+        // the control and blurs Steps; model that transition so pending text preservation is not mistaken for restore.
+        await presetSelect.focus();
+        await presetSelect.selectOption(saved.id);
+        const afterSelect = await snapshot();
+        try {
+          await page.waitForFunction(() => __dex.ed.state.params.steps === '23' && Array.from(document.querySelectorAll('[data-edit-workbench] label')).find(el => el.querySelector('span')?.textContent === 'Steps')?.querySelector('input')?.value === '23');
+        } catch (error) {
+          const actual = await snapshot();
+          throw new Error(`${mode} preset Steps did not restore; selected=${JSON.stringify({ id: saved.id, name: saved.name })}; before=${JSON.stringify(beforeApply)}; afterSelect=${JSON.stringify(afterSelect)}; actual=${JSON.stringify(actual)}; requests=${JSON.stringify(apiRequests.slice(requestIndex))}; pageErrors=${JSON.stringify(errors)}; consoleErrors=${JSON.stringify(consoleErrors)}; ${error.message}`);
+        }
+        if (presetDiagnostics) console.log('[preset-steps-trace]', JSON.stringify({ mode, selected: { id: saved.id, name: saved.name }, beforeApply, afterSelect, restored: await snapshot(), requests: apiRequests.slice(requestIndex), pageErrors: errors, consoleErrors }));
+        assert.equal(await page.getByRole('textbox', { name: 'Steps', exact: true }).inputValue(), '23', mode + ' round trip');
       }
       await ctx.close();
     });

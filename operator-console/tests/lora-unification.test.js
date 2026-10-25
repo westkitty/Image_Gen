@@ -782,7 +782,7 @@ test('accelerator group lists only family-compatible accelerators for the select
     assert.match(group.textContent, /Acceleration for LUSTIFY! APEX V8/);
     assert.deepEqual(chipIds(doc).sort(), ['Hyper-SDXL-8steps-CFG-lora', 'lcm_sdxl', 'sdxl_lightning_4step_lora']);
     assert.equal(doc.querySelectorAll('[data-accelerator-unproven]').length, 3, 'family-only routes are badged unproven');
-    assert.match(doc.querySelector('[data-accelerator-chip="sdxl_lightning_4step_lora"]').textContent, /4 steps · euler · sgm_uniform · CFG 0/);
+    assert.match(doc.querySelector('[data-accelerator-chip="sdxl_lightning_4step_lora"]').textContent, /4 steps · euler · sgm_uniform · CFG 1/);
     assert.equal(doc.querySelector('[data-dex-field="open-lora-picker"]').getAttribute('data-accelerators-available'), '3');
 
     // On the verified checkpoint the chips are not badged unproven.
@@ -813,11 +813,11 @@ test('activating a highlighted accelerator applies its server recipe; turning it
     doc.querySelector('[data-accelerator-chip="sdxl_lightning_4step_lora"]').click();
     await settle(w);
     assert.equal(inst.state.createLora.enabled, true);
-    assert.deepEqual(settings(inst), [4, 0, 'euler', 'sgm_uniform'], 'Lightning recipe (CFG 0) applied');
+    assert.deepEqual(settings(inst), [4, 1, 'euler', 'sgm_uniform'], 'Lightning recipe (CFG 1) applied');
     const chip = doc.querySelector('[data-accelerator-chip="sdxl_lightning_4step_lora"]');
     assert.equal(chip.getAttribute('aria-pressed'), 'true');
     assert.equal(chip.getAttribute('data-accelerator-active'), 'true');
-    assert.ok(!inst.validationMessages().some(([m]) => /CFG scale/.test(m)), 'CFG 0 is allowed for the active Lightning recipe');
+    assert.ok(!inst.validationMessages().some(([m]) => /CFG scale/.test(m)), 'the active Lightning recipe passes CFG validation');
 
     // The outbound body is accepted by the real server validator for this checkpoint.
     const body = inst._createBody();

@@ -49,8 +49,8 @@ test('the actual V2 template places LoRA controls in the prompt composer and neg
   assert.match(read('workstation-ui.js'), /vals\.createLoraControls = curScreen === 'create' \? this\.buildCreateLoraControls\(\) : null/);
   assert.match(template, /<script src="\.\.\/model-presets\.js"><\/script>\s*<script src="component\.js"><\/script>/, 'V2 loads acceleration recipes before the controls');
   assert.match(read('component.js'), /this\.state\.target \|\| 'flux2-klein-4b'\) !== target\) return/, 'late asset discovery for an old target cannot overwrite current compatibility');
-  assert.match(read('component.js'), /onStepsChange: e=>this\.setCreateLoraField\('steps', e\.target\.value\)/, 'manual step changes are retained as active adapter overrides');
-  assert.match(read('component.js'), /onCfgChange: e=>this\.setCreateLoraField\('cfg', e\.target\.value\)/, 'manual CFG changes are retained as active adapter overrides');
+  assert.match(read('component.js'), /onStepsChange: e=>this\.setCreateLoraField\('steps', numValue\(e\.target\.value\)\)/, 'manual step changes are retained as active adapter overrides');
+  assert.match(read('component.js'), /onCfgChange: e=>this\.setCreateLoraField\('cfg', numValue\(e\.target\.value\)\)/, 'manual CFG changes are retained as active adapter overrides');
   assert.match(read('workstation-ui.js'), /LoRA off · current settings:/, 'disabled state describes the restored normal recipe');
 });
 

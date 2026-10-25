@@ -24,6 +24,19 @@ const {startServer,launchBrowser,runCleanups}=require('./helpers');
   }
   assert.ok(result.generate&&result.generate.y>=result.footer.y&&result.generate.bottom<=height,
    'Generate remains in a visible, separate footer');
+  // The Enhance label must not grow when the Ollama model name (or the cancel state) arrives: that re-wrapped the
+  // prompt-tools row at 390 px and shifted the inspector. The model name belongs in the accessible name instead.
+  const enhanceBox=async st=>{await page.evaluate(x=>window.__dex.setState(x),st);await page.waitForTimeout(150);
+   return page.evaluate(()=>{const b=document.querySelector('[data-enhance]');if(!b)return null;const r=b.getBoundingClientRect(),row=b.parentElement.getBoundingClientRect();
+    return {w:Math.round(r.width),h:Math.round(r.height),rowH:Math.round(row.height),label:b.getAttribute('aria-label'),text:b.innerText.trim()};});};
+  const offline=await enhanceBox({ollamaOnline:false,ollamaModel:'',enhancingPrompt:false});
+  assert.ok(offline,"Enhance button is rendered on the Create first screen");{
+   const online=await enhanceBox({ollamaOnline:true,ollamaModel:'hermes-qwen3.8-27b-64k:latest',enhancingPrompt:false});
+   const busy=await enhanceBox({ollamaOnline:true,ollamaModel:'hermes-qwen3.8-27b-64k:latest',enhancingPrompt:true});
+   await enhanceBox({ollamaOnline:false,ollamaModel:'',enhancingPrompt:false});
+   for(const [n,b] of [['online',online],['busy',busy]]) assert.deepEqual([b.w,b.h,b.rowH],[offline.w,offline.h,offline.rowH],`Enhance button/row size is stable (${n}) at ${width}x${height}: ${JSON.stringify({offline,online,busy})}`);
+   assert.equal(online.text,'✨ Enhance');assert.equal(online.label,'Enhance (hermes-qwen3.8-27b-64k)');assert.equal(busy.text,'✕ Cancel enhance');
+  }
   const modelBtn=page.locator('[data-model-picker="create"] > button');
   assert.equal(await modelBtn.isVisible(),true);
   await page.locator('[data-studio-shape="portrait"]').click({timeout:4500});

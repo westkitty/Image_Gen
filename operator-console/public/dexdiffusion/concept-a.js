@@ -11,6 +11,7 @@
   const P = C.prototype;
   const h = (...a) => React.createElement(...a);
   const UI = window.DexUI || {};
+  const numText = (window.DexUI && window.DexUI.numText) || (p => p);   // numeric text inputs (see DexUI.numText in workstation-ui.js)
   const btn = UI.btn || ((label, onClick, color, extra) => h('button', Object.assign({ type: 'button', onClick }, extra || {}), label));
 
   const ICON_PATHS = {
@@ -378,14 +379,14 @@
     if (!ctl.eta && !ctl.rng) return null;
     const effective = D.canonicalSamplerId(s.sampler);
     const etaOk = D.ETA_SAMPLERS.includes(effective);
-    const input = (label, value, onInput, extra) => h('label', { className: 'ca-field' }, h('span', null, label), h('input', Object.assign({ value: String(value ?? ''), onInput, onChange: onInput }, extra || {})));
+    const input = (label, value, onInput, extra) => h('label', { className: 'ca-field' }, h('span', null, label), h('input', (extra && extra.numeric ? numText : (x => x))(Object.assign({ value: String(value ?? ''), onInput, onChange: onInput }, extra || {}))));
     const nat = s.version === 2;
     return h('details', Object.assign({ className: 'ca-field', 'data-dex-field': 'advanced-sampling', open: !!this._ca().advSampling }, nat ? { onToggle: e => { this._ca().advSampling = !!e.target.open; } } : {}),
       // Open state is owned by app state and flipped synchronously on click (the native 'toggle' event is async and
       // loses a race with a re-render that rebuilds the element).
       h('summary', nat ? { onClick: e => { const d = e.target.closest('details'); this._ca().advSampling = !(d && d.open); } } : { onClick: e => { e.preventDefault(); const ca = this._ca(); ca.advSampling = !ca.advSampling; this.caSync(); } }, 'Advanced sampling'),
       h('div', { className: 'ca-stack' },
-        ctl.eta ? input('Eta — noise multiplier (blank = sampler default)', s.eta, e => { this.state.eta = e.target.value; }, { type: 'number', min: 0, max: 2, step: 0.05, 'data-dex-field': 'eta', disabled: !etaOk, title: etaOk ? '' : 'Eta only affects ' + D.ETA_SAMPLERS.join(', ') }) : null,
+        ctl.eta ? input('Eta — noise multiplier (blank = sampler default)', s.eta, e => { this.state.eta = e.target.value; }, { numeric: true, min: 0, max: 2, step: 0.05, 'data-dex-field': 'eta', disabled: !etaOk, title: etaOk ? '' : 'Eta only affects ' + D.ETA_SAMPLERS.join(', ') }) : null,
         ctl.eta && !etaOk ? h('div', { className: 'ca-note', 'data-dex-field': 'eta-note' }, 'Eta has no effect with the ' + effective + ' sampler. It applies to: ' + D.ETA_SAMPLERS.join(', ') + '.') : null,
         ctl.rng ? h('label', { className: 'ca-field' }, h('span', null, 'Noise RNG'), h('select', { value: s.rng || '', 'data-dex-field': 'rng', onChange: e => this.setState({ rng: e.target.value }) }, ...D.RNG_CHOICES.map(([id, label]) => h('option', { key: id || 'default', value: id }, label)))) : null,
         h('div', { className: 'ca-muted', 'data-dex-field': 'unavailable-sampling' }, 'Not available with the installed stable-diffusion.cpp (no matching option): variation seed and strength, seed resize, S churn / tmin / tmax / noise, UniPC variant and order, beta schedule, zero-terminal-SNR, sigma min/max/rho.')));
@@ -442,12 +443,12 @@
   };
   P.buildV2Sampling = function () {
     const s = this.state, ctl = this._controls(), target = this._targetSpec() || {}, D = window.DexClient;
-    const input = (label, value, onInput, extra) => h('label', { className: 'ca-field' }, h('span', null, label), h('input', Object.assign({ value: String(value ?? ''), onInput, onChange: onInput }, extra || {})));
+    const input = (label, value, onInput, extra) => h('label', { className: 'ca-field' }, h('span', null, label), h('input', (extra && extra.numeric ? numText : (x => x))(Object.assign({ value: String(value ?? ''), onInput, onChange: onInput }, extra || {}))));
     const note = !ctl.sampler ? h('div', { className: 'ca-note', 'data-dex-field': 'sampling-note' }, (target.label || s.target) + ' uses a fixed flow-match Euler sampler. Sampler, CLIP skip and VAE tiling are unavailable and will not be sent.') : null;
     const controls = h('div', { className: 'ca-form-grid', style: { gridTemplateColumns: 'repeat(2,minmax(0,1fr))' } },
       ctl.sampler ? h('label', { className: 'ca-field' }, h('span', null, 'Sampler'), h('select', { 'aria-label': 'Sampler', value: D.canonicalSamplerId(s.sampler), 'data-dex-field': 'sampler', onChange: e => this.setCreateLoraField('sampler', e.target.value) }, ...D.SAMPLER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null,
       ctl.scheduler ? h('label', { className: 'ca-field' }, h('span', null, 'Scheduler'), h('select', { 'aria-label': 'Scheduler', value: s.scheduler, 'data-dex-field': 'scheduler', onChange: e => this.setCreateLoraField('scheduler', e.target.value) }, ...D.SCHEDULER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null,
-      ctl.clipSkip ? input('CLIP skip (blank = model default)', s.clipSkip, e => { this.state.clipSkip = e.target.value; }, { type: 'number', min: 1, max: 12, step: 1, 'data-dex-field': 'clip-skip' }) : null,
+      ctl.clipSkip ? input('CLIP skip (blank = model default)', s.clipSkip, e => { this.state.clipSkip = e.target.value; }, { numeric: true, min: 1, max: 12, step: 1, 'data-dex-field': 'clip-skip' }) : null,
       ctl.tiling ? h('label', { className: 'ca-check-row' }, h('input', { type: 'checkbox', checked: !!s.tiling, 'data-dex-field': 'tiling', onChange: e => this.setState({ tiling: e.target.checked }) }), h('span', null, 'VAE tiling (lower memory for large images)')) : null);
     return h('div', { className: 'ca-stack', 'data-dex-field': 'v2-sampling' },
       note, controls, this.buildAdvancedSampling(),
@@ -457,7 +458,7 @@
 
   P.buildConceptGenerate = function (vals, accent) {
     const s = this.state, ctl = this._controls(), targets = s.modelTargets || [], target = this._targetSpec() || {};
-    const input = (label, value, onInput, extra) => h('label', { className: 'ca-field' }, h('span', null, label), h('input', Object.assign({ value: String(value ?? ''), onInput, onChange: onInput }, extra || {})));
+    const input = (label, value, onInput, extra) => h('label', { className: 'ca-field' }, h('span', null, label), h('input', (extra && extra.numeric ? numText : (x => x))(Object.assign({ value: String(value ?? ''), onInput, onChange: onInput }, extra || {}))));
     const DP = window.DexPrompt;
     // Notes are written straight into the DOM while typing (no setState), so the editor never loses focus or cursor.
     const refreshPromptNotes = e => {
@@ -476,11 +477,11 @@
     const samplingNote = !ctl.sampler ? h('div', { className: 'ca-note', 'data-dex-field': 'sampling-note' }, (target.label || s.target) + ' uses a fixed flow-match Euler sampler. Sampler, CLIP skip and VAE tiling are unavailable and will not be sent.') : null;
     const targetSelect = h('label', { className: 'ca-field' }, h('span', null, 'Model target'), h('select', { value: s.target, onChange: e => this.onSelectTarget(e.target.value) }, ...(targets.length ? targets : [{ id: s.target, label: s.target, status: 'UNKNOWN' }]).map(t => h('option', { key: t.id, value: t.id }, (t.label || t.id) + ' · ' + (t.status || 'UNKNOWN')))));
     const basic = h('div', { className: 'ca-form-grid' },
-      input('Steps', s.steps, e => this.setCreateLoraField('steps', e.target.value), { type: 'number', min: 1, max: 150 }),
-      ctl.cfg ? input('CFG', s.cfg, e => this.setCreateLoraField('cfg', e.target.value), { type: 'number', min: 0, max: 30, step: .5 }) : null,
+      input('Steps', s.steps, e => this.setCreateLoraField('steps', e.target.value), { numeric: true, min: 1, max: 150 }),
+      ctl.cfg ? input('CFG', s.cfg, e => this.setCreateLoraField('cfg', e.target.value), { numeric: true, min: 0, max: 30, step: .5 }) : null,
       h('label', { className: 'ca-field', 'data-dex-field': 'seed-row' }, h('span', null, 'Seed'),
         h('span', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
-          h('input', { type: 'number', value: String(s.seed ?? ''), 'data-dex-field': 'seed', 'aria-label': 'Seed (-1 = random)', style: { flex: '1 1 90px', minWidth: 0 }, onInput: e => { this.state.seed = e.target.value; }, onChange: e => this.setState({ seed: e.target.value }) }),
+          h('input', numText({ value: String(s.seed ?? ''), 'data-dex-field': 'seed', 'aria-label': 'Seed (-1 = random)', style: { flex: '1 1 90px', minWidth: 0 }, onInput: e => { this.state.seed = e.target.value; }, onChange: e => this.setState({ seed: e.target.value }) })),
           h('span', { className: 'ca-check-row', style: { display: 'inline-flex', gap: 4, alignItems: 'center' } },
             h('input', { type: 'checkbox', 'data-dex-field': 'seed-random', 'aria-label': 'Random seed', checked: String(s.seed) === '-1' || String(s.seed ?? '') === '',
               onChange: e => this.setState({ seed: e.target.checked ? '-1' : String(s.lastSeed != null ? s.lastSeed : Math.floor(Math.random() * 4294967295)) }) }), h('span', null, 'Random')),
@@ -488,11 +489,11 @@
             onClick: () => this.setState({ seed: String(Math.floor(Math.random() * 4294967295)) }) }, '🎲'),
           h('button', { type: 'button', className: 'ca-secondary', 'data-dex-field': 'seed-reuse', title: s.lastSeed != null ? 'Reuse the last seed (' + s.lastSeed + ')' : 'No previous seed yet', 'aria-label': 'Reuse the previous seed', disabled: s.lastSeed == null, style: { minWidth: 34 },
             onClick: () => { if (s.lastSeed != null) this.setState({ seed: String(s.lastSeed) }); } }, '↻'))),
-      input('Width', s.width, e => { this.state.width = e.target.value; }, { type: 'number', min: 256, step: 8 }),
-      input('Height', s.height, e => { this.state.height = e.target.value; }, { type: 'number', min: 256, step: 8 }),
+      input('Width', s.width, e => { this.state.width = e.target.value; }, { numeric: true, min: 256, step: 8 }),
+      input('Height', s.height, e => { this.state.height = e.target.value; }, { numeric: true, min: 256, step: 8 }),
       h('div', { className: 'ca-muted', 'data-dex-field': 'pixel-size', role: 'status' }, (parseInt(s.width, 10) || 0) + ' × ' + (parseInt(s.height, 10) || 0) + ' px · ' + (((parseInt(s.width, 10) || 0) * (parseInt(s.height, 10) || 0)) / 1e6).toFixed(2) + ' MP · ' + ((parseInt(s.width, 10) || 0) === (parseInt(s.height, 10) || 0) ? 'square' : (parseInt(s.width, 10) || 0) > (parseInt(s.height, 10) || 0) ? 'landscape' : 'portrait')),
       ctl.sampler ? h('label', { className: 'ca-field' }, h('span', null, 'Sampler'), h('select', { value: window.DexClient.canonicalSamplerId(s.sampler), 'data-dex-field': 'sampler', onChange: e => this.setCreateLoraField('sampler', e.target.value) }, ...window.DexClient.SAMPLER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null,
-      ctl.clipSkip ? input('CLIP skip (blank = model default)', s.clipSkip, e => { this.state.clipSkip = e.target.value; }, { type: 'number', min: 1, max: 12, step: 1, 'data-dex-field': 'clip-skip' }) : null,
+      ctl.clipSkip ? input('CLIP skip (blank = model default)', s.clipSkip, e => { this.state.clipSkip = e.target.value; }, { numeric: true, min: 1, max: 12, step: 1, 'data-dex-field': 'clip-skip' }) : null,
       ctl.tiling ? h('label', { className: 'ca-check-row' }, h('input', { type: 'checkbox', checked: !!s.tiling, 'data-dex-field': 'tiling', onChange: e => this.setState({ tiling: e.target.checked }) }), h('span', null, 'VAE tiling (lower memory for large images)')) : null,
       ctl.scheduler ? h('label', { className: 'ca-field' }, h('span', null, 'Scheduler'), h('select', { value: s.scheduler, onChange: e => this.setCreateLoraField('scheduler', e.target.value) }, ...window.DexClient.SCHEDULER_CHOICES.map(([id, label]) => h('option', { key: id, value: id }, label)))) : null);
     const generate = h('button', { type: 'button', className: 'ca-primary', onClick: () => this.onGenerate(), disabled: s.jobStatus === 'generating' }, s.jobStatus === 'generating' ? (vals.generateLabel || 'Generating…') : 'Generate Image');

@@ -6,7 +6,7 @@ const path = require('path');
 const vm = require('vm');
 const root = path.resolve(__dirname, '../..');
 const { targetModelMap } = require(path.join(root, 'operator-console/capabilities'));
-const { ADAPTERS } = require(path.join(root, 'operator-console/lora-runtime-policy'));
+const { ADAPTERS, targetSupport } = require(path.join(root, 'operator-console/lora-runtime-policy'));
 const { SDCLI_SAMPLER, HIRES_UPSCALERS } = require(path.join(root, 'operator-console/controlled-args'));
 const source = fs.readFileSync(path.join(root, 'operator-console/server.js'), 'utf8');
 const declaration = source.slice(source.indexOf('const CONTROLLED_TARGETS = ['), source.indexOf('const CONTROLLED_TARGET_BY_ID'));
@@ -42,4 +42,11 @@ const result = {
   schedulers: ['discrete', 'karras', 'exponential', 'ays', 'sgm_uniform', 'simple', 'kl_optimal', 'smoothstep', 'lcm'],
   access_probe: { checkpoint: models['sdxl-base'], ...Object.fromEntries(Object.entries(adapters).map(([id, a]) => [id, a.path])) },
 };
+// The worker enforces its own adapter allow-list, so it must list every checkpoint the server policy accepts for an
+// adapter: the explicitly verified targets plus same-family checkpoints (acceleration adapters only; family-only
+// routes are unproven on those checkpoints, see lora-runtime-policy targetSupport).
+for (const [id, adapter] of Object.entries(result.adapters)) {
+  if (adapter.backend === 'mflux' || !adapter.recipe) continue;
+  adapter.targets = [...new Set([...adapter.targets, ...Object.keys(result.models).filter(m => targetSupport(ADAPTERS[id], m))])];
+}
 process.stdout.write(JSON.stringify(result, null, 2) + '\n');

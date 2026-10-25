@@ -11,6 +11,7 @@
   const U = window.DexStudio;
   const { h, field, fmtT } = U;
   const { css, tone, btn, chip } = window.DexUI;
+  const numText = (window.DexUI && window.DexUI.numText) || (p => p);   // numeric text inputs (see DexUI.numText in workstation-ui.js)
   const IDENT = [['age', 'Perceived age', 'e.g. middle-aged'], ['gender_presentation', 'Gender presentation', 'e.g. masculine, androgynous'], ['accent', 'Accent', 'e.g. Scottish, Southern US'], ['linguistic_style', 'Linguistic style', 'e.g. clipped, formal, drawling'],
     ['register', 'Vocal register', 'e.g. low baritone'], ['timbre', 'Timbre', 'e.g. gravelly, smooth'], ['resonance', 'Resonance', 'e.g. chest, nasal'], ['texture', 'Texture', 'e.g. rough, silky'], ['breathiness', 'Breathiness', 'e.g. slight'],
     ['personality', 'Personality & speaking character', 'e.g. calm, dry, unhurried'], ['language', 'Language', 'en']];
@@ -147,7 +148,7 @@
       vd.mode === 'single' ? field('Audition text (your choice — at least ~10 words gives a 3 s+ reference you can promote)', h('textarea', { rows: 3, value: vd.text, 'data-aud-text': '1', style: Object.assign({}, css.input, { resize: 'vertical' }), onInput: e => { vd.text = e.target.value; } }))
         : field('Lines this character speaks (one per line, up to 6; the same seed is used for every line so the character stays consistent)', h('textarea', { rows: 5, value: vd.lines, 'data-aud-lines': '1', style: Object.assign({}, css.input, { resize: 'vertical' }), onInput: e => { vd.lines = e.target.value; } })),
       h('div', { style: css.grid2 },
-        field('Candidates (each its own recorded seed)', h('input', { type: 'number', min: '1', max: '6', value: String(vd.count), style: css.input, onInput: e => { vd.count = Math.max(1, Math.min(6, Number(e.target.value) || 3)); } })),
+        field('Candidates (each its own recorded seed)', h('input', numText({ min: '1', max: '6', value: String(vd.count), style: css.input, onInput: e => { vd.count = Math.max(1, Math.min(6, Number(e.target.value) || 3)); } }))),
         field('Acting direction for this audition' + (dirOk ? '' : ' — not supported'), h('input', { value: dirOk ? vd.direction : '', disabled: !dirOk, placeholder: dirOk ? 'optional, e.g. wary' : 'unavailable', style: css.input, onInput: e => { vd.direction = e.target.value; } }))),
       h('label', { style: { display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: '#cbd5e1', minHeight: 32 } }, h('input', { type: 'checkbox', checked: vd.keepText, 'data-keep-text': '1', onChange: e => this.vdSet({ keepText: e.target.checked }) }), 'Keep the audition text with the saved record (off by default: only a hash is stored, so a line from an unsaved screenplay is never written to disk)'),
       h('div', { style: css.row }, btn(running ? 'Generating on Big Mac…' : 'Generate ' + vd.count + ' candidate' + (vd.count > 1 ? 's' : ''), () => this.vdAudition(p), '#65d66e', { disabled: running || p.validation.state === 'invalid', 'data-generate-auditions': '1' }),

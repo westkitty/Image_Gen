@@ -23,6 +23,65 @@ ROOT = Path.home() / '.dexdiffusion-engine'
 SOCKET = ROOT / 'engine.sock'
 RUN_ID = re.compile(r'^20\d{6}-\d{6}-[A-Za-z0-9_-]{1,80}$')
 TERMINAL = {'complete', 'failed', 'cancelled'}
+INTERPRETER_CHECK_INTERVAL = 20
+
+
+def interpreter_snapshot(executable=None, script=None, realpath=os.path.realpath):
+    """Capture the interpreter and script this process was launched from."""
+    executable = sys.executable if executable is None else executable
+    script = os.path.abspath(__file__) if script is None else script
+    return {'executable': executable, 'real_executable': realpath(executable) if executable else '', 'script': script}
+
+
+STARTUP_INTERPRETER = interpreter_snapshot()
+
+
+def interpreter_problem(snapshot, exists=os.path.exists, realpath=os.path.realpath):
+    """Return None while the launch interpreter/script remain on disk, else a reason.
+
+    A Homebrew cleanup can delete the Cellar directory a running process executes
+    from; macOS TCC then cannot attribute it and removable-volume reads fail.
+    """
+    executable, real = snapshot['executable'], snapshot['real_executable']
+    if not executable or not exists(executable):
+        return 'interpreter %s was removed' % (executable or '<unknown>')
+    if not exists(real):
+        return 'interpreter %s was removed' % real
+    try:
+        current = realpath(executable)
+    except OSError:
+        current = real
+    if current != real:
+        return 'interpreter %s was replaced by %s' % (real, current)
+    if not exists(snapshot['script']):
+        return 'worker script %s was removed' % snapshot['script']
+    return None
+
+
+def watch_interpreter(snapshot, active, exit_fn, interval=INTERPRETER_CHECK_INTERVAL,
+                      exists=os.path.exists, realpath=os.path.realpath, sleep=time.sleep,
+                      stopping=lambda: False, log=None):
+    """Exit (status 0) once the launch interpreter is gone, never during a job.
+
+    active() reports a running job; exit_fn(0) performs the clean shutdown and
+    returns falsy if a job was admitted meanwhile, in which case watching resumes.
+    Uses only already-imported modules: the deleted stdlib cannot be imported.
+    """
+    log = log or (lambda line: (sys.stderr.write(line + '\n'), sys.stderr.flush()))
+    announced = False
+    while not stopping():
+        sleep(interval)
+        if stopping():
+            return False
+        problem = interpreter_problem(snapshot, exists, realpath)
+        if problem is None or active():
+            continue
+        if not announced:
+            log('engine-worker: %s; restarting to adopt the current interpreter' % problem)
+            announced = True
+        if exit_fn(0):
+            return True
+    return False
 
 
 def number(value, lo, hi, integer=False):
@@ -144,8 +203,10 @@ def evidence_lines(lines, req, engine_prompt):
 
 
 class Worker:
-    def __init__(self, root=ROOT, external_probe=None):
+    def __init__(self, root=ROOT, external_probe=None, interpreter=None, interpreter_check=None):
         self.root = Path(root)
+        self.interpreter = interpreter or STARTUP_INTERPRETER
+        self.interpreter_check = interpreter_check or (lambda: interpreter_problem(self.interpreter))
         self.external_probe = external_probe or (lambda: subprocess.run(['/bin/ps','-axo','comm='],capture_output=True,text=True).stdout)
         self.registry = json.loads((self.root / 'registry.json').read_text())
         self.lock = threading.RLock()
@@ -235,7 +296,8 @@ class Worker:
                     secondary = json.loads((Path.home() / 'Library/Caches/DexDiffusion/secondary-model/current/state.json').read_text())
                 except (OSError,ValueError):
                     secondary = {}
-                return {'ok': True, 'models': model_access, 'secondary': secondary, 'pid': os.getpid(), 'uid': os.getuid(), 'active': self.active, 'access': access, 'recovery_uncertain': self.recovery_uncertain}
+                return {'ok': True, 'models': model_access, 'secondary': secondary, 'pid': os.getpid(), 'uid': os.getuid(), 'active': self.active, 'access': access, 'recovery_uncertain': self.recovery_uncertain,
+                        'interpreter_ok': self.interpreter_check() is None, 'interpreter_path': self.interpreter['executable']}
             run_id = req['run_id']
             digest = hashlib.sha256(req['token'].encode()).hexdigest()
             if req['op'] == 'activate':
@@ -502,11 +564,27 @@ def serve():
             threading.Thread(target=server.shutdown, daemon=True).start()
         signal.signal(signal.SIGTERM, stop)
         signal.signal(signal.SIGINT, stop)
+        restart = []
+        def restart_when_idle(code):
+            # Claim idleness under the admission lock; `stopping` rejects new jobs.
+            with worker.lock:
+                if worker.active:
+                    return False
+                worker.stopping = True
+                restart.append(code)
+            threading.Thread(target=server.shutdown, daemon=True).start()
+            return True
+        threading.Thread(target=watch_interpreter, args=(worker.interpreter, lambda: worker.active is not None, restart_when_idle),
+                         kwargs={'interval': INTERPRETER_CHECK_INTERVAL, 'stopping': lambda: worker.stopping}, daemon=True).start()
         server.serve_forever(poll_interval=0.2)
         deadline = time.time() + 10
         while worker.active and time.time() < deadline:
             time.sleep(0.1)
     SOCKET.unlink(missing_ok=True)
+    if restart:
+        lockfile.close()
+        # launchd KeepAlive relaunches the host, which starts the current interpreter.
+        sys.exit(restart[0])
 
 
 if __name__ == '__main__':

@@ -65,7 +65,7 @@ test('preserves manual overrides unless forced', () => {
     supportedSchedulers: ['sgm_uniform']
   });
   assert.ok(forced.changes.some(change => change.field === 'steps' && change.value === 4));
-  assert.ok(forced.changes.some(change => change.field === 'cfg_scale' && change.value === 0));
+  assert.ok(forced.changes.some(change => change.field === 'cfg_scale' && change.value === 1));
 });
 
 test('reports unsupported scheduler and sampler without emitting invalid settings', () => {
@@ -80,13 +80,13 @@ test('reports unsupported scheduler and sampler without emitting invalid setting
   assert.match(result.warnings.join(' '), /trailing/);
 });
 
-test('acceleration presets preserve supported engine values and zero CFG', () => {
+test('acceleration presets preserve supported engine values; Lightning uses CFG 1 (sd.cpp CFG 0 would ignore the prompt)', () => {
   const lightning = presets.resolveModelPreset('sdxl_lightning_4step_lora');
-  assert.equal(lightning.recommended.cfg, 0);
+  assert.equal(lightning.recommended.cfg, 1);
   const lightningChanges = presets.computePresetChanges(lightning, {
     supportedSamplers: ['euler'], supportedSchedulers: ['sgm_uniform']
   });
-  assert.ok(lightningChanges.changes.some(change => change.field === 'cfg_scale' && change.value === 0));
+  assert.ok(lightningChanges.changes.some(change => change.field === 'cfg_scale' && change.value === 1));
 
   const hyper = presets.resolveModelPreset('Hyper-SDXL-8steps-CFG-lora');
   assert.equal(hyper.recommended.steps, 8);

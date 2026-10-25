@@ -11,6 +11,7 @@
   const U = window.DexStudio;
   const { h, field, fmtT, TAKE_TONE } = U;
   const { css, tone, btn, chip } = window.DexUI;
+  const numText = (window.DexUI && window.DexUI.numText) || (p => p);   // numeric text inputs (see DexUI.numText in workstation-ui.js)
   const ROLE_COLOR = { music: '#a78bfa', ambience: '#2dd4bf', sfx: '#fbbf24' };
   const LANES_H = 58, LABEL_W = 118;
 
@@ -32,7 +33,7 @@
       ...draft.nodes.map((n, i) => h('div', { key: n.id || i, 'data-fx-node': n.type, style: { border: '1px solid rgba(148,163,184,.14)', borderRadius: 8, padding: 6, display: 'grid', gap: 4, opacity: n.enabled === false ? 0.55 : 1 } },
         h('div', { style: css.row }, h('input', { type: 'checkbox', checked: n.enabled !== false, 'aria-label': 'Enable ' + n.type, onChange: e => { n.enabled = e.target.checked; touch(); } }), h('b', { style: { fontSize: 12, color: '#e2e8f0' } }, (effects.find(e => e.type === n.type) || {}).label || n.type), h('div', { style: { flex: 1 } }),
           btn('↑', () => { if (i > 0) { [draft.nodes[i - 1], draft.nodes[i]] = [draft.nodes[i], draft.nodes[i - 1]]; touch(); } }, '#94a3b8', { 'aria-label': 'Move up', disabled: i === 0 }), btn('↓', () => { if (i < draft.nodes.length - 1) { [draft.nodes[i + 1], draft.nodes[i]] = [draft.nodes[i], draft.nodes[i + 1]]; touch(); } }, '#94a3b8', { 'aria-label': 'Move down', disabled: i === draft.nodes.length - 1 }), btn('✕', () => { draft.nodes.splice(i, 1); touch(); }, '#f87171', { 'aria-label': 'Remove effect' })),
-        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,150px),1fr))', gap: 6 } }, ...Object.entries(spec(n.type)).map(([k, d]) => field(k.replace(/_/g, ' '), h('input', { type: 'number', min: String(d.min), max: String(d.max), step: d.max - d.min > 50 ? '1' : '0.05', value: String((n.params || {})[k] == null ? d.default : n.params[k]), style: css.input, onInput: e => { n.params = n.params || {}; n.params[k] = Number(e.target.value); draft.preset = 'custom'; } })))))),
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,150px),1fr))', gap: 6 } }, ...Object.entries(spec(n.type)).map(([k, d]) => field(k.replace(/_/g, ' '), h('input', numText({ min: String(d.min), max: String(d.max), step: d.max - d.min > 50 ? '1' : '0.05', value: String((n.params || {})[k] == null ? d.default : n.params[k]), style: css.input, onInput: e => { n.params = n.params || {}; n.params[k] = Number(e.target.value); draft.preset = 'custom'; } }))))))),
       h('div', { style: css.row }, h('select', { 'aria-label': 'Add effect', style: Object.assign({}, css.input, { width: 'auto' }), value: '', onChange: e => { if (e.target.value) { draft.nodes.push({ id: 'n' + (draft.nodes.length + 1) + Date.now() % 1000, type: e.target.value, enabled: true, params: {} }); touch(); } } }, h('option', { value: '' }, '＋ add effect…'), ...effects.map(e => h('option', { key: e.type, value: e.type }, e.label))),
         btn('Apply to ' + a.speaker, async () => { if (await this.dmActor(a, { fx: draft })) { delete dm.fxDraft[a.id]; this.toast('Effects applied as a derived mix; original takes remain unchanged. Preview the scene in DIRECT before export.', '#65d66e'); } }, '#65d66e', { 'data-fx-apply': a.speaker_key }),
         btn('Undo last FX change', async () => { if (await this.dmActor(a, { fx_undo: true })) { delete dm.fxDraft[a.id]; this.toast('Previous FX chain restored; the clean take is unchanged.', '#65d66e'); } }, '#94a3b8', { disabled: !(a.fx_history || []).length, 'data-fx-undo': a.speaker_key }),
@@ -164,7 +165,7 @@
     const dm = this._dm(), p = dm.current; const id = dm.selClip; if (!id) return h('div', { style: css.muted }, 'Select a clip to edit it (click it, or Tab to it). Arrow keys nudge by 0.1 s (Shift: 1 s). Drag to move. Edits are non-destructive overrides; “Reset clip” restores the original.');
     let lane = null, c = null; for (const l of tl.lanes) { const f = l.clips.find(x => x.id === id); if (f) { lane = l; c = f; } }
     if (!c) return h('div', { style: css.muted }, 'That clip is no longer on this scene.');
-    const num = (label, key, step, get, set, attrs) => field(label, h('input', Object.assign({ type: 'number', step: String(step), value: String(get()), style: css.input, 'data-insp': key, onChange: e => set(Number(e.target.value)) }, attrs || {})));
+    const num = (label, key, step, get, set, attrs) => field(label, h('input', numText(Object.assign({ step: String(step), value: String(get()), style: css.input, 'data-insp': key, onChange: e => set(Number(e.target.value)) }, attrs || {}))));
     if (lane.kind === 'dialogue') {
       const o = c.overrides || {}, line = p.scenes.flatMap(s => s.lines).find(l => l.id === c.line_id), takes = (line ? line.takes : []).filter(t => t.status === 'complete');
       return h('div', { 'data-inspector': 'dialogue', style: { display: 'grid', gap: 6 } },

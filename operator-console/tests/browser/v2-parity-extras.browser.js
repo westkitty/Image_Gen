@@ -61,7 +61,7 @@ async function open(page, base, bodies) {
       const errors = await open(page, srv.base, bodies);
       await chooseModel(page, 'sdxl-base');
       await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
-      const cfg = page.locator('input[type="number"][step="0.5"]').first();
+      const cfg = page.locator('input[type="text"][inputmode="decimal"][step="0.5"]').first();
       assert.equal(await cfg.getAttribute('min'), '0');
       await cfg.fill('0'); await cfg.blur();
       await page.waitForFunction(() => String(__dex.state.cfg) === '0');

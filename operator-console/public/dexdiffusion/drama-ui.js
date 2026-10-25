@@ -12,6 +12,7 @@
   const P = C.prototype;
   const h = (...a) => React.createElement(...a);
   const { css, tone, btn, chip } = window.DexUI;
+  const numText = (window.DexUI && window.DexUI.numText) || (p => p);   // numeric text inputs (see DexUI.numText in workstation-ui.js)
   const field = (label, control) => h('label', { style: { display: 'grid', gap: 4, minWidth: 0 } }, h('span', { style: css.label }, label), control);
   const fmtT = s => (s == null || !isFinite(s)) ? '—' : s >= 60 ? Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0') : s.toFixed(1) + 's';
   const STATUS_TONE = { empty: '#94a3b8', rendering: tone.info, generated: tone.ok, failed: tone.bad };
@@ -385,8 +386,8 @@
         field('Speaker', h('input', { value: line.speaker, list: 'dm-speakers', style: css.input, onChange: e => this.dramaLine(line.id, { speaker: e.target.value }) })),
         field('Kind', h('select', { value: line.kind, style: css.input, onChange: e => this.dramaLine(line.id, { kind: e.target.value }) }, ...['dialogue', 'narration', 'direction'].map(k => h('option', { key: k, value: k }, k)))),
         field('Delivery direction', h('input', { value: line.direction || '', placeholder: 'e.g. quietly', style: css.input, onInput: e => this._dmQueue(line.id, { direction: e.target.value }) })),
-        field('Pause before (s)', h('input', { type: 'number', min: '0', step: '0.1', value: line.pause_before_s == null ? '' : String(line.pause_before_s), placeholder: 'auto', style: css.input, onInput: e => this._dmQueue(line.id, { pause_before_s: e.target.value }) })),
-        field('Pause after (s)', h('input', { type: 'number', min: '0', step: '0.1', value: line.pause_after_s == null ? '' : String(line.pause_after_s), placeholder: String(p.settings.line_gap_s), style: css.input, onInput: e => this._dmQueue(line.id, { pause_after_s: e.target.value }) }))),
+        field('Pause before (s)', h('input', numText({ min: '0', step: '0.1', value: line.pause_before_s == null ? '' : String(line.pause_before_s), placeholder: 'auto', style: css.input, onInput: e => this._dmQueue(line.id, { pause_before_s: e.target.value }) }))),
+        field('Pause after (s)', h('input', numText({ min: '0', step: '0.1', value: line.pause_after_s == null ? '' : String(line.pause_after_s), placeholder: String(p.settings.line_gap_s), style: css.input, onInput: e => this._dmQueue(line.id, { pause_after_s: e.target.value }) })))),
       h('textarea', { rows: Math.min(5, Math.max(1, Math.ceil(line.text.length / 90))), value: line.text, 'aria-label': 'Line text', style: Object.assign({}, css.input, { resize: 'vertical' }), onSelect: e => { this._dmSelection = this._dmSelection || {}; this._dmSelection[line.id] = { start: e.target.selectionStart, end: e.target.selectionEnd }; }, onInput: e => this._dmQueue(line.id, { text: e.target.value }) }),
       !skip ? h('div', { style: css.row }, btn('Direct selected phrase', () => this.dramaDirectSelection(line), '#fbbf24', { 'aria-label': 'Apply acting direction to selected dialogue phrase' }),
         line.performance_score && (line.performance_score.phrases || []).length ? btn('Clear directions', () => this.dramaDirectSelection(line, '*'), '#94a3b8') : null,
@@ -420,7 +421,7 @@
           field('Role', h('select', { style: css.input, value: form.role, onChange: e => { form.role = e.target.value; } }, ...['music', 'ambience', 'sfx'].map(r => h('option', { key: r, value: r }, r)))),
           field('Audio (WAV from Library)', h('select', { style: css.input, value: form.artifact_id, onChange: e => { form.artifact_id = e.target.value; } }, h('option', { value: '' }, lib.length ? '— choose —' : '(open to load)'), ...lib.map(i => h('option', { key: i.artifact_id, value: i.artifact_id }, i.kind + ' · ' + i.artifact_id.slice(0, 40))))),
           field('Scene (optional)', h('select', { style: css.input, value: form.scene_id, onChange: e => { form.scene_id = e.target.value; } }, h('option', { value: '' }, 'whole project'), ...p.scenes.map(s => h('option', { key: s.id, value: s.id }, s.title.slice(0, 30))))),
-          ...[['start_s', 'Start (s)'], ['trim_start_s', 'Trim start (s)'], ['gain', 'Volume (0–2)'], ['fade_in_s', 'Fade in (s)'], ['fade_out_s', 'Fade out (s)']].map(([k, l]) => field(l, h('input', { type: 'number', step: '0.1', min: '0', value: String(form[k]), style: css.input, onInput: e => { form[k] = e.target.value; } })))),
+          ...[['start_s', 'Start (s)'], ['trim_start_s', 'Trim start (s)'], ['gain', 'Volume (0–2)'], ['fade_in_s', 'Fade in (s)'], ['fade_out_s', 'Fade out (s)']].map(([k, l]) => field(l, h('input', numText({ step: '0.1', min: '0', value: String(form[k]), style: css.input, onInput: e => { form[k] = e.target.value; } }))))),
         btn('Add track', () => form.artifact_id ? this.dramaAddTrack(form) : this.toast('Choose an audio file first', '#fbbf24'), '#22d3ee')));
   };
   P.buildDramaWorkspace = function () {

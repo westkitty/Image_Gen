@@ -60,6 +60,51 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 m.validate({**self.req,**change},self.registry)
 
+class InterpreterWatchdogTests(unittest.TestCase):
+    SNAP={'executable':'/opt/homebrew/bin/python3','real_executable':'/opt/homebrew/Cellar/python@3.15/3.15.0/bin/python3.15','script':'/w/engine-worker.py'}
+
+    def run_watch(self, present, active_seq, max_ticks=10, realpath=None):
+        """Drive watch_interpreter with fake sleep; stop after max_ticks without real waits."""
+        ticks=[];exits=[];logs=[];active=iter(active_seq)
+        def sleep(interval): ticks.append(interval)
+        def exit_fn(code): exits.append(code); return True
+        result=m.watch_interpreter(self.SNAP,lambda:next(active,False),exit_fn,interval=15,
+                                   exists=lambda p:p in present,realpath=realpath or (lambda p:self.SNAP['real_executable']),
+                                   sleep=sleep,stopping=lambda:bool(exits) or len(ticks)>=max_ticks,log=logs.append)
+        return result,ticks,exits,logs
+
+    def test_present_interpreter_never_exits(self):
+        result,ticks,exits,logs=self.run_watch(set(self.SNAP.values()),[])
+        self.assertFalse(result);self.assertEqual(exits,[]);self.assertEqual(logs,[]);self.assertEqual(ticks,[15]*10)
+
+    def test_missing_interpreter_waits_for_idle_then_exits_once(self):
+        present={self.SNAP['executable'],self.SNAP['script']}
+        result,ticks,exits,logs=self.run_watch(present,[True,True,True,False])
+        self.assertTrue(result);self.assertEqual(exits,[0]);self.assertEqual(len(ticks),4)
+        self.assertEqual(len(logs),1);self.assertIn(self.SNAP['real_executable']+' was removed; restarting to adopt the current interpreter',logs[0])
+
+    def test_missing_script_path_exits(self):
+        present={self.SNAP['executable'],self.SNAP['real_executable']}
+        result,_,exits,logs=self.run_watch(present,[])
+        self.assertEqual(exits,[0]);self.assertIn('worker script /w/engine-worker.py was removed',logs[0])
+
+    def test_replaced_interpreter_symlink_exits(self):
+        present=set(self.SNAP.values())
+        _,_,exits,logs=self.run_watch(present,[],realpath=lambda p:'/opt/homebrew/Cellar/python@3.15/3.15.1/bin/python3.15')
+        self.assertEqual(exits,[0]);self.assertIn('was replaced by',logs[0])
+
+    def test_refused_exit_keeps_watching_and_logs_once(self):
+        exits=[];logs=[];ticks=[]
+        def exit_fn(code): exits.append(code); return len(exits)==2
+        m.watch_interpreter(self.SNAP,lambda:False,exit_fn,interval=15,exists=lambda p:False,realpath=lambda p:p,
+                            sleep=ticks.append,stopping=lambda:len(ticks)>=10,log=logs.append)
+        self.assertEqual(exits,[0,0]);self.assertEqual(len(logs),1)
+
+    def test_snapshot_uses_running_interpreter(self):
+        snap=m.interpreter_snapshot()
+        self.assertEqual(snap['executable'],sys.executable);self.assertEqual(snap['real_executable'],os.path.realpath(sys.executable))
+        self.assertIsNone(m.interpreter_problem(snap))
+
 class LifecycleTests(unittest.TestCase):
     def setUp(self):
         ProtocolTests.setUp(self)
@@ -187,6 +232,32 @@ class LifecycleTests(unittest.TestCase):
             self.assertFalse(response['ok'])
         finally:
             server.terminate();server.wait(timeout=12)
+            server.stderr.close()
+        self.assertFalse(sock.exists())
+
+    def test_health_reports_interpreter_state(self):
+        health=self.worker.request({'op':'health'})
+        self.assertTrue(health['interpreter_ok']);self.assertEqual(health['interpreter_path'],sys.executable)
+        for key in ['ok','models','secondary','pid','uid','active','access','recovery_uncertain']: self.assertIn(key,health)
+        self.worker.interpreter_check=lambda:'interpreter /x was removed'
+        self.assertFalse(self.worker.request({'op':'health'})['interpreter_ok'])
+
+    def test_serve_exits_zero_and_cleans_socket_when_interpreter_removed(self):
+        fake_python=self.root/'fake-python'; fake_python.write_text('')
+        code = ('import importlib.util,pathlib; s=importlib.util.spec_from_file_location("w",'+repr(str(Path(__file__).with_name('engine-worker.py')))+'); m=importlib.util.module_from_spec(s);s.loader.exec_module(m);'
+                'm.ROOT=pathlib.Path('+repr(str(self.root))+');m.SOCKET=m.ROOT/"engine.sock";m.INTERPRETER_CHECK_INTERVAL=0.1;'
+                'm.STARTUP_INTERPRETER=m.interpreter_snapshot('+repr(str(fake_python))+','+repr(str(Path(__file__).with_name('engine-worker.py')))+');m.serve()')
+        server=subprocess.Popen([sys.executable,'-c',code],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        sock=self.root/'engine.sock'
+        try:
+            until=time.time()+5
+            while not sock.exists() and time.time()<until: time.sleep(.05)
+            self.assertTrue(sock.exists())
+            fake_python.unlink()
+            self.assertEqual(server.wait(timeout=10),0)
+            self.assertIn(b'restarting to adopt the current interpreter',server.stderr.read())
+        finally:
+            if server.poll() is None: server.kill(); server.wait()
             server.stderr.close()
         self.assertFalse(sock.exists())
 

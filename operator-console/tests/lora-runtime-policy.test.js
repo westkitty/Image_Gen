@@ -28,7 +28,7 @@ test('an unknown MFLUX LoRA id fails closed', () => {
 });
 
 const RECIPES = {
-  sdxl_lightning_4step_lora: { steps: 4, cfg_scale: 0, sampler: 'euler', scheduler: 'sgm_uniform' },
+  sdxl_lightning_4step_lora: { steps: 4, cfg_scale: 1, sampler: 'euler', scheduler: 'sgm_uniform' },
   'Hyper-SDXL-8steps-CFG-lora': { steps: 8, cfg_scale: 6, sampler: 'ddim_trailing', scheduler: 'discrete' },
   lcm_sdxl: { steps: 4, cfg_scale: 1.5, sampler: 'lcm', scheduler: 'lcm' },
 };

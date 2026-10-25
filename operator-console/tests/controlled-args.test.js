@@ -192,7 +192,7 @@ test('controlled LoRA experiments serialize only the closed mode/backend enums',
 
 test('verified LoRA production routes select Metal at_runtime for each proven recipe and retain CPU fallbacks', () => {
   const { resolveLoraRuntimePolicy } = require('../lora-runtime-policy');
-  const lightning = resolveLoraRuntimePolicy({ target: 'sdxl-base', loras: [{ name: 'sdxl_lightning_4step_lora', weight: 0.85 }], steps: 4, cfg_scale: 0, sampler: 'euler', scheduler: 'sgm_uniform' });
+  const lightning = resolveLoraRuntimePolicy({ target: 'sdxl-base', loras: [{ name: 'sdxl_lightning_4step_lora', weight: 0.85 }], steps: 4, cfg_scale: 1, sampler: 'euler', scheduler: 'sgm_uniform' });
   assert.deepEqual(lightning, { ok: true, route: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' } });
   const metalProbe = resolveLoraRuntimePolicy({ target: 'sdxl-base', loras: [{ name: 'lcm_sdxl', weight: 1 }], steps: 4, cfg_scale: 1.5, sampler: 'lcm', scheduler: 'lcm', backend_override: 'MTL0', lora_apply_mode: 'at_runtime' });
   assert.deepEqual(metalProbe, { ok: true, route: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' }, explicit: true });
@@ -202,7 +202,7 @@ test('verified LoRA production routes select Metal at_runtime for each proven re
   assert.deepEqual(hyperSdxl, { ok: true, route: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' } });
   const hyperSd15 = resolveLoraRuntimePolicy({ target: 'sd15', loras: [{ name: 'Hyper-SD15-8steps-CFG-lora' }], steps: 8, cfg_scale: 6, sampler: 'ddim_trailing', scheduler: 'discrete' });
   assert.deepEqual(hyperSd15, { ok: true, route: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' } });
-  assert.match(resolveLoraRuntimePolicy({ target: 'sdxl-base', loras: [{ name: 'sdxl_lightning_4step_lora' }], steps: 4, cfg_scale: 0, sampler: 'euler', scheduler: 'sgm_uniform', backend_override: 'MTL0', lora_apply_mode: 'auto' }).error, /unsupported ADD/);
+  assert.match(resolveLoraRuntimePolicy({ target: 'sdxl-base', loras: [{ name: 'sdxl_lightning_4step_lora' }], steps: 4, cfg_scale: 1, sampler: 'euler', scheduler: 'sgm_uniform', backend_override: 'MTL0', lora_apply_mode: 'auto' }).error, /unsupported ADD/);
   assert.match(resolveLoraRuntimePolicy({ target: 'sdxl-base', loras: [{ name: 'sdxl_lightning_4step_lora' }], steps: 8, cfg_scale: 6, sampler: 'ddim_trailing', scheduler: 'discrete' }).error, /requires its verified 4-step/);
   assert.deepEqual(resolveLoraRuntimePolicy({ target: 'flux2-klein-4b', loras: [{ name: 'pixelart_lora', weight: 1 }], steps: 4, cfg_scale: 1, sampler: 'euler', scheduler: 'discrete' }), {
     ok: true, route: { mflux_lora_id: 'pixelart_lora', mflux_lora_strength: 1 },

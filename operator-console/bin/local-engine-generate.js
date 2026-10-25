@@ -47,6 +47,7 @@ function parse(argv) {
   }
   return args;
 }
+let reasonPrinted = false;
 async function main() {
   const args = parse(process.argv.slice(2));
   const registry = JSON.parse(spawnSync(process.execPath, [path.join(workflow, 'worker/build-registry.js')], { encoding: 'utf8' }).stdout);
@@ -111,6 +112,7 @@ async function main() {
     if (state.status !== 'complete' || stopping) {
       if (state.status === 'failed') {
         const failure = classifyEngineError(state, spec.path, { prompt, negativePrompt: req.negative_prompt });
+        reasonPrinted = true;
         console.log('First failed gate: ' + failure.gate + '\nENGINE_FAILURE_REASON: ' + failure.reason);
       }
       throw new Error(state.error || state.status);
@@ -156,5 +158,10 @@ async function main() {
     if (stagingDir) fs.rmSync(stagingDir,{recursive:true,force:true});
   }
 }
-if (require.main === module) main().catch(e => { console.error('Local engine generation failed: ' + e.message); process.exitCode = 1; });
+if (require.main === module) main().catch(e => {
+  // Requests the worker rejects before any run (e.g. an adapter not allowed for the target) never reach the result
+  // path above; give them the same sanitized reason so the job record is not left as 'unknown'.
+  if (!reasonPrinted) { const failure = classifyEngineError(e); console.log('First failed gate: ' + failure.gate + '\nENGINE_FAILURE_REASON: ' + failure.reason); }
+  console.error('Local engine generation failed: ' + e.message); process.exitCode = 1;
+});
 module.exports = { parse, publishAfterAcknowledgment, classifyEngineError };

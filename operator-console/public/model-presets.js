@@ -59,8 +59,8 @@
       recommended: {
         steps: 4,
         exactSteps: true,
-        cfg: 0,
-        minCfg: 0,
+        cfg: 1,
+        minCfg: 1,
         maxCfg: 1,
         sampler: 'euler',
         scheduler: 'sgm_uniform',

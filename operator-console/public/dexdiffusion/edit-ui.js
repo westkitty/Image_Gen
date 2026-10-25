@@ -19,6 +19,7 @@
   const h = (...a) => React.createElement(...a);
   const D = window.DexClient, E = window.DexEdit;
   const UI = window.DexUI || {};
+  const numText = (window.DexUI && window.DexUI.numText) || (p => p);   // numeric text inputs (see DexUI.numText in workstation-ui.js)
   const css = UI.css || {};
   const tone = UI.tone || { ok: '#65d66e', warn: '#fbbf24', bad: '#f87171', info: '#38bdf8', off: '#94a3b8' };
   const btn = UI.btn, chip = UI.chip;
@@ -663,7 +664,7 @@
 
   // ── builders ──────────────────────────────────────────────────────────
   const numField = (self, key, attrs) => { const st = self._ed().state;
-    return h('input', Object.assign({ type: 'number', inputMode: 'decimal', value: String(st.params[key] ?? ''), style: css.input, onInput: e => { st.params[key] = e.target.value; } }, attrs || {})); };
+    return h('input', numText(Object.assign({ value: String(st.params[key] ?? ''), style: css.input, onInput: e => { st.params[key] = e.target.value; } }, attrs || {}))); };
 
   P._edSourceCard = function () {
     const ed = this._ed(), src = ed.source, base = this.state.backendUrl, ws = this._ws();
@@ -764,7 +765,7 @@
   P._edInpaintOptions = function () {
     const ed = this._ed(), ip = ed.inpaint || (ed.inpaint = { area: 'whole', padding: 32, blur: 4, content: 'original', w: 512, h: 512 });
     const setIp = patch => this.edSet({ inpaint: Object.assign({}, this._ed().inpaint, patch) });
-    const num = (key, lbl, attrs) => label(lbl, h('input', Object.assign({ type: 'number', value: String(ip[key]), style: css.input, 'data-edit-field': 'inpaint-' + key, onChange: e => setIp({ [key]: e.target.value }) }, attrs)));
+    const num = (key, lbl, attrs) => label(lbl, h('input', numText(Object.assign({ value: String(ip[key]), style: css.input, 'data-edit-field': 'inpaint-' + key, onChange: e => setIp({ [key]: e.target.value }) }, attrs))));
     return h('div', { style: { display: 'grid', gap: 8, borderTop: '1px solid rgba(148,163,184,.14)', paddingTop: 8 }, 'data-inpaint-options': 'true' },
       label('Inpaint area', h('select', { value: ip.area, style: css.input, 'data-edit-field': 'inpaint-area', 'aria-label': 'Inpaint area', onChange: e => setIp({ area: e.target.value }) },
         h('option', { value: 'whole' }, 'Whole picture'), h('option', { value: 'only_masked' }, 'Only masked (padded crop at a work size)'))),
@@ -778,7 +779,7 @@
   };
   P._edOutpaintBlock = function () {
     const ed = this._ed(), src = ed.source, o = ed.outpaint;
-    const side = (k, l) => label(l + ' px', h('input', { type: 'number', min: '0', max: '512', step: '64', value: String(o[k]), style: css.input, onInput: e => { o[k] = e.target.value; }, onChange: () => this.edSet({}) }));
+    const side = (k, l) => label(l + ' px', h('input', numText({ min: '0', max: '512', step: '64', value: String(o[k]), style: css.input, onInput: e => { o[k] = e.target.value; }, onChange: () => this.edSet({}) })));
     const L = +o.left || 0, R = +o.right || 0, T = +o.top || 0, B = +o.bottom || 0, W = src.width + L + R, H = src.height + T + B;
     return h('div', { style: { display: 'grid', gap: 8 } },
       label('Extension prompt (describes only the NEW area)', h('textarea', { rows: 2, value: ed.ext || '', placeholder: 'e.g. empty wooden desk and plain gray wall', style: Object.assign({}, css.input, { resize: 'vertical' }), onInput: e => { ed.ext = e.target.value; this._edSyncRun(); } })),
@@ -816,9 +817,9 @@
       rz.mode ? h('div', { style: { display: 'grid', gap: 8 } },
         label('Size by', h('select', { value: rz.kind, 'data-edit-field': 'resize-kind', 'aria-label': 'Resize size mode', style: css.input, onChange: e => setRz({ kind: e.target.value }) }, h('option', { value: 'to' }, 'Resize to (width × height)'), h('option', { value: 'by' }, 'Resize by (scale)'))),
         rz.kind === 'by'
-          ? label('Scale (0.25–4)', h('input', { type: 'number', min: '0.25', max: '4', step: '0.05', value: rz.by, 'data-edit-field': 'resize-by', style: css.input, onChange: e => setRz({ by: e.target.value }) }))
-          : h('div', { style: css.row }, label('Width', h('input', { type: 'number', min: '64', max: '2048', step: '8', value: rz.w, placeholder: String(src.width), 'data-edit-field': 'resize-width', style: css.input, onChange: e => setRz({ w: e.target.value }) })),
-              label('Height', h('input', { type: 'number', min: '64', max: '2048', step: '8', value: rz.h, placeholder: String(src.height), 'data-edit-field': 'resize-height', style: css.input, onChange: e => setRz({ h: e.target.value }) }))),
+          ? label('Scale (0.25–4)', h('input', numText({ min: '0.25', max: '4', step: '0.05', value: rz.by, 'data-edit-field': 'resize-by', style: css.input, onChange: e => setRz({ by: e.target.value }) })))
+          : h('div', { style: css.row }, label('Width', h('input', numText({ min: '64', max: '2048', step: '8', value: rz.w, placeholder: String(src.width), 'data-edit-field': 'resize-width', style: css.input, onChange: e => setRz({ w: e.target.value }) }))),
+              label('Height', h('input', numText({ min: '64', max: '2048', step: '8', value: rz.h, placeholder: String(src.height), 'data-edit-field': 'resize-height', style: css.input, onChange: e => setRz({ h: e.target.value }) })))),
         label('Transparent areas become', h('input', { type: 'color', value: rz.bg || '#ffffff', 'data-edit-field': 'resize-bg', 'aria-label': 'Background colour for transparency', style: Object.assign({}, css.input, { width: 80, padding: 2 }), onChange: e => setRz({ bg: e.target.value }) })),
         preview ? h('div', { style: preview.error ? Object.assign({}, css.muted, { color: '#fca5a5' }) : css.muted, role: preview.error ? 'alert' : 'status', 'data-edit-field': 'resize-preview' }, preview.error || preview.text) : null) : null,
       h('label', { style: Object.assign({}, css.row, { color: '#dbe4ee', fontSize: 12 }) }, h('input', { type: 'checkbox', checked: !!ed.exactSteps, 'data-edit-field': 'exact-steps', onChange: e => this.edSet({ exactSteps: e.target.checked }) }), 'Do exactly the amount of steps the slider specifies'),
@@ -931,7 +932,7 @@
     // Merge into the CURRENT options (not this render's snapshot): a handler bound in an earlier render must not undo newer edits.
     const curO = () => Object.assign({}, SCRIPT_DEFAULTS[active], this._ed().script.opts[active]);
     const setO = patch => { const cur = this._ed().script; cur.opts[active] = Object.assign(curO(), patch); cur.preview = null; persist(cur); this.edSet({ script: cur }); };
-    const field = (k, t, attrs) => label(t, h('input', Object.assign({ type: 'number', value: String(o[k]), style: css.input, 'data-script-field': k, onChange: e => setO({ [k]: e.target.value }) }, attrs)));
+    const field = (k, t, attrs) => label(t, h('input', numText(Object.assign({ value: String(o[k]), style: css.input, 'data-script-field': k, onChange: e => setO({ [k]: e.target.value }) }, attrs))));
     const choice = (k, t, list) => label(t, h('select', { value: o[k], style: css.input, 'data-script-field': k, 'aria-label': t, onChange: e => setO({ [k]: e.target.value }) }, ...list.map(v => h('option', { key: v, value: v }, v))));
     const dirs = () => h('div', { style: css.row, 'data-script-field': 'directions' }, h('span', { style: css.label }, 'Outpainting direction'),
       ...['left', 'right', 'up', 'down'].map(d => h('label', { key: d, style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1' }) }, h('input', { type: 'checkbox', checked: (o.directions || []).includes(d), onChange: e => setO({ directions: ['left', 'right', 'up', 'down'].filter(x => x === d ? e.target.checked : (curO().directions || []).includes(x)) }) }), d)));

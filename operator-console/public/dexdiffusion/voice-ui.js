@@ -12,6 +12,7 @@
   const P = C.prototype;
   const h = (...a) => React.createElement(...a);
   const { css, tone, btn, chip } = window.DexUI;
+  const numText = (window.DexUI && window.DexUI.numText) || (p => p);   // numeric text inputs (see DexUI.numText in workstation-ui.js)
   const field = (label, control) => h('label', { style: { display: 'grid', gap: 4, minWidth: 0 } }, h('span', { style: css.label }, label), control);
   const fmtT = s => (s == null || !isFinite(s)) ? '—' : Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
   const TERMINAL = ['COMPLETE', 'FAILED', 'INTERRUPTED', 'CANCELLED'];
@@ -319,7 +320,7 @@
         ...((vp.engines || []).filter(e => Array.isArray(e.voice_types) && e.voice_types.includes(p.type)).map(e => h('option', { key: e.id, value: e.id }, `${e.label} · ${e.status || 'IMPLEMENTED / UNVERIFIED'}`))))),
       p.type === 'designed' ? field('Voice description', h('textarea', { rows: 3, value: p.description || '', style: Object.assign({}, css.input, { resize: 'vertical' }), onChange: e => this.saveVoiceProfile(p.id, { description: e.target.value }) })) : null,
       p.type === 'preset' ? h('div', { style: css.grid2 }, field('Kokoro voice', h('select', { value: p.preset_voice, style: css.input, onChange: e => this.saveVoiceProfile(p.id, { preset_voice: e.target.value }) }, ...((vp.kokoroVoices || []).map(v => h('option', { key: v, value: v }, v))))),
-        field('Default speed', h('input', { type: 'number', min: '0.5', max: '2', step: '0.05', value: String(p.default_speed || 1), style: css.input, onChange: e => this.saveVoiceProfile(p.id, { default_speed: e.target.value }) }))) : null,
+        field('Default speed', h('input', numText({ min: '0.5', max: '2', step: '0.05', value: String(p.default_speed || 1), style: css.input, onChange: e => this.saveVoiceProfile(p.id, { default_speed: e.target.value }) })))) : null,
       field('Notes', h('input', {
         value: p.notes || '',
         style: css.input,
@@ -369,8 +370,8 @@
       counter,
       h('div', { style: css.grid2 },
         field('Performance direction' + (canDirect ? '' : ' — not supported by ' + (eng ? eng.label : 'this engine')), h('input', { value: canDirect ? (t.profileDirection || '') : '', disabled: !canDirect, placeholder: canDirect ? 'e.g. whispering, frightened' : 'unavailable for this voice type', title: canDirect ? '' : 'This engine ignores delivery directions, so DexDiffusion will not pretend to apply them', style: Object.assign({}, css.input, canDirect ? {} : { opacity: 0.5 }), onInput: e => { t.profileDirection = e.target.value; } })),
-        field('Seed', h('input', { type: 'number', min: '0', value: String(vp.seed || ''), placeholder: 'random', style: css.input, onInput: e => { vp.seed = e.target.value; } })),
-        p.type === 'preset' ? field('Speed', h('input', { type: 'number', min: '0.5', max: '2', step: '0.05', value: String(vp.speed || ''), placeholder: String(p.default_speed || 1), style: css.input, onInput: e => { vp.speed = e.target.value; } })) : null),
+        field('Seed', h('input', numText({ min: '0', value: String(vp.seed || ''), placeholder: 'random', style: css.input, onInput: e => { vp.seed = e.target.value; } }))),
+        p.type === 'preset' ? field('Speed', h('input', numText({ min: '0.5', max: '2', step: '0.05', value: String(vp.speed || ''), placeholder: String(p.default_speed || 1), style: css.input, onInput: e => { vp.speed = e.target.value; } }))) : null),
       h('div', { style: css.row }, h('button', { type: 'button', 'data-render-speech': '1', 'aria-busy': String(!!running), onClick: () => !running && !elsewhere && this.renderProfileSpeech(), disabled: !!running || !!elsewhere || p.validation.state === 'invalid',
         style: { minHeight: 44, flex: '1 1 220px', borderRadius: 9, border: 0, fontWeight: 800, fontSize: 14, cursor: running ? 'progress' : 'pointer', background: running || p.validation.state === 'invalid' ? 'rgba(148,163,184,.2)' : 'linear-gradient(90deg,#8b5cf6,#22d3ee)', color: running || p.validation.state === 'invalid' ? '#94a3b8' : '#06060a' } },
         running ? (r.label || 'Rendering…') : elsewhere ? 'Waiting: "' + elsewhere + '" is rendering' : p.validation.state === 'invalid' ? 'Fix the voice first (see validation above)' : 'Render speech'),
@@ -411,7 +412,7 @@
       h('div', { style: css.row }, h('div', { style: css.title }, 'Director preferences · saved on this Mac'), h('div', { style: { flex: 1 } }), btn('Reset', () => this.resetDirectorPreferences(), '#94a3b8')),
       field('Default direction', h('input', { value: prefs.default_direction || '', placeholder: 'Measured, warm, restrained…', style: css.input, onChange: e => this.saveDirectorPreferences({ default_direction: e.target.value }) })),
       h('div', { style: css.row }, ...presetIds.map(id => h('label', { key: id, style: { display: 'flex', gap: 5, alignItems: 'center', color: '#cbd5e1', fontSize: 11 } }, h('input', { type: 'checkbox', checked: (prefs.favorite_presets || []).includes(id), onChange: e => this.saveDirectorPreferences({ favorite_presets: e.target.checked ? [...(prefs.favorite_presets || []), id] : (prefs.favorite_presets || []).filter(x => x !== id) }) }), id.replace(/_/g, ' ')))),
-      h('div', { style: css.grid2 }, field('Default speed (engines that support it)', h('input', { type: 'number', min: 0.5, max: 2, step: 0.05, value: String(prefs.speed || 1), style: css.input, onChange: e => this.saveDirectorPreferences({ speed: e.target.value }) })), field('Intensity preference (direction hint only)', h('input', { type: 'number', min: 0, max: 1, step: 0.05, value: String(prefs.intensity == null ? 0.5 : prefs.intensity), style: css.input, onChange: e => this.saveDirectorPreferences({ intensity: e.target.value }) }))),
+      h('div', { style: css.grid2 }, field('Default speed (engines that support it)', h('input', numText({ min: 0.5, max: 2, step: 0.05, value: String(prefs.speed || 1), style: css.input, onChange: e => this.saveDirectorPreferences({ speed: e.target.value }) }))), field('Intensity preference (direction hint only)', h('input', numText({ min: 0, max: 1, step: 0.05, value: String(prefs.intensity == null ? 0.5 : prefs.intensity), style: css.input, onChange: e => this.saveDirectorPreferences({ intensity: e.target.value }) })))),
       h('div', { style: css.row }, h('b', { style: { fontSize: 11 } }, 'Reusable acting styles'), btn('＋ Save current style', saveActingStyle, '#a78bfa'), ...(prefs.acting_styles || []).map(style => h('span', { key: style.id, style: css.row }, chip(style.name, '#94a3b8'), btn('Use on selected voice', () => { if (vp.selected) this.saveVoiceProfile(vp.selected, { default_direction: style.direction, ...(style.speed ? { default_speed: style.speed } : {}) }); }, '#38bdf8'), btn('×', () => this.saveDirectorPreferences({ acting_styles: prefs.acting_styles.filter(x => x.id !== style.id) }), '#f87171')))),
       h('div', { style: css.muted }, 'Each voice profile keeps its own preferred engine above. Preferences do not approve a voice, authorize a reference, or replace a selected take.'));
     const converter = (vp.converters || []).find(x => x.id === 'openvoice-v2'), converterAvailable = !!(converter && converter.availability && converter.availability.enabled);

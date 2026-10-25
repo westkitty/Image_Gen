@@ -74,7 +74,7 @@ const { test, exitCode } = runner('create-controls');
       const settings = () => page.evaluate(() => [+__dex.state.steps, +__dex.state.cfg, __dex.state.sampler, __dex.state.scheduler]);
       await page.click('[data-accelerator-chip="sdxl_lightning_4step_lora"]');
       await page.waitForSelector('[data-accelerator-chip="sdxl_lightning_4step_lora"][aria-pressed="true"]');
-      assert.deepEqual(await settings(), [4, 0, 'euler', 'sgm_uniform']);
+      assert.deepEqual(await settings(), [4, 1, 'euler', 'sgm_uniform']);
       await page.click('[data-accelerator-chip="lcm_sdxl"]');
       await page.waitForSelector('[data-accelerator-chip="lcm_sdxl"][data-accelerator-active="true"]');
       assert.deepEqual(await settings(), [4, 1.5, 'lcm', 'lcm']);

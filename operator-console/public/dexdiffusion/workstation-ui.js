@@ -37,10 +37,42 @@
   function chip(text, color) {
     return h('span', { style: { border: '1px solid ' + color + '55', color, background: color + '12', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, letterSpacing: '.04em' } }, text);
   }
-  function numInput(value, onChange, attrs) {
-    return h('input', Object.assign({ type: 'number', inputMode: 'numeric', value: String(value), onChange: e => onChange(e.target.value), style: Object.assign({}, css.input, { width: 90 }) }, attrs || {}));
+  // Numeric fields are text inputs, never <input type=number>: dc-runtime rebuilds slot DOM on every re-render and can only
+  // carry the caret/selection across for text controls (a number input's selectionStart is null), so a background
+  // re-render between select-all and typing appended to the old value ('45' into '30' became '3045').
+  // numText() keeps the number-input value contract: text that is not a valid number reads as '' — exactly what
+  // input[type=number].value returned — so state, payloads and "empty = default" behaviour are unchanged. min/max/step
+  // stay on the element as documentation; `pattern` (negatives only when min < 0 or absent, decimals only when step is
+  // fractional or `decimal: true`) and aria-invalid (out of range / wrong kind) give the validity the number input showed.
+  const NUM_SYNTAX = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/;
+  function numValue(raw) { const s = String(raw == null ? '' : raw).trim(); return NUM_SYNTAX.test(s) ? s : ''; }
+  function numEvent(e) {
+    const el = e.target;
+    return { type: e.type, nativeEvent: e, currentTarget: el, preventDefault: () => e.preventDefault(), stopPropagation: () => e.stopPropagation(),
+      target: { value: numValue(el.value), rawValue: el.value, element: el, closest: sel => el.closest(sel) } };
   }
-  window.DexUI = { css, tone, btn: (...a) => btn(...a), chip: (...a) => chip(...a) };
+  function numText(props) {
+    const p = Object.assign({}, props || {});
+    delete p.type; delete p.numeric;
+    const opt = v => (v == null || v === '' ? null : Number(v));
+    const min = opt(p.min), max = opt(p.max), step = opt(p.step);
+    const decimal = p.decimal != null ? !!p.decimal : (step != null && !Number.isInteger(step));
+    delete p.decimal;
+    const neg = min == null || min < 0;
+    const out = Object.assign({ type: 'text', inputMode: decimal ? 'decimal' : 'numeric', autoComplete: 'off', spellCheck: 'false',
+      pattern: (neg ? '-?' : '') + (decimal ? '(\\d+\\.?\\d*|\\.\\d+)' : '\\d+') }, p);
+    const v = p.value == null ? '' : String(p.value).trim();
+    if (v !== '') {
+      const n = Number(v);
+      if (!NUM_SYNTAX.test(v) || (min != null && n < min) || (max != null && n > max) || (!decimal && !Number.isInteger(n)) || (!neg && n < 0)) out['aria-invalid'] = 'true';
+    }
+    for (const k of ['onInput', 'onChange']) if (typeof out[k] === 'function') { const fn = out[k]; out[k] = e => fn(numEvent(e)); }
+    return out;
+  }
+  function numInput(value, onChange, attrs) {
+    return h('input', numText(Object.assign({ value: String(value), onChange: e => onChange(e.target.value), style: Object.assign({}, css.input, { width: 90 }) }, attrs || {})));
+  }
+  window.DexUI = { css, tone, btn: (...a) => btn(...a), chip: (...a) => chip(...a), numText, numValue };
   const openFull = (self, id, url) => window.DexLightbox.open({ src: url, caption: id, actions: self.lightboxActions ? self.lightboxActions(id) : [] });
   function thumb(url, active, onClick, caption, badge) {
     return h('button', { type: 'button', onClick, title: caption,
@@ -435,7 +467,7 @@
       h('summary', { style: { cursor: 'pointer', color: '#b7c7d8', fontSize: 12 } }, 'Advanced'),
       selected ? h('div', { className: 'ca-form-grid', style: { marginTop: 8 } },
         h('label', { className: 'ca-field' }, h('span', null, 'Strength · ' + strength.toFixed(2)), h('input', { type: 'range', min: selected.min_weight, max: selected.max_weight, step: selected.step, value: strength, disabled: !state.enabled || !selected.use_enabled, 'aria-label': 'LoRA strength', 'data-dex-field': 'lora-strength-slider', onInput: e => this.setCreateLoraStrength(e.target.value, selected.min_weight, selected.max_weight) })),
-        h('label', { className: 'ca-field' }, h('span', null, 'Exact strength'), h('input', { type: 'number', min: selected.min_weight, max: selected.max_weight, step: selected.step, value: strength, disabled: !state.enabled || !selected.use_enabled, 'aria-label': 'Exact LoRA strength', 'data-dex-field': 'lora-strength-number', onInput: e => this.setCreateLoraStrength(e.target.value, selected.min_weight, selected.max_weight) })),
+        h('label', { className: 'ca-field' }, h('span', null, 'Exact strength'), h('input', numText({ min: selected.min_weight, max: selected.max_weight, step: selected.step, decimal: true, value: strength, disabled: !state.enabled || !selected.use_enabled, 'aria-label': 'Exact LoRA strength', 'data-dex-field': 'lora-strength-number', onInput: e => this.setCreateLoraStrength(e.target.value, selected.min_weight, selected.max_weight) }))),
         h('div', { className: 'ca-muted', 'data-dex-field': 'lora-recipe' }, (() => { const r = this._createLoraRecipe(selected); const x = r && r.recommended || {}; return state.enabled ? 'Effective recipe: ' + (x.steps || this.state.steps) + ' steps · ' + (x.sampler || this.state.sampler) + ' · ' + (x.scheduler || 'engine default') + ' · CFG ' + (x.cfg != null ? x.cfg : this.state.cfg) + ' · ' + selected.route_status + ' (selected automatically)' : 'LoRA off · current settings: ' + this.state.steps + ' steps · ' + this.state.sampler + ' · ' + (this.state.scheduler || 'engine default') + ' · CFG ' + this.state.cfg; })()),
         h('button', { type: 'button', className: 'ca-secondary', disabled: !state.enabled || !selected.use_enabled, onClick: () => { const next = Object.assign({}, this.state.createLora || {}, { overrides: {} }); this._persistCreateLora(next); next.recipeSettings = this._applyCreateLoraRecipe(selected, next.savedSettings || {}, {}); this._persistCreateLora(next); } }, 'Reset to recommended settings')) : h('div', { className: 'ca-muted' }, 'Select an adapter to inspect its validated settings.'));
     return h('div', { className: 'ca-form-actions', 'data-dex-field': 'create-lora-controls', style: { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 4, alignItems: 'center', minWidth: 0, width: '100%' } }, checkbox, select, advanced, reason);
@@ -800,7 +832,7 @@
     const X = window.DexExtras, ex = this._ws().extras;
     const setEx = patch => this.wsSet({ extras: Object.assign({}, this._ws().extras, patch) });
     const lbl = (t, el) => h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, t, el);
-    const num = (key, t, attrs) => lbl(t, h('input', Object.assign({ type: 'number', value: String(ex[key]), style: css.input, 'data-extras-field': key, onChange: e => setEx({ [key]: e.target.value }) }, attrs)));
+    const num = (key, t, attrs) => lbl(t, h('input', numText(Object.assign({ value: String(ex[key]), style: css.input, 'data-extras-field': key, onChange: e => setEx({ [key]: e.target.value }) }, attrs))));
     // Upscaler 1 has no "None": in A1111 that makes the whole upscale a no-op (upscaler 2 and crop are skipped too).
     const sel = (key, t, list) => lbl(t, h('select', { value: ex[key], style: css.input, 'data-extras-field': key, 'aria-label': t, onChange: e => setEx({ [key]: e.target.value }) },
       ...(list || X.UPSCALERS).map(u => h('option', { value: u }, u === 'none' ? 'None' : u[0].toUpperCase() + u.slice(1)))));
@@ -998,7 +1030,7 @@
     const lbl = (t, el) => h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, t, el);
     return h('div', { 'data-export-panel': 'true', style: Object.assign({}, css.row, { alignItems: 'end' }) },
       lbl('Format', h('select', { value: ex.format, style: css.input, 'data-export-field': 'format', 'aria-label': 'Export format', onChange: e => set({ format: e.target.value }) }, h('option', { value: 'png' }, 'PNG'), h('option', { value: 'jpeg' }, 'JPEG'), h('option', { value: 'webp' }, 'WebP'))),
-      ex.format !== 'png' ? lbl('Quality (1–100)', h('input', { type: 'number', min: '1', max: '100', value: String(ex.quality), style: Object.assign({}, css.input, { width: 70 }), 'data-export-field': 'quality', onChange: e => set({ quality: e.target.value }) })) : null,
+      ex.format !== 'png' ? lbl('Quality (1–100)', h('input', numText({ min: '1', max: '100', value: String(ex.quality), style: Object.assign({}, css.input, { width: 70 }), 'data-export-field': 'quality', onChange: e => set({ quality: e.target.value }) }))) : null,
       lbl('Metadata', h('select', { value: ex.metadata, style: css.input, 'data-export-field': 'metadata', 'aria-label': 'Embedded metadata', onChange: e => set({ metadata: e.target.value }) }, h('option', { value: 'infotext' }, 'A1111 parameters'), h('option', { value: 'none' }, 'None'))),
       lbl('Filename pattern', h('input', { value: ex.pattern, style: Object.assign({}, css.input, { width: 180 }), 'data-export-field': 'pattern', 'aria-label': 'Filename pattern, e.g. [seed]-[steps]', onChange: e => set({ pattern: e.target.value }) })),
       h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1' }) }, h('input', { type: 'checkbox', checked: !!ex.sidecar, 'data-export-field': 'sidecar', onChange: e => set({ sidecar: e.target.checked }) }), 'Sidecar .txt'),
@@ -1584,7 +1616,7 @@
     const set = patch => this.wsSet({ second: Object.assign({}, this._ws().second, patch) });
     const lbl = (t, el) => h('label', { style: { display: 'grid', gap: 3, fontSize: 12, color: '#cbd5e1' } }, t, el);
     const sel = (key, t, opts) => lbl(t, h('select', { value: sp[key] || '', style: css.input, 'data-second-field': key, 'aria-label': 'Second pass ' + t, onChange: e => set({ [key]: e.target.value }) }, ...opts.map(([v, l]) => h('option', { key: v, value: v }, l))));
-    const num = (key, t, attrs) => lbl(t, h('input', Object.assign({ type: 'number', value: sp[key] == null ? '' : String(sp[key]), placeholder: 'same as base', style: Object.assign({}, css.input, { width: 110 }), 'data-second-field': key, onChange: e => set({ [key]: e.target.value }) }, attrs)));
+    const num = (key, t, attrs) => lbl(t, h('input', numText(Object.assign({ value: sp[key] == null ? '' : String(sp[key]), placeholder: 'same as base', style: Object.assign({}, css.input, { width: 110 }), 'data-second-field': key, onChange: e => set({ [key]: e.target.value }) }, attrs))));
     const targets = (this.state.modelTargets || []).filter(t => (t.backend || 'sdcpp') !== 'mflux' && t.id !== 'flux-fp8' && !t.aliasOf && String(t.status).toLowerCase() !== 'broken');
     const conflict = !!ws.hires;
     return h('div', { 'data-second-pass': 'true', style: { borderTop: '1px solid rgba(148,163,184,.12)', marginTop: 8, paddingTop: 8, display: 'grid', gap: 6 } },

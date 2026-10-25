@@ -1799,7 +1799,7 @@ class Component extends DCLogic {
     const out = [];
     if (!String(p.prompt || '').trim()) out.push(['Prompt required', 'warn']);
     if (!Number.isFinite(p.steps) || p.steps < 1 || p.steps > 150) out.push(['Steps must be 1-150', 'error']);
-    // An active acceleration recipe may require CFG below 1 (SDXL Lightning runs at CFG 0).
+    // An active acceleration recipe may require CFG below 1; the exact recipe value is the only exception.
     const loraRecipe = typeof this._activeCreateLoraRouteRecipe === 'function' ? this._activeCreateLoraRouteRecipe() : null;
     const minCfg = loraRecipe && Number.isFinite(Number(loraRecipe.cfg)) && Number(loraRecipe.cfg) < 1 && p.cfg_scale === Number(loraRecipe.cfg) ? Number(loraRecipe.cfg) : 1;
     if (!Number.isFinite(p.cfg_scale) || p.cfg_scale < minCfg || p.cfg_scale > 30) out.push(['CFG scale must be 1-30', 'error']);
@@ -2332,6 +2332,7 @@ class Component extends DCLogic {
 
   renderVals() {
     const s = this.state;
+    const numValue = (window.DexUI && window.DexUI.numValue) || (v => v);   // number-input value contract for text numeric fields
     const { version, screens, prompt, negPrompt, promptOpen, steps, cfg, seed, width, height,
             sampler, scheduler,
             jobStatus, progress, currentImageSrc, lastSeed, errorMsg,
@@ -2676,6 +2677,10 @@ class Component extends DCLogic {
     const activeAccelerator = isLoraActive && selectedLora.accelerator ? selectedLora : null;
     const targetLabel = ((typeof this._targetSpec === 'function' && this._targetSpec(this.state.target)) || {}).label || this.state.target;
 
+    // Fixed-width button label: every alternative occupies the same grid cell and only the current one is visible, so
+    // switching between them (idle / cancel) never changes the button's width or the row's wrapping.
+    const stableLabel = (shown, labels) => React.createElement('span', { 'aria-hidden': 'true', 'data-stable-label': 'true', style: { display: 'inline-grid', whiteSpace: 'nowrap' } },
+      ...labels.map((l, i) => React.createElement('span', { key: i, style: { gridArea: '1 / 1', visibility: i === shown ? 'visible' : 'hidden' } }, l)));
     const promptTools = React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4, width: '100%' } },
       // Top Controls Row
       React.createElement('div', { style: { display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap', position: 'relative' } },
@@ -2684,8 +2689,11 @@ class Component extends DCLogic {
           'data-enhance': 'true',
           disabled: !ollamaOnline,
           title: ollamaOnline ? ('Enhance prompt with ' + (ollamaModel || 'qwen3.8:27b-mlx')) : 'Ollama offline',
-          style: { border: '1px solid ' + (ollamaOnline ? '#a78bfa' : 'rgba(148,163,184,.18)'), background: ollamaOnline ? 'rgba(167,139,250,.12)' : 'transparent', color: ollamaOnline ? '#c4b5fd' : '#5a6678', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: ollamaOnline ? 'pointer' : 'not-allowed', opacity: ollamaOnline ? 1 : .6, fontFamily: "'DM Sans',sans-serif", fontWeight: 700 }
-        }, enhancingPrompt ? '✕ Cancel enhance' : ('✨ Enhance (' + (ollamaModel ? ollamaModel.replace(':latest', '') : 'Ollama') + ')')),
+          // The model name lives in the accessible name and tooltip, never the visible label: a label that grows when the
+          // Ollama status arrives re-wraps this row at phone width and shifts everything below it.
+          'aria-label': enhancingPrompt ? 'Cancel enhance' : ('Enhance (' + (ollamaModel ? ollamaModel.replace(':latest', '') : 'Ollama') + ')'),
+          style: { border: '1px solid ' + (ollamaOnline ? '#a78bfa' : 'rgba(148,163,184,.18)'), background: ollamaOnline ? 'rgba(167,139,250,.12)' : 'transparent', color: ollamaOnline ? '#c4b5fd' : '#5a6678', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: ollamaOnline ? 'pointer' : 'not-allowed', opacity: ollamaOnline ? 1 : .6, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, whiteSpace: 'nowrap', flex: '0 0 auto' }
+        }, stableLabel(enhancingPrompt ? 1 : 0, ['✨ Enhance', '✕ Cancel enhance'])),
 
         React.createElement('button', {
           onClick: () => this.setState(s => ({ showWildcards: !s.showWildcards, wildcardFilter: '' })),
@@ -2822,8 +2830,8 @@ class Component extends DCLogic {
           selectedLora ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 7, marginTop: 4, borderTop: '1px solid rgba(148,163,184,.15)', paddingTop: 8 } },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
               React.createElement('span', { style: { fontSize: 11, color: '#94a3b8', fontWeight: 600 } }, 'Strength · ' + loraStrength.toFixed(2)),
-              React.createElement('input', {
-                type: 'number',
+              React.createElement('input', ((window.DexUI && window.DexUI.numText) || (({ decimal, ...x }) => Object.assign({ type: 'number' }, x)))({   // text input: keeps its selection across re-renders (see DexUI.numText)
+                decimal: true,
                 'data-dex-field': 'lora-strength-number',
                 'aria-label': 'Exact LoRA strength',
                 min: selectedLora.min_weight, max: selectedLora.max_weight, step: selectedLora.step,
@@ -2831,7 +2839,7 @@ class Component extends DCLogic {
                 disabled: !isLoraActive,
                 onInput: e => this.setCreateLoraStrength(e.target.value, selectedLora.min_weight, selectedLora.max_weight),
                 style: { width: 64, border: '1px solid rgba(148,163,184,.2)', background: 'rgba(255,255,255,.05)', color: '#f1f5f9', borderRadius: 4, padding: '3px 6px', fontSize: 11, textAlign: 'right' }
-              })
+              }))
             ),
             React.createElement('input', {
               type: 'range',
@@ -2997,8 +3005,9 @@ class Component extends DCLogic {
           'data-enhance-negative': 'true',
           disabled: !ollamaOnline,
           title: ollamaOnline ? ('Enhance negative prompt with ' + (ollamaModel || 'Ollama')) : 'Ollama offline',
-          style: { border: '1px solid ' + (ollamaOnline ? '#a78bfa' : 'rgba(148,163,184,.18)'), background: ollamaOnline ? 'rgba(167,139,250,.12)' : 'transparent', color: ollamaOnline ? '#c4b5fd' : '#5a6678', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: ollamaOnline ? 'pointer' : 'not-allowed', opacity: ollamaOnline ? 1 : .6, fontFamily: "'DM Sans',sans-serif", fontWeight: 700 }
-        }, this.state.enhancingNegPrompt ? '✕ Cancel enhance' : ('✨ Enhance Negative' + (ollamaModel ? ' (' + ollamaModel.replace(':latest', '') + ')' : ''))),
+          'aria-label': this.state.enhancingNegPrompt ? 'Cancel enhance' : ('Enhance Negative' + (ollamaModel ? ' (' + ollamaModel.replace(':latest', '') + ')' : '')),
+          style: { border: '1px solid ' + (ollamaOnline ? '#a78bfa' : 'rgba(148,163,184,.18)'), background: ollamaOnline ? 'rgba(167,139,250,.12)' : 'transparent', color: ollamaOnline ? '#c4b5fd' : '#5a6678', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: ollamaOnline ? 'pointer' : 'not-allowed', opacity: ollamaOnline ? 1 : .6, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, whiteSpace: 'nowrap', flex: '0 0 auto' }
+        }, stableLabel(this.state.enhancingNegPrompt ? 1 : 0, ['✨ Enhance Negative', '✕ Cancel enhance'])),
 
         React.createElement('button', {
           type: 'button',
@@ -3530,11 +3539,11 @@ class Component extends DCLogic {
       negPromptDisabled: !controls.negativePrompt ? 'disabled' : null,
       negPromptOpacity: !controls.negativePrompt ? '0.55' : '1',
       negativePromptTools,
-      onStepsChange: e=>this.setCreateLoraField('steps', e.target.value),
-      onCfgChange: e=>this.setCreateLoraField('cfg', e.target.value),
+      onStepsChange: e=>this.setCreateLoraField('steps', numValue(e.target.value)),   // template numeric fields are text inputs (DexUI.numText contract)
+      onCfgChange: e=>this.setCreateLoraField('cfg', numValue(e.target.value)),
       onSeedChange: e=>this.setState({seed:e.target.value}),
-      onWidthChange: e=>this.setState({width:e.target.value}),
-      onHeightChange: e=>this.setState({height:e.target.value}),
+      onWidthChange: e=>this.setState({width:numValue(e.target.value)}),
+      onHeightChange: e=>this.setState({height:numValue(e.target.value)}),
       sampler, scheduler,
       onSamplerChange: e=>this.setCreateLoraField('sampler', e.target.value),
       onSchedulerChange: e=>this.setCreateLoraField('scheduler', e.target.value),

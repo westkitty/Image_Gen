@@ -9,7 +9,8 @@ const { FAMILIES, resolveTargetFamily } = require('./extra-networks');
 const ADAPTERS = Object.freeze({
   'sdxl_lightning_4step_lora': {
     targets: ['sdxl-base'], family: 'sdxl',
-    recipe: { steps: 4, cfg_scale: 0, sampler: 'euler', scheduler: 'sgm_uniform' },
+    // sd.cpp: CFG 1 = prompt-conditioned without guidance (the distilled convention; CFG 0 would be unconditioned and ignore the prompt).
+    recipe: { steps: 4, cfg_scale: 1, sampler: 'euler', scheduler: 'sgm_uniform' },
     production: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' },
     fallbacks: [{ backend_override: 'cpu', lora_apply_mode: 'immediately' }],
   },

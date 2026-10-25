@@ -51,3 +51,21 @@ Validation: `npm run check` PASS; full `npm test` 1005 passed / 17 skipped / 0 f
 ## Remaining boundaries
 
 Graphical logout/login, reboot persistence, power-loss recovery, all other model variants and a new live high-resolution render were not tested. Image quality remains subject to human review; the native Lightning result is not promoted to quality acceptance. Legacy Edit/ESRGAN routes remain separate and may still be blocked by the original SSH removable-volume denial; the doctor preserves those failures and adds a separate worker result. Overall doctor remains FAIL for separate legacy SSH/media checks, while the new MFLUX/SDCPP worker rows are READY. Historical missing images/publication gaps remain untouched. No existing image was deleted. This pass establishes the requested six-adapter controlled-generation bridge, cancellation, recovery and tested user-session restart behavior.
+
+## Interpreter-loss watchdog (2026-10-25)
+
+Incident (2026-10-24): `brew cleanup python@3.15` deleted the Cellar interpreter the running worker was executing from. macOS TCC could no longer attribute the process, and every `/Volumes/wc2tb` read failed with EPERM until the worker restarted on the current interpreter.
+
+`engine-worker.py serve` now runs a daemon watchdog every 20 s. It checks that `sys.executable`, its startup real path and the worker script still exist, and that the executable still resolves to the same real path. On failure it waits until no job is active, closes admission and the socket through the normal shutdown path, logs `engine-worker: interpreter <path> was removed; restarting to adopt the current interpreter` to `host-error.log`, and exits 0. launchd KeepAlive (ThrottleInterval 10 s) then relaunches the unchanged signed host, which starts the current interpreter. `health` also reports `interpreter_ok` and `interpreter_path`. The host app is not rebuilt or re-signed.
+
+Manual recovery while idle: `launchctl kickstart -k gui/$(id -u)/local.dexdiffusion.engine-worker`. Optional extra protection: `brew pin python@3.15`, which keeps routine upgrades and cleanups away from the worker's interpreter.
+
+### Recovery handoff verification (2026-10-25)
+
+Read-only source and live configuration inspection confirmed the watchdog is present in the worker and is covered by the 23-test worker suite, including an owned `serve()` subprocess that observes interpreter removal, clean socket shutdown, and exit status 0. No live interpreter was removed and no production restart was issued. At 19:00 EDT, `ssh westcat` showed `/opt/homebrew/bin/python3` resolving to Python 3.15.1, the LaunchAgent running with eight launches and last exit code 0, and the host plus worker processes active. This confirms current runtime availability, not a fresh watchdog-triggered recovery. The signed host still invokes the stable `/opt/homebrew/bin/python3` path; no native host rebuild was performed.
+
+### Edit preset and release-reserve closeout (2026-10-25)
+
+The intermittent preset Steps assertion was a browser-harness focus mismatch. Playwright `selectOption()` did not focus the preset select, leaving Steps focused so the application's intentional pending-text preservation could reinstate stale `9` text after preset state returned to `23`. The browser test now focuses the select before choosing the saved preset and retains the original state-plus-visible-value assertion and timeout. The exact filtered two-mode scenario passed 1/1; no application source change was required. Full Edit coverage remains unrun after this correction.
+
+The full release gate remains blocked by reserve volatility. Available space ranged from 8,301,492 KiB before a filtered run to 5,947,832–5,954,652 KiB during a later attempt, then recovered; current availability is 6,936,028 KiB against the unchanged 6,291,456 KiB reserve. Swap use varied materially, and the exact system-level space owner is unknown. No unrelated storage or process was altered. The full Edit suite and unmodified release preflight were not admitted, so this is focused regression evidence rather than release certification. A local source checkpoint is preserved; nothing was pushed.
