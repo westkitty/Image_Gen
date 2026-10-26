@@ -72,7 +72,7 @@ INIT_IMG_ABS="$(cd "$(dirname "$ARG_INIT_IMG")" 2>/dev/null && pwd)/$(basename "
   || fail "init-img" "Cannot resolve init image path: $ARG_INIT_IMG"
 case "$INIT_IMG_ABS" in
   # run dirs, the canonical image store, or temporary prepared canvases (outpaint)
-  "$SDCPP_RUNS_DIR/"*|"$DEX_IMAGES_ROOT/"*|"$(dirname "$SDCPP_RUNS_DIR")/mask-uploads/"*) ;;
+  "$SDCPP_RUNS_DIR/"*|"$DEX_IMAGES_ROOT/"*|"$DEX_MASK_UPLOADS_ROOT/"*) ;;
   *) fail "init-img" "Init image must be within $SDCPP_RUNS_DIR, $DEX_IMAGES_ROOT or mask-uploads/ (got: $INIT_IMG_ABS)" ;;
 esac
 [ -f "$INIT_IMG_ABS" ] || fail "init-img" "Init image file not found: $INIT_IMG_ABS"
@@ -83,7 +83,7 @@ WORKFLOW_DIR="$(dirname "$SDCPP_RUNS_DIR")"
 MASK_ABS="$(cd "$(dirname "$ARG_MASK")" 2>/dev/null && pwd)/$(basename "$ARG_MASK")" \
   || fail "mask" "Cannot resolve mask path: $ARG_MASK"
 case "$MASK_ABS" in
-  "$SDCPP_RUNS_DIR/"*|"$WORKFLOW_DIR/mask-uploads/"*) ;;
+  "$SDCPP_RUNS_DIR/"*|"$DEX_MASK_UPLOADS_ROOT/"*) ;;
   *) fail "mask" "Mask must be within $WORKFLOW_DIR/runs/ or $WORKFLOW_DIR/mask-uploads/ (got: $MASK_ABS)" ;;
 esac
 [ -f "$MASK_ABS" ] || fail "mask" "Mask file not found: $MASK_ABS"

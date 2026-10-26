@@ -54,6 +54,7 @@ const { createCancellationManager } = require('./cancellation');
 const { dramaCancelCapability, requestDramaStop } = require('./drama-cancel-policy');
 const { createLibraryIndex } = require('./library-index');
 const { reconcileInterruptedPublications, historicalMissingJournal } = require('./publication-recovery');
+const { resolveStoragePaths, assertDataRootMount, childStorageEnvironment } = require('./storage-paths');
 
 const app = express();
 if (TestIsolation.enabled()) app.use(TestIsolation.middleware);
@@ -61,13 +62,15 @@ const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
 const HOST = '127.0.0.1';
 const APP_VERSION = 'image-gen-console-2026-06-22-render-wrapper';
 
-const WORKFLOW_ROOT = process.env.DEX_WORKFLOW_ROOT ? path.resolve(process.env.DEX_WORKFLOW_ROOT) : path.resolve(__dirname, '../sdcpp-workflow');
-const RUNS_DIR = path.join(WORKFLOW_ROOT, 'runs');
-const imageStore = createImageStore({ root: process.env.DEX_IMAGES_ROOT_OVERRIDE || undefined, runsRoot: RUNS_DIR });
+const STORAGE_PATHS = resolveStoragePaths(process.env, path.resolve(__dirname, '../sdcpp-workflow'));
+assertDataRootMount(STORAGE_PATHS);
+const WORKFLOW_ROOT = STORAGE_PATHS.workflowRoot;
+const RUNS_DIR = STORAGE_PATHS.runsDir;
+const imageStore = createImageStore({ root: STORAGE_PATHS.imageRoot, runsRoot: RUNS_DIR });
 imageStore.ensureRoot();
 const CONFIG_DIR = path.join(WORKFLOW_ROOT, 'config');
-// DEX_STATE_DIR: test-only override so browser-suite servers never read or rewrite the live console's jobs, queues or media records.
-const STATE_DIR = process.env.DEX_STATE_DIR ? path.resolve(process.env.DEX_STATE_DIR) : path.join(WORKFLOW_ROOT, 'state');
+// DEX_STATE_DIR remains an explicit override; DEX_DATA_ROOT supplies a durable, relocatable default.
+const STATE_DIR = STORAGE_PATHS.stateDir;
 const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
 // Lineage + Keepers, keyed by canonical image id (metadata only, never prompts).
 const imageMeta = W.createImageMetaStore(path.join(STATE_DIR, 'image-meta.json'));
@@ -81,10 +84,9 @@ try {
 } catch (err) { publicationRecoveryState.blocked = true; publicationRecoveryState.journal.unresolved.push({ reason: err.message }); console.error('Canonical publication recovery failed:', err.message); }
 // Browser/live-suite media must stay inside its owned state tree. Production keeps
 // the established canonical roots unless the isolated-suite override is present.
-const MEDIA_ROOT_OVERRIDE = process.env.DEX_MEDIA_ROOT_OVERRIDE ? path.resolve(process.env.DEX_MEDIA_ROOT_OVERRIDE) : null;
-const mediaRoots = MEDIA_ROOT_OVERRIDE ? Object.fromEntries(Object.keys(M.CANONICAL_ROOTS).map(k => [k, path.join(MEDIA_ROOT_OVERRIDE, k)])) : undefined;
+const mediaRoots = STORAGE_PATHS.mediaRoots;
 const mediaStore = M.createMediaStore({ roots: mediaRoots, registryFile: path.join(STATE_DIR, 'media-artifacts.json') });
-try { mediaStore.ensureRoots(); } catch (_) {}
+try { mediaStore.ensureRoots(); } catch (error) { if (STORAGE_PATHS.dataRoot) throw error; }
 const worldStore = createWorldStore({ root: path.join(STATE_DIR, 'world-projects') });
 const staging = M.createStaging({ root: path.join(STATE_DIR, 'staging') });
 setInterval(() => { try { staging.sweep(); } catch (_) {} }, 30 * 60 * 1000).unref();
@@ -128,9 +130,11 @@ let img2imgSupported = true; // proven: sdcpp-img2img.sh proof run 20260623-0016
 let realEsrganSupported = true; // proven: endpoint proof run 20260623-005030-esrgan-upscale, 512→2048, 60.82s, sha256 f28e339f…, 0 text chunks
 let inpaintSupported = true; // enabled: sdcpp-inpaint.sh implemented 2026-06-23
 
-const MASK_UPLOADS_DIR = path.join(WORKFLOW_ROOT, 'mask-uploads');
+const MASK_UPLOADS_DIR = STORAGE_PATHS.maskUploadsDir;
+const STORAGE_ENV = childStorageEnvironment(STORAGE_PATHS);
 const FULL_MASK_COVERAGE = 0.98; // painted fraction treated as "entire image masked"
 const LARGE_REQUEST_IMAGES = 12; // preflight asks for explicit confirmation above this
+if (STORAGE_PATHS.dataRoot || process.env.DEX_SCRATCH_ROOT) fs.mkdirSync(STORAGE_PATHS.scratchRoot, { recursive: true });
 if (!fs.existsSync(MASK_UPLOADS_DIR)) fs.mkdirSync(MASK_UPLOADS_DIR, { recursive: true });
 
 app.use(express.json({ limit: '5mb' }));
@@ -1365,7 +1369,7 @@ function runIdsOf(job) {
 }
 function remoteCancelRun(runId) {
   return new Promise(resolve => {
-    execFile(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-remote-cancel.sh'), ['--run-id', runId], { cwd: WORKFLOW_ROOT, timeout: 45000, encoding: 'utf8' }, (err, stdout) => {
+    execFile(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-remote-cancel.sh'), ['--run-id', runId], { cwd: WORKFLOW_ROOT, env: { ...process.env, ...STORAGE_ENV }, timeout: 45000, encoding: 'utf8' }, (err, stdout) => {
       const m = /REMOTE_CANCEL: found=(\d+) killed=(\d+) left=(\d+)/.exec(String(stdout || ''));
       if (!m) return resolve({ runId, ok: false, error: err ? String(err.message).split('\n')[0].slice(0, 160) : 'no result from the remote cancel' });
       const r = { runId, found: +m[1], killed: +m[2], left: +m[3] };
@@ -1391,7 +1395,7 @@ setInterval(() => { for (const r of remoteWorkers.list()) if (r.state === 'runni
 
 function remoteCheckRun(runId) {
   return new Promise((resolve, reject) => {
-    execFile(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-remote-cancel.sh'), ['--check-only', '--run-id', runId], { cwd: WORKFLOW_ROOT, timeout: 45000, encoding: 'utf8' }, (err, stdout) => {
+    execFile(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-remote-cancel.sh'), ['--check-only', '--run-id', runId], { cwd: WORKFLOW_ROOT, env: { ...process.env, ...STORAGE_ENV }, timeout: 45000, encoding: 'utf8' }, (err, stdout) => {
       const m = /REMOTE_CHECK: run=\S+ alive=(\d+)/.exec(String(stdout || ''));
       if (!m) return reject(new Error(err ? String(err.message).split('\n')[0].slice(0, 160) : 'no liveness result'));
       resolve({ alive: +m[1] });
@@ -1401,7 +1405,7 @@ function remoteCheckRun(runId) {
 function remoteStopRun(runId) { return remoteCancelRun(runId).then(r => { if (r.left === undefined) throw new Error(r.error || 'no stop result'); return r; }); }
 function remoteScanOwned() {
   return new Promise((resolve, reject) => {
-    execFile(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-remote-cancel.sh'), ['--scan-owned'], { cwd: WORKFLOW_ROOT, timeout: 45000, encoding: 'utf8' }, (err, stdout) => {
+    execFile(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-remote-cancel.sh'), ['--scan-owned'], { cwd: WORKFLOW_ROOT, env: { ...process.env, ...STORAGE_ENV }, timeout: 45000, encoding: 'utf8' }, (err, stdout) => {
       const out = String(stdout || '');
       if (!/REMOTE_SCAN: done/.test(out)) return reject(new Error(err ? String(err.message).split('\n')[0].slice(0, 160) : 'no scan result'));
       const sd = /REMOTE_SDSERVER: running=(\d+)/.exec(out);
@@ -1505,7 +1509,7 @@ function runActionNow(jobId, scriptPath, args, savePrompts = false) {
   job.status = 'running';
   job.startedRunningAt = Date.now();
   if (jobStore.get(jobId) && jobStore.get(jobId).status === 'QUEUED') jobStore.transition(jobId, 'RUNNING');
-  const env = { ...process.env, SDCPP_REDACT_PROMPTS: savePrompts ? '0' : '1', DEXDIFFUSION_JOB_ID: jobId };
+  const env = { ...process.env, ...STORAGE_ENV, SDCPP_REDACT_PROMPTS: savePrompts ? '0' : '1', DEXDIFFUSION_JOB_ID: jobId };
   const child = spawn(scriptPath, args, { cwd: WORKFLOW_ROOT, shell: false, env, detached: true });
   job.childPid = child.pid;
   job.childClosed = new Promise(resolve => child.once('close', resolve));
@@ -1614,7 +1618,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
   job.status = 'running';
   if (jobStore.get(jobId) && jobStore.get(jobId).status === 'QUEUED') jobStore.transition(jobId, 'RUNNING');
   job.results = job.results || [];
-  const env = { ...process.env, SDCPP_REDACT_PROMPTS: params.save_prompts ? '0' : '1', DEXDIFFUSION_JOB_ID: jobId };
+  const env = { ...process.env, ...STORAGE_ENV, SDCPP_REDACT_PROMPTS: params.save_prompts ? '0' : '1', DEXDIFFUSION_JOB_ID: jobId };
   const sensitives = jobSensitives[jobId] || [];
   const native = opts.native !== undefined ? opts.native : nativeBatchEligible(spec, quantity, process.env, params.fast_batch === true);
   const seeds = opts.seeds || W.planSeeds(params.seed, quantity, { consecutive: native });
@@ -2843,7 +2847,7 @@ app.post('/api/actions/verify', (req, res) => {
   res.json({ job_id: jobId, status: jobs[jobId].status });
 });
 function execWorkflow(file, args = [], timeout = 30000) {
-  return new Promise((resolve, reject) => execFile(file, args, { cwd: WORKFLOW_ROOT, timeout, encoding: 'utf8' },
+  return new Promise((resolve, reject) => execFile(file, args, { cwd: WORKFLOW_ROOT, env: { ...process.env, ...STORAGE_ENV }, timeout, encoding: 'utf8' },
     (error, stdout, stderr) => error ? reject(Object.assign(error, { stdout, stderr })) : resolve({ stdout, stderr })));
 }
 

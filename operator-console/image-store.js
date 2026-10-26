@@ -62,7 +62,7 @@ function fsyncDirectory(dir) {
   try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 }
 
-function createImageStore({ root = CANONICAL_IMAGE_ROOT, runsRoot = path.resolve(__dirname, '../sdcpp-workflow/runs'), fault } = {}) {
+function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANONICAL_IMAGE_ROOT), runsRoot = path.resolve(__dirname, '../sdcpp-workflow/runs'), fault } = {}) {
   const rootDir = path.resolve(root);
   const runsRootDir = path.resolve(runsRoot);
   const inventoryCache = new Map();

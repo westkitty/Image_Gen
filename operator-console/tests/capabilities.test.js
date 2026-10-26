@@ -75,7 +75,7 @@ test('SDCPP edit/upscale scripts accept canonical-store inputs but nothing arbit
     const src = fs.readFileSync(path.join(BIN, f), 'utf8');
     // img2img/inpaint additionally accept the temporary mask-uploads area (prepared sources, outpaint canvases)
     const allowed = f !== 'sdcpp-esrgan-upscale.sh'
-      ? /"\$SDCPP_RUNS_DIR\/"\*\|"\$DEX_IMAGES_ROOT\/"\*\|"\$\(dirname "\$SDCPP_RUNS_DIR"\)\/mask-uploads\/"\*\) ;;/
+      ? /"\$SDCPP_RUNS_DIR\/"\*\|"\$DEX_IMAGES_ROOT\/"\*\|"\$DEX_MASK_UPLOADS_ROOT\/"\*\) ;;/
       : /"\$SDCPP_RUNS_DIR\/"\*\|"\$DEX_IMAGES_ROOT\/"\*\) ;;/;
     assert.match(src, allowed, f);
     assert.match(src, /\*\) fail "init-img"/, f);

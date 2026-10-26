@@ -132,11 +132,12 @@ load_config() {
   . "$env_file"
 
   # Resolve local dirs relative to project root unless absolute.
-  SDCPP_RUNS_DIR="$(_resolve_local_dir "${RUNS_DIR:-../runs}")"
-  SDCPP_LOGS_DIR="$(_resolve_local_dir "${LOGS_DIR:-../logs}")"
-  SDCPP_STATE_DIR="$(_resolve_local_dir "${STATE_DIR:-../state}")"
+  SDCPP_RUNS_DIR="${DEX_RUNS_DIR:-$(_resolve_local_dir "${RUNS_DIR:-../runs}")}"
+  SDCPP_LOGS_DIR="${DEX_LOGS_DIR:-$(_resolve_local_dir "${LOGS_DIR:-../logs}")}"
+  SDCPP_STATE_DIR="${DEX_STATE_DIR:-$(_resolve_local_dir "${STATE_DIR:-../state}")}"
+  DEX_MASK_UPLOADS_ROOT="${DEX_MASK_UPLOADS_DIR:-$(dirname "$SDCPP_RUNS_DIR")/mask-uploads}"
   mkdir -p "$SDCPP_RUNS_DIR" "$SDCPP_LOGS_DIR" "$SDCPP_STATE_DIR"
-  export SDCPP_RUNS_DIR SDCPP_LOGS_DIR SDCPP_STATE_DIR
+  export SDCPP_RUNS_DIR SDCPP_LOGS_DIR SDCPP_STATE_DIR DEX_MASK_UPLOADS_ROOT
 }
 
 _resolve_local_dir() {
@@ -384,8 +385,10 @@ ssh_remote() {
 # ---- canonical image authority ----------------------------------------------
 # Every final DexDiffusion image lives once under DEX_IMAGES_ROOT on the MacBook.
 # Run dirs keep metadata; canonical-images.json maps run-relative names to it.
-# DEX_IMAGES_ROOT_OVERRIDE exists for tests only.
+# DEX_IMAGES_ROOT_OVERRIDE preserves the legacy path when unset and allows the
+# server to bind workflow publication to its configured canonical data root.
 DEX_IMAGES_ROOT="${DEX_IMAGES_ROOT_OVERRIDE:-/Users/andrew/images_made}"
+export DEX_IMAGES_ROOT
 
 resolve_canonical_run_image() {
   # resolve_canonical_run_image <run-dir> <run-relative-image>  -> canonical path
