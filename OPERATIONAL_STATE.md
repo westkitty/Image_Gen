@@ -767,3 +767,48 @@ The saving is the removed handshakes (microbenchmark, 6 reps: old 3 calls 3.1–
     - Result: **PASS RELEASE PREFLIGHT (exit 0)**.
 - **Untracked Paths & Stash Preservation**:
   - All 7 untracked paths (`ARENA_...`, `DESIGN.md`, `PRODUCT.md`, and 4 `output/` directories) 100% preserved intact and excluded from Git commits.
+
+## DexDiffusion Big Mac persistent backend, thin MacBook client, and live FLUX.2 proof — 2026-10-26
+
+- **Release Status**: **PRODUCTION BACKEND DEPLOYED, THIN CLIENT CONNECTED, LIVE FLUX.2 KLEIN 4B PROVEN ON WC2TB**.
+- **Repository & Branch**: `/Users/andrew/Image_Gen` (MacBook) and `/Users/bigmac/Image_Gen` (Big Mac), branch `main`.
+- **Target Runtime Architecture**:
+  - **Big Mac Host (`bigmac`)**:
+    - Runs the persistent DexDiffusion application backend (`server.js`) listening on `127.0.0.1:31337`.
+    - Managed via LaunchAgent `local.dexdiffusion.server` (`/Users/bigmac/Library/LaunchAgents/local.dexdiffusion.server.plist`, KeepAlive, RunAtLoad, ThrottleInterval 10s).
+    - Fail-closed storage runner: `scripts/run-backend-service.sh` strictly validates `/Volumes/wc2tb` is an active volume mount and `/Volumes/wc2tb/DexDiffusion` exists before launching.
+    - Protected primary model FLUX.2 Klein 4B 4-bit MFLUX internal SSD cache `/Users/bigmac/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit/` preserved 100% intact.
+    - Zero SSH overhead on Big Mac: `local-engine-client.js` detects local socket `~/.dexdiffusion-engine/engine.sock` and communicates directly via Python IPC.
+    - Big Mac local external heavy-load probe: `server.js` executes `/bin/sh -c 'ollama ps ...'` directly when running on Big Mac host without recursive loopback SSH.
+    - Publication recovery migration adaptation: `image-store.js` and `publication-recovery.js` dynamically resolve legacy `run_dir` absolute paths to matching basenames within `runsRootDir`, safely clearing historical uncommitted migration journals while strictly protecting active publications.
+  - **MacBook Client (`MacBook-Air.local`)**:
+    - Everyday application: `/Applications/DexDiffusion.app` (native WebKit wrapper, bundle `local.image-gen.wrapper`, URL `http://127.0.0.1:31337/dexdiffusion/`).
+    - Thin-client connectivity: `bin/dexdiffusion` manages a lightweight, resilient SSH local port forward tunnel (`ssh -f -N -o ExitOnForwardFailure=yes -L 31337:127.0.0.1:31337 westcat`), removing the requirement for any local Node server on MacBook.
+    - Health & Status integration: `bin/dexdiffusion start`, `stop`, `status`, and `doctor` transparently probe and report Big Mac remote backend status, tunnel state, storage roots, and derived capabilities.
+    - Native app rebuild: rebuilt `/Applications/DexDiffusion.app` using `scripts/install-macos-app.sh`. Confirmed `DexDiffusionSourceHead` matches repository HEAD, source fingerprint matches Swift code, and the app launches and connects directly to Big Mac backend.
+    - Historical MacBook canonical images under `/Users/andrew/images_made` preserved intact with zero modifications.
+- **Live End-to-End FLUX.2 Klein 4B Generation Proof**:
+  - Request submitted from MacBook thin client to `POST http://127.0.0.1:31337/api/actions/generate-controlled`:
+    - Target: `flux2-klein-4b` (MFLUX / MLX / Apple Silicon Metal on Big Mac)
+    - Prompt: `"A small origami bird on wooden desk, morning light"`, seed: `882201`, width: 512, height: 512, steps: 4, `save_prompts: true`.
+  - Execution:
+    - Job ID: `39d2d639-89c7-455e-aec8-74f659ac3b68`
+    - Run ID: `20261026-210156-controlled-flux2-klein-4b-dcd5156f`
+    - Inference time: `18.633 seconds` on Big Mac M4 Metal.
+  - Durable Output Verification:
+    - Canonical PNG written strictly to `/Volumes/wc2tb/DexDiffusion/images/20261026-210156-controlled-flux2-klein-4b-dcd5156f-s882201-controlled-flux2-klein-4b.png`.
+    - File details: 279,357 bytes (273 KiB), 512x512, 8-bit/color RGB, non-interlaced PNG.
+    - SHA-256 digest: `241b0e5cd59fc47668b0b5072397eb5584485499aec786b12392f38db0e1245f`.
+    - Served over HTTP: `GET http://127.0.0.1:31337/api/images/20261026-210156-controlled-flux2-klein-4b-dcd5156f-s882201-controlled-flux2-klein-4b.png` returned `HTTP/1.1 200 OK` with `Content-Type: image/png` and `Content-Length: 279357`.
+    - Library integration: `GET /api/library/images` immediately returned newly generated image as the top item with full provenance, settings metadata, and thumbnail route.
+    - Local isolation verified: zero bytes and zero files written to MacBook `/Users/andrew/images_made`.
+- **Validation & Regression Results**:
+  - `npm run check`: **PASS**.
+  - `git diff --check`: **PASS** (zero trailing whitespace, clean formatting).
+  - Unit test suite: **1,246 / 1,246 PASS (0 failed, 0 cancelled)**.
+  - `bin/dexdiffusion status`: **PASS** (truthfully reports Big Mac backend, remote PID, tunnel state, external storage root, and proven capabilities).
+  - `bin/dexdiffusion doctor`: **PASS / Overall: WARN** (only expected Tailscale Serve and optional dormant LTX Video warnings; all 31 core system checks PASS).
+- **Protection Boundaries & Integrity**:
+  - FLUX.2 Klein 4B 4-bit internal SSD model cache at `/Users/bigmac/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit/` untouched.
+  - All 7 untracked repository paths preserved.
+  - No destructive Git commands, no force pushes, no hard resets.

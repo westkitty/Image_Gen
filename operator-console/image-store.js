@@ -271,8 +271,12 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
       let journal;
       try { journal = JSON.parse(fs.readFileSync(journalPath, 'utf8')); }
       catch (_) { result.unresolved.push({ journal: name, reason: 'invalid-journal' }); continue; }
-      const runDir = path.resolve(String(journal.run_dir || ''));
-      const rel = path.relative(runsRootDir, runDir);
+      let runDir = path.resolve(String(journal.run_dir || ''));
+      let rel = path.relative(runsRootDir, runDir);
+      if ((!rel || rel.startsWith('..') || path.isAbsolute(rel)) && fs.existsSync(path.join(runsRootDir, path.basename(runDir)))) {
+        runDir = path.join(runsRootDir, path.basename(runDir));
+        rel = path.relative(runsRootDir, runDir);
+      }
       if (journal.schema !== 'dexdiffusion.image_publication.pending.v1' || !rel || rel.startsWith('..') || path.isAbsolute(rel)) {
         result.unresolved.push({ journal: name, reason: 'untrusted-run-owner' }); continue;
       }

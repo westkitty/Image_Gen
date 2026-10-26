@@ -6,6 +6,7 @@ const express = require('express');
 const { spawn, execFile, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('node:os');
 const crypto = require('crypto');
 const localEngineRouting = require('./local-engine-routing');
 const controlledScriptFor = localEngineRouting.controlledScript;
@@ -1137,9 +1138,12 @@ for (const item of publicationRecoveryState.journal.unresolved) {
 const arbiter = M.createResourceArbiter({
   quarantineCheck: () => publicationRecoveryState.blocked ? 'canonical publication recovery unresolved' : remoteWorkers.quarantineReason(),
   externalProbe: () => new Promise(resolve => {
-    require('child_process').execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=6', SSH_TARGET_NAME, 'ollama ps 2>/dev/null; rc=$?; printf "\nPROBE_DONE:%s\n" "$rc"'],
-      { timeout: 12000, encoding: 'utf8' }, (err, out) => resolve(!err && /PROBE_DONE:0(?:\r?\n|$)/.test(String(out || ''))
-        ? M.parseOllamaPs(String(out).split('PROBE_DONE:0')[0]) : { occupied: null, detail: 'Big Mac Ollama probe did not confirm success' }));
+    const isLocal = SSH_TARGET_NAME === 'local' || (SSH_TARGET_NAME === 'westcat' && os.hostname() === 'bigmac');
+    const runner = isLocal
+      ? cb => require('child_process').execFile('/bin/sh', ['-c', 'ollama ps 2>/dev/null; rc=$?; printf "\\nPROBE_DONE:%s\\n" "$rc"'], { timeout: 12000, encoding: 'utf8' }, cb)
+      : cb => require('child_process').execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=6', SSH_TARGET_NAME, 'ollama ps 2>/dev/null; rc=$?; printf "\\nPROBE_DONE:%s\\n" "$rc"'], { timeout: 12000, encoding: 'utf8' }, cb);
+    runner((err, out) => resolve(!err && /PROBE_DONE:0(?:\r?\n|$)/.test(String(out || ''))
+      ? M.parseOllamaPs(String(out).split('PROBE_DONE:0')[0]) : { occupied: null, detail: 'Big Mac Ollama probe did not confirm success' }));
   }),
 });
 arbiter.refreshExternal().catch(() => {});

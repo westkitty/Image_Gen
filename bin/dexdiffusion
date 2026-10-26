@@ -71,15 +71,29 @@ port_pid() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1; }
 version_json() { curl -fsS --max-time 2 "$BASE/api/version" 2>/dev/null; }
 json_field() { python3 -c 'import json,sys; d=json.load(sys.stdin); v=d.get(sys.argv[1]); print("" if v is None else v)' "$1" 2>/dev/null; }
 
-# Prints the pid if the port owner is this project's console, else nothing.
+# Prints the pid if the port owner is this project's console or its Big Mac connection tunnel.
 owned_pid() {
-  local pid v cwd vpid
+  local pid v cwd vpid name
   pid="${1-$(port_pid)}"; [ -n "$pid" ] || return 1   # optional $1: an already-probed listener pid (status passes its bounded probe)
   v="$(version_json)" || return 1
+  name="$(printf '%s' "$v" | json_field name)"
+  [ "$name" = "Image_Gen Operator Console" ] || return 1
   cwd="$(printf '%s' "$v" | json_field cwd)"
   vpid="$(printf '%s' "$v" | json_field pid)"
-  [ "$cwd" = "$CONSOLE_DIR" ] && [ "$vpid" = "$pid" ] || return 1
-  printf '%s\n' "$pid"
+  if [ "$cwd" = "$CONSOLE_DIR" ] && [ "$vpid" = "$pid" ]; then
+    printf '%s\n' "$pid"
+    return 0
+  fi
+  local cmd; cmd="$(ps -o command= -p "$pid" 2>/dev/null || true)"
+  if [[ "$cmd" == *"ssh"* && ( "$cmd" == *"$PORT:127.0.0.1:31337"* || "$cmd" == *"$PORT:localhost:31337"* ) ]]; then
+    printf '%s\n' "$pid"
+    return 0
+  fi
+  if [[ "$cwd" = *"/operator-console" ]]; then
+    printf '%s\n' "$pid"
+    return 0
+  fi
+  return 1
 }
 
 healthy() { curl -fsS --max-time 3 -o /dev/null "$BASE/api/capabilities" 2>/dev/null; }
@@ -103,34 +117,54 @@ sys.exit(1)' 2>/dev/null
 
 cmd_start() {
   if pid="$(owned_pid)" && healthy; then
-    echo "DexDiffusion already running (pid $pid)."
+    local v; v="$(version_json)"
+    local cwd; cwd="$(printf '%s' "$v" | json_field cwd)"
+    local vpid; vpid="$(printf '%s' "$v" | json_field pid)"
+    if [ "$cwd" = "$CONSOLE_DIR" ]; then
+      echo "DexDiffusion already running locally (pid $pid)."
+    else
+      echo "DexDiffusion already connected to Big Mac backend (tunnel pid $pid, remote pid $vpid)."
+    fi
   else
     if [ -n "$(port_pid)" ]; then
-      echo "ERROR: port $PORT is in use by a process that is not this checkout's operator-console." >&2
+      echo "ERROR: port $PORT is in use by a process that is not this checkout's operator-console or tunnel." >&2
       echo "       Owner: $(ps -o pid=,command= -p "$(port_pid)" 2>/dev/null | cut -c1-160)" >&2
       echo "       Not touching it. Stop it yourself, then rerun: bin/dexdiffusion start" >&2
       exit 1
     fi
-    command -v node >/dev/null 2>&1 || { echo "ERROR: node not found on PATH" >&2; exit 1; }
-    [ -d "$CONSOLE_DIR/node_modules" ] || { echo "ERROR: $CONSOLE_DIR/node_modules missing. Run once: (cd operator-console && npm install)" >&2; exit 1; }
-    echo "Starting DexDiffusion (log: $LOG)..."
-    # A double fork plus a new session keeps the console independent of the
-    # terminal, Dock wrapper, or automation process that invoked this helper.
-    # Plain `nohup ... &` still shares the caller's process group and can be
-    # reaped when that caller exits even after the health check succeeds.
-    python3 "$DETACH_HELPER" "$CONSOLE_DIR" "$LOG" node server.js
+    if [ "$(hostname -s)" = "bigmac" ]; then
+      command -v node >/dev/null 2>&1 || { echo "ERROR: node not found on PATH" >&2; exit 1; }
+      [ -d "$CONSOLE_DIR/node_modules" ] || { echo "ERROR: $CONSOLE_DIR/node_modules missing. Run once: (cd operator-console && npm install)" >&2; exit 1; }
+      echo "Starting DexDiffusion (log: $LOG)..."
+      python3 "$DETACH_HELPER" "$CONSOLE_DIR" "$LOG" node server.js
+    else
+      echo "Connecting to Big Mac DexDiffusion backend ($SSH_TARGET)..."
+      if ! bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" "curl -fsS http://127.0.0.1:31337/api/version" >/dev/null 2>&1; then
+        echo "Big Mac backend service not responding; attempting launchctl kickstart..." >&2
+        bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" "launchctl kickstart -k gui/503/local.dexdiffusion.server 2>/dev/null || true" || true
+        sleep 2
+      fi
+      ssh -f -N -o ExitOnForwardFailure=yes -L "$PORT:127.0.0.1:31337" "$SSH_TARGET"
+    fi
     for _ in $(seq 1 30); do
       healthy && break
       sleep 1
     done
     if ! healthy; then
       echo "ERROR: DexDiffusion did not become healthy within 30s. Last log lines:" >&2
-      tail -n 20 "$LOG" >&2 || true
+      if [ -f "$LOG" ]; then tail -n 20 "$LOG" >&2 || true; fi
       exit 1
     fi
     pid="$(owned_pid)"
     printf '%s\n' "$pid" >"$PIDFILE"
-    echo "DexDiffusion started (pid $pid)."
+    local v; v="$(version_json)"
+    local cwd; cwd="$(printf '%s' "$v" | json_field cwd)"
+    local vpid; vpid="$(printf '%s' "$v" | json_field pid)"
+    if [ "$cwd" = "$CONSOLE_DIR" ]; then
+      echo "DexDiffusion started locally (pid $pid)."
+    else
+      echo "DexDiffusion connected to Big Mac backend (tunnel pid $pid, remote pid $vpid)."
+    fi
   fi
   echo "  local:   $LOCAL_URL"
   local trc=0; t="$(tailnet_url)" || trc=$?
@@ -147,14 +181,19 @@ cmd_stop() {
   local pid
   if ! pid="$(owned_pid)"; then
     if [ -n "$(port_pid)" ]; then
-      echo "Port $PORT is held by a process that is not this checkout's operator-console; not stopping it." >&2
+      echo "Port $PORT is held by a process that is not this checkout's operator-console or tunnel; not stopping it." >&2
       exit 1
     fi
     echo "DexDiffusion is not running."
     rm -f "$PIDFILE"
     return 0
   fi
-  echo "Stopping DexDiffusion (pid $pid)..."
+  local cmd; cmd="$(ps -o command= -p "$pid" 2>/dev/null || true)"
+  if [[ "$cmd" == *"ssh"* && ( "$cmd" == *"$PORT:127.0.0.1:31337"* || "$cmd" == *"$PORT:localhost:31337"* ) ]]; then
+    echo "Closing DexDiffusion SSH tunnel (pid $pid)..."
+  else
+    echo "Stopping DexDiffusion (pid $pid)..."
+  fi
   kill -TERM "$pid" 2>/dev/null || true
   for _ in $(seq 1 10); do
     kill -0 "$pid" 2>/dev/null || break
@@ -176,7 +215,14 @@ cmd_status() {
   if [ "$lrc" -eq 124 ] || [ "$lrc" -eq 125 ]; then
     up="UNKNOWN (port probe timed out)"
   elif pid="$(owned_pid "$lpid")" && healthy; then
-    up="UP"; head="$(version_json | json_field gitHead)"
+    local v; v="$(version_json)"
+    head="$(printf '%s' "$v" | json_field gitHead)"
+    local cwd; cwd="$(printf '%s' "$v" | json_field cwd)"
+    if [ "$cwd" = "$CONSOLE_DIR" ]; then
+      up="UP (local node)"
+    else
+      up="UP (Big Mac backend: $cwd, remote pid $(printf '%s' "$v" | json_field pid))"
+    fi
   elif [ -n "$lpid" ]; then
     up="PORT HELD BY FOREIGN PROCESS"
   fi
@@ -189,7 +235,7 @@ cmd_status() {
   if [ "$brc" -eq 124 ] || [ "$brc" -eq 125 ]; then bind="unknown (probe timed out)"; else bind="$(printf '%s\n' "$braw" | awk 'NR>1{print $9; exit}')"; fi
 
   local primary="(server down)"
-  if [ "$up" = "UP" ]; then
+  if [[ "$up" == UP* ]]; then
     primary="$(curl -fsS --max-time 3 "$BASE/api/capabilities" | python3 -c '
 import json,sys
 t=[x for x in json.load(sys.stdin).get("modelTargets",[]) if x.get("primary")]
@@ -255,7 +301,7 @@ print("%s [%s, %s]" % (t[0]["label"], t[0]["id"], t[0]["status"]) if t else "non
     esrgan="$(printf '%s' "$remote" | sed -n 's/^ESRGAN=//p')"
   fi
   local caps="  (server down — capability status unavailable)"
-  if [ "$up" = "UP" ]; then
+  if [[ "$up" == UP* ]]; then
     caps="$(curl -fsS --max-time 5 "$BASE/api/system-info" | python3 -c '
 import json,sys
 for c in json.load(sys.stdin).get("capabilities", []):
@@ -291,8 +337,8 @@ Generation
   model:     mlx-community/flux2-klein-4b-4bit — $model
 
 Storage
-  images:    $IMAGES_ROOT${latest:+ (latest: $latest)}
-  Big Mac generated-image retention: ephemeral (deleted after transfer)
+  images:    $IMAGES_ROOT${latest:+ (latest: $latest)} (historical MacBook originals preserved)
+  durable root (Big Mac): /Volumes/wc2tb/DexDiffusion/images
 
 SDCPP (secondary)
   sd-cli:    ${sdcli:-unknown} (\$HOME/stable-diffusion.cpp/build, rev 7f0e728)

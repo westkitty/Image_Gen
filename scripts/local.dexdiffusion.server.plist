@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>local.dexdiffusion.server</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/bigmac/Image_Gen/scripts/run-backend-service.sh</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/bigmac/Image_Gen/operator-console</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>StandardOutPath</key>
+	<string>/Users/bigmac/Image_Gen/operator-console/server.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/bigmac/Image_Gen/operator-console/server-error.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>DEX_DATA_ROOT</key>
+		<string>/Volumes/wc2tb/DexDiffusion</string>
+		<key>DEX_DATA_ROOT_MOUNT</key>
+		<string>/Volumes/wc2tb</string>
+		<key>DEX_LOCAL_ENGINE_BRIDGE</key>
+		<string>1</string>
+		<key>OPERATOR_CONSOLE_PORT</key>
+		<string>31337</string>
+		<key>DEX_IMAGE_VALIDATION_PYTHON</key>
+		<string>/Users/bigmac/Library/Caches/DexDiffusion/mflux/venv/bin/python</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+</dict>
+</plist>

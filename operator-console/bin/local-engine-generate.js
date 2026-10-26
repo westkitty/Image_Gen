@@ -87,7 +87,8 @@ async function main() {
     width: Number(args.width || spec.defaultWidth), height: Number(args.height || spec.defaultHeight), steps: params.steps,
     cfg: params.cfg_scale, sampler: params.sampler, scheduler: params.scheduler, seed,
     settings, save_prompts: args['save-prompts'] === 'true', loras: loras.map(l => ({ id: adapterId(l.name), strength: l.weight })) };
-  const runDir = path.join(workflow, 'runs', runId);
+  const runsRoot = process.env.DEX_RUNS_DIR ? path.resolve(process.env.DEX_RUNS_DIR) : path.join(workflow, 'runs');
+  const runDir = path.join(runsRoot, runId);
   fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
   if (/^[a-f0-9-]{36}$/i.test(process.env.DEXDIFFUSION_JOB_ID || '')) {
     fs.writeFileSync(path.join(runDir, 'job-owner.json'), JSON.stringify({ schema: 'dexdiffusion.run_owner.v1', job_id: process.env.DEXDIFFUSION_JOB_ID, run_id: runId }), { mode: 0o600, flag: 'wx' });
@@ -117,7 +118,7 @@ async function main() {
       }
       throw new Error(state.error || state.status);
     }
-    const store = createImageStore(process.env.DEX_IMAGES_ROOT_OVERRIDE ? { root: process.env.DEX_IMAGES_ROOT_OVERRIDE } : {});
+    const store = createImageStore(process.env.DEX_IMAGES_ROOT_OVERRIDE ? { root: process.env.DEX_IMAGES_ROOT_OVERRIDE, runsRoot } : { runsRoot });
     const downloads=[];
     stagingDir=fs.mkdtempSync(path.join(os.tmpdir(),'dex-engine-transfer-'));
     const logicalOutputs=[];

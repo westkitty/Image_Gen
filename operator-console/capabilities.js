@@ -15,6 +15,7 @@
 // Unit tests or source code can never make a capability PROVEN.
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 
@@ -152,7 +153,11 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
     `printf 'probe=done\\n'`,
   ].join('; ');
   return new Promise(resolve => {
-    execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=6', sshTarget, checks], { timeout: timeoutMs, encoding: 'utf8' }, (err, stdout) => {
+    const isLocal = sshTarget === 'local' || (sshTarget === 'westcat' && (os.hostname() === 'bigmac' || process.env.DEX_LOCAL_HOST === '1'));
+    const runner = isLocal
+      ? cb => execFile('/bin/sh', ['-c', checks], { timeout: timeoutMs, encoding: 'utf8' }, cb)
+      : cb => execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=6', sshTarget, checks], { timeout: timeoutMs, encoding: 'utf8' }, cb);
+    runner((err, stdout) => {
       const kv = {};
       for (const line of String(stdout || '').split('\n')) {
         const i = line.indexOf('=');

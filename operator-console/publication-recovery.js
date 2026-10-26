@@ -64,8 +64,12 @@ function historicalMissingJournal({ journalName, imageRoot, runsRoot, jobStore, 
     const journal = JSON.parse(fs.readFileSync(path.join(imageRoot, journalName), 'utf8'));
     if (journal.schema !== 'dexdiffusion.image_publication.pending.v1' || journal.phase !== 'run-index-committed'
       || journal.cleanup_state !== 'metadata-committed') return false;
-    const runDir = path.resolve(String(journal.run_dir || ''));
-    const relative = path.relative(path.resolve(runsRoot), runDir);
+    let runDir = path.resolve(String(journal.run_dir || ''));
+    let relative = path.relative(path.resolve(runsRoot), runDir);
+    if ((!relative || relative.startsWith('..') || path.isAbsolute(relative)) && fs.existsSync(path.join(runsRoot, path.basename(runDir)))) {
+      runDir = path.join(runsRoot, path.basename(runDir));
+      relative = path.relative(path.resolve(runsRoot), runDir);
+    }
     if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return false;
     const owner = JSON.parse(fs.readFileSync(path.join(runDir, 'job-owner.json'), 'utf8'));
     if (owner.schema !== 'dexdiffusion.run_owner.v1' || owner.run_id !== path.basename(runDir) || !owner.job_id) return false;
