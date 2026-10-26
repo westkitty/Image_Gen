@@ -178,7 +178,7 @@ async function forms(page, m) {
   }
   for (const c of m.constraints) {
     await measure(page);
-    const result=await page.locator(`[data-matrix-control="${c.i}"]`).evaluate(n=>{const old=n.value;n.value=n.required?'':(n.max?String(Number(n.max)+1):String(Number(n.min)-1));const r={valid:n.validity.valid,message:n.validationMessage};n.value=old;return r;});
+    const result=await page.locator(`[data-matrix-control="${c.i}"]`).evaluate(n=>{const old=n.value;n.value=n.required?'':((n.pattern && (!n.type || n.type==='text'))?'invalid':(n.max?String(Number(n.max)+1):String(Number(n.min)-1)));const r={valid:n.validity.valid,message:n.validationMessage};n.value=old;return r;});
     if (result.valid || !result.message) failures.push('Constraint has no inspectable native error: '+m.controls[c.i].name); measures.validation++;
   }
   const selects=page.locator('select:visible:not(:disabled)');

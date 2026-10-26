@@ -30,6 +30,7 @@ test('Blender handoff: 1. .glb artifact resolves and 2. Non-GLB / missing is rej
   let spawned = false;
   const resValid = bridge.openInBlender('sample.glb', {
     blenderBin: '/Applications/Blender.app/Contents/MacOS/Blender',
+    existsSync: () => true,
     spawn: () => { spawned = true; return { unref() {} }; }
   });
   assert.equal(resValid.ok, true);
@@ -86,6 +87,7 @@ test('Blender handoff: 4-11. Process invocation, arguments array, python bootstr
 
   const res = bridge.openInBlender('asset3d-textured.glb', {
     blenderBin: '/Applications/Blender.app/Contents/MacOS/Blender',
+    existsSync: () => true,
     spawn: mockSpawn
   });
 

@@ -150,14 +150,16 @@
         const prompt = document.querySelector('[data-dex-field="prompt"]');
         if (!prompt) { requestAnimationFrame(focusPrompt); return; }
         const active = document.activeElement;
-        if (active !== document.body && active !== prompt && !active?.closest('.ca-workstation')) return;
+        if (active && active.isConnected && active !== document.body && active !== prompt && !active.closest?.('.ca-workstation') && active.matches?.('input,textarea,select,[contenteditable="true"]')) return;
         if (active !== prompt) {
           prompt.focus({ preventScroll: true });
           try { prompt.setSelectionRange(selection.start, selection.end, selection.direction || 'none'); } catch (_) {}
         }
-        requestAnimationFrame(focusPrompt);
+        if (document.activeElement !== prompt) requestAnimationFrame(focusPrompt);
       };
       requestAnimationFrame(() => requestAnimationFrame(focusPrompt));
+      setTimeout(focusPrompt, 50);
+      setTimeout(focusPrompt, 150);
     }
     return true;
   };

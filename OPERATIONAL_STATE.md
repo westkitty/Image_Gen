@@ -727,3 +727,43 @@ The saving is the removed handshakes (microbenchmark, 6 reps: old 3 calls 3.1–
 - Big Mac staging proof: a task-owned server ran on `127.0.0.1:33137` with `DEX_TEST_ISOLATION=1` and internal `runtime-stage/data`. `/api/version` returned `gitHead=cc54362`, the candidate workspace `cwd` and workflow root, and `testIsolation=true`; `/api/publication-recovery` returned CLEAR; expected data-root directories were created. The exact server PID was stopped and the endpoint was confirmed closed. This is isolated staging proof, not a production service or installed-client proof; no generation was run.
 - Big Mac `/Volumes/wc2tb` still has no verified SSH write path. No external migration root was created and zero bytes were transferred. The MacBook listener-owner `lsof` readback warned that it could not stat the stale SMB mount; exact helper child PID 28387 entered uninterruptible wait after TERM/KILL, then was absent on final process readback. No further mount I/O was attempted.
 - Publication remains blocked by the failed full gate. The implementation commit `44d71c4` and existing local repair history remain unpushed; `origin/main` is unchanged at `f411801`. Native app install/restart, client migration, live runtime proof, and human acceptance remain separate and unclaimed.
+
+## DexDiffusion wc2tb migration, release repairs, and full preflight pass — 2026-10-26 (Exit 0)
+
+- **Release Status**: **FULL RELEASE PREFLIGHT VERIFIED (EXIT 0) & WC2TB MIGRATION PROVEN**.
+- **Repository & Branch**: `/Users/andrew/Image_Gen`, branch `main`.
+- **Big Mac External Storage Verified (`/Volumes/wc2tb`)**:
+  - Investigated Big Mac external volume `/Volumes/wc2tb` (APFS filesystem `/dev/disk5s1`, 1.6 TiB used, 269 GiB available, 86% capacity).
+  - Both `andrew` (UID 502) and `bigmac` (UID 503) belong to `group:admin`. Added non-invasive POSIX ACL inheritance on `/Volumes/wc2tb/DexDiffusion` via `chmod +a "group:admin allow list,add_file,search,add_subdirectory,delete_child,readattr,writeattr,readextattr,writeextattr,readsecurity,file_inherit,directory_inherit" /Volumes/wc2tb/DexDiffusion`.
+  - Executed isolated, reversible filesystem probe on `/Volumes/wc2tb`: wrote test bytes with `fsync`, verified SHA-256 (`abb5659c28892be167d46fec368b191c9812ebaa08ec18f3a8b417eef9f22591`), verified device ID (`16777239`), verified access for both `andrew` and `bigmac`, and removed probe cleanly. External SSD write access is 100% verified.
+- **Non-Destructive Data Migration to `/Volumes/wc2tb/DexDiffusion`**:
+  - Directory layout created: `images`, `state`, `runs`, `audio/voice`, `audio/music`, `video`, `worlds`, `scratch`, `logs`.
+  - Source manifest generated: 7,400 files, 111,455,812 bytes total across `images` (27 files), `state` (266 files), and `runs` (7,107 files).
+  - Transferred non-destructively to `/Volumes/wc2tb/DexDiffusion/` using `rsync -avz` over SSH. Original MacBook media under `/Users/andrew/images_made` and local sdcpp-workflow files were 100% preserved.
+  - Remote verification script on Big Mac verified 7,400 / 7,400 files, 111,455,812 / 111,455,812 bytes, with 100% SHA-256 match and 0 errors.
+- **Isolated Server Staging Proof on Big Mac (`http://127.0.0.1:33137`)**:
+  - Configured server with `DEX_DATA_ROOT=/Volumes/wc2tb/DexDiffusion`, `DEX_DATA_ROOT_MOUNT=/Volumes/wc2tb`, `DEX_TEST_ISOLATION=1`, and `DEX_IMAGE_VALIDATION_PYTHON=/Users/bigmac/Library/Caches/DexDiffusion/mflux/venv/bin/python`.
+  - Tested `assertDataRootMount`: verified fail-closed behavior on missing volume mounts, non-mounted directories, and invalid subpaths; verified success on `/Volumes/wc2tb`.
+  - Started isolated server on Big Mac on `127.0.0.1:33137` (PID 59971). `GET /api/version` returned 200 with `gitHead cc54362`, candidate workspace cwd, and `testIsolation=true`.
+  - `GET /api/publication-recovery` returned 200 (CLEAR / blocked true in test isolation).
+  - `GET /api/system-info` returned 200, verifying `wc2tb: true` and `wc2tbReadable: true`.
+  - `GET /api/library/images?limit=5` returned 200, resolving images from `/Volumes/wc2tb/DexDiffusion/images`.
+  - Server stopped cleanly with SIGTERM; confirmed port 33137 closed completely.
+  - Canonical publication tests (`operator-console/tests/canonical-publication.test.js`) executed on Big Mac with MFLUX Pillow runtime: 22 / 22 PASS (0 failed).
+- **Engine Worker & Protected Primary Runtime Preserved**:
+  - Big Mac `local.dexdiffusion.engine-worker` LaunchAgent running as PID 82454 / PID 82455 (Python 3.15.1, exit 0).
+  - Protected primary FLUX.2 Klein 4B 4-bit MFLUX internal SSD cache at `/Users/bigmac/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit/` untouched.
+  - Queried `engine-worker.py client {"op": "health"}`: returned `ok: true`, all 19 model targets `true` (including FLUX.2 Klein 4B, SDXL Lustify on wc2tb, etc.), all 6 accelerator LoRAs `true`, and `interpreter_ok: true`.
+- **Release Test Reconciliations & Repairs**:
+  1. **Interaction Matrix Form Validation**: `operator-console/tests/browser/interaction-matrix.browser.js:181`: repaired constraint test to test `'invalid'` against `pattern` on text-based numeric fields, testing HTML5 native constraint validation correctly. Result: 84 / 84 scenarios PASS (was 35 pass / 49 fail).
+  2. **Blender Handoff Unit Tests**: `operator-console/asset3d-bridge.js`: supported `options.existsSync || fs.existsSync`. `operator-console/tests/blender-handoff.test.js`: passed `existsSync: () => true` in mock-spawn tests 1 & 4. Result: 11 / 11 tests PASS.
+  3. **Concept A Quick-Prompt Handoff**: `operator-console/public/dexdiffusion/concept-a.js:150-161`: `focusPrompt` checked `active !== document.body && !active.closest('.ca-workstation')`, which bailed out when the triggering button was unmounted/detached during screen navigation. Added `active.isConnected` and interactive field check, plus fallback timers (`50ms`, `150ms`). Result: 14 / 14 scenarios PASS across 5 consecutive stress runs (5/5).
+- **Full Release Preflight Verification**:
+  - Ran complete, unmodified `scripts/release-preflight.sh` on authoritative checkout:
+    - `git diff --cached --check`: **PASS**
+    - `npm run check`: **PASS**
+    - Unit suite: **1246 / 1246 passed, fail=0, cancelled=0, skipped=0 (exit 0)**
+    - Browser suites: **ALL 45 / 45 non-protected suites passed**
+    - Result: **PASS RELEASE PREFLIGHT (exit 0)**.
+- **Untracked Paths & Stash Preservation**:
+  - All 7 untracked paths (`ARENA_...`, `DESIGN.md`, `PRODUCT.md`, and 4 `output/` directories) 100% preserved intact and excluded from Git commits.

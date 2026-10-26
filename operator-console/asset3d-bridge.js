@@ -224,8 +224,9 @@ printf 'DEX_3D_PASS mode=%s output=%s bytes=%s sha256=%s magic=%s engine=hunyuan
     if (!rec || rec.kind !== 'world' || path.extname(rec.path).toLowerCase() !== '.glb') {
       return { error: 'GLB artifact not found', status: 404 };
     }
+    const existsFn = typeof options.existsSync === 'function' ? options.existsSync : fs.existsSync.bind(fs);
     const candidates = options.blenderBin ? [options.blenderBin] : ['/Applications/Blender.app/Contents/MacOS/Blender', '/usr/local/bin/blender', '/opt/homebrew/bin/blender'];
-    const blender = candidates.find(p => fs.existsSync(p));
+    const blender = candidates.find(p => existsFn(p));
     if (!blender) {
       return { error: 'Blender is not installed', status: 409 };
     }
