@@ -56,6 +56,7 @@ const { dramaCancelCapability, requestDramaStop } = require('./drama-cancel-poli
 const { createLibraryIndex } = require('./library-index');
 const { reconcileInterruptedPublications, historicalMissingJournal } = require('./publication-recovery');
 const { resolveStoragePaths, assertDataRootMount, childStorageEnvironment } = require('./storage-paths');
+const { createTailscaleAuthGate } = require('./tailscale-auth');
 
 const app = express();
 if (TestIsolation.enabled()) app.use(TestIsolation.middleware);
@@ -139,6 +140,7 @@ if (STORAGE_PATHS.dataRoot || process.env.DEX_SCRATCH_ROOT) fs.mkdirSync(STORAGE
 if (!fs.existsSync(MASK_UPLOADS_DIR)) fs.mkdirSync(MASK_UPLOADS_DIR, { recursive: true });
 
 app.use(express.json({ limit: '5mb' }));
+app.use(createTailscaleAuthGate());
 app.get('/', (req, res) => {
   res.redirect(302, '/dexdiffusion/');
 });

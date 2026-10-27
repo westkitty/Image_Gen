@@ -812,3 +812,88 @@ The saving is the removed handshakes (microbenchmark, 6 reps: old 3 calls 3.1–
   - FLUX.2 Klein 4B 4-bit internal SSD model cache at `/Users/bigmac/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit/` untouched.
   - All 7 untracked repository paths preserved.
   - No destructive Git commands, no force pushes, no hard resets.
+
+## DexDiffusion Samsung Galaxy Tab S9 Ultra Private Tailscale Deployment, Authentication Gate, and Live Verification — 2026-10-26
+
+- **Release Status**: **PRIVATE TAILSCALE TABLET ACCESS DEPLOYED, MULTI-USER AUTH GATE VERIFIED, LIVE FLUX.2 KLEIN 4B INFERENCE & STORAGE PROVEN ON BIG MAC WC2TB**.
+- **Repository & Branch**: `/Users/andrew/Image_Gen` (MacBook) and `/Users/bigmac/Image_Gen` (Big Mac), branch `main`.
+- **Target Ingress Architecture**:
+  - **Big Mac Tailscale Serve Route**:
+    - Dedicated tailnet-only HTTPS endpoint: `https://bigmac.tailafb7e8.ts.net:11443/dexdiffusion/` proxying loopback `http://127.0.0.1:31337`.
+    - Command executed: `tailscale serve --bg --https=11443 http://127.0.0.1:31337`.
+    - TLS Termination: Terminated automatically by Tailscale using Big Mac's valid Let's Encrypt certificate.
+    - Funnel Isolation: Funnel is strictly **OFF** (`funnel: false`). Accessible only to authenticated devices on tailnet `tailafb7e8.ts.net`.
+    - Non-Disruption Guarantee: Preserved all 4 pre-existing Tailscale listeners on Big Mac:
+      - `:443` (tailnet-only $\to$ 127.0.0.1:8096)
+      - `:8443` (Funnel enabled $\to$ 127.0.0.1:8096, untouched)
+      - `:9443` (tailnet-only $\to$ 127.0.0.1:8096)
+      - `:10443` (tailnet-only $\to$ 127.0.0.1:8096)
+    - Backend Binding: Node application backend remains strictly bound to `127.0.0.1:31337` (no binding to `0.0.0.0`).
+- **Multi-User Security & Authorization Gate**:
+  - **Module**: `operator-console/tailscale-auth.js` (`createTailscaleAuthGate()`), wired into `operator-console/server.js`.
+  - **Mechanism**:
+    - Tailscale Serve cryptographically verifies connecting nodes over WireGuard and injects the client identity in the `Tailscale-User-Login` request header (spoofing prevented by Tailscale's ingress proxy).
+    - Authorization gate validates `Tailscale-User-Login` against permitted logins (default: `westkitty`, covering `westkitty@github`, matching MacBook Air, Galaxy Tab S9 Ultra, and Big Mac).
+    - Configurable via environment variable `DEX_AUTHORIZED_TAILSCALE_USERS`.
+    - Unauthorized tailnet users (e.g. `bcroc@github`) are rejected with `403 Forbidden` (`{"error": "unauthorized-tailnet-user"}`).
+    - Tailscale host requests missing `Tailscale-User-Login` are rejected with `403 Forbidden` (`{"error": "missing-tailscale-auth"}`).
+    - Local loopback traffic (`127.0.0.1`, `localhost`) and local Unix domain sockets pass through freely to preserve native MacBook client tunneling and local CLI scripts.
+  - **Request Guard & Host Policy**:
+    - `operator-console/request-guard.js`: Added `bigmac.tailafb7e8.ts.net` and `bigmac.tailafb7e8.ts.net:11443` to allowed hosts and origins in `defaultPolicy()`. Added dynamic environment variable overrides `DEX_TAILNET_HOST` and `DEX_TAILNET_PORT`.
+    - Unit test suite `operator-console/tests/tailscale-auth.test.js` (8 tests) and `operator-console/tests/request-guard.test.js` (4 tests): 12/12 PASS.
+- **Samsung Galaxy Tab S9 Ultra Browser Emulation Acceptance**:
+  - **Test Suite**: `operator-console/tests/live/tablet-galaxy-tab.live.js` (using Playwright).
+  - **Emulation Parameters**:
+    - Viewport: 1480x924 (Landscape) and 924x1480 (Portrait), `deviceScaleFactor: 2`.
+    - Touch & Device: `hasTouch: true`, `isMobile: true`.
+    - User Agent: `Mozilla/5.0 (Linux; Android 14; SM-X910) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Safari/537.36`.
+  - **Verified Behaviors**:
+    - **HTTP 200 & Navigation**: Client initializes cleanly over HTTPS, header navigation renders Create, Edit, and Library screens.
+    - **Create Screen**: Touch prompt entry verified; active primary model detected as `flux2-klein-4b`; Generate button rendered and interactive.
+    - **Edit Screen**: File upload inputs attached and verified responsive for Android Photos / Files system picker integration.
+    - **Library Screen**: Successfully browsed 46 canonical images residing on Big Mac `/Volumes/wc2tb/DexDiffusion`; tablet export/download route `/api/images/:id/export` verified.
+    - **System Information**: Verified `tailnet-only` scope, `funnel: false`.
+    - **Portrait Mode**: Responsive layout verified without layout breaks.
+  - **Visual Capture Proof**:
+    - `operator-console/artifacts/tablet-verification/01-landscape-create.png` (984 KiB)
+    - `operator-console/artifacts/tablet-verification/02-landscape-edit.png` (125 KiB)
+    - `operator-console/artifacts/tablet-verification/03-landscape-library.png` (411 KiB)
+    - `operator-console/artifacts/tablet-verification/04-portrait-create.png` (365 KiB)
+    - `operator-console/artifacts/tablet-verification/05-portrait-library.png` (310 KiB)
+- **Live End-to-End FLUX.2 Klein 4B Generation Proof over Tailscale**:
+  - **Test Suite**: `operator-console/tests/live/tailscale-generation.live.js`.
+  - **Submission**: Controlled generation submitted over `POST https://bigmac.tailafb7e8.ts.net:11443/api/actions/generate-controlled`:
+    - Target: `flux2-klein-4b` (4-bit quantized MFLUX on Big Mac M4 Metal)
+    - Prompt: `"A tiny origami fox sitting in morning sunlight, cinematic macro photograph"`
+    - Dimensions: 512x512, Steps: 4, Seed: `882205`, `save_prompts: true`.
+  - **Execution & Receipt**:
+    - Job ID: `b83b5e90-3c8f-4484-8995-76f29c8d5c29`
+    - Run ID: `20261027-004952-controlled-flux2-klein-4b-684457e9`
+    - Execution Time: 18.56 seconds on Big Mac M4 Metal.
+    - Exit Code: 0, Status: `PASS`.
+  - **Durable Storage Proof**:
+    - Canonical PNG written strictly to Big Mac external storage: `/Volumes/wc2tb/DexDiffusion/images/20261027-004952-controlled-flux2-klein-4b-684457e9-s882205-controlled-flux2-klein-4b.png`.
+    - File details: 309,086 bytes (302 KiB), 512x512 PNG, mode `-rw-------+ 1 bigmac staff`.
+    - SHA-256 digest: `d0cb69062e45ee466b03683bf83b01089889b6f27464a1850f146d9b7cb132cd`.
+    - Remote Big Mac Verification: `ls -lh` and `shasum -a 256` confirmed on `/Volumes/wc2tb/DexDiffusion/images/`.
+    - Local MacBook Isolation: Verified `existsSync('/Users/andrew/images_made/20261027-004952-controlled-flux2-klein-4b-684457e9-s882205-controlled-flux2-klein-4b.png')` is **false** (0 bytes written to MacBook).
+    - Image Retrieval over Tailscale: `GET https://bigmac.tailafb7e8.ts.net:11443/api/images/20261027-004952-controlled-flux2-klein-4b-684457e9-s882205-controlled-flux2-klein-4b.png` returned `HTTP/1.1 200 OK` with `Content-Type: image/png` and `Content-Length: 309086`.
+- **Physical Hardware Status & Instructions**:
+  - **Tiering**:
+    - Tier 1 (Static/Syntax): `node --check server.js`, `request-guard.js`, `tailscale-auth.js` PASS.
+    - Tier 2 (Mock/Unit): `node --test tests/tailscale-auth.test.js tests/request-guard.test.js` 12/12 PASS.
+    - Tier 3 (Headless Runtime): Playwright Samsung Galaxy Tab S9 Ultra emulation PASS (5/5 checks).
+    - Tier 4 (Physical Device): **`PHYSICAL TABLET UNVERIFIED`**.
+      - Device `100.125.203.84` (`galaxy-tab-s9-ultra`) was offline in `tailscale status` (last seen 58 days ago).
+  - **Physical Device Usage Guide**:
+    - When the physical Samsung Galaxy Tab S9 Ultra is powered on:
+      1. Ensure the Tailscale Android app is connected to the tailnet (`westkitty@github`).
+      2. Open Chrome or Samsung Internet browser on the tablet.
+      3. Navigate to: `https://bigmac.tailafb7e8.ts.net:11443/dexdiffusion/`
+      4. The interface loads with trusted Let's Encrypt TLS (no certificate warnings).
+      5. Full capabilities (Create, Edit, Library, image downloads, prompt composition) execute directly on Big Mac.
+      6. To run like a native app: Tap browser menu $\to$ **"Add to Home screen"** or **"Install app"**.
+- **Rollback Procedure**:
+  - To disable tablet Tailscale access without affecting the MacBook client:
+    `ssh westcat "tailscale serve --https=11443 off"`
+  - Big Mac backend and native MacBook client remain fully operational.

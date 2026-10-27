@@ -26,22 +26,55 @@ const good = { Host: '127.0.0.1:31337', Origin: 'http://127.0.0.1:31337', 'X-Dex
 
 test('allowed loopback and tailnet requests pass with no CORS headers', async () => {
   const g = await boot(); try {
-    for (const [host, origin] of [['127.0.0.1:31337', 'http://127.0.0.1:31337'], ['localhost:31337', 'http://localhost:31337'], ['macbook-air.tailafb7e8.ts.net', 'https://macbook-air.tailafb7e8.ts.net'], ['macbook-air.tailafb7e8.ts.net:8443', 'https://macbook-air.tailafb7e8.ts.net:8443']]) {
+    for (const [host, origin] of [
+      ['127.0.0.1:31337', 'http://127.0.0.1:31337'],
+      ['localhost:31337', 'http://localhost:31337'],
+      ['macbook-air.tailafb7e8.ts.net', 'https://macbook-air.tailafb7e8.ts.net'],
+      ['macbook-air.tailafb7e8.ts.net:8443', 'https://macbook-air.tailafb7e8.ts.net:8443'],
+      ['bigmac.tailafb7e8.ts.net', 'https://bigmac.tailafb7e8.ts.net'],
+      ['bigmac.tailafb7e8.ts.net:11443', 'https://bigmac.tailafb7e8.ts.net:11443'],
+      ['bigmac.tailafb7e8.ts.net:8443', 'https://bigmac.tailafb7e8.ts.net:8443'],
+    ]) {
       const r = await g.call('POST', Object.assign({}, good, { Host: host, Origin: origin }), '{}');
       assert.equal(r.status, 200, host);
       assert.ok(!Object.keys(r.headers).some(h => h.startsWith('access-control-')));
     }
     assert.equal((await g.call('GET', { Host: '127.0.0.1:31337' })).status, 200);
+    assert.equal((await g.call('GET', { Host: 'bigmac.tailafb7e8.ts.net:11443' })).status, 200);
     assert.equal((await g.call('DELETE', { Host: '127.0.0.1:31337', Origin: 'http://127.0.0.1:31337', 'X-Dex-Request': '1' })).status, 204);
+    assert.equal((await g.call('DELETE', { Host: 'bigmac.tailafb7e8.ts.net:11443', Origin: 'https://bigmac.tailafb7e8.ts.net:11443', 'X-Dex-Request': '1' })).status, 204);
   } finally { g.close(); }
 });
 
 test('foreign Host (DNS rebinding) is refused, including for GET', async () => {
   const g = await boot(); try {
-    for (const host of ['evil.example:31337', '127.0.0.1:8080', '127.0.0.1', 'macbook-air.tailafb7e8.ts.net.evil.example']) {
+    for (const host of [
+      'evil.example:31337',
+      '127.0.0.1:8080',
+      '127.0.0.1',
+      'macbook-air.tailafb7e8.ts.net.evil.example',
+      'bigmac.tailafb7e8.ts.net.evil.example',
+      'bigmac.tailafb7e8.ts.net:9999',
+    ]) {
       assert.deepEqual(await g.call('GET', { Host: host }).then(r => [r.status, r.body]), [403, { error: 'host-not-allowed' }], host);
     }
   } finally { g.close(); }
+});
+
+test('environment variables DEX_TAILNET_HOST and DEX_TAILNET_PORT are supported', () => {
+  const origHost = process.env.DEX_TAILNET_HOST;
+  const origPort = process.env.DEX_TAILNET_PORT;
+  try {
+    process.env.DEX_TAILNET_HOST = 'custom-tablet.tailafb7e8.ts.net';
+    process.env.DEX_TAILNET_PORT = '12345';
+    const policy = defaultPolicy(31337);
+    assert.ok(policy.hosts.includes('custom-tablet.tailafb7e8.ts.net'));
+    assert.ok(policy.hosts.includes('custom-tablet.tailafb7e8.ts.net:12345'));
+    assert.ok(policy.origins.includes('https://custom-tablet.tailafb7e8.ts.net:12345'));
+  } finally {
+    if (origHost !== undefined) process.env.DEX_TAILNET_HOST = origHost; else delete process.env.DEX_TAILNET_HOST;
+    if (origPort !== undefined) process.env.DEX_TAILNET_PORT = origPort; else delete process.env.DEX_TAILNET_PORT;
+  }
 });
 
 test('state-changing requests need an allowed Origin, X-Dex-Request: 1 and JSON', async () => {

@@ -3,13 +3,45 @@
 // applying it app-wide is decision AUTH-7. No CORS headers are ever emitted.
 
 const TAILNET_HOST = 'macbook-air.tailafb7e8.ts.net';
+const BIGMAC_TAILNET_HOST = 'bigmac.tailafb7e8.ts.net';
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 function defaultPolicy(port) {
-  return {
-    hosts: [`127.0.0.1:${port}`, `localhost:${port}`, TAILNET_HOST, `${TAILNET_HOST}:8443`],
-    origins: [`http://127.0.0.1:${port}`, `http://localhost:${port}`, `https://${TAILNET_HOST}`, `https://${TAILNET_HOST}:8443`],
-  };
+  const hosts = [
+    `127.0.0.1:${port}`,
+    `localhost:${port}`,
+    TAILNET_HOST,
+    `${TAILNET_HOST}:8443`,
+    BIGMAC_TAILNET_HOST,
+    `${BIGMAC_TAILNET_HOST}:11443`,
+    `${BIGMAC_TAILNET_HOST}:8443`,
+  ];
+  const origins = [
+    `http://127.0.0.1:${port}`,
+    `http://localhost:${port}`,
+    `https://${TAILNET_HOST}`,
+    `https://${TAILNET_HOST}:8443`,
+    `https://${BIGMAC_TAILNET_HOST}`,
+    `https://${BIGMAC_TAILNET_HOST}:11443`,
+    `https://${BIGMAC_TAILNET_HOST}:8443`,
+  ];
+
+  const customHost = process.env.DEX_TAILNET_HOST;
+  const customPort = process.env.DEX_TAILNET_PORT;
+  if (customHost) {
+    const ch = customHost.toLowerCase();
+    hosts.push(ch);
+    origins.push(`https://${ch}`);
+    if (customPort) {
+      hosts.push(`${ch}:${customPort}`);
+      origins.push(`https://${ch}:${customPort}`);
+    }
+  } else if (customPort) {
+    hosts.push(`${BIGMAC_TAILNET_HOST}:${customPort}`, `${TAILNET_HOST}:${customPort}`);
+    origins.push(`https://${BIGMAC_TAILNET_HOST}:${customPort}`, `https://${TAILNET_HOST}:${customPort}`);
+  }
+
+  return { hosts, origins };
 }
 
 function createRequestGuard({ hosts, origins }) {
@@ -31,4 +63,4 @@ function createRequestGuard({ hosts, origins }) {
   };
 }
 
-module.exports = { createRequestGuard, defaultPolicy, TAILNET_HOST };
+module.exports = { createRequestGuard, defaultPolicy, TAILNET_HOST, BIGMAC_TAILNET_HOST };
