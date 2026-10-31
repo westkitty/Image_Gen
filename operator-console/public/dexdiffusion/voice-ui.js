@@ -163,6 +163,53 @@
     await this._vpApi('/api/voice/profiles/' + id, undefined, 'DELETE');
     this.vpSet({ selected: null }); await this.loadVoiceProfiles();
   };
+  P._normalizeSampleTrim = function (start, end, duration, moved = 'start') {
+    const d = Number(duration);
+    if (!Number.isFinite(d) || d < 0.5) return null;
+    const cap = n => Math.min(d, Math.max(0, Number(n) || 0));
+    let a = cap(start), b = cap(end);
+    if (moved === 'start') {
+      a = Math.min(a, d - 0.5);
+      b = Math.min(d, Math.max(a + 0.5, Math.min(b, a + 30)));
+    } else {
+      b = Math.max(0.5, b);
+      a = Math.max(0, Math.min(b - 0.5, Math.max(a, b - 30)));
+    }
+    return { start: +a.toFixed(3), end: +b.toFixed(3) };
+  };
+  P.setSampleTrim = function (which, value) {
+    const vp = this._vp(), old = vp.trim, d = Number(vp.pending && vp.pending.duration);
+    if (!old || !Number.isFinite(d)) return;
+    const next = this._normalizeSampleTrim(which === 'start' ? value : old.start, which === 'end' ? value : old.end, d, which);
+    if (next) this.vpSet({ trim: next });
+  };
+  P.playSampleSelection = function () {
+    const vp = this._vp(), clip = vp.trim;
+    const audio = document.querySelector('[data-pending-sample] audio[data-trim-player]');
+    if (!clip || !audio) return;
+    audio.pause();
+    audio.currentTime = clip.start;
+    const p = audio.play();
+    if (p && typeof p.catch === 'function') p.catch(() => { this.toast('Playback unavailable; try the audio player controls', '#fbbf24'); });
+  };
+  P.loadSampleWaveform = async function (file, stagedId, duration) {
+    if (file.size > 12 * 1024 * 1024 || duration > 600 || !window.AudioContext) return;
+    let context = null;
+    try {
+      context = new AudioContext();
+      const audio = await context.decodeAudioData(await file.arrayBuffer());
+      const samples = audio.getChannelData(0), columns = 96, group = samples.length / columns;
+      const waveform = Array.from({ length: columns }, (_, i) => {
+        const from = Math.floor(i * group), to = Math.floor((i + 1) * group);
+        let peak = 0;
+        const stride = Math.max(1, Math.floor((to - from) / 180));
+        for (let j = from; j < to; j += stride) peak = Math.max(peak, Math.abs(samples[j]));
+        return Math.min(1, +peak.toFixed(3));
+      });
+      if (this._vp().pending?.id === stagedId) this.vpSet({ sampleWaveform: waveform });
+    } catch (_) { /* The range editor works without client-side codec support. */ }
+    finally { if (context) context.close().catch(() => {}); }
+  };
   P.stageProfileSample = async function (file) {
     if (!file) return;
     if (file.size > 40 * 1024 * 1024) { const msg = 'Audio too large (40 MB max)'; this.toast(msg, '#ef4444'); this.vpSet({ sampleError: msg }); return; }
@@ -173,15 +220,13 @@
       this._vptext = this._vptext || {};
       const sampleName = file.name.replace(/\.[^.]+$/, '').slice(0, 60);
       this._vptext.sampleName = sampleName;
-      if (/ajd1/i.test(file.name)) {
-        this._vptext.sampleTranscript = "Well, that's interesting. I wasn't expecting that at all. Give me a second to think about it. Actually, no. I know exactly what I want to say. Some things are simple. Others would complicate strange and occasionally ridiculous. But here's the important question. Are we going to do this properly? Or are we going to make a spectacular mess over this?";
-      } else {
-        this._vptext.sampleTranscript = this._vptext.sampleTranscript || '';
-      }
-      this.vpSet({ pending: Object.assign({}, d, { filename: file.name, name: file.name }), sampleError: null });
-      if (/ajd1/i.test(file.name)) {
-        await this.approveProfileSample();
-      }
+      // No filename-triggered auto-approval: every upload gets a reviewable
+      // selection, and its transcript must describe only that excerpt.
+      this._vptext.sampleTranscript = '';
+      const duration = Number(d.duration);
+      const trim = Number.isFinite(duration) && duration >= 0.5 ? { start: 0, end: +Math.min(duration, 30).toFixed(3) } : null;
+      this.vpSet({ pending: Object.assign({}, d, { filename: file.name, name: file.name }), trim, sampleWaveform: null, sampleError: trim ? null : (Number.isFinite(duration) && duration < 0.5 ? 'Audio reference is shorter than 0.5 seconds' : 'Could not determine audio duration; try a WAV/MP3/M4A/FLAC file') });
+      if (trim) this.loadSampleWaveform(file, d.id, duration);
     } catch (e) {
       const msg = (e && e.message) ? e.message : 'Upload failed';
       this.toast(msg, '#ef4444'); this.vpSet({ sampleError: msg });
@@ -190,9 +235,13 @@
   P.approveProfileSample = async function () {
     const vp = this._vp(), t = this._vptext || {};
     if (!vp.pending) return;
-    const r = await this._vpApi('/api/voice/profiles/' + vp.selected + '/samples', { staged_id: vp.pending.id, name: t.sampleName, transcript: t.sampleTranscript });
+    const sel = vp.trim;
+    if (!sel || sel.end - sel.start < 0.5 || sel.end - sel.start > 30.001) {
+      this.vpSet({ sampleError: 'Select a 0.5–30 second reference excerpt' }); return;
+    }
+    const r = await this._vpApi('/api/voice/profiles/' + vp.selected + '/samples', { staged_id: vp.pending.id, name: t.sampleName, transcript: t.sampleTranscript, trim_start_s: sel.start, trim_end_s: sel.end });
     if (!r.ok) { const msg = (r.data.error || 'Sample rejected') + (r.data.gate ? ' · ' + r.data.gate : ''); this.toast(msg, '#ef4444'); this.vpSet({ sampleError: msg }); return; }
-    this.vpSet({ pending: null, sampleError: null }); await this.loadVoiceProfiles();
+    this.vpSet({ pending: null, trim: null, sampleWaveform: null, sampleError: null }); await this.loadVoiceProfiles();
     this.toast('Sample saved to the voice' + (r.data.sample.validation.warnings.length ? ' — with warnings' : ''), r.data.sample.validation.warnings.length ? '#fbbf24' : '#65d66e');
   };
   P.updateProfileSample = async function (pid, sid, patch) {
@@ -269,6 +318,11 @@
     const eng = (p.compatible_engines || []).map(id => this._engine(id)).filter(Boolean);
     const val = p.validation && p.validation.engines ? Object.entries(p.validation.engines) : [];
     const pend = vp.pending;
+    const selectedTrim = vp.trim;
+    const wave = vp.sampleWaveform;
+    const duration = Number(pend?.duration);
+    const validSelection = selectedTrim && Number.isFinite(duration) && selectedTrim.end - selectedTrim.start >= 0.5 && selectedTrim.end - selectedTrim.start <= 30.001;
+    const selectedDuration = validSelection ? selectedTrim.end - selectedTrim.start : 0;
     const inputId = 'profile-sample-file-input';
     const triggerSamplePick = e => {
       if (e && e.preventDefault) { e.preventDefault(); e.stopPropagation(); }
@@ -343,11 +397,37 @@
             h('b', { style: { color: '#c4b5fd', fontSize: 12 } }, 'New sample (temporary until you approve it)'),
             pend.filename ? chip(pend.filename, '#a78bfa') : null,
             chip(fmtT(pend.duration), '#94a3b8')),
-          this._mediaEl(this.state.backendUrl + pend.url, 'audio', 'pending'),
+          h('audio', { src: this.state.backendUrl + pend.url, controls: true, preload: 'metadata', 'data-trim-player': '1',
+            style: { width: '100%', minHeight: 40 }, onTimeUpdate: e => {
+              if (this._vp().trim && e.currentTarget.currentTime >= this._vp().trim.end) e.currentTarget.pause();
+            } }),
+          h('div', { 'data-sample-trimmer': '1', style: { display: 'grid', gap: 7, padding: 9, borderRadius: 8, border: '1px solid rgba(167,139,250,.4)', background: 'rgba(167,139,250,.07)' } },
+            h('b', { style: { color: '#ddd6fe', fontSize: 12 } }, 'Select the reference excerpt · maximum 30 seconds'),
+            wave && wave.length ? h('svg', { viewBox: '0 0 960 60', role: 'img', 'aria-label': 'Audio waveform; selected portion highlighted', style: { width: '100%', height: 60, background: '#0b1323', borderRadius: 6 } },
+              ...wave.map((peak, i) => h('rect', { key: i, x: i * 10 + 2, y: 30 - Math.max(2, peak * 27), width: 6, height: Math.max(4, peak * 54), rx: 2,
+                fill: validSelection && i / wave.length >= selectedTrim.start / duration && i / wave.length <= selectedTrim.end / duration ? '#a78bfa' : '#3e526d' }))) : null,
+            h('div', { style: css.row }, h('span', { style: css.muted }, 'Start'),
+              h('input', { type: 'range', min: 0, max: duration || 30, step: 0.05, value: selectedTrim?.start || 0,
+                'aria-label': 'Reference start time', 'data-trim-start': '1', style: { flex: '1 1 160px', accentColor: '#a78bfa' }, onInput: e => this.setSampleTrim('start', e.target.value) }),
+              h('input', { type: 'number', min: 0, max: duration || 30, step: 0.05, value: selectedTrim?.start || 0,
+                'aria-label': 'Start seconds', style: Object.assign({}, css.input, { width: 78 }), onChange: e => this.setSampleTrim('start', e.target.value) })),
+            h('div', { style: css.row }, h('span', { style: css.muted }, 'End'),
+              h('input', { type: 'range', min: 0.5, max: duration || 30, step: 0.05, value: selectedTrim?.end || 0.5,
+                'aria-label': 'Reference end time', 'data-trim-end': '1', style: { flex: '1 1 160px', accentColor: '#a78bfa' }, onInput: e => this.setSampleTrim('end', e.target.value) }),
+              h('input', { type: 'number', min: 0.5, max: duration || 30, step: 0.05, value: selectedTrim?.end || 0.5,
+                'aria-label': 'End seconds', style: Object.assign({}, css.input, { width: 78 }), onChange: e => this.setSampleTrim('end', e.target.value) })),
+            h('div', { style: css.row },
+              h('span', { role: 'status', 'data-trim-duration': '1', style: { color: validSelection ? '#65d66e' : '#f87171', fontSize: 12, fontWeight: 700 } },
+                validSelection ? selectedTrim.start.toFixed(2) + '–' + selectedTrim.end.toFixed(2) + 's · ' + selectedDuration.toFixed(2) + 's selected' : 'Select a valid excerpt'),
+              btn('Play selected excerpt', () => this.playSampleSelection(), '#a78bfa', { disabled: !validSelection, 'data-trim-preview': '1' }),
+              btn('Start at playhead', () => { const a = document.querySelector('[data-pending-sample] audio[data-trim-player]'); if (a) this.setSampleTrim('start', a.currentTime); }, '#94a3b8'),
+              btn('End at playhead', () => { const a = document.querySelector('[data-pending-sample] audio[data-trim-player]'); if (a) this.setSampleTrim('end', a.currentTime); }, '#94a3b8')),
+            h('div', { style: css.muted }, 'Selection is decoded to a new 24 kHz mono WAV when saved; the uploaded source file remains unchanged. Edit the transcript to match only this selection.')),
+
           field('Name', h('input', { value: t.sampleName || '', style: css.input, onInput: e => { t.sampleName = e.target.value; } })),
           field('Exact transcript of the clip', h('textarea', { rows: 2, value: t.sampleTranscript || '', placeholder: 'Type exactly what is said', style: Object.assign({}, css.input, { resize: 'vertical' }), onInput: e => { t.sampleTranscript = e.target.value; } })),
-          h('div', { style: css.row }, btn('Approve & save sample', () => this.approveProfileSample(), '#65d66e'), btn('Discard', () => { fetch(this.state.backendUrl + '/api/staging/' + pend.id, { method: 'DELETE' }); this.vpSet({ pending: null, sampleError: null }); }, '#94a3b8')),
-          h('div', { style: css.muted }, 'Saved samples stay on this MacBook (sdcpp-workflow/state/voice-profiles). Only a per-render copy goes to Big Mac, and it is deleted afterwards.')) : upload,
+          h('div', { style: css.row }, btn('Approve & save selected excerpt', () => this.approveProfileSample(), '#65d66e', { disabled: !validSelection }), btn('Discard', () => { fetch(this.state.backendUrl + '/api/staging/' + pend.id, { method: 'DELETE' }); this.vpSet({ pending: null, trim: null, sampleWaveform: null, sampleError: null }); }, '#94a3b8')),
+          h('div', { style: css.muted }, 'Saved samples stay in DexDiffusion’s private backend state. An isolated temporary worker copy is used during each render and cleaned up afterward.')) : upload,
         sampleErrorBlock, this._cloneEvaluationPanel(p)) : null,
       h('div', { 'data-profile-validation': '1', style: { display: 'grid', gap: 4 } }, ...val.map(([id, r]) => h('div', { key: id, style: { fontSize: 12, color: r.ok ? (r.warnings.length ? tone.warn : tone.ok) : tone.bad } },
         (r.ok ? (r.warnings.length ? '⚠ ' : '✓ ') : '✗ ') + (this._engine(id) ? this._engine(id).label : id) + ': ' + (r.ok ? (r.warnings.length ? r.warnings.join('; ') : 'ready to render') : r.errors.join('; '))))),

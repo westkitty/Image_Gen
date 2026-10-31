@@ -158,6 +158,64 @@ function sshRun(target, script, timeoutMs, onData) {
     child.stdin.end(script);
   });
 }
+// The production backend now lives on Big Mac, together with its workers.
+// Never SSH to Big Mac's old MacBook alias from Big Mac itself. The same job
+// receipts, private staging and exact owner-cleanup contracts still apply.
+const LOCAL_MEDIA_ROOT = path.join(os.homedir(), 'Library', 'Caches', 'DexDiffusion', 'tmp');
+function localMediaWorker(sshTarget = 'westcat', hostname = os.hostname()) {
+  return sshTarget === 'local' || (sshTarget === 'westcat' && hostname.split('.')[0].toLowerCase() === 'bigmac');
+}
+function safeMediaTransfer(remote, target = 'westcat', root = LOCAL_MEDIA_ROOT) {
+  const prefix = target + ':';
+  if (typeof remote !== 'string' || !remote.startsWith(prefix)) return null;
+  const file = path.resolve(remote.slice(prefix.length));
+  const expectedRoot = path.resolve(root);
+  const relative = path.relative(expectedRoot, file);
+  if (relative.startsWith('..') || path.isAbsolute(relative) || !/^dexmedia\.[A-Za-z0-9]+\//.test(relative)) return null;
+  // Reject symlink traversal (the private job directories are created locally).
+  let parent = path.dirname(file);
+  while (parent.startsWith(expectedRoot + path.sep)) {
+    if (fs.existsSync(parent) && fs.lstatSync(parent).isSymbolicLink()) return null;
+    parent = path.dirname(parent);
+  }
+  return file;
+}
+function localMediaExec(sshTarget, root = LOCAL_MEDIA_ROOT) {
+  return async (cmd, args, timeoutMs = 120000) => {
+    if (cmd === 'ssh') {
+      if (!Array.isArray(args) || args[args.length - 2] !== sshTarget || typeof args.at(-1) !== 'string') return { ok: false, stdout: '' };
+      return execP('/bin/bash', ['-c', args.at(-1)], timeoutMs);
+    }
+    if (cmd === 'scp') {
+      if (!Array.isArray(args) || args.length < 3) return { ok: false, stdout: '' };
+      const source = args.at(-2), dest = args.at(-1);
+      const sourceRemote = safeMediaTransfer(source, sshTarget, root), destRemote = safeMediaTransfer(dest, sshTarget, root);
+      if (!!sourceRemote === !!destRemote) return { ok: false, stdout: '' };
+      const from = sourceRemote || source, to = destRemote || dest;
+      try {
+        if (!fs.statSync(from).isFile() || fs.existsSync(to)) return { ok: false, stdout: '' };
+        fs.copyFileSync(from, to, fs.constants.COPYFILE_EXCL);
+        return { ok: true, stdout: '' };
+      } catch (_) { return { ok: false, stdout: '' }; }
+    }
+    return execP(cmd, args, timeoutMs);
+  };
+}
+function localMediaScript(_target, script, timeoutMs, onData) {
+  return new Promise(resolve => {
+    const child = spawn('/bin/bash', ['-s'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let out = '', finished = false;
+    const finish = () => { if (!finished) { finished = true; clearTimeout(t); resolve(out); } };
+    const t = setTimeout(() => { try { child.kill('SIGTERM'); } catch (_) {} finish(); }, timeoutMs);
+    child.stdout.on('data', d => { out += d; if (out.length > 8e6) out = out.slice(-4e6); if (onData) { try { onData(String(d)); } catch (_) {} } });
+    child.stderr.on('data', () => {});
+    child.on('close', finish);
+    child.on('error', finish);
+    child.stdin.on('error', () => {});
+    child.stdin.end(script);
+  });
+}
+
 function execP(cmd, args, timeoutMs = 120000) {
   return new Promise(resolve => execFile(cmd, args, { timeout: timeoutMs, encoding: 'utf8' }, (err, stdout) => resolve({ ok: !err, stdout: String(stdout || '') })));
 }
@@ -254,6 +312,10 @@ function parseItemMarkers(text) {
 // exec/sshRun/toWav are injectable for tests; production uses ssh/scp/ffmpeg.
 function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget = 'westcat', evidenceFile, log = () => {}, onRemoteOutput = null,
   exec = execP, sshRunFn = sshRun, toWav = referenceToWav }) {
+  // Preserve injected remote test doubles; switch only production on Big Mac.
+  const local = localMediaWorker(sshTarget) && exec === execP && sshRunFn === sshRun;
+  const runExec = local ? localMediaExec(sshTarget) : exec;
+  const runScript = local ? localMediaScript : sshRunFn;
   const evidence = {
     read() { try { return JSON.parse(fs.readFileSync(evidenceFile, 'utf8')); } catch (_) { return {}; } },
     pass(worker, rec) {
@@ -274,7 +336,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
 
       // 2. private remote job dir
-      const mk = await exec('ssh', ['-o', 'BatchMode=yes', sshTarget,
+      const mk = await runExec('ssh', ['-o', 'BatchMode=yes', sshTarget,
         `mkdir -p "$HOME/Library/Caches/DexDiffusion/tmp" && d=$(mktemp -d "$HOME/Library/Caches/DexDiffusion/tmp/dexmedia.XXXXXX") && chmod 700 "$d" && echo "DEXMEDIA_DIR=$d"`]);
       remoteDir = parseMarkers(mk.stdout).DIR;
       if (!remoteDir) return fail('worker-unavailable', 'could not create a Big Mac job directory');
@@ -292,7 +354,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
           exec('scp', ['-q', localSource, `${sshTarget}:${remoteDir}/source.wav`]),
           exec('scp', ['-q', localTarget, `${sshTarget}:${remoteDir}/target.wav`]),
         ]);
-        const chk = await exec('ssh', ['-o', 'BatchMode=yes', sshTarget,
+        const chk = await runExec('ssh', ['-o', 'BatchMode=yes', sshTarget,
           `test -s "${remoteDir}/source.wav" && test -s "${remoteDir}/target.wav" && shasum -a 256 "${remoteDir}/source.wav" "${remoteDir}/target.wav"`]);
         const remoteHashes = String(chk.stdout || '').match(/[a-f0-9]{64}/g) || [];
         if (!sourceUp.ok || !targetUp.ok || remoteHashes.length < 2 || remoteHashes[0] !== openVoiceTransfer.sourceSha || remoteHashes[1] !== openVoiceTransfer.targetSha) return fail('transfer', 'source/target upload checksums did not match');
@@ -303,8 +365,8 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
         if (!st || st.kind !== 'audio') return fail('reference-invalid', 'staged reference audio not found or expired');
         localRef = await toWav(st);
         if (!localRef) return fail('reference-invalid', 'reference audio could not be converted to WAV');
-        const up = await exec('scp', ['-q', localRef, `${sshTarget}:${remoteDir}/ref.wav`]);
-        const chk = await exec('ssh', ['-o', 'BatchMode=yes', sshTarget, `test -s "${remoteDir}/ref.wav" && echo DEXMEDIA_REF_OK`]);
+        const up = await runExec('scp', ['-q', localRef, `${sshTarget}:${remoteDir}/ref.wav`]);
+        const chk = await runExec('ssh', ['-o', 'BatchMode=yes', sshTarget, `test -s "${remoteDir}/ref.wav" && echo DEXMEDIA_REF_OK`]);
         if (!up.ok && !parseMarkers(chk.stdout).REF_OK) return fail('transfer', 'reference upload failed');
         if (!parseMarkers(chk.stdout).REF_OK) return fail('transfer', 'reference upload missing on Big Mac');
         request.ref_audio = `${remoteDir}/ref.wav`;
@@ -321,7 +383,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
         if (text.includes('DEXMEDIA_PASS')) jobStore.transition(jobId, 'RUNNING', { progress: { phase: 'validating-output', label: 'Validating converted audio and watermark' } });
       } : undefined;
       if (worker === 'openvoice-v2') jobStore.transition(jobId, 'RUNNING', { progress: { phase: 'loading-model', label: 'Loading OpenVoice V2 on Big Mac' } });
-      const out = await sshRunFn(sshTarget, payload, TIMEOUT_MS[worker] || TIMEOUT_MS.tts, onData);
+      const out = await runScript(sshTarget, payload, TIMEOUT_MS[worker] || TIMEOUT_MS.tts, onData);
       if (onRemoteOutput) onRemoteOutput(out); // test/diagnostic hook only; never persisted
       const mk2 = parseMarkers(out);
       if (!mk2.DONE && !mk2.FAIL && !mk2.PASS) return fail('generation', 'Big Mac generation did not report completion (timeout or connection loss)');
@@ -333,7 +395,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       // 5. transfer + checksum
       jobStore.transition(jobId, 'TRANSFERRING');
       localOut = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dexmedia-')), 'out.wav');
-      await exec('scp', ['-q', `${sshTarget}:${mk2.OUTPUT}`, localOut], 300000);
+      await runExec('scp', ['-q', `${sshTarget}:${mk2.OUTPUT}`, localOut], 300000);
       if (!fs.existsSync(localOut) || fs.statSync(localOut).size === 0) return fail('transfer', 'WAV transfer from Big Mac failed');
       const sha = sha256File(localOut);
       if (sha !== mk2.SHA256) return fail('checksum', 'transferred WAV checksum does not match Big Mac');
@@ -418,7 +480,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       const g0 = jobStore.get(jobId);
       if (!g0 || g0.status !== 'QUEUED') return { ok: false, gate: 'interrupted' };
       jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group, progress: { phase: 'preparing', chunk: 0, total } });
-      const mk = await exec('ssh', ['-o', 'BatchMode=yes', sshTarget,
+      const mk = await runExec('ssh', ['-o', 'BatchMode=yes', sshTarget,
         `mkdir -p "$HOME/Library/Caches/DexDiffusion/tmp" && d=$(mktemp -d "$HOME/Library/Caches/DexDiffusion/tmp/dexmedia.XXXXXX") && chmod 700 "$d" && echo "DEXMEDIA_DIR=$d"`]);
       remoteDir = parseMarkers(mk.stdout).DIR;
       if (!remoteDir) return fail('worker-unavailable', 'could not create a Big Mac job directory');
@@ -429,14 +491,14 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
         if (!fs.existsSync(v.refPath)) return fail('reference-invalid', 'the profile reference sample file is missing');
         localRef = await toWav({ path: v.refPath });
         if (!localRef) return fail('reference-invalid', 'reference audio could not be converted to WAV');
-        const up = await exec('scp', ['-q', localRef, `${sshTarget}:${remoteDir}/ref.wav`]);
-        const chk = await exec('ssh', ['-o', 'BatchMode=yes', sshTarget, `test -s "${remoteDir}/ref.wav" && echo DEXMEDIA_REF_OK`]);
+        const up = await runExec('scp', ['-q', localRef, `${sshTarget}:${remoteDir}/ref.wav`]);
+        const chk = await runExec('ssh', ['-o', 'BatchMode=yes', sshTarget, `test -s "${remoteDir}/ref.wav" && echo DEXMEDIA_REF_OK`]);
         if (!parseMarkers(chk.stdout).REF_OK) return fail('transfer', up.ok ? 'reference upload missing on Big Mac' : 'reference upload failed');
         request.ref_audio = `${remoteDir}/ref.wav`;
       }
       const payload = buildPayload({ dir: remoteDir, request, driverSource: fs.readFileSync(DRIVER_PATH, 'utf8'), python: spec.python });
       let seen = '';
-      const out = await sshRunFn(sshTarget, payload, Math.max(TIMEOUT_MS.tts, total * 90 * 1000), chunk => {
+      const out = await runScript(sshTarget, payload, Math.max(TIMEOUT_MS.tts, total * 90 * 1000), chunk => {
         seen += chunk;
         const starts = [...seen.matchAll(/DEXMEDIA_ITEM_START=(\d+)/g)], done = parseItemMarkers(seen);
         if (starts.length) progress({ phase: 'generating', chunk: Number(starts[starts.length - 1][1]) + 1, done: done.length });
@@ -450,7 +512,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       // Pull one verified output from Big Mac (size + checksum + decodable WAV). Returns { dest, audio } or { error }.
       const pull = async (it) => {
         const dest = path.join(localDir, `item-${String(it.i).padStart(3, '0')}.wav`);
-        await exec('scp', ['-q', `${sshTarget}:${it.path}`, dest], 300000);
+        await runExec('scp', ['-q', `${sshTarget}:${it.path}`, dest], 300000);
         if (!fs.existsSync(dest) || fs.statSync(dest).size === 0) return { error: ['transfer', `chunk ${it.i + 1}/${total}: WAV transfer from Big Mac failed`] };
         if (sha256File(dest) !== it.sha) return { error: ['checksum', `chunk ${it.i + 1}/${total}: transferred WAV checksum does not match Big Mac`] };
         let audio; try { audio = A.parseWav(fs.readFileSync(dest)); } catch (e) { return { error: ['output-invalid', `chunk ${it.i + 1}/${total}: ${e.message}`] }; }
@@ -555,7 +617,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
   async function cleanupResource(jobId, resource) {
     let verified = false, reason = '';
     try {
-      const result = await exec('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', resource.host, cleanupCommand(resource)], 30000);
+      const result = await runExec('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', resource.host, cleanupCommand(resource)], 30000);
       verified = parseMarkers(result.stdout).CLEANED === resource.resource_id;
       if (!verified) reason = 'exact owned directory removal lacks in-band verification';
     } catch (_) { reason = 'cleanup transport failed'; }
@@ -596,4 +658,4 @@ function privateOnly(req) {
   return out;
 }
 
-module.exports = { createMediaBridge, validateRequest, validateBatchPlan, parseItemMarkers, buildPayload, parseMarkers, BRIDGES, KOKORO_VOICES, LANGS, DRIVER_PATH, privateOnly, MAX_ITEMS, MAX_ITEM_CHARS, referenceToWav };
+module.exports = { createMediaBridge, localMediaWorker, safeMediaTransfer, localMediaExec, localMediaScript, validateRequest, validateBatchPlan, parseItemMarkers, buildPayload, parseMarkers, BRIDGES, KOKORO_VOICES, LANGS, DRIVER_PATH, privateOnly, MAX_ITEMS, MAX_ITEM_CHARS, referenceToWav };

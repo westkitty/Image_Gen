@@ -237,7 +237,16 @@ def read_binary_ply(path: Path) -> list[tuple[float, float, float, int, int, int
         if base + stride > len(data):
             break
         xyz = [struct.unpack_from("<f", data, base + offsets[name][0])[0] for name in required]
-        rgb = [data[base + offsets[name][0]] if name in offsets else 180 for name in ("red", "green", "blue")]
+        if all(name in offsets for name in ("red", "green", "blue")):
+            rgb = [data[base + offsets[name][0]] for name in ("red", "green", "blue")]
+        elif all(f"f_dc_{k}" in offsets for k in range(3)):
+            # SHARP's Gaussian PLY stores spherical-harmonic DC coefficients,
+            # not uchar RGB. Preserve the actual color rather than using the
+            # former silent (180,180,180) fallback for every vertex.
+            rgb = [max(0, min(255, round(255 * (0.5 + 0.28209479177387814 *
+                   struct.unpack_from("<f", data, base + offsets[f"f_dc_{k}"][0])[0])))) for k in range(3)]
+        else:
+            raise ValueError(f"PLY has no RGB or Gaussian SH DC colors: {path}")
         if all(math.isfinite(v) for v in xyz):
             out.append((*xyz, *rgb))
     return out
@@ -274,7 +283,12 @@ def fuse(args: argparse.Namespace) -> dict:
         f.write(f"element vertex {len(rows)}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n".encode("ascii"))
         for row in rows:
             f.write(struct.pack("<fffBBB", *row))
-    result = {"schema": "dexdiffusion.world.fusion.v1", "method": "aligned-voxel-dedup", "inputs": len(inputs), "inputPoints": total, "outputPoints": len(rows), "voxelSize": voxel, "finite": True, "sha256": sha256(out)}
+    color_range = {"r": [min(row[3] for row in rows), max(row[3] for row in rows)],
+                   "g": [min(row[4] for row in rows), max(row[4] for row in rows)],
+                   "b": [min(row[5] for row in rows), max(row[5] for row in rows)]} if rows else None
+    result = {"schema": "dexdiffusion.world.fusion.v1", "method": "aligned-voxel-dedup", "inputs": len(inputs), "inputPoints": total, "outputPoints": len(rows), "voxelSize": voxel, "finite": True, "sha256": sha256(out),
+              "colorEncoding": "rgb-from-source-or-sh-dc", "colorRange": color_range,
+              "renderMode": "colored-point-preview", "gaussianParametersPreserved": False}
     write_json(Path(args.manifest), result)
     return result
 

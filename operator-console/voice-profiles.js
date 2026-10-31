@@ -227,21 +227,31 @@ function createProfileStore({ root, ingest, now = () => Date.now() }) {
     return { ok: !errors.length, errors, warnings, diagnostics: Object.assign({ rms_db: +d.rmsDb.toFixed(1), clip_ratio: +d.clipRatio.toFixed(5), silence_ratio: +d.silenceRatio.toFixed(3) }, insp, { duration: +d.duration.toFixed(3) }) };
   }
   // srcPath: a file (typically the staged upload). It is re-encoded; the staged copy stays temporary.
-  async function addSample(id, { srcPath, wav, name, transcript }) {
+  async function addSample(id, { srcPath, wav, name, transcript, trimStartSec, trimEndSec }) {
     const p = readRaw(id); if (!p) return null;
     if (p.type !== 'cloned') throw Object.assign(new Error('only cloned voices take reference samples'), { status: 400 });
     assertEditable(p, 'its reference samples');
     if (p.samples.length >= MAX_SAMPLES) throw Object.assign(new Error(`a profile holds at most ${MAX_SAMPLES} samples`), { status: 400 });
-    const buf = wav || await ingest(srcPath);
+    const trimming = trimStartSec !== undefined || trimEndSec !== undefined;
+    let edit = null;
+    if (trimming) {
+      const start = Number(trimStartSec), end = Number(trimEndSec);
+      if (!srcPath || wav || !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end - start < 0.5 || end - start > 30.001)
+        throw Object.assign(new Error('select a valid 0.5–30 second excerpt before saving'), { status: 400, gate: 'reference-invalid' });
+      edit = { start, end };
+    }
+    const buf = wav || await ingest(srcPath, edit);
     if (!buf || buf.length > MAX_SAMPLE_BYTES) throw Object.assign(new Error('sample could not be converted to a valid WAV (or is too large)'), { status: 400 });
     const v = diagnose(buf);
+    if (edit && v.diagnostics && v.diagnostics.duration > 30.01)
+      throw Object.assign(new Error('trimmed reference is longer than 30 seconds'), { status: 400, gate: 'reference-invalid' });
     if (!v.ok) throw Object.assign(new Error('sample rejected: ' + v.errors.join('; ')), { status: 400 });
     const sid = 'sm-' + crypto.randomBytes(5).toString('hex');
     const file = `${sid}.wav`;
     fs.mkdirSync(path.join(dirOf(id), 'samples'), { recursive: true, mode: 0o700 });
     atomicWrite(path.join(dirOf(id), 'samples', file), buf);
     const s = { id: sid, name: clip(name || `Sample ${p.samples.length + 1}`, 80), file, bytes: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex'),
-      transcript: clip(transcript, 4000), active: p.samples.length === 0, review: { state: 'unreviewed', note: '', at: null }, validation: { ok: v.ok, errors: v.errors, warnings: v.warnings }, diagnostics: v.diagnostics, created_at: now() };
+      transcript: clip(transcript, 4000), trim: edit ? { start_sec: +edit.start.toFixed(3), end_sec: +edit.end.toFixed(3) } : null, active: p.samples.length === 0, review: { state: 'unreviewed', note: '', at: null }, validation: { ok: v.ok, errors: v.errors, warnings: v.warnings }, diagnostics: v.diagnostics, created_at: now() };
     p.samples.push(s);
     return { profile: view(save(p)), sample: s };
   }
