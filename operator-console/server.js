@@ -4314,6 +4314,47 @@ app.post('/api/images/:id/test-artifact', (req, res) => {
   if (!on && cur.test_artifact) { const all = imageMeta.all(); delete all[req.params.id].test_artifact; delete all[req.params.id].note; imageMeta.record(req.params.id, {}); }
   res.json({ id: req.params.id, test_artifact: on, note });
 });
+// Explicit 3D/World source import: validate raw image bytes through the existing
+// temporary staging rules, then publish one canonical image with its own run index.
+// A staged id or client path can never be passed to a 3D engine.
+app.post('/api/library/images/import', express.raw({ type: () => true, limit: '26mb' }), (req, res) => {
+  const staged = staging.stage(req.body, { accept: ['image'] });
+  if (staged.error) return res.status(400).json({ error: staged.error, gate: 'source-import' });
+  try {
+    const source = staging.get(staged.id);
+    if (!source || source.kind !== 'image') throw new Error('Validated image staging disappeared');
+    const date = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+    const runId = date + '-import-' + crypto.randomBytes(5).toString('hex');
+    const runDir = path.join(RUNS_DIR, runId);
+    fs.mkdirSync(RUNS_DIR, { recursive: true });
+    fs.mkdirSync(runDir, { mode: 0o700 });
+    const rawName = typeof req.query.name === 'string' ? req.query.name.slice(0, 160) : 'image';
+    const originalName = rawName.replace(/[\\/]/g, '-').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 120) || 'image';
+    const stem = originalName.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 48) || 'image';
+    const ext = path.extname(source.file).toLowerCase();
+    const entry = imageStore.adoptFile(source.path, { runDir, runId, runFile: 'source-' + stem + ext });
+    // New import ownership must be visible immediately, not after the cache TTL.
+    imageSourceCache = { at: 0, map: new Map() };
+    try {
+      imageMeta.record(entry.image_id, {
+        operation: 'import', runId, original_name: originalName,
+        width: source.width, height: source.height, source_kind: 'user-upload'
+      });
+    } catch (error) {
+      console.error('Image import metadata write failed:', error.message);
+    }
+    res.status(201).json({
+      id: entry.image_id, url: imageStore.imageUrl(entry.image_id),
+      width: source.width, height: source.height, runId
+    });
+  } catch (error) {
+    console.error('Canonical image import failed:', error.message);
+    res.status(500).json({ error: 'Image could not be published into the Library.', gate: 'source-import' });
+  } finally {
+    staging.remove(staged.id);
+  }
+});
+
 app.get('/api/library/images', (req, res) => {
   const filter = String(req.query.filter || 'all');
   let ids = imageStore.listCanonicalImages();

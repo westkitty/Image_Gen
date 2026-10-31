@@ -131,10 +131,18 @@
     return fail('no-source');
   }
 
-  // Picker options: only canonical ids, de-duplicated, order preserved.
-  function choices(runs) {
+  // Library is the source of truth for reusable images; run history is only
+  // a compatibility fallback. Never invent a default selection.
+  function choices(runs, libraryItems) {
     const seen = new Set();
     const out = [];
+    for (const item of Array.isArray(libraryItems) ? libraryItems : []) {
+      if (!item || !isImageId(item.id) || seen.has(item.id)) continue;
+      seen.add(item.id);
+      const label = item.meta && typeof item.meta.original_name === 'string' && item.meta.original_name
+        ? item.meta.original_name + ' · ' + item.id : item.id;
+      out.push({ id: item.id, label, run: null });
+    }
     for (const run of Array.isArray(runs) ? runs : []) {
       const r = fromRun(run);
       if (!r.ok || seen.has(r.id)) continue;
