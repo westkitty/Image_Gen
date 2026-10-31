@@ -74,7 +74,15 @@ async function main() {
   camera=new THREE.PerspectiveCamera(62,1,0.01,1000);
   spark=new SparkRenderer({renderer});scene.add(spark);
   resize(); updateCamera();
-  selector.onchange=()=>selectView(Number(selector.value));
+  // A full page navigation releases the previous WebGL context before loading
+  // another million-splat view. Avoid transient two-view GPU memory pressure.
+  selector.onchange=()=>{
+    const selected=Number(selector.value);
+    if (!Number.isInteger(selected) || selected<0 || selected>=views.length) return;
+    updateStatus('Switching Gaussian view', 'Releasing previous GPU resources');
+    selector.disabled=true;
+    location.assign('./world-gaussian-viewer.html?project='+encodeURIComponent(projectId)+'&view='+(selected+1));
+  };
   reset.onclick=()=>{theta=0;phi=Math.PI/2;updateCamera();canvas.focus();};
   canvas.addEventListener('pointerdown',e=>{drag=true;lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId);});
   canvas.addEventListener('pointerup',e=>{drag=false;try{canvas.releasePointerCapture(e.pointerId);}catch(_){}});
