@@ -100,7 +100,7 @@ function projectOperationalJob({
 // Durable generic jobs (voice/music/drama) carry {phase, done, total, label}. A percentage exists only when the
 // counts do; otherwise the job is shown as indeterminate rather than with an invented number.
 function projectGenericProgress(progress) {
-  if (!progress || typeof progress !== 'object') return null;
+  if (!progress || typeof progress !== 'object' || progress.scope === 'phase') return null; // Inner denoising counts are not whole-job percentages.
   const done = Number(progress.done), total = Number(progress.total);
   if (!Number.isFinite(done) || !Number.isFinite(total) || total <= 0 || done < 0) return null;
   const pct = Math.max(0, Math.min(100, Math.round(done / total * 100)));

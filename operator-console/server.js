@@ -4732,7 +4732,10 @@ app.post('/api/3d/open-in-blender', (req, res) => {
 app.get('/api/world/workers', async (req, res) => {
   try { res.json(await worldBridge.workers()); } catch (error) { res.status(503).json({ error: 'world worker probe failed', detail: String(error.message).slice(0, 180) }); }
 });
-app.get('/api/world/projects', (req, res) => res.json({ projects: worldStore.list() }));
+app.get('/api/world/projects', (req, res) => res.json({ projects: worldStore.list().map(p => {
+  const job = p.jobId ? jobStore.get(p.jobId) : null;
+  return { ...p, jobStartedAt: job?.started_at || null, jobCompletedAt: job?.completed_at || null };
+}) }));
 app.get('/api/world/projects/:id', (req, res) => {
   const p = worldStore.get(req.params.id);
   if (!p) return res.status(404).json({ error: 'World project not found' });
@@ -4743,7 +4746,7 @@ app.get('/api/world/projects/:id', (req, res) => {
   }
   const first = slot => Array.isArray(artifacts[slot]) ? artifacts[slot][0] : artifacts[slot];
   const viewerArtifact = first('finalPly') || first('runtimeSplat') || first('coarseGeometry') || first('perViewSplats');
-  res.json({ ...p, artifacts, viewerArtifact: viewerArtifact || null });
+  res.json({ ...p, progress: require('./world-progress').deriveWorldProgress(p), artifacts, viewerArtifact: viewerArtifact || null });
 });
 app.patch('/api/world/projects/:id', (req, res) => {
   const p = worldStore.get(req.params.id);

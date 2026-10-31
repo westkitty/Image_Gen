@@ -102,12 +102,13 @@ class Component extends DCLogic {
     worldProjects: [], worldLoading: false, worldSourceArtifact: '', worldWorkerStatus: null,
     sourceImages: [], sourceImagesTotal: 0, sourceImagesLoading: false, sourceImagesError: '', sourceImporting: false,
     asset3dWorkerStatus: null, asset3dSourceArtifact: '', asset3dPreviewFailedId: '', asset3dMode: 'mesh', asset3dLoading: false, asset3dJob: null,
+    focusViewer: null,
     assetQuery: '', serverStatusSummary: '', lastValidation: '',
     savePrompts: localStorage.getItem('dex_save_prompts') === 'true',
     toasts: [],
   };
 
-  _pingTimer = null; _pollTimer = null; _worldPollTimer = null; _asset3dPollTimer = null; _toastId = 0;
+  _pingTimer = null; _pollTimer = null; _worldPollTimer = null; _asset3dPollTimer = null; _worldMilestoneTimer = null; _toastId = 0;
   _completedImageCache = { key: null, node: null };
 
   componentDidMount() {
@@ -151,6 +152,13 @@ class Component extends DCLogic {
     this.load3dSourceImages();
     this.loadWorldProjects();
     this.loadAsset3dWorkers();
+    this.loadRecentAsset3dJob();
+    this._worldMilestoneTimer = setInterval(() => {
+      if (['world', '3d'].includes(this.state.screens[this.state.version]) &&
+          (this.state.worldProjects || []).some(p => ['RUNNING', 'QUEUED'].includes(p.status))) {
+        this.refreshWorldMilestones();
+      }
+    }, 1800);
     this.loadModels();
     this.loadAssets();
     this.loadWildcards();
@@ -158,7 +166,7 @@ class Component extends DCLogic {
     this.loadSystemInfo();
   }
   componentWillUnmount() {
-    clearInterval(this._pingTimer); clearInterval(this._pollTimer); clearInterval(this._worldPollTimer); clearInterval(this._asset3dPollTimer);
+    clearInterval(this._pingTimer); clearInterval(this._pollTimer); clearInterval(this._worldPollTimer); clearInterval(this._asset3dPollTimer); clearInterval(this._worldMilestoneTimer);
     this._pollGeneration = (this._pollGeneration || 0) + 1;
     for (const controller of this._jobWaitControllers || []) controller.abort();
     this._detailerDetectController?.abort();
@@ -271,6 +279,10 @@ class Component extends DCLogic {
   }
 
   onKeydown(e) {
+    if (this.state.focusViewer) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.closeFocusViewer(); }
+      return; // A focused preview must not trigger global Create/Library shortcuts.
+    }
     if (this.state.version === 2 && this.state.screens[2] === 'chat' && this.state.studioLayout === 'masters') {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && e.target && e.target.closest('[data-studio-chat]')) { e.preventDefault(); this.sendChat(); return; }
       if (e.target && e.target.closest('[data-studio-chat]')) return;
@@ -490,6 +502,138 @@ class Component extends DCLogic {
     );
   }
 
+  // This is a stable vnode, not rebuilt on every progress tick. DCRuntime
+  // replaces changed dynamic slots, which would otherwise recreate the iframe
+  // and restart the actual WebGL renderer every 1.8 seconds.
+  openFocusViewer(kind, id) {
+    if (!['world', 'asset3d'].includes(kind) || typeof id !== 'string' || !id || id.length > 200) return false;
+    const url = kind === 'world'
+      ? '/dexdiffusion/world-viewer.html?project=' + encodeURIComponent(id)
+      : '/dexdiffusion/asset3d-viewer.html?artifact=' + encodeURIComponent(id);
+    const h = React.createElement;
+    this._focusReturnElement = document.activeElement;
+    const actionStyle = { border: '1px solid rgba(148,163,184,.35)', background: '#122033', color: '#e6edf5', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', fontWeight: 700 };
+    this._focusViewerVNode = h('div', { role: 'dialog', 'aria-modal': 'true', 'aria-label': kind === 'world' ? 'World Focus' : '3D Asset Focus',
+      'data-focus-viewer': kind, style: { position: 'fixed', inset: 0, zIndex: 2147482000, background: '#05070b', display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh' } },
+      h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 16px', background: '#0c1420', borderBottom: '1px solid rgba(148,163,184,.25)', color: '#e2e8f0', flexShrink: 0 } },
+        h('div', { style: { minWidth: 0 } },
+          h('div', { style: { fontSize: 14, fontWeight: 800 } }, kind === 'world' ? 'World Focus — interactive 3D preview' : '3D Asset Focus — interactive model'),
+          h('div', { style: { fontSize: 11, color: '#94a3b8', overflowWrap: 'anywhere' } }, id)),
+        h('button', { type: 'button', 'data-focus-close': 'true', style: actionStyle, onClick: () => this.closeFocusViewer() }, 'Close Focus')),
+      h('iframe', { key: url, src: url, title: kind === 'world' ? 'Interactive world point-cloud viewer' : 'Interactive GLB model viewer',
+        'data-focus-frame': kind, allowFullScreen: true, style: { display: 'block', flex: '1 1 auto', width: '100%', minHeight: 0, border: 0, background: '#05070b' } })
+    );
+    this.setState({ focusViewer: { kind, id } });
+    requestAnimationFrame(() => document.querySelector('[data-focus-close]')?.focus());
+    return true;
+  }
+
+  closeFocusViewer() {
+    if (!this.state.focusViewer) return;
+    const was = this.state.focusViewer;
+    this._focusViewerVNode = null;
+    this.setState({ focusViewer: null });
+    const trigger = this._focusReturnElement;
+    this._focusReturnElement = null;
+    requestAnimationFrame(() => {
+      if (trigger && trigger.isConnected) trigger.focus();
+      else {
+        const selector = was.kind === 'world' ? '[data-world-open-focus]' : '[data-asset-open-focus]';
+        const replacement = [...document.querySelectorAll(selector)].find(el => el.getAttribute(was.kind === 'world' ? 'data-world-open-focus' : 'data-asset-open-focus') === was.id);
+        replacement?.focus();
+      }
+    });
+  }
+
+  _worldProgressDisplay(project) {
+    const h = React.createElement;
+    const progress = project.progress;
+    if (!progress || !Array.isArray(progress.segments) || !progress.total) return null;
+    const color = status => status === 'READY' ? '#238c85'
+      : status === 'RUNNING' ? '#e4aa42'
+      : status === 'FAILED' ? '#ed6f77'
+      : status === 'BLOCKED' ? '#a17d45' : '#273344';
+    const active = progress.segments.find(segment => segment.status === 'RUNNING') || null;
+    const result = String(project.status || 'QUEUED');
+    const label = result === 'PARTIAL' ? 'Partial output · preview may be available'
+      : result === 'FAILED' ? 'Stopped at failed milestone'
+      : result === 'QUEUED' ? 'Waiting for compute resources'
+      : result === 'COMPLETE' ? 'Verified workflow complete'
+      : result === 'RUNNING' ? (active?.label || 'Processing next stage') : result;
+    const displayLabel = !this.state.backendOnline && ['RUNNING', 'QUEUED'].includes(result) ? 'Connection lost · last confirmed stage' : label;
+    const elapsed = project.jobStartedAt && (project.jobCompletedAt || Date.now()) >= project.jobStartedAt
+      ? Math.floor(((project.jobCompletedAt || Date.now()) - project.jobStartedAt) / 1000) : null;
+    const elapsedText = elapsed == null ? '' : ' · ' + Math.floor(elapsed / 60) + 'm ' + String(elapsed % 60).padStart(2, '0') + 's elapsed';
+    return h('div', { 'data-world-progress': project.id, style: { marginTop: 10, display: 'grid', gap: 6 } },
+      h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', color: '#a7bdd1', fontSize: 11 } },
+        h('span', null, progress.done + ' of ' + progress.total + ' milestones verified'),
+        h('span', null, displayLabel + elapsedText)),
+      h('div', { role: 'group', 'aria-label': 'Verified World milestones; not a time estimate', style: { display: 'flex', gap: 3, minHeight: 9, width: '100%' } },
+        ...progress.segments.map(seg => h('span', { key: seg.id, 'data-stage-id': seg.id, 'data-stage-status': seg.status,
+          title: seg.label + ': ' + seg.status.toLowerCase(), 'aria-label': seg.label + ': ' + seg.status.toLowerCase(),
+          style: { flex: '1 1 0', borderRadius: 3, height: 9, background: color(seg.status), minWidth: 6 } }))),
+      this.state.backendOnline && active && ['RUNNING', 'QUEUED'].includes(result) ? h('div', { role: 'status', style: { fontSize: 11, color: '#9fb0c5' } }, 'Current: ' + active.label + ' · remaining time unknown') : null);
+  }
+
+  _asset3dProgressDisplay(job) {
+    if (!job) return null;
+    const h = React.createElement;
+    // Quick Geometry is a World project, not a Hunyuan asset. Reuse its
+    // authoritative SHARP stage records instead of displaying fake shape steps.
+    if (job.operation === 'quick3d' || job.mode === 'quick3d' || this.state.asset3dMode === 'quick3d') {
+      const project = (this.state.worldProjects || []).find(p => p.jobId === job.job_id || (job.id && p.id === job.id));
+      return project ? this._worldProgressDisplay(project)
+        : h('div', { role: 'status', style: { marginTop: 10, fontSize: 11, color: '#94a3b8' } }, 'Quick Geometry progress is recorded in the World project stages.');
+    }
+    const mode = job.params?.mode || job.mode || this.state.asset3dMode;
+    const phases = mode === 'textured' ? ['preparing', 'shape', 'paint', 'validating', 'publishing'] : ['preparing', 'shape', 'validating', 'publishing'];
+    const current = String(job.progress?.phase || (job.status === 'QUEUED' ? 'queued' : 'preparing'));
+    const rank = phases.indexOf(current);
+    const isDone = job.status === 'COMPLETE';
+    const isTerminal = ['COMPLETE', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(job.status);
+    const done = isDone ? phases.length : Math.max(0, rank);
+    const measured = job.progress && Number.isFinite(Number(job.progress.done)) && Number.isFinite(Number(job.progress.total)) && Number(job.progress.total) > 0;
+    return h('div', { 'data-asset3d-progress': job.job_id || 'pending', style: { marginTop: 12, display: 'grid', gap: 7 } },
+      h('div', { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8, color: '#a7bdd1', fontSize: 11 } },
+        h('span', null, isDone ? phases.length + ' of ' + phases.length + ' milestones verified' : done + ' of ' + phases.length + ' milestones verified'),
+        h('span', { role: 'status' }, job.progress?.label || (isTerminal ? String(job.status).toLowerCase() : current === 'queued' ? 'Waiting for compute lease' : 'Processing'))),
+      h('div', { role: 'group', 'aria-label': '3D Asset milestones; not a time estimate', style: { display: 'flex', gap: 3 } },
+        ...phases.map((phase, i) => h('span', { key: phase, title: phase + ': ' + (isDone || i < done ? 'complete' : i === rank ? 'running' : 'pending'),
+          'data-stage-id': phase, style: { flex: '1 1 0', height: 9, borderRadius: 3, background: isDone || i < done ? '#238c85' : i === rank ? '#e4aa42' : '#273344' } }))),
+      measured && current === 'shape'
+        ? h('div', { style: { display: 'grid', gap: 4 } },
+          h('progress', { value: Number(job.progress.done), max: Number(job.progress.total), 'aria-label': 'Measured shape denoising steps', style: { width: '100%', accentColor: '#39a8c8' } }),
+          h('span', { style: { fontSize: 11, color: '#94a3b8' } }, job.progress.done + ' of ' + job.progress.total + ' denoising steps'))
+        : !isTerminal && current !== 'queued' ? h('span', { style: { fontSize: 11, color: '#94a3b8' } }, 'Current stage duration unknown') : null);
+  }
+
+  async refreshWorldMilestones() {
+    if (this._worldMilestoneBusy) return;
+    this._worldMilestoneBusy = true;
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/world/projects', { signal: AbortSignal.timeout(7000) });
+      if (r.ok) {
+        const body = await r.json();
+        if (Array.isArray(body.projects)) this.setState({ worldProjects: body.projects });
+      }
+    } catch (_) { /* A transient network error must not erase the last verified milestones. */ }
+    finally { this._worldMilestoneBusy = false; }
+  }
+
+  async loadRecentAsset3dJob() {
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/generic-jobs?kind=world', { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) return;
+      const body = await r.json();
+      const recent = (body.jobs || []).find(j => /^asset3d-(mesh|textured)$/.test(String(j.operation || '')));
+      if (!recent || this.state.asset3dJob?.job_id) return;
+      const detail = await fetch(this.state.backendUrl + '/api/generic-jobs/' + encodeURIComponent(recent.job_id));
+      if (!detail.ok || this.state.asset3dJob?.job_id) return;
+      this.setState({ asset3dJob: await detail.json() });
+      if (['QUEUED', 'RUNNING', 'TRANSFERRING'].includes(recent.status)) this.pollAsset3dJob(recent.job_id);
+    } catch (_) { /* The 3D UI remains usable if no old job history can be loaded. */ }
+  }
+
   async loadWorldProjects() {
     this.setState({ worldLoading: true });
     try {
@@ -548,7 +692,7 @@ class Component extends DCLogic {
     }, 1200);
   }
 
-  openAsset3dViewer(artifactId) { this.setActiveAssetSelection({ kind: 'asset3d', id: artifactId }); window.open('/dexdiffusion/asset3d-viewer.html?artifact=' + encodeURIComponent(artifactId), '_blank', 'noopener'); }
+  openAsset3dViewer(artifactId) { this.setActiveAssetSelection({ kind: 'asset3d', id: artifactId }); this.openFocusViewer('asset3d', artifactId); }
 
   openAsset3dInBlender(artifactId) {
     fetch(this.state.backendUrl + '/api/3d/open-in-blender', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ artifact_id: artifactId }) })
@@ -570,7 +714,7 @@ class Component extends DCLogic {
       if (!r.ok) { this.toast(body.error || 'World request rejected', '#ef4444'); this.setState({ worldLoading: false }); return; }
       if (body.id) this.setActiveAssetSelection({ kind: 'world-project', id: body.id });
       this.setScreen('world');
-      this.toast(mode === 'quick3d' ? 'Quick 3D queued' : 'Complete 360 recorded as blocked', mode === 'quick3d' ? '#38bdf8' : '#fbbf24');
+      this.toast(mode === 'quick3d' ? 'Quick 3D queued' : 'Complete 360 queued', '#38bdf8');
       await this.loadWorldProjects();
       if (body.job_id) this.pollWorldJob(body.job_id);
     } catch (e) { this.setState({ worldLoading: false }); this.toast('World request failed: ' + e.message, '#ef4444'); }
@@ -592,7 +736,7 @@ class Component extends DCLogic {
     }, 1200);
   }
 
-  openWorldViewer(projectId) { this.setActiveAssetSelection({ kind: 'world-project', id: projectId }); window.open('/dexdiffusion/world-viewer.html?project=' + encodeURIComponent(projectId), '_blank', 'noopener'); }
+  openWorldViewer(projectId) { this.setActiveAssetSelection({ kind: 'world-project', id: projectId }); this.openFocusViewer('world', projectId); }
 
   buildWorldWorkspace() {
     const h = React.createElement;
@@ -622,13 +766,18 @@ class Component extends DCLogic {
         h('div', { style: { marginTop: 12, color: '#70849a', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace" } }, workerLine)
       ),
       ...(s.worldProjects || []).map(p => {
-        const finalPly = p.artifacts && p.artifacts.finalPly;
-        const canOpen = Array.isArray(finalPly) ? finalPly.length > 0 : !!finalPly;
+        // The detail API also supports validated progressive PLY artifacts
+        // when a Complete 360 project has a partial rather than fused result.
+        const canOpen = ['finalPly', 'runtimeSplat', 'coarseGeometry', 'perViewSplats'].some(slot => {
+          const artifact = p.artifacts && p.artifacts[slot];
+          return Array.isArray(artifact) ? artifact.some(Boolean) : !!artifact;
+        });
         return h('div', { key: p.id, style: { background: '#060a10', border: '1px solid rgba(148,163,184,.12)', borderRadius: 10, padding: 13 } },
           h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' } }, h('div', { style: { color: '#e2e8f0', fontWeight: 700 } }, p.mode + ' · ' + p.id), h('div', { style: { color: p.status === 'COMPLETE' ? '#65d66e' : p.status === 'FAILED' ? '#fca5a5' : '#fbbf24', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace" } }, p.status)),
           h('div', { style: { color: '#8da0b4', fontSize: 11, marginTop: 7 } }, 'stage: ' + p.currentStage + ' · source: ' + (p.sourceArtifactId || 'none')),
           p.failure ? h('div', { style: { color: '#fca5a5', fontSize: 11, marginTop: 6 } }, p.failure.stage + ': ' + (p.failure.error || 'failed')) : null,
-          h('div', { style: { display: 'flex', gap: 7, marginTop: 10 } }, canOpen ? h('button', { onClick: () => this.openWorldViewer(p.id), style: { border: '1px solid #a78bfa66', background: '#a78bfa16', color: '#c4b5fd', borderRadius: 7, padding: '6px 9px', cursor: 'pointer' } }, 'Open Focus') : null, p.status === 'FAILED' ? h('button', { onClick: () => this.startWorld(p.mode, p.sourceArtifactId), style: { border: '1px solid #f59e0b66', background: 'transparent', color: '#fbbf24', borderRadius: 7, padding: '6px 9px', cursor: 'pointer' } }, 'Retry') : null)
+          this._worldProgressDisplay(p),
+          h('div', { style: { display: 'flex', gap: 7, marginTop: 10 } }, canOpen ? h('button', { 'data-world-open-focus': p.id, onClick: () => this.openWorldViewer(p.id), style: { border: '1px solid #a78bfa66', background: '#a78bfa16', color: '#c4b5fd', borderRadius: 7, padding: '6px 9px', cursor: 'pointer' } }, 'Open Focus') : null, p.status === 'FAILED' ? h('button', { onClick: () => this.startWorld(p.mode, p.sourceArtifactId), style: { border: '1px solid #f59e0b66', background: 'transparent', color: '#fbbf24', borderRadius: 7, padding: '6px 9px', cursor: 'pointer' } }, 'Retry') : null)
         );
       })
     );
@@ -683,7 +832,8 @@ class Component extends DCLogic {
         h('div', { style: { color: '#e2e8f0', fontWeight: 700 } }, 'Latest 3D job · ' + (job.status || 'QUEUED')),
         h('div', { style: { color: '#8da0b4', fontSize: 11, marginTop: 6 } }, (job.worker_id || job.mode || '3D') + ' · ' + (job.job_id || 'queued')),
         job.error ? h('div', { style: { color: '#fca5a5', fontSize: 11, marginTop: 6 } }, (job.first_failed_gate || 'failed') + ': ' + job.error) : null,
-        artifact ? h('div', { style: { display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 } }, h('button', { onClick: () => this.openAsset3dViewer(artifact.artifact_id), style: { border: '1px solid #a78bfa66', background: '#a78bfa16', color: '#c4b5fd', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' } }, 'Open 3D preview'), h('button', { onClick: () => this.openAsset3dInBlender(artifact.artifact_id), style: { border: '1px solid #65d66e66', background: '#65d66e16', color: '#9ae6a5', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' } }, 'Open in Blender'), h('a', { href: artifact.url + '/download', style: { border: '1px solid rgba(148,163,184,.2)', color: '#b8c7d6', borderRadius: 7, padding: '7px 10px', textDecoration: 'none' } }, 'Download GLB')) : null
+        this._asset3dProgressDisplay(job),
+        artifact ? h('div', { style: { display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 } }, h('button', { 'data-asset-open-focus': artifact.artifact_id, onClick: () => this.openAsset3dViewer(artifact.artifact_id), style: { border: '1px solid #a78bfa66', background: '#a78bfa16', color: '#c4b5fd', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' } }, 'Open 3D preview'), h('button', { onClick: () => this.openAsset3dInBlender(artifact.artifact_id), style: { border: '1px solid #65d66e66', background: '#65d66e16', color: '#9ae6a5', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' } }, 'Open in Blender'), h('a', { href: artifact.url + '/download', style: { border: '1px solid rgba(148,163,184,.2)', color: '#b8c7d6', borderRadius: 7, padding: '7px 10px', textDecoration: 'none' } }, 'Download GLB')) : null
       ) : null,
       h('div', { style: { color: '#70849a', fontSize: 11 } }, 'Completed 3D assets are stored in the configured canonical media store. Temporary worker outputs are cleaned after each job.')
     );
@@ -3755,7 +3905,7 @@ class Component extends DCLogic {
       onLoadModels: ()=>this.loadModels(),
       loadModelsLabel: loadingCheckpoints ? 'Loading…' : 'Refresh Models',
       // Toasts
-      toastOverlay,
+      toastOverlay, focusViewerOverlay: this._focusViewerVNode || null,
     };
   }
 }

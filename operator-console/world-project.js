@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { deriveWorldProgress } = require('./world-progress');
 
 const SCHEMA = 'dexdiffusion.world_project.v2';
 const MODES = ['quick3d', 'complete360'];
@@ -127,7 +128,7 @@ function createWorldStore({ root, now = () => Date.now() } = {}) {
   function get(id) { return projects.get(id) || null; }
   function create(input) { const p = newProject({ ...input, now }); projects.set(p.id, p); persist(p); return p; }
   function touch(p) { if (!p || !projects.has(p.id)) return null; persist(p); return p; }
-  function list() { return [...projects.values()].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).map(p => ({ ...p, stages: undefined })); }
+  function list() { return [...projects.values()].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).map(p => ({ ...p, stages: undefined, progress: deriveWorldProgress(p) })); }
   function invalidateDescendants(p, stage) {
     const descendants = STAGE_DESCENDANTS[stage] || [];
     p.manifest.invalidated = [...new Set([...(p.manifest.invalidated || []), ...descendants])];

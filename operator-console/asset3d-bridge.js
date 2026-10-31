@@ -12,6 +12,7 @@ const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const { artifactReceipt } = require('./job-contract');
 const { validateGlb } = require('./glb-validator');
+const { createWorldTransport } = require('./world-bridge');
 
 const execFileP = promisify(execFile);
 const ROOT = '/Volumes/wc2tb/generative-models/3d/hunyuan3d-swift';
@@ -35,8 +36,25 @@ function atomicWrite(file, value) {
   fs.renameSync(tmp, file);
 }
 
+// Only parsed worker messages become public progress; filenames, prompts and
+// arbitrary stderr never enter durable progress or the SSE event stream.
+function parseHy3dProgressLine(line, mode, phase) {
+  const text = String(line || '').trim();
+  if (/^generate\[1\/2\] shape:/.test(text) || /^shape:.*steps=/.test(text)) return { phase: 'shape', label: 'Preparing mesh generation' };
+  if (/^generate\[2\/2\] paint/.test(text)) return { phase: 'paint', label: 'Generating texture' };
+  if (/^shape: \d+ verts/.test(text) || /^generate\[1\/2\] shape mesh:/.test(text)) return { phase: mode === 'textured' ? 'paint' : 'shape', label: mode === 'textured' ? 'Preparing texture generation' : 'Mesh produced; preparing validation' };
+  const denoise = /Denoising \(\s*(\d+)\s*\/\s*(\d+)\s*\)/i.exec(text);
+  if (denoise && phase !== 'paint') {
+    const done = Number(denoise[1]), total = Number(denoise[2]);
+    if (total > 0 && done <= total) return { phase: 'shape', label: 'Mesh denoising step ' + done + ' of ' + total, done, total, scope: 'phase' };
+  }
+  if (phase === 'paint' && /\[\s*\d+%\]/.test(text)) return { phase: 'paint', label: 'Generating texture · measured remaining time unavailable' };
+  return null;
+}
+
 function createAsset3dBridge({ jobStore, arbiter, staging, mediaStore, imageStore, stateDir = path.join(__dirname, '..', 'sdcpp-workflow', 'state'), sshTarget = 'westcat', log = () => {} }) {
   const evidenceFile = path.join(stateDir, '3d-capability-evidence.json');
+  const transport = createWorldTransport({ sshTarget, workRoot: REMOTE_ROOT });
 
   function readEvidence() {
     try { return JSON.parse(fs.readFileSync(evidenceFile, 'utf8')); } catch (_) { return {}; }
@@ -55,10 +73,30 @@ function createAsset3dBridge({ jobStore, arbiter, staging, mediaStore, imageStor
   async function runFile(file, args, options = {}) {
     return execFileP(file, args, { timeout: options.timeout || 300000, maxBuffer: options.maxBuffer || 4 * 1024 * 1024, encoding: options.encoding || 'utf8' });
   }
-  async function ssh(command, timeout = 300000) {
-    return runFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', sshTarget, command], { timeout, maxBuffer: 8 * 1024 * 1024 });
+  async function ssh(command, timeout = 300000, onOutput = null) {
+    if (!onOutput) return transport.run(command, timeout);
+    // The pinned Hunyuan3D Swift CLI flushes stdout per progress line.
+    // Stream its output without shell tailing, a second process or a new service.
+    const file = transport.local ? '/bin/bash' : 'ssh';
+    const args = transport.local ? ['-c', command] : ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', sshTarget, command];
+    return new Promise((resolve, reject) => {
+      let pending = '';
+      const child = execFile(file, args, { timeout, maxBuffer: 8 * 1024 * 1024, encoding: 'utf8' }, (error, stdout, stderr) => {
+        if (error) { error.stdout = stdout; error.stderr = stderr; reject(error); }
+        else resolve({ stdout, stderr });
+      });
+      const consume = buffer => {
+        pending += String(buffer);
+        const lines = pending.split(/\r?\n|\r/);
+        pending = lines.pop().slice(-2000);
+        for (const line of lines) { try { onOutput(line); } catch (_) {} }
+      };
+      child.stdout?.on('data', consume);
+      child.stderr?.on('data', consume);
+    });
   }
   async function streamRemote(file, local, timeout = 300000) {
+    if (transport.local) return transport.fromWorker(file, local, timeout);
     await new Promise((resolve, reject) => {
       const child = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', sshTarget, `/bin/cat -- ${q(file)}`], { stdio: ['ignore', 'pipe', 'pipe'] });
       const output = fs.createWriteStream(local, { mode: 0o600 });
@@ -144,10 +182,11 @@ printf 'DEX_3D_ASSETS runtime=%s shape_small=%s shape_large=%s paint_rgb=%s host
     try {
       lease = await arbiter.acquire(jobId, `hunyuan3d ${mode}`);
       if (!lease.granted) throw Object.assign(new Error('heavy-compute lease was not granted'), { gate: 'resource-wait' });
-      jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+      jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group, progress: { phase: 'preparing', label: 'Preparing Big Mac 3D worker' } });
       const prepared = await ssh(`set -e; mkdir -p ${q(`${remoteJobDir}/input`)} ${q(`${remoteJobDir}/output`)}; printf 'DEX_3D_PREPARED\\n'`);
       if (!/DEX_3D_PREPARED/.test(`${prepared.stdout}\n${prepared.stderr}`)) throw new Error('remote preparation missing in-band marker');
-      await runFile('scp', ['-O', '-q', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', staged.path, `${sshTarget}:${remoteInput}`], { timeout: 300000 });
+      await transport.toWorker(staged.path, remoteInput, 300000);
+      jobStore.transition(jobId, 'RUNNING', { progress: { phase: 'shape', label: 'Generating mesh with Hunyuan3D' } });
       const shapeWeights = q(SHAPE_SMALL);
       const command = `set -uo pipefail
 ROOT=${q(ROOT)}; D=${q(remoteJobDir)}; OUT=${q(remoteOutput)}
@@ -164,7 +203,17 @@ SHA=$(shasum -a 256 "$OUT" | awk '{print $1}')
 MAGIC=$(xxd -p -l 4 "$OUT")
 if [ "$MAGIC" != 676c5446 ] || [ -z "$SHA" ]; then printf 'DEX_3D_FAIL output-invalid\\n'; exit 0; fi
 printf 'DEX_3D_PASS mode=%s output=%s bytes=%s sha256=%s magic=%s engine=hunyuan3d-swift@${UPSTREAM_COMMIT}\\n' ${q(mode)} "$OUT" "$BYTES" "$SHA" "$MAGIC"`;
-      const remote = await ssh(command, mode === 'textured' ? 900000 : 600000);
+      let phase = 'shape';
+      let lastReport = '';
+      const remote = await ssh(command, mode === 'textured' ? 900000 : 600000, line => {
+        const progress = parseHy3dProgressLine(line, mode, phase);
+        if (!progress) return;
+        phase = progress.phase;
+        const key = JSON.stringify(progress);
+        if (key === lastReport) return;
+        lastReport = key;
+        if (jobStore.get(jobId)?.status === 'RUNNING') jobStore.transition(jobId, 'RUNNING', { progress });
+      });
       const combined = `${remote.stdout}\n${remote.stderr}`;
       const marker = /DEX_3D_PASS mode=(\w+) output=(\S+) bytes=(\d+) sha256=([a-f0-9]{64}) magic=(\w+) engine=(\S+)/.exec(combined);
       if (!marker || marker[1] !== mode || !marker[2].startsWith(`${remoteJobDir}/`) || marker[5] !== '676c5446') {
@@ -172,13 +221,14 @@ printf 'DEX_3D_PASS mode=%s output=%s bytes=%s sha256=%s magic=%s engine=hunyuan
         throw Object.assign(new Error(failed), { gate: 'remote-output' });
       }
       await streamRemote(marker[2], localOutput, 300000);
+      jobStore.transition(jobId, 'RUNNING', { progress: { phase: 'validating', label: 'Validating GLB structure and checksum' } });
       const localBytes = fs.statSync(localOutput).size;
       const localSha = sha256File(localOutput);
       if (localBytes !== Number(marker[3])) throw Object.assign(new Error('transferred GLB byte count does not match Big Mac marker'), { gate: 'checksum' });
       if (localSha !== marker[4]) throw Object.assign(new Error('transferred GLB checksum does not match Big Mac marker'), { gate: 'checksum' });
       const validation = validateGlb(fs.readFileSync(localOutput), { textured: mode === 'textured' });
       const rec = mediaStore.finalize(localOutput, { kind: 'world', base: `asset3d-${mode}`, job_id: jobId, worker: 'hunyuan3d-swift', model: mode === 'textured' ? `${SHAPE_MODEL}+${PAINT_MODEL}` : SHAPE_MODEL, parent: source.id, meta: { operation: 'asset3d', mode, source_artifact_id: source.id, upstream_repository: UPSTREAM_REPOSITORY, upstream_commit: UPSTREAM_COMMIT, validation, textured: mode === 'textured' } });
-      jobStore.transition(jobId, 'TRANSFERRING');
+      jobStore.transition(jobId, 'TRANSFERRING', { progress: { phase: 'publishing', label: 'Publishing validated 3D artifact' } });
       const receipt = artifactReceipt([rec]);
       const done = jobStore.transition(jobId, 'COMPLETE', { artifacts: [rec.artifact_id], artifact_validation: receipt });
       if (done.error) throw new Error(done.error);
@@ -252,4 +302,4 @@ printf 'DEX_3D_PASS mode=%s output=%s bytes=%s sha256=%s magic=%s engine=hunyuan
   return { workers, start, openInBlender, constants: { ROOT, BIN, SHAPE_SMALL, SHAPE_LARGE, PAINT_RGB, UPSTREAM_REPOSITORY, UPSTREAM_COMMIT, evidenceFile } };
 }
 
-module.exports = { createAsset3dBridge, MODES, UPSTREAM_REPOSITORY, UPSTREAM_COMMIT, ROOT, BIN, SHAPE_SMALL, SHAPE_LARGE, PAINT_RGB };
+module.exports = { createAsset3dBridge, parseHy3dProgressLine, MODES, UPSTREAM_REPOSITORY, UPSTREAM_COMMIT, ROOT, BIN, SHAPE_SMALL, SHAPE_LARGE, PAINT_RGB };
