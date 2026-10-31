@@ -91,10 +91,15 @@ const { results, test, phase, exitCode } = runner('voice-drama');
         await page.setInputFiles(input, { name: name + '.wav', mimeType: 'audio/wav', buffer });
         await page.waitForSelector('[data-pending-sample]');
         await page.fill('[data-pending-sample] textarea', 'Synthetic sample fixture.');
-        const response = page.waitForResponse(r => r.url().endsWith('/samples') && r.request().method() === 'POST');
-        await page.click('[data-pending-sample] button:has-text("Approve")');
-        assert.equal((await response).status(), 400);
-        await page.waitForFunction(m => document.body.innerText.includes(m), message);
+        if (name === 'short') {
+          assert.equal(await page.locator('[data-pending-sample] button:has-text("Approve")').isDisabled(), true, 'sub-0.5 s cannot be approved');
+          await page.waitForFunction(m => document.body.innerText.includes(m), message);
+        } else {
+          const response = page.waitForResponse(r => r.url().endsWith('/samples') && r.request().method() === 'POST');
+          await page.click('[data-pending-sample] button:has-text("Approve")');
+          assert.equal((await response).status(), 400);
+          await page.waitForFunction(m => document.body.innerText.includes(m), message);
+        }
         assert.equal((await api('GET', '/api/voice/profiles/' + p.id)).profile.samples.length, 0);
         await page.click('[data-pending-sample] button:has-text("Discard")');
         await page.waitForSelector('[data-pending-sample]', { state: 'detached' });

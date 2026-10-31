@@ -28,10 +28,12 @@ const PerformanceScore = require('./performance-score');
 const { createDirectorPreferences } = require('./director-preferences');
 
 // Normalise any ffmpeg-readable audio to a PCM16 mono 24 kHz WAV buffer (null on failure).
-function ingestToWav(src) {
+function ingestToWav(src, selection = null) {
   return new Promise(resolve => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dexprof-')), out = path.join(dir, 'in.wav');
-    execFile('ffmpeg', ['-v', 'error', '-y', '-i', src, '-ac', '1', '-ar', '24000', '-c:a', 'pcm_s16le', out], { timeout: 60000 }, err => {
+    const cut = selection ? ['-ss', String(selection.start), '-t', String(selection.end - selection.start)] : [];
+    // Decode only the selected source excerpt. Never modify the staged source.
+    execFile('ffmpeg', ['-v', 'error', '-y', '-i', src, ...cut, '-ac', '1', '-ar', '24000', '-c:a', 'pcm_s16le', out], { timeout: 60000 }, err => {
       let buf = null; if (!err) { try { buf = fs.readFileSync(out); } catch (_) {} }
       try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
       resolve(buf);
@@ -123,7 +125,7 @@ function registerVoiceRoutes(app, { stateDir, jobStore, mediaStore, staging, med
   app.post('/api/voice/profiles/:id/samples', h(async (req, res) => {
     const b = req.body || {}, st = staging.get(String(b.staged_id || ''));
     if (!st || st.kind !== 'audio') return json(res, 400, { error: 'staged audio not found or expired; upload the clip again', gate: 'reference-invalid' });
-    const r = await profiles.addSample(req.params.id, { srcPath: st.path, name: b.name, transcript: b.transcript });
+    const r = await profiles.addSample(req.params.id, { srcPath: st.path, name: b.name, transcript: b.transcript, trimStartSec: b.trim_start_s, trimEndSec: b.trim_end_s });
     if (!r) return nf(res, 'profile');
     staging.remove(st.id);
     res.status(201).json(r);

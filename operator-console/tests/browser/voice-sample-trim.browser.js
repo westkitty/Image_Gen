@@ -1,0 +1,40 @@
+'use strict';
+const assert=require('node:assert/strict');const {chromium}=require('playwright-core');
+const {startServer,installModelSnapshots,makeWav,launchBrowser,openStudio}=require('./helpers');
+(async()=>{
+ const srv=await startServer(31986);const browser=await launchBrowser(chromium);
+ const ctx=await browser.newContext({viewport:{width:1280,height:900}});
+ const page=await ctx.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ let pid='';
+ const api=async(route,method='GET',body)=>{const r=await fetch(srv.base+route,{method,headers:{'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,json:await r.json()}};
+ try {
+  await installModelSnapshots(page,srv.base);
+  await openStudio(page,srv.base+'/dexdiffusion/');
+  await page.waitForFunction(()=>!!window.__dex);
+  const p=await api('/api/voice/profiles','POST',{name:'ZZ-Trim-Synthetic',type:'cloned'});assert.equal(p.status,201);pid=p.json.profile.id;
+  await page.evaluate(id=>{__dex.setScreen('voice');__dex.vpSet({selected:id,tab:'profiles'});__dex.loadVoiceProfiles();},pid);
+  await page.waitForSelector('[data-profile-editor] input[type="file"]');
+  await page.setInputFiles('[data-profile-editor] input[type="file"]',{name:'long-synthetic.wav',mimeType:'audio/wav',buffer:makeWav(45,300)});
+  await page.waitForSelector('[data-sample-trimmer]');
+  await page.waitForFunction(()=>!!window.__dex._vp().trim);
+  let trim=await page.evaluate(()=>__dex._vp().trim);
+  assert.equal(trim.end,30,'45 s upload initially selects the first 30 s');
+  await page.locator('[data-trim-start]').fill('18');
+  await page.waitForFunction(()=>__dex._vp().trim.start>=17.9);
+  await page.locator('[data-trim-end]').fill('43');
+  await page.waitForFunction(()=>__dex._vp().trim.end>=42.9);
+  trim=await page.evaluate(()=>__dex._vp().trim);assert.ok(trim.end-trim.start<=30.001,JSON.stringify(trim));
+  await page.locator('[data-trim-preview]').click();
+  assert.ok(await page.locator('[data-pending-sample] audio[data-trim-player]').count());
+  await page.locator('[data-pending-sample] textarea').fill('Exact spoken words in the selected sample.');
+  const response=page.waitForResponse(r=>r.url().endsWith('/samples')&&r.request().method()==='POST');
+  await page.locator('[data-pending-sample] button:has-text("Approve")').click();
+  assert.equal((await response).status(),201);
+  await page.waitForSelector('[data-sample]');
+  const saved=(await api('/api/voice/profiles/'+pid)).json.profile.samples[0];
+  assert.ok(Math.abs(saved.diagnostics.duration-25)<0.1,JSON.stringify(saved.diagnostics));
+  assert.equal(saved.trim.start_sec,18);assert.equal(saved.trim.end_sec,43);
+  assert.equal(await page.locator('[data-pending-sample]').count(),0);
+  assert.deepEqual(errors,[]);console.log('PASS voice upload/trim/preview/save · 45 s source to 25 s approved reference');
+ }finally{if(pid)try{await api('/api/voice/profiles/'+pid,'DELETE');}catch(_){}await ctx.close();await browser.close();await srv.stop();}
+})().catch(e=>{console.error(e.stack);process.exitCode=1});

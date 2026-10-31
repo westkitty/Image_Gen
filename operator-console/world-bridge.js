@@ -177,11 +177,11 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
           coarseGeometry: { status: 'PASS', points: scaffoldMetrics.points, finite: scaffoldMetrics.finite, bounds: scaffoldMetrics.bounds },
           cameraRig: { status: 'PASS', cameras: rigMetrics.cameras.length, overlapDegrees: 15 },
           sharpPerView: fusionResult.ok ? { status: 'PASS', proposals: fusionResult.proposals.length, worker: SHARP_MODEL, device: 'mps' } : { status: 'BLOCKED', reason: fusionResult.error || 'Per-view SHARP fitting requires a bounded remote compute pass.' },
-          fusion: fusionResult.ok ? { status: 'PASS', method: 'aligned-voxel-dedup', artifact: fusionResult.fusion.artifact_id, metrics: fusionResult.metrics } : { status: 'BLOCKED', reason: fusionResult.error || 'Fusion awaits learned per-view proposals.' },
-          runtime: { status: 'PASS', collision: true, progressiveArtifact: true, artifact: visualArtifact.artifact_id },
-          viewer: { status: 'READY', artifact: visualArtifact.artifact_id },
+          fusion: fusionResult.ok ? { status: 'WARN', method: 'aligned-voxel-dedup', artifact: fusionResult.fusion.artifact_id, metrics: fusionResult.metrics, reason: 'Colored voxel points are only a progressive preview; the fused PLY does not preserve Gaussian scale, rotation, or opacity or solve global depth.' } : { status: 'BLOCKED', reason: fusionResult.error || 'Fusion awaits learned per-view proposals.' },
+          runtime: { status: 'WARN', collision: true, progressiveArtifact: true, fullWorldValidated: false, artifact: visualArtifact.artifact_id },
+          viewer: { status: 'READY', type: 'point-cloud-preview', originalGaussianViews: fusionResult.ok ? fusionResult.proposals.length : 0, artifact: visualArtifact.artifact_id },
         },
-        blockers: ['learned global depth unavailable in this local runtime', ...(fusionResult.ok ? [] : [fusionResult.error || 'SHARP per-view fitting and fusion not completed'])],
+        blockers: ['learned global depth unavailable in this local runtime', ...(fusionResult.ok ? ['voxel fusion is not a registered Gaussian 360 scene; inspect original per-view splats separately'] : [fusionResult.error || 'SHARP per-view fitting and fusion not completed'])],
       };
       writeJson(qualityPath, quality);
       const qualityRec = finalizeWorld(qualityPath, `${project.id}-quality-report`, jobId, worker, model, coarseRec.artifact_id, { classification: 'WARN' });
