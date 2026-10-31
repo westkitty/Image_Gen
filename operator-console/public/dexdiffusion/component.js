@@ -100,6 +100,7 @@ class Component extends DCLogic {
     runs: (() => { try { return JSON.parse(localStorage.getItem('dex_runs') || '[]'); } catch { return []; } })(),
     selectedRunId: '', selectedRunDetail: null, loadingRunDetail: false, runSearch: '',
     worldProjects: [], worldLoading: false, worldSourceArtifact: '', worldWorkerStatus: null,
+    sourceImages: [], sourceImagesTotal: 0, sourceImagesLoading: false, sourceImagesError: '', sourceImporting: false,
     asset3dWorkerStatus: null, asset3dSourceArtifact: '', asset3dPreviewFailedId: '', asset3dMode: 'mesh', asset3dLoading: false, asset3dJob: null,
     assetQuery: '', serverStatusSummary: '', lastValidation: '',
     savePrompts: localStorage.getItem('dex_save_prompts') === 'true',
@@ -147,6 +148,7 @@ class Component extends DCLogic {
     this.pingBackend();
     this._pingTimer = setInterval(() => this.pingBackend(), 20000);
     this.loadRuns();
+    this.load3dSourceImages();
     this.loadWorldProjects();
     this.loadAsset3dWorkers();
     this.loadModels();
@@ -377,6 +379,7 @@ class Component extends DCLogic {
   refreshAll() {
     this.pingBackend();
     this.loadRuns();
+    this.load3dSourceImages();
     this.loadWorldProjects();
     this.loadAsset3dWorkers();
     this.loadModels();
@@ -385,6 +388,106 @@ class Component extends DCLogic {
     this.checkOllama();
     this.loadSystemInfo();
     this.toast('Refreshed visible data', '#38bdf8');
+  }
+
+  // World and 3D choose from the canonical Library, not just the first 50
+  // generation runs. This data is read-only and does not select a source.
+  async load3dSourceImages() {
+    const request = (this._sourceImageRequest || 0) + 1;
+    this._sourceImageRequest = request;
+    this.setState({ sourceImagesLoading: true, sourceImagesError: '' });
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/library/images?filter=all&limit=500', { signal: AbortSignal.timeout(15000) });
+      if (!r.ok) throw new Error('Library returned HTTP ' + r.status);
+      const data = await r.json();
+      if (!Array.isArray(data.items)) throw new Error('Invalid image Library response');
+      if (this._sourceImageRequest !== request) return;
+      const SA = this._sourceAsset();
+      const items = data.items.filter(x => x && SA && SA.isImageId(x.id));
+      this._sourceImagesLastLoaded = Date.now();
+      this.setState({
+        sourceImages: items, sourceImagesTotal: Number.isInteger(data.total) ? data.total : items.length,
+        sourceImagesLoading: false, sourceImagesError: ''
+      });
+    } catch (_) {
+      if (this._sourceImageRequest === request) this.setState({
+        sourceImagesLoading: false, sourceImagesError: 'Library images unavailable. Refresh images to retry.'
+      });
+    }
+  }
+
+  // Raw PNG/JPEG/WebP is validated server-side and atomically published to the
+  // canonical image store before it can become a World or 3D source.
+  async import3dSourceImage(file, workspace) {
+    if (!file || this.state.sourceImporting || !['world', '3d'].includes(workspace)) return;
+    if (file.size > 25 * 1024 * 1024) {
+      this.toast('Image is too large (25 MB maximum).', '#fbbf24'); return;
+    }
+    const SA = this._sourceAsset();
+    if (!SA) { this.toast('Source resolver unavailable. Reload Studio.', '#ef4444'); return; }
+    this.setState({ sourceImporting: true });
+    try {
+      const url = this.state.backendUrl + '/api/library/images/import?name=' + encodeURIComponent(file.name || 'image');
+      const r = await fetch(url, {
+        method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream' },
+        body: file, signal: AbortSignal.timeout(120000)
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !SA.isImageId(data.id)) throw new Error(data.error || 'Import did not return a canonical image.');
+      // Ignore in-flight, older picker fetches after a successful import.
+      this._sourceImageRequest = (this._sourceImageRequest || 0) + 1;
+      const item = { id: data.id, url: data.url, width: data.width, height: data.height,
+        meta: { original_name: file.name || 'Imported image', operation: 'import' } };
+      const patch = {
+        sourceImages: [item, ...this.state.sourceImages.filter(x => x.id !== data.id)],
+        sourceImagesTotal: Math.max(this.state.sourceImagesTotal + 1, this.state.sourceImages.length + 1),
+        sourceImagesError: '', sourceImagesLoading: false
+      };
+      if (workspace === 'world') patch.worldSourceArtifact = data.id;
+      else { patch.asset3dSourceArtifact = data.id; patch.asset3dPreviewFailedId = ''; }
+      this.setState(patch);
+      this.setActiveAssetSelection({ kind: 'image', id: data.id });
+      this.toast('Image added to Library and selected.', '#65d66e');
+      await this.load3dSourceImages();
+    } catch (err) {
+      this.toast('Image import failed: ' + (err && err.message ? err.message : 'Unknown error'), '#ef4444');
+    } finally {
+      this.setState({ sourceImporting: false });
+    }
+  }
+
+  // Native file input: WebKit, browsers and mobile file pickers all supported.
+  _sourceImageUploadControl(workspace) {
+    const h = React.createElement;
+    return h('input', {
+      type: 'file', accept: 'image/png,image/jpeg,image/webp',
+      'data-3d-image-input': workspace, 'aria-label': workspace === 'world' ? 'Import World source image' : 'Import 3D source image',
+      style: { display: 'none' },
+      onChange: e => {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (file) this.import3dSourceImage(file, workspace);
+      }
+    });
+  }
+
+  _sourceImageActionBar(workspace) {
+    const h = React.createElement, s = this.state;
+    const buttonStyle = { border: '1px solid rgba(148,163,184,.28)', background: '#101d2a',
+      color: '#d1e9fa', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' };
+    return h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '0 0 11px' } },
+      this._sourceImageUploadControl(workspace),
+      h('button', { 'data-3d-add-image': workspace, disabled: s.sourceImporting,
+        onClick: () => document.querySelector('input[data-3d-image-input="' + workspace + '"]')?.click(),
+        style: buttonStyle }, s.sourceImporting ? 'Importing image…' : 'Add image…'),
+      h('button', { 'data-3d-refresh-images': workspace, disabled: s.sourceImagesLoading,
+        onClick: () => this.load3dSourceImages(), style: buttonStyle }, 'Refresh images'),
+      h('span', { role: 'status', style: { color: s.sourceImagesError ? '#fca5a5' : '#8fa3b8', fontSize: 11 } },
+        s.sourceImagesError || (s.sourceImagesLoading ? 'Loading images…' :
+          (s.sourceImagesTotal > s.sourceImages.length
+            ? s.sourceImages.length + ' of ' + s.sourceImagesTotal + ' Library images'
+            : s.sourceImages.length + ' Library images')))
+    );
   }
 
   async loadWorldProjects() {
@@ -495,7 +598,7 @@ class Component extends DCLogic {
     const h = React.createElement;
     const s = this.state;
     const SA = this._sourceAsset();
-    const picks = SA ? SA.choices(s.runs) : [];
+    const picks = SA ? SA.choices(s.runs, s.sourceImages) : [];
     const currentSource = s.worldSourceArtifact || '';
     if (SA && SA.isImageId(currentSource) && !picks.some(p => p.id === currentSource)) {
       picks.unshift({ id: currentSource, label: currentSource + ' · chosen in Library' });
@@ -510,10 +613,11 @@ class Component extends DCLogic {
         h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, marginBottom: 12 } }, 'Dedicated local 3D workspace. Quick 3D reconstructs one image; Complete 360 builds panorama, depth/scaffold, aligned SHARP proposals, fusion and viewer artifacts. Learned global depth is not installed, so Complete 360 may report WARN while using the bounded fallback.'),
         h('div', { 'data-source-rule': 'world', style: { color: '#8fa3b8', fontSize: 11, lineHeight: 1.5, marginBottom: 8 } }, 'World uses exactly the image you choose here. Nothing is substituted, and no source is pre-selected.'),
         h('select', { 'aria-label': 'World source image', value: s.worldSourceArtifact || '', onChange: e => { this.setState({ worldSourceArtifact: e.target.value }); if (SA && SA.isImageId(e.target.value)) this.setActiveAssetSelection({ kind: 'image', id: e.target.value }); }, style: { width: '100%', maxWidth: 520, marginBottom: 10, border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
+        this._sourceImageActionBar('world'),
         h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
           h('button', { onClick: () => this.startWorld('quick3d'), style: { border: '1px solid #38bdf866', background: '#38bdf616', color: '#38bdf8', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make 3D'),
           h('button', { onClick: () => this.startWorld('complete360'), style: { border: '1px solid #f59e0b66', background: '#f59e0b16', color: '#fbbf24', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make World'),
-          h('button', { onClick: () => this.loadWorldProjects(), style: { border: '1px solid rgba(148,163,184,.2)', background: 'transparent', color: '#b8c7d6', borderRadius: 7, padding: '8px 12px', cursor: 'pointer' } }, 'Reload')
+          h('button', { onClick: () => { this.loadWorldProjects(); this.load3dSourceImages(); }, style: { border: '1px solid rgba(148,163,184,.2)', background: 'transparent', color: '#b8c7d6', borderRadius: 7, padding: '8px 12px', cursor: 'pointer' } }, 'Reload')
         ),
         h('div', { style: { marginTop: 12, color: '#70849a', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace" } }, workerLine)
       ),
@@ -534,7 +638,7 @@ class Component extends DCLogic {
     const h = React.createElement;
     const s = this.state;
     const SA = this._sourceAsset();
-    const picks = SA ? SA.choices(s.runs) : [];
+    const picks = SA ? SA.choices(s.runs, s.sourceImages) : [];
     const selected = s.asset3dSourceArtifact || '';
     if (SA && SA.isImageId(selected) && !picks.some(p => p.id === selected)) {
       picks.unshift({ id: selected, label: selected + ' · chosen in Library' });
@@ -559,6 +663,7 @@ class Component extends DCLogic {
             h('div', { style: { color: '#6090a8', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 5 } }, 'Source · canonical image'),
             h('div', { 'data-source-rule': '3d', style: { color: '#8fa3b8', fontSize: 11, lineHeight: 1.5, marginBottom: 6 } }, 'Required. 3D uses exactly the image you choose; the newest result is never substituted.'),
             h('select', { 'aria-label': '3D source image', value: selected, onChange: e => { this.setState({ asset3dSourceArtifact: e.target.value, asset3dPreviewFailedId: '' }); if (SA && SA.isImageId(e.target.value)) this.setActiveAssetSelection({ kind: 'image', id: e.target.value }); }, style: { width: '100%', border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
+            this._sourceImageActionBar('3d'),
             sourcePreview ? (s.asset3dPreviewFailedId === selected
               ? h('div', { role: 'status', style: { display: 'grid', placeItems: 'center', width: 150, height: 150, boxSizing: 'border-box', marginTop: 10, padding: 12, border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, background: '#0d1823', color: '#91a2b4', fontSize: 11, lineHeight: 1.45, textAlign: 'center' } }, 'Source preview unavailable. Verify the canonical image in Library before starting a 3D job.')
               : h('img', { src: sourcePreview, alt: 'Selected canonical source preview', onError: () => this.setState({ asset3dPreviewFailedId: selected }), style: { width: 150, height: 150, objectFit: 'cover', borderRadius: 8, marginTop: 10, border: '1px solid rgba(148,163,184,.16)' } })) : null
@@ -580,7 +685,7 @@ class Component extends DCLogic {
         job.error ? h('div', { style: { color: '#fca5a5', fontSize: 11, marginTop: 6 } }, (job.first_failed_gate || 'failed') + ': ' + job.error) : null,
         artifact ? h('div', { style: { display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 } }, h('button', { onClick: () => this.openAsset3dViewer(artifact.artifact_id), style: { border: '1px solid #a78bfa66', background: '#a78bfa16', color: '#c4b5fd', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' } }, 'Open 3D preview'), h('button', { onClick: () => this.openAsset3dInBlender(artifact.artifact_id), style: { border: '1px solid #65d66e66', background: '#65d66e16', color: '#9ae6a5', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' } }, 'Open in Blender'), h('a', { href: artifact.url + '/download', style: { border: '1px solid rgba(148,163,184,.2)', color: '#b8c7d6', borderRadius: 7, padding: '7px 10px', textDecoration: 'none' } }, 'Download GLB')) : null
       ) : null,
-      h('div', { style: { color: '#70849a', fontSize: 11 } }, 'Generated assets are canonical MacBook artifacts. Big Mac output is temporary and cleaned after each job.')
+      h('div', { style: { color: '#70849a', fontSize: 11 } }, 'Completed 3D assets are stored in the configured canonical media store. Temporary worker outputs are cleaned after each job.')
     );
   }
 
@@ -1173,6 +1278,7 @@ class Component extends DCLogic {
     this.setState({ screens: { ...screens, [version]: s }, studioSubroute: subroute, ...navPatch });
     try { const menu = document.querySelector('[data-studio-mobile-nav]'); if (menu) menu.open = false; } catch (_) {}
     if (s === 'chat' && from !== 'chat') this.loadChatAvailability();
+    if ((s === '3d' || s === 'world') && Date.now() - (this._sourceImagesLastLoaded || 0) > 15000) this.load3dSourceImages();
     // Category navigation must present the selected screen immediately.
     // On rapid transitions the global rAF batcher can leave the previous
     // module visible even though route state has changed. Reconcile this

@@ -126,7 +126,7 @@ const { sanitizeRecipe, RECIPE_FIELDS } = require('./public/dexdiffusion/client-
 const META_FIELDS = ['operation', 'parent', 'detailed_from', 'runId', 'target', 'seed', 'width', 'height', 'steps', 'cfg', 'scheduler', 'strength', 'backend', 'generation_seconds', 'queueId', 'batchNumber', 'test_artifact', 'note', 'keeper_identity_sha256',
   'gen_schema', 'sampler', 'clip_skip', 'tiling', 'eta', 'rng', 'hires', 'resize', 'exact_steps', 'inpaint', 'vae', 'preset', 'loras', 'edit_target', 'prompt_saved', 'prompt', 'negative_prompt', 'prompt_scope',
   // multi-pass workflows: OP-4A second-pass hires links (workflow_id / pass / second_pass) and script-chain settings (script / loopback)
-  'workflow_id', 'workflow', 'pass', 'second_pass', 'script', 'loopback'];
+  'workflow_id', 'workflow', 'pass', 'second_pass', 'script', 'loopback', 'original_name', 'source_kind'];
 
 function createImageMetaStore(file) {
   let cache = null;

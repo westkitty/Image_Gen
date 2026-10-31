@@ -99,6 +99,30 @@ test('T-301: the choice list keeps only canonical images, de-duplicated and in o
   assert.deepEqual(picks.map(p => p.id), ['c.png', 'b.png']);
 });
 
+test('3D/World source choices include canonical Library images not in recent run history', () => {
+  const runHistory = [{ id: 'recent-run', imageFile: 'recent.png' }];
+  const library = [
+    { id: 'older.png', meta: { original_name: 'Portrait Original.png' } },
+    { id: 'recent.png', meta: {} },
+    { id: 'staged:illegal.png' },
+    { id: '../path-escape.png' },
+    { id: 'older.png' }
+  ];
+  const picks = S.choices(runHistory, library);
+  assert.deepEqual(picks.map(p => p.id), ['older.png', 'recent.png']);
+  assert.match(picks[0].label, /Portrait Original/);
+  assert.equal(S.resolveSource({ runs: runHistory }).ok, false, 'populating the picker never preselects an image');
+  assert.equal(S.resolveSource({ explicitId: picks[0].id }).id, 'older.png');
+});
+
+test('3D/World source import controls do not accept staged ids or infer newest image', () => {
+  assert.match(component, /async import3dSourceImage\(file, workspace\)/);
+  assert.match(component, /load3dSourceImages\(\)/);
+  assert.match(component, /_sourceImageActionBar\('world'\)/);
+  assert.match(component, /_sourceImageActionBar\('3d'\)/);
+  assert.equal(S.resolveSource({ explicitId: 'staged:fake' }).ok, false);
+});
+
 test('T-305: lineage keeps the canonical ids that were actually recorded and stops on a loop', () => {
   const rec = { id: 'child.png', parent: { id: 'parent.png', parent: { id: 'root.png' } } };
   const lin = S.lineage(rec);
