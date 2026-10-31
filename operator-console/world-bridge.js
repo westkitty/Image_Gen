@@ -43,17 +43,47 @@ async function runFile(file, args, timeout = 300000) {
   return execFileP(file, args, { timeout, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' });
 }
 
+// The persistent Big Mac backend is itself the compute host. Reaching its own
+// old MacBook SSH alias (westcat) is neither possible nor necessary. Preserve
+// the original SSH/SCP path when a different machine actually owns the worker.
+function createWorldTransport({ sshTarget = 'westcat', hostname = os.hostname(), workRoot = WORLD_WORK } = {}) {
+  const local = sshTarget === 'local' || (sshTarget === 'westcat' && hostname === 'bigmac');
+  const confinedWorkerPath = file => {
+    const resolved = path.resolve(file);
+    if (!resolved.startsWith(path.resolve(workRoot) + path.sep)) throw new Error('World worker path escapes the dedicated work root');
+    return resolved;
+  };
+  return {
+    local,
+    async run(command, timeout = 300000) {
+      return local
+        ? runFile('/bin/bash', ['-c', command], timeout)
+        : runFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', sshTarget, command], timeout);
+    },
+    async toWorker(source, destination, timeout = 300000) {
+      if (local) return fs.promises.copyFile(source, confinedWorkerPath(destination), fs.constants.COPYFILE_EXCL);
+      return runFile('scp', ['-O', '-q', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', source, `${sshTarget}:${destination}`], timeout);
+    },
+    async fromWorker(source, destination, timeout = 300000) {
+      if (local) return fs.promises.copyFile(confinedWorkerPath(source), destination, fs.constants.COPYFILE_EXCL);
+      // Old OpenSSH SCP mode is required on the remote Mac path.
+      return runFile('scp', ['-O', '-q', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', `${sshTarget}:${source}`, destination], timeout);
+    },
+  };
+}
+
+function worldCompilerPython(env = process.env) {
+  // Production already configures this proven Pillow/NumPy interpreter for
+  // image validation. An explicit World override wins; never pip-install or
+  // silently run an unconfigured interpreter after a configured one fails.
+  return env.DEX_WORLD_COMPILER_PYTHON || env.DEX_IMAGE_VALIDATION_PYTHON || 'python3';
+}
+
 function createWorldBridge({ jobStore, arbiter, staging, mediaStore, worldStore, imageStore, stateDir, sshTarget = 'westcat', log = () => {} }) {
   const panoramaEvidenceFile = path.join(stateDir, 'world-panorama-evidence.json');
-  async function ssh(command, timeout = 300000) {
-    return runFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', sshTarget, command], timeout);
-  }
-  async function scpRemote(remote, local, timeout = 300000) {
-    // Big Mac's OpenSSH endpoint is compatible with legacy SCP mode; the
-    // default SFTP-backed client can finish the copy but leave the subprocess
-    // open, which would strand the durable job in RUNNING.
-    return runFile('scp', ['-O', '-q', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', `${sshTarget}:${remote}`, local], timeout);
-  }
+  const transport = createWorldTransport({ sshTarget });
+  const ssh = (command, timeout = 300000) => transport.run(command, timeout);
+  const scpRemote = (remote, local, timeout = 300000) => transport.fromWorker(remote, local, timeout);
   async function remoteStatus() {
     const command = `set +e
 sharp=0; checkpoint=0; world=0
@@ -73,7 +103,7 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
     }
   }
 
-  async function runCompiler(args, timeout = 120000) { return runFile('python3', [COMPILER, ...args], timeout); }
+  async function runCompiler(args, timeout = 120000) { return runFile(worldCompilerPython(), [COMPILER, ...args], timeout); }
 
   function finalizeWorld(file, base, jobId, worker, model, parent, meta = {}) {
     return mediaStore.finalize(file, { kind: 'world', base, job_id: jobId, worker, model, parent, meta });
@@ -191,7 +221,7 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
       for (let i = 0; i < viewRecs.length; i++) {
         const local = mediaStore.resolve(viewRecs[i].artifact_id)?.path;
         if (!local) throw new Error(`projected view ${viewRecs[i].artifact_id} could not be reopened`);
-        await runFile('scp', ['-O', '-q', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', local, `${sshTarget}:${inputDir}/view-${i + 1}.png`], 300000);
+        await transport.toWorker(local, `${inputDir}/view-${i + 1}.png`, 300000);
       }
       const command = [
         'set -uo pipefail',
@@ -278,7 +308,7 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
       worldStore.updateStage(project.id, 'complete', { status: 'RUNNING', worker: 'flux2-world-completion', model: PANORAMA_MODEL });
       const prepared = await ssh(`set -e; mkdir -p ${q(`${remoteDir}/input`)} ${q(`${remoteDir}/output`)}; printf 'WORLD_PANORAMA_PREPARED\\n'`);
       if (!/WORLD_PANORAMA_PREPARED/.test(`${prepared.stdout}\n${prepared.stderr}`)) throw new Error('remote panorama preparation missing in-band marker');
-      await runFile('scp', ['-O', '-q', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', staged.path, `${sshTarget}:${remoteInput}`], 300000);
+      await transport.toWorker(staged.path, remoteInput, 300000);
       const requestedCandidates = Number(project.parameters.candidates || 1);
       const candidateCount = Math.max(1, Math.min(3, Number.isFinite(requestedCandidates) ? requestedCandidates : 1));
       const requestedSteps = Number(project.parameters.steps || 1);
@@ -364,7 +394,7 @@ printf 'WORLD_PANORAMA_PASS\\tpath=%s\\twidth=%s\\theight=%s\\tsha256=%s\\tmodel
       worldStore.updateStage(project.id, 'reconstruct', { status: 'RUNNING', worker: 'sharp-reconstruct', model: SHARP_MODEL });
       const prepared = await ssh(`set -e; mkdir -p ${q(`${remoteDir}/input`)} ${q(remoteOutput)}; printf 'WORLD_PREPARED\\n'`);
       if (!/WORLD_PREPARED/.test(`${prepared.stdout}\n${prepared.stderr}`)) throw new Error('remote preparation missing in-band marker');
-      await runFile('scp', ['-O', '-q', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', staged.path, `${sshTarget}:${remoteInput}`], 300000);
+      await transport.toWorker(staged.path, remoteInput, 300000);
       const command = `set -uo pipefail
 ROOT=${q(SHARP_ROOT)}; D=${q(remoteDir)}
 "$ROOT/venv/bin/sharp" predict --input-path "$D/input" --output-path "$D/output" --checkpoint-path ${q(SHARP_CHECKPOINT)} --device mps --no-render
@@ -451,4 +481,4 @@ printf 'WORLD_SHARP_PASS\\tply=%s\\tbytes=%s\\tvertices=%s\\tsha256=%s\\tdevice=
   return { start, workers, remoteStatus, runQuick3d, runComplete360, constants: { WORLD_ROOT, SHARP_ROOT, SHARP_CHECKPOINT, SHARP_MODEL, PANORAMA_MODEL, PANORAMA_LORA, PANORAMA_CACHE, WORLD_WORK } };
 }
 
-module.exports = { createWorldBridge, constants: { WORLD_ROOT, SHARP_ROOT, SHARP_CHECKPOINT, SHARP_MODEL, PANORAMA_MODEL, PANORAMA_LORA, PANORAMA_CACHE, WORLD_WORK } };
+module.exports = { createWorldBridge, createWorldTransport, worldCompilerPython, constants: { WORLD_ROOT, SHARP_ROOT, SHARP_CHECKPOINT, SHARP_MODEL, PANORAMA_MODEL, PANORAMA_LORA, PANORAMA_CACHE, WORLD_WORK } };
