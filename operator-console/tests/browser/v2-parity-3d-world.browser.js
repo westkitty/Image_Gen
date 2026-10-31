@@ -185,11 +185,11 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
         { id: 'finalize', label: 'Publish geometry', status: 'NOT_STARTED' },
         { id: 'viewer', label: 'Preview ready', status: 'NOT_STARTED' } ] };
       list[2] = { ...list[2], status: 'RUNNING', progress: proof };
-      await page.waitForFunction(() => document.querySelector('[data-world-progress="wp-wait"]')?.textContent?.includes('1 of 4 milestones verified'), null, { timeout: 7000 });
+      await page.waitForFunction(() => document.querySelector('[data-world-progress="wp-wait"]')?.textContent?.includes('1 of 4 processing stages complete'), null, { timeout: 7000 });
       assert.equal(await page.locator('[data-world-progress="wp-wait"] progress').count(), 0, 'stage progress must not invent elapsed-time percentage');
       list[2] = { ...list[2], progress: { ...proof, done: 2, segments: [
         proof.segments[0], { ...proof.segments[1], status: 'READY' }, { ...proof.segments[2], status: 'RUNNING' }, proof.segments[3] ] } };
-      await page.waitForFunction(() => document.querySelector('[data-world-progress="wp-wait"]')?.textContent?.includes('2 of 4 milestones verified'), null, { timeout: 7000 });
+      await page.waitForFunction(() => document.querySelector('[data-world-progress="wp-wait"]')?.textContent?.includes('2 of 4 processing stages complete'), null, { timeout: 7000 });
       await page.getByRole('button', { name: 'Make 3D' }).click(); await page.waitForTimeout(500);
       assert.deepEqual(reqs, [], 'no source -> no request');
       await page.evaluate(id => __dex.setState({ worldSourceArtifact: id }), SRC);

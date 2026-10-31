@@ -72,6 +72,13 @@
   window.addEventListener('keydown', function (e) { state.keys[e.key.toLowerCase()] = true; if (e.key.toLowerCase() === 'r') reset(); if (e.key.toLowerCase() === 'f') document.documentElement.requestFullscreen?.(); }); window.addEventListener('keyup', function (e) { delete state.keys[e.key.toLowerCase()]; });
   canvas.addEventListener('pointerdown', function (e) { state.drag = true; state.x = e.clientX; state.y = e.clientY; canvas.setPointerCapture(e.pointerId); }); canvas.addEventListener('pointerup', function (e) { state.drag = false; canvas.releasePointerCapture?.(e.pointerId); }); canvas.addEventListener('pointermove', function (e) { if (!state.drag) return; state.yaw -= (e.clientX - state.x) * 0.004; state.pitch = Math.max(-1.4, Math.min(1.4, state.pitch - (e.clientY - state.y) * 0.004)); state.x = e.clientX; state.y = e.clientY; }); document.getElementById('world-reset').onclick = reset; document.getElementById('world-fullscreen').onclick = function () { document.documentElement.requestFullscreen?.(); };
   async function load() { try { if (!projectId) throw new Error('Missing project query parameter'); var response = await fetch('/api/world/projects/' + encodeURIComponent(projectId)); var body = await response.json(); if (!response.ok) throw new Error(body.error || 'project request failed'); var artifact = body.viewerArtifact || (Array.isArray(body.artifacts?.finalPly) ? body.artifacts.finalPly[0] : body.artifacts?.finalPly); if (!artifact?.url) throw new Error('World project has no viewer-ready PLY artifact'); setStatus('Loading Complete 360 World', 'Downloading progressive PLY ' + (artifact.bytes || 'unknown') + ' bytes'); var parsed = parsePly(await (await fetch(artifact.url)).arrayBuffer()); startRenderer(parsed, body.mode, body.status);
+    var panoramas = body.artifacts?.panorama;
+    var panorama = Array.isArray(panoramas) ? panoramas[0] : panoramas;
+    var panoramaLink = document.getElementById('world-panorama');
+    if (panoramaLink && body.mode === 'complete360' && /^\/api\/media\/[A-Za-z0-9][A-Za-z0-9_.-]*\.png$/.test(panorama?.url || '')) {
+      panoramaLink.href = './world-panorama-viewer.html?project=' + encodeURIComponent(projectId);
+      panoramaLink.hidden = false; panoramaLink.style.display = 'inline-block';
+    }
     var raw = Array.isArray(body.artifacts?.perViewSplats) ? body.artifacts.perViewSplats : [];
     var gaussianLink = document.getElementById('world-gaussian');
     if (gaussianLink && raw.some(v => v && /^\/api\/media\/[A-Za-z0-9._-]+$/.test(v.url || ''))) {
