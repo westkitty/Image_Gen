@@ -100,7 +100,7 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
     await test('row 48: V2 3D requires an explicit source, sends exact requests per mode, tracks the job and exposes viewer/Blender', async () => {
       const page = await browser.newPage({ viewport: { width: 1348, height: 900 } });
       const errors = []; page.on('pageerror', e => errors.push(String(e)));
-      const reqs = []; let popup = null;
+      const reqs = [];
       await installModelSnapshots(page, srv.base);
       await page.route('**/api/3d/workers', r => json(r, { engine: { id: 'hunyuan3d-swift', label: 'Hunyuan3D Swift / MLX', blender: { available: true } }, remote: { reachable: true, identity: 'bigmac@bigmac', runtime: true }, modes: { quickGeometry: { status: 'PROVEN' }, mesh: { status: 'PROVEN' }, textured: { status: 'UNAVAILABLE' }, pbr: { status: 'DISABLED' } } }));
       await page.route('**/api/world/projects', r => { if (r.request().method() === 'POST') { reqs.push(['world', JSON.parse(r.request().postData())]); return json(r, { id: 'wp-syn1', mode: 'quick3d', status: 'QUEUED', job_id: 'job-q3d' }); } return json(r, { projects: [] }); });
@@ -120,9 +120,28 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
       await page.getByRole('button', { name: /Mesh/ }).first().click();
       await page.waitForFunction(() => /Latest 3D job · COMPLETE/.test(document.body.innerText), null, { timeout: 15000 });
       assert.deepEqual(reqs.slice(0, 1), [['3d', { mode: 'mesh', sourceArtifactId: SRC }]], 'exact mesh request');
-      const pagePromise = page.context().waitForEvent('page');
+      const completed3dJob = await page.evaluate(() => __dex.state.asset3dJob);
+      await page.evaluate(() => __dex.setState({ asset3dJob: { job_id: 'job-measured', status: 'RUNNING', operation: 'asset3d-mesh',
+        progress: { phase: 'shape', label: 'Mesh denoising step 12 of 30', done: 12, total: 30 } } }));
+      await page.locator('[data-asset3d-progress=job-measured] progress').waitFor();
+      assert.equal(await page.locator('[data-asset3d-progress=job-measured] progress').evaluate(el => [el.value, el.max].join('/')), '12/30');
+      assert.match(await page.locator('[data-asset3d-progress=job-measured]').innerText(), /12 of 30 denoising steps/);
+      await page.evaluate(job => __dex.setState({ asset3dJob: job }), completed3dJob);
+      await page.route('**/api/media/syn-cube.glb', r => r.fulfill({ contentType: 'model/gltf-binary', body: GLB }));
+      await page.evaluate(() => { window.open = () => { throw new Error('Native WKWebView popups are unavailable'); }; });
       await page.getByRole('button', { name: 'Open 3D preview' }).click();
-      popup = await pagePromise; await popup.waitForURL(/asset3d-viewer\.html\?artifact=syn-cube\.glb/); assert.match(popup.url(), /asset3d-viewer\.html\?artifact=syn-cube\.glb/); await popup.close();
+      const assetFocus = page.locator('[data-focus-viewer="asset3d"]');
+      await assetFocus.waitFor();
+      assert.match(await page.locator('iframe[data-focus-frame="asset3d"]').getAttribute('src'), /asset3d-viewer\.html\?artifact=syn-cube\.glb/);
+      await page.frameLocator('iframe[data-focus-frame="asset3d"]').locator('#asset-status').getByText(/8 vertices/).waitFor({ timeout: 15000 });
+      await page.evaluate(() => {
+        window.__focusFrameOriginal = document.querySelector('[data-focus-frame="asset3d"]');
+        __dex.setState({ sourceImagesLoading: true });
+      });
+      await page.waitForTimeout(250);
+      assert.equal(await page.evaluate(() => window.__focusFrameOriginal === document.querySelector('[data-focus-frame="asset3d"]')), true, 'progress/state updates must not reload 3D iframe');
+      await page.getByRole('button', { name: 'Close Focus' }).click();
+      assert.equal(await assetFocus.count(), 0, 'focus overlay closes without navigating away');
       // Export: the Download GLB action delivers a structurally valid GLB (header, version, declared length, JSON + BIN chunks).
       await page.route('**/api/media/syn-cube.glb/download', r => r.fulfill({ contentType: 'model/gltf-binary', headers: { 'content-disposition': 'attachment; filename="syn-cube.glb"' }, body: GLB }));
       const dl = page.waitForEvent('download');
@@ -146,7 +165,8 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
       const reqs = []; let list = [
         { id: 'wp-ok', mode: 'quick3d', status: 'COMPLETE', currentStage: 'viewer', sourceArtifactId: SRC, artifacts: { finalPly: { artifact_id: 'syn.ply', url: '/api/media/syn.ply', bytes: PLY.length } } },
         { id: 'wp-bad', mode: 'complete360', status: 'FAILED', currentStage: 'panorama', sourceArtifactId: SRC, failure: { stage: 'panorama', error: 'worker exit 1' }, artifacts: {} },
-        { id: 'wp-wait', mode: 'quick3d', status: 'QUEUED', currentStage: 'queued', sourceArtifactId: SRC, artifacts: {} }];
+        { id: 'wp-wait', mode: 'quick3d', status: 'QUEUED', currentStage: 'queued', sourceArtifactId: SRC, artifacts: {} },
+        { id: 'wp-progressive', mode: 'complete360', status: 'PARTIAL', currentStage: 'quality', sourceArtifactId: SRC, artifacts: { coarseGeometry: { artifact_id: 'coarse.ply', url: '/api/media/coarse.ply' } } }];
       let gets = 0;
       await installModelSnapshots(page, srv.base);
       await page.route('**/api/world/workers', r => json(r, { assets: { reachable: true }, workers: [{ id: 'sharp-reconstruct', label: 'Apple SHARP', status: 'PROVEN' }, { id: 'flux2-world-completion', label: 'FLUX.2 completion', status: 'PROVEN' }] }));
@@ -158,7 +178,18 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
       const t = await page.locator('[data-scroll-pane]').first().innerText();
       assert.match(t, /quick3d · wp-ok[\s\S]*COMPLETE/); assert.match(t, /complete360 · wp-bad[\s\S]*FAILED/); assert.match(t, /panorama: worker exit 1/, 'the failing stage and error are shown');
       assert.match(t, /Apple SHARP: PROVEN/);
-      assert.equal(await page.getByRole('button', { name: 'Open Focus' }).count(), 1, 'only the project with a final artifact can be opened');
+      assert.equal(await page.getByRole('button', { name: 'Open Focus' }).count(), 2, 'validated final and progressive artifacts can be examined; empty projects cannot');
+      const proof = { kind: 'verified-milestones', done: 1, total: 4, segments: [
+        { id: 'source', label: 'Source ready', status: 'READY' },
+        { id: 'reconstruct', label: 'Reconstruct geometry', status: 'RUNNING' },
+        { id: 'finalize', label: 'Publish geometry', status: 'NOT_STARTED' },
+        { id: 'viewer', label: 'Preview ready', status: 'NOT_STARTED' } ] };
+      list[2] = { ...list[2], status: 'RUNNING', progress: proof };
+      await page.waitForFunction(() => document.querySelector('[data-world-progress="wp-wait"]')?.textContent?.includes('1 of 4 milestones verified'), null, { timeout: 7000 });
+      assert.equal(await page.locator('[data-world-progress="wp-wait"] progress').count(), 0, 'stage progress must not invent elapsed-time percentage');
+      list[2] = { ...list[2], progress: { ...proof, done: 2, segments: [
+        proof.segments[0], { ...proof.segments[1], status: 'READY' }, { ...proof.segments[2], status: 'RUNNING' }, proof.segments[3] ] } };
+      await page.waitForFunction(() => document.querySelector('[data-world-progress="wp-wait"]')?.textContent?.includes('2 of 4 milestones verified'), null, { timeout: 7000 });
       await page.getByRole('button', { name: 'Make 3D' }).click(); await page.waitForTimeout(500);
       assert.deepEqual(reqs, [], 'no source -> no request');
       await page.evaluate(id => __dex.setState({ worldSourceArtifact: id }), SRC);
@@ -176,8 +207,24 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
       const n = reqs.length; await page.getByRole('button', { name: 'Retry' }).click();
       for (let i = 0; i < 40 && reqs.length === n; i++) await page.waitForTimeout(100);
       assert.deepEqual(reqs[n], ['post', { mode: 'complete360', sourceArtifactId: SRC, parameters: { seed: 42 } }]);
-      const pop = page.context().waitForEvent('page'); await page.getByRole('button', { name: 'Open Focus' }).click();
-      const v = await pop; await v.waitForURL(/world-viewer\.html\?project=wp-ok/); assert.match(v.url(), /world-viewer\.html\?project=wp-ok/); await v.close();
+      await page.route('**/api/world/projects/wp-ok', r => r.request().method() === 'PATCH' ? json(r, { ok: true })
+        : json(r, { id: 'wp-ok', mode: 'quick3d', status: 'COMPLETE', artifacts: { finalPly: { artifact_id: 'syn.ply', url: '/api/media/syn.ply', bytes: PLY.length } } }));
+      await page.route('**/api/media/syn.ply', r => r.fulfill({ contentType: 'application/vnd.ply', body: PLY }));
+      await page.evaluate(() => { window.open = () => { throw new Error('Native WKWebView popups are unavailable'); }; });
+      await page.getByRole('button', { name: 'Open Focus' }).first().click();
+      const worldFocus = page.locator('[data-focus-viewer="world"]');
+      await worldFocus.waitFor();
+      assert.match(await page.locator('iframe[data-focus-frame="world"]').getAttribute('src'), /world-viewer\.html\?project=wp-ok/);
+      await page.frameLocator('iframe[data-focus-frame="world"]').locator('#world-status').getByText(/600 vertices/).waitFor({ timeout: 15000 });
+      await page.evaluate(() => {
+        window.__focusFrameOriginal = document.querySelector('[data-focus-frame="world"]');
+        __dex.setState({ worldLoading: true });
+      });
+      await page.waitForTimeout(250);
+      assert.equal(await page.evaluate(() => window.__focusFrameOriginal === document.querySelector('[data-focus-frame="world"]')), true, 'World iframe must remain mounted during polling');
+      await page.keyboard.press('Escape');
+      assert.equal(await worldFocus.count(), 0, 'Escape closes focus without a popup');
+      assert.match(page.url(), /\/dexdiffusion\/$/, 'Studio navigation and source state survive closing');
       assert.deepEqual(errors, []);
       await page.close();
     });
