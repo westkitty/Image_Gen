@@ -351,8 +351,8 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
         if (!localSource || !localTarget) return fail('reference-invalid', 'source or approved target audio could not be converted to WAV');
         openVoiceTransfer = { sourceSha: sha256File(localSource), targetSha: sha256File(localTarget) };
         const [sourceUp, targetUp] = await Promise.all([
-          exec('scp', ['-q', localSource, `${sshTarget}:${remoteDir}/source.wav`]),
-          exec('scp', ['-q', localTarget, `${sshTarget}:${remoteDir}/target.wav`]),
+          runExec('scp', ['-q', localSource, `${sshTarget}:${remoteDir}/source.wav`]),
+          runExec('scp', ['-q', localTarget, `${sshTarget}:${remoteDir}/target.wav`]),
         ]);
         const chk = await runExec('ssh', ['-o', 'BatchMode=yes', sshTarget,
           `test -s "${remoteDir}/source.wav" && test -s "${remoteDir}/target.wav" && shasum -a 256 "${remoteDir}/source.wav" "${remoteDir}/target.wav"`]);
