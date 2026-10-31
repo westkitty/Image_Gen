@@ -47,7 +47,10 @@ const project = {
   try {
     await installModelSnapshots(page,srv.base);
     await page.route('**/api/world/workers',r=>json(r,{workers:[{id:'sharp-reconstruct',label:'Apple SHARP',status:'PROVEN'}],assets:{reachable:true}}));
-    await page.route(/\/api\/world\/projects$/,r=>json(r,{projects:[project]}));
+    // Production list media uses safe_url; the detail API resolves to url.
+    const listed = { ...project, artifacts: { ...project.artifacts,
+      panorama: { artifact_id: 'fixture-panorama.png', safe_url: '/api/media/fixture-panorama.png' } } };
+    await page.route(/\/api\/world\/projects$/,r=>json(r,{projects:[listed]}));
     await page.route('**/api/world/projects/'+ID,r=>r.request().method()==='PATCH'?json(r,{ok:true}):json(r,project));
     await page.route('**/api/media/fixture-panorama.png',r=>r.fulfill({status:200,contentType:'image/png',body:PANO}));
     await page.route('**/api/media/fixture-fused.ply',r=>r.fulfill({status:200,contentType:'application/vnd.ply',body:PLY}));
