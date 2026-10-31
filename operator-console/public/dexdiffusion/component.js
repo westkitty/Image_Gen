@@ -510,7 +510,7 @@ class Component extends DCLogic {
     const worldProject = kind === 'world' ? (this.state.worldProjects || []).find(p => p.id === id) : null;
     const panoramas = worldProject?.artifacts?.panorama;
     const panorama = Array.isArray(panoramas) ? panoramas[0] : panoramas;
-    const usePanorama = worldProject?.mode === 'complete360' && /^\/api\/media\/[A-Za-z0-9][A-Za-z0-9_.-]*\.png$/.test(panorama?.url || '');
+    const usePanorama = worldProject?.mode === 'complete360' && /^\/api\/media\/[A-Za-z0-9][A-Za-z0-9_.-]*\.png$/.test(panorama?.safe_url || panorama?.url || '');
     const url = kind === 'world'
       ? '/dexdiffusion/' + (usePanorama ? 'world-panorama-viewer.html' : 'world-viewer.html') + '?project=' + encodeURIComponent(id)
       : '/dexdiffusion/asset3d-viewer.html?artifact=' + encodeURIComponent(id);
