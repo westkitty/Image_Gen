@@ -507,8 +507,12 @@ class Component extends DCLogic {
   // and restart the actual WebGL renderer every 1.8 seconds.
   openFocusViewer(kind, id) {
     if (!['world', 'asset3d'].includes(kind) || typeof id !== 'string' || !id || id.length > 200) return false;
+    const worldProject = kind === 'world' ? (this.state.worldProjects || []).find(p => p.id === id) : null;
+    const panoramas = worldProject?.artifacts?.panorama;
+    const panorama = Array.isArray(panoramas) ? panoramas[0] : panoramas;
+    const usePanorama = worldProject?.mode === 'complete360' && /^\/api\/media\/[A-Za-z0-9][A-Za-z0-9_.-]*\.png$/.test(panorama?.url || '');
     const url = kind === 'world'
-      ? '/dexdiffusion/world-viewer.html?project=' + encodeURIComponent(id)
+      ? '/dexdiffusion/' + (usePanorama ? 'world-panorama-viewer.html' : 'world-viewer.html') + '?project=' + encodeURIComponent(id)
       : '/dexdiffusion/asset3d-viewer.html?artifact=' + encodeURIComponent(id);
     const h = React.createElement;
     this._focusReturnElement = document.activeElement;
@@ -517,10 +521,10 @@ class Component extends DCLogic {
       'data-focus-viewer': kind, style: { position: 'fixed', inset: 0, zIndex: 2147482000, background: '#05070b', display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh' } },
       h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 16px', background: '#0c1420', borderBottom: '1px solid rgba(148,163,184,.25)', color: '#e2e8f0', flexShrink: 0 } },
         h('div', { style: { minWidth: 0 } },
-          h('div', { style: { fontSize: 14, fontWeight: 800 } }, kind === 'world' ? 'World Focus — interactive 3D preview' : '3D Asset Focus — interactive model'),
+          h('div', { style: { fontSize: 14, fontWeight: 800 } }, kind === 'world' ? (usePanorama ? 'World Focus — 360° look-around panorama' : 'World Focus — diagnostic 3D preview') : '3D Asset Focus — interactive model'),
           h('div', { style: { fontSize: 11, color: '#94a3b8', overflowWrap: 'anywhere' } }, id)),
         h('button', { type: 'button', 'data-focus-close': 'true', style: actionStyle, onClick: () => this.closeFocusViewer() }, 'Close Focus')),
-      h('iframe', { key: url, src: url, title: kind === 'world' ? 'Interactive world point-cloud viewer' : 'Interactive GLB model viewer',
+      h('iframe', { key: url, src: url, title: kind === 'world' ? (usePanorama ? '360-degree panorama rotation-only viewer' : 'Diagnostic world point-cloud viewer') : 'Interactive GLB model viewer',
         'data-focus-frame': kind, allowFullScreen: true, style: { display: 'block', flex: '1 1 auto', width: '100%', minHeight: 0, border: 0, background: '#05070b' } })
     );
     this.setState({ focusViewer: { kind, id } });
@@ -566,12 +570,16 @@ class Component extends DCLogic {
     const elapsedText = elapsed == null ? '' : ' · ' + Math.floor(elapsed / 60) + 'm ' + String(elapsed % 60).padStart(2, '0') + 's elapsed';
     return h('div', { 'data-world-progress': project.id, style: { marginTop: 10, display: 'grid', gap: 6 } },
       h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', color: '#a7bdd1', fontSize: 11 } },
-        h('span', null, progress.done + ' of ' + progress.total + ' milestones verified'),
+        h('span', null, progress.done + ' of ' + progress.total + ' processing stages complete'),
         h('span', null, displayLabel + elapsedText)),
       h('div', { role: 'group', 'aria-label': 'Verified World milestones; not a time estimate', style: { display: 'flex', gap: 3, minHeight: 9, width: '100%' } },
         ...progress.segments.map(seg => h('span', { key: seg.id, 'data-stage-id': seg.id, 'data-stage-status': seg.status,
-          title: seg.label + ': ' + seg.status.toLowerCase(), 'aria-label': seg.label + ': ' + seg.status.toLowerCase(),
-          style: { flex: '1 1 0', borderRadius: 3, height: 9, background: color(seg.status), minWidth: 6 } }))),
+          title: seg.id === 'quality' && result === 'PARTIAL' ? 'Quality report recorded; reconstructed 3D quality NOT verified' : seg.label + ': ' + seg.status.toLowerCase(),
+          'aria-label': seg.id === 'quality' && result === 'PARTIAL' ? 'Quality report recorded; quality not verified' : seg.label + ': ' + seg.status.toLowerCase(),
+          style: { flex: '1 1 0', borderRadius: 3, height: 9, background: seg.id === 'quality' && result === 'PARTIAL' ? '#e4aa42' : color(seg.status), minWidth: 6 } }))),
+      result === 'PARTIAL' && project.mode === 'complete360'
+        ? h('div', { 'data-world-quality-warning': project.id, role: 'status', style: { fontSize: 11, color: '#f6c778', lineHeight: 1.5 } },
+          'Quality NOT verified. Panorama supports looking around; depth and fused geometry are experimental. Completed processing is not a navigable 3D world.') : null,
       this.state.backendOnline && active && ['RUNNING', 'QUEUED'].includes(result) ? h('div', { role: 'status', style: { fontSize: 11, color: '#9fb0c5' } }, 'Current: ' + active.label + ' · remaining time unknown') : null);
   }
 
@@ -754,7 +762,7 @@ class Component extends DCLogic {
     return h('div', { style: { display: 'grid', gap: 14 } },
       h('div', { style: { background: '#060a10', border: '1px solid rgba(148,163,184,.14)', borderRadius: 12, padding: 16 } },
         h('div', { style: { fontSize: 18, color: '#f0f4f8', fontWeight: 750, marginBottom: 4 } }, 'World'),
-        h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, marginBottom: 12 } }, 'Dedicated local 3D workspace. Quick 3D reconstructs one image; Complete 360 builds panorama, depth/scaffold, aligned SHARP proposals, fusion and viewer artifacts. Learned global depth is not installed, so Complete 360 may report WARN while using the bounded fallback.'),
+        h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, marginBottom: 12 } }, 'Make 3D attempts an object/nearby-view reconstruction from one image. Make World synthesizes a 360° look-around panorama from an environment image, plus experimental point-cloud diagnostics. A single image does not provide proven walkable 3D or reliable unseen geometry; global depth and six-view alignment remain unverified.'),
         h('div', { 'data-source-rule': 'world', style: { color: '#8fa3b8', fontSize: 11, lineHeight: 1.5, marginBottom: 8 } }, 'World uses exactly the image you choose here. Nothing is substituted, and no source is pre-selected.'),
         h('select', { 'aria-label': 'World source image', value: s.worldSourceArtifact || '', onChange: e => { this.setState({ worldSourceArtifact: e.target.value }); if (SA && SA.isImageId(e.target.value)) this.setActiveAssetSelection({ kind: 'image', id: e.target.value }); }, style: { width: '100%', maxWidth: 520, marginBottom: 10, border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
         this._sourceImageActionBar('world'),
@@ -768,7 +776,7 @@ class Component extends DCLogic {
       ...(s.worldProjects || []).map(p => {
         // The detail API also supports validated progressive PLY artifacts
         // when a Complete 360 project has a partial rather than fused result.
-        const canOpen = ['finalPly', 'runtimeSplat', 'coarseGeometry', 'perViewSplats'].some(slot => {
+        const canOpen = ['panorama', 'finalPly', 'runtimeSplat', 'coarseGeometry', 'perViewSplats'].some(slot => {
           const artifact = p.artifacts && p.artifacts[slot];
           return Array.isArray(artifact) ? artifact.some(Boolean) : !!artifact;
         });
