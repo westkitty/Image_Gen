@@ -7,6 +7,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var statusLabel: NSTextField!
     private var consoleProcess: Process?
     private var serviceStartupInProgress = false
+    private var navigationStarted = false
+    private var studioVerified = false
+    private var navigationToken = 0
+    private var bootstrapRetryCount = 0
+    private var reconnectAttempts = 0
+    private var pendingReconnectAfterStartup = false
 
     private let projectRoot: String = {
         if let env = ProcessInfo.processInfo.environment["IMAGE_GEN_ROOT"], !env.isEmpty {
@@ -46,6 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         window = nil
         webView = nil
         statusLabel = nil
+        navigationStarted = false
+        studioVerified = false
     }
 
     private func showMainWindow() {
@@ -57,17 +65,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         NSApp.activate(ignoringOtherApps: true)
         // Give WKWebView first-responder status so paste targets the active DOM element.
         if let wv = webView { window?.makeFirstResponder(wv) }
-        if isNewWindow || webView?.url == nil {
+        if isNewWindow || !navigationStarted {
             loadConsole()
         }
     }
 
     private func loadConsole() {
         guard let wv = webView else { return }
+        navigationStarted = true
+        studioVerified = false
+        navigationToken += 1
+        let token = navigationToken
         setStatus("Loading DexDiffusion at \(consoleURL.absoluteString)...")
         var request = URLRequest(url: consoleURL)
-        request.cachePolicy = .useProtocolCachePolicy
+        // A rebuilt Studio can change many JS files while WebKit remains open.
+        // Revalidate the HTML from the local tunnel, not the old page cache.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         wv.load(request)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self, weak wv] in
+            guard let self = self, let wv = wv, self.webView === wv,
+                  self.navigationToken == token, !self.studioVerified else { return }
+            self.appendLog("WKWebView watchdog: Studio has not verified its interface after 15 seconds")
+            self.setStatus("Studio has not finished loading. View > Reload to retry; Help > Copy Error Report for details.")
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -305,7 +325,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     @objc private func reloadPage() {
-        webView?.reload()
+        bootstrapRetryCount = 0
+        reconnectAttempts = 0
+        pendingReconnectAfterStartup = false
+        loadConsole() // Also works when the web view never received an initial URL.
     }
 
     @objc private func openLogs() {
@@ -406,9 +429,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        let head = Bundle.main.object(forInfoDictionaryKey: "DexDiffusionSourceHead") as? String ?? "unknown"
-        setStatus("Connected to DexDiffusion at \(consoleURL.absoluteString) · HEAD \(head)")
-        appendLog("webView didFinish loading: \(consoleURL.absoluteString)")
+        appendLog("webView didFinish navigation: \(consoleURL.absoluteString)")
+        setStatus("Verifying DexDiffusion Studio interface...")
+        // Navigation success alone is insufficient: previously it reported
+        // Connected even when all Studio scripts failed and the view was blank.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak webView] in
+            guard let self = self, let webView = webView, self.webView === webView else { return }
+            let js = "({initialized:!!window.__dex,rendered:!!document.querySelector('#app-root > [data-v]'),renderError:!!(window.__dex && window.__dex.__renderError)})"
+            webView.evaluateJavaScript(js) { [weak self, weak webView] result, error in
+                DispatchQueue.main.async {
+                    guard let self = self, let webView = webView, self.webView === webView else { return }
+                    let flags = result as? [String: Any] ?? [:]
+                    let initialized = flags["initialized"] as? Bool ?? false
+                    let rendered = flags["rendered"] as? Bool ?? false
+                    let renderError = flags["renderError"] as? Bool ?? false
+                    if error == nil && initialized && rendered && !renderError {
+                        self.studioVerified = true
+                        self.bootstrapRetryCount = 0
+                        self.reconnectAttempts = 0
+                        let head = Bundle.main.object(forInfoDictionaryKey: "DexDiffusionSourceHead") as? String ?? "unknown"
+                        self.setStatus("Connected to DexDiffusion at \(self.consoleURL.absoluteString) · HEAD \(head)")
+                        self.appendLog("WKWebView Studio bootstrap verified")
+                    } else {
+                        self.studioVerified = false
+                        self.appendLog("WKWebView Studio bootstrap incomplete: initialized=\(initialized) rendered=\(rendered) renderError=\(renderError) evaluationError=\(error?.localizedDescription ?? "none")")
+                        if self.bootstrapRetryCount < 1 {
+                            self.bootstrapRetryCount += 1
+                            self.setStatus("Studio interface incomplete; retrying once without local page cache...")
+                            self.loadConsole()
+                        } else {
+                            self.setStatus("Studio could not initialize. Help > Copy Error Report; View > Reload to retry.")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        appendLog("WKWebView content process terminated")
+        studioVerified = false
+        if bootstrapRetryCount < 1 {
+            bootstrapRetryCount += 1
+            setStatus("Studio web process stopped; retrying once...")
+            loadConsole()
+        } else {
+            setStatus("Studio web process repeatedly stopped. Help > Copy Error Report for details.")
+        }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -417,23 +484,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        studioVerified = false
         let nsError = error as NSError
         appendLog("webView didFailProvisionalNavigation (code \(nsError.code)): \(error.localizedDescription)")
         if nsError.domain == NSURLErrorDomain && (nsError.code == NSURLErrorCannotConnectToHost || nsError.code == NSURLErrorNetworkConnectionLost) {
-            setStatus("DexDiffusion backend unreachable. Attempting startup and reconnecting...")
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                guard let self = self else { return }
-                self.ensureOperatorConsoleViaHelper()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    guard let wv = self.webView else { return }
-                    self.setStatus("Retrying connection to \(self.consoleURL.absoluteString)...")
-                    var req = URLRequest(url: self.consoleURL)
-                    req.cachePolicy = .useProtocolCachePolicy
-                    wv.load(req)
-                }
+            guard reconnectAttempts < 2 else {
+                setStatus("DexDiffusion connection failed repeatedly. Help > Copy Error Report for details.")
+                return
             }
+            reconnectAttempts += 1
+            pendingReconnectAfterStartup = true
+            setStatus("DexDiffusion backend unreachable; checking the local tunnel...")
+            if !serviceStartupInProgress { ensureServicesThenLoad() }
+        } else if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+            // An obsolete navigation may be cancelled during a manual reload.
+            return
         } else {
-            setStatus("Could not load DexDiffusion: \(error.localizedDescription) · View → Reload (⌘R) to retry")
+            setStatus("Could not load DexDiffusion: \(error.localizedDescription) - View > Reload to retry")
         }
     }
 
@@ -561,8 +628,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     // MARK: - Window
 
     private func buildWindow() {
+        navigationStarted = false
+        studioVerified = false
         let config = WKWebViewConfiguration()
         webView = WKWebView(frame: .zero, configuration: config)
+        // Keep startup visually distinct from an unrendered white document.
+        webView.underPageBackgroundColor = NSColor(calibratedRed: 0.031, green: 0.035, blue: 0.055, alpha: 1)
         webView.navigationDelegate = self
         webView.uiDelegate = self
 
@@ -572,6 +643,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         statusLabel.lineBreakMode = .byTruncatingTail
 
         let content = NSView()
+        content.wantsLayer = true
+        content.layer?.backgroundColor = NSColor(calibratedRed: 0.031, green: 0.035, blue: 0.055, alpha: 1).cgColor
         content.translatesAutoresizingMaskIntoConstraints = false
         webView.translatesAutoresizingMaskIntoConstraints = false
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -596,6 +669,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             defer: false
         )
         window.title = "DexDiffusion"
+        window.backgroundColor = NSColor(calibratedRed: 0.031, green: 0.035, blue: 0.055, alpha: 1)
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
@@ -607,20 +681,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     // MARK: - Service startup
 
     private func ensureServicesThenLoad() {
+        // Do not hold the WebKit window empty while an SSH or Tailscale status
+        // probe runs. When the tunnel is healthy, Studio can load immediately.
+        showMainWindow()
         guard !serviceStartupInProgress else { return }
         serviceStartupInProgress = true
-        if window == nil { buildWindow() }
-        setStatus("Starting DexDiffusion...")
-        DispatchQueue.global(qos: .userInitiated).async {
-            // bin/dexdiffusion start reuses a healthy project-owned console or
-            // starts one detached (it keeps running for Tailscale users after
-            // this app quits). Big Mac is not touched at launch: it is only
-            // needed when a generation runs. SDCPP is dormant, so no tunnel.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            // The project-owned helper is still responsible for restoring an
+            // absent tunnel. It never restarts a healthy generation backend.
             self.ensureOperatorConsoleViaHelper()
             DispatchQueue.main.async {
                 self.serviceStartupInProgress = false
-                self.showMainWindow()
-                self.loadConsole()
+                if self.pendingReconnectAfterStartup {
+                    self.pendingReconnectAfterStartup = false
+                    self.loadConsole()
+                }
             }
         }
     }
