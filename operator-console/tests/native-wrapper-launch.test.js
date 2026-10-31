@@ -50,3 +50,29 @@ test('T-201 the wrapper implements the JavaScript dialog delegates instead of au
   // The existing file picker is preserved.
   assert.match(src, /runOpenPanelWith parameters: WKOpenPanelParameters/);
 });
+
+test('Dock startup loads the local Studio immediately rather than waiting for the shell helper', () => {
+  const src = read('native/macos/Image_Gen/ImageGenApp.swift');
+  const block = src.slice(src.indexOf('    private func ensureServicesThenLoad() {'), src.indexOf('    private func ensureOperatorConsoleViaHelper() {'));
+  assert.match(block, /showMainWindow\(\)[\s\S]*?guard !serviceStartupInProgress/);
+  assert.ok(block.indexOf('showMainWindow()') < block.indexOf('self.ensureOperatorConsoleViaHelper()'));
+  assert.equal((block.match(/self\.loadConsole\(\)/g) || []).length, 1, 'no unconditional second page load on helper completion');
+  assert.match(block, /pendingReconnectAfterStartup/);
+  assert.match(src, /if isNewWindow \|\| !navigationStarted/);
+});
+
+test('Native white-screen failures have visible bootstrap and WebKit-process diagnostics', () => {
+  const src = read('native/macos/Image_Gen/ImageGenApp.swift');
+  assert.match(src, /underPageBackgroundColor/);
+  assert.match(src, /WKWebView watchdog/);
+  assert.match(src, /window\.__dex/);
+  assert.match(src, /#app-root > \[data-v\]/);
+  assert.match(src, /WKWebView Studio bootstrap verified/);
+  assert.match(src, /WKWebView Studio bootstrap incomplete/);
+  assert.match(src, /webViewWebContentProcessDidTerminate/);
+  assert.match(src, /bootstrapRetryCount < 1/);
+  assert.match(src, /reconnectAttempts < 2/);
+  const reload = src.slice(src.indexOf('    @objc private func reloadPage()'), src.indexOf('    @objc private func openLogs()'));
+  assert.match(reload, /loadConsole\(\)/, 'Reload must work even when no navigation has succeeded');
+  assert.doesNotMatch(reload, /webView\?\.reload\(\)/);
+});
