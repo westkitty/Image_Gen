@@ -179,3 +179,13 @@ releases do not certify this uncommitted worktree.
   browser regression, not a cosmetic issue.
 - This is incremental source and browser evidence only. Native WKWebView,
   release suite and production install gates remain BLOCKED/UNVERIFIED.
+
+## 2026-11-01 post-merge verification / fixture amendment
+
+**Source merge receipt:** PR #20 merged to westkitty/Image_Gen main; merge SHA a702dfeace5051bc0effc42c1ce3f1d2fe741f5f. Original isolated 45-file commit 4397c3c84a33609f67b069ef358f8c262b748670 has the same tree as the GitHub transport commit. Big Mac active 127.0.0.1:31337 still returns a1cefd1 at /api/version (pid 97432, cwd production checkout), not the OMNI code. This is *not* a live deployment.
+
+**Expanded source QA:** Real Khronos KHR_draco_mesh_compression GLB fixture built from Box.gltf + Box.bin (Cesium 2017, CC BY 4.0, full attribution adjacent to file), verified SHA-256 ec8fa491d8030fca097c1df0bf63d6741958b8db28fecfbda9ef6ba283a84d8e. Viewer positively decoded 24 vertices / 12 triangles using same-origin decoder WASM in headless WebKit 26.5 (and Chromium), no page errors/external origin. Complete viewer suites passed with independent exit 0 in both engines. Source test now permits an explicit WebKit engine and counts same-origin blob: object URLs as local rather than external traffic.
+
+**Drama test gap:** Three genuine previous timeouts were not stuck generation: synthetic long-form default mastering takes over 20 seconds (measured ~6.75s per loudnorm pass plus MP3/M4B encoding). Their *recovery/tamper/privacy* assertions are now scoped to the existing archive/WAV-only path for the successful second pass. The production mastering implementation and loudness/codec-specific tests were not modified. Three targeted tests passed 3/3 with exit 0.
+
+**Remaining hard gates:** Entire fresh release suite, MacBook physical Dock/WKWebView, in-use GPU lifecycle, Big Mac production checkout/tunnel and live listener upgrade, and real 6DoF evidence. MacBook DEX scheduler remained saturated, and no installed app, production listener or private data was modified. Source delivery status of the new regression changes must be verified separately.
