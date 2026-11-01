@@ -6,6 +6,7 @@ const express = require('express');
 const { spawn, execFile, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { getWorkflowConfig } = require('./workflow-config');
 const os = require('node:os');
 const crypto = require('crypto');
 const localEngineRouting = require('./local-engine-routing');
@@ -542,28 +543,6 @@ const PRESET_DEFAULTS = {
 const jobs = {}; // in-memory job state
 const jobSensitives = {};
 
-function readKeyValueFile(filePath) {
-  const out = {};
-  if (!fs.existsSync(filePath)) return out;
-  const text = fs.readFileSync(filePath, 'utf8');
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
-    const idx = trimmed.indexOf('=');
-    const key = trimmed.slice(0, idx).trim();
-    let value = trimmed.slice(idx + 1).trim();
-    value = value.replace(/^['"]|['"]$/g, '');
-    out[key] = value;
-  }
-  return out;
-}
-
-function getWorkflowConfig() {
-  return {
-    ...readKeyValueFile(path.join(CONFIG_DIR, 'sdcpp.env')),
-    ...readKeyValueFile(path.join(STATE_DIR, 'current-ports.env'))
-  };
-}
 
 function getBuildInfo() {
   let gitHead = 'unknown';
@@ -2640,7 +2619,14 @@ function targetCapabilities(target) {
 }
 
 app.get('/api/capabilities', (req, res) => {
-  const cfg = getWorkflowConfig();
+  const workflow = getWorkflowConfig(CONFIG_DIR, STATE_DIR);
+  const cfg = workflow.values;
+  const configWarnings = workflow.warnings;
+  const configuredModelKnown = !configWarnings.some(w => w.file === 'sdcpp.env');
+  const fallbackModelLabel = configuredModelKnown
+    ? 'SD 1.5 — configured remote model'
+    : 'SD 1.5 — fallback (configuration unreadable; target not verified)';
+  const fallbackModelState = configuredModelKnown ? 'available' : 'unknown';
   const remoteModel = cfg.REMOTE_MODEL || cfg.MODEL || 'v1-5-pruned-emaonly.safetensors';
   const localPort = cfg.LOCAL_TUNNEL_PORT || '17870';
 
@@ -2656,7 +2642,7 @@ app.get('/api/capabilities', (req, res) => {
   if (assets) {
     models = assets.checkpoints.length > 0
       ? assets.checkpoints.map(c => ({ id: c.id, name: c.name || c.filename, filename: c.filename, status: c.status, kind: 'checkpoint', active: c.active || false, size_bytes: c.size_bytes }))
-      : [{ id: 'sd15', name: 'SD 1.5 — configured remote model', filename: remoteModel, status: 'available', kind: 'checkpoint', active: true }];
+      : [{ id: 'sd15', name: fallbackModelLabel, filename: remoteModel, status: fallbackModelState, kind: 'checkpoint', active: configuredModelKnown }];
     vaes = [
       { id: 'auto', name: 'Auto (Default)', status: vaeSwitchingSupported ? 'active' : 'limited', reason: vaeSwitchingSupported ? '' : 'Current SDCPP scripts do not expose a VAE switch.' },
       { id: 'none', name: 'None (Built-in)', status: vaeSwitchingSupported ? 'available' : 'limited', reason: vaeSwitchingSupported ? '' : 'VAE switching is not yet proofed/supported.', kind: 'vae' },
@@ -2670,7 +2656,7 @@ app.get('/api/capabilities', (req, res) => {
       }))
     ];
   } else {
-    models = [{ id: 'sd15', name: 'SD 1.5 — configured remote model', filename: remoteModel, status: 'available', kind: 'checkpoint', active: true }];
+    models = [{ id: 'sd15', name: fallbackModelLabel, filename: remoteModel, status: fallbackModelState, kind: 'checkpoint', active: configuredModelKnown }];
     vaes = [
       { id: 'auto', name: 'Auto (Default)', status: vaeSwitchingSupported ? 'active' : 'limited', reason: vaeSwitchingSupported ? '' : 'Current SDCPP scripts do not expose a VAE switch.' },
       { id: 'none', name: 'None (Built-in)', status: vaeSwitchingSupported ? 'available' : 'limited', reason: vaeSwitchingSupported ? '' : 'VAE switching is not yet proofed/supported.', kind: 'vae' }
@@ -2778,7 +2764,8 @@ app.get('/api/capabilities', (req, res) => {
   }));
 
   res.json({
-    editWorkerTarget: editWorkerTarget(),   // the model Img2Img / Inpaint / Outpaint / scripts actually run (sdcpp.env REMOTE_MODEL)
+    configuration: { degraded: configWarnings.length > 0, warnings: configWarnings },
+    editWorkerTarget: editWorkerTarget(),   // model routing proof remains independently derived from the engine
     app: { name: 'SDCPP Workbench', version: 'a1111-workbench-2026-06-22' },
     backend: { type: 'stable-diffusion.cpp workflow bridge', workflowRoot: WORKFLOW_ROOT, runsDir: RUNS_DIR, localTunnelPort: localPort },
     assetCache: { present: !!assets, cacheAgeMinutes, discoveredAt: assets ? assets.discovered_at_iso : null },

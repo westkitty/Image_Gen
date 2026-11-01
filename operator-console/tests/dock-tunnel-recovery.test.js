@@ -41,3 +41,27 @@ test('Backend unreachable preserves even the correctly owned tunnel',()=>{
 test('Healthy tunnel is reused without termination or reconnection',()=>{
  const x=simulate({initial:'healthy'});assert.equal(x.code,0,x.error);assert.match(x.output,/already connected to Big Mac/);assert.doesNotMatch(x.output,/SIGNAL|NEW_TUNNEL/);
 });
+
+test('launcher health uses Studio + identity, never optional capabilities endpoint',()=>{
+  const fragment=source.slice(source.indexOf('healthy() {'),source.indexOf('\ntailnet_url() {'));
+  assert.match(fragment,/version_json/);
+  assert.match(fragment,/Image_Gen Operator Console/);
+  assert.match(fragment,/\$LOCAL_URL/);
+  assert.doesNotMatch(fragment,/api\/capabilities/);
+  for(const {identity, studio,expectHealthy} of [
+    {identity:'Image_Gen Operator Console',studio:true,expectHealthy:true},
+    {identity:'Other application',studio:true,expectHealthy:false},
+    {identity:'Image_Gen Operator Console',studio:false,expectHealthy:false},
+  ]) {
+    const cmd=`set -euo pipefail
+       BASE=http://127.0.0.1:31337; LOCAL_URL="$BASE/dexdiffusion/"
+       version_json(){ printf '{"name":"${identity}"}'; }
+       json_field(){ python3 -c 'import json,sys; print(json.load(sys.stdin).get(sys.argv[1],""))' "$1"; }
+       curl(){ if [ "${studio?'yes':'no'}" = 'yes' ] && [[ "$*" == *'/dexdiffusion/'* ]]; then return 0; fi; return 1; }
+       ${fragment}
+       if healthy; then echo HEALTHY; else echo UNHEALTHY; fi`;
+    const out=cp.spawnSync('/bin/bash',['-c',cmd],{encoding:'utf8',timeout:4000});
+    assert.equal(out.status,0,out.stderr);
+    assert.equal(out.stdout.trim(),expectHealthy?'HEALTHY':'UNHEALTHY');
+  }
+});
