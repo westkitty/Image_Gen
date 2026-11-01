@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var bootstrapRetryCount = 0
     private var reconnectAttempts = 0
     private var pendingReconnectAfterStartup = false
+    private var failureOverlay: NSView?
+    private var failureDetailLabel: NSTextField?
 
     private let projectRoot: String = {
         if let env = ProcessInfo.processInfo.environment["IMAGE_GEN_ROOT"], !env.isEmpty {
@@ -54,6 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         statusLabel = nil
         navigationStarted = false
         studioVerified = false
+        failureOverlay = nil
+        failureDetailLabel = nil
     }
 
     private func showMainWindow() {
@@ -87,6 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                   self.navigationToken == token, !self.studioVerified else { return }
             self.appendLog("WKWebView watchdog: Studio has not verified its interface after 15 seconds")
             self.setStatus("Studio has not finished loading. View > Reload to retry; Help > Copy Error Report for details.")
+            self.showLoadFailure("Studio did not finish loading. The Big Mac connection may be unavailable or WebKit may be stalled. Retry connection or copy the error report.")
         }
     }
 
@@ -331,6 +336,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         loadConsole() // Also works when the web view never received an initial URL.
     }
 
+    @objc private func retryConnection() {
+        // Retry includes the shell-managed local tunnel, unlike a page-only reload.
+        bootstrapRetryCount = 0
+        reconnectAttempts = 0
+        pendingReconnectAfterStartup = true
+        setStatus("Checking DexDiffusion tunnel and retrying Studio...")
+        ensureServicesThenLoad()
+    }
+
+    private func hideLoadFailure() {
+        failureOverlay?.isHidden = true
+    }
+
+    private func showLoadFailure(_ detail: String) {
+        guard Thread.isMainThread, let host = webView?.superview else { return }
+        if failureOverlay == nil {
+            let panel = NSView()
+            panel.wantsLayer = true
+            panel.layer?.backgroundColor = NSColor(calibratedRed: 0.055, green: 0.085, blue: 0.14, alpha: 0.98).cgColor
+            panel.layer?.borderColor = NSColor(calibratedRed: 0.36, green: 0.52, blue: 0.68, alpha: 1).cgColor
+            panel.layer?.borderWidth = 1
+            panel.layer?.cornerRadius = 12
+            panel.translatesAutoresizingMaskIntoConstraints = false
+            panel.setAccessibilityRole(.group)
+            panel.setAccessibilityLabel("DexDiffusion connection error")
+
+            let title = NSTextField(labelWithString: "DexDiffusion cannot load Studio")
+            title.font = NSFont.boldSystemFont(ofSize: 19)
+            title.textColor = .white
+            let info = NSTextField(wrappingLabelWithString: detail)
+            info.textColor = NSColor(calibratedRed: 0.82, green: 0.88, blue: 0.97, alpha: 1)
+            info.font = NSFont.systemFont(ofSize: 13)
+            info.maximumNumberOfLines = 5
+            failureDetailLabel = info
+            let retry = NSButton(title: "Retry connection", target: self, action: #selector(retryConnection))
+            retry.bezelStyle = .rounded
+            retry.setAccessibilityLabel("Retry DexDiffusion connection to Big Mac")
+            let report = NSButton(title: "Copy error report", target: self, action: #selector(copyErrorReport))
+            report.bezelStyle = .rounded
+            let buttons = NSStackView(views: [retry, report])
+            buttons.orientation = .horizontal
+            buttons.alignment = .centerY
+            buttons.spacing = 10
+            let content = NSStackView(views: [title, info, buttons])
+            content.orientation = .vertical
+            content.alignment = .leading
+            content.spacing = 12
+            content.translatesAutoresizingMaskIntoConstraints = false
+            panel.addSubview(content)
+            host.addSubview(panel, positioned: .above, relativeTo: webView)
+            let preferredWidth = panel.widthAnchor.constraint(equalToConstant: 520)
+            preferredWidth.priority = .defaultHigh
+            NSLayoutConstraint.activate([
+                panel.centerXAnchor.constraint(equalTo: host.centerXAnchor),
+                panel.centerYAnchor.constraint(equalTo: host.centerYAnchor),
+                preferredWidth,
+                panel.widthAnchor.constraint(lessThanOrEqualTo: host.widthAnchor, constant: -32),
+                content.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 22),
+                content.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -22),
+                content.topAnchor.constraint(equalTo: panel.topAnchor, constant: 22),
+                content.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -22),
+                info.widthAnchor.constraint(equalTo: content.widthAnchor),
+            ])
+            failureOverlay = panel
+        }
+        failureDetailLabel?.stringValue = detail
+        failureOverlay?.isHidden = false
+    }
+
     @objc private func openLogs() {
         let manager = FileManager.default
         if manager.fileExists(atPath: consoleLog) {
@@ -445,6 +519,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                     let renderError = flags["renderError"] as? Bool ?? false
                     if error == nil && initialized && rendered && !renderError {
                         self.studioVerified = true
+                        self.hideLoadFailure()
                         self.bootstrapRetryCount = 0
                         self.reconnectAttempts = 0
                         let head = Bundle.main.object(forInfoDictionaryKey: "DexDiffusionSourceHead") as? String ?? "unknown"
@@ -459,6 +534,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                             self.loadConsole()
                         } else {
                             self.setStatus("Studio could not initialize. Help > Copy Error Report; View > Reload to retry.")
+                            self.showLoadFailure("Studio's page arrived but the interface did not initialize. Retry connection or copy the error report for diagnosis.")
                         }
                     }
                 }
@@ -475,18 +551,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             loadConsole()
         } else {
             setStatus("Studio web process repeatedly stopped. Help > Copy Error Report for details.")
+            showLoadFailure("The WebKit renderer stopped repeatedly. Retry connection or copy the error report.")
         }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         setStatus("Failed to load: \(error.localizedDescription) · View → Reload (⌘R) to retry")
         appendLog("webView didFail: \(error.localizedDescription)")
+        showLoadFailure("Studio navigation failed: \(error.localizedDescription). Retry connection or copy the error report.")
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         studioVerified = false
         let nsError = error as NSError
         appendLog("webView didFailProvisionalNavigation (code \(nsError.code)): \(error.localizedDescription)")
+        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+            return // Obsolete reload, not a real connection failure.
+        }
+        showLoadFailure("MacBook could not load Studio (error \(nsError.code)): \(error.localizedDescription). Check the Big Mac tunnel, then retry.")
         if nsError.domain == NSURLErrorDomain && (nsError.code == NSURLErrorCannotConnectToHost || nsError.code == NSURLErrorNetworkConnectionLost) {
             guard reconnectAttempts < 2 else {
                 setStatus("DexDiffusion connection failed repeatedly. Help > Copy Error Report for details.")
@@ -496,9 +578,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             pendingReconnectAfterStartup = true
             setStatus("DexDiffusion backend unreachable; checking the local tunnel...")
             if !serviceStartupInProgress { ensureServicesThenLoad() }
-        } else if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
-            // An obsolete navigation may be cancelled during a manual reload.
-            return
         } else {
             setStatus("Could not load DexDiffusion: \(error.localizedDescription) - View > Reload to retry")
         }
@@ -630,6 +709,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private func buildWindow() {
         navigationStarted = false
         studioVerified = false
+        failureOverlay = nil
+        failureDetailLabel = nil
         let config = WKWebViewConfiguration()
         webView = WKWebView(frame: .zero, configuration: config)
         // Keep startup visually distinct from an unrendered white document.
@@ -706,7 +787,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let result = runShell("\(shellQuote(helper)) start", timeout: 45)
         appendLog("bin/dexdiffusion start (exit \(result.code)):\n\(result.output)")
         if result.code != 0 {
-            DispatchQueue.main.async { self.setStatus("DexDiffusion did not start. Log: \(self.consoleLog) · Help → Copy Error Report") }
+            DispatchQueue.main.async {
+                guard !self.studioVerified else { return }
+                self.setStatus("DexDiffusion did not start. Log: \(self.consoleLog) · Help → Copy Error Report")
+                self.showLoadFailure("The local Big Mac connection helper failed (exit \(result.code)). Retry connection or copy the error report.")
+            }
         }
     }
 

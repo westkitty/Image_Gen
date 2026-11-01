@@ -76,3 +76,21 @@ test('Native white-screen failures have visible bootstrap and WebKit-process dia
   assert.match(reload, /loadConsole\(\)/, 'Reload must work even when no navigation has succeeded');
   assert.doesNotMatch(reload, /webView\?\.reload\(\)/);
 });
+
+test('Native WebKit load errors show accessible retry and diagnostic controls instead of white-only content', () => {
+  const src=read('native/macos/Image_Gen/ImageGenApp.swift');
+  const panel=src.slice(src.indexOf('    private func showLoadFailure('),src.indexOf('    @objc private func openLogs()'));
+  assert.match(panel,/DexDiffusion cannot load Studio/);
+  assert.match(panel,/setAccessibilityRole\(\.group\)/);
+  assert.match(panel,/Retry connection/);
+  assert.match(panel,/Copy error report/);
+  assert.match(panel,/#selector\(retryConnection\)/);
+  assert.match(panel,/host\.addSubview\(panel, positioned: \.above, relativeTo: webView\)/);
+  assert.match(src,/webView didFailProvisionalNavigation[\s\S]*?showLoadFailure\(/);
+  assert.match(src,/WKWebView watchdog:[\s\S]*?showLoadFailure\(/);
+  assert.match(src,/self\.studioVerified = true[\s\S]*?self\.hideLoadFailure\(\)/);
+  const retry=src.slice(src.indexOf('    @objc private func retryConnection()'),src.indexOf('    private func hideLoadFailure()'));
+  assert.match(retry,/pendingReconnectAfterStartup = true/);
+  assert.match(retry,/ensureServicesThenLoad\(\)/);
+  assert.match(src,/guard !self\.studioVerified else \{ return \}/,'helper errors after successful bootstrap must not create an overlay');
+});

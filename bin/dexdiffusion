@@ -71,10 +71,25 @@ port_pid() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1; }
 version_json() { curl -fsS --max-time 2 "$BASE/api/version" 2>/dev/null; }
 json_field() { python3 -c 'import json,sys; d=json.load(sys.stdin); v=d.get(sys.argv[1]); print("" if v is None else v)' "$1" 2>/dev/null; }
 
+# Recognize only our exact dedicated SSH forwarding process from its command
+# line, independently of the remote HTTP server. A stopped backend must never
+# turn a known tunnel into an "unowned" listener; no unrelated PID is signalled.
+owned_ssh_tunnel_pid() {
+  local pid="${1:-}" cmd
+  [[ "$pid" =~ ^[0-9]+$ ]] && [ "$pid" -gt 1 ] || return 1
+  cmd="$(ps -o command= -p "$pid" 2>/dev/null)" || return 1
+  [[ "$cmd" == *"ssh -f -N -o ExitOnForwardFailure=yes -L $PORT:127.0.0.1:31337 $SSH_TARGET" ||
+     "$cmd" == *"ssh -f -N -o ExitOnForwardFailure=yes -L $PORT:localhost:31337 $SSH_TARGET" ]]
+}
+
 # Prints the pid if the port owner is this project's console or its Big Mac connection tunnel.
 owned_pid() {
   local pid v cwd vpid name
   pid="${1-$(port_pid)}"; [ -n "$pid" ] || return 1   # optional $1: an already-probed listener pid (status passes its bounded probe)
+  if owned_ssh_tunnel_pid "$pid"; then
+    printf '%s\n' "$pid"
+    return 0
+  fi
   v="$(version_json)" || return 1
   name="$(printf '%s' "$v" | json_field name)"
   [ "$name" = "Image_Gen Operator Console" ] || return 1
@@ -126,11 +141,45 @@ cmd_start() {
       echo "DexDiffusion already connected to Big Mac backend (tunnel pid $pid, remote pid $vpid)."
     fi
   else
-    if [ -n "$(port_pid)" ]; then
-      echo "ERROR: port $PORT is in use by a process that is not this checkout's operator-console or tunnel." >&2
-      echo "       Owner: $(ps -o pid=,command= -p "$(port_pid)" 2>/dev/null | cut -c1-160)" >&2
-      echo "       Not touching it. Stop it yourself, then rerun: bin/dexdiffusion start" >&2
-      exit 1
+    local listener
+    listener="$(port_pid)"
+    if [ -n "$listener" ]; then
+      if [ "$(hostname -s)" != "bigmac" ] && owned_ssh_tunnel_pid "$listener"; then
+        # Restore only a verified DexDiffusion tunnel, only when local HTTP is
+        # unavailable AND Big Mac's own API has been proven responsive. Never
+        # terminate an unknown port owner or restart a healthy backend here.
+        if healthy; then
+          echo "ERROR: local port responds but its API version is not recognized. Preserving listener $listener." >&2
+          exit 1
+        fi
+        if ! bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" "curl -fsS --max-time 4 http://127.0.0.1:31337/api/version" >/dev/null 2>&1; then
+          echo "ERROR: Big Mac backend unavailable; preserving DexDiffusion SSH tunnel $listener." >&2
+          exit 1
+        fi
+        # Recheck PID ownership after the remote probe to avoid signalling a
+        # replacement process if the tunnel exited while we were inspecting it.
+        if [ "$(port_pid)" != "$listener" ] || ! owned_ssh_tunnel_pid "$listener"; then
+          echo "ERROR: local port owner changed during recovery. Not signalling anything." >&2
+          exit 1
+        fi
+        echo "Recovering unresponsive project-owned SSH tunnel (pid $listener)..."
+        # The known tunnel was unresponsive and Big Mac is healthy; stop only
+        # its exact listener PID so a new dedicated connection can be created.
+        kill -TERM "$listener" 2>/dev/null || true
+        for _ in 1 2 3 4 5 6 7 8; do
+          [ -z "$(port_pid)" ] && break
+          sleep 1
+        done
+        if [ -n "$(port_pid)" ]; then
+          echo "ERROR: project tunnel did not relinquish port $PORT. Preserving remaining process." >&2
+          exit 1
+        fi
+      else
+        echo "ERROR: port $PORT is in use by a process that is not this checkout's operator-console or tunnel." >&2
+        echo "       Owner: $(ps -o pid=,command= -p "$listener" 2>/dev/null | cut -c1-160)" >&2
+        echo "       Not touching it. Stop it yourself, then rerun: bin/dexdiffusion start" >&2
+        exit 1
+      fi
     fi
     if [ "$(hostname -s)" = "bigmac" ]; then
       command -v node >/dev/null 2>&1 || { echo "ERROR: node not found on PATH" >&2; exit 1; }
