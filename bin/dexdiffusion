@@ -111,7 +111,16 @@ owned_pid() {
   return 1
 }
 
-healthy() { curl -fsS --max-time 3 -o /dev/null "$BASE/api/capabilities" 2>/dev/null; }
+# Liveness checks a stable identity endpoint plus the actual Studio entrypoint.
+# /api/capabilities performs optional external-volume reads and may be degraded
+# independently; it must never trigger destructive SSH tunnel "recovery".
+healthy() {
+  local version name
+  version="$(version_json)" || return 1
+  name="$(printf '%s' "$version" | json_field name)" || return 1
+  [ "$name" = 'Image_Gen Operator Console' ] || return 1
+  curl -fsS --max-time 3 -o /dev/null "$LOCAL_URL" 2>/dev/null
+}
 
 tailnet_url() {
   command -v tailscale >/dev/null 2>&1 || return 1
