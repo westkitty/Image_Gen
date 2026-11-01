@@ -1,5 +1,5 @@
 'use strict';
-// Unified Studio Phase 4 in real Chromium: the flat 14-chip row stays the default, and the opt-in masters
+// Unified Studio Phase 4 in real Chromium: the five-master layout is default, while an explicit flat rollback
 // layout (localStorage dex_studio_layout=masters) navigates, remembers leaves, roves focus, shows visible focus,
 // keeps the page free of horizontal overflow at 390 px and desktop size, and renders an honest Chat placeholder.
 // Ollama endpoints are fixtures here: nothing reaches a model.
@@ -26,9 +26,9 @@ const overflow = page => page.evaluate(() => ({ scroll: document.documentElement
   const browser = await launchBrowser(chromium);
   const evidence = [];
   for (const [width, height] of [[1348, 735], [390, 844]]) {
-    // Default: flat, unchanged.
+    // Explicit flat rollback retains all legacy routes.
     {
-      const { page, errors } = await open(browser, base, { width, height });
+      const { page, errors } = await open(browser, base, { width, height, layout: 'flat' });
       await page.locator('[data-studio-nav]').waitFor({ state: 'visible' });
       assert.equal(await page.locator('[data-tab]').count(), 14);
       assert.equal(await page.locator('[data-master-tab]').count(), 0);
@@ -47,9 +47,9 @@ const overflow = page => page.evaluate(() => ({ scroll: document.documentElement
       evidence.push({ layout: 'flat', size: `${width}x${height}`, chips: 14, overflow: o });
       await page.close();
     }
-    // Opt-in masters layout.
+    // Fresh profile defaults to five masters.
     {
-      const { page, errors } = await open(browser, base, { width, height, layout: 'masters' });
+      const { page, errors } = await open(browser, base, { width, height });
       await page.locator(width < 700 ? '[data-studio-mobile-nav] summary' : '[data-master-bar]').waitFor({ state: 'visible' });
       const selectMaster = async id => { if (width < 700) { await page.locator('[data-studio-mobile-nav] summary').click(); await page.locator('[data-mobile-master="' + id + '"]').click(); } else await page.locator('[data-master-tab="' + id + '"]').click(); };
       const selectSubroute = async id => { if (width < 700) { await page.locator('[data-studio-mobile-nav] summary').click(); await page.locator('[data-mobile-subroute="' + id + '"]').click(); } else await page.locator('[data-subnav-leaf="' + id + '"]').click(); };

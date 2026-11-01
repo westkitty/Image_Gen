@@ -5,6 +5,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
+// Standalone unit tests must not attempt to initialize the production
+// MacBook canonical-image directory when run on Big Mac or CI.
+if (!process.env.DEX_IMAGES_ROOT_OVERRIDE) {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-lora-unit-images-'));
+  process.env.DEX_IMAGES_ROOT_OVERRIDE = dir;
+  process.on('exit', () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {} });
+}
 const {
   normalizeControlledGenerationBody,
   validateControlledGenerationParams,

@@ -25,8 +25,8 @@ class Component extends DCLogic {
       try { const Nav = window.DexStudioNav; if (Nav && Nav.resolveLayout(localStorage) === 'masters') s2 = Nav.resolveInitialScreenV2(sessionStorage.getItem('dex_screen')); } catch {}
       return { 1: s, 2: s2, 3: s, 4: ca };
     })(),
-    // Unified Studio navigation layout (rollback flag): 'flat' is the 14-chip row and stays the default.
-    studioLayout: (() => { try { return window.DexStudioNav ? window.DexStudioNav.resolveLayout(localStorage) : 'flat'; } catch (_) { return 'flat'; } })(),
+    // Unified five-master navigation is default; explicit 'flat' remains a rollback option.
+    studioLayout: (() => { try { return window.DexStudioNav ? window.DexStudioNav.resolveLayout(localStorage) : 'masters'; } catch (_) { return 'masters'; } })(),
     studioSubroute: (() => { try { const Nav = window.DexStudioNav; return Nav && Nav.resolveLayout(localStorage) === 'masters' ? Nav.resolveSubroute(sessionStorage.getItem(Nav.SUBROUTE_KEY), sessionStorage.getItem('dex_screen')) : null; } catch (_) { return null; } })(),
     // Cross-master handoff origin for the masters layout's Back control: { leaf } or null.
     navReturnTo: null,
@@ -99,9 +99,9 @@ class Component extends DCLogic {
     backendOnline: false,
     runs: (() => { try { return JSON.parse(localStorage.getItem('dex_runs') || '[]'); } catch { return []; } })(),
     selectedRunId: '', selectedRunDetail: null, loadingRunDetail: false, runSearch: '',
-    worldProjects: [], worldLoading: false, worldSourceArtifact: '', worldWorkerStatus: null,
-    sourceImages: [], sourceImagesTotal: 0, sourceImagesLoading: false, sourceImagesError: '', sourceImporting: false,
-    asset3dWorkerStatus: null, asset3dSourceArtifact: '', asset3dPreviewFailedId: '', asset3dMode: 'mesh', asset3dLoading: false, asset3dJob: null,
+    worldProjects: [], worldLoading: false, worldSourceArtifact: '', worldWorkerStatus: null, worldProjectsError: '', worldWorkersError: '', worldPollPausedJobId: '', worldPollError: '',
+    sourceImages: [], sourceImagesTotal: 0, sourceImagesCursor: 0, sourceImagesHasMore: false, sourceImagesQuery: '', sourceBrowserOpen: false, sourceImagesLoading: false, sourceImagesError: '', sourceImporting: false, sourceImportMetadataPendingId: '', sourceImportMetadataRepairing: false,
+    asset3dWorkerStatus: null, asset3dSourceArtifact: '', asset3dPreviewFailedId: '', asset3dMode: 'mesh', asset3dLoading: false, asset3dJob: null, asset3dPollPaused: false, asset3dPollError: '',
     focusViewer: null,
     assetQuery: '', serverStatusSummary: '', lastValidation: '',
     savePrompts: localStorage.getItem('dex_save_prompts') === 'true',
@@ -166,6 +166,7 @@ class Component extends DCLogic {
     this.loadSystemInfo();
   }
   componentWillUnmount() {
+    this._worldFetchToken = (this._worldFetchToken || 0) + 1;
     clearInterval(this._pingTimer); clearInterval(this._pollTimer); clearInterval(this._worldPollTimer); clearInterval(this._asset3dPollTimer); clearInterval(this._worldMilestoneTimer);
     this._pollGeneration = (this._pollGeneration || 0) + 1;
     for (const controller of this._jobWaitControllers || []) controller.abort();
@@ -404,26 +405,35 @@ class Component extends DCLogic {
 
   // World and 3D choose from the canonical Library, not just the first 50
   // generation runs. This data is read-only and does not select a source.
-  async load3dSourceImages() {
+  async load3dSourceImages({ append = false } = {}) {
     const request = (this._sourceImageRequest || 0) + 1;
     this._sourceImageRequest = request;
+    const offset = append ? this.state.sourceImagesCursor : 0;
+    const params = new URLSearchParams({ filter: 'all', limit: '100', offset: String(offset) });
+    if (this.state.sourceImagesQuery.trim()) params.set('q', this.state.sourceImagesQuery.trim());
     this.setState({ sourceImagesLoading: true, sourceImagesError: '' });
     try {
-      const r = await fetch(this.state.backendUrl + '/api/library/images?filter=all&limit=500', { signal: AbortSignal.timeout(15000) });
+      const r = await fetch(this.state.backendUrl + '/api/library/images?' + params.toString(),
+        { signal: AbortSignal.timeout(15000) });
       if (!r.ok) throw new Error('Library returned HTTP ' + r.status);
       const data = await r.json();
       if (!Array.isArray(data.items)) throw new Error('Invalid image Library response');
       if (this._sourceImageRequest !== request) return;
       const SA = this._sourceAsset();
       const items = data.items.filter(x => x && SA && SA.isImageId(x.id));
+      const previous = append ? this.state.sourceImages : [];
+      const unique = new Map([...previous, ...items].map(item => [item.id, item]));
+      const total = Number.isInteger(data.total) ? data.total : offset + items.length;
       this._sourceImagesLastLoaded = Date.now();
       this.setState({
-        sourceImages: items, sourceImagesTotal: Number.isInteger(data.total) ? data.total : items.length,
+        sourceImages: [...unique.values()], sourceImagesTotal: total, sourceImagesCursor: offset + data.items.length,
+        sourceImagesHasMore: offset + data.items.length < total,
         sourceImagesLoading: false, sourceImagesError: ''
       });
     } catch (_) {
       if (this._sourceImageRequest === request) this.setState({
-        sourceImagesLoading: false, sourceImagesError: 'Library images unavailable. Refresh images to retry.'
+        sourceImagesLoading: false,
+        sourceImagesError: 'Library images unavailable. Retry without losing the current selection.'
       });
     }
   }
@@ -453,19 +463,44 @@ class Component extends DCLogic {
       const patch = {
         sourceImages: [item, ...this.state.sourceImages.filter(x => x.id !== data.id)],
         sourceImagesTotal: Math.max(this.state.sourceImagesTotal + 1, this.state.sourceImages.length + 1),
-        sourceImagesError: '', sourceImagesLoading: false
+        sourceImagesError: '', sourceImagesLoading: false,
+        sourceImportMetadataPendingId: data.metadata_status === 'degraded' ? data.id : ''
       };
       if (workspace === 'world') patch.worldSourceArtifact = data.id;
       else { patch.asset3dSourceArtifact = data.id; patch.asset3dPreviewFailedId = ''; }
       this.setState(patch);
       this.setActiveAssetSelection({ kind: 'image', id: data.id });
-      this.toast('Image added to Library and selected.', '#65d66e');
+      this.toast(data.metadata_status === 'degraded'
+        ? 'Image selected, but provenance metadata failed to save. The image is preserved.'
+        : 'Image added to Library and selected.', data.metadata_status === 'degraded' ? '#fbbf24' : '#65d66e');
       await this.load3dSourceImages();
     } catch (err) {
       this.toast('Image import failed: ' + (err && err.message ? err.message : 'Unknown error'), '#ef4444');
     } finally {
       this.setState({ sourceImporting: false });
     }
+  }
+
+  async repairSelectedSourceProvenance(imageId) {
+    const SA = this._sourceAsset();
+    if (!SA || !SA.isImageId(imageId) || this.state.sourceImportMetadataRepairing) return;
+    this.setState({ sourceImportMetadataRepairing: true });
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/library/images/' +
+        encodeURIComponent(imageId) + '/repair-provenance', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+          signal: AbortSignal.timeout(15000)
+        });
+      const result = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(result.error || 'Provenance recovery was rejected');
+      this.setState({ sourceImportMetadataPendingId: '' });
+      await this.load3dSourceImages();
+      this.toast(result.metadata_status === 'partially-recovered'
+        ? 'Import identity recovered; exact original filename unavailable.'
+        : 'Import provenance already recorded.', '#65d66e');
+    } catch (error) {
+      this.toast('Import metadata recovery unavailable: ' + error.message, '#fbbf24');
+    } finally { this.setState({ sourceImportMetadataRepairing: false }); }
   }
 
   // Native file input: WebKit, browsers and mobile file pickers all supported.
@@ -485,20 +520,73 @@ class Component extends DCLogic {
 
   _sourceImageActionBar(workspace) {
     const h = React.createElement, s = this.state;
+    const selected = workspace === 'world' ? s.worldSourceArtifact : s.asset3dSourceArtifact;
+    const selectedItem = s.sourceImages.find(item => item.id === selected);
+    const canRepair = selected && (s.sourceImportMetadataPendingId === selected ||
+      (selectedItem && String(selectedItem.runId || '').includes('-import-') &&
+        selectedItem.meta?.operation !== 'import'));
     const buttonStyle = { border: '1px solid rgba(148,163,184,.28)', background: '#101d2a',
       color: '#d1e9fa', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' };
-    return h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '0 0 11px' } },
-      this._sourceImageUploadControl(workspace),
-      h('button', { 'data-3d-add-image': workspace, disabled: s.sourceImporting,
-        onClick: () => document.querySelector('input[data-3d-image-input="' + workspace + '"]')?.click(),
-        style: buttonStyle }, s.sourceImporting ? 'Importing image…' : 'Add image…'),
-      h('button', { 'data-3d-refresh-images': workspace, disabled: s.sourceImagesLoading,
-        onClick: () => this.load3dSourceImages(), style: buttonStyle }, 'Refresh images'),
-      h('span', { role: 'status', style: { color: s.sourceImagesError ? '#fca5a5' : '#8fa3b8', fontSize: 11 } },
-        s.sourceImagesError || (s.sourceImagesLoading ? 'Loading images…' :
-          (s.sourceImagesTotal > s.sourceImages.length
-            ? s.sourceImages.length + ' of ' + s.sourceImagesTotal + ' Library images'
-            : s.sourceImages.length + ' Library images')))
+    return h('div', { style: { display: 'grid', gap: 8, marginBottom: 11 } },
+      h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+        this._sourceImageUploadControl(workspace),
+        h('button', { 'data-3d-add-image': workspace, disabled: s.sourceImporting,
+          onClick: () => document.querySelector('input[data-3d-image-input="' + workspace + '"]')?.click(),
+          style: buttonStyle }, s.sourceImporting ? 'Importing image…' : 'Add image…'),
+        h('button', { 'data-3d-refresh-images': workspace, disabled: s.sourceImagesLoading,
+          onClick: () => this.load3dSourceImages(), style: buttonStyle }, 'Refresh images'),
+        h('button', { 'data-3d-source-observatory': workspace, 'aria-expanded': String(s.sourceBrowserOpen),
+          onClick: () => this.setState({ sourceBrowserOpen: !s.sourceBrowserOpen }),
+          style: buttonStyle }, s.sourceBrowserOpen ? 'Close image browser' : 'Browse image Library'),
+        canRepair ? h('button', { type: 'button', 'data-source-repair-provenance': workspace,
+          disabled: s.sourceImportMetadataRepairing,
+          onClick: () => this.repairSelectedSourceProvenance(selected),
+          style: { ...buttonStyle, borderColor: '#fbbf24', color: '#fbbf24' } },
+          s.sourceImportMetadataRepairing ? 'Verifying import record…' : 'Repair import metadata') : null,
+        h('span', { role: 'status', style: { color: s.sourceImagesError ? '#fca5a5' : '#8fa3b8', fontSize: 11 } },
+          s.sourceImagesError || (s.sourceImagesLoading ? 'Loading images…' :
+            s.sourceImages.length + ' of ' + s.sourceImagesTotal + ' matching Library images'))
+      ),
+      s.sourceBrowserOpen ? h('section', { 'data-source-observatory': workspace, style: {
+        background: '#0b1521', border: '1px solid rgba(148,163,184,.25)', borderRadius: 9, padding: 10, display: 'grid', gap: 9
+      } },
+        h('label', { style: { color: '#cbd5e1', fontSize: 12, display: 'grid', gap: 4 } }, 'Search all canonical images',
+          h('input', { type: 'search', 'data-source-search': workspace, value: s.sourceImagesQuery,
+            placeholder: 'Image ID, original filename, model or operation',
+            onInput: e => {
+              this.setState({ sourceImagesQuery: e.target.value });
+              clearTimeout(this._sourceSearchTimer);
+              this._sourceSearchTimer = setTimeout(() => this.load3dSourceImages(), 300);
+            },
+            style: { width: '100%', boxSizing: 'border-box', background: '#07111b', border: '1px solid #48627a', borderRadius: 6, color: '#fff', padding: 9 }
+          })),
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(116px, 1fr))',
+          gap: 8, maxHeight: 320, overflowY: 'auto' } },
+          ...s.sourceImages.map(item => h('button', { key: item.id, type: 'button',
+            'data-source-image-id': item.id, 'aria-pressed': selected === item.id,
+            'aria-label': 'Select canonical image ' + item.id,
+            onClick: () => {
+              const patch = workspace === 'world' ? { worldSourceArtifact: item.id } :
+                { asset3dSourceArtifact: item.id, asset3dPreviewFailedId: '' };
+              this.setState(patch);
+              this.setActiveAssetSelection({ kind: 'image', id: item.id });
+            },
+            style: { display: 'grid', gap: 4, padding: 6, minWidth: 0,
+              border: selected === item.id ? '2px solid #38bdf8' : '1px solid #476074',
+              background: '#111e2c', color: '#d9e5ef', borderRadius: 7, cursor: 'pointer' }
+          },
+            h('img', { alt: '', loading: 'lazy', src: s.backendUrl + (item.thumbnailUrl ||
+              '/api/thumbnails/' + encodeURIComponent(item.id)),
+              style: { width: '100%', height: 92, objectFit: 'cover', borderRadius: 4 } }),
+            h('span', { style: { fontSize: 10, overflowWrap: 'anywhere' } },
+              String(item.meta?.original_name || item.id).slice(0, 65))
+          )),
+          !s.sourceImages.length && h('div', { style: { color: '#94a3b8', fontSize: 12 } },
+            'No images in the loaded result. Check the filter or import an image.')),
+        s.sourceImagesHasMore ? h('button', { type: 'button', 'data-source-load-older': workspace,
+          disabled: s.sourceImagesLoading, onClick: () => this.load3dSourceImages({ append: true }),
+          style: buttonStyle }, s.sourceImagesLoading ? 'Loading…' : 'Load older matching images') : null
+      ) : null
     );
   }
 
@@ -583,6 +671,45 @@ class Component extends DCLogic {
       this.state.backendOnline && active && ['RUNNING', 'QUEUED'].includes(result) ? h('div', { role: 'status', style: { fontSize: 11, color: '#9fb0c5' } }, 'Current: ' + active.label + ' · remaining time unknown') : null);
   }
 
+  _assetJobEvidenceTimeline(job, artifact = null) {
+    if (!job) return null;
+    const h = React.createElement;
+    const sourceId = job.params?.source_artifact_id || job.source_artifact_id || null;
+    const states = [
+      ['Submitted', !!job.job_id, job.job_id || 'ID unavailable'],
+      ['Worker started', !!job.started_at || ['RUNNING', 'TRANSFERRING', 'COMPLETE'].includes(job.status),
+        job.progress?.label || (job.started_at ? 'Worker accepted job' : 'No confirmed worker start')],
+      ['Artifact published', !!artifact?.artifact_id || !!(job.artifacts || []).length,
+        artifact?.artifact_id || 'No published artifact confirmed'],
+      ['Terminal verified', job.status === 'COMPLETE' && !!job.artifact_validation,
+        job.status === 'COMPLETE' ? (job.artifact_validation ? 'Validation receipt recorded' : 'Complete; validation receipt unavailable') :
+          ['FAILED','CANCELLED','INTERRUPTED'].includes(job.status) ? 'Terminal ' + job.status.toLowerCase() : 'Still pending']
+    ];
+    return h('details', { 'data-job-evidence': job.job_id || '', style: { marginTop: 10, color: '#d0e0ec', fontSize: 11 } },
+      h('summary', { style: { cursor: 'pointer', color: '#a7cce2' } }, 'Job evidence timeline'),
+      sourceId ? h('div', { style: { marginTop: 6, overflowWrap: 'anywhere' } }, 'Exact submitted source: ' + sourceId) : null,
+      h('ol', { style: { display: 'grid', gap: 5, paddingLeft: 20 } },
+        ...states.map(([label, proven, detail]) => h('li', { key: label,
+          style: { color: proven ? '#86efac' : '#b7a27d' } },
+          label + ' · ' + (proven ? 'confirmed' : 'unverified') +
+          (detail ? ' · ' + detail : '')))),
+      artifact?.timings ? h('div', { 'data-job-measured-spans': job.job_id,
+        style: { marginTop: 8, fontSize: 11, color: '#a4d8cc' } },
+        'Measured stages: ' + Object.entries(artifact.timings).filter(([,value]) => Number.isFinite(value))
+          .map(([name,value]) => name.replace(/_ms$/, '').replace(/_/g, ' ') + ' ' + Math.round(value) + ' ms').join(' · ')) : null,
+      h('div', { style: { marginTop: 6, color: '#94a3b8' } },
+        'This is an evidence history, not a predicted completion time. Disconnection does not cancel the server job.'),
+      h('button', { type: 'button', 'data-job-copy-receipt': job.job_id,
+        onClick: () => this.copyText('3D job receipt', JSON.stringify({
+          schema: 'dexdiffusion.job-receipt.v1',
+          job_id: job.job_id, operation: job.operation, status: job.status,
+          source_image_id: sourceId, artifact_id: artifact?.artifact_id || null,
+          artifact_sha256: artifact?.sha256 || null, verified: job.status === 'COMPLETE' && !!job.artifact_validation
+        }, null, 2)),
+        style: { marginTop: 8, border: '1px solid #456075', borderRadius: 6, background: '#132337',
+          color: '#e0eff9', padding: '5px 8px', cursor: 'pointer' } }, 'Copy safe job receipt'));
+  }
+
   _asset3dProgressDisplay(job) {
     if (!job) return null;
     const h = React.createElement;
@@ -643,16 +770,42 @@ class Component extends DCLogic {
   }
 
   async loadWorldProjects() {
-    this.setState({ worldLoading: true });
+    // Saved projects are durable data, not a compute-health dependency.
+    // The method resolves as soon as projects settle; probing workers runs
+    // independently and must never hold the user's saved work hostage.
+    const token = (this._worldFetchToken || 0) + 1;
+    this._worldFetchToken = token;
+    this.setState({ worldLoading: true, worldProjectsError: '', worldWorkersError: '' });
+    const checkWorkers = async () => {
+      try {
+        const response = await fetch(this.state.backendUrl + '/api/world/workers',
+          { signal: AbortSignal.timeout(12000) });
+        if (!response.ok) throw new Error('World workers HTTP ' + response.status);
+        const body = await response.json();
+        if (this._worldFetchToken === token) this.setState({ worldWorkerStatus: body, worldWorkersError: '' });
+      } catch (_) {
+        if (this._worldFetchToken === token) this.setState({
+          worldWorkerStatus: null,
+          worldWorkersError: 'World worker status unavailable. New jobs cannot be verified as ready.'
+        });
+      }
+    };
+    void checkWorkers();
     try {
-      const [projects, workers] = await Promise.all([
-        fetch(this.state.backendUrl + '/api/world/projects', { signal: AbortSignal.timeout(7000) }),
-        fetch(this.state.backendUrl + '/api/world/workers', { signal: AbortSignal.timeout(12000) }),
-      ]);
-      const p = projects.ok ? await projects.json() : { projects: [] };
-      const w = workers.ok ? await workers.json() : null;
-      this.setState({ worldProjects: p.projects || [], worldWorkerStatus: w, worldLoading: false });
-    } catch (_) { this.setState({ worldLoading: false }); }
+      const response = await fetch(this.state.backendUrl + '/api/world/projects',
+        { signal: AbortSignal.timeout(7000) });
+      if (!response.ok) throw new Error('Saved Worlds HTTP ' + response.status);
+      const body = await response.json();
+      if (!Array.isArray(body.projects)) throw new Error('Invalid saved Worlds response');
+      if (this._worldFetchToken === token) this.setState({
+        worldProjects: body.projects, worldLoading: false, worldProjectsError: ''
+      });
+    } catch (_) {
+      if (this._worldFetchToken === token) this.setState({
+        worldLoading: false,
+        worldProjectsError: 'Saved Worlds could not be refreshed. Previously loaded projects are preserved.'
+      });
+    }
   }
 
   async loadAsset3dWorkers() {
@@ -685,19 +838,55 @@ class Component extends DCLogic {
   }
 
   pollAsset3dJob(jobId) {
-    clearInterval(this._asset3dPollTimer);
+    clearTimeout(this._asset3dPollTimer);
+    const token = Symbol('asset3d-job-poll');
+    this._asset3dPollToken = token;
+    this.setState({ asset3dPollPaused: false, asset3dPollError: '' });
     let failures = 0;
-    this._asset3dPollTimer = setInterval(async () => {
+    let lastSnapshot = null;
+    const check = async () => {
+      if (this._asset3dPollToken !== token) return;
+      let delay = 2000;
       try {
-        const r = await fetch(this.state.backendUrl + '/api/generic-jobs/' + encodeURIComponent(jobId), { signal: AbortSignal.timeout(8000) });
-        if (!r.ok) throw new Error('job ' + r.status);
-        const job = await r.json(); this.setState({ asset3dJob: job });
-        if (['COMPLETE', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(job.status)) {
-          clearInterval(this._asset3dPollTimer); await this.loadAsset3dWorkers();
-          this.toast(job.status === 'COMPLETE' ? '3D asset ready' : '3D job ' + job.status.toLowerCase(), job.status === 'COMPLETE' ? '#65d66e' : '#ef4444');
+        const r = await fetch(this.state.backendUrl + '/api/generic-jobs/' + encodeURIComponent(jobId),
+          { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) throw new Error('job HTTP ' + r.status);
+        const job = await r.json();
+        if (this._asset3dPollToken !== token) return;
+        failures = 0;
+        // Polling an unchanged job must not rerender the whole Studio.
+        const snapshot = JSON.stringify(job);
+        if (snapshot !== lastSnapshot || this.state.asset3dPollError || this.state.asset3dPollPaused) {
+          lastSnapshot = snapshot;
+          this.setState({ asset3dJob: job, asset3dPollPaused: false, asset3dPollError: '' });
         }
-      } catch (_) { if (++failures >= 5) clearInterval(this._asset3dPollTimer); }
-    }, 1200);
+        if (['COMPLETE', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(job.status)) {
+          this._asset3dPollToken = null;
+          await this.loadAsset3dWorkers();
+          this.toast(job.status === 'COMPLETE' ? '3D asset ready' : '3D job ' + job.status.toLowerCase(),
+            job.status === 'COMPLETE' ? '#65d66e' : '#ef4444');
+          return;
+        }
+        // Longer queues/shape runs need fewer identical HTTP polls; the
+        // server remains authoritative and no client-side ETA is fabricated.
+        delay = job.status === 'QUEUED' ? 6000 :
+          job.status === 'RUNNING' ? 3500 : 2500;
+      } catch (_) {
+        if (this._asset3dPollToken !== token) return;
+        failures += 1;
+        if (failures >= 5) {
+          this._asset3dPollToken = null;
+          this.setState({
+            asset3dPollPaused: true,
+            asset3dPollError: 'Connection lost while checking this job. The server job may still be running. Reconnect to refresh its actual status.'
+          });
+          return;
+        }
+        delay = Math.min(30000, 1200 * 2 ** failures);
+      }
+      if (this._asset3dPollToken === token) this._asset3dPollTimer = setTimeout(check, delay);
+    };
+    void check();
   }
 
   openAsset3dViewer(artifactId) { this.setActiveAssetSelection({ kind: 'asset3d', id: artifactId }); this.openFocusViewer('asset3d', artifactId); }
@@ -729,19 +918,43 @@ class Component extends DCLogic {
   }
 
   pollWorldJob(jobId) {
-    clearInterval(this._worldPollTimer);
+    clearTimeout(this._worldPollTimer);
+    const token = Symbol('world-job-poll');
+    this._worldPollToken = token;
+    this.setState({ worldPollPausedJobId: '', worldPollError: '' });
     let failures = 0;
-    this._worldPollTimer = setInterval(async () => {
+    const check = async () => {
+      if (this._worldPollToken !== token) return;
+      let delay = 2000;
       try {
-        const r = await fetch(this.state.backendUrl + '/api/generic-jobs/' + encodeURIComponent(jobId), { signal: AbortSignal.timeout(6000) });
-        if (!r.ok) throw new Error('job ' + r.status);
+        const r = await fetch(this.state.backendUrl + '/api/generic-jobs/' + encodeURIComponent(jobId),
+          { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) throw new Error('World job ' + r.status);
         const j = await r.json();
+        if (this._worldPollToken !== token) return;
+        failures = 0;
+        if (this.state.worldPollError) this.setState({ worldPollError: '', worldPollPausedJobId: '' });
         if (['COMPLETE', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(j.status)) {
-          clearInterval(this._worldPollTimer); await this.loadWorldProjects();
-          this.toast(j.status === 'COMPLETE' ? 'World artifact ready' : 'World job ' + j.status.toLowerCase(), j.status === 'COMPLETE' ? '#65d66e' : '#ef4444');
+          this._worldPollToken = null;
+          await this.loadWorldProjects();
+          this.toast(j.status === 'COMPLETE' ? 'World artifact ready' : 'World job ' + j.status.toLowerCase(),
+            j.status === 'COMPLETE' ? '#65d66e' : '#ef4444');
+          return;
         }
-      } catch (_) { if (++failures >= 5) clearInterval(this._worldPollTimer); }
-    }, 1200);
+        delay = j.status === 'QUEUED' ? 7000 : j.status === 'RUNNING' ? 4000 : 6000;
+      } catch (_) {
+        if (this._worldPollToken !== token) return;
+        if (++failures >= 5) {
+          this._worldPollToken = null;
+          this.setState({ worldPollPausedJobId: jobId,
+            worldPollError: 'World job status disconnected. Existing work may still be running; reconnect by its original job ID.' });
+          return;
+        }
+        delay = Math.min(30000, 1500 * 2 ** failures);
+      }
+      if (this._worldPollToken === token) this._worldPollTimer = setTimeout(check, delay);
+    };
+    void check();
   }
 
   openWorldViewer(projectId) { this.setActiveAssetSelection({ kind: 'world-project', id: projectId }); this.openFocusViewer('world', projectId); }
@@ -758,10 +971,11 @@ class Component extends DCLogic {
     const opts = [h('option', { key: '__none', value: '' }, picks.length ? 'Choose a source image…' : 'No canonical images loaded')]
       .concat(picks.map(p => h('option', { key: p.id, value: p.id }, p.label + (p.run && p.run.model ? ' · ' + p.run.model : ''))));
     const status = s.worldWorkerStatus;
-    const workerLine = status && status.workers ? status.workers.map(w => `${w.label}: ${w.status}`).join(' · ') : 'Worker status loading…';
+    const workerLine = s.worldWorkersError || (status && status.workers ? status.workers.map(w => `${w.label}: ${w.status}`).join(' · ') : 'Worker status loading…');
     return h('div', { style: { display: 'grid', gap: 14 } },
       h('div', { style: { background: '#060a10', border: '1px solid rgba(148,163,184,.14)', borderRadius: 12, padding: 16 } },
         h('div', { style: { fontSize: 18, color: '#f0f4f8', fontWeight: 750, marginBottom: 4 } }, 'World'),
+        s.worldProjectsError ? h('div', { role: 'alert', style: { color: '#fca5a5', fontSize: 12 } }, s.worldProjectsError) : null,
         h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, marginBottom: 12 } }, 'Make 3D attempts an object/nearby-view reconstruction from one image. Make World synthesizes a 360° look-around panorama from an environment image, plus experimental point-cloud diagnostics. A single image does not provide proven walkable 3D or reliable unseen geometry; global depth and six-view alignment remain unverified.'),
         h('div', { 'data-source-rule': 'world', style: { color: '#8fa3b8', fontSize: 11, lineHeight: 1.5, marginBottom: 8 } }, 'World uses exactly the image you choose here. Nothing is substituted, and no source is pre-selected.'),
         h('select', { 'aria-label': 'World source image', value: s.worldSourceArtifact || '', onChange: e => { this.setState({ worldSourceArtifact: e.target.value }); if (SA && SA.isImageId(e.target.value)) this.setActiveAssetSelection({ kind: 'image', id: e.target.value }); }, style: { width: '100%', maxWidth: 520, marginBottom: 10, border: '1px solid rgba(148,163,184,.2)', background: '#091420', color: '#e8f0f7', borderRadius: 7, padding: 8 } }, ...opts),
@@ -771,8 +985,26 @@ class Component extends DCLogic {
           h('button', { onClick: () => this.startWorld('complete360'), style: { border: '1px solid #f59e0b66', background: '#f59e0b16', color: '#fbbf24', borderRadius: 7, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 } }, 'Make World'),
           h('button', { onClick: () => { this.loadWorldProjects(); this.load3dSourceImages(); }, style: { border: '1px solid rgba(148,163,184,.2)', background: 'transparent', color: '#b8c7d6', borderRadius: 7, padding: '8px 12px', cursor: 'pointer' } }, 'Reload')
         ),
+        h('div', { 'data-source-preflight': 'world', role: 'status', style: {
+          marginTop: 12, padding: 8, border: '1px solid #36536a', borderRadius: 7,
+          background: '#0c1d2e', color: '#bdd0e1', fontSize: 11, overflowWrap: 'anywhere'
+        } }, 'Commit to Source · ' + (currentSource || 'Choose a canonical image') +
+          ' · Quick Geometry is experimental PLY · Complete 360 is a rotational panorama, not navigable 3D.'),
+        h('details', { 'data-capability-passport': 'world', style: {
+          marginTop: 10, color: '#a5bbca', fontSize: 11
+        } }, h('summary', { style: { cursor: 'pointer' } }, 'World capability passport'),
+          h('div', null, 'Look-around: single-point orientation, not translation.'),
+          h('div', null, 'Spatial evidence: depth/PLY diagnostics; 6DoF NOT PROVEN.'),
+          h('div', null, 'A walkable World cannot be released without measured geometry accuracy, alignment and occlusion checks.')),
         h('div', { style: { marginTop: 12, color: '#70849a', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace" } }, workerLine)
       ),
+      s.worldPollError ? h('div', { 'data-world-poll-error': 'true', role: 'alert',
+        style: { padding: 10, borderRadius: 8, color: '#fbbf24', border: '1px solid #fbbf2455', fontSize: 12 } },
+        s.worldPollError,
+        h('button', { type: 'button', 'data-world-job-reconnect': s.worldPollPausedJobId,
+          onClick: () => this.pollWorldJob(s.worldPollPausedJobId),
+          style: { marginLeft: 8, borderRadius: 6, padding: 7, border: '1px solid #38bdf855',
+            color: '#d2ebfb', background: '#102237', cursor: 'pointer' } }, 'Reconnect status')) : null,
       ...(s.worldProjects || []).map(p => {
         // The detail API also supports validated progressive PLY artifacts
         // when a Complete 360 project has a partial rather than fused result.
@@ -782,8 +1014,21 @@ class Component extends DCLogic {
         });
         return h('div', { key: p.id, style: { background: '#060a10', border: '1px solid rgba(148,163,184,.12)', borderRadius: 10, padding: 13 } },
           h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' } }, h('div', { style: { color: '#e2e8f0', fontWeight: 700 } }, p.mode + ' · ' + p.id), h('div', { style: { color: p.status === 'COMPLETE' ? '#65d66e' : p.status === 'FAILED' ? '#fca5a5' : '#fbbf24', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace" } }, p.status)),
-          h('div', { style: { color: '#8da0b4', fontSize: 11, marginTop: 7 } }, 'stage: ' + p.currentStage + ' · source: ' + (p.sourceArtifactId || 'none')),
+          h('div', { 'data-provenance-ribbon': 'world', style: { color: '#8da0b4', fontSize: 11,
+            marginTop: 7, overflowWrap: 'anywhere' } }, 'Source: ' + (p.sourceArtifactId || 'none') +
+            ' → World job: ' + (p.jobId || 'unavailable') + ' → project: ' + p.id),
+          h('div', { style: { color: '#94a3b8', fontSize: 11, marginTop: 4 } },
+            'Stage: ' + p.currentStage + ' · ' + (p.mode === 'complete360'
+              ? 'Look-around panorama (rotation only); spatial reconstruction unverified'
+              : 'Diagnostic geometry; no verified 6DoF navigation')),
           p.failure ? h('div', { style: { color: '#fca5a5', fontSize: 11, marginTop: 6 } }, p.failure.stage + ': ' + (p.failure.error || 'failed')) : null,
+          p.mode === 'complete360' ? h('details', { 'data-world-spatial-gate': p.id,
+            style: { color: '#f8cb8b', fontSize: 11, marginTop: 8 } },
+            h('summary', { style: { cursor: 'pointer' } },
+              'Spatial navigation: ' + (p.qualityReport?.spatialReadiness?.status || 'NOT PROVEN')),
+            h('div', { style: { marginTop: 5, lineHeight: 1.5 } },
+              (p.qualityReport?.spatialReadiness?.blockers ||
+                ['No validated multi-view benchmark exists for this saved project.']).join(' · '))) : null,
           this._worldProgressDisplay(p),
           h('div', { style: { display: 'flex', gap: 7, marginTop: 10 } }, canOpen ? h('button', { 'data-world-open-focus': p.id, onClick: () => this.openWorldViewer(p.id), style: { border: '1px solid #a78bfa66', background: '#a78bfa16', color: '#c4b5fd', borderRadius: 7, padding: '6px 9px', cursor: 'pointer' } }, 'Open Focus') : null, p.status === 'FAILED' ? h('button', { onClick: () => this.startWorld(p.mode, p.sourceArtifactId), style: { border: '1px solid #f59e0b66', background: 'transparent', color: '#fbbf24', borderRadius: 7, padding: '6px 9px', cursor: 'pointer' } }, 'Retry') : null)
         );
@@ -815,7 +1060,7 @@ class Component extends DCLogic {
       h('div', { style: { background: '#060a10', border: '1px solid rgba(148,163,184,.14)', borderRadius: 12, padding: 16 } },
         h('div', { style: { fontSize: 20, color: '#f0f4f8', fontWeight: 750 } }, '3D'),
         h('div', { style: { color: '#90a4b8', fontSize: 12, lineHeight: 1.5, margin: '4px 0 13px' } }, 'Create individual 3D assets from canonical DexDiffusion images. WorldGen remains the environment and 360 workspace.'),
-        h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(260px,1fr) minmax(180px,280px)', gap: 14, alignItems: 'start' } },
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 14, alignItems: 'start' } },
           h('div', null,
             h('div', { style: { color: '#6090a8', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 5 } }, 'Source · canonical image'),
             h('div', { 'data-source-rule': '3d', style: { color: '#8fa3b8', fontSize: 11, lineHeight: 1.5, marginBottom: 6 } }, 'Required. 3D uses exactly the image you choose; the newest result is never substituted.'),
@@ -833,15 +1078,42 @@ class Component extends DCLogic {
             h('div', { style: { color: '#70849a', fontSize: 11, marginTop: 4 } }, 'PBR: disabled · not proven safe on this 32 GiB machine')
           )
         ),
+        h('div', { 'data-source-preflight': '3d', role: 'status',
+          style: { marginTop: 13, padding: 9, borderRadius: 7, border: '1px solid #37566c',
+            background: '#102030', color: '#c5d8e8', fontSize: 11, overflowWrap: 'anywhere' } },
+          'Commit to Source · ' + (selected ? 'Canonical source: ' + selected : 'Choose a canonical image first') +
+          ' · Mesh: ' + (modes.mesh?.status || 'UNKNOWN') +
+          ' · Textured: ' + (modes.textured?.status || 'UNKNOWN') +
+          ' · No generation occurs until a mode is selected.'),
         h('div', { style: { color: '#70849a', font: "11px 'IBM Plex Mono',monospace", marginTop: 13 } }, statusLine)
       ),
-      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 8 } }, chip('Quick Geometry', modes.quickGeometry), chip('Mesh', modes.mesh), chip('Textured Asset', modes.textured), chip('PBR', modes.pbr)),
+      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,125px),1fr))', gap: 8 } }, chip('Quick Geometry', modes.quickGeometry), chip('Mesh', modes.mesh), chip('Textured Asset', modes.textured), chip('PBR', modes.pbr)),
+      h('details', { 'data-capability-passport': '3d', style: { border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, padding: 10, color: '#a5b8ca', fontSize: 11 } },
+        h('summary', { style: { cursor: 'pointer', color: '#c3d4e1' } }, '3D capability passport · installed versus proven'),
+        ...Object.entries(modes).map(([name, info]) => h('div', { key: name, style: { marginTop: 6 } },
+          name + ': ' + (info?.status || 'UNKNOWN') +
+          ' · ' + (info?.reason || (info?.status === 'PROVEN' ? 'real run proof recorded' :
+            info?.status === 'AVAILABLE_UNPROVEN' ? 'installed but no completed proof' :
+              'not verified for this hardware'))))),
+
       job ? h('div', { style: { background: '#060a10', border: '1px solid rgba(148,163,184,.12)', borderRadius: 10, padding: 13 } },
         h('div', { style: { color: '#e2e8f0', fontWeight: 700 } }, 'Latest 3D job · ' + (job.status || 'QUEUED')),
+        s.asset3dPollError ? h('div', { role: 'alert', style: { color: '#fbbf24', fontSize: 11, marginTop: 8 } }, s.asset3dPollError) : null,
+        s.asset3dPollPaused && job.job_id ? h('button', { 'data-asset-job-reconnect': 'true', onClick: () => this.pollAsset3dJob(job.job_id),
+          style: { marginTop: 8, border: '1px solid #38bdf866', background: '#38bdf616', color: '#7dd3fc', borderRadius: 6, padding: '6px 10px', cursor: 'pointer' } }, 'Reconnect job status') : null,
         h('div', { style: { color: '#8da0b4', fontSize: 11, marginTop: 6 } }, (job.worker_id || job.mode || '3D') + ' · ' + (job.job_id || 'queued')),
         job.error ? h('div', { style: { color: '#fca5a5', fontSize: 11, marginTop: 6 } }, (job.first_failed_gate || 'failed') + ': ' + job.error) : null,
         this._asset3dProgressDisplay(job),
-        artifact ? h('div', { style: { display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 } }, h('button', { 'data-asset-open-focus': artifact.artifact_id, onClick: () => this.openAsset3dViewer(artifact.artifact_id), style: { border: '1px solid #a78bfa66', background: '#a78bfa16', color: '#c4b5fd', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' } }, 'Open 3D preview'), h('button', { onClick: () => this.openAsset3dInBlender(artifact.artifact_id), style: { border: '1px solid #65d66e66', background: '#65d66e16', color: '#9ae6a5', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' } }, 'Open in Blender'), h('a', { href: artifact.url + '/download', style: { border: '1px solid rgba(148,163,184,.2)', color: '#b8c7d6', borderRadius: 7, padding: '7px 10px', textDecoration: 'none' } }, 'Download GLB')) : null
+        h('div', { 'data-provenance-ribbon': '3d', style: { marginTop: 8, padding: 8,
+          border: '1px solid #2a4862', borderRadius: 6, fontSize: 11, color: '#a7cde5',
+          overflowWrap: 'anywhere' } },
+          'Source: ' + (job.params?.source_artifact_id || job.source_artifact_id || 'not recorded') +
+          '  →  Job: ' + (job.job_id || 'unknown') + '  →  Result: ' + (artifact?.artifact_id || 'not published')),
+        this._assetJobEvidenceTimeline(job, artifact),
+        artifact ? h('div', { style: { display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 } }, h('button', { 'data-asset-open-focus': artifact.artifact_id, onClick: () => this.openAsset3dViewer(artifact.artifact_id), style: { border: '1px solid #a78bfa66', background: '#a78bfa16', color: '#c4b5fd', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' } }, 'Open 3D preview'), h('button', { onClick: () => this.openAsset3dInBlender(artifact.artifact_id), style: { border: '1px solid #65d66e66', background: '#65d66e16', color: '#9ae6a5', borderRadius: 7, padding: '7px 10px', cursor: 'pointer' } }, 'Open in Blender'), h('a', { href: artifact.url + '/download', style: { border: '1px solid rgba(148,163,184,.2)', color: '#b8c7d6', borderRadius: 7, padding: '7px 10px', textDecoration: 'none' } }, 'Download GLB'),
+          h('a', { href: s.backendUrl + '/api/media/' + encodeURIComponent(artifact.artifact_id) + '/package', download: true,
+            'data-asset-package': artifact.artifact_id,
+            style: { border: '1px solid rgba(148,163,184,.2)', color: '#b8c7d6', borderRadius: 7, padding: '7px 10px', textDecoration: 'none' } }, 'Download production package')) : null
       ) : null,
       h('div', { style: { color: '#70849a', fontSize: 11 } }, 'Completed 3D assets are stored in the configured canonical media store. Temporary worker outputs are cleaned after each job.')
     );
@@ -1752,7 +2024,24 @@ class Component extends DCLogic {
           h('button', { type: 'button', 'data-chat-export': 'true', onClick: () => this.exportChat(), disabled: this.state.chatSessionMode !== 'saved' || !this.state.chatSessionId || this.state.chatRunning, style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Export saved chat')
         )
       ),
-      h('p', { style: { margin: 0, color: '#aab4c3', fontSize: 12, lineHeight: 1.5 } }, 'Temporary local conversation. Closing or reloading this page loses access to it; it is not saved in browser storage.'),
+      h('div', { 'data-chat-retention-picker': 'true', role: 'group', 'aria-label': 'Chat retention mode',
+        style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 7 } },
+        h('span', { style: { fontSize: 11, color: '#cbd5e1' } }, 'Conversation mode:'),
+        h('button', { 'data-chat-mode': 'temporary', type: 'button', 'aria-pressed': String(!this.state.chatSaveNext && this.state.chatSessionMode !== 'saved'),
+          disabled: !!this.state.chatSessionId || this.state.chatRunning,
+          onClick: () => this.setState({ chatSaveNext: false }),
+          style: { padding: '5px 10px', borderRadius: 6, border: '1px solid #64748b',
+            background: !this.state.chatSaveNext && this.state.chatSessionMode !== 'saved' ? '#244257' : '#101827', color: '#e2e8f0' } }, 'Temporary'),
+        h('button', { 'data-chat-mode': 'saved', type: 'button', 'aria-pressed': String(this.state.chatSaveNext || this.state.chatSessionMode === 'saved'),
+          disabled: !!this.state.chatSessionId || this.state.chatRunning || !this.state.chatSavedSessionsLoaded,
+          onClick: () => this.setState({ chatSaveNext: true }),
+          title: this.state.chatSavedSessionsLoaded ? 'Save the new conversation on this Mac' : 'Unlock saved history first',
+          style: { padding: '5px 10px', borderRadius: 6, border: '1px solid #64748b',
+            background: this.state.chatSaveNext || this.state.chatSessionMode === 'saved' ? '#244257' : '#101827', color: '#e2e8f0' } }, 'Saved')),
+      h('p', { 'data-chat-retention-description': 'true', style: { margin: 0, color: '#aab4c3', fontSize: 12, lineHeight: 1.5 } },
+        this.state.chatSessionMode === 'saved' || (!this.state.chatSessionId && this.state.chatSaveNext)
+          ? 'Saved Chat is explicit opt-in. Messages are retained on this Mac for authorized history access, export and deletion.'
+          : 'Temporary Chat is not written to saved history. Reloading loses access to this temporary session.'),
       // Collapsible status / credentials panel
       h('details', { 'data-chat-settings-details': 'true', open: true, style: { border: '1px solid rgba(148,163,184,.14)', borderRadius: 7, padding: '6px 10px', background: 'rgba(15,23,42,.35)' } },
         h('summary', { style: { fontSize: 11, color: '#94a3b8', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },

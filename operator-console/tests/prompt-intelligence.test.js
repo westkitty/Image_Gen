@@ -206,7 +206,11 @@ test('browser: successful enhancement is reviewed before Apply, with Cancel and 
     assert.ok(requests.every((request) => request.save_prompts === false));
     const geometry = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }));
     assert.ok(geometry.scrollWidth <= geometry.innerWidth, `mobile page overflow: ${JSON.stringify(geometry)}`);
-    assert.ok(await page.getByRole('button', { name: 'Create', exact: true }).isVisible(), 'mobile Studio navigation remains visible');
+    const mobileNav = page.locator('[data-studio-mobile-nav] summary');
+    assert.ok(await mobileNav.isVisible(), 'the approved five-master mobile navigation remains visible');
+    await mobileNav.click();
+    assert.ok(await page.locator('[data-studio-mobile-nav] button').filter({ hasText: 'Create' }).first().isVisible(),
+      'the Create leaf remains reachable through the mobile menu');
   } finally {
     await browser.close();
     await stop();

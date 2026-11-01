@@ -189,9 +189,11 @@
   function resolveInitialScreenV2(storedScreen) {
     return typeof storedScreen === 'string' && isScreen(storedScreen) ? storedScreen : 'create';
   }
-  // Layout flag for rollback: anything but exactly 'masters' is the flat chip row (the default).
+  // Unified five-master navigation is the normal Studio layout.
+  // Explicit 'flat' remains a non-destructive rollback for existing users and tests.
   function resolveLayout(storage) {
-    try { return storage && storage.getItem(LAYOUT_KEY) === 'masters' ? 'masters' : 'flat'; } catch (_) { return 'flat'; }
+    try { return storage && storage.getItem(LAYOUT_KEY) === 'flat' ? 'flat' : 'masters'; }
+    catch (_) { return 'masters'; }
   }
   function readMasterLast(storage) {
     let raw = null;

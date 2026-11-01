@@ -32,6 +32,8 @@ const { artifactReceipt, TERMINAL } = require('./job-contract');
 const { createWorldStore } = require('./world-project');
 const { createWorldBridge } = require('./world-bridge');
 const { createAsset3dBridge } = require('./asset3d-bridge');
+const { buildRepairRecord } = require('./import-provenance-repair');
+const { exportAssetPackage } = require('./asset-package');
 const { createSystemInfo } = require('./system-info');
 const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime, targetVerification } = require('./capabilities');
 const { rulesForTarget, validateDimensions } = require('./dimension-policy');
@@ -4322,17 +4324,29 @@ app.post('/api/library/images/import', express.raw({ type: () => true, limit: '2
     const entry = imageStore.adoptFile(source.path, { runDir, runId, runFile: 'source-' + stem + ext });
     // New import ownership must be visible immediately, not after the cache TTL.
     imageSourceCache = { at: 0, map: new Map() };
+    sourceBrowserCache.at = 0;
+    let metadataStatus = 'recorded';
     try {
       imageMeta.record(entry.image_id, {
         operation: 'import', runId, original_name: originalName,
         width: source.width, height: source.height, source_kind: 'user-upload'
       });
     } catch (error) {
+      metadataStatus = 'degraded';
+      // record() updates its in-memory cache before its atomic disk write.
+      // Clear that cache so a failed write is never reported as durable data.
+      imageMeta._reset();
       console.error('Image import metadata write failed:', error.message);
     }
+    // 201 refers to canonical byte adoption, not to auxiliary provenance.
+    // Never roll back or duplicate an adopted image because metadata failed.
     res.status(201).json({
       id: entry.image_id, url: imageStore.imageUrl(entry.image_id),
-      width: source.width, height: source.height, runId
+      width: source.width, height: source.height, runId,
+      metadata_status: metadataStatus,
+      warning: metadataStatus === 'degraded'
+        ? 'Image imported, but provenance metadata could not be recorded.'
+        : null
     });
   } catch (error) {
     console.error('Canonical image import failed:', error.message);
@@ -4342,15 +4356,90 @@ app.post('/api/library/images/import', express.raw({ type: () => true, limit: '2
   }
 });
 
+// Repair only original import ownership using current canonical bytes + the
+// immutable import run index. No client-supplied filename/path/model/prompt is
+// trusted, and a repair never repackages or duplicates an imported image.
+app.post('/api/library/images/:id/repair-provenance', (req, res) => {
+  const imageId = req.params.id;
+  const img = imageStore.resolveImage(imageId);
+  const src = img && imageSourceMap().get(imageId);
+  if (!img || !src) return res.status(404).json({ error: 'Canonical import record unavailable.' });
+  try {
+    const indexEntry = imageStore.readRunIndex(path.join(RUNS_DIR, src.runId))
+      .find(e => e.image_id === imageId && e.run_file === src.runFile);
+    const record = buildRepairRecord({
+      imageId, source: src, runIndexEntry: indexEntry, validation: validateImage(img.path)
+    });
+    imageMeta._reset(); // Ignore an in-memory write attempt that may have failed.
+    const existing = imageMeta.get(imageId) || {};
+    if (existing.operation === 'import' && existing.runId === src.runId &&
+        existing.source_kind === 'user-upload') {
+      return res.json({ id: imageId, metadata_status: 'recorded',
+        original_name_status: existing.original_name ? 'recorded' : 'not-recoverable' });
+    }
+    imageMeta.record(imageId, record);
+    imageMeta._reset();
+    const persisted = imageMeta.get(imageId);
+    if (!persisted || persisted.operation !== 'import' || persisted.runId !== src.runId ||
+        persisted.source_kind !== 'user-upload') throw new Error('Recovered provenance not durable');
+    imageSourceCache.at = 0; sourceBrowserCache.at = 0;
+    res.json({ id: imageId, metadata_status: 'partially-recovered',
+      original_name_status: 'not-recoverable',
+      warning: 'Source identity, digest and import details recovered. The exact original filename was not preserved.' });
+  } catch (error) {
+    res.status(409).json({ gate: 'import-provenance-identity',
+      error: 'Import provenance could not be verified or persisted. Canonical image remains unchanged.' });
+  }
+});
+
+// The source browser runs multiple rapid paged searches. Rechecking every
+// canonical PNG, digest and lineage on each keystroke is unnecessary. Use a
+// short process-local verified snapshot; the authoritative image store is
+// rechecked at most 1.5s later and explicit imports invalidate immediately.
+let sourceBrowserCache = { at: 0, ids: [], views: new Map() };
+// Cheap metadata-only index for filtering. The full imageView() computes
+// children/ancestors and width/height; perform that work only for a returned
+// page, not for every historical image on every search keystroke.
+// Retain imageView's exact digest/keeper identity trust rule.
+function sourceBrowserRecord(id, sourceMap) {
+  const img = imageStore.resolveImage(id);
+  if (!img) return null;
+  const src = sourceMap.get(id) || null;
+  const recordedMeta = imageMeta.get(id) || {};
+  const expected = src && src.sha256;
+  const current = (expected || recordedMeta.keeper_identity_sha256) ? currentImageDigest(img.path) : null;
+  const meta = expected && current === expected ? recordedMeta :
+    recordedMeta.keeper_identity_sha256 && current === recordedMeta.keeper_identity_sha256 ? { keeper: true } : {};
+  return {
+    id, meta, keeper: !!meta.keeper,
+    runId: meta.runId || (src && src.runId) || null
+  };
+}
+function verifiedSourceBrowserSnapshot() {
+  if (Date.now() - sourceBrowserCache.at < 1500) return sourceBrowserCache;
+  const all = imageStore.listCanonicalImages();
+  const sourceMap = imageSourceMap();
+  const views = new Map(all.map(id => [id, sourceBrowserRecord(id, sourceMap)]));
+  const ids = all.filter(id => views.get(id));
+  sourceBrowserCache = { at: Date.now(), ids, views };
+  return sourceBrowserCache;
+}
 app.get('/api/library/images', (req, res) => {
   const filter = String(req.query.filter || 'all');
-  let ids = imageStore.listCanonicalImages();
-  const verified = new Map(ids.map(id => [id, imageView(id)]));
-  ids = ids.filter(id => verified.get(id));
+  const snapshot = verifiedSourceBrowserSnapshot();
+  let ids = snapshot.ids.slice();
+  const verified = snapshot.views;
   // Known test/regression artifacts stay on disk but are hidden unless asked for.
   if (req.query.show_test !== '1') ids = ids.filter(id => !(verified.get(id).meta && verified.get(id).meta.test_artifact));
   if (filter === 'keepers') ids = ids.filter(id => verified.get(id).keeper);
   else if (filter !== 'all') ids = ids.filter(id => { const m = verified.get(id).meta || {}; return m.operation === filter || m.target === filter; });
+  const search = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 120).toLowerCase() : '';
+  if (search) ids = ids.filter(id => {
+    const image = verified.get(id) || {};
+    const meta = image.meta || {};
+    const words = [id, meta.original_name, meta.operation, meta.target, image.model, image.runId, image.run && image.run.model];
+    return words.some(value => typeof value === 'string' && value.toLowerCase().includes(search));
+  });
   // Canonical ids start with the run timestamp, so id order is creation order.
   ids.sort((a, b) => b.localeCompare(a));
   if (String(req.query.sort || 'desc') === 'asc') ids.reverse();
@@ -4605,6 +4694,25 @@ app.get('/api/media/:id', (req, res) => {
   res.set('X-Content-Type-Options', 'nosniff');
   res.type(rec.mime).sendFile(rec.path);
 });
+// Private, on-demand portable 3D/World package. Temp ZIP is deleted after
+// transfer/abort; the canonical media and source image are never changed.
+app.get('/api/media/:id/package', async (req, res) => {
+  const rec = mediaStore.resolve(req.params.id);
+  if (!rec || rec.kind !== 'world') return res.status(404).json({ error: 'No packageable 3D/World artifact.' });
+  const source = rec.parent ? imageStore.resolveImage(rec.parent) : null;
+  const job = rec.job_id ? jobStore.get(rec.job_id) : null;
+  try {
+    const pack = await exportAssetPackage({ artifact: rec, source, job });
+    res.set('Cache-Control', 'no-store');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.download(pack.zip, pack.filename, err => {
+      pack.cleanup();
+      if (err && !res.headersSent) res.status(500).json({ error: 'Package transfer failed.' });
+    });
+  } catch (error) {
+    res.status(422).json({ error: 'Asset package could not be verified.', gate: 'package-verification' });
+  }
+});
 app.get('/api/media/:id/download', (req, res) => {
   const rec = mediaStore.resolve(req.params.id);
   if (!rec) return res.status(404).json({ error: 'Not found' });
@@ -4692,7 +4800,7 @@ app.get('/api/generic-jobs/:id', (req, res) => {
   const g = jobStore.get(req.params.id);
   if (!g) return res.status(404).json({ error: 'Job not found' });
   const rs = arbiter.state();
-  const artifacts = g.artifacts.map(id => { const r = mediaStore.resolve(id); return r ? { artifact_id: id, url: r.safe_url, kind: r.kind, duration: r.duration, sha256: r.sha256, bytes: r.bytes, seed: r.seed } : { artifact_id: id }; });
+  const artifacts = g.artifacts.map(id => { const r = mediaStore.resolve(id); return r ? { artifact_id: id, url: r.safe_url, kind: r.kind, duration: r.duration, sha256: r.sha256, bytes: r.bytes, seed: r.seed, timings: r.meta?.timings || null } : { artifact_id: id }; });
   res.json({ ...g, artifacts_detail: artifacts, waiting: g.status === 'QUEUED' ? { position: arbiter.position(g.job_id), blocked_reason: rs.blocked_reason } : null });
 });
 app.get('/api/generic-jobs', (req, res) => res.json({ jobs: jobStore.list({ media_kind: req.query.kind || undefined, status: req.query.status || undefined, limit: 100 }) }));

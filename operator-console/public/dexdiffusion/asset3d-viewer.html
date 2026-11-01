@@ -15,15 +15,33 @@
     .meta { color: #91a4b8; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; margin-top: 5px; line-height: 1.5; }
     .error { color: #fca5a5; white-space: pre-wrap; }
     button { border: 1px solid rgba(148,163,184,.3); background: rgba(15,23,42,.8); color: #dbeafe; border-radius: 6px; padding: 7px 10px; cursor: pointer; margin-right: 6px; }
-    button:hover { border-color: #a78bfa; }
+    button:hover, button:focus-visible, #asset-canvas:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
+    [hidden] { display: none !important; }
+    #asset-canvas { touch-action: none; }
+    #asset-inspector { max-height: min(36vh, 250px); overflow: auto; align-self: flex-start; }
+    #asset-inspector details summary { color: #cbd5e1; font-size: 12px; cursor: pointer; }
+    #asset-structure { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #94a3b8; max-height: 120px; overflow: auto; }
+    #asset-structure ul { margin: 4px 0; padding-left: 15px; }
+    #asset-structure li { padding: 2px 0; }
+    @media (max-width: 490px) { #asset-hud { padding: 8px; } .panel { max-width: calc(100vw - 44px); } }
     #asset-help { align-self: flex-start; color: #94a3b8; font-size: 11px; }
   </style>
 </head>
 <body>
-  <canvas id="asset-canvas" aria-label="DexDiffusion interactive 3D asset viewer"></canvas>
+  <canvas id="asset-canvas" tabindex="0" aria-label="DexDiffusion interactive 3D asset viewer" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight + - R F"></canvas>
   <div id="asset-hud">
     <div class="panel" id="asset-status"><div class="title">Loading 3D Asset…</div><div class="meta">Validating canonical GLB geometry.</div></div>
-    <div class="panel" id="asset-help">Drag to orbit · wheel to zoom · R reset · F fullscreen<br /><br /><button id="asset-reset">Reset camera</button><button id="asset-fullscreen">Fullscreen</button></div>
+    <div class="panel" id="asset-inspector"><details>
+      <summary>Scene inspection</summary>
+      <p class="meta">Inspect the original scene; display modes change only the preview.</p>
+      <button id="asset-shaded" aria-pressed="true">Shaded</button>
+      <button id="asset-wireframe" aria-pressed="false">Wireframe</button>
+      <button id="asset-normals" aria-pressed="false">Normals</button>
+      <div id="asset-structure" aria-label="GLB scene hierarchy">Loading scene structure...</div>
+      <p id="asset-selected" class="meta" aria-live="polite">Select a node to inspect its bounds and material.</p>
+      <p id="asset-render-profile" class="meta">Viewer profile: self-contained glTF 2.0 GLB · original node transforms and materials.</p>
+    </details></div>
+    <div class="panel" id="asset-help">Drag to orbit · wheel or +/- to zoom · arrow keys to orbit · R reset · F fullscreen<br /><br /><button id="asset-reset">Reset camera</button><button id="asset-fullscreen">Fullscreen</button><button id="asset-animation" hidden>Pause animation</button><label id="asset-clip-label" hidden> Clip <select id="asset-clip" aria-label="Animation clip"></select></label><button id="asset-load-large" hidden>Load full-resolution model</button></div>
   </div>
   <script type="module" src="./asset3d-viewer.js"></script>
 </body>

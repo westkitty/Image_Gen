@@ -12,6 +12,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 
 const { artifactReceipt } = require('./job-contract');
+const { evaluateSpatialReadiness } = require('./world-spatial-gate');
 
 const execFileP = promisify(execFile);
 const WORLD_ROOT = '/Volumes/wc2tb/generative-models/world';
@@ -183,6 +184,7 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
         },
         blockers: ['learned global depth unavailable in this local runtime', ...(fusionResult.ok ? ['voxel fusion is not a registered Gaussian 360 scene; inspect original per-view splats separately'] : [fusionResult.error || 'SHARP per-view fitting and fusion not completed'])],
       };
+      quality.spatialReadiness = evaluateSpatialReadiness(quality);
       writeJson(qualityPath, quality);
       const qualityRec = finalizeWorld(qualityPath, `${project.id}-quality-report`, jobId, worker, model, coarseRec.artifact_id, { classification: 'WARN' });
       worldStore.attachArtifact(project.id, 'qualityReport', qualityRec, { stage: 'quality' });
