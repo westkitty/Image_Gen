@@ -2,7 +2,9 @@
 // New GLB coverage: multiple scene nodes/materials, inspector modes, animation
 // playback/reduced-motion, idle frame economy, and honest unsupported extensions.
 const assert = require('node:assert/strict');
-const { chromium } = require('playwright-core');
+const fs = require('node:fs');
+const path = require('node:path');
+const { chromium, webkit } = require('playwright-core');
 const { startServer, launchBrowser, runCleanups, makePng } = require('./helpers');
 
 function glb({ animated = false, unsupported = false, textured = false } = {}) {
@@ -64,7 +66,7 @@ function glb({ animated = false, unsupported = false, textured = false } = {}) {
 }
 (async()=>{
   const srv=await startServer();
-  const browser=await launchBrowser(chromium);
+  const browser=await launchBrowser(process.env.DEX_OMNI_BROWSER_ENGINE === 'webkit' ? webkit : chromium);
   try{
     for(const reducedMotion of ['reduce','no-preference']){
       const page=await browser.newPage({viewport:{width:900,height:640},reducedMotion});
@@ -108,7 +110,11 @@ function glb({ animated = false, unsupported = false, textured = false } = {}) {
     const textureErrors = [], outsideRequests = [];
     texturePage.on('pageerror', e => textureErrors.push(e.message));
     texturePage.on('request', req => {
-      if (!req.url().startsWith(srv.base + '/')) outsideRequests.push(req.url());
+      // WebKit exposes locally created GLB image/object URLs as blob: requests.
+      // They do not contact an external host; only real off-origin loads fail.
+      const url = req.url();
+      if (!url.startsWith(srv.base + '/') && !url.startsWith('blob:' + srv.base + '/')
+          && !url.startsWith('data:')) outsideRequests.push(url);
     });
     await texturePage.route('**/api/media/omni-texture.glb',
       r => r.fulfill({ contentType: 'model/gltf-binary', body: glb({ textured: true }) }));
@@ -121,6 +127,27 @@ function glb({ animated = false, unsupported = false, textured = false } = {}) {
     assert.ok((await texturePage.locator('#asset-canvas').screenshot()).byteLength > 3000,
       'textured 3D produces non-empty raster output');
     await texturePage.close();
+    // Genuine Draco-compressed Khronos sample (checked in with attribution).
+    // This detects decoders that are bundled but not actually wired to GLTFLoader.
+    const dracoPage = await browser.newPage({ viewport: { width: 800, height: 600 } });
+    const dracoErrors = [], dracoRequests = [];
+    dracoPage.on('pageerror', error => dracoErrors.push(error.message));
+    dracoPage.on('request', req => dracoRequests.push(req.url()));
+    await dracoPage.route('**/api/media/omni-draco-box.glb', route => route.fulfill({
+      contentType: 'model/gltf-binary',
+      body: fs.readFileSync(path.join(__dirname, '../fixtures/omni-draco-box.glb'))
+    }));
+    await dracoPage.goto(srv.base + '/dexdiffusion/asset3d-viewer.html?artifact=omni-draco-box.glb');
+    await dracoPage.waitForFunction(() => /1 meshes/.test(document.querySelector('#asset-status')?.innerText || ''),
+      null, { timeout: 15000 });
+    assert.match(await dracoPage.locator('#asset-status').innerText(), /24 vertices · 12 triangles/);
+    assert.deepEqual(dracoErrors, [], 'the compressed geometry decodes without a page error');
+    assert.ok(dracoRequests.some(url => url.endsWith('/vendor/draco/draco_decoder.wasm')),
+      'local Draco decoder WASM must be requested');
+    assert.ok(dracoRequests.every(url => url.startsWith(srv.base + '/') ||
+      url.startsWith('blob:' + srv.base + '/') || url.startsWith('data:')),
+      'compressed GLB never contacts an outside origin');
+    await dracoPage.close();
     const page=await browser.newPage({viewport:{width:390,height:844}});
     await page.route('**/api/media/unsupported.glb',r=>r.fulfill({contentType:'model/gltf-binary',body:glb({unsupported:true})}));
     await page.goto(srv.base+'/dexdiffusion/asset3d-viewer.html?artifact=unsupported.glb');

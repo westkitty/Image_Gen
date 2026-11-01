@@ -34,6 +34,12 @@ const itemCounts = r => r.state.requests.map(q => q.items.length);
 const longText = n => Array.from({ length: n }, (_, i) => `Sentence number ${i + 1} is here, with a clause; and it keeps going for a while so the text gets long.`).join(' ');
 const LONG_SCRIPT = `TIGER: ${longText(28)}\nCODEC: Short reply.\nNARRATOR: Third line follows.`;
 
+// Recovery/privacy tests exercise verified chunk reuse, not loudness or format
+// delivery. Use real archive mastering and WAV-only output to avoid slow,
+// unrelated LUFS/true-peak scans of long synthetic tones in a bounded fixture.
+// Dedicated drama-master and drama-export tests verify loudness and codecs.
+const RECOVERY_OPTS = { mastering: { preset: 'archive' }, delivery: { formats: ['wav'] } };
+
 test('one click produces every line, scene masters and a verified project master; job completes with the master', async () => {
   const r = await rig(); const p = await r.project(SCRIPT);
   const res = r.producer.produce(p.id); assert.equal(res.production.status, 'planning'); assert.ok(res.job_id);
@@ -101,7 +107,7 @@ test('a chunk failure mid-run keeps the verified chunks; a later run synthesises
   assert.ok(rc.length >= 2, 'verified chunks before each failure were kept: ' + rc.length); assert.ok(rc.every(x => /^[a-f0-9]{64}$/.test(x.sha256)));
   assert.notEqual(r.jobStore.get(first.job_id).status, 'COMPLETE'); assert.equal(p.project_master, undefined, 'no master from an incomplete drama');
   r.state.failItem = null; r.state.requests.length = 0;
-  const second = await r.finish(r.producer.produce(p.id));
+  const second = await r.finish(r.producer.produce(p.id, RECOVERY_OPTS));
   assert.equal(second.status, 'complete', JSON.stringify(second.errors));
   const total = lines(p)[0].takes.find(t => t.status === 'complete').chunks;
   const sent = r.state.requests.reduce((n, q) => n + q.items.length, 0);
@@ -142,7 +148,7 @@ test('an invalid or tampered chunk receipt is detected and that chunk alone is r
   const tiger = lines(p)[0].id; const rc = r.chunkStore.receipts(p.id).filter(x => x.line_id === tiger); assert.ok(rc.length >= 2);
   fs.appendFileSync(r.chunkStore.pathOf(p.id, rc[0].fingerprint), Buffer.from([9, 9, 9]));      // corrupt it
   r.state.failItem = null; r.state.requests.length = 0;
-  const second = await r.finish(r.producer.produce(p.id));
+  const second = await r.finish(r.producer.produce(p.id, RECOVERY_OPTS));
   assert.equal(second.status, 'complete'); assert.equal(second.chunks.invalid, 1, 'the corrupt receipt was reported');
   assert.equal(second.chunks.cached, rc.length - 1); assert.ok(r.state.requests.reduce((n, q) => n + q.items.length, 0) >= 1);
 });
@@ -151,7 +157,7 @@ test('privacy: unsaved script text never reaches jobs, media metadata, SSE-bound
   const r = await rig({ failItem: 1 }); const p = await r.project(`TIGER: ${CANARY} ${longText(28)}\nCODEC: ${CANARY} reply.`);
   const seen = []; const orig = r.jobStore;
   const a = await r.finish(r.producer.produce(p.id)); r.state.failItem = null;
-  const b = await r.finish(r.producer.produce(p.id)); r.jobStore.flush();
+  const b = await r.finish(r.producer.produce(p.id, RECOVERY_OPTS)); r.jobStore.flush();
   const dump = [fs.readFileSync(path.join(r.base, 'jobs.json'), 'utf8'), fs.readFileSync(path.join(r.base, 'media.json'), 'utf8'), JSON.stringify(r.events), JSON.stringify(a), JSON.stringify(b), JSON.stringify(r.chunkStore.receipts(p.id))].join('\n');
   assert.ok(!dump.includes(CANARY), 'no script text leaked');
   for (const q of r.jobStore.list({ limit: 1000 })) assert.ok(!JSON.stringify(q).includes(CANARY));
