@@ -2871,3 +2871,35 @@ Local and origin recovery branch remain `d1d542631fd041ddf54b148a173da19415fa4dd
 - `main` promoted by fast-forward to `126a9b9` after a single fresh passing release preflight (after two earlier failed runs) (unit 1027/1027, 44 browser suites; Style/Wildcard excluded by design). Record, branch/PR dispositions, capability proof levels, entrypoint inventory and rollback: `docs/operations/pre-redesign-readiness-20261023.md`.
 - Corrections made during this pass: the V2 drawer's delayed focus timer now respects focus already inside the drawer (confirmed race, regression-tested); `bin/dexdiffusion status` bounds blocking probes and reports timed-out dependencies as UNKNOWN.
 - Open and not claimed fixed: Row 6 Context-drawer timeout (`Fixed (flow-match Euler)`), undiagnosed; the original `status` hang cause. Native app not rebuilt (installed `d1d5426`). Legacy retirement and the Chat/UI redesign were not started.
+
+
+## 2026-11-01 — OMNI uplift isolated worktree
+
+- Repo identity: westkitty/Image_Gen, detached worktree
+  /Users/bigmac/Image_Gen-omni-20261101 at
+  a1cefd1cc4c571797870104648f93e8c9a7ad2ef.
+  Production, the MacBook Dock application and canonical images untouched.
+  Git stage/commit/push/merge and service/native deployment NOT authorized.
+- User approved BUG-001..010, HI-01..10, PERF-01..10, UX-01..10 and
+  visible Temporary/Saved Chat with five-master navigation as default.
+  Scoped source changes cover GLB display, viewer access, World worker
+  independence, Source Observatory, reconnect, provenance verification,
+  safe portable asset packaging, status evidence and documentation.
+  See docs/operations/omni-implementation-20261101.md for per-ID ledger.
+- Technical invariants: one canonical MacBook image store; same-origin
+  self-contained glTF 2.0 viewer, locally bundled decoders, original media
+  preserved, exact source IDs, safe failed-upload metadata recovery,
+  World previews never falsely labeled navigable 6DoF.
+- Tests: focused end-to-end browser cases PASS with individual exit 0;
+  consolidated unit log shows 105/105 tests with zero failures, but
+  remote call timed out before exit receipt. Initial full npm test had
+  1279 pass and 10 fail. Dependency and harness issues were resolved
+  in isolated reruns; one Drama group timeout reproduced on untouched
+  baseline. The FULL release suite remains NOT GREEN.
+- Performance: baseline versus OMNI headless n=3 startup medians 609ms
+  versus 628ms, typing p50 185.2ms versus 199.9ms; no speedup claim.
+  Actual native-device GPU life, native ZIP, Draco-compressed artifact
+  and true spatial 6DoF remain unverified. MacBook DEX scheduler was
+  saturated and denied the native acceptance check.
+- State: SOURCE WORK IN PROGRESS, UNCOMMITTED, NOT DEPLOYED. Recheck
+  all release gates before requesting publication.

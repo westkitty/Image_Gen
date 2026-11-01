@@ -9,12 +9,32 @@ live facts are also served by `GET /api/system-info` and `bin/dexdiffusion statu
 
 ## What it is
 
-DexDiffusion is a **MacBook-hosted local image-generation UI** that uses **Big Mac**
-(Apple M4 Mac mini, 32 GB) as the MLX/MFLUX generation machine. The MacBook owns the
-UI, the job API, run metadata and every final image. Big Mac only computes images
-and keeps nothing afterwards.
+DexDiffusion is a private native-WebKit and browser creative workstation. The
+MacBook is the user-facing control and canonical-image-storage machine; Big Mac
+(Apple M4, 32 GiB) is the heavy-inference host.
+
+**Current server topology (2026-11-01 code, verify against live runtime):**
+bin/dexdiffusion starts the Node operator console directly on Big Mac when
+invoked on hostname bigmac. On MacBook, it uses a dedicated SSH local port
+forward from 127.0.0.1:31337 to Big Mac 127.0.0.1:31337, rather than starting
+a second MacBook Node server. Earlier sections describing a MacBook-owned
+Node/API are **historical configurations**, not necessarily the active host
+assignment. The MacBook Dock app still opens
+http://127.0.0.1:31337/dexdiffusion/ through that private route.
+
+**Authority for troubleshooting:** compare /api/version process cwd, pid
+and gitHead against the actual listener PID, host, repository head and the
+current branch. Remote Git and an installed Dock bundle may be at different
+revisions. Do not terminate a foreign port owner or relabel source/native
+identity as deployed without actual device proof. The canonical final-image
+storage contract remains /Users/andrew/images_made; Big Mac must not retain
+duplicate completed image artifacts. No public ports or changes to DEX//REACH
+:443 are permitted.
 
 ## Architecture
+
+The following diagram documents the original MacBook-local console variant;
+the current Big Mac-owned Node route and MacBook SSH forward above take precedence.
 
 Controlled generation currently uses the Big Mac graphical-session engine helper
 over a private Unix socket reached through SSH. The helper opens installed models

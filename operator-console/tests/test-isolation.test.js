@@ -17,6 +17,7 @@ const T = require('../test-isolation');
 const CONSOLE = path.join(__dirname, '..');
 const WORKFLOW = path.join(CONSOLE, '..', 'sdcpp-workflow');
 const NOWHERE = 'dex-isolation-test.invalid';
+const INITIAL_TEST_PATH = process.env.PATH; // before this test installs its isolation PATH shim
 
 test('classify: remote, service and workflow commands are refused; local tools are not', () => {
   const blocked = [
@@ -164,10 +165,12 @@ async function boot(extraEnv) {
   for (const d of ['state', 'images', 'media', 'bin']) fs.mkdirSync(path.join(root, d));
   // Belt and braces for this test: even the server's own PATH starts with a refusing ssh.
   fs.writeFileSync(path.join(root, 'bin', 'ssh'), '#!/bin/sh\nexit 255\n', { mode: 0o755 });
+  // The non-isolated /api/version negative control must not invoke a real local Ollama.
+  fs.writeFileSync(path.join(root, 'bin', 'ollama'), '#!/bin/sh\nexit 127\n', { mode: 0o755 });
   const port = await freePort();
   const violations = path.join(root, 'violations.jsonl'); fs.writeFileSync(violations, '');
   const env = Object.assign({}, process.env, {
-    PATH: path.join(root, 'bin') + path.delimiter + process.env.PATH, OPERATOR_CONSOLE_PORT: String(port), OLLAMA_BASE_URL: 'http://127.0.0.1:9',
+    PATH: path.join(root, 'bin') + path.delimiter + (extraEnv.DEX_TEST_ISOLATION === '' ? INITIAL_TEST_PATH : process.env.PATH), OPERATOR_CONSOLE_PORT: String(port), OLLAMA_BASE_URL: 'http://127.0.0.1:9',
     DEX_STATE_DIR: path.join(root, 'state'), DEX_IMAGES_ROOT_OVERRIDE: path.join(root, 'images'), DEX_MEDIA_ROOT_OVERRIDE: path.join(root, 'media'),
     DEX_TEST_VIOLATIONS_FILE: violations,
   }, extraEnv);
@@ -207,7 +210,8 @@ test('real server without the flag: /api/version keeps its production shape (no 
   try {
     const ver = await fetch(s.base + '/api/version').then(r => r.json());
     assert.equal('testIsolation' in ver, false);
-    assert.equal(T.readViolations(s.violations).length, 0);
+    const unexpected = T.readViolations(s.violations);
+    assert.equal(unexpected.length, 0, 'non-isolated server must not record test violations: ' + JSON.stringify(unexpected));
   } finally { await s.stop(); }
 });
 

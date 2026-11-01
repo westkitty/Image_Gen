@@ -181,6 +181,7 @@ printf 'DEX_3D_ASSETS runtime=%s shape_small=%s shape_large=%s paint_rgb=%s host
     const started = Date.now();
     try {
       lease = await arbiter.acquire(jobId, `hunyuan3d ${mode}`);
+      const leaseGrantedAt = Date.now();
       if (!lease.granted) throw Object.assign(new Error('heavy-compute lease was not granted'), { gate: 'resource-wait' });
       jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group, progress: { phase: 'preparing', label: 'Preparing Big Mac 3D worker' } });
       const prepared = await ssh(`set -e; mkdir -p ${q(`${remoteJobDir}/input`)} ${q(`${remoteJobDir}/output`)}; printf 'DEX_3D_PREPARED\\n'`);
@@ -205,6 +206,7 @@ if [ "$MAGIC" != 676c5446 ] || [ -z "$SHA" ]; then printf 'DEX_3D_FAIL output-in
 printf 'DEX_3D_PASS mode=%s output=%s bytes=%s sha256=%s magic=%s engine=hunyuan3d-swift@${UPSTREAM_COMMIT}\\n' ${q(mode)} "$OUT" "$BYTES" "$SHA" "$MAGIC"`;
       let phase = 'shape';
       let lastReport = '';
+      const remoteStartedAt = Date.now();
       const remote = await ssh(command, mode === 'textured' ? 900000 : 600000, line => {
         const progress = parseHy3dProgressLine(line, mode, phase);
         if (!progress) return;
@@ -214,6 +216,7 @@ printf 'DEX_3D_PASS mode=%s output=%s bytes=%s sha256=%s magic=%s engine=hunyuan
         lastReport = key;
         if (jobStore.get(jobId)?.status === 'RUNNING') jobStore.transition(jobId, 'RUNNING', { progress });
       });
+      const remoteCompletedAt = Date.now();
       const combined = `${remote.stdout}\n${remote.stderr}`;
       const marker = /DEX_3D_PASS mode=(\w+) output=(\S+) bytes=(\d+) sha256=([a-f0-9]{64}) magic=(\w+) engine=(\S+)/.exec(combined);
       if (!marker || marker[1] !== mode || !marker[2].startsWith(`${remoteJobDir}/`) || marker[5] !== '676c5446') {
@@ -221,13 +224,21 @@ printf 'DEX_3D_PASS mode=%s output=%s bytes=%s sha256=%s magic=%s engine=hunyuan
         throw Object.assign(new Error(failed), { gate: 'remote-output' });
       }
       await streamRemote(marker[2], localOutput, 300000);
+      const transferCompletedAt = Date.now();
       jobStore.transition(jobId, 'RUNNING', { progress: { phase: 'validating', label: 'Validating GLB structure and checksum' } });
       const localBytes = fs.statSync(localOutput).size;
       const localSha = sha256File(localOutput);
       if (localBytes !== Number(marker[3])) throw Object.assign(new Error('transferred GLB byte count does not match Big Mac marker'), { gate: 'checksum' });
       if (localSha !== marker[4]) throw Object.assign(new Error('transferred GLB checksum does not match Big Mac marker'), { gate: 'checksum' });
       const validation = validateGlb(fs.readFileSync(localOutput), { textured: mode === 'textured' });
-      const rec = mediaStore.finalize(localOutput, { kind: 'world', base: `asset3d-${mode}`, job_id: jobId, worker: 'hunyuan3d-swift', model: mode === 'textured' ? `${SHAPE_MODEL}+${PAINT_MODEL}` : SHAPE_MODEL, parent: source.id, meta: { operation: 'asset3d', mode, source_artifact_id: source.id, upstream_repository: UPSTREAM_REPOSITORY, upstream_commit: UPSTREAM_COMMIT, validation, textured: mode === 'textured' } });
+      const validationCompletedAt = Date.now();
+      const timings = {
+        lease_wait_ms: Math.max(0, leaseGrantedAt - started),
+        worker_generation_ms: Math.max(0, remoteCompletedAt - remoteStartedAt),
+        output_transfer_ms: Math.max(0, transferCompletedAt - remoteCompletedAt),
+        output_validation_ms: Math.max(0, validationCompletedAt - transferCompletedAt)
+      };
+      const rec = mediaStore.finalize(localOutput, { kind: 'world', base: `asset3d-${mode}`, job_id: jobId, worker: 'hunyuan3d-swift', model: mode === 'textured' ? `${SHAPE_MODEL}+${PAINT_MODEL}` : SHAPE_MODEL, parent: source.id, meta: { operation: 'asset3d', mode, source_artifact_id: source.id, upstream_repository: UPSTREAM_REPOSITORY, upstream_commit: UPSTREAM_COMMIT, validation, textured: mode === 'textured', timings } });
       jobStore.transition(jobId, 'TRANSFERRING', { progress: { phase: 'publishing', label: 'Publishing validated 3D artifact' } });
       const receipt = artifactReceipt([rec]);
       const done = jobStore.transition(jobId, 'COMPLETE', { artifacts: [rec.artifact_id], artifact_validation: receipt });

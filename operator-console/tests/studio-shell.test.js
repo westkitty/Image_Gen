@@ -1,6 +1,7 @@
 'use strict';
 
-// G4 — V2 Studio is the sole normal product shell, with exactly one 14-category chip row.
+// G4 — the V2 Studio normal shell is now five masters. This legacy shell suite
+// explicitly exercises the supported 14-category flat rollback, not the default.
 // These are real DOM tests: the actual template, the actual DC runtime and the actual component are
 // mounted in jsdom, and the chips are activated with real click events (not by calling setScreen).
 // Browser-level pixel/responsive evidence (E3) still requires a real Chromium and is recorded separately.
@@ -164,7 +165,9 @@ function boot({ storage = {}, screen = null, fetch: fetchImpl = null } = {}) {
     { url: 'http://127.0.0.1:31337/dexdiffusion/', runScripts: 'outside-only', pretendToBeVisual: true }
   );
   const w = dom.window;
-  for (const [k, v] of Object.entries(storage)) w.localStorage.setItem(k, v);
+  // Legacy 14-chip tests must request the intentionally preserved flat rollback.
+  // Fresh-profile masters are tested by studio-nav-hierarchy.test.js.
+  for (const [k, v] of Object.entries({ dex_studio_layout: 'flat', ...storage })) w.localStorage.setItem(k, v);
   if (screen) w.sessionStorage.setItem('dex_screen', screen);
 
   const loadErrors = [];
@@ -217,7 +220,7 @@ function shellScriptOrder() {
 const settle = (w, ms = 60) => new Promise(r => w.setTimeout(r, ms));
 const tabs = doc => [...doc.querySelectorAll('[data-tab]')];
 
-test('a real mount opens Studio > Create with exactly 14 clickable chips', { skip: needsDom }, async () => {
+test('an explicitly flat Studio mount preserves the 14 legacy clickable chips', { skip: needsDom }, async () => {
   const { w, doc, close } = boot();
   try {
     await settle(w);

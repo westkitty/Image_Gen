@@ -2,7 +2,7 @@
 
 // Unified Studio Phase 4: the five-master hierarchy is additive and opt-in.
 // Registry tests need no DOM; the rest mount the real template, DC runtime and component in jsdom and
-// operate the bars with real click and key events. The flat 14-chip row stays the default.
+// operate the bars with real click and key events. The flat 14-chip row stays available as an explicit rollback layout.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -74,12 +74,13 @@ test('subroute restoration accepts only a route belonging to the restored leaf',
   assert.equal(Nav.resolveSubroute('__proto__', 'voice'), null);
 });
 
-test('layout flag: only exactly "masters" opts in; anything else, or broken storage, is flat', () => {
+test('layout flag: masters by default; only exactly flat activates legacy rollback', () => {
   assert.equal(Nav.resolveLayout(memStorage({ dex_studio_layout: 'masters' })), 'masters');
-  for (const v of ['flat', 'Masters', 'masters ', '1', 'true', '']) assert.equal(Nav.resolveLayout(memStorage({ dex_studio_layout: v })), 'flat', v);
-  assert.equal(Nav.resolveLayout(memStorage()), 'flat');
-  assert.equal(Nav.resolveLayout({ getItem() { throw new Error('denied'); } }), 'flat');
-  assert.equal(Nav.resolveLayout(null), 'flat');
+  assert.equal(Nav.resolveLayout(memStorage({ dex_studio_layout: 'flat' })), 'flat');
+  for (const v of ['Masters', 'masters ', '1', 'true', '']) assert.equal(Nav.resolveLayout(memStorage({ dex_studio_layout: v })), 'masters', v);
+  assert.equal(Nav.resolveLayout(memStorage()), 'masters');
+  assert.equal(Nav.resolveLayout({ getItem() { throw new Error('denied'); } }), 'masters');
+  assert.equal(Nav.resolveLayout(null), 'masters');
 });
 
 test('remembered leaves: valid ones are reused, corrupted or foreign ones fall back to the first leaf', () => {
@@ -160,8 +161,8 @@ const masters = { dex_studio_layout: 'masters' };
 const q = (doc, sel) => doc.querySelector(sel);
 const qa = (doc, sel) => [...doc.querySelectorAll(sel)];
 
-test('default profile: the flat 14-chip row, no masters bars, and a stored Chat screen opens Create', { skip: needsDom }, async () => {
-  const { w, doc, inst, close } = boot({ session: { dex_screen: 'chat' } });
+test('explicit flat rollback: the 14-chip row remains available, and a stored Chat screen opens Create', { skip: needsDom }, async () => {
+  const { w, doc, inst, close } = boot({ storage: { dex_studio_layout: 'flat' }, session: { dex_screen: 'chat' } });
   try {
     await settle(w);
     assert.equal(qa(doc, '[data-tab]').length, 14);
@@ -174,8 +175,8 @@ test('default profile: the flat 14-chip row, no masters bars, and a stored Chat 
   } finally { close(); }
 });
 
-test('opt-in masters layout: five tabs, the Image subnav, three utilities plus the Jobs drawer, no chip row', { skip: needsDom }, async () => {
-  const { w, doc, close } = boot({ storage: masters });
+test('normal fresh Studio layout: five tabs, the Image subnav, utilities and Jobs drawer', { skip: needsDom }, async () => {
+  const { w, doc, close } = boot();
   try {
     await settle(w);
     assert.equal(qa(doc, '[data-tab]').length, 0);

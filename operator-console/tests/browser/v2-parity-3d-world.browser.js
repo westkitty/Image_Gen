@@ -9,13 +9,20 @@ const { startServer, installModelSnapshots, decodePng, runner, launchBrowser, ru
 const { test, results, exitCode } = runner('v2-parity-3d-world');
 const SRC = 'fixture-src1.png';
 
-function makeGlb() {
+function makeGlb({ multi = false } = {}) {
   const pos = new Float32Array([-1,-1,-1, 1,-1,-1, 1,1,-1, -1,1,-1, -1,-1,1, 1,-1,1, 1,1,1, -1,1,1]);
   const idx = new Uint16Array([0,1,2, 0,2,3, 4,6,5, 4,7,6, 0,4,5, 0,5,1, 3,2,6, 3,6,7, 0,3,7, 0,7,4, 1,5,6, 1,6,2]);
   const bin = Buffer.concat([Buffer.from(pos.buffer), Buffer.from(idx.buffer)]);
   const json = { asset: { version: '2.0' }, scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }], meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1 }] }],
     buffers: [{ byteLength: bin.length }], bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: pos.byteLength }, { buffer: 0, byteOffset: pos.byteLength, byteLength: idx.byteLength }],
     accessors: [{ bufferView: 0, componentType: 5126, count: 8, type: 'VEC3', min: [-1,-1,-1], max: [1,1,1] }, { bufferView: 1, componentType: 5123, count: 36, type: 'SCALAR' }] };
+  if (multi) {
+    json.scenes[0].nodes.push(1);
+    json.nodes.push({ mesh: 1, translation: [4, 0, 0] });
+    json.meshes.push({ primitives: [{ attributes: { POSITION: 0 }, indices: 1, material: 1 }] });
+    json.materials = [{ pbrMetallicRoughness: { baseColorFactor: [0.2, 0.8, 0.4, 1] } },
+      { pbrMetallicRoughness: { baseColorFactor: [0.9, 0.2, 0.3, 1] } }];
+  }
   let j = Buffer.from(JSON.stringify(json)); while (j.length % 4) j = Buffer.concat([j, Buffer.from(' ')]);
   const total = 12 + 8 + j.length + 8 + bin.length, h = Buffer.alloc(12);
   h.write('glTF', 0, 'latin1'); h.writeUInt32LE(2, 4); h.writeUInt32LE(total, 8);
@@ -30,7 +37,7 @@ function makePly() {   // the viewer's loader reads binary PLY: x y z (float32) 
     body[o + 12] = 40 + (i * 7) % 215; body[o + 13] = 80 + (i * 3) % 170; body[o + 14] = 255 - (i * 5) % 200; }
   return Buffer.concat([head, body]);
 }
-const GLB = makeGlb(), PLY = makePly();
+const GLB = makeGlb(), MULTI_GLB = makeGlb({ multi: true }), PLY = makePly();
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 async function pixels(page, sel = 'canvas') {
@@ -64,7 +71,7 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
       await page.route('**/api/media/syn-cube.glb', r => r.fulfill({ contentType: 'model/gltf-binary', body: GLB }));
       await page.goto(srv.base + '/dexdiffusion/asset3d-viewer.html?artifact=syn-cube.glb', { waitUntil: 'domcontentloaded' });
       await page.waitForFunction(() => /8 vertices/.test(document.querySelector('#asset-status').innerText), null, { timeout: 15000 });
-      assert.match(await status(page), /syn-cube\.glb · 8 vertices · GLB mesh/);
+      assert.match(await status(page), /syn-cube\.glb · 1 meshes · 8 vertices · 12 triangles/);
       await page.waitForTimeout(400);
       const a = await pixels(page); assert.ok(a.lit > a.total * 0.01, `the mesh is drawn (${a.lit} lit px)`);
       const box = await page.locator('canvas').boundingBox(), cx = box.x + box.width / 2, cy = box.y + box.height / 2;
@@ -78,12 +85,43 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
       await page.close();
     });
 
+    await test('row 49: standards-compliant GLB viewer renders both transformed meshes, colors and keyboard orbit', async () => {
+      const page = await browser.newPage({ viewport: { width: 900, height: 640 } });
+      const errors = []; page.on('pageerror', error => errors.push(error.message));
+      await page.route('**/api/media/multi-scene.glb',
+        route => route.fulfill({ contentType: 'model/gltf-binary', body: MULTI_GLB }));
+      await page.goto(srv.base + '/dexdiffusion/asset3d-viewer.html?artifact=multi-scene.glb', { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => /2 meshes/.test(document.querySelector('#asset-status').innerText), null, { timeout: 15000 });
+      assert.match(await status(page), /2 meshes · 16 vertices · 24 triangles/);
+      await page.waitForTimeout(300);
+      const first = await pixels(page);
+      assert.ok(first.lit > first.total * 0.01, 'multi-mesh GLB is visibly rendered');
+      await page.locator('#asset-canvas').focus();
+      await page.keyboard.press('ArrowLeft');
+      await page.waitForTimeout(150);
+      const second = await pixels(page);
+      assert.ok(diff(first, second) > 4, 'keyboard orbit changes the rendered camera');
+      // Interrupted pointer input must not continue to rotate the scene.
+      const box = await page.locator('#asset-canvas').boundingBox();
+      await page.mouse.move(box.x + 400, box.y + 250);
+      await page.mouse.down();
+      await page.locator('#asset-canvas').evaluate(el => el.dispatchEvent(
+        new PointerEvent('pointercancel', { pointerId: 1, bubbles: true })));
+      await page.mouse.move(box.x + 470, box.y + 280);
+      await page.waitForTimeout(200);
+      const third = await pixels(page);
+      assert.ok(diff(second, third) <= 6, 'cancelled drag leaves the camera stationary');
+      await page.mouse.up();
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
     for (const [name, handler, expect] of [
-      ['a corrupt header', r => r.fulfill({ contentType: 'model/gltf-binary', body: Buffer.concat([Buffer.from('glTX'), GLB.subarray(4)]) }), /invalid GLB header/],
-      ['a truncated file', r => r.fulfill({ contentType: 'model/gltf-binary', body: GLB.subarray(0, 60) }), /invalid GLB header or length/],
-      ['an empty file', r => r.fulfill({ contentType: 'model/gltf-binary', body: Buffer.alloc(0) }), /invalid GLB header/],
-      ['a non-GLB file', r => r.fulfill({ contentType: 'text/plain', body: 'this is not a model' }), /invalid GLB header/],
-      ['a missing artifact', r => r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' }), /artifact request failed \(404\)/],
+      ['a corrupt header', r => r.fulfill({ contentType: 'model/gltf-binary', body: Buffer.concat([Buffer.from('glTX'), GLB.subarray(4)]) }), /invalid GLB/i],
+      ['a truncated file', r => r.fulfill({ contentType: 'model/gltf-binary', body: GLB.subarray(0, 60) }), /invalid GLB header or length/i],
+      ['an empty file', r => r.fulfill({ contentType: 'model/gltf-binary', body: Buffer.alloc(0) }), /invalid GLB/i],
+      ['a non-GLB file', r => r.fulfill({ contentType: 'text/plain', body: 'this is not a model' }), /invalid GLB/i],
+      ['a missing artifact', r => r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' }), /artifact request failed \(404\)/i],
     ]) {
       await test(`row 49: ${name} is refused with a visible reason and nothing is drawn`, async () => {
         const page = await browser.newPage({ viewport: { width: 700, height: 500 } });
@@ -141,7 +179,7 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
       await page.waitForTimeout(250);
       assert.equal(await page.evaluate(() => window.__focusFrameOriginal === document.querySelector('[data-focus-frame="asset3d"]')), true, 'progress/state updates must not reload 3D iframe');
       await page.getByRole('button', { name: 'Close Focus' }).click();
-      assert.equal(await assetFocus.count(), 0, 'focus overlay closes without navigating away');
+      await assetFocus.waitFor({ state: 'detached', timeout: 4000 }); // asynchronous Focus close
       // Export: the Download GLB action delivers a structurally valid GLB (header, version, declared length, JSON + BIN chunks).
       await page.route('**/api/media/syn-cube.glb/download', r => r.fulfill({ contentType: 'model/gltf-binary', headers: { 'content-disposition': 'attachment; filename="syn-cube.glb"' }, body: GLB }));
       const dl = page.waitForEvent('download');
@@ -223,7 +261,7 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
       await page.waitForTimeout(250);
       assert.equal(await page.evaluate(() => window.__focusFrameOriginal === document.querySelector('[data-focus-frame="world"]')), true, 'World iframe must remain mounted during polling');
       await page.keyboard.press('Escape');
-      assert.equal(await worldFocus.count(), 0, 'Escape closes focus without a popup');
+      await worldFocus.waitFor({ state: 'detached', timeout: 4000 }); // asynchronous Focus close
       assert.match(page.url(), /\/dexdiffusion\/$/, 'Studio navigation and source state survive closing');
       assert.deepEqual(errors, []);
       await page.close();
