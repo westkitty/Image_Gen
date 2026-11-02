@@ -41,7 +41,17 @@ LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchS
 [ -f "$SRC" ] || { echo "ERROR: missing Swift source: $SRC" >&2; exit 1; }
 [ -f "$ICON_SRC" ] || { echo "ERROR: missing icon source: $ICON_SRC" >&2; exit 1; }
 command -v swiftc >/dev/null 2>&1 || { echo "ERROR: swiftc not found. Install Xcode command line tools." >&2; exit 1; }
-python3 -c 'import PIL' 2>/dev/null || { echo "ERROR: python3 Pillow (PIL) is required to build the icon." >&2; exit 1; }
+REUSE_INSTALLED_ICON=0
+if ! python3 -c 'import PIL' 2>/dev/null; then
+  installed_icon_fingerprint="$(/usr/libexec/PlistBuddy -c 'Print :DexDiffusionIconFingerprint' "$PLIST" 2>/dev/null || true)"
+  if [ -f "$ICON" ] && [ "$installed_icon_fingerprint" = "$ICON_FINGERPRINT" ]; then
+    REUSE_INSTALLED_ICON=1
+    echo "Pillow unavailable; reusing the installed icon verified against its source fingerprint."
+  else
+    echo "ERROR: python3 Pillow (PIL) is missing, and no installed icon matches the current source fingerprint." >&2
+    exit 1
+  fi
+fi
 
 # ---- preflight safety checks ------------------------------------------------
 avail_kb="$(df -k /Applications 2>/dev/null | awk 'NR==2 {print $4}')"
@@ -68,9 +78,12 @@ SWIFT_FINGERPRINT="$(shasum -a 256 "$SRC" | cut -d' ' -f1)"
 swiftc -O -target arm64-apple-macos12.0 -framework Cocoa -framework WebKit "$SRC" -o "$STAGE/Contents/MacOS/$EXE_NAME"
 chmod 755 "$STAGE/Contents/MacOS/$EXE_NAME"
 
-ICONSET="$WORK/AppIcon.iconset"
-mkdir -p "$ICONSET"
-python3 - "$ICON_SRC" "$ICONSET" <<'PY'
+if [ "$REUSE_INSTALLED_ICON" -eq 1 ]; then
+  cp "$ICON" "$STAGE/Contents/Resources/DexDiffusion.icns"
+else
+  ICONSET="$WORK/AppIcon.iconset"
+  mkdir -p "$ICONSET"
+  python3 - "$ICON_SRC" "$ICONSET" <<'PY'
 import sys
 from PIL import Image, ImageDraw
 src, out = sys.argv[1], sys.argv[2]
@@ -90,7 +103,8 @@ for name, px in {"icon_16x16": 16, "icon_16x16@2x": 32, "icon_32x32": 32, "icon_
                  "icon_256x256@2x": 512, "icon_512x512": 512, "icon_512x512@2x": 1024}.items():
     master.resize((px, px), Image.LANCZOS).save(f"{out}/{name}.png")
 PY
-iconutil -c icns "$ICONSET" -o "$STAGE/Contents/Resources/DexDiffusion.icns"
+  iconutil -c icns "$ICONSET" -o "$STAGE/Contents/Resources/DexDiffusion.icns"
+fi
 
 cat > "$STAGE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

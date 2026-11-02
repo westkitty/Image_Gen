@@ -8,12 +8,20 @@
 	<array>
 		<string>/Users/bigmac/Image_Gen/scripts/run-backend-service.sh</string>
 	</array>
+	<key>UserName</key>
+	<string>bigmac</string>
 	<key>WorkingDirectory</key>
 	<string>/Users/bigmac/Image_Gen/operator-console</string>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
-	<true/>
+	<dict>
+		<key>PathState</key>
+		<dict>
+			<key>/Volumes/wc2tb/DexDiffusion</key>
+			<true/>
+		</dict>
+	</dict>
 	<key>ThrottleInterval</key>
 	<integer>10</integer>
 	<key>StandardOutPath</key>

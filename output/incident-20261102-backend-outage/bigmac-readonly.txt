@@ -1,0 +1,127 @@
+identity: bigmac
+bigmac
+503
+
+--- source identity ---
+b3090f9b13d95b7992fe8adfadda13b99913331e
+ M operator-console/server.js
+ M operator-console/system-info.js
+ M operator-console/tests/system-info.test.js
+?? operator-console/chat-models.test.js
+?? operator-console/chat-stream.test.js
+?? operator-console/component.js
+?? sdcpp-workflow/runs
+?? sdcpp-workflow/state
+
+--- launchd domains ---
+Could not print domain: 125: Domain does not support specified action
+user/503 = {
+	type = user
+	handle = 503
+	active count = 74
+	service count = 72
+	active service count = 21
+	creator = cron[394]
+	creator euid = 0
+	session = Background
+	external activation count = 1
+	security context = {
+		uid = 503
+		asid = 100027
+	}
+
+Bad request.
+Could not find service "local.dexdiffusion.server" in domain for uid: 503
+
+--- mounted storage ---
+/dev/disk5s1 on /Volumes/wc2tb (apfs, local, nodev, nosuid, journaled)
+drwxrwxr-x@ 40 root    wheel  1280 Oct 29 17:44 /Volumes/wc2tb
+drwxr-xr-x+ 12 andrew  wheel   384 Oct 26 12:15 /Volumes/wc2tb/DexDiffusion
+
+--- listener ---
+
+--- installed plist comparison ---
+
+--- current Big Mac error log tail (historical file) ---
+    at Layer.handleRequest (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/layer.js:152:17)
+    at next (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/route.js:157:13)
+    at Route.dispatch (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/route.js:117:3)
+    at handle (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/index.js:435:11)
+    at Layer.handleRequest (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/layer.js:152:17)
+    at /Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/index.js:295:15
+Error: EPERM: operation not permitted, open '/Volumes/wc2tb/DexDiffusion/state/current-ports.env'
+    at Object.readFileSync (node:fs:624:20)
+    at readKeyValueFile (/Users/bigmac/Image_Gen/operator-console/server.js:548:19)
+    at getWorkflowConfig (/Users/bigmac/Image_Gen/operator-console/server.js:564:8)
+    at /Users/bigmac/Image_Gen/operator-console/server.js:2643:15
+    at Layer.handleRequest (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/layer.js:152:17)
+    at next (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/route.js:157:13)
+    at Route.dispatch (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/route.js:117:3)
+    at handle (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/index.js:435:11)
+    at Layer.handleRequest (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/layer.js:152:17)
+    at /Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/index.js:295:15
+Error: EPERM: operation not permitted, open '/Volumes/wc2tb/DexDiffusion/state/current-ports.env'
+    at Object.readFileSync (node:fs:624:20)
+    at readKeyValueFile (/Users/bigmac/Image_Gen/operator-console/server.js:548:19)
+    at getWorkflowConfig (/Users/bigmac/Image_Gen/operator-console/server.js:564:8)
+    at /Users/bigmac/Image_Gen/operator-console/server.js:2643:15
+    at Layer.handleRequest (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/layer.js:152:17)
+    at next (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/route.js:157:13)
+    at Route.dispatch (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/route.js:117:3)
+    at handle (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/index.js:435:11)
+    at Layer.handleRequest (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/layer.js:152:17)
+    at /Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/index.js:295:15
+Error: EPERM: operation not permitted, open '/Volumes/wc2tb/DexDiffusion/state/current-ports.env'
+    at Object.readFileSync (node:fs:624:20)
+    at readKeyValueFile (/Users/bigmac/Image_Gen/operator-console/server.js:548:19)
+    at getWorkflowConfig (/Users/bigmac/Image_Gen/operator-console/server.js:564:8)
+    at /Users/bigmac/Image_Gen/operator-console/server.js:2643:15
+    at Layer.handleRequest (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/layer.js:152:17)
+    at next (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/route.js:157:13)
+    at Route.dispatch (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/route.js:117:3)
+    at handle (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/index.js:435:11)
+    at Layer.handleRequest (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/layer.js:152:17)
+    at /Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/index.js:295:15
+Error: EPERM: operation not permitted, open '/Volumes/wc2tb/DexDiffusion/state/current-ports.env'
+    at Object.readFileSync (node:fs:624:20)
+    at readKeyValueFile (/Users/bigmac/Image_Gen/operator-console/server.js:548:19)
+    at getWorkflowConfig (/Users/bigmac/Image_Gen/operator-console/server.js:564:8)
+    at /Users/bigmac/Image_Gen/operator-console/server.js:2643:15
+    at Layer.handleRequest (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/layer.js:152:17)
+    at next (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/route.js:157:13)
+    at Route.dispatch (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/route.js:117:3)
+    at handle (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/index.js:435:11)
+    at Layer.handleRequest (/Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/lib/layer.js:152:17)
+    at /Users/bigmac/Library/Caches/DexDiffusion/validation-workspaces/image-gen-8d619294/source/operator-console/node_modules/router/index.js:295:15
+
+--- launchd failure diagnostics ---
+2026-11-02 05:42:44.856 E  launchd[1:510009] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:43:13.542 E  launchd[1:50ff8b] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:44:13.566 E  launchd[1:51012e] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:44:28.467 E  launchd[1:510153] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:44:44.900 E  launchd[1:5101ce] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:45:13.567 E  launchd[1:51026a] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:46:13.567 E  launchd[1:51026a] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:46:45.000 E  launchd[1:510454] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:47:13.650 E  launchd[1:510454] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:48:13.667 E  launchd[1:5105a9] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:48:45.072 E  launchd[1:510508] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:49:13.667 E  launchd[1:510508] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:49:28.883 E  launchd[1:51088d] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:50:13.683 E  launchd[1:5108f3] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:50:45.150 E  launchd[1:51088d] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:51:13.750 E  launchd[1:510a96] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:52:13.774 E  launchd[1:510b3f] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:52:45.183 E  launchd[1:510ba9] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:53:13.767 E  launchd[1:510b90] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:54:13.767 E  launchd[1:510cdb] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:54:29.342 E  launchd[1:510cfc] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:54:45.266 E  launchd[1:510d8e] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:55:13.842 E  launchd[1:510dc1] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:56:13.867 E  launchd[1:510eda] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:56:45.356 E  launchd[1:510fb5] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:57:13.883 E  launchd[1:510fb5] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:58:13.883 E  launchd[1:5110c5] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:58:45.433 E  launchd[1:511091] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:59:13.942 E  launchd[1:511222] [user/503:] Could not find job with label local.dexdiffusion.server
+2026-11-02 05:59:29.683 E  launchd[1:5112fb] [user/503:] Could not find job with label local.dexdiffusion.server

@@ -1,0 +1,13 @@
+2026-11-02 live service activation attempts
+
+1. Unprivileged: launchctl bootstrap user/503 /Users/bigmac/Library/LaunchAgents/local.dexdiffusion.server.plist
+   Result: Bootstrap failed: 5: Input/output error. launchctl recommended rerunning as root for richer errors; no privileged command was run.
+2. Legacy alternative: launchctl load -w ~/Library/LaunchAgents/local.dexdiffusion.server.plist
+   Result: exit 134. Service remained absent from user/503, no port 31337 listener, API HTTP status 000.
+
+The LaunchAgent plist is installed and enabled. GUI/503 is unavailable in the SSH-only session. No process was started manually and no existing process was signalled.
+
+MacBook helper verification
+
+- The first real `bin/dexdiffusion start` attempt exposed that launchctl bootstrap output was not sufficient proof of service registration; it recovered the project-owned tunnel once before the remote API probe contradicted readiness. That tunnel was replaced by another exact project-owned SSH forward; no unrelated PID or workload was signalled.
+- The bounded correction now requires the installer to verify the registered runner and the remote API + Studio probe to emit `DEX_BACKEND_READY` before any tunnel recovery signal. A subsequent start preserved the same tunnel PID but still ended with Big Mac unavailable.

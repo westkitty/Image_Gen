@@ -8,8 +8,8 @@ DATA_ROOT="${DEX_DATA_ROOT:-/Volumes/wc2tb/DexDiffusion}"
 CONSOLE_DIR="${OPERATOR_CONSOLE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../operator-console" && pwd)}"
 
 # Strict fail-closed check: verify volume mount exists and is a distinct mount.
-if [ ! -d "$VOLUME_MOUNT" ]; then
-  echo "FATAL: External storage volume $VOLUME_MOUNT is not mounted." >&2
+if [ ! -d "$VOLUME_MOUNT" ] || ! /sbin/mount | grep -F " on $VOLUME_MOUNT (" >/dev/null; then
+  echo "FATAL: External storage volume $VOLUME_MOUNT is not mounted as a filesystem; refusing local-disk fallback." >&2
   exit 1
 fi
 

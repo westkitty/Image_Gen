@@ -118,6 +118,10 @@ Quitting the app **does not** stop the console, so tailnet users keep access. Us
 `bin/dexdiffusion stop` for that. On startup failure the window's status line shows
 the log path; *Help → Copy Error Report* and *File → Open Logs* are available.
 Logs: `operator-console/server.log`, `operator-console/DexDiffusion-macos-wrapper.log`.
+WebKit connection failures invoke the bounded project recovery helper automatically;
+the wrapper retries twice and extends its startup watchdog only while the helper
+or page is still progressing. A healthy tunnel is preserved when the remote
+backend recovers behind it.
 
 **Install / repair / reinstall** (safe to re-run, idempotent):
 
@@ -126,7 +130,9 @@ scripts/install-macos-app.sh
 ```
 
 It compiles the Swift wrapper and builds the icon from the source artwork (needs
-`swiftc` and python3 Pillow). It installs `/Applications/DexDiffusion.app` (the
+`swiftc` and python3 Pillow when the icon must be rebuilt). If Pillow is absent,
+it reuses the installed icon only when its recorded source fingerprint matches
+the current artwork. It installs `/Applications/DexDiffusion.app` (the
 previous build is moved to the archive) and registers it with Launch Services. It
 makes the full Git `HEAD`, Swift source fingerprint, and icon-artwork fingerprint
 available in the bundle metadata. `bin/dexdiffusion status` compares full
@@ -227,6 +233,46 @@ survives terminal and app quit. It
 does **not** start at login; the Dock app or `start` brings it up. `stop` never
 touches Tailscale or its Serve configuration. First-time setup only:
 `(cd operator-console && npm install)`.
+
+### Big Mac backend service
+
+The preferred service is a LaunchAgent in Big Mac's active Aqua login session.
+It lets macOS apply the user's Removable Volumes permission to Node. It starts
+at login and is restarted by launchd after ordinary process crashes. It cannot
+run before that user logs in. From the MacBook, `bin/dexdiffusion start`
+checks SSH separately from backend readiness and invokes the installer when
+the service is missing or the API is down. With Big Mac's GUI session active,
+the idempotent repair command is:
+
+```bash
+ssh westcat 'bash /Users/bigmac/Image_Gen/scripts/install-backend-service.sh --user-session'
+```
+
+The LaunchAgent runs as `bigmac`, binds the backend to loopback, and has no
+access to change unrelated services. Launchd `KeepAlive` is gated on the
+durable data path; the runner confirms `/Volumes/wc2tb` is actually mounted
+before starting Node. The installer refuses a different service definition,
+loaded system service, or port owner, and verifies API identity, listener
+ownership, process user, and Studio HTTP readiness. Recovery probes are bounded;
+a TCC denial unloads and disables the job instead of retrying forever. It records
+that installer-owned disablement so a later app/helper recovery can retry once;
+if TCC still refuses access, the installer disables it again. Manual disables
+without that marker are left alone.
+
+A system LaunchDaemon installation was tested on Nov 2, but macOS refused the
+Node removable-volume request in its background session and launchd retried
+the job. The system daemon is therefore disabled. Do not use it for the current
+volume-backed backend. Without a logged-in Big Mac user, backend availability
+is not established; unattended pre-login service operation would require a
+different approved storage/TCC design. Reboot and logout persistence have not
+been tested. If this installer disables the user agent after a TCC denial, it
+records that state and a later app/helper recovery makes one bounded retry. If
+macOS still denies access, the installer disables the job again. A manual
+override is available only after the permission has been corrected:
+
+```bash
+ssh westcat 'bash /Users/bigmac/Image_Gen/scripts/install-backend-service.sh --user-session-enable-after-tcc'
+```
 
 ## Health checks
 

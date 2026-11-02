@@ -148,6 +148,7 @@ sys.exit(1)' 2>/dev/null
 }
 
 cmd_start() {
+  local reused_tunnel=0
   if pid="$(owned_pid)" && healthy; then
     local v; v="$(version_json)"
     local cwd; cwd="$(printf '%s' "$v" | json_field cwd)"
@@ -162,34 +163,70 @@ cmd_start() {
     listener="$(port_pid)"
     if [ -n "$listener" ]; then
       if [ "$(hostname -s)" != "bigmac" ] && owned_ssh_tunnel_pid "$listener"; then
-        # Restore only a verified DexDiffusion tunnel, only when local HTTP is
-        # unavailable AND Big Mac's own API has been proven responsive. Never
-        # terminate an unknown port owner or restart a healthy backend here.
+        # A listening SSH forward can outlive its upstream. Diagnose and
+        # recover the remote service while preserving the healthy tunnel.
         if healthy; then
           echo "ERROR: local port responds but its API version is not recognized. Preserving listener $listener." >&2
           exit 1
         fi
-        if ! bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" "curl -fsS --max-time 4 http://127.0.0.1:31337/api/version" >/dev/null 2>&1; then
-          echo "ERROR: Big Mac backend unavailable; preserving DexDiffusion SSH tunnel $listener." >&2
+        local remote_rc=0 service_output=""
+        if ! bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
+          "printf DEX_SSH_REACHABLE" >/dev/null 2>&1; then
+          echo "ERROR: SSH to Big Mac is unavailable or unverified; preserving existing local tunnel $listener." >&2
           exit 1
         fi
-        # Recheck PID ownership after the remote probe to avoid signalling a
-        # replacement process if the tunnel exited while we were inspecting it.
-        if [ "$(port_pid)" != "$listener" ] || ! owned_ssh_tunnel_pid "$listener"; then
-          echo "ERROR: local port owner changed during recovery. Not signalling anything." >&2
+        service_output="$(bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
+          "bash /Users/bigmac/Image_Gen/scripts/install-backend-service.sh --user-session" 2>&1)" || remote_rc=$?
+        if [ "$remote_rc" -eq 124 ] || [ "$remote_rc" -eq 125 ]; then
+          echo "ERROR: Big Mac service state unknown (SSH/service probe timed out); preserving tunnel $listener." >&2
           exit 1
         fi
-        echo "Recovering unresponsive project-owned SSH tunnel (pid $listener)..."
-        # The known tunnel was unresponsive and Big Mac is healthy; stop only
-        # its exact listener PID so a new dedicated connection can be created.
-        kill -TERM "$listener" 2>/dev/null || true
-        for _ in 1 2 3 4 5 6 7 8; do
-          [ -z "$(port_pid)" ] && break
+        if [ "$remote_rc" -ne 0 ] || ! printf '%s\n' "$service_output" | grep -Eq '^SERVICE_(READY|ALREADY_LOADED)( |$)'; then
+          echo "ERROR: Big Mac service recovery was not confirmed (ssh exit $remote_rc); preserving tunnel $listener." >&2
+          printf '%s\n' "$service_output" >&2
+          bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
+            "echo '--- Big Mac GUI service diagnostics ---'; launchctl print gui/\$(id -u)/local.dexdiffusion.server 2>&1 | head -50; echo '--- Big Mac server-error.log mtime ---'; stat -f 'mtime=%Sm' -t '%Y-%m-%dT%H:%M:%S%z' /Users/bigmac/Image_Gen/operator-console/server-error.log 2>&1; echo '--- Big Mac server-error.log contents (may predate this service run) ---'; tail -40 /Users/bigmac/Image_Gen/operator-console/server-error.log 2>&1; echo '--- Big Mac listener ---'; lsof -nP -iTCP:31337 -sTCP:LISTEN 2>&1" >&2 || true
+          exit 1
+        fi
+        local ready=0
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+          local marker="" probe_rc=0
+          marker="$(bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
+            "curl -fsS --max-time 3 http://127.0.0.1:31337/api/version >/dev/null && curl -fsS --max-time 3 http://127.0.0.1:31337/dexdiffusion/ >/dev/null && printf DEX_BACKEND_READY")" || probe_rc=$?
+          if [ "$probe_rc" -eq 0 ] && [ "$marker" = DEX_BACKEND_READY ]; then ready=1; break; fi
+          sleep 2
+        done
+        if [ "$ready" -ne 1 ]; then
+          echo "ERROR: Big Mac service did not become ready after bounded recovery; preserving tunnel $listener." >&2
+          exit 1
+        fi
+        local tunnel_ready=0
+        for _ in 1 2 3; do
+          if healthy; then tunnel_ready=1; break; fi
           sleep 1
         done
-        if [ -n "$(port_pid)" ]; then
-          echo "ERROR: project tunnel did not relinquish port $PORT. Preserving remaining process." >&2
-          exit 1
+        if [ "$tunnel_ready" -eq 1 ]; then
+          reused_tunnel=1
+          echo "Big Mac backend recovered; existing SSH tunnel pid $listener is healthy and preserved."
+        else
+          # Recheck PID ownership after the remote probe to avoid signalling a
+          # replacement process if the tunnel exited while we were inspecting it.
+          if [ "$(port_pid)" != "$listener" ] || ! owned_ssh_tunnel_pid "$listener"; then
+            echo "ERROR: local port owner changed during recovery. Not signalling anything." >&2
+            exit 1
+          fi
+          echo "Big Mac is healthy but the existing project tunnel is still unresponsive; recovering tunnel pid $listener..."
+          # Stop only the exact owned tunnel, and only after bounded local
+          # probes confirm it did not recover with the backend.
+          kill -TERM "$listener" 2>/dev/null || true
+          for _ in 1 2 3 4 5 6 7 8; do
+            [ -z "$(port_pid)" ] && break
+            sleep 1
+          done
+          if [ -n "$(port_pid)" ]; then
+            echo "ERROR: project tunnel did not relinquish port $PORT. Preserving remaining process." >&2
+            exit 1
+          fi
         fi
       else
         echo "ERROR: port $PORT is in use by a process that is not this checkout's operator-console or tunnel." >&2
@@ -204,21 +241,46 @@ cmd_start() {
       echo "Starting DexDiffusion (log: $LOG)..."
       python3 "$DETACH_HELPER" "$CONSOLE_DIR" "$LOG" node server.js
     else
-      echo "Connecting to Big Mac DexDiffusion backend ($SSH_TARGET)..."
-      if ! bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" "curl -fsS http://127.0.0.1:31337/api/version" >/dev/null 2>&1; then
-        echo "Big Mac backend service not responding; attempting launchctl kickstart..." >&2
-        bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" "launchctl kickstart -k gui/503/local.dexdiffusion.server 2>/dev/null || true" || true
-        sleep 2
+      if [ "$reused_tunnel" -eq 1 ]; then
+        echo "Reusing recovered SSH tunnel pid $(port_pid)."
+      else
+        echo "Connecting to Big Mac DexDiffusion backend ($SSH_TARGET)..."
+        if ! bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
+          "curl -fsS --max-time 3 http://127.0.0.1:31337/api/version >/dev/null"; then
+          echo "Big Mac API unavailable; checking SSH reachability and repairing the owned user-session service." >&2
+          if ! bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
+            "printf DEX_SSH_REACHABLE" >/dev/null 2>&1; then
+            echo "ERROR: SSH destination $SSH_TARGET is unavailable or unverified; no tunnel or service was changed." >&2
+            exit 1
+          fi
+          local recover_rc=0 service_output=""
+          service_output="$(bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
+            "bash /Users/bigmac/Image_Gen/scripts/install-backend-service.sh --user-session" 2>&1)" || recover_rc=$?
+          if [ "$recover_rc" -ne 0 ] || ! printf '%s\n' "$service_output" | grep -Eq '^SERVICE_(READY|ALREADY_LOADED)( |$)'; then
+            echo "ERROR: Big Mac service recovery was not confirmed (ssh exit $recover_rc). Remote current diagnostics:" >&2
+            printf '%s\n' "$service_output" >&2
+            bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
+              "echo '--- Big Mac GUI service diagnostics ---'; launchctl print gui/\$(id -u)/local.dexdiffusion.server 2>&1 | head -50; echo '--- Big Mac server-error.log mtime ---'; stat -f 'mtime=%Sm' -t '%Y-%m-%dT%H:%M:%S%z' /Users/bigmac/Image_Gen/operator-console/server-error.log 2>&1; echo '--- Big Mac server-error.log contents (may predate this service run) ---'; tail -40 /Users/bigmac/Image_Gen/operator-console/server-error.log 2>&1; echo '--- listener ---'; lsof -nP -iTCP:31337 -sTCP:LISTEN 2>&1" >&2 || true
+            exit 1
+          fi
+        fi
       fi
-      ssh -f -N -o ExitOnForwardFailure=yes -L "$PORT:127.0.0.1:31337" "$SSH_TARGET"
+      if [ "$reused_tunnel" -ne 1 ]; then
+        ssh -f -N -o ExitOnForwardFailure=yes -L "$PORT:127.0.0.1:31337" "$SSH_TARGET"
+      fi
     fi
     for _ in $(seq 1 30); do
       healthy && break
       sleep 1
     done
     if ! healthy; then
-      echo "ERROR: DexDiffusion did not become healthy within 30s. Last log lines:" >&2
-      if [ -f "$LOG" ]; then tail -n 20 "$LOG" >&2 || true; fi
+      echo "ERROR: DexDiffusion Studio/API unavailable after bounded startup. MacBook log is not evidence of Big Mac service state." >&2
+      if [ "$(hostname -s)" != "bigmac" ]; then
+        bounded $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
+          "echo '--- Big Mac GUI service diagnostics ---'; launchctl print gui/\$(id -u)/local.dexdiffusion.server 2>&1 | head -50; echo '--- Big Mac server-error.log mtime ---'; stat -f 'mtime=%Sm' -t '%Y-%m-%dT%H:%M:%S%z' /Users/bigmac/Image_Gen/operator-console/server-error.log 2>&1; echo '--- Big Mac server-error.log contents (may predate this service run) ---'; tail -40 /Users/bigmac/Image_Gen/operator-console/server-error.log 2>&1; echo '--- Big Mac listener ---'; lsof -nP -iTCP:31337 -sTCP:LISTEN 2>&1" >&2 || echo "Big Mac diagnostics unavailable (SSH failure or timeout)." >&2
+      else
+        if [ -f "$LOG" ]; then tail -n 20 "$LOG" >&2 || true; fi
+      fi
       exit 1
     fi
     pid="$(owned_pid)"

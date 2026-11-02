@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var navigationStarted = false
     private var studioVerified = false
     private var navigationToken = 0
+    private var startupWatchdogDeferrals = 0
     private var bootstrapRetryCount = 0
     private var reconnectAttempts = 0
     private var pendingReconnectAfterStartup = false
@@ -78,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         guard let wv = webView else { return }
         navigationStarted = true
         studioVerified = false
+        startupWatchdogDeferrals = 0
         navigationToken += 1
         let token = navigationToken
         setStatus("Loading DexDiffusion at \(consoleURL.absoluteString)...")
@@ -86,13 +88,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         // Revalidate the HTML from the local tunnel, not the old page cache.
         request.cachePolicy = .reloadIgnoringLocalCacheData
         wv.load(request)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self, weak wv] in
+        // Backend recovery and the SSH forward can take longer than a normal
+        // warm navigation. Keep the page visible while they progress; only
+        // surface the watchdog after one bounded startup window.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 35) { [weak self, weak wv] in
             guard let self = self, let wv = wv, self.webView === wv,
                   self.navigationToken == token, !self.studioVerified else { return }
-            self.appendLog("WKWebView watchdog: Studio has not verified its interface after 15 seconds")
-            self.setStatus("Studio has not finished loading. View > Reload to retry; Help > Copy Error Report for details.")
-            self.showLoadFailure("Studio did not finish loading. The Big Mac connection may be unavailable or WebKit may be stalled. Retry connection or copy the error report.")
+            if (self.serviceStartupInProgress || wv.isLoading) && self.startupWatchdogDeferrals < 2 {
+                self.startupWatchdogDeferrals += 1
+                let attempt = self.startupWatchdogDeferrals
+                self.appendLog("WKWebView startup is still progressing; deferring failure overlay \(attempt)/2")
+                self.setStatus("DexDiffusion is still recovering or loading Studio; waiting before reporting failure...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self, weak wv] in
+                    guard let self = self, let wv = wv, self.webView === wv,
+                          self.navigationToken == token, !self.studioVerified else { return }
+                    self.finishStartupWatchdog(for: wv, token: token)
+                }
+                return
+            }
+            self.finishStartupWatchdog(for: wv, token: token)
         }
+    }
+
+    private func finishStartupWatchdog(for webView: WKWebView, token: Int) {
+        guard self.webView === webView, navigationToken == token, !studioVerified else { return }
+        appendLog("WKWebView watchdog: Studio has not verified its interface after the bounded startup window")
+        setStatus("Studio has not finished loading. View > Reload to retry; Help > Copy Error Report for details.")
+        showLoadFailure("Studio did not finish loading. The Big Mac connection may be unavailable or WebKit may be stalled. Retry connection or copy the error report.")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -556,31 +578,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        setStatus("Failed to load: \(error.localizedDescription) · View → Reload (⌘R) to retry")
-        appendLog("webView didFail: \(error.localizedDescription)")
-        showLoadFailure("Studio navigation failed: \(error.localizedDescription). Retry connection or copy the error report.")
+        handleNavigationFailure(error, phase: "didFail")
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        studioVerified = false
         let nsError = error as NSError
-        appendLog("webView didFailProvisionalNavigation (code \(nsError.code)): \(error.localizedDescription)")
         if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
             return // Obsolete reload, not a real connection failure.
         }
-        showLoadFailure("MacBook could not load Studio (error \(nsError.code)): \(error.localizedDescription). Check the Big Mac tunnel, then retry.")
-        if nsError.domain == NSURLErrorDomain && (nsError.code == NSURLErrorCannotConnectToHost || nsError.code == NSURLErrorNetworkConnectionLost) {
-            guard reconnectAttempts < 2 else {
-                setStatus("DexDiffusion connection failed repeatedly. Help > Copy Error Report for details.")
-                return
-            }
-            reconnectAttempts += 1
-            pendingReconnectAfterStartup = true
-            setStatus("DexDiffusion backend unreachable; checking the local tunnel...")
-            if !serviceStartupInProgress { ensureServicesThenLoad() }
-        } else {
-            setStatus("Could not load DexDiffusion: \(error.localizedDescription) - View > Reload to retry")
+        handleNavigationFailure(error, phase: "didFailProvisionalNavigation")
+    }
+
+    private func handleNavigationFailure(_ error: Error, phase: String) {
+        studioVerified = false
+        let nsError = error as NSError
+        appendLog("webView \(phase) (domain \(nsError.domain), code \(nsError.code)): \(error.localizedDescription)")
+        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+            appendLog("Ignoring cancelled WebKit navigation; a newer navigation is already in progress")
+            return
         }
+        showLoadFailure("Studio navigation failed (\(nsError.code)): \(error.localizedDescription). Checking the backend and tunnel; retry remains available.")
+        let recoverableURLErrors: Set<Int> = [
+            NSURLErrorCannotFindHost,
+            NSURLErrorCannotConnectToHost,
+            NSURLErrorNetworkConnectionLost,
+            NSURLErrorNotConnectedToInternet,
+            NSURLErrorTimedOut,
+            NSURLErrorDNSLookupFailed,
+        ]
+        guard nsError.domain == NSURLErrorDomain, recoverableURLErrors.contains(nsError.code) else {
+            setStatus("Could not load DexDiffusion: \(error.localizedDescription) - View > Reload to retry")
+            return
+        }
+        guard reconnectAttempts < 2 else {
+            setStatus("DexDiffusion recovery attempts were exhausted. View > Reload or Retry connection to try again.")
+            return
+        }
+        reconnectAttempts += 1
+        pendingReconnectAfterStartup = true
+        setStatus("DexDiffusion connection failed; checking the backend service and SSH tunnel (attempt \(reconnectAttempts)/2)...")
+        if !serviceStartupInProgress { ensureServicesThenLoad() }
     }
 
     @objc private func copyErrorReport() {

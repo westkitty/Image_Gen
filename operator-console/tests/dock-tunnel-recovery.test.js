@@ -19,7 +19,7 @@ hostname(){ echo MacBook-Air; }
 version_json(){ if [ "$STATE" = stale ]; then return 1; fi; echo '{"name":"Image_Gen Operator Console","cwd":"/Users/bigmac/Image_Gen/operator-console","pid":5432}'; }
 json_field(){ python3 -c 'import json,sys;print(json.load(sys.stdin).get(sys.argv[1],""))' "$1"; }
 healthy(){ [ "$STATE" = new ] || [ "$STATE" = healthy ]; }
-bounded(){ [ "$BACKEND" = yes ]; }
+bounded(){ case "$*" in *DEX_SSH_REACHABLE*) echo DEX_SSH_REACHABLE; return 0 ;; *install-backend-service.sh*) [ "$BACKEND" = yes ] && { echo SERVICE_READY; return 0; } ;; *DEX_BACKEND_READY*) [ "$BACKEND" = yes ] && { echo DEX_BACKEND_READY; return 0; } ;; *) [ "$BACKEND" = yes ] ;; esac; }
 kill(){ echo "SIGNAL:$1:$2"; [ "$OWNER" = ssh ] && [ "$2" = 1111 ] && [ "$1" = -TERM ]; STATE=none; }
 ssh(){ echo "NEW_TUNNEL"; STATE=new; }
 sleep(){ :; }
@@ -36,7 +36,7 @@ test('Unrelated listener is never signalled or replaced',()=>{
  const x=simulate({owner:'other'});assert.notEqual(x.code,0);assert.match(x.error,/not this checkout/);assert.doesNotMatch(x.output,/SIGNAL|NEW_TUNNEL/);
 });
 test('Backend unreachable preserves even the correctly owned tunnel',()=>{
- const x=simulate({backend:false});assert.notEqual(x.code,0);assert.match(x.error,/backend unavailable; preserving/);assert.doesNotMatch(x.output,/SIGNAL|NEW_TUNNEL/);
+ const x=simulate({backend:false});assert.notEqual(x.code,0);assert.match(x.error,/service recovery was not confirmed.*preserving tunnel/);assert.doesNotMatch(x.output,/SIGNAL|NEW_TUNNEL/);
 });
 test('Healthy tunnel is reused without termination or reconnection',()=>{
  const x=simulate({initial:'healthy'});assert.equal(x.code,0,x.error);assert.match(x.output,/already connected to Big Mac/);assert.doesNotMatch(x.output,/SIGNAL|NEW_TUNNEL/);
