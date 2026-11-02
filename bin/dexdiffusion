@@ -75,7 +75,7 @@ bounded() {
   ' "$secs" "$@" </dev/null
 }
 
-port_pid() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1; }
+port_pid() { (lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null || true) | head -1; }
 version_json() { curl -fsS --max-time 2 "$BASE/api/version" 2>/dev/null; }
 json_field() { python3 -c 'import json,sys; d=json.load(sys.stdin); v=d.get(sys.argv[1]); print("" if v is None else v)' "$1" 2>/dev/null; }
 

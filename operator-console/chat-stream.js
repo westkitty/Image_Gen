@@ -9,7 +9,7 @@ const { createNdjsonParser } = require('./ollama-ndjson');
 const SCHEMA = 'dex.chat.v1';
 // The only upstream routes this client may call; pull/push/create/copy/delete/embed are unreachable from here.
 const UPSTREAM_ROUTES = new Set(['/api/tags', '/api/ps', '/api/version', '/api/chat']);
-const DEFAULT_TIMEOUTS = Object.freeze({ headersMs: 15000, firstTokenLightMs: 120000, firstTokenHeavyMs: 300000, idleMs: 60000, wallMs: 15 * 60 * 1000 });
+const DEFAULT_TIMEOUTS = Object.freeze({ headersMs: 15000, firstTokenLightMs: 120000, firstTokenHeavyMs: 600000, idleMs: 60000, wallMs: 15 * 60 * 1000 });
 // Server-constant context window; the client can never raise it.
 const NUM_CTX = 4096;
 
