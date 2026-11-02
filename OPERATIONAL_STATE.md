@@ -1,5 +1,76 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## Three Creative-Writing LLMs Installed & Fully Integrated — 2026-11-01 (`main`, Production Verified)
+
+- **Release Status**: **CANONICAL PRODUCTION RELEASE VERIFIED & PROVEN**.
+- **Target Infrastructure**:
+  - MacBook Air (controller & canonical storage `/Users/andrew/images_made`, `operator-console` on `127.0.0.1:31337`).
+  - Big Mac (Apple M4 Mac mini, 32 GB unified memory, accessed via `ssh westcat`).
+  - Remote Storage: `/Volumes/wc2tb/DexDiffusion/models/ollama/blobs/`.
+- **Installed Models — Exactly Three**:
+  1. **Cydonia 24B Heretic v4**:
+     - Local Ollama Tag: `dex-cydonia-heretic:24b-q4km`
+     - Display Name: `Cydonia 24B Heretic v4`
+     - GGUF File: `Cydonia-24B-v4.3-heretic-v4.Q4_K_M.gguf`
+     - Upstream Source: `https://huggingface.co/mradermacher/Cydonia-24B-v4.3-heretic-v4-GGUF`
+     - Base Model: Mistral Small 24B Base / Cydonia 24B v4.3
+     - Quantization: Q4_K_M | Exact Size: 14,333,911,072 bytes (14.3 GB)
+     - SHA-256: `86da528caa44e0df92cf3daf7f6a5b5130df5a2e5b15262520e436c58d7f91cc`
+     - License: Apache-2.0 / Mistral Research License derived
+     - Role: Creative writing / long-form fiction / roleplay
+  2. **Gemma 4 12B Heretic**:
+     - Local Ollama Tag: `dex-gemma4-heretic:12b-q4km`
+     - Display Name: `Gemma 4 12B Heretic`
+     - GGUF File: `Gemma-4-12B-it-heretic-Q4_K_M.gguf`
+     - Upstream Source: `https://huggingface.co/SC117/Gemma-4-12B-it-heretic-GGUF`
+     - Base Model: Gemma 4 / Gemma 2/3 series
+     - Quantization: Q4_K_M | Exact Size: 7,381,381,760 bytes (7.38 GB)
+     - SHA-256: `a818676b67f9f89373e68e70432ec48391b24cad969bcedd6b4f896e3c681eff`
+     - License: Gemma Terms of Use / Apache-2.0
+     - Role: Fast/balanced chat and prompt enhancement
+  3. **Rocinante 12B v1.1**:
+     - Local Ollama Tag: `dex-rocinante:12b-v1.1-q4km`
+     - Display Name: `Rocinante 12B v1.1`
+     - GGUF File: `Rocinante-12B-v1.1-Q4_K_M.gguf`
+     - Upstream Source: `https://huggingface.co/TheDrummer/Rocinante-12B-v1.1-GGUF`
+     - Base Model: Mistral NeMo 12B Base (12.2B parameters)
+     - Quantization: Q4_K_M | Exact Size: 7,477,203,392 bytes (7.48 GB)
+     - SHA-256: `bdeaeefac79cff944ae673e6924c9f82f7eed789669a32a09997db398790b0b5`
+     - License: Permissive creative-writing terms ("other" / Mistral NeMo Apache-2.0 Base)
+     - Template: ChatML (`<|im_start|>user ... <|im_end|><|im_start|>assistant`)
+     - Role: Narrative prose / character dialogue / roleplay
+- **DexDiffusion Integration**:
+  - Wired into `operator-console/models-config.js` and `operator-console/ollama-legacy.js` allowlists.
+  - Exposed via `GET /api/models` with curated metadata cards, `GET /api/chat/models`, `GET /api/ollama/status`, and `POST /api/ollama/enhance`.
+  - Chat model picker and Models management workspace dynamically reflect live installed status without hardcoded falsehoods.
+  - Capacity-one heavy compute arbiter (`bigmac-heavy-inference`) preserved.
+  - Immediate memory reclamation enforced (`keep_alive: 0`).
+  - Load timeout configured to 15m (`OLLAMA_LOAD_TIMEOUT=15m`) and `firstTokenHeavyMs: 600000` to support USB drive mmap.
+- **Empirical Validation Summary**:
+  - **Cydonia 24B Heretic v4**:
+    - Turn 1: TTFT 217.38s (cold mmap 14.3GB), generation throughput ~7.8 tok/s, 233 chars.
+    - Context Retention: Turn 2 recalled secret code `PHOENIX-99` accurately.
+    - In-Flight Cancellation: Cancel endpoint cleanly returned `terminal: stopped`.
+    - Memory Cleanup: `keep_alive: 0` left `models: []` in `ollama ps`.
+  - **Gemma 4 12B Heretic**:
+    - Turn 1: TTFT 187.53s, prompt eval 80.52 t/s, generation throughput 12.43 t/s, 185 chars.
+    - Context Retention: Recalled `PHOENIX-99` accurately.
+    - In-Flight Cancellation: Cleanly stopped in flight.
+    - Memory Cleanup: `keep_alive: 0` left `models: []`.
+  - **Rocinante 12B v1.1**:
+    - Turn 1: TTFT 195.14s, generation throughput 13.66 t/s, 233 chars.
+    - Context Retention: Recalled `PHOENIX-99` accurately.
+    - In-Flight Cancellation: Cleanly stopped in flight.
+    - Memory Cleanup: `keep_alive: 0` left `models: []`.
+  - **Model Switching**:
+    - Sequential switching from Gemma 4 to Rocinante verified with distinct sessions, zero cross-model interference, and clean memory unloads.
+- **Cross-Engine FLUX.2 Klein 4B Recovery Proof**:
+  - Live Generation Run: `20261101-223154-controlled-flux2-klein-4b`
+  - Canonical Output: `/Users/andrew/images_made/20261101-223154-controlled-flux2-klein-4b-s918273-controlled-flux2-klein-4b.png`
+  - Canonical SHA-256: `777160afa4cc3fb230ac3f7a7b5e33a465e925079f28edb96b5676b6ba82e6cc` (512x512 RGB PNG, 274,912 bytes)
+  - Remote Staging Cleanup: Verified ephemeral remote file `/tmp/dexdiffusion-mflux.a1hXSyRc` deleted on Big Mac.
+  - Arbiter Lease: Heavy inference lease cleanly returned to idle.
+
 ## DexDiffusion Final Release Closure & LoRA Correction — 2026-10-24 (`main`, Production Verified)
 
 - **Release Status**: **CANONICAL PRODUCTION RELEASE VERIFIED & PROVEN**.

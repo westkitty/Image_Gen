@@ -318,7 +318,15 @@ strip_png_metadata() {
   [ "$#" -ge 1 ] || return 1
   local png="$1"
   [ -f "$png" ] || return 1
-  python3 - "$png" <<'PY'
+  local py="python3"
+  if ! "$py" -c "import PIL" >/dev/null 2>&1; then
+    if /usr/bin/python3 -c "import PIL" >/dev/null 2>&1; then
+      py="/usr/bin/python3"
+    elif /opt/homebrew/bin/python3.14 -c "import PIL" >/dev/null 2>&1; then
+      py="/opt/homebrew/bin/python3.14"
+    fi
+  fi
+  "$py" - "$png" <<'PY'
 from PIL import Image, PngImagePlugin
 import sys
 
