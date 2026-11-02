@@ -6,6 +6,9 @@ const CHAT_MODELS = Object.freeze([
   Object.freeze({ name: 'gemma3:4b', class: 'light', default: true }),
   Object.freeze({ name: 'qwen3.8:27b-mlx', class: 'heavy' }),
   Object.freeze({ name: 'hermes-qwen3.8-27b-64k:latest', class: 'heavy' }),
+  Object.freeze({ name: 'dex-cydonia-heretic:24b-q4km', class: 'heavy', label: 'Cydonia 24B Heretic v4' }),
+  Object.freeze({ name: 'dex-gemma4-heretic:12b-q4km', class: 'heavy', label: 'Gemma 4 12B Heretic' }),
+  Object.freeze({ name: 'dex-rocinante:12b-v1.1-q4km', class: 'heavy', label: 'Rocinante 12B v1.1' }),
 ]);
 const DEFAULT_CHAT_MODEL = CHAT_MODELS.find(m => m.default).name;
 // Same threshold as parseOllamaPs (media.js): a tag this large is heavy whatever it is declared as.
@@ -29,7 +32,7 @@ function classFor(entry, tag) {
 // The allowlist as the client may see it. Tags that are installed but not listed never appear.
 function describeAllowlist(tagsJson) {
   const tags = installedTags(tagsJson);
-  return CHAT_MODELS.map(m => ({ name: m.name, class: classFor(m, tags.get(m.name)), installed: tags.has(m.name) }));
+  return CHAT_MODELS.map(m => ({ name: m.name, label: m.label || m.name, class: classFor(m, tags.get(m.name)), installed: tags.has(m.name) }));
 }
 
 // -> { ok:true, model, resource_class } or { ok:false, status, code }

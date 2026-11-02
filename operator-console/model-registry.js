@@ -509,6 +509,108 @@ const KNOWN_CURATED_CARDS = [
     supports_embeddings: false,
     prompt_profile: 'image.sdxl',
     caveat: 'SDXL Checkpoint. Photoreal male-leaning Lustify hybrid.'
+  },
+  {
+    id: 'dex-cydonia-heretic:24b-q4km',
+    tag: 'dex-cydonia-heretic:24b-q4km',
+    display_name: 'Cydonia 24B Heretic v4',
+    family: 'creative-writing',
+    backend: 'ollama',
+    quantization: 'Q4_K_M',
+    status: 'PROVEN',
+    primary: false,
+    preview_image: null,
+    preview_provenance: 'placeholder',
+    description: '24B Heretic v4 creative writing, long-form fiction, and roleplay model.',
+    why_use: 'Rich character dialogue, long-form prose narrative, and creative scenario generation without refusal filters.',
+    best_for: [
+      'Long-form creative fiction & story continuation',
+      'Expressive character dialogue & roleplay',
+      'Uncensored creative writing scenarios'
+    ],
+    specialties: ['Creative Writing', 'Fiction', 'Roleplay', '24B Q4_K_M'],
+    avoid_for: [
+      'Low-VRAM concurrent inference (requires 14GB+ VRAM/unified memory)'
+    ],
+    native_resolution: 'N/A (Text LLM)',
+    default_steps: 0,
+    default_cfg: 1.0,
+    speed_class: 'Heavy LLM (~20-30 tok/s)',
+    supports_negative_prompt: false,
+    supports_lora: false,
+    supports_embeddings: false,
+    prompt_profile: 'chat.creative-writing',
+    caveat: '24B parameter model running via Ollama on Big Mac. Heavy compute lease required.',
+    provenance: 'mradermacher/Cydonia-24B-v4.3-heretic-v4-GGUF',
+    license: 'Apache-2.0 (Mistral Small 24B Base)'
+  },
+  {
+    id: 'dex-gemma4-heretic:12b-q4km',
+    tag: 'dex-gemma4-heretic:12b-q4km',
+    display_name: 'Gemma 4 12B Heretic',
+    family: 'creative-writing',
+    backend: 'ollama',
+    quantization: 'Q4_K_M',
+    status: 'PROVEN',
+    primary: false,
+    preview_image: null,
+    preview_provenance: 'placeholder',
+    description: '12B Gemma 4 Heretic text model for fast/balanced chat and prompt enhancement.',
+    why_use: 'High efficiency, fast response latency, and sharp prompt enhancement.',
+    best_for: [
+      'Fast balanced chat and creative assistance',
+      'DexDiffusion prompt enhancement and refinement',
+      'Efficient 12B footprint on Apple Silicon'
+    ],
+    specialties: ['Fast Chat', 'Prompt Enhance', 'Gemma 4 Architecture', '12B Q4_K_M'],
+    avoid_for: [
+      'Multimodal vision/audio in initial text-only integration'
+    ],
+    native_resolution: 'N/A (Text LLM)',
+    default_steps: 0,
+    default_cfg: 1.0,
+    speed_class: 'Fast/Balanced LLM (~35-45 tok/s)',
+    supports_negative_prompt: false,
+    supports_lora: false,
+    supports_embeddings: false,
+    prompt_profile: 'chat.creative-writing',
+    caveat: '12B parameter model running via Ollama on Big Mac. Text-only initial integration.',
+    provenance: 'SC117/Gemma-4-12B-it-heretic-GGUF',
+    license: 'Apache-2.0'
+  },
+  {
+    id: 'dex-rocinante:12b-v1.1-q4km',
+    tag: 'dex-rocinante:12b-v1.1-q4km',
+    display_name: 'Rocinante 12B v1.1',
+    family: 'creative-writing',
+    backend: 'ollama',
+    quantization: 'Q4_K_M',
+    status: 'PROVEN',
+    primary: false,
+    preview_image: null,
+    preview_provenance: 'placeholder',
+    description: '12B permissive narrative prose, adventure storytelling, and character dialogue workhorse.',
+    why_use: 'Vibrant, expressive narrative vocabulary, adventures, and character interactions.',
+    best_for: [
+      'Narrative prose and adventure storytelling',
+      'Dynamic character banter and dialogue',
+      'Creative writing with rich vocabulary'
+    ],
+    specialties: ['Narrative Prose', 'Dialogue', 'Storytelling', '12B Q4_K_M'],
+    avoid_for: [
+      'Strict instruction-following data extraction tasks'
+    ],
+    native_resolution: 'N/A (Text LLM)',
+    default_steps: 0,
+    default_cfg: 1.0,
+    speed_class: 'Standard LLM (~35-45 tok/s)',
+    supports_negative_prompt: false,
+    supports_lora: false,
+    supports_embeddings: false,
+    prompt_profile: 'chat.creative-writing',
+    caveat: '12B parameter creative-writing model running via Ollama on Big Mac. Permissive fine-tune.',
+    provenance: 'TheDrummer/Rocinante-12B-v1.1-GGUF',
+    license: 'Permissive creative-writing weights (Mistral NeMo 12B Apache-2.0 Base)'
   }
 ];
 
@@ -551,6 +653,21 @@ const VERIFIED_MODEL_SOURCES = Object.freeze({
   'sdxl-biglove-photo45': { source_url: 'https://civitai.com/models/897413?modelVersionId=2503034', source_status: 'verified' },
   'sd15-auto-v1-5-pruned-emaonly': {
     source_url: 'https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5', source_status: 'verified'
+  },
+  'dex-cydonia-heretic:24b-q4km': {
+    source_url: 'https://huggingface.co/coder3101/Cydonia-24B-v4.3-heretic-v4',
+    distribution_url: 'https://huggingface.co/mradermacher/Cydonia-24B-v4.3-heretic-v4-GGUF',
+    source_status: 'verified'
+  },
+  'dex-gemma4-heretic:12b-q4km': {
+    source_url: 'https://huggingface.co/google/gemma-4-12B-it',
+    distribution_url: 'https://huggingface.co/SC117/Gemma-4-12B-it-heretic-GGUF',
+    source_status: 'verified'
+  },
+  'dex-rocinante:12b-v1.1-q4km': {
+    source_url: 'https://huggingface.co/TheDrummer/Rocinante-12B-v1.1',
+    distribution_url: 'https://huggingface.co/TheDrummer/Rocinante-12B-v1.1-GGUF',
+    source_status: 'verified'
   }
 });
 

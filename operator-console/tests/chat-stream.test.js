@@ -156,7 +156,14 @@ test('model selection: allowlisted switch is attributed; unlisted, lookalike and
     }
     assert.deepEqual((await h.request('POST', '/api/chat/sessions', { model: 'llama3.2:latest' })).body, { error: 'model-not-allowed' });
     const models = (await h.request('GET', '/api/chat/models')).body;
-    assert.deepEqual(models.models.map(m => [m.name, m.installed]), [['gemma3:4b', true], ['qwen3.8:27b-mlx', true], ['hermes-qwen3.8-27b-64k:latest', false]]);
+    assert.deepEqual(models.models.map(m => [m.name, m.installed]), [
+      ['gemma3:4b', true],
+      ['qwen3.8:27b-mlx', true],
+      ['hermes-qwen3.8-27b-64k:latest', false],
+      ['dex-cydonia-heretic:24b-q4km', false],
+      ['dex-gemma4-heretic:12b-q4km', false],
+      ['dex-rocinante:12b-v1.1-q4km', false],
+    ]);
     assert.equal(models.default, 'gemma3:4b');
     assert.equal(h.fake.chatRequests().length, 1);
     const msgs = (await h.request('GET', '/api/chat/sessions/' + sid)).body.messages;

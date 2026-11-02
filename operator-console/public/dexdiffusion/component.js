@@ -2039,21 +2039,26 @@ class Component extends DCLogic {
     },
       // Compact top bar: Title + Model select + Quick actions
       h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-          h('h2', { id: 'dex-chat-title', style: { margin: 0, fontSize: 18, fontWeight: 750, color: '#f8fafc' } }, 'Chat'),
-          h('span', {
-            style: {
-              display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px',
-              background: ready ? 'rgba(101,214,110,.12)' : 'rgba(251,191,36,.12)',
-              color: ready ? '#86efac' : '#fcd34d', border: '1px solid ' + (ready ? 'rgba(101,214,110,.3)' : 'rgba(251,191,36,.3)')
-            }
-          }, ready ? ('● ' + (this.state.chatModel || 'Ready')) : checking ? '● Checking…' : '● Offline')
-        ),
+        (() => {
+          const activeChatModelEntry = this.state.chatModels.find(m => m.name === this.state.chatModel);
+          const activeChatLabel = activeChatModelEntry && activeChatModelEntry.label ? activeChatModelEntry.label : this.state.chatModel;
+          return h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            h('h2', { id: 'dex-chat-title', style: { margin: 0, fontSize: 18, fontWeight: 750, color: '#f8fafc' } }, 'Chat'),
+            h('span', {
+              'data-chat-status': 'true',
+              style: {
+                display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px',
+                background: ready ? 'rgba(101,214,110,.12)' : 'rgba(251,191,36,.12)',
+                color: ready ? '#86efac' : '#fcd34d', border: '1px solid ' + (ready ? 'rgba(101,214,110,.3)' : 'rgba(251,191,36,.3)')
+              }
+            }, ready ? ('● ' + (activeChatLabel || 'Ready')) : checking ? '● Checking…' : '● Offline')
+          );
+        })(),
         h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' } },
           h('label', { style: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#94a3b8' } },
             'Model',
             h('select', { 'data-chat-model': 'true', value: this.state.chatModel, disabled: !ready || this.state.chatRunning, onChange: e => this.setState({ chatModel: e.target.value }), style: { border: '1px solid rgba(148,163,184,.25)', background: '#111722', color: '#f8fafc', borderRadius: 6, padding: '3px 8px', fontSize: 11 } },
-              this.state.chatModels.map(m => h('option', { key: m.name, value: m.name }, m.name)))
+              this.state.chatModels.map(m => h('option', { key: m.name, value: m.name }, m.label || m.name)))
           ),
           h('button', { type: 'button', 'data-chat-refresh': 'true', onClick: () => this.loadChatAvailability(), disabled: checking && a.phase === 'checking', style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Check again'),
           h('button', { type: 'button', 'data-chat-new': 'true', onClick: () => this.newChat(), disabled: this.state.chatRunning, style: { border: '1px solid rgba(56,189,248,.35)', background: 'rgba(56,189,248,.1)', color: '#38bdf8', borderRadius: 6, padding: '3px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 600 } }, 'New temporary chat'),
@@ -3011,6 +3016,7 @@ class Component extends DCLogic {
       if (modelFamilyFilter === 'flux' && !(c.family && c.family.startsWith('flux'))) return false;
       if (modelFamilyFilter === 'sdxl' && !(c.family && c.family.startsWith('sdxl'))) return false;
       if (modelFamilyFilter === 'sd15' && c.family !== 'sd15') return false;
+      if (modelFamilyFilter === 'llm' && c.family !== 'creative-writing' && c.backend !== 'ollama') return false;
       if (modelSearchTerm) {
         const text = (c.id + ' ' + c.display_name + ' ' + (c.description || '') + ' ' + (c.specialties || []).join(' ') + ' ' + (c.best_for || []).join(' ')).toLowerCase();
         if (!text.includes(modelSearchTerm)) return false;
@@ -3025,7 +3031,8 @@ class Component extends DCLogic {
       ['photoreal', 'Photoreal'],
       ['flux', 'FLUX'],
       ['sdxl', 'SDXL'],
-      ['sd15', 'SD1.5']
+      ['sd15', 'SD1.5'],
+      ['llm', 'Writing LLMs']
     ];
 
     const modelsListDisplay = React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },

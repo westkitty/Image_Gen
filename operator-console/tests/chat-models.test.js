@@ -5,8 +5,15 @@ const assert = require('node:assert/strict');
 const M = require('../chat-models');
 const { DEFAULT_TAGS, GIB } = require('./fixtures/fake-ollama-ndjson');
 
-test('the allowlist is exactly the three approved tags with gemma3:4b as default', () => {
-  assert.deepEqual(M.CHAT_MODELS.map(m => m.name), ['gemma3:4b', 'qwen3.8:27b-mlx', 'hermes-qwen3.8-27b-64k:latest']);
+test('the allowlist has approved tags with gemma3:4b as default', () => {
+  assert.deepEqual(M.CHAT_MODELS.map(m => m.name), [
+    'gemma3:4b',
+    'qwen3.8:27b-mlx',
+    'hermes-qwen3.8-27b-64k:latest',
+    'dex-cydonia-heretic:24b-q4km',
+    'dex-gemma4-heretic:12b-q4km',
+    'dex-rocinante:12b-v1.1-q4km',
+  ]);
   assert.equal(M.DEFAULT_CHAT_MODEL, 'gemma3:4b');
   assert.ok(Object.isFrozen(M.CHAT_MODELS) && M.CHAT_MODELS.every(Object.isFrozen));
 });
@@ -14,11 +21,14 @@ test('the allowlist is exactly the three approved tags with gemma3:4b as default
 test('describeAllowlist reports installed state and never lists extra or lookalike tags', () => {
   const tags = { models: [...DEFAULT_TAGS.filter(t => t.name !== 'qwen3.8:27b-mlx'), { name: 'llama3.2:latest', size: 2 * GIB }, { name: 'gemma3:4b-instruct', size: 3 * GIB }, { name: 'hermes-qwen3.8-27b-64k', size: 17 * GIB }] };
   assert.deepEqual(M.describeAllowlist(tags), [
-    { name: 'gemma3:4b', class: 'light', installed: true },
-    { name: 'qwen3.8:27b-mlx', class: 'heavy', installed: false },
-    { name: 'hermes-qwen3.8-27b-64k:latest', class: 'heavy', installed: true },
+    { name: 'gemma3:4b', label: 'gemma3:4b', class: 'light', installed: true },
+    { name: 'qwen3.8:27b-mlx', label: 'qwen3.8:27b-mlx', class: 'heavy', installed: false },
+    { name: 'hermes-qwen3.8-27b-64k:latest', label: 'hermes-qwen3.8-27b-64k:latest', class: 'heavy', installed: true },
+    { name: 'dex-cydonia-heretic:24b-q4km', label: 'Cydonia 24B Heretic v4', class: 'heavy', installed: false },
+    { name: 'dex-gemma4-heretic:12b-q4km', label: 'Gemma 4 12B Heretic', class: 'heavy', installed: false },
+    { name: 'dex-rocinante:12b-v1.1-q4km', label: 'Rocinante 12B v1.1', class: 'heavy', installed: false },
   ]);
-  assert.deepEqual(M.describeAllowlist(null).map(m => m.installed), [false, false, false]);
+  assert.deepEqual(M.describeAllowlist(null).map(m => m.installed), [false, false, false, false, false, false]);
 });
 
 test('resolveChatModel: exact match, not-allowed vs not-installed, default when omitted', () => {
