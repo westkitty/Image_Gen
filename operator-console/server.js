@@ -125,7 +125,10 @@ const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md'
 const GENERATION_JOB_SCHEMA = path.join(__dirname, 'schemas/generation-job.schema.json');
 const MODEL_COMPATIBILITY_REGISTRY = path.join(__dirname, 'schemas/model-compatibility.json');
 const WILDCARDS_DIR = path.join(__dirname, 'wildcards');
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || 'http://127.0.0.1:11436';
+let OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || 'http://127.0.0.1:11436';
+if (OLLAMA_BASE_URL === 'http://127.0.0.1:11436' && os.hostname() === 'bigmac' && !TestIsolation.enabled()) {
+  OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
+}
 const JOB_TIMEOUT_MS = Math.max(60000, Number(process.env.SDCPP_JOB_TIMEOUT_MS || 12 * 60 * 1000));
 
 let schedulerSelectionSupported = true;

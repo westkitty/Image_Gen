@@ -96,7 +96,7 @@ class Component extends DCLogic {
     createLora: (() => { try { return Object.assign({ enabled: false, selectedId: '', strength: 1, advanced: false, savedSettings: null, overrides: {} }, JSON.parse(localStorage.getItem('dex_create_lora_v1') || '{}')); } catch { return { enabled: false, selectedId: '', strength: 1, advanced: false, savedSettings: null, overrides: {} }; } })(),
     // Global
     backendUrl: (() => { try { return DexClient.resolveBackendBase(localStorage.getItem('dex_backend_url')); } catch { return ''; } })(),
-    backendOnline: false,
+    backendOnline: null, // Unknown until a version probe completes; do not display an outage on launch.
     runs: (() => { try { return JSON.parse(localStorage.getItem('dex_runs') || '[]'); } catch { return []; } })(),
     selectedRunId: '', selectedRunDetail: null, loadingRunDetail: false, runSearch: '',
     worldProjects: [], worldLoading: false, worldSourceArtifact: '', worldWorkerStatus: null, worldProjectsError: '', worldWorkersError: '', worldPollPausedJobId: '', worldPollError: '',
@@ -108,10 +108,17 @@ class Component extends DCLogic {
     toasts: [],
   };
 
-  _pingTimer = null; _pollTimer = null; _worldPollTimer = null; _asset3dPollTimer = null; _worldMilestoneTimer = null; _toastId = 0;
+  _pingTimer = null; _pingRetryTimer = null; _pingController = null; _pingGeneration = 0; _pingFailures = 0; _backendMounted = false;
+  _pollTimer = null; _worldPollTimer = null; _asset3dPollTimer = null; _worldMilestoneTimer = null; _toastId = 0;
   _completedImageCache = { key: null, node: null };
 
   componentDidMount() {
+    this._backendMounted = true;
+    this._backendResumeHandler = () => this.pingBackend();
+    this._backendVisibilityHandler = () => { if (document.visibilityState === 'visible') this.pingBackend(); };
+    window.addEventListener('focus', this._backendResumeHandler);
+    window.addEventListener('online', this._backendResumeHandler);
+    document.addEventListener('visibilitychange', this._backendVisibilityHandler);
     if (this.state.version === 2 && this.state.screens[2] === 'chat') this.loadChatAvailability();
     this._keyHandler = (e) => this.onKeydown(e);
     this._beforeUnloadHandler = (e) => {
@@ -166,6 +173,13 @@ class Component extends DCLogic {
     this.loadSystemInfo();
   }
   componentWillUnmount() {
+    this._backendMounted = false;
+    this._pingGeneration++;
+    this._pingController?.abort();
+    clearTimeout(this._pingRetryTimer);
+    window.removeEventListener('focus', this._backendResumeHandler);
+    window.removeEventListener('online', this._backendResumeHandler);
+    document.removeEventListener('visibilitychange', this._backendVisibilityHandler);
     this._worldFetchToken = (this._worldFetchToken || 0) + 1;
     clearInterval(this._pingTimer); clearInterval(this._pollTimer); clearInterval(this._worldPollTimer); clearInterval(this._asset3dPollTimer); clearInterval(this._worldMilestoneTimer);
     this._pollGeneration = (this._pollGeneration || 0) + 1;
@@ -327,11 +341,34 @@ class Component extends DCLogic {
 
   // ── Backend ping ──────────────────────────────────────────────
   async pingBackend() {
+    // A short deadline or a superseded probe is not proof the backend went offline.
+    // Cancel stale checks, confirm an outage twice, and recover promptly on a valid response.
+    const generation = ++this._pingGeneration;
+    const base = this.state.backendUrl;
+    clearTimeout(this._pingRetryTimer);
+    this._pingController?.abort();
+    const controller = new AbortController();
+    this._pingController = controller;
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      const r = await fetch(this.state.backendUrl + '/api/version', { signal: AbortSignal.timeout(3000) });
-      if (this.state.backendOnline !== r.ok) this.setState({ backendOnline: r.ok });
+      const response = await fetch(base + '/api/version', { signal: controller.signal, cache: 'no-store' });
+      if (!response.ok) throw new Error('Backend version check returned HTTP ' + response.status);
+      const version = await response.json();
+      if (!version || version.name !== 'Image_Gen Operator Console') throw new Error('Unexpected backend identity');
+      if (!this._backendMounted || generation !== this._pingGeneration || base !== this.state.backendUrl) return;
+      this._pingFailures = 0;
+      if (this.state.backendOnline !== true) this.setState({ backendOnline: true });
     } catch {
-      if (this.state.backendOnline !== false) this.setState({ backendOnline: false });
+      if (!this._backendMounted || generation !== this._pingGeneration || base !== this.state.backendUrl) return;
+      this._pingFailures++;
+      if (this._pingFailures < 2) {
+        this._pingRetryTimer = setTimeout(() => this.pingBackend(), 1200);
+      } else if (this.state.backendOnline !== false) {
+        this.setState({ backendOnline: false });
+      }
+    } finally {
+      clearTimeout(timeout);
+      if (this._pingController === controller) this._pingController = null;
     }
   }
 
@@ -2906,7 +2943,7 @@ class Component extends DCLogic {
     const libraryCards = runs.length > 0 ? runs.map(card => ({ ...card })) : [{ id: 'no runs yet', badge: '—', badgeColor: '#6060a0', badgeBg: 'rgba(80,80,160,.08)', model: 'run generate to start', size: '—', thumb: 'linear-gradient(135deg,#0a0a18,#141428)' }];
 
     // ── Status chips ──────────────────────────────────────────
-    const backendDot = backendOnline ? '#65d66e' : '#ef4444';
+    const backendDot = backendOnline === true ? '#65d66e' : backendOnline === null ? '#fbbf24' : '#ef4444';
     const jobDot = isGenerating ? '#38bdf8' : jobStatus==='complete' ? '#65d66e' : jobStatus==='error' ? '#ef4444' : '#fbbf24';
 
     // ── Run log ───────────────────────────────────────────────
@@ -4115,7 +4152,7 @@ class Component extends DCLogic {
       onOpenPalette: ()=>{ const center=window.__DEX_V12; if(center && typeof center.toggleCommandPalette==='function') center.toggleCommandPalette(); else this.toast('Command palette is initializing. Try again in a moment.', '#fbbf24'); },
       onOpenJobCenter: ()=>{ const center=window.__DEX_V12; if(center && typeof center.toggleJobCenter==='function') center.toggleJobCenter(); else this.toast('Job Center is initializing. Try again in a moment.', '#fbbf24'); },
       activeJobCount: (() => { const c=window.__DEX_V12; return c ? ((c.activeJobCount || 0)+(c.queuedJobCount || 0)) : 0; })(),
-      offlineWarning: !backendOnline,
+      offlineWarning: backendOnline === false,
       // sc-if treats any non-empty string as true, so this must stay a real boolean.
       showCancel: (() => { const ws = this._createWs(); return jobStatus === 'generating' && !!ws.activeJobId; })(),
       activeCancelJobId: (() => { const ws = this._createWs(); return ws.activeJobId || ''; })(),
@@ -4143,17 +4180,17 @@ class Component extends DCLogic {
         : isGenerating ? ('generating · ' + ((this.state.jobStage || {}).label || 'Waiting for backend'))
         : jobStatus==='complete' ? ('done · seed ' + lastSeed) : jobStatus==='error' ? 'error · check backend' : 'idle · no job',
       // Status chips
-      backendDot, backendLabel: backendOnline ? 'Backend' : 'Offline',
-      backendChipBg: backendOnline ? 'rgba(101,214,110,.08)' : 'rgba(239,68,68,.08)',
-      backendChipBorder: backendOnline ? 'rgba(101,214,110,.2)' : 'rgba(239,68,68,.2)',
+      backendDot, backendLabel: backendOnline === true ? 'Backend' : backendOnline === null ? 'Checking' : 'Offline',
+      backendChipBg: backendOnline === true ? 'rgba(101,214,110,.08)' : backendOnline === null ? 'rgba(251,191,36,.08)' : 'rgba(239,68,68,.08)',
+      backendChipBorder: backendOnline === true ? 'rgba(101,214,110,.2)' : backendOnline === null ? 'rgba(251,191,36,.2)' : 'rgba(239,68,68,.2)',
       jobDot, jobLabel: jobStatus==='cancelling' ? 'Stopping…' : jobStatus==='cancelled' ? 'Cancelled' : jobStatus==='cancel-unverified' ? 'Check required'
         : isGenerating ? (progress + '%') : jobStatus==='complete' ? 'Done' : jobStatus==='error' ? 'Error' : 'Idle',
       jobChipBg: isGenerating ? 'rgba(56,189,248,.07)' : jobStatus==='complete' ? 'rgba(101,214,110,.07)' : jobStatus==='error' ? 'rgba(239,68,68,.07)' : 'rgba(251,191,36,.07)',
       jobChipBorder: isGenerating ? 'rgba(56,189,248,.2)' : jobStatus==='complete' ? 'rgba(101,214,110,.2)' : jobStatus==='error' ? 'rgba(239,68,68,.2)' : 'rgba(251,191,36,.2)',
       // System
-      backendUrl, backendStatusColor: backendOnline ? '#65d66e' : '#ef4444',
-      backendStatusText: backendOnline ? '✓ Online' : '✗ Offline',
-      onBackendUrlChange: e=>{ const u=DexClient.resolveBackendBase(e.target.value); this.setState({backendUrl:u}); try { localStorage.setItem('dex_backend_url',u); } catch {} },
+      backendUrl, backendStatusColor: backendOnline === true ? '#65d66e' : backendOnline === null ? '#fbbf24' : '#ef4444',
+      backendStatusText: backendOnline === true ? '✓ Online' : backendOnline === null ? 'Checking…' : '✗ Offline',
+      onBackendUrlChange: e=>{ const u=DexClient.resolveBackendBase(e.target.value); this._pingGeneration++; this._pingController?.abort(); clearTimeout(this._pingRetryTimer); this._pingFailures=0; this.setState({backendUrl:u,backendOnline:null}); try { localStorage.setItem('dex_backend_url',u); } catch {} },
       onVerifyBackend: ()=>{ this.pingBackend(); this.toast('Pinging backend…', '#38bdf8'); },
       onStartServer: ()=>{ fetch(this.state.backendUrl+'/api/actions/server-start',{method:'POST'}).then(r=>r.json()).then(d=>{ const {job_id}=d; if(job_id) this._startPoll(job_id,()=>{ this.toast('Server started','#65d66e'); this.pingBackend(); }); }).catch(()=>this.toast('Start failed','#ef4444')); },
       onStopServer: ()=>{ fetch(this.state.backendUrl+'/api/actions/server-stop',{method:'POST'}).then(r=>r.json()).then(d=>{ const {job_id}=d; if(job_id) this._startPoll(job_id,()=>{ this.toast('Server stopped','#fbbf24'); this.pingBackend(); }); }).catch(()=>this.toast('Stop failed','#ef4444')); },

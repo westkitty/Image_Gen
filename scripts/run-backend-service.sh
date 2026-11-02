@@ -25,6 +25,15 @@ export DEX_LOCAL_ENGINE_BRIDGE=1
 export OPERATOR_CONSOLE_PORT="${OPERATOR_CONSOLE_PORT:-31337}"
 export DEX_IMAGE_VALIDATION_PYTHON="${DEX_IMAGE_VALIDATION_PYTHON:-/Users/bigmac/Library/Caches/DexDiffusion/mflux/venv/bin/python}"
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+export DEX_CHAT_ENABLED="${DEX_CHAT_ENABLED:-1}"
+export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
+
+if [ -z "${DEX_CHAT_HISTORY_ACCOUNTS:-}" ]; then
+  ACCOUNTS_FILE="$HOME/Library/Application Support/DexDiffusion/chat-history-accounts.json"
+  if [ -f "$ACCOUNTS_FILE" ]; then
+    export DEX_CHAT_HISTORY_ACCOUNTS="$(cat "$ACCOUNTS_FILE")"
+  fi
+fi
 
 cd "$CONSOLE_DIR"
 exec /opt/homebrew/bin/node server.js

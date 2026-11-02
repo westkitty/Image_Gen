@@ -39,6 +39,14 @@ if [ -z "${DEX_WORKFLOW_ROOT:-}" ]; then
 fi
 export DEX_CHAT_ENABLED="${DEX_CHAT_ENABLED:-1}"
 
+if [ -z "${OLLAMA_BASE_URL:-}" ]; then
+  if [ "$(hostname -s)" = "bigmac" ]; then
+    export OLLAMA_BASE_URL="http://127.0.0.1:11434"
+  else
+    export OLLAMA_BASE_URL="http://127.0.0.1:11436"
+  fi
+fi
+
 if [ -z "${DEX_CHAT_HISTORY_ACCOUNTS:-}" ]; then
   ACCOUNTS_FILE="$HOME/Library/Application Support/DexDiffusion/chat-history-accounts.json"
   if [ -f "$ACCOUNTS_FILE" ]; then
