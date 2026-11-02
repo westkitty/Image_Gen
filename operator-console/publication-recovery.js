@@ -75,7 +75,7 @@ function historicalMissingJournal({ journalName, imageRoot, runsRoot, jobStore, 
     if (owner.schema !== 'dexdiffusion.run_owner.v1' || owner.run_id !== path.basename(runDir) || !owner.job_id) return false;
     const job = jobStore.get(owner.job_id), worker = remoteWorkers.get(owner.job_id);
     if (!job || !['COMPLETE', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(job.status)) return false;
-    if (!worker || !['completed', 'cancelled_verified'].includes(worker.state)) return false;
+    if (journal.host !== 'local' && (!worker || !['completed', 'cancelled_verified'].includes(worker.state))) return false;
     const entries = journal.entries, index = JSON.parse(fs.readFileSync(path.join(runDir, 'canonical-images.json'), 'utf8')).images;
     if (!Array.isArray(entries) || !entries.length || !Array.isArray(index) || !Array.isArray(journal.image_ids)
       || !Array.isArray(journal.image_records) || entries.length !== journal.image_ids.length

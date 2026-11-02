@@ -29,6 +29,10 @@ test('only exactly owned, indexed, missing output with a resolved worker is hist
   const check = () => historicalMissingJournal({ journalName, imageRoot, runsRoot, jobStore, remoteWorkers });
   assert.equal(check(), true);
   workerState = 'stop_unverified'; assert.equal(check(), false); workerState = 'cancelled_verified';
+  fs.writeFileSync(path.join(imageRoot, journalName), JSON.stringify({ ...journal, host: 'local' }));
+  const checkLocal = () => historicalMissingJournal({ journalName, imageRoot, runsRoot, jobStore, remoteWorkers: { get: () => null } });
+  assert.equal(checkLocal(), true, 'local jobs without remote workers are recognized as historical');
+  fs.writeFileSync(path.join(imageRoot, journalName), JSON.stringify(journal));
   fs.writeFileSync(path.join(imageRoot, imageId), 'foreign bytes'); assert.equal(check(), false);
   fs.unlinkSync(path.join(imageRoot, imageId));
   fs.writeFileSync(path.join(imageRoot, journalName), JSON.stringify({ ...journal, entries: [{ ...entry, sha256: 'b'.repeat(64) }] }));
