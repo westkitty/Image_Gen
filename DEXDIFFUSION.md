@@ -143,6 +143,14 @@ touches other Dock items, then does a narrow `killall Dock`. Legacy launchers
 (`Image_Gen.app`, `Image_Gen Launcher.app`, `Image Gen Operator Console.app`) are
 **moved, not deleted**, to
 `~/Library/Application Support/DexDiffusion/retired-launchers/` and unregistered.
+Archived copies (including the previous build kept for rollback) are stored as
+`*.app.retired` with `Contents/Info.plist` renamed to `Info.plist.retired`. They share
+the bundle id, and any archive that still has its `Info.plist` is re-registered by
+Spotlight/Finder (even without the `.app` extension), after which the Dock tile can
+open the old copy. Every file is kept; to use an archive again, rename both back.
+Each install neutralises every such copy under `Application Support/DexDiffusion`
+and unregisters every other copy of the bundle id. `bin/dexdiffusion status`
+reports this as `opens: CANONICAL` or `opens: CONFLICT (…)`.
 
 **Verify the Dock item points at the canonical app:**
 

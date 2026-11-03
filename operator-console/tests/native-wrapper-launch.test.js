@@ -36,6 +36,26 @@ test('installer stamps full source SHA and artwork identity; status accepts lega
   assert.match(launcher, /"\$repo_head" = "\$ahead"\*/);
 });
 
+test('installer keeps archived app copies from hijacking the Dock tile', () => {
+  const installer = read('scripts/install-macos-app.sh');
+  const launcher = read('bin/dexdiffusion');
+  // Archives must not be *.app bundles, or Launch Services re-registers them under the shared id.
+  assert.match(installer, /INSTALL_BACKUP="\$RETIRED\/DexDiffusion-previous-\$STAMP\.app\.retired"/);
+  assert.match(installer, /DexDiffusion-failed-\$STAMP\.app\.retired/);
+  assert.match(installer, /-\$where-\$STAMP\.app\.retired"/);
+  // A renamed folder still registers while it has Info.plist, so that is renamed too.
+  assert.match(installer, /mv "\$b\/Contents\/Info\.plist" "\$b\/Contents\/Info\.plist\.retired"/);
+  assert.match(installer, /mv "\$b" "\$b\.retired"/);
+  assert.match(installer, /find "\$SUPPORT" -type d \\\( -name '\*\.app' -o -name '\*\.app\.retired' \\\) -prune -print/);
+  assert.match(installer, /INSTALL_COMPLETE=1\n[\s\S]{0,200}neutralise_archive "\$INSTALL_BACKUP"/);
+  assert.match(installer, /mv "\$old" "\$dest"\n\s*neutralise_archive "\$dest"/);
+  assert.match(launcher, /if \[ -f "\$p\/Contents\/Info\.plist" \]; then/);
+  assert.match(installer, /\$LSREGISTER" -dump[\s\S]{0,400}\[ "\$p" = "\$APP" \] \|\| "\$LSREGISTER" -u "\$p"/);
+  assert.doesNotMatch(installer, /\$STAMP\.app"/);
+  assert.match(launcher, /mdfind "kMDItemCFBundleIdentifier == 'local\.image-gen\.wrapper'"/);
+  assert.match(launcher, /opens:     \$opens/);
+});
+
 test('T-201 the wrapper implements the JavaScript dialog delegates instead of auto-rejecting confirms', () => {
   const src = read('native/macos/Image_Gen/ImageGenApp.swift');
   // Without these three WKUIDelegate methods every window.confirm() inside the app resolves false.

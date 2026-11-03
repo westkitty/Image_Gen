@@ -83,7 +83,7 @@ cleanup() {
     fi
     if [ -n "$INSTALL_BACKUP" ] && [ -d "$INSTALL_BACKUP" ]; then
       if [ -e "$APP" ]; then
-        failed="$RETIRED/DexDiffusion-failed-$STAMP.app"
+        failed="$RETIRED/DexDiffusion-failed-$STAMP.app.retired"
         mv "$APP" "$failed" 2>/dev/null || true
       fi
       if [ ! -e "$APP" ]; then
@@ -184,14 +184,37 @@ codesign --verify --deep --strict "$STAGE" >/dev/null 2>&1 || { echo "ERROR: sta
 
 mkdir -p "$RETIRED"
 if [ -e "$APP" ]; then
-  INSTALL_BACKUP="$RETIRED/DexDiffusion-previous-$STAMP.app"
+  INSTALL_BACKUP="$RETIRED/DexDiffusion-previous-$STAMP.app.retired"
   mv "$APP" "$INSTALL_BACKUP"
+  [ -x "$LSREGISTER" ] && "$LSREGISTER" -u "$INSTALL_BACKUP" >/dev/null 2>&1 || true
   echo "Preserved previous app for rollback: $INSTALL_BACKUP"
 fi
-# Archived bundles share the bundle id; keep Launch Services pointed only at $APP.
-for b in "$RETIRED"/*.app; do
-  [ -e "$b" ] && [ -x "$LSREGISTER" ] && "$LSREGISTER" -u "$b" >/dev/null 2>&1 || true
+# Archived bundles share the bundle id. An unregistered archive is re-registered as
+# soon as Spotlight or Finder sees it (even without the .app extension), and the
+# Dock tile, which also carries the bundle id, can then open an old copy. An archive
+# is therefore stored as *.app.retired with Contents/Info.plist renamed to
+# Info.plist.retired: every file is kept, but it no longer claims the bundle id.
+# To use one again, rename both back. Covers older archives and predeploy
+# snapshots anywhere under $SUPPORT.
+neutralise_archive() {
+  local b="$1"
+  [ -x "$LSREGISTER" ] && "$LSREGISTER" -u "$b" >/dev/null 2>&1 || true
+  if [ -f "$b/Contents/Info.plist" ] && mv "$b/Contents/Info.plist" "$b/Contents/Info.plist.retired"; then
+    [ -x "$LSREGISTER" ] && "$LSREGISTER" -u "$b" >/dev/null 2>&1 || true
+  fi
+  case "$b" in *.app) if mv "$b" "$b.retired"; then echo "Neutralised archived bundle: $b"; fi ;; esac
+}
+find "$SUPPORT" -type d \( -name '*.app' -o -name '*.app.retired' \) -prune -print 2>/dev/null | while IFS= read -r b; do
+  [ "$b" = "$INSTALL_BACKUP" ] || neutralise_archive "$b"
 done
+# Drop any other Launch Services registration of this bundle id (e.g. scratch builds).
+if [ -x "$LSREGISTER" ]; then
+  "$LSREGISTER" -dump 2>/dev/null | awk -v id="$BUNDLE_ID" '
+    /^path:/ { p = $0; sub(/^path: +/, "", p); sub(/ \(0x[0-9a-f]+\)$/, "", p) }
+    $1 == "identifier:" && $2 == id { print p }' | sort -u | while IFS= read -r p; do
+    [ "$p" = "$APP" ] || "$LSREGISTER" -u "$p" >/dev/null 2>&1 || true
+  done
+fi
 mv "$STAGE" "$APP"
 touch "$APP"
 [ -x "$LSREGISTER" ] && "$LSREGISTER" -f "$APP" >/dev/null 2>&1 || true
@@ -211,9 +234,9 @@ for old in "/Applications/Image_Gen.app" "/Applications/Image_Gen Launcher.app" 
   if [ "$id" = "$BUNDLE_ID" ] || [ "$id" = "com.westcat.imagegen.operatorconsole" ] \
      || printf '%s' "$script" | grep -q "image-gen-launcher\|Image_Gen/operator-console"; then
     case "$old" in "$HOME"/*) where="home-Applications" ;; *) where="system-Applications" ;; esac
-    dest="$RETIRED/$(basename "$old" .app)-$where-$STAMP.app"
+    dest="$RETIRED/$(basename "$old" .app)-$where-$STAMP.app.retired"
     mv "$old" "$dest"
-    [ -x "$LSREGISTER" ] && "$LSREGISTER" -u "$dest" >/dev/null 2>&1 || true
+    neutralise_archive "$dest"
     echo "Retired legacy launcher: $old -> $dest"
   else
     echo "Left unrecognised bundle alone: $old"
@@ -276,6 +299,8 @@ fi
 killall Dock 2>/dev/null || true
 
 INSTALL_COMPLETE=1
+# The rollback copy stayed a working bundle until now; archive it like the rest.
+[ -n "$INSTALL_BACKUP" ] && [ -d "$INSTALL_BACKUP" ] && neutralise_archive "$INSTALL_BACKUP"
 
 echo "Installed $APP"
 echo "  bundle id:  $BUNDLE_ID"

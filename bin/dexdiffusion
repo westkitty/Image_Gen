@@ -476,6 +476,15 @@ print("%s [%s, %s]" % (t[0]["label"], t[0]["id"], t[0]["status"]) if t else "non
     if [ "$n" = "1" ]; then dock="INSTALLED (1 entry, file://$APP_PATH/)"; elif [ "${n:-0}" -gt 1 ] 2>/dev/null; then dock="DUPLICATE ($n entries)"; fi
     printf '%s' "$dockdump" | grep -q "Image_Gen.app/\|Image_Gen%20Launcher.app/" && dock="$dock; STALE Image_Gen entry present"
   fi
+  # The Dock tile also carries the bundle id, so any other visible copy can be opened instead.
+  local opens="UNKNOWN" others mrc=0
+  others="$(bounded "$PROBE_TIMEOUT" mdfind "kMDItemCFBundleIdentifier == 'local.image-gen.wrapper'" 2>/dev/null)" || mrc=$?
+  if [ "$mrc" -eq 0 ]; then
+    # Spotlight can lag a rename; only a copy that still has its Info.plist can claim the id.
+    others="$(printf '%s\n' "$others" | grep -v -x -e "$APP_PATH" -e '' | while IFS= read -r p; do if [ -f "$p/Contents/Info.plist" ]; then echo "$p"; fi; done | wc -l | tr -d ' ')"
+    if [ "$others" = "0" ]; then opens="CANONICAL (only $APP_PATH carries local.image-gen.wrapper)"
+    else opens="CONFLICT ($others other copies carry local.image-gen.wrapper — run scripts/install-macos-app.sh)"; fi
+  fi
 
   local ssh_state="DOWN" mflux="unknown" model="unknown"
   local remote src=0
@@ -520,6 +529,7 @@ Launcher
   root:      $app_root
   icon:      $icon
   dock:      $dock
+  opens:     $opens
 
 Generation
   primary:   $primary
