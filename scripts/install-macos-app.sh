@@ -69,7 +69,34 @@ if pgrep -x "$EXE_NAME" >/dev/null 2>&1; then
 fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/dexdiffusion-app.XXXXXX")"
-trap 'rm -rf -- "$WORK"' EXIT
+INSTALL_BACKUP=""
+DOCK_BACKUP=""
+DOCK_CHANGED=0
+INSTALL_COMPLETE=0
+cleanup() {
+  local result=$?
+  if [ "$result" -ne 0 ] && [ "$INSTALL_COMPLETE" -ne 1 ]; then
+    if [ -n "$DOCK_BACKUP" ] && [ -f "$DOCK_BACKUP" ] && [ "$DOCK_CHANGED" -eq 1 ]; then
+      defaults import com.apple.dock "$DOCK_BACKUP" >/dev/null 2>&1 || true
+      killall Dock 2>/dev/null || true
+      echo "Rollback restored Dock preferences from $DOCK_BACKUP" >&2
+    fi
+    if [ -n "$INSTALL_BACKUP" ] && [ -d "$INSTALL_BACKUP" ]; then
+      if [ -e "$APP" ]; then
+        failed="$RETIRED/DexDiffusion-failed-$STAMP.app"
+        mv "$APP" "$failed" 2>/dev/null || true
+      fi
+      if [ ! -e "$APP" ]; then
+        mv "$INSTALL_BACKUP" "$APP" 2>/dev/null || true
+        [ -x "$LSREGISTER" ] && "$LSREGISTER" -f "$APP" >/dev/null 2>&1 || true
+        echo "Rollback restored previous application: $APP" >&2
+      fi
+    fi
+  fi
+  rm -rf -- "$WORK"
+  return "$result"
+}
+trap cleanup EXIT
 
 # ---- build into a staging bundle, then swap into place -----------------------
 STAGE="$WORK/DexDiffusion.app"
@@ -149,11 +176,17 @@ PLIST
 plutil -lint "$STAGE/Contents/Info.plist" >/dev/null
 printf 'APPL????' > "$STAGE/Contents/PkgInfo"
 codesign --force --deep --sign - "$STAGE" >/dev/null 2>&1 || echo "WARN: ad-hoc codesign failed (app still runs locally)"
+test -x "$STAGE/Contents/MacOS/$EXE_NAME"
+test "$(/usr/libexec/PlistBuddy -c 'Print :DexDiffusionProjectRoot' "$STAGE/Contents/Info.plist")" = "$ROOT"
+test "$(/usr/libexec/PlistBuddy -c 'Print :DexDiffusionSourceHead' "$STAGE/Contents/Info.plist")" = "$GIT_HEAD"
+test "$(/usr/libexec/PlistBuddy -c 'Print :DexDiffusionSourceFingerprint' "$STAGE/Contents/Info.plist")" = "$SWIFT_FINGERPRINT"
+codesign --verify --deep --strict "$STAGE" >/dev/null 2>&1 || { echo "ERROR: staged app signature verification failed." >&2; exit 1; }
 
 mkdir -p "$RETIRED"
 if [ -e "$APP" ]; then
-  mv "$APP" "$RETIRED/DexDiffusion-previous-$STAMP.app"
-  echo "Preserved previous app for rollback: $RETIRED/DexDiffusion-previous-$STAMP.app"
+  INSTALL_BACKUP="$RETIRED/DexDiffusion-previous-$STAMP.app"
+  mv "$APP" "$INSTALL_BACKUP"
+  echo "Preserved previous app for rollback: $INSTALL_BACKUP"
 fi
 # Archived bundles share the bundle id; keep Launch Services pointed only at $APP.
 for b in "$RETIRED"/*.app; do
@@ -162,6 +195,11 @@ done
 mv "$STAGE" "$APP"
 touch "$APP"
 [ -x "$LSREGISTER" ] && "$LSREGISTER" -f "$APP" >/dev/null 2>&1 || true
+test -x "$APP/Contents/MacOS/$EXE_NAME"
+plutil -lint "$APP/Contents/Info.plist" >/dev/null
+test "$(/usr/libexec/PlistBuddy -c 'Print :DexDiffusionProjectRoot' "$APP/Contents/Info.plist")" = "$ROOT"
+test "$(/usr/libexec/PlistBuddy -c 'Print :DexDiffusionSourceFingerprint' "$APP/Contents/Info.plist")" = "$SWIFT_FINGERPRINT"
+codesign --verify --deep --strict "$APP" >/dev/null 2>&1 || { echo "ERROR: installed app signature verification failed." >&2; exit 1; }
 
 # ---- retire legacy launchers (moved, never deleted) --------------------------
 for old in "/Applications/Image_Gen.app" "/Applications/Image_Gen Launcher.app" \
@@ -229,12 +267,15 @@ PY
 )"
 if [ "$DOCK_RESULT" = "changed" ]; then
   defaults import com.apple.dock "$WORK/dock.plist"
+  DOCK_CHANGED=1
   echo "Dock updated (backup: $DOCK_BACKUP)"
 else
   echo "Dock already correct (backup: $DOCK_BACKUP)"
 fi
 # Narrow refresh of the current user's Dock so the new tile/icon are drawn.
 killall Dock 2>/dev/null || true
+
+INSTALL_COMPLETE=1
 
 echo "Installed $APP"
 echo "  bundle id:  $BUNDLE_ID"

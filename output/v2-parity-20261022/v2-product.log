@@ -1,0 +1,255 @@
+[v2-product] RUN studio-beginner
+[studio-beginner.browser] PASS NOVICE_BROWSER_PASS {"chips":14,"visiblePrompt":true,"advanced":true,"jobs":true,"errors":0}
+[v2-product] PASS studio-beginner
+[v2-product] RUN studio-first-screen-shapes
+FIRST_SCREEN_SHAPES_FAIL AssertionError [ERR_ASSERTION]: square is fully visible without inspector scrolling at 1348x735: {"pane":{"y":92,"bottom":497.5,"height":405.5},"footer":{"y":497.5,"bottom":691,"height":193.5},"quality":{"y":440.5,"bottom":472.5,"height":32},"prompt":{"y":235,"bottom":313.5,"height":78.5},"model":{"y":382.5,"bottom":416.5,"height":34},"shapes":[{"id":"square","box":{"y":494.5,"bottom":526.5,"height":32}},{"id":"landscape","box":{"y":494.5,"bottom":526.5,"height":32}},{"id":"portrait","box":{"y":494.5,"bottom":526.5,"height":32}},{"id":"largesquare","box":{"y":494.5,"bottom":526.5,"height":32}}],"generate":{"y":640,"bottom":681,"height":41},"guide":{"y":129,"bottom":183,"height":54}}
+    at /Users/andrew/Image_Gen/operator-console/tests/browser/studio-first-screen-shapes.browser.js:22:11
+[v2-product] FAIL studio-first-screen-shapes
+[v2-product] RUN studio-generate-fixture
+[studio-generate-fixture.browser] PASS GENERATE_FIXTURE_PASS {"submissions":1,"prompt":"A golden oak tree under an alien sky","size":"768x512","result":"DONE","actions":["Open in Library","Enhance","Download"]}
+[v2-product] PASS studio-generate-fixture
+[v2-product] RUN studio-cancel-fixture
+[studio-cancel-fixture.browser] PASS CANCEL_FIXTURE_PASS {"generateCalls":1,"cancelCalls":1,"activeJobId":"fixture-running-1","cancel":"unverified","state":"generating"}
+[v2-product] PASS studio-cancel-fixture
+[v2-product] RUN studio-source-handoff
+[studio-source-handoff.browser] PASS LIBRARY_HANDOFF_PASS {"source":"fixture-library-older.png","createdRun":"fixture-newest.png","source3d":"exact","world":"exact","download":true}
+[v2-product] PASS studio-source-handoff
+[v2-product] RUN studio-scroll-preservation
+[studio-scroll-preservation.browser] PASS SCROLL_PRESERVATION_PASS {"before":300,"after":300,"domPreserved":true,"advanced":true}
+[v2-product] PASS studio-scroll-preservation
+[v2-product] RUN studio-desktop-primary-action
+[studio-desktop-primary-action.browser] PASS STUDIO_DESKTOP_PRIMARY_PASS {"normal":640,"advanced":640,"viewport":735}
+[v2-product] PASS studio-desktop-primary-action
+[v2-product] RUN studio-drama-stop-after-current
+[studio-drama-stop-after-current.browser] PASS DRAMA_STOP_AFTER_CURRENT_BROWSER_PASS { dialogs: 2, request: 'job-scoped', prematureCancelled: false }
+[v2-product] PASS studio-drama-stop-after-current
+[v2-product] RUN studio-unsupported-cancel
+[studio-unsupported-cancel.browser] PASS UNSUPPORTED_CANCEL_WARNING_PASS { voice: true, music: true, capabilityDriven: true }
+[v2-product] PASS studio-unsupported-cancel
+[v2-product] RUN generate-hires
+[generate-hires +1.5s] START OP-4A independent second pass: sends exactly the chosen second-pass fields to hires-2pass; blanks inherit; exclusive with in-engine hires
+[generate-hires +8.1s] FAIL OP-4A independent second pass: sends exactly the chosen second-pass fields to hires-2pass; blanks inherit; exclusive with in-engine hires 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sd15"]') }).first() to be visible[22m
+    
+[generate-hires +8.1s] START scale mode: panel, final-size preview, request carries scale and the chosen upscaler
+[generate-hires +13.7s] FAIL scale mode: panel, final-size preview, request carries scale and the chosen upscaler 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sdxl-base"]') }).first() to be visible[22m
+    
+[generate-hires +13.7s] START resize-to mode sends width and height (no scale) and the preview shows them
+[generate-hires +20.8s] FAIL resize-to mode sends width and height (no scale) and the preview shows them 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sdxl-base"]') }).first() to be visible[22m
+    
+[generate-hires +20.8s] START MFLUX target and a disabled High-Res checkbox send no hires fields
+[generate-hires +26.3s] FAIL MFLUX target and a disabled High-Res checkbox send no hires fields 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sdxl-base"]') }).first() to be visible[22m
+    
+[generate-hires +26.3s] START real server validator: accepts both modes and all upscalers, rejects every bad combination
+[generate-hires +26.3s] PASS real server validator: accepts both modes and all upscalers, rejects every bad combination (49 ms)
+[v2-product] FAIL generate-hires
+[v2-product] RUN progressive-batch
+[progressive-batch +1.6s] START images appear one by one while the batch is still running; the Fast batch flag is off by default
+[progressive-batch +5.0s] PASS images appear one by one while the batch is still running; the Fast batch flag is off by default (3384 ms)
+[progressive-batch +5.0s] START a failed last cell leaves the first three finished images and ends PARTIAL
+[progressive-batch +7.3s] PASS a failed last cell leaves the first three finished images and ends PARTIAL (2261 ms)
+[progressive-batch +7.3s] START cancelling the remainder keeps finished images and returns Create to idle
+[progressive-batch +9.5s] PASS cancelling the remainder keeps finished images and returns Create to idle (2230 ms)
+[progressive-batch +9.5s] START a page refresh re-attaches to the running batch and restores finished cells and the batch size
+[progressive-batch +12.1s] PASS a page refresh re-attaches to the running batch and restores finished cells and the batch size (2634 ms)
+[v2-product] PASS progressive-batch
+[v2-product] RUN interrupt
+[interrupt +1.1s] START Interrupt is hidden when idle, appears while generating, and a confirmed stop returns Create to idle
+[interrupt +3.0s] PASS Interrupt is hidden when idle, appears while generating, and a confirmed stop returns Create to idle (1878 ms)
+[interrupt +3.0s] START an unverified remote stop is reported as such (heavy work paused), never as success
+[interrupt +3.5s] FAIL an unverified remote stop is reported as such (heavy work paused), never as success 
+    ["Stop requested, but it could not be verified — the job stays running and heavy work stays paused until reconciliation (Job Center)"]
+[v2-product] FAIL interrupt
+[v2-product] RUN form-stability
+[form-stability +1.0s] START typing in the prompt box survives a continuous re-render storm: no lost keys, focus kept
+[form-stability +2.9s] PASS typing in the prompt box survives a continuous re-render storm: no lost keys, focus kept (1845 ms)
+[form-stability +2.9s] START the caret stays where the user put it while the form is rebuilt
+[form-stability +3.7s] PASS the caret stays where the user put it while the form is rebuilt (781 ms)
+[form-stability +3.7s] START other fields keep focus too: negative prompt text and numeric inputs
+[form-stability +9.0s] FAIL other fields keep focus too: negative prompt text and numeric inputs 
+    locator.selectOption: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sdxl-base"]') }).first()[22m
+    
+[form-stability +9.0s] START a persistent Node widget (the model picker) keeps keyboard focus across re-renders
+[form-stability +11.4s] PASS a persistent Node widget (the model picker) keeps keyboard focus across re-renders (2395 ms)
+[form-stability +11.4s] START typing straight after load and after a target switch keeps focus (the original startup churn)
+[form-stability +16.8s] FAIL typing straight after load and after a target switch keeps focus (the original startup churn) 
+    locator.selectOption: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="flux2-klein-4b"]') }).first()[22m
+    
+[v2-product] FAIL form-stability
+[v2-product] RUN drama-studio
+[drama-studio +0.9s] START Studio: seven stages inside one Drama module; state line; classification proof; re-parse previews before it changes anything
+[drama-studio +2.5s] PASS Studio: seven stages inside one Drama module; state line; classification proof; re-parse previews before it changes anything (1607 ms)
+[drama-studio +2.5s] START Save and Continue waits for durable Drama save and reads the saved project back
+[drama-studio +3.1s] PASS Save and Continue waits for durable Drama save and reads the saved project back (569 ms)
+[drama-studio +3.1s] START browser Back during an unsaved Drama script is declined by beforeunload and preserves the draft
+[drama-studio +7.5s] PASS browser Back during an unsaved Drama script is declined by beforeunload and preserves the draft (4472 ms)
+[drama-studio +7.5s] START unparsed Drama script offers no fake Save action and remains in memory when switching modules
+[drama-studio +8.3s] PASS unparsed Drama script offers no fake Save action and remains in memory when switching modules (724 ms)
+[drama-studio +8.3s] START Save failure keeps Drama draft and pending navigation; delayed save accepts one continuation only
+[drama-studio +8.9s] PASS Save failure keeps Drama draft and pending navigation; delayed save accepts one continuation only (673 ms)
+[drama-studio +8.9s] START Cast Bible: voices, role, pronunciation, FX rack, optional pacing; unsupported controls are disabled with the engine evidence
+[drama-studio +10.1s] PASS Cast Bible: voices, role, pronunciation, FX rack, optional pacing; unsupported controls are disabled with the engine evidence (1153 ms)
+[drama-studio +10.1s] START Direct: script cues are cues (never speech), bound to a locally generated effect; timeline model, waveforms and keyboard editing work
+[drama-studio +11.3s] PASS Direct: script cues are cues (never speech), bound to a locally generated effect; timeline model, waveforms and keyboard editing work (1170 ms)
+[drama-studio +11.3s] START Produce: the one-click button is gated by the plan; progress, cancel and resume are shown from real job state; nothing reaches Big Mac
+[drama-studio +14.7s] PASS Produce: the one-click button is gated by the plan; progress, cancel and resume are shown from real job state; nothing reaches Big Mac (3428 ms)
+[drama-studio +14.7s] START Review / Master / Export: honest QA, persisted mastering & delivery settings, manual assembly refuses with named lines, private package, historical labels
+[drama-studio +16.9s] PASS Review / Master / Export: honest QA, persisted mastering & delivery settings, manual assembly refuses with named lines, private package, historical labels (2192 ms)
+[drama-studio +16.9s] START Voice Designer: capability truth, create → describe → (fixture audition) → compare → approve; bank export is metadata-only by default
+[drama-studio +17.8s] FAIL Voice Designer: capability truth, create → describe → (fixture audition) → compare → approve; bank export is metadata-only by default 
+    Expected values to be strictly equal:
+    
+    4 !== 2
+    
+[drama-studio +17.8s] START responsive @375px: every stage and the Designer have no horizontal page overflow
+[drama-studio +19.9s] FAIL responsive @375px: every stage and the Designer have no horizontal page overflow 
+    direct: {"doc":0,"bad":["522>367"]}
+[drama-studio +19.9s] START responsive @768px: every stage and the Designer have no horizontal page overflow
+[drama-studio +24.8s] PASS responsive @768px: every stage and the Designer have no horizontal page overflow (4902 ms)
+[drama-studio +24.8s] START accessibility: tabs have roles/selection, every control is a labelled native control, reduced motion removes the progress animation
+[drama-studio +26.4s] PASS accessibility: tabs have roles/selection, every control is a labelled native control, reduced motion removes the progress animation (1554 ms)
+[drama-studio +26.4s] PHASE cleanup owned projects
+[drama-studio +26.4s] PHASE cleanup owned profiles
+[drama-studio +26.4s] PHASE close browser
+[drama-studio +28.4s] PHASE stop test server
+
+11/13 drama studio browser checks passed
+[v2-product] FAIL drama-studio
+[v2-product] RUN create-controls
+[create-controls +2.1s] START actual pixel dimensions, megapixels and orientation are shown and follow the inputs
+[create-controls +7.1s] FAIL actual pixel dimensions, megapixels and orientation are shown and follow the inputs 
+    page.waitForSelector: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('[data-dex-field="pixel-size"]') to be visible[22m
+    
+[create-controls +7.1s] START Swap, Square, Portrait and Landscape controls change the real width/height
+[create-controls +7.5s] PASS Swap, Square, Portrait and Landscape controls change the real width/height (393 ms)
+[create-controls +7.5s] START the VAE selection defaults to Default VAE (the override choice is covered in edit-workbench)
+[create-controls +7.5s] PASS the VAE selection defaults to Default VAE (the override choice is covered in edit-workbench) (1 ms)
+[create-controls +7.5s] START the settings guide opens and carries the truthful High-Res Refine and Source preparation text
+[create-controls +12.5s] FAIL the settings guide opens and carries the truthful High-Res Refine and Source preparation text 
+    locator.click: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('[data-dex-field="settings-guide"] summary')[22m
+    
+[v2-product] PASS create-controls
+[v2-product] RUN generate-sampling
+[generate-sampling +1.0s] START SDCPP target shows sampler, CLIP skip and tiling and sends the chosen values
+[generate-sampling +7.4s] FAIL SDCPP target shows sampler, CLIP skip and tiling and sends the chosen values 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sdxl-base"]') }).first() to be visible[22m
+    
+[generate-sampling +7.4s] START two different samplers produce two different requests; defaults add no clip skip or tiling
+[generate-sampling +13.2s] FAIL two different samplers produce two different requests; defaults add no clip skip or tiling 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sdxl-base"]') }).first() to be visible[22m
+    
+[generate-sampling +13.2s] START a target default such as dpm++2m is shown and sent as its canonical id
+[generate-sampling +20.0s] FAIL a target default such as dpm++2m is shown and sent as its canonical id 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sdxl-base"]') }).first() to be visible[22m
+    
+[generate-sampling +20.0s] START MFLUX target hides the controls, explains why, and sends no sampling fields
+[generate-sampling +25.8s] FAIL MFLUX target hides the controls, explains why, and sends no sampling fields 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="flux2-klein-4b"]') }).first() to be visible[22m
+    
+[generate-sampling +25.8s] START V2 effective settings show the sampler, CLIP skip and tiling and follow the controls
+[generate-sampling +32.6s] FAIL V2 effective settings show the sampler, CLIP skip and tiling and follow the controls 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sdxl-base"]') }).first() to be visible[22m
+    
+[generate-sampling +32.6s] START V2 sampler selects offer supported ids and no unsupported A1111 aliases
+[generate-sampling +34.0s] PASS V2 sampler selects offer supported ids and no unsupported A1111 aliases (1401 ms)
+[generate-sampling +34.0s] START Preview request shows the same effective request and worker command that Generate sends
+[generate-sampling +39.8s] FAIL Preview request shows the same effective request and worker command that Generate sends 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sdxl-base"]') }).first() to be visible[22m
+    
+[generate-sampling +39.8s] START Preview request for MFLUX names the MFLUX worker and carries no SD-only flags; invalid input is rejected visibly
+[generate-sampling +45.5s] FAIL Preview request for MFLUX names the MFLUX worker and carries no SD-only flags; invalid input is rejected visibly 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="flux2-klein-4b"]') }).first() to be visible[22m
+    
+[generate-sampling +45.5s] START Advanced sampling: eta follows the sampler, RNG is sent, unavailable options are listed, MFLUX hides it all
+[generate-sampling +52.8s] FAIL Advanced sampling: eta follows the sampler, RNG is sent, unavailable options are listed, MFLUX hides it all 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sdxl-base"]') }).first() to be visible[22m
+    
+[generate-sampling +52.8s] START server accepts eta/rng/new samplers/kl_optimal end to end (preview uses the real validator) and rejects bad combinations
+[generate-sampling +52.9s] PASS server accepts eta/rng/new samplers/kl_optimal end to end (preview uses the real validator) and rejects bad combinations (99 ms)
+[generate-sampling +52.9s] START scheduler list comes from the shared choices and includes KL optimal
+[generate-sampling +59.0s] FAIL scheduler list comes from the shared choices and includes KL optimal 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sdxl-base"]') }).first() to be visible[22m
+    
+[generate-sampling +59.0s] START controls remain usable at 390x844
+[generate-sampling +65.2s] FAIL controls remain usable at 390x844 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sdxl-base"]') }).first() to be visible[22m
+    
+[v2-product] FAIL generate-sampling
+[v2-product] RUN prompt-language
+[prompt-language +1.3s] START the old blanket claim is gone and help text matches the selected backend
+[prompt-language +7.5s] FAIL the old blanket claim is gone and help text matches the selected backend 
+    locator.getAttribute: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('[data-dex-field="prompt"]')[22m
+    
+[prompt-language +7.5s] START typing keeps focus and cursor while MFLUX emphasis notes appear and clear
+[prompt-language +13.3s] FAIL typing keeps focus and cursor while MFLUX emphasis notes appear and clear 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="flux2-klein-4b"]') }).first() to be visible[22m
+    
+[prompt-language +13.3s] START PR-23: Ctrl+Up/Down weights the word at the caret and Alt+Right moves an element; the form state follows
+[prompt-language +18.9s] FAIL PR-23: Ctrl+Up/Down weights the word at the caret and Alt+Right moves an element; the form state follows 
+    locator.waitFor: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select').filter({ has: locator('option[value="sd15"]') }).first() to be visible[22m
+    
+[prompt-language +18.9s] START the server rejects schedule/alternation/AND with offset and hint, and accepts supported emphasis
+[prompt-language +19.0s] PASS the server rejects schedule/alternation/AND with offset and hint, and accepts supported emphasis (34 ms)
+[v2-product] FAIL prompt-language
+[v2-product] RUN model-files
+[model-files +1.1s] START Verify files lists header facts and flags a name/header mismatch and unreadable files
+[model-files +6.9s] FAIL Verify files lists header facts and flags a name/header mismatch and unreadable files 
+    page.waitForSelector: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('[data-file-verification]') to be visible[22m
+    
+[model-files +6.9s] START an unreachable compute host is reported, not hidden
+[model-files +12.5s] FAIL an unreachable compute host is reported, not hidden 
+    page.waitForSelector: Timeout 5000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('[data-file-verification]') to be visible[22m
+    
+[model-files +12.5s] START server: LoRA tags are validated strictly by the real validators
+[model-files +12.5s] PASS server: LoRA tags are validated strictly by the real validators (24 ms)
+[v2-product] FAIL model-files
+V2_PRODUCT_RESULTS {"target":2,"partial":true,"results":[{"suite":"studio-beginner","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-first-screen-shapes","target":2,"status":"FAIL","exit":1,"signal":null},{"suite":"studio-generate-fixture","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-cancel-fixture","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-source-handoff","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-scroll-preservation","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-desktop-primary-action","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-drama-stop-after-current","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-unsupported-cancel","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"generate-hires","target":2,"status":"FAIL","exit":1,"signal":null},{"suite":"progressive-batch","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"interrupt","target":2,"status":"FAIL","exit":1,"signal":null},{"suite":"form-stability","target":2,"status":"FAIL","exit":1,"signal":null},{"suite":"drama-studio","target":2,"status":"FAIL","exit":1,"signal":null},{"suite":"create-controls","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"generate-sampling","target":2,"status":"FAIL","exit":1,"signal":null},{"suite":"prompt-language","target":2,"status":"FAIL","exit":1,"signal":null},{"suite":"model-files","target":2,"status":"FAIL","exit":1,"signal":null}]}

@@ -1,0 +1,7 @@
+PASS  git diff --cached --check
+PASS  npm run check
+SKIP  protected unit files (*style*, *wildcard*)
+FAIL  unit suite: exit=1 tests=1014 pass=1013 fail=1 cancelled=0
+✖ release preflight reserves disk space and bounds unit-test concurrency (1.904417ms)
+✖ failing tests:
+✖ release preflight reserves disk space and bounds unit-test concurrency (1.904417ms)

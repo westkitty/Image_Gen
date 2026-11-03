@@ -1,0 +1,35 @@
+✔ phrase receipt fingerprints change only for the edited directed span (6.176625ms)
+✔ one click produces every line, scene masters and a verified project master; job completes with the master (3219.552667ms)
+✔ speech is grouped by voice: one Big Mac job (one model load) per speaker, never one per line (2662.665ms)
+✔ re-running an unchanged project does no synthesis and reuses the master (3131.616833ms)
+✔ editing one word re-synthesises only that line and re-mixes only its scene (4823.135125ms)
+✔ a remix-only change (cue) causes no synthesis (5006.401208ms)
+✔ blocked casting is refused up front with the named problems; no job is created (5.742458ms)
+✔ a chunk failure mid-run keeps the verified chunks; a later run synthesises ONLY the missing ones (10674.035292ms)
+✔ bounded retry: a persistently failing chunk is retried a limited number of times, then reported; no false completion (179.473166ms)
+✔ connection loss never produces a completed production (268.994416ms)
+✔ cancellation stops after the current Big Mac group, keeps finished chunks, and builds no master (3037.237292ms)
+✔ an invalid or tampered chunk receipt is detected and that chunk alone is regenerated (9853.870083ms)
+✔ privacy: unsaved script text never reaches jobs, media metadata, SSE-bound events, receipts or errors (9828.710916ms)
+✔ saved project: receipts persist, so a fresh producer (restart) resumes without re-rendering verified chunks (523.010709ms)
+✔ one production per project at a time; manual renders are refused while it runs (2778.445708ms)
+✔ the heavy lease is never held by two groups at once (no unexpected second inference worker) (2586.333416ms)
+✔ progress is truthful: phases advance, labels carry indexes only, percentages come from counts (2721.184542ms)
+✔ editing a line while production runs marks the result superseded; the stale take never becomes current (494.052875ms)
+✔ worker validates closed requests and owns cancellation/recovery (2814.9055ms)
+✔ transport ownership forbids traversal and malformed identifiers (0.430292ms)
+✔ generator parses sampling controls and rejects arbitrary command arguments (1.573291ms)
+✔ isolated fixture servers do not enable the live bridge implicitly (0.098833ms)
+✔ model availability follows worker reads and reports unavailable worker (0.123041ms)
+✔ install registry preserves six adapters and original paths (183.297458ms)
+✔ worker native batch uses the existing all-output transaction and rolls back partial publication (534.709833ms)
+✔ lost cleanup acknowledgment and cancellation cannot commit canonical images (312.981084ms)
+✔ benchmark reads owned structured Metal and tensor evidence without a legacy raw log (17.354709ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 86153.34125

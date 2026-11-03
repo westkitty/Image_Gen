@@ -1,0 +1,18 @@
+✔ known scratch creators register every new directory for cleanup (6.925166ms)
+✔ owned scratch fixture is removed when its process explicitly exits (81.816709ms)
+✔ browser suites register an exit fallback for only their own state directories (0.446084ms)
+✔ release preflight cannot recursively delete unrelated dex temp directories (0.335958ms)
+✔ release preflight excludes protected Style and wildcard unit files (0.117459ms)
+✔ release preflight reserves disk space and bounds unit-test concurrency (0.125584ms)
+✔ release preflight blocks insufficient disk before launching tests (15.348208ms)
+✔ release preflight isolates and removes its own per-step scratch root (44.432209ms)
+✔ release preflight excludes protected wildcard browser suites (0.519959ms)
+✔ preflight SIGTERM stops its own unit child and reclaims owned scratch (161.993833ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3305.492542

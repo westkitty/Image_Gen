@@ -1,0 +1,26 @@
+[concept-a-refinement +4.6s] START Concept A.1 shell has Dexter, ten SVG modules, and accent state
+[concept-a-refinement +36.1s] FAIL Concept A.1 shell has Dexter, ten SVG modules, and accent state 
+    locator.click: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('[data-vbtn="4"]')[22m
+    [2m    - locator resolved to <button data-vbtn="4" data-active="false">Concept A · Workstation</button>[22m
+    [2m  - attempting click action[22m
+[concept-a-refinement +36.1s] START contextual inspector and Generate result remain live surfaces
+[concept-a-refinement +69.4s] FAIL contextual inspector and Generate result remain live surfaces 
+    locator.click: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('[data-vbtn="4"]')[22m
+    [2m    - locator resolved to <button data-vbtn="4" data-active="false">Concept A · Workstation</button>[22m
+    [2m  - attempting click action[22m
+[concept-a-refinement +69.4s] START Help provides step cards, FAQ disclosure, and full tutorial routing
+[concept-a-refinement +103.0s] FAIL Help provides step cards, FAQ disclosure, and full tutorial routing 
+    locator.click: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('[data-vbtn="4"]')[22m
+    [2m    - locator resolved to <button data-vbtn="4" data-active="false">Concept A · Workstation</button>[22m
+    [2m  - attempting click action[22m
+[concept-a-refinement +103.0s] START queue dock expands from the shared V12 snapshot and Music planned tabs stay disabled
+
+[suite] SIGTERM received — cleaning up
+
+[suite] SIGTERM received — cleaning up

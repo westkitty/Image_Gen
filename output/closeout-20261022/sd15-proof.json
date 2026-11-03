@@ -1,0 +1,45 @@
+{
+  "job_id": "752bbda3-f41b-4549-8428-00366e2cd64d",
+  "run_id": "20261022-041325-controlled-sd15-e2700450",
+  "image_url": "/api/images/20261022-041325-controlled-sd15-e2700450-s732022-controlled-sd15.png",
+  "sha256": "30413eec2e2089a31d3f3a917c3e752af92bd3b6299b9ece03776317adfc822c",
+  "worker": {
+    "ok": true,
+    "run_id": "20261022-041325-controlled-sd15-e2700450",
+    "status": "complete",
+    "target": "sd15",
+    "started": 1792642406.7427762,
+    "batch_count": 1,
+    "cleanup": true,
+    "deadline": 1792644206.742777,
+    "model_read": true,
+    "engine_started": 1792642406.743527,
+    "pgid": 61132,
+    "engine_finished": 1792642585.240864,
+    "generation_seconds": 178.497,
+    "evidence": [
+      "  backend: \"MTL0\",",
+      "  lora_apply_mode: auto,",
+      "[DEBUG] ggml_extend_backend.cpp:326  - Initializing backend: MTL0",
+      "[INFO ] stable-diffusion.cpp:4659 - generate_image completed in 178.13s"
+    ],
+    "engine_exit": 0,
+    "images": [
+      {
+        "sha256": "30413eec2e2089a31d3f3a917c3e752af92bd3b6299b9ece03776317adfc822c",
+        "bytes": 302802,
+        "dimensions": [
+          512,
+          512
+        ]
+      }
+    ],
+    "sha256": "30413eec2e2089a31d3f3a917c3e752af92bd3b6299b9ece03776317adfc822c",
+    "bytes": 302802,
+    "dimensions": [
+      512,
+      512
+    ],
+    "finished": 1792642585.409975
+  }
+}

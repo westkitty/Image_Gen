@@ -1,0 +1,613 @@
+[v2-product] RUN create-controls
+[create-controls +2.9s] START actual pixel dimensions, megapixels and orientation are shown and follow the inputs
+[create-controls +2.9s] PASS actual pixel dimensions, megapixels and orientation are shown and follow the inputs (30 ms)
+[create-controls +2.9s] START Swap, Square, Portrait and Landscape controls change the real width/height
+[create-controls +3.3s] PASS Swap, Square, Portrait and Landscape controls change the real width/height (415 ms)
+[create-controls +3.3s] START the VAE selection defaults to Default VAE (the override choice is covered in edit-workbench)
+[create-controls +3.3s] PASS the VAE selection defaults to Default VAE (the override choice is covered in edit-workbench) (2 ms)
+[create-controls +3.3s] START the settings guide opens and carries the truthful High-Res Refine and Source preparation text
+[create-controls +3.4s] PASS the settings guide opens and carries the truthful High-Res Refine and Source preparation text (65 ms)
+[v2-product] PASS create-controls
+[v2-product] RUN drama-studio
+[drama-studio +0.8s] START Studio: seven stages inside one Drama module; state line; classification proof; re-parse previews before it changes anything
+[drama-studio +2.0s] PASS Studio: seven stages inside one Drama module; state line; classification proof; re-parse previews before it changes anything (1264 ms)
+[drama-studio +2.0s] START Save and Continue waits for durable Drama save and reads the saved project back
+[drama-studio +2.7s] PASS Save and Continue waits for durable Drama save and reads the saved project back (712 ms)
+[drama-studio +2.7s] START browser Back during an unsaved Drama script is declined by beforeunload and preserves the draft
+[drama-studio +7.3s] PASS browser Back during an unsaved Drama script is declined by beforeunload and preserves the draft (4532 ms)
+[drama-studio +7.3s] START unparsed Drama script offers no fake Save action and remains in memory when switching modules
+[drama-studio +8.0s] PASS unparsed Drama script offers no fake Save action and remains in memory when switching modules (723 ms)
+[drama-studio +8.0s] START Save failure keeps Drama draft and pending navigation; delayed save accepts one continuation only
+[drama-studio +8.8s] PASS Save failure keeps Drama draft and pending navigation; delayed save accepts one continuation only (782 ms)
+[drama-studio +8.8s] START Cast Bible: voices, role, pronunciation, FX rack, optional pacing; unsupported controls are disabled with the engine evidence
+[drama-studio +10.5s] PASS Cast Bible: voices, role, pronunciation, FX rack, optional pacing; unsupported controls are disabled with the engine evidence (1764 ms)
+[drama-studio +10.5s] START Direct: script cues are cues (never speech), bound to a locally generated effect; timeline model, waveforms and keyboard editing work
+[drama-studio +11.8s] PASS Direct: script cues are cues (never speech), bound to a locally generated effect; timeline model, waveforms and keyboard editing work (1240 ms)
+[drama-studio +11.8s] START Produce: the one-click button is gated by the plan; progress, cancel and resume are shown from real job state; nothing reaches Big Mac
+[drama-studio +15.3s] PASS Produce: the one-click button is gated by the plan; progress, cancel and resume are shown from real job state; nothing reaches Big Mac (3480 ms)
+[drama-studio +15.3s] START Review / Master / Export: honest QA, persisted mastering & delivery settings, manual assembly refuses with named lines, private package, historical labels
+[drama-studio +17.0s] PASS Review / Master / Export: honest QA, persisted mastering & delivery settings, manual assembly refuses with named lines, private package, historical labels (1783 ms)
+[drama-studio +17.0s] START Voice Designer: capability truth, create → describe → (fixture audition) → compare → approve; bank export is metadata-only by default
+[drama-studio +19.2s] PASS Voice Designer: capability truth, create → describe → (fixture audition) → compare → approve; bank export is metadata-only by default (2124 ms)
+[drama-studio +19.2s] START responsive @375px: every stage and the Designer have no horizontal page overflow
+[drama-studio +26.0s] PASS responsive @375px: every stage and the Designer have no horizontal page overflow (6790 ms)
+[drama-studio +26.0s] START responsive @768px: every stage and the Designer have no horizontal page overflow
+[drama-studio +32.9s] PASS responsive @768px: every stage and the Designer have no horizontal page overflow (6954 ms)
+[drama-studio +32.9s] START accessibility: tabs have roles/selection, every control is a labelled native control, reduced motion removes the progress animation
+[drama-studio +34.5s] PASS accessibility: tabs have roles/selection, every control is a labelled native control, reduced motion removes the progress animation (1599 ms)
+[drama-studio +34.5s] PHASE cleanup owned projects
+[drama-studio +34.5s] PHASE cleanup owned profiles
+[drama-studio +34.5s] PHASE close browser
+[drama-studio +34.5s] PHASE stop test server
+
+13/13 drama studio browser checks passed
+[v2-product] PASS drama-studio
+[v2-product] RUN edit-img2img-parity
+[edit-img2img-parity +0.7s] START crop-and-resize to a size: request carries mode, size, colour; legacy quick prep is disabled and not sent
+[edit-img2img-parity +1.9s] PASS crop-and-resize to a size: request carries mode, size, colour; legacy quick prep is disabled and not sent (1250 ms)
+[edit-img2img-parity +1.9s] START resize-by: preview applies the server rounding; fill mode and exact steps reach the request
+[edit-img2img-parity +2.8s] PASS resize-by: preview applies the server rounding; fill mode and exact steps reach the request (891 ms)
+[edit-img2img-parity +2.8s] START invalid sizes are explained in place; resize off falls back to the legacy quick preparation; unavailable options are listed
+[edit-img2img-parity +3.8s] PASS invalid sizes are explained in place; resize off falls back to the legacy quick preparation; unavailable options are listed (951 ms)
+[edit-img2img-parity +3.8s] START server validator (real source, no job starts): bad modes, size XOR scale, colour, exact-steps limits, both prep styles
+  (no canonical image in this environment; HTTP validator checks skipped)
+[edit-img2img-parity +3.8s] PASS server validator (real source, no job starts): bad modes, size XOR scale, colour, exact-steps limits, both prep styles (7 ms)
+[v2-product] PASS edit-img2img-parity
+[v2-product] RUN edit-inpaint-parity
+[edit-inpaint-parity +0.7s] START defaults keep today's behaviour: whole picture, blur 4, original content, and nothing else is sent
+[edit-inpaint-parity +2.0s] PASS defaults keep today's behaviour: whole picture, blur 4, original content, and nothing else is sent (1300 ms)
+[edit-inpaint-parity +2.0s] START only masked: padding and work size appear, are sent, and the options persist across re-renders
+[edit-inpaint-parity +3.2s] PASS only masked: padding and work size appear, are sent, and the options persist across re-renders (1215 ms)
+[edit-inpaint-parity +3.2s] START unavailable masked-content modes and controls are listed, not offered
+[edit-inpaint-parity +3.9s] PASS unavailable masked-content modes and controls are listed, not offered (683 ms)
+[edit-inpaint-parity +3.9s] START server validator (real source, no job starts): bad area/content/padding/blur are refused before any work
+[edit-inpaint-parity +3.9s] PASS server validator (real source, no job starts): bad area/content/padding/blur are refused before any work (39 ms)
+[v2-product] PASS edit-inpaint-parity
+[v2-product] RUN edit-scripts
+[edit-scripts +0.7s] START img2img + SD upscale: Run sends /api/scripts/sd-upscale with the tile options, strength and prompt (no resize fields)
+[edit-scripts +2.5s] FAIL img2img + SD upscale: Run sends /api/scripts/sd-upscale with the tile options, strength and prompt (no resize fields) 
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+        overlap: 64,
+    +   scale: 21.5,
+    -   scale: 1.5,
+        tile_height: 512,
+        tile_width: 512,
+        upscaler: 'nearest'
+      }
+    
+    at tests/browser/edit-scripts.browser.js:61:14 <- tests/browser/edit-scripts.browser.js:48:5
+[edit-scripts +2.5s] START img2img + Loopback: loops, final strength and curve are sent
+[edit-scripts +3.6s] PASS img2img + Loopback: loops, final strength and curve are sent (1105 ms)
+[edit-scripts +3.6s] START outpaint + mk2: directions, fall-off and colour variation are sent; latent masked-content modes are not offered
+[edit-scripts +4.5s] PASS outpaint + mk2: directions, fall-off and colour variation are sent; latent masked-content modes are not offered (887 ms)
+[edit-scripts +4.5s] START Edit names the model the edit worker really runs and offers only that model
+[edit-scripts +5.2s] PASS Edit names the model the edit worker really runs and offers only that model (634 ms)
+[edit-scripts +5.2s] START server dry run (real validators, no job): pass counts, result sizes and engine refusals
+  (no 512x512 canonical image in this environment; HTTP checks skipped)
+[edit-scripts +5.2s] PASS server dry run (real validators, no job): pass counts, result sizes and engine refusals (8 ms)
+
+4/5 edit-scripts browser checks passed
+[v2-product] FAIL edit-scripts
+[v2-product] RUN edit-upload
+[edit-upload +1.5s] START a valid PNG uploads, becomes a temporary Edit source with its real dimensions
+[edit-upload +1.7s] PASS a valid PNG uploads, becomes a temporary Edit source with its real dimensions (243 ms)
+[edit-upload +1.7s] START the uploaded source is handed to a real Edit action as staged_id (never a path), with the page unchanged on error
+[edit-upload +1.8s] PASS the uploaded source is handed to a real Edit action as staged_id (never a path), with the page unchanged on error (76 ms)
+[edit-upload +1.8s] START a text file renamed .png is rejected by the server with a clear message and nothing becomes the source
+[edit-upload +1.9s] PASS a text file renamed .png is rejected by the server with a clear message and nothing becomes the source (73 ms)
+[edit-upload +1.9s] START a truncated PNG (valid signature, no image data) is rejected
+[edit-upload +2.2s] PASS a truncated PNG (valid signature, no image data) is rejected (281 ms)
+[edit-upload +2.2s] START a file over the 25 MB limit is refused in the browser before any upload
+[edit-upload +5.3s] PASS a file over the 25 MB limit is refused in the browser before any upload (3134 ms)
+[edit-upload +5.3s] START the Edit model catalog lists every installed checkpoint; only edit-capable ones are selectable and the rest say why
+[edit-upload +5.5s] PASS the Edit model catalog lists every installed checkpoint; only edit-capable ones are selectable and the rest say why (256 ms)
+[v2-product] PASS edit-upload
+[v2-product] RUN edit-workbench
+[edit-workbench +0.7s] START startup restores saved secondary target without activating it
+[edit-workbench +1.6s] PASS startup restores saved secondary target without activating it (873 ms)
+[edit-workbench +1.6s] START provenance: Edit carries the SELECTED image's parameters, not the Create form
+[edit-workbench +2.5s] PASS provenance: Edit carries the SELECTED image's parameters, not the Create form (845 ms)
+[edit-workbench +2.5s] START privacy on: stored prompt is recalled; different image → its own values
+[edit-workbench +3.0s] PASS privacy on: stored prompt is recalled; different image → its own values (572 ms)
+[edit-workbench +3.0s] START dirty Edit draft survives cancelled navigation and source replacement; accepted replacement restores exact source metadata
+[edit-workbench +3.8s] PASS dirty Edit draft survives cancelled navigation and source replacement; accepted replacement restores exact source metadata (746 ms)
+[edit-workbench +3.8s] START browser Back and reload use the native unsaved-work guard without clearing Edit state
+[edit-workbench +12.6s] PASS browser Back and reload use the native unsaved-work guard without clearing Edit state (8798 ms)
+[edit-workbench +12.6s] START stale asynchronous source selection cannot override the newest canonical asset
+[edit-workbench +13.5s] PASS stale asynchronous source selection cannot override the newest canonical asset (894 ms)
+[edit-workbench +13.5s] START Library/Create/Edit/Compare/Reuse Settings keep the exact typed asset and guard prompt replacement
+[edit-workbench +14.5s] PASS Library/Create/Edit/Compare/Reuse Settings keep the exact typed asset and guard prompt replacement (1002 ms)
+[edit-workbench +14.5s] START img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result
+[edit-workbench +20.0s] PASS img2img: real click sends the request, shows queue/wait/real step progress, resolves the canonical result (5485 ms)
+[edit-workbench +20.0s] START failures are visible with stage + actual error; polling loss offers a safe retry
+[edit-workbench +29.5s] PASS failures are visible with stage + actual error; polling loss offers a safe retry (9507 ms)
+[edit-workbench +29.5s] START Run never fails silently: blocked state explains itself and click surfaces the reason
+[edit-workbench +30.5s] PASS Run never fails silently: blocked state explains itself and click surfaces the reason (1039 ms)
+[edit-workbench +30.5s] START inpaint alignment (fx-square.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches
+[edit-workbench +31.6s] PASS inpaint alignment (fx-square.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches (1066 ms)
+[edit-workbench +31.6s] START inpaint alignment (fx-landscape.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches
+[edit-workbench +32.6s] PASS inpaint alignment (fx-landscape.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches (1024 ms)
+[edit-workbench +32.6s] START inpaint alignment (fx-portrait.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches
+[edit-workbench +33.7s] PASS inpaint alignment (fx-portrait.png): full image at Fit, strokes land on intended source pixels, zoom/pan keep them, backend mask matches (1118 ms)
+[edit-workbench +33.7s] START fullscreen: sources/results/library open the viewer; Esc closes; inpaint canvas never does
+[edit-workbench +34.8s] PASS fullscreen: sources/results/library open the viewer; Esc closes; inpaint canvas never does (1141 ms)
+[edit-workbench +34.8s] START Create output hero image opens fullscreen
+[edit-workbench +35.5s] PASS Create output hero image opens fullscreen (605 ms)
+[edit-workbench +35.5s] START Detailer: preview/run use the selected targets, empty result is explained, stale preview is dropped, mask goes to inpaint untouched
+[edit-workbench +36.9s] PASS Detailer: preview/run use the selected targets, empty result is explained, stale preview is dropped, mask goes to inpaint untouched (1482 ms)
+[edit-workbench +36.9s] START every V2 screen renders without script errors (incl. Drama/Voice/Edit)
+[edit-workbench +38.9s] PASS every V2 screen renders without script errors (incl. Drama/Voice/Edit) (1979 ms)
+[edit-workbench +38.9s] START both Edit layouts render the SAME state; preference persists
+[edit-workbench +40.0s] PASS both Edit layouts render the SAME state; preference persists (1038 ms)
+[edit-workbench +40.0s] START resources: LoRAs visible in Create and Edit, weight changes are structured, incompatible ones excluded
+[edit-workbench +40.9s] PASS resources: LoRAs visible in Create and Edit, weight changes are structured, incompatible ones excluded (933 ms)
+[edit-workbench +40.9s] START model picker: concise, grouped, searchable
+[edit-workbench +41.8s] PASS model picker: concise, grouped, searchable (921 ms)
+[edit-workbench +41.8s] START presets: per-operation, versioned, privacy-aware, legacy migrated
+[edit-workbench +42.9s] PASS presets: per-operation, versioned, privacy-aware, legacy migrated (1111 ms)
+[edit-workbench +42.9s] START saving off: both browser storage areas exclude current edit prompt and negative after preset save and reload
+[edit-workbench +43.9s] PASS saving off: both browser storage areas exclude current edit prompt and negative after preset save and reload (938 ms)
+[edit-workbench +43.9s] START saving ON: actual browser storage retains explicitly saved preset text after reload, sessionStorage remains unused
+[edit-workbench +44.7s] PASS saving ON: actual browser storage retains explicitly saved preset text after reload, sessionStorage remains unused (846 ms)
+[edit-workbench +44.7s] START Detailer dialog traps focus, closes with Escape, and restores the opener
+[edit-workbench +45.6s] PASS Detailer dialog traps focus, closes with Escape, and restores the opener (900 ms)
+[edit-workbench +45.6s] START safe owned detector stall shows terminal timeout, no mask/job, and healthy retry retains image/options
+[edit-workbench +47.6s] PASS safe owned detector stall shows terminal timeout, no mask/job, and healthy retry retains image/options (2043 ms)
+[edit-workbench +47.6s] START Detailer keeps truthful job progress visible until the canonical result is ready
+[edit-workbench +53.0s] PASS Detailer keeps truthful job progress visible until the canonical result is ready (5395 ms)
+[edit-workbench +53.0s] START responsive @375px: no horizontal overflow on Create/Edit/Library
+[edit-workbench +54.3s] PASS responsive @375px: no horizontal overflow on Create/Edit/Library (1294 ms)
+[edit-workbench +54.3s] START responsive @768px: no horizontal overflow on Create/Edit/Library
+[edit-workbench +55.6s] PASS responsive @768px: no horizontal overflow on Create/Edit/Library (1295 ms)
+[edit-workbench +55.6s] START responsive @1280px: no horizontal overflow on Create/Edit/Library
+[edit-workbench +57.3s] PASS responsive @1280px: no horizontal overflow on Create/Edit/Library (1662 ms)
+
+29/29 browser checks passed
+[v2-product] PASS edit-workbench
+[v2-product] RUN extras
+[extras +0.7s] START default plan is shown and Run sends exactly the extras object
+[extras +2.0s] PASS default plan is shown and Run sends exactly the extras object (1218 ms)
+[extras +2.0s] START scale-to with crop, second upscaler and visibility drive the preview and request
+[extras +3.0s] PASS scale-to with crop, second upscaler and visibility drive the preview and request (1023 ms)
+[extras +3.0s] START invalid input blocks Run with the reason; face restoration is stated unavailable
+[extras +4.0s] PASS invalid input blocks Run with the reason; face restoration is stated unavailable (966 ms)
+[extras +4.0s] START server: validation errors over HTTP (no job created)
+[extras +4.0s] PASS server: validation errors over HTTP (no job created) (33 ms)
+[v2-product] PASS extras
+[v2-product] RUN form-stability
+[form-stability +0.7s] START typing in the prompt box survives a continuous re-render storm: no lost keys, focus kept
+[form-stability +3.0s] PASS typing in the prompt box survives a continuous re-render storm: no lost keys, focus kept (2312 ms)
+[form-stability +3.0s] START the caret stays where the user put it while the form is rebuilt
+[form-stability +4.0s] PASS the caret stays where the user put it while the form is rebuilt (1001 ms)
+[form-stability +4.0s] START other fields keep focus too: negative prompt text and numeric inputs
+[form-stability +6.2s] PASS other fields keep focus too: negative prompt text and numeric inputs (2212 ms)
+[form-stability +6.2s] START a persistent Node widget (the model picker) keeps keyboard focus across re-renders
+[form-stability +8.7s] PASS a persistent Node widget (the model picker) keeps keyboard focus across re-renders (2514 ms)
+[form-stability +8.7s] START typing straight after load and after a target switch keeps focus (the original startup churn)
+[form-stability +14.4s] PASS typing straight after load and after a target switch keeps focus (the original startup churn) (5648 ms)
+[v2-product] PASS form-stability
+[v2-product] RUN generate-hires
+[generate-hires +0.7s] START OP-4A independent second pass: sends exactly the chosen second-pass fields to hires-2pass; blanks inherit; exclusive with in-engine hires
+[generate-hires +1.9s] PASS OP-4A independent second pass: sends exactly the chosen second-pass fields to hires-2pass; blanks inherit; exclusive with in-engine hires (1173 ms)
+[generate-hires +1.9s] START scale mode: panel, final-size preview, request carries scale and the chosen upscaler
+[generate-hires +3.1s] PASS scale mode: panel, final-size preview, request carries scale and the chosen upscaler (1234 ms)
+[generate-hires +3.1s] START resize-to mode sends width and height (no scale) and the preview shows them
+[generate-hires +4.3s] PASS resize-to mode sends width and height (no scale) and the preview shows them (1186 ms)
+[generate-hires +4.3s] START MFLUX target and a disabled High-Res checkbox send no hires fields
+[generate-hires +5.5s] PASS MFLUX target and a disabled High-Res checkbox send no hires fields (1230 ms)
+[generate-hires +5.5s] START real server validator: accepts both modes and all upscalers, rejects every bad combination
+[generate-hires +5.5s] PASS real server validator: accepts both modes and all upscalers, rejects every bad combination (37 ms)
+[v2-product] PASS generate-hires
+[v2-product] RUN generate-sampling
+[generate-sampling +0.7s] START SDCPP target shows sampler, CLIP skip and tiling and sends the chosen values
+[generate-sampling +2.7s] PASS SDCPP target shows sampler, CLIP skip and tiling and sends the chosen values (1944 ms)
+[generate-sampling +2.7s] START two different samplers produce two different requests; defaults add no clip skip or tiling
+[generate-sampling +4.0s] PASS two different samplers produce two different requests; defaults add no clip skip or tiling (1302 ms)
+[generate-sampling +4.0s] START a target default such as dpm++2m is shown and sent as its canonical id
+[generate-sampling +5.2s] PASS a target default such as dpm++2m is shown and sent as its canonical id (1275 ms)
+[generate-sampling +5.2s] START MFLUX target hides the controls, explains why, and sends no sampling fields
+[generate-sampling +6.6s] PASS MFLUX target hides the controls, explains why, and sends no sampling fields (1327 ms)
+[generate-sampling +6.6s] START V2 effective settings show the sampler, CLIP skip and tiling and follow the controls
+[generate-sampling +8.9s] PASS V2 effective settings show the sampler, CLIP skip and tiling and follow the controls (2319 ms)
+[generate-sampling +8.9s] START V2 sampler selects offer supported ids and no unsupported A1111 aliases
+[generate-sampling +10.7s] PASS V2 sampler selects offer supported ids and no unsupported A1111 aliases (1793 ms)
+[generate-sampling +10.7s] START Preview request shows the same effective request and worker command that Generate sends
+[generate-sampling +12.0s] PASS Preview request shows the same effective request and worker command that Generate sends (1333 ms)
+[generate-sampling +12.0s] START Preview request for MFLUX names the MFLUX worker and carries no SD-only flags; invalid input is rejected visibly
+[generate-sampling +13.5s] PASS Preview request for MFLUX names the MFLUX worker and carries no SD-only flags; invalid input is rejected visibly (1489 ms)
+[generate-sampling +13.5s] START Advanced sampling: eta follows the sampler, RNG is sent, unavailable options are listed, MFLUX hides it all
+[generate-sampling +16.1s] PASS Advanced sampling: eta follows the sampler, RNG is sent, unavailable options are listed, MFLUX hides it all (2633 ms)
+[generate-sampling +16.1s] START server accepts eta/rng/new samplers/kl_optimal end to end (preview uses the real validator) and rejects bad combinations
+[generate-sampling +16.2s] PASS server accepts eta/rng/new samplers/kl_optimal end to end (preview uses the real validator) and rejects bad combinations (34 ms)
+[generate-sampling +16.2s] START scheduler list comes from the shared choices and includes KL optimal
+[generate-sampling +17.3s] PASS scheduler list comes from the shared choices and includes KL optimal (1149 ms)
+[generate-sampling +17.3s] START controls remain usable at 390x844
+[generate-sampling +19.0s] PASS controls remain usable at 390x844 (1676 ms)
+[v2-product] PASS generate-sampling
+[v2-product] RUN interaction-matrix
+V2/360x780/Create PASS 
+V2/360x780/Library PASS 
+V2/360x780/Batch PASS 
+V2/360x780/Edit Compact PASS 
+V2/360x780/Edit Studio PASS 
+V2/360x780/Enhance PASS 
+V2/360x780/Voice PASS 
+V2/360x780/Drama PASS 
+V2/360x780/Music PASS 
+V2/360x780/Video PASS 
+V2/360x780/Models PASS 
+V2/360x780/System PASS 
+V2/375x812/Create PASS 
+V2/375x812/Library PASS 
+V2/375x812/Batch PASS 
+V2/375x812/Edit Compact PASS 
+V2/375x812/Edit Studio PASS 
+V2/375x812/Enhance PASS 
+V2/375x812/Voice PASS 
+V2/375x812/Drama PASS 
+V2/375x812/Music PASS 
+V2/375x812/Video PASS 
+V2/375x812/Models PASS 
+V2/375x812/System PASS 
+V2/390x844/Create PASS 
+V2/390x844/Library PASS 
+V2/390x844/Batch PASS 
+V2/390x844/Edit Compact PASS 
+V2/390x844/Edit Studio PASS 
+V2/390x844/Enhance PASS 
+V2/390x844/Voice PASS 
+V2/390x844/Drama PASS 
+V2/390x844/Music PASS 
+V2/390x844/Video PASS 
+V2/390x844/Models PASS 
+V2/390x844/System PASS 
+V2/768x1024/Create PASS 
+V2/768x1024/Library PASS 
+V2/768x1024/Batch PASS 
+V2/768x1024/Edit Compact PASS 
+V2/768x1024/Edit Studio PASS 
+V2/768x1024/Enhance PASS 
+V2/768x1024/Voice PASS 
+V2/768x1024/Drama PASS 
+V2/768x1024/Music PASS 
+V2/768x1024/Video PASS 
+V2/768x1024/Models PASS 
+V2/768x1024/System PASS 
+V2/1024x768/Create PASS 
+V2/1024x768/Library PASS 
+V2/1024x768/Batch PASS 
+V2/1024x768/Edit Compact PASS 
+V2/1024x768/Edit Studio PASS 
+V2/1024x768/Enhance PASS 
+V2/1024x768/Voice PASS 
+V2/1024x768/Drama PASS 
+V2/1024x768/Music PASS 
+V2/1024x768/Video PASS 
+V2/1024x768/Models PASS 
+V2/1024x768/System PASS 
+V2/1280x800/Create PASS 
+V2/1280x800/Library PASS 
+V2/1280x800/Batch PASS 
+V2/1280x800/Edit Compact PASS 
+V2/1280x800/Edit Studio PASS 
+V2/1280x800/Enhance PASS 
+V2/1280x800/Voice PASS 
+V2/1280x800/Drama PASS 
+V2/1280x800/Music PASS 
+V2/1280x800/Video PASS 
+V2/1280x800/Models PASS 
+V2/1280x800/System PASS 
+V2/1440x900/Create PASS 
+V2/1440x900/Library PASS 
+V2/1440x900/Batch PASS 
+V2/1440x900/Edit Compact PASS 
+V2/1440x900/Edit Studio PASS 
+V2/1440x900/Enhance PASS 
+V2/1440x900/Voice PASS 
+V2/1440x900/Drama PASS 
+V2/1440x900/Music PASS 
+V2/1440x900/Video PASS 
+V2/1440x900/Models PASS 
+V2/1440x900/System PASS 
+reports: /Users/andrew/Image_Gen/output/playwright/matrix-20261022T184618-58202-2CncBg/interaction-matrix.json, /Users/andrew/Image_Gen/output/playwright/matrix-20261022T184618-58202-2CncBg/interaction-matrix-summary.md
+[v2-product] PASS interaction-matrix
+[v2-product] RUN interrupt
+[interrupt +0.7s] START Interrupt is hidden when idle, appears while generating, and a confirmed stop returns Create to idle
+[interrupt +4.3s] PASS Interrupt is hidden when idle, appears while generating, and a confirmed stop returns Create to idle (3573 ms)
+[interrupt +4.3s] START an unverified remote stop is reported as such (heavy work paused), never as success
+[interrupt +5.6s] PASS an unverified remote stop is reported as such (heavy work paused), never as success (1342 ms)
+[v2-product] PASS interrupt
+[v2-product] RUN library
+[library +0.7s] START a full mixed-media collection scrolls without compressing or overlapping image rows
+[library +1.5s] PASS a full mixed-media collection scrolls without compressing or overlapping image rows (820 ms)
+[library +1.5s] START grid mode: rows and columns each change the visible page independently; range and total are exact
+[library +2.2s] PASS grid mode: rows and columns each change the visible page independently; range and total are exact (714 ms)
+[library +2.2s] START density changes the cell size; effective columns are clamped to the viewport and disclosed
+[library +4.1s] PASS density changes the cell size; effective columns are clamped to the viewport and disclosed (1857 ms)
+[library +4.1s] START preferences persist across reload; list mode shows one entry per row with Download links
+[library +5.0s] PASS preferences persist across reload; list mode shows one entry per row with Download links (963 ms)
+[library +5.0s] START thumbnails are bounded: browsing the grid fetches thumbnails, not full-resolution images
+Library thumbnail trace: {"count":40,"ids":["20261017-100083-fx-83.png","20261017-100082-fx-82.png","20261017-100081-fx-81.png","20261017-100080-fx-80.png","20261017-100079-fx-79.png","20261017-100078-fx-78.png","20261017-100077-fx-77.png","20261017-100076-fx-76.png","20261017-100075-fx-75.png","20261017-100074-fx-74.png","20261017-100073-fx-73.png","20261017-100072-fx-72.png","20261017-100071-fx-71.png","20261017-100070-fx-70.png","20261017-100069-fx-69.png","20261017-100068-fx-68.png","20261017-100067-fx-67.png","20261017-100066-fx-66.png","20261017-100065-fx-65.png","20261017-100064-fx-64.png","20261017-100063-fx-63.png","20261017-100062-fx-62.png","20261017-100061-fx-61.png","20261017-100060-fx-60.png","20261017-100059-fx-59.png","20261017-100058-fx-58.png","20261017-100057-fx-57.png","20261017-100056-fx-56.png","20261017-100055-fx-55.png","20261017-100054-fx-54.png","20261017-100053-fx-53.png","20261017-100052-fx-52.png","20261017-100051-fx-51.png","20261017-100050-fx-50.png","20261017-100049-fx-49.png","20261017-100048-fx-48.png","20261017-100047-fx-47.png","20261017-100046-fx-46.png","20261017-100045-fx-45.png","20261017-100044-fx-44.png"]}
+[library +5.9s] PASS thumbnails are bounded: browsing the grid fetches thumbnails, not full-resolution images (878 ms)
+[library +5.9s] START viewer: opens full size, Previous/Next, counter, boundaries, keyboard, original Download, Escape returns focus
+[library +6.6s] PASS viewer: opens full size, Previous/Next, counter, boundaries, keyboard, original Download, Escape returns focus (726 ms)
+[library +6.6s] START viewer navigation follows the active filter and sort, not the unfiltered library
+[library +7.5s] PASS viewer navigation follows the active filter and sort, not the unfiltered library (821 ms)
+[library +7.5s] START arrow keys are not hijacked while typing; swipe navigates only when not zoomed
+[library +8.0s] PASS arrow keys are not hijacked while typing; swipe navigates only when not zoomed (543 ms)
+[library +8.0s] START a missing/corrupt image shows a recoverable error; Previous/Next and Close still work; Copy never fakes success
+[library +8.7s] PASS a missing/corrupt image shows a recoverable error; Previous/Next and Close still work; Copy never fakes success (709 ms)
+[library +8.7s] START large library (5000 images): DOM and requests stay bounded to the page; paging reaches the end
+[library +17.0s] PASS large library (5000 images): DOM and requests stay bounded to the page; paging reaches the end (8290 ms)
+[v2-product] PASS library
+[v2-product] RUN model-favorites
+[model-favorites +1.4s] START two favourites can be set at once; each model has its own icon
+[model-favorites +1.5s] PASS two favourites can be set at once; each model has its own icon (124 ms)
+[model-favorites +1.5s] START Favorites filter shows only starred models and survives reload
+[model-favorites +1.8s] PASS Favorites filter shows only starred models and survives reload (263 ms)
+[v2-product] PASS model-favorites
+[v2-product] RUN model-files
+[model-files +0.4s] START Verify files lists header facts and flags a name/header mismatch and unreadable files
+[model-files +1.3s] PASS Verify files lists header facts and flags a name/header mismatch and unreadable files (909 ms)
+[model-files +1.3s] START an unreachable compute host is reported, not hidden
+[model-files +1.9s] PASS an unreachable compute host is reported, not hidden (590 ms)
+[model-files +1.9s] START server: LoRA tags are validated strictly by the real validators
+[model-files +2.0s] PASS server: LoRA tags are validated strictly by the real validators (33 ms)
+[v2-product] PASS model-files
+[v2-product] RUN notifications
+[notifications +1.0s] START a successful job dings once; replay of the same job id does not ding again
+[notifications +1.0s] PASS a successful job dings once; replay of the same job id does not ding again (14 ms)
+[notifications +1.0s] START failed and cancelled jobs never ding
+[notifications +1.1s] PASS failed and cancelled jobs never ding (18 ms)
+[notifications +1.1s] START mute silences the ding (preference persisted)
+[notifications +1.1s] PASS mute silences the ding (preference persisted) (15 ms)
+[v2-product] PASS notifications
+[v2-product] RUN png-info
+[png-info +0.7s] START uploading an A1111 PNG lists every field with its state and Send to Create restores the supported ones
+[png-info +1.8s] PASS uploading an A1111 PNG lists every field with its state and Send to Create restores the supported ones (1150 ms)
+[png-info +1.8s] START a PNG without metadata, a ComfyUI PNG and a non-PNG are each explained
+[png-info +2.4s] PASS a PNG without metadata, a ComfyUI PNG and a non-PNG are each explained (600 ms)
+[png-info +2.4s] START server: export with metadata embeds the same infotext the infotext route returns; plain export is byte-identical
+[png-info +2.4s] PASS server: export with metadata embeds the same infotext the infotext route returns; plain export is byte-identical (22 ms)
+[v2-product] PASS png-info
+[v2-product] RUN progressive-batch
+[progressive-batch +0.7s] START images appear one by one while the batch is still running; the Fast batch flag is off by default
+[progressive-batch +4.3s] PASS images appear one by one while the batch is still running; the Fast batch flag is off by default (3581 ms)
+[progressive-batch +4.3s] START a failed last cell leaves the first three finished images and ends PARTIAL
+[progressive-batch +6.7s] PASS a failed last cell leaves the first three finished images and ends PARTIAL (2423 ms)
+[progressive-batch +6.7s] START cancelling the remainder keeps finished images and returns Create to idle
+[progressive-batch +9.2s] PASS cancelling the remainder keeps finished images and returns Create to idle (2486 ms)
+[progressive-batch +9.2s] START a page refresh re-attaches to the running batch and restores finished cells and the batch size
+[progressive-batch +11.8s] PASS a page refresh re-attaches to the running batch and restores finished cells and the batch size (2631 ms)
+[v2-product] PASS progressive-batch
+[v2-product] RUN prompt-language
+[prompt-language +0.7s] START the old blanket claim is gone and help text matches the selected backend
+[prompt-language +2.2s] PASS the old blanket claim is gone and help text matches the selected backend (1466 ms)
+[prompt-language +2.2s] START typing keeps focus and cursor while MFLUX emphasis notes appear and clear
+[prompt-language +4.7s] PASS typing keeps focus and cursor while MFLUX emphasis notes appear and clear (2594 ms)
+[prompt-language +4.7s] START PR-23: Ctrl+Up/Down weights the word at the caret and Alt+Right moves an element; the form state follows
+[prompt-language +6.9s] PASS PR-23: Ctrl+Up/Down weights the word at the caret and Alt+Right moves an element; the form state follows (2188 ms)
+[prompt-language +6.9s] START the server rejects schedule/alternation/AND with offset and hint, and accepts supported emphasis
+[prompt-language +7.0s] PASS the server rejects schedule/alternation/AND with offset and hint, and accepts supported emphasis (26 ms)
+[v2-product] PASS prompt-language
+[v2-product] RUN prompt-matrix
+[prompt-matrix +0.7s] START matrix: Check asks the real server and lists the 8 exact cells; options are sent
+[prompt-matrix +1.9s] PASS matrix: Check asks the real server and lists the 8 exact cells; options are sent (1216 ms)
+[prompt-matrix +1.9s] START matrix: a prompt without | is refused with the reason and nothing is started; a valid one starts
+[prompt-matrix +2.6s] PASS matrix: a prompt without | is refused with the reason and nothing is started; a valid one starts (750 ms)
+[prompt-matrix +2.6s] START lines: dry run shows the exact normalised jobs; a bad line is refused with its number
+[prompt-matrix +3.5s] PASS lines: dry run shows the exact normalised jobs; a bad line is refused with its number (860 ms)
+[prompt-matrix +3.5s] START server: matrix and list validators, gating, caps, seeds and confirmation over HTTP
+[prompt-matrix +3.5s] PASS server: matrix and list validators, gating, caps, seeds and confirmation over HTTP (30 ms)
+[v2-product] PASS prompt-matrix
+[v2-product] RUN pwa
+[pwa +1.4s] START manifest is linked, valid, same-origin, scoped to /dexdiffusion/, with fetchable icons
+[pwa +1.4s] PASS manifest is linked, valid, same-origin, scoped to /dexdiffusion/, with fetchable icons (12 ms)
+[pwa +1.4s] START service worker activates and caches no /api response
+[pwa +1.6s] PASS service worker activates and caches no /api response (125 ms)
+[pwa +1.6s] START losing the console shows a truthful offline notice
+[pwa +1.6s] PASS losing the console shows a truthful offline notice (27 ms)
+[v2-product] PASS pwa
+[v2-product] RUN ref-edit
+[ref-edit +0.4s] START the card shows the output size, blocks Run until a prompt and valid steps exist, then sends exactly the request
+[ref-edit +1.5s] PASS the card shows the output size, blocks Run until a prompt and valid steps exist, then sends exactly the request (1083 ms)
+[ref-edit +1.5s] START server: validators refuse bad requests with the gate named, before any job exists
+[ref-edit +1.5s] PASS server: validators refuse bad requests with the gate named, before any job exists (40 ms)
+[v2-product] PASS ref-edit
+[v2-product] RUN studio-beginner
+[studio-beginner.browser] PASS NOVICE_BROWSER_PASS {"chips":14,"visiblePrompt":true,"advanced":true,"jobs":true,"errors":0}
+[v2-product] PASS studio-beginner
+[v2-product] RUN studio-cancel-fixture
+[studio-cancel-fixture.browser] PASS CANCEL_FIXTURE_PASS {"generateCalls":1,"cancelCalls":1,"activeJobId":"fixture-running-1","cancel":"unverified","state":"generating"}
+[v2-product] PASS studio-cancel-fixture
+[v2-product] RUN studio-desktop-primary-action
+[studio-desktop-primary-action.browser] PASS STUDIO_DESKTOP_PRIMARY_PASS {"normal":640,"advanced":640,"viewport":735}
+[v2-product] PASS studio-desktop-primary-action
+[v2-product] RUN studio-drama-stop-after-current
+[studio-drama-stop-after-current.browser] PASS DRAMA_STOP_AFTER_CURRENT_BROWSER_PASS { dialogs: 2, request: 'job-scoped', prematureCancelled: false }
+[v2-product] PASS studio-drama-stop-after-current
+[v2-product] RUN studio-first-screen-shapes
+[studio-first-screen-shapes.browser] PASS FIRST_SCREEN_SHAPES_PASS {"size":"1348x735","shapes":4,"prompt":258,"model":391,"lastShape":501,"paneBottom":515}
+[studio-first-screen-shapes.browser] PASS FIRST_SCREEN_SHAPES_PASS {"size":"390x844","shapes":4,"prompt":326,"model":501,"lastShape":635,"paneBottom":666}
+[v2-product] PASS studio-first-screen-shapes
+[v2-product] RUN studio-generate-fixture
+[studio-generate-fixture.browser] PASS GENERATE_FIXTURE_PASS {"submissions":1,"prompt":"A golden oak tree under an alien sky","size":"768x512","result":"DONE","actions":["Open in Library","Enhance","Download"]}
+[v2-product] PASS studio-generate-fixture
+[v2-product] RUN studio-scroll-preservation
+[studio-scroll-preservation.browser] PASS SCROLL_PRESERVATION_PASS {"before":300,"after":300,"domPreserved":true,"advanced":true}
+[v2-product] PASS studio-scroll-preservation
+[v2-product] RUN studio-source-handoff
+[studio-source-handoff.browser] PASS LIBRARY_HANDOFF_PASS {"source":"fixture-library-older.png","createdRun":"fixture-newest.png","source3d":"exact","world":"exact","download":true}
+[v2-product] PASS studio-source-handoff
+[v2-product] RUN studio-unsupported-cancel
+[studio-unsupported-cancel.browser] PASS UNSUPPORTED_CANCEL_WARNING_PASS { voice: true, music: true, capabilityDriven: true }
+[v2-product] PASS studio-unsupported-cancel
+[v2-product] RUN transform
+[transform +1.3s] START Rotate clockwise sends one validated request for the exact source id and opens the new version
+[transform +1.5s] PASS Rotate clockwise sends one validated request for the exact source id and opens the new version (251 ms)
+[transform +1.5s] START Flip and Crop 16:9 send the right operations (crop box is centred and inside the image)
+[transform +2.1s] PASS Flip and Crop 16:9 send the right operations (crop box is centred and inside the image) (566 ms)
+[transform +2.1s] START transform requests carry only the source id and operations (no path or overwrite field)
+[transform +2.1s] PASS transform requests carry only the source id and operations (no path or overwrite field) (0 ms)
+[transform +2.1s] START zoomed images can be dragged to pan without toggling zoom
+[transform +2.3s] PASS zoomed images can be dragged to pan without toggling zoom (215 ms)
+[v2-product] PASS transform
+[v2-product] RUN v2-parity-3d-world
+[v2-parity-3d-world +0.9s] START environment: the browser provides WebGL, so the viewers are verified by pixels (not by their error path)
+[v2-parity-3d-world +0.9s] PASS environment: the browser provides WebGL, so the viewers are verified by pixels (not by their error path) (0 ms)
+[v2-parity-3d-world +0.9s] START row 49: the 3D viewer renders a GLB, orbits on drag, zooms on wheel and Reset restores the view
+[v2-parity-3d-world +3.7s] PASS row 49: the 3D viewer renders a GLB, orbits on drag, zooms on wheel and Reset restores the view (2883 ms)
+[v2-parity-3d-world +3.7s] START row 49: a corrupt header is refused with a visible reason and nothing is drawn
+[v2-parity-3d-world +4.1s] PASS row 49: a corrupt header is refused with a visible reason and nothing is drawn (361 ms)
+[v2-parity-3d-world +4.1s] START row 49: a truncated file is refused with a visible reason and nothing is drawn
+[v2-parity-3d-world +4.5s] PASS row 49: a truncated file is refused with a visible reason and nothing is drawn (381 ms)
+[v2-parity-3d-world +4.5s] START row 49: an empty file is refused with a visible reason and nothing is drawn
+[v2-parity-3d-world +4.9s] PASS row 49: an empty file is refused with a visible reason and nothing is drawn (381 ms)
+[v2-parity-3d-world +4.9s] START row 49: a non-GLB file is refused with a visible reason and nothing is drawn
+[v2-parity-3d-world +5.2s] PASS row 49: a non-GLB file is refused with a visible reason and nothing is drawn (381 ms)
+[v2-parity-3d-world +5.2s] START row 49: a missing artifact is refused with a visible reason and nothing is drawn
+[v2-parity-3d-world +5.6s] PASS row 49: a missing artifact is refused with a visible reason and nothing is drawn (407 ms)
+[v2-parity-3d-world +5.6s] START row 48: V2 3D requires an explicit source, sends exact requests per mode, tracks the job and exposes viewer/Blender
+[v2-parity-3d-world +11.7s] PASS row 48: V2 3D requires an explicit source, sends exact requests per mode, tracks the job and exposes viewer/Blender (6034 ms)
+[v2-parity-3d-world +11.7s] START row 50: V2 World lists real project states, needs an explicit source, sends exact requests and Retry re-submits a failed project
+[v2-parity-3d-world +13.1s] PASS row 50: V2 World lists real project states, needs an explicit source, sends exact requests and Retry re-submits a failed project (1436 ms)
+[v2-parity-3d-world +13.1s] START row 51: the World viewer renders the project point cloud, moves with W/drag, resets, and records that it was opened
+[v2-parity-3d-world +16.1s] PASS row 51: the World viewer renders the project point cloud, moves with W/drag, resets, and records that it was opened (3011 ms)
+[v2-parity-3d-world +16.1s] START row 51: an unknown project is reported plainly instead of an empty scene
+[v2-parity-3d-world +16.4s] PASS row 51: an unknown project is reported plainly instead of an empty scene (222 ms)
+[v2-parity-3d-world +16.4s] START row 51: a project without a viewer artifact is reported plainly instead of an empty scene
+[v2-parity-3d-world +16.6s] PASS row 51: a project without a viewer artifact is reported plainly instead of an empty scene (219 ms)
+[v2-parity-3d-world +16.6s] START row 51: a corrupt PLY does not leave a blank scene without explanation
+[v2-parity-3d-world +16.8s] PASS row 51: a corrupt PLY does not leave a blank scene without explanation (239 ms)
+[v2-product] PASS v2-parity-3d-world
+[v2-product] RUN v2-parity-assistance
+[v2-parity-assistance +0.7s] START row 5: Help opens module tutorials from the V2 header at 1348x735; Escape closes and returns focus
+[v2-parity-assistance +1.8s] PASS row 5: Help opens module tutorials from the V2 header at 1348x735; Escape closes and returns focus (1099 ms)
+[v2-parity-assistance +1.8s] START row 5: Help opens module tutorials from the V2 header at 390x844; Escape closes and returns focus
+[v2-parity-assistance +2.7s] PASS row 5: Help opens module tutorials from the V2 header at 390x844; Escape closes and returns focus (904 ms)
+[v2-parity-assistance +2.7s] START row 6: Context follows the real Create state and the selected library asset, without changing either
+[v2-parity-assistance +13.3s] PASS row 6: Context follows the real Create state and the selected library asset, without changing either (10606 ms)
+[v2-parity-assistance +13.3s] START row 6: Context at 390x844 stays inside the viewport and is keyboard-operable
+[v2-parity-assistance +14.1s] PASS row 6: Context at 390x844 stays inside the viewport and is keyboard-operable (807 ms)
+[v2-parity-assistance +14.1s] START row 4: Job Center is reachable at 1348x735 and shows active, queued and recent work truthfully
+[v2-parity-assistance +15.3s] PASS row 4: Job Center is reachable at 1348x735 and shows active, queued and recent work truthfully (1242 ms)
+[v2-parity-assistance +15.4s] START row 4: Job Center is reachable at 390x844 and shows active, queued and recent work truthfully
+[v2-parity-assistance +16.6s] PASS row 4: Job Center is reachable at 390x844 and shows active, queued and recent work truthfully (1217 ms)
+[v2-parity-assistance +16.6s] START row 4: cancelling distinguishes a request from a confirmed stop (and a queued job from a running one)
+[v2-parity-assistance +17.5s] PASS row 4: cancelling distinguishes a request from a confirmed stop (and a queued job from a running one) (895 ms)
+[v2-parity-assistance +17.5s] START row 7: losing the console is reported as offline everywhere and recovery is truthful
+[v2-parity-assistance +18.1s] PASS row 7: losing the console is reported as offline everywhere and recovery is truthful (673 ms)
+[v2-parity-assistance +18.1s] START row 7/52: System Doctor renders real check rows and states, and a failing check is not hidden
+[v2-parity-assistance +18.7s] PASS row 7/52: System Doctor renders real check rows and states, and a failing check is not hidden (572 ms)
+[v2-product] PASS v2-parity-assistance
+[v2-product] RUN v2-parity-extras
+[v2-parity-extras +0.7s] START row 3: a visible Search entry opens the palette; "Go to Workstation" lands on Create, not an unrendered screen
+[v2-parity-extras +1.3s] PASS row 3: a visible Search entry opens the palette; "Go to Workstation" lands on Create, not an unrendered screen (605 ms)
+[v2-parity-extras +1.3s] START row 3: Cmd/Ctrl+K opens the palette in V2 and Escape closes it
+[v2-parity-extras +1.7s] PASS row 3: Cmd/Ctrl+K opens the palette in V2 and Escape closes it (431 ms)
+[v2-parity-extras +1.7s] START row 14: CFG 0 is accepted by the V2 input and sent as 0 (the server supports it)
+[v2-parity-extras +2.6s] PASS row 14: CFG 0 is accepted by the V2 input and sent as 0 (the server supports it) (826 ms)
+[v2-parity-extras +2.6s] START row 12: the prompt-style manager is reachable in V2 Create (open, load from the server, create-editor opens)
+[v2-parity-extras +3.1s] PASS row 12: the prompt-style manager is reachable in V2 Create (open, load from the server, create-editor opens) (535 ms)
+[v2-product] PASS v2-parity-extras
+[v2-product] RUN v2-parity-library-flow
+[v2-parity-library-flow +0.7s] START row 30: filters, sort and empty states return exactly the matching canonical images
+[v2-parity-library-flow +4.9s] PASS row 30: filters, sort and empty states return exactly the matching canonical images (4202 ms)
+[v2-parity-library-flow +4.9s] START row 30: a selected image stays selected when the sort changes; the run filter narrows the loaded runs
+[v2-parity-library-flow +6.1s] PASS row 30: a selected image stays selected when the sort changes; the run filter narrows the loaded runs (1168 ms)
+[v2-parity-library-flow +6.1s] START row 9: details show the recorded generation settings truthfully (no invented prompt, "LoRA none recorded")
+[v2-parity-library-flow +6.7s] PASS row 9: details show the recorded generation settings truthfully (no invented prompt, "LoRA none recorded") (588 ms)
+[v2-parity-library-flow +6.7s] START row 8/9: Reuse Settings restores recorded settings into Create and says the prompt was never saved
+[v2-parity-library-flow +7.4s] PASS row 8/9: Reuse Settings restores recorded settings into Create and says the prompt was never saved (760 ms)
+[v2-parity-library-flow +7.4s] START row 9: Keeper is written by the server and survives a reload
+[v2-parity-library-flow +8.8s] PASS row 9: Keeper is written by the server and survives a reload (1410 ms)
+[v2-parity-library-flow +8.8s] START row 9: a library image continues into Edit, Enhance, 3D and World as the same canonical asset
+[v2-parity-library-flow +10.3s] PASS row 9: a library image continues into Edit, Enhance, 3D and World as the same canonical asset (1480 ms)
+[v2-parity-library-flow +10.3s] START row 8: a durable Drama project is listed after a reload and reopens with its script and scenes
+[v2-parity-library-flow +11.0s] PASS row 8: a durable Drama project is listed after a reload and reopens with its script and scenes (733 ms)
+[v2-product] PASS v2-parity-library-flow
+[v2-product] RUN v2-parity-music
+[v2-parity-music +0.7s] START row 45/46: each engine shows only the controls it honours, with its real duration limits
+[v2-parity-music +1.5s] PASS row 45/46: each engine shows only the controls it honours, with its real duration limits (816 ms)
+[v2-parity-music +1.5s] START row 45: ACE-Step sends exactly the song request (lyrics, style fields, seed, duration), and Instrumental drops the lyrics
+[v2-parity-music +2.3s] PASS row 45: ACE-Step sends exactly the song request (lyrics, style fields, seed, duration), and Instrumental drops the lyrics (799 ms)
+[v2-parity-music +2.3s] START row 46: Magenta sends prompt and duration only (no lyrics, seed, style or reference) and the default is the documented 8 s
+[v2-parity-music +3.0s] PASS row 46: Magenta sends prompt and duration only (no lyrics, seed, style or reference) and the default is the documented 8 s (709 ms)
+[v2-parity-music +3.0s] START row 45: a missing runtime disables Generate with the reason and sends nothing
+[v2-parity-music +3.8s] PASS row 45: a missing runtime disables Generate with the reason and sends nothing (772 ms)
+[v2-parity-music +3.8s] START row 45: a missing model disables Generate with the reason and sends nothing
+[v2-parity-music +4.6s] PASS row 45: a missing model disables Generate with the reason and sends nothing (805 ms)
+[v2-parity-music +4.6s] START row 45: an unreachable Big Mac disables Generate with the reason and sends nothing
+[v2-parity-music +5.4s] PASS row 45: an unreachable Big Mac disables Generate with the reason and sends nothing (793 ms)
+[v2-parity-music +5.4s] START row 45: an inaccessible model drive disables Generate with the reason and sends nothing
+[v2-parity-music +6.2s] PASS row 45: an inaccessible model drive disables Generate with the reason and sends nothing (797 ms)
+[v2-parity-music +6.2s] START row 45/46: the job is followed through queued, running and complete, and the finished artifact is playable and identified
+[v2-parity-music +10.8s] PASS row 45/46: the job is followed through queued, running and complete, and the finished artifact is playable and identified (4583 ms)
+[v2-parity-music +10.8s] START row 45/46: a failed job names the failed gate, and a rejected request shows the server reason (never a fake success)
+[v2-parity-music +11.6s] PASS row 45/46: a failed job names the failed gate, and a rejected request shows the server reason (never a fake success) (807 ms)
+[v2-parity-music +11.6s] START row 47: V2 Music offers no stems or mastering controls (truthful boundary, no dead buttons)
+[v2-parity-music +12.1s] PASS row 47: V2 Music offers no stems or mastering controls (truthful boundary, no dead buttons) (535 ms)
+[v2-parity-music +12.1s] START row 53: the V2 Video destination states video is not implemented, shows the missing runtime, and sends nothing
+[v2-parity-music +12.9s] PASS row 53: the V2 Video destination states video is not implemented, shows the missing runtime, and sends nothing (771 ms)
+[v2-product] PASS v2-parity-music
+[v2-product] RUN v2-parity-prompt-assets
+[v2-parity-prompt-assets +0.7s] START row 12: create, order, preview, apply, edit, persist and delete prompt styles in V2 Create
+[v2-parity-prompt-assets +3.1s] PASS row 12: create, order, preview, apply, edit, persist and delete prompt styles in V2 Create (2373 ms)
+[v2-parity-prompt-assets +3.1s] START row 12: an invalid style is refused with a visible reason and nothing is stored
+[v2-parity-prompt-assets +3.7s] PASS row 12: an invalid style is refused with a visible reason and nothing is stored (660 ms)
+[v2-parity-prompt-assets +3.7s] START row 1: the approved Dexter artwork is served unchanged and renders in V2 at desktop and mobile sizes
+[v2-parity-prompt-assets +4.5s] PASS row 1: the approved Dexter artwork is served unchanged and renders in V2 at desktop and mobile sizes (796 ms)
+[v2-parity-prompt-assets +4.5s] START row 52: System shows worker health, access/bind, storage and launcher truth (an uninstalled runtime is reported as missing)
+[v2-parity-prompt-assets +5.0s] PASS row 52: System shows worker health, access/bind, storage and launcher truth (an uninstalled runtime is reported as missing) (496 ms)
+[v2-parity-prompt-assets +5.0s] START row 52: the prompt-privacy preference defaults off, persists, and is what a request would send
+[v2-parity-prompt-assets +5.7s] PASS row 52: the prompt-privacy preference defaults off, persists, and is what a request would send (662 ms)
+[v2-product] PASS v2-parity-prompt-assets
+[v2-product] RUN voice-clone-upload
+[voice-clone-upload +1.9s] START Upload button exists and opens the file picker on click
+[voice-clone-upload +2.0s] PASS Upload button exists and opens the file picker on click (86 ms)
+[voice-clone-upload +2.0s] START WAV, MP3, M4A, and FLAC files can be selected, display filename, duration and preview player
+[voice-clone-upload +2.3s] PASS WAV, MP3, M4A, and FLAC files can be selected, display filename, duration and preview player (371 ms)
+[voice-clone-upload +2.3s] START Errors display visibly when invalid audio or oversize file is selected
+[voice-clone-upload +6.7s] PASS Errors display visibly when invalid audio or oversize file is selected (4377 ms)
+[voice-clone-upload +6.7s] START Valid audio reaches Qwen3-TTS Base payload with staged_ref
+[voice-clone-upload +6.8s] PASS Valid audio reaches Qwen3-TTS Base payload with staged_ref (108 ms)
+[voice-clone-upload +6.8s] START Voice Profiles cloned voice sample upload button and error handling work
+[voice-clone-upload +7.1s] PASS Voice Profiles cloned voice sample upload button and error handling work (326 ms)
+[v2-product] PASS voice-clone-upload
+[v2-product] RUN voice-drama
+[voice-drama +0.7s] START Voice profiles: designed + preset voices, validation, capability truth, direction gating, long-form estimate
+[voice-drama +2.8s] PASS Voice profiles: designed + preset voices, validation, capability truth, direction gating, long-form estimate (2140 ms)
+[voice-drama +2.8s] START Cloned voice: invalid until a sample WITH transcript is approved; multiple samples; active sample; remove
+[voice-drama +4.4s] PASS Cloned voice: invalid until a sample WITH transcript is approved; multiple samples; active sample; remove (1521 ms)
+[voice-drama +4.4s] START real reference uploads: malformed, short and silent rejected; clipped sample shows warnings
+[voice-drama +5.7s] PASS real reference uploads: malformed, short and silent rejected; clipped sample shows warnings (1337 ms)
+[voice-drama +5.7s] START Voice render state belongs to the voice that started it (no progress/result/error leaks onto another voice)
+[voice-drama +16.0s] PASS Voice render state belongs to the voice that started it (no progress/result/error leaks onto another voice) (10296 ms)
+[voice-drama +16.0s] START Drama: paste → parse → review/edit → cast → privacy banner → save/unsave → blocked render → assemble refuses without takes
+[voice-drama +18.2s] PASS Drama: paste → parse → review/edit → cast → privacy banner → save/unsave → blocked render → assemble refuses without takes (2160 ms)
+[voice-drama +18.2s] START Drama LLM parse mode reports rejection/failure visibly (never silently falls back)
+[voice-drama +18.8s] PASS Drama LLM parse mode reports rejection/failure visibly (never silently falls back) (631 ms)
+[voice-drama +18.8s] START responsive @375px: Voice profiles + Drama have no horizontal overflow
+[voice-drama +21.0s] PASS responsive @375px: Voice profiles + Drama have no horizontal overflow (2188 ms)
+[voice-drama +21.0s] START responsive @768px: Voice profiles + Drama have no horizontal overflow
+[voice-drama +23.3s] PASS responsive @768px: Voice profiles + Drama have no horizontal overflow (2316 ms)
+[voice-drama +23.3s] PHASE cleanup owned projects
+[voice-drama +23.3s] PHASE cleanup owned profiles
+[voice-drama +23.3s] PHASE close browser
+[voice-drama +23.3s] PHASE stop test server
+
+8/8 voice/drama browser checks passed
+[v2-product] PASS voice-drama
+[v2-product] RUN xyz-plot
+[xyz-plot +0.7s] START defaults: X steps, Y CFG; Check plot asks the real server and lists the cells
+[xyz-plot +1.7s] PASS defaults: X steps, Y CFG; Check plot asks the real server and lists the cells (1036 ms)
+[xyz-plot +1.7s] START editing values and a Z prompt S/R axis is sent; a missing search term is refused with the reason
+[xyz-plot +2.6s] PASS editing values and a Z prompt S/R axis is sent; a missing search term is refused with the reason (816 ms)
+[xyz-plot +2.6s] START server: axis gating, bounds and per-cell validation over HTTP
+[xyz-plot +2.6s] PASS server: axis gating, bounds and per-cell validation over HTTP (23 ms)
+[v2-product] PASS xyz-plot
+V2_PRODUCT_RESULTS {"target":2,"partial":false,"results":[{"suite":"create-controls","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"drama-studio","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"edit-img2img-parity","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"edit-inpaint-parity","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"edit-scripts","target":2,"status":"FAIL","exit":1,"signal":null},{"suite":"edit-upload","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"edit-workbench","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"extras","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"form-stability","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"generate-hires","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"generate-sampling","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"interaction-matrix","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"interrupt","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"library","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"model-favorites","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"model-files","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"notifications","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"png-info","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"progressive-batch","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"prompt-language","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"prompt-matrix","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"pwa","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"ref-edit","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-beginner","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-cancel-fixture","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-desktop-primary-action","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-drama-stop-after-current","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-first-screen-shapes","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-generate-fixture","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-scroll-preservation","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-source-handoff","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"studio-unsupported-cancel","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"transform","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"v2-parity-3d-world","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"v2-parity-assistance","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"v2-parity-extras","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"v2-parity-library-flow","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"v2-parity-music","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"v2-parity-prompt-assets","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"voice-clone-upload","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"voice-drama","target":2,"status":"PASS","exit":0,"signal":null},{"suite":"xyz-plot","target":2,"status":"PASS","exit":0,"signal":null}]}
+RUNNER_EXIT 1

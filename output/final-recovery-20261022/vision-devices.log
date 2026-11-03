@@ -1,0 +1,12 @@
+VNDetectFaceRectanglesRequest
+stage VNComputeStage(_rawValue: VNComputeStageMain) devices [<MLNeuralEngineComputeDevice: 0x104d95000>, <MLGPUComputeDevice: 0x104da4610> Apple M1, <MLCPUComputeDevice: 0x104da4620>]
+CPU stage VNComputeStage(_rawValue: VNComputeStageMain) devices [<MLNeuralEngineComputeDevice: 0x104d95000>, <MLGPUComputeDevice: 0x104da4610> Apple M1, <MLCPUComputeDevice: 0x104da4620>]
+VNDetectHumanHandPoseRequest
+stage VNComputeStage(_rawValue: VNComputeStageMain) devices [<MLNeuralEngineComputeDevice: 0x104d95000>, <MLGPUComputeDevice: 0x104da4610> Apple M1, <MLCPUComputeDevice: 0x104da4620>]
+CPU stage VNComputeStage(_rawValue: VNComputeStageMain) devices [<MLCPUComputeDevice: 0x104da4620>]
+VNDetectHumanRectanglesRequest
+stage VNComputeStage(_rawValue: VNComputeStageMain) devices [<MLNeuralEngineComputeDevice: 0x104d95000>, <MLGPUComputeDevice: 0x104da4610> Apple M1, <MLCPUComputeDevice: 0x104da4620>]
+CPU stage VNComputeStage(_rawValue: VNComputeStageMain) devices [<MLNeuralEngineComputeDevice: 0x104d95000>, <MLGPUComputeDevice: 0x104da4610> Apple M1, <MLCPUComputeDevice: 0x104da4620>]
+VNGeneratePersonSegmentationRequest
+stage VNComputeStage(_rawValue: VNComputeStageMain) devices [<MLNeuralEngineComputeDevice: 0x104d95000>, <MLGPUComputeDevice: 0x104da4610> Apple M1, <MLCPUComputeDevice: 0x104da4620>]
+CPU stage VNComputeStage(_rawValue: VNComputeStageMain) devices [<MLNeuralEngineComputeDevice: 0x104d95000>, <MLGPUComputeDevice: 0x104da4610> Apple M1, <MLCPUComputeDevice: 0x104da4620>]

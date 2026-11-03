@@ -1,0 +1,66 @@
+✔ worker validates closed requests and owns cancellation/recovery (2407.609875ms)
+✔ transport ownership forbids traversal and malformed identifiers (0.238917ms)
+✔ generator parses sampling controls and rejects arbitrary command arguments (0.514333ms)
+✔ isolated fixture servers do not enable the live bridge implicitly (0.077ms)
+✔ model availability follows worker reads and reports unavailable worker (0.094375ms)
+✔ install registry preserves six adapters and original paths (130.915125ms)
+✔ worker native batch uses the existing all-output transaction and rolls back partial publication (230.839334ms)
+✔ lost cleanup acknowledgment and cancellation cannot commit canonical images (248.222709ms)
+✔ benchmark reads owned structured Metal and tensor evidence without a legacy raw log (3.471667ms)
+Could not parse CSS stylesheet
+✔ the canonical 14 categories exist in the fixed product order (3.44575ms)
+✔ the actual V2 template places LoRA controls directly before the persistent Generate action (4.144417ms)
+✔ chips carry a visible group tint and a real active state, not colour-only meaning (0.381125ms)
+✔ Swap and Video stay navigable but advertise that execution is unavailable (0.134584ms)
+✔ normal users resolve to Studio; developer mode alone may honour an older shell (0.168959ms)
+✔ preference migration is idempotent and never deletes saved work (0.178542ms)
+✔ the remembered screen is only reused when it is a real Studio destination (0.200292ms)
+✔ the template has one chip row built from the registry and no static duplicate tab list (0.548458ms)
+✔ the version picker is developer-only, so a first run never offers a shell choice (0.513084ms)
+✔ the component no longer defaults to the Workstation shell (0.481125ms)
+Could not parse CSS stylesheet
+✔ a real mount opens Studio > Create with exactly 14 clickable chips (615.199417ms)
+Could not parse CSS stylesheet
+✔ every one of the 14 chips navigates by real click, in order (1335.170292ms)
+Could not parse CSS stylesheet
+✔ Swap is an honest destination: it explains, it never starts or downloads anything (309.363917ms)
+Could not parse CSS stylesheet
+✔ an existing Workstation profile lands on Create and keeps its saved settings (223.82225ms)
+Could not parse CSS stylesheet
+✔ Generate starts one job and never doubles as a hidden cancel (634.792333ms)
+Could not parse CSS stylesheet
+✔ Cancel is a separate control bound to the exact job id (760.643ms)
+Could not parse CSS stylesheet
+✔ V2 Create shows guarded LoRA controls, applies a recipe, and snapshots ON/OFF requests (637.546584ms)
+Could not parse CSS stylesheet
+✔ changing the selected adapter restores normal settings and preserves manual overrides (720.555333ms)
+Could not parse CSS stylesheet
+✔ an unverified remote stop is reported as unverified, never as a clean cancel (811.581334ms)
+Could not parse CSS stylesheet
+✔ a verified stop de-duplicates repeated clicks and names the verified outcome (807.464958ms)
+Could not parse CSS stylesheet
+✔ a refused stop keeps the job running and explains why (809.997ms)
+✔ every enabled button in the V2 shell has a real handler (0.563458ms)
+✔ the formerly inert Models actions are gone instead of silently enabled (0.4125ms)
+Could not parse CSS stylesheet
+✔ T-203: a restored job id is confirmed with the server before Cancel is offered (739.537917ms)
+Could not parse CSS stylesheet
+✔ T-203: a job that cannot be confirmed is dropped instead of left falsely cancellable (278.491625ms)
+Could not parse CSS stylesheet
+✔ T-203: a completed restored job is finished, not shown as running (305.726083ms)
+Could not parse CSS stylesheet
+✔ T-203: a structured verified stop is reported as verified, not assumed from a 200 (801.400125ms)
+Could not parse CSS stylesheet
+✔ all 14 screens render without a draw error and expose accessible controls (2189.588834ms)
+Could not parse CSS stylesheet
+✔ every onClick/onChange binding in the template resolves to a real function (277.937125ms)
+Could not parse CSS stylesheet
+✔ I-01: the version picker is really hidden for a normal profile, and really shown in developer mode (578.795583ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13859.202583

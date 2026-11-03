@@ -116,7 +116,8 @@ test('malformed run ids are refused before anything is sent', async () => {
 test('server contract (OP-7): only verified evidence releases compute; no timer, no "ok but unverified" release', () => {
   assert.match(SERVER, /async function stopAndVerify\(job, why\)/);
   assert.match(SERVER, /const imageActive = img && \(\['queued', 'running'\]\.includes\(img\.status\) \|\| holdsLease\(img\)\)/, 'the sweeper keeps the lease while a remote process is unconfirmed');
-  const sync = SERVER.slice(SERVER.indexOf('function syncGenericTerminal'), SERVER.indexOf('function syncGenericTerminal') + 3800);
+  const syncStart = SERVER.indexOf('function syncGenericTerminal');
+  const sync = SERVER.slice(syncStart, SERVER.indexOf('function updateSequentialProgress', syncStart));
   assert.equal((sync.match(/if \(!holdsLease\(job\)\) arbiter\.release\(job\.id\)/g) || []).length, 2, 'both release sites honour the hold');
   assert.doesNotMatch(SERVER, /REMOTE_ORPHAN_HOLD_MS/, 'elapsed time must never release a protected lease');
   assert.match(SERVER, /function holdsLease\(job\) \{ return !!\(job && \(remoteWorkers\.isQuarantined\(job\.id\)/);

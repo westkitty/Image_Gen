@@ -1,0 +1,16 @@
+{
+  "CFBundleIdentifier": "local.image-gen.wrapper",
+  "DexDiffusionProjectRoot": "/Users/andrew/Image_Gen",
+  "DexDiffusionSourceHead": "d1d542631fd041ddf54b148a173da19415fa4dd6",
+  "DexDiffusionSourceFingerprint": "ab1c3bd0139bcaa1ea28a95281c86646c7e019ce652954bfcb823664dd290388",
+  "DexDiffusionIconFingerprint": "a688ccaeb5b62b0f5348023956e638e55ea1981efd733b85cfd7eb0acc4df4f6",
+  "swift_matches": true,
+  "icon_matches": true,
+  "dock_matches": [
+    {
+      "index": 19,
+      "label": "DexDiffusion",
+      "url": "file:///Applications/DexDiffusion.app/"
+    }
+  ]
+}

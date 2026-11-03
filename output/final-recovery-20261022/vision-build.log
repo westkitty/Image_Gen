@@ -1,0 +1,9 @@
+operator-console/bin/vision-detailer.swift:72:35: warning: 'usesCPUOnly' was deprecated in macOS 14.0 [#DeprecatedDeclaration]
+ 70 | func pinCompute(_ req: VNRequest) {
+ 71 |     guard computeMode != "auto" else { return }
+ 72 |     if computeMode == "cpu" { req.usesCPUOnly = true }          // older switch; some requests honour only this one
+    |                                   `- warning: 'usesCPUOnly' was deprecated in macOS 14.0 [#DeprecatedDeclaration]
+ 73 |     if #available(macOS 14.0, *) {
+ 74 |         let devices = MLComputeDevice.allComputeDevices
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>

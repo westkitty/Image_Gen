@@ -1,0 +1,24 @@
+[create-controls +4.6s] START actual pixel dimensions, megapixels and orientation are shown and follow the inputs
+[create-controls +34.6s] FAIL actual pixel dimensions, megapixels and orientation are shown and follow the inputs 
+    page.waitForSelector: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('[data-dex-field="pixel-size"]') to be visible[22m
+    
+[create-controls +34.6s] START Swap, Square, Portrait and Landscape controls change the real width/height
+[create-controls +64.7s] FAIL Swap, Square, Portrait and Landscape controls change the real width/height 
+    page.click: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('button:text-is("Swap W↔H")')[22m
+    [2m    - locator resolved to <button type="button">Swap W↔H</button>[22m
+    [2m  - attempting click action[22m
+[create-controls +64.7s] START the VAE selection defaults to Default VAE (the override choice is covered in edit-workbench)
+[create-controls +64.7s] FAIL the VAE selection defaults to Default VAE (the override choice is covered in edit-workbench) 
+    The input did not match the regular expression /Default VAE|default/i. Input:
+    
+    ''
+    
+[create-controls +64.7s] START the settings guide opens and carries the truthful High-Res Refine and Source preparation text
+
+[suite] SIGTERM received — cleaning up
+
+[suite] SIGTERM received — cleaning up

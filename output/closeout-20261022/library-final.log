@@ -1,0 +1,25 @@
+
+> operator-console@1.0.0 test:browser:library
+> node tests/browser/library.browser.js
+
+[library +4.7s] START a full mixed-media collection scrolls without compressing or overlapping image rows
+[library +6.7s] PASS a full mixed-media collection scrolls without compressing or overlapping image rows (2082 ms)
+[library +6.7s] START grid mode: rows and columns each change the visible page independently; range and total are exact
+[library +12.0s] PASS grid mode: rows and columns each change the visible page independently; range and total are exact (5263 ms)
+[library +12.0s] START density changes the cell size; effective columns are clamped to the viewport and disclosed
+[library +20.1s] PASS density changes the cell size; effective columns are clamped to the viewport and disclosed (8060 ms)
+[library +20.1s] START preferences persist across reload; list mode shows one entry per row with Download links
+[library +27.4s] PASS preferences persist across reload; list mode shows one entry per row with Download links (7353 ms)
+[library +27.4s] START thumbnails are bounded: browsing the grid fetches thumbnails, not full-resolution images
+Library thumbnail trace: {"count":40,"ids":["20261017-100083-fx-83.png","20261017-100082-fx-82.png","20261017-100081-fx-81.png","20261017-100080-fx-80.png","20261017-100079-fx-79.png","20261017-100078-fx-78.png","20261017-100077-fx-77.png","20261017-100076-fx-76.png","20261017-100075-fx-75.png","20261017-100074-fx-74.png","20261017-100073-fx-73.png","20261017-100072-fx-72.png","20261017-100071-fx-71.png","20261017-100070-fx-70.png","20261017-100069-fx-69.png","20261017-100068-fx-68.png","20261017-100067-fx-67.png","20261017-100066-fx-66.png","20261017-100065-fx-65.png","20261017-100064-fx-64.png","20261017-100063-fx-63.png","20261017-100062-fx-62.png","20261017-100061-fx-61.png","20261017-100060-fx-60.png","20261017-100059-fx-59.png","20261017-100058-fx-58.png","20261017-100057-fx-57.png","20261017-100056-fx-56.png","20261017-100055-fx-55.png","20261017-100054-fx-54.png","20261017-100053-fx-53.png","20261017-100052-fx-52.png","20261017-100051-fx-51.png","20261017-100050-fx-50.png","20261017-100049-fx-49.png","20261017-100048-fx-48.png","20261017-100047-fx-47.png","20261017-100046-fx-46.png","20261017-100045-fx-45.png","20261017-100044-fx-44.png"]}
+[library +32.3s] PASS thumbnails are bounded: browsing the grid fetches thumbnails, not full-resolution images (4899 ms)
+[library +32.3s] START viewer: opens full size, Previous/Next, counter, boundaries, keyboard, original Download, Escape returns focus
+[library +36.1s] PASS viewer: opens full size, Previous/Next, counter, boundaries, keyboard, original Download, Escape returns focus (3822 ms)
+[library +36.1s] START viewer navigation follows the active filter and sort, not the unfiltered library
+[library +41.4s] PASS viewer navigation follows the active filter and sort, not the unfiltered library (5270 ms)
+[library +41.4s] START arrow keys are not hijacked while typing; swipe navigates only when not zoomed
+[library +48.0s] PASS arrow keys are not hijacked while typing; swipe navigates only when not zoomed (6605 ms)
+[library +48.0s] START a missing/corrupt image shows a recoverable error; Previous/Next and Close still work; Copy never fakes success
+[library +53.1s] PASS a missing/corrupt image shows a recoverable error; Previous/Next and Close still work; Copy never fakes success (5040 ms)
+[library +53.1s] START large library (5000 images): DOM and requests stay bounded to the page; paging reaches the end
+[library +78.2s] PASS large library (5000 images): DOM and requests stay bounded to the page; paging reaches the end (25155 ms)

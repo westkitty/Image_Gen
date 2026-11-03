@@ -1,0 +1,40 @@
+PASS  Operator console                     responding (pid 882)
+PASS  Loopback bind                        127.0.0.1:31337
+PASS  Owned temporary cleanup              31 tracked resources · read-only /api/cleanup/ownership
+PASS  Canonical storage integrity          current problems 0 · valid 87 · historical missing references 738 · read-only /api/storage/integrity
+PASS  Canonical image root                 /Users/andrew/images_made readable/writable
+PASS  Big Mac                              reachable via ssh westcat
+PASS  Big Mac identity                     bigmac@bigmac
+PASS  wc2tb mounted                        /Volumes/wc2tb
+PASS  Big Mac local engine bridge          GUI worker pid 81338; private Unix socket; model reads occur locally
+PASS  wc2tb readable by SSH worker         remote SSH can list external model content
+PASS  MFLUX runtime                        internal venv
+PASS  MFLUX model (FLUX.2 Klein 4B 4-bit)  $HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit
+PASS  SDCPP sd-cli                         stable-diffusion.cpp 7f0e728
+PASS  SD1.5 model                          /Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors
+PASS  Real-ESRGAN model                    RealESRGAN_x4plus.pth
+PASS  Configured SDCPP targets             all present
+PASS  Tailscale Serve                      https://macbook-air.tailafb7e8.ts.net:8443/dexdiffusion/ (tailnet-only)
+PASS  DexDiffusion Funnel absent           tailnet-only
+PASS  Generic job store                    698 durable job records (jobs.json)
+PASS  Media root · image                   /Users/andrew/images_made
+PASS  Media root · voice                   /Users/andrew/audio_made/voice
+PASS  Media root · music                   /Users/andrew/audio_made/music
+PASS  Media root · video                   /Users/andrew/video_made
+PASS  Media root · world                   /Users/andrew/worlds
+PASS  Reference staging                    0 staged file(s), 24 h expiry
+PASS  Heavy-compute lease                  bigmac-heavy-inference capacity 1; owner none; waiting 0
+PASS  External heavy load (Big Mac)        none detected (ollama ps)
+PASS  Worker · MFLUX (FLUX.2 Klein 4B)     READY · local engine bridge
+PASS  Worker · stable-diffusion.cpp 7f0e728 READY · local engine bridge
+PASS  Worker · Kokoro 82M (speech)         PROVEN
+PASS  Worker · Qwen3-TTS Base (voice clone) PROVEN
+PASS  Worker · Qwen3-TTS VoiceDesign       PROVEN
+PASS  Worker · VoxCPM2 (controllable voice clone) PROVEN
+PASS  Worker · OpenVoice V2 (tone-color conversion) PROVEN
+PASS  Worker · ACE-Step 1.5 (Turbo + 0.6B LM) PROVEN
+PASS  Worker · Magenta RealTime 2 (small)  PROVEN
+WARN  Worker · LTX Video (video)           RUNTIME MISSING; enabled false; proven false — not installed
+PASS  Unified Media Library                images 824, voice 122, music 66, video 0
+
+Overall: WARN  (checked 2026-10-22T05:40:17.079Z)

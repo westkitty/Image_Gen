@@ -1,0 +1,48 @@
+DEXDIFFUSION STATUS
+
+Web
+  status:    UP (pid 882, HEAD d1d5426)
+  local:     http://127.0.0.1:31337/dexdiffusion/
+  bind:      127.0.0.1:31337
+  tailnet:   https://macbook-air.tailafb7e8.ts.net:8443/dexdiffusion/
+  serve:     tailnet-only
+
+Launcher
+  app:       /Applications/DexDiffusion.app — PRESENT (local.image-gen.wrapper)
+  revision:  HEAD d1d542631fd041ddf54b148a173da19415fa4dd6 (UP TO DATE vs repo d1d542631fd0)
+  build:     arm64 (source fingerprint MATCHES)
+  root:      /Users/andrew/Image_Gen
+  icon:      OK (DexDiffusion; source artwork MATCHES)
+  dock:      INSTALLED (1 entry, file:///Applications/DexDiffusion.app/)
+
+Generation
+  primary:   FLUX.2 Klein 4B (MFLUX) [flux2-klein-4b, proven]
+  Big Mac:   ssh westcat — UP (bigmac)
+  MFLUX env: $HOME/Library/Caches/DexDiffusion/mflux/venv — PRESENT
+  model:     mlx-community/flux2-klein-4b-4bit — PRESENT
+
+Storage
+  images:    /Users/andrew/images_made (latest: 20261022-043033-controlled-sd15-02adcd84-s732023-controlled-sd15.png)
+  Big Mac generated-image retention: ephemeral (deleted after transfer)
+
+SDCPP (secondary)
+  sd-cli:    PRESENT ($HOME/stable-diffusion.cpp/build, rev 7f0e728)
+  SD1.5:     PRESENT (\/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors)
+  ESRGAN:    PRESENT (/Volumes/wc2tb/ImageGen/upscalers/RealESRGAN_x4plus.pth)
+
+Capabilities (derived from real job evidence + asset probe)
+  txt2img · FLUX.2 Klein 4B (MFLUX)  PROVEN     last pass 2026-10-21T13:54
+  txt2img · SD1.5 (SDCPP)            PROVEN     last pass 2026-10-22T04:30
+  txt2img · Photonic Fusion SDXL (SDCPP) PROVEN     last pass 2026-10-17T12:33
+  txt2img · SDXL base 1.0 (SDCPP)    PROVEN     last pass 2026-10-21T13:48
+  txt2img · SDXL Turbo (SDCPP)       PROVEN     last pass 2026-10-02T01:19
+  img2img (SDCPP)                    PROVEN     last pass 2026-10-21T09:32
+  Inpaint (SDCPP)                    PROVEN     last pass 2026-10-21T09:33
+  Upscale · Lanczos (MacBook)        PROVEN     last pass 2026-10-17T21:20
+  Upscale · Real-ESRGAN x4 (SDCPP)   PROVEN     last pass 2026-10-17T21:20
+  Hires fix (SDCPP + Lanczos)        PROVEN     last pass 2026-10-02T01:56
+  Batch / sweep (SDCPP)              AVAILABLE  no live proof recorded yet
+  Quantity · native sd-cli batch (SDCPP) PROVEN     last pass 2026-10-21T14:12
+  High-Res Refine · native 2nd pass (SDCPP) PROVEN     last pass 2026-10-21T05:29
+  Outpaint (canvas prep + SDCPP inpaint) PROVEN     last pass 2026-10-21T09:33
+  ControlNet (SD1.5 Canny)           UNAVAILABLE ENGINE SUPPORTED — MODEL ASSET MISSING: no SD1.5 ControlNet model on Big Mac (needs e.g. control_v11p_sd15_canny)

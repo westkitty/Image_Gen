@@ -1,0 +1,36 @@
+[drama-studio +1.0s] START Studio: seven stages inside one Drama module; state line; classification proof; re-parse previews before it changes anything
+[drama-studio +2.5s] PASS Studio: seven stages inside one Drama module; state line; classification proof; re-parse previews before it changes anything (1511 ms)
+[drama-studio +2.5s] START Save and Continue waits for durable Drama save and reads the saved project back
+[drama-studio +33.2s] FAIL Save and Continue waits for durable Drama save and reads the saved project back 
+    locator.click: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('.ca-nav-item').filter({ hasText: 'Voice' })[22m
+    
+[drama-studio +33.2s] START browser Back during an unsaved Drama script is declined by beforeunload and preserves the draft
+[drama-studio +39.8s] PASS browser Back during an unsaved Drama script is declined by beforeunload and preserves the draft (6629 ms)
+[drama-studio +39.8s] START unparsed Drama script offers no fake Save action and remains in memory when switching modules
+[drama-studio +70.2s] FAIL unparsed Drama script offers no fake Save action and remains in memory when switching modules 
+    page.waitForSelector: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('.ca-shell[data-ca-module="voice"]') to be visible[22m
+    
+[drama-studio +70.2s] START Save failure keeps Drama draft and pending navigation; delayed save accepts one continuation only
+[drama-studio +102.1s] FAIL Save failure keeps Drama draft and pending navigation; delayed save accepts one continuation only 
+    locator.click: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('.ca-nav-item').filter({ hasText: 'Voice' })[22m
+    
+[drama-studio +102.1s] START Cast Bible: voices, role, pronunciation, FX rack, optional pacing; unsupported controls are disabled with the engine evidence
+[drama-studio +107.1s] PASS Cast Bible: voices, role, pronunciation, FX rack, optional pacing; unsupported controls are disabled with the engine evidence (4964 ms)
+[drama-studio +107.1s] START Direct: script cues are cues (never speech), bound to a locally generated effect; timeline model, waveforms and keyboard editing work
+[drama-studio +108.1s] PASS Direct: script cues are cues (never speech), bound to a locally generated effect; timeline model, waveforms and keyboard editing work (1075 ms)
+[drama-studio +108.1s] START Produce: the one-click button is gated by the plan; progress, cancel and resume are shown from real job state; nothing reaches Big Mac
+[drama-studio +111.5s] PASS Produce: the one-click button is gated by the plan; progress, cancel and resume are shown from real job state; nothing reaches Big Mac (3406 ms)
+[drama-studio +111.5s] START Review / Master / Export: honest QA, persisted mastering & delivery settings, manual assembly refuses with named lines, private package, historical labels
+[drama-studio +113.3s] PASS Review / Master / Export: honest QA, persisted mastering & delivery settings, manual assembly refuses with named lines, private package, historical labels (1722 ms)
+[drama-studio +113.3s] START Voice Designer: capability truth, create → describe → (fixture audition) → compare → approve; bank export is metadata-only by default
+[drama-studio +114.6s] PASS Voice Designer: capability truth, create → describe → (fixture audition) → compare → approve; bank export is metadata-only by default (1351 ms)
+[drama-studio +114.6s] START responsive @375px: every stage and the Designer have no horizontal page overflow
+[drama-studio +116.6s] FAIL responsive @375px: every stage and the Designer have no horizontal page overflow 
+    direct: {"doc":0,"bad":["522>367"]}
+[drama-studio +116.6s] START responsive @768px: every stage and the Designer have no horizontal page overflow

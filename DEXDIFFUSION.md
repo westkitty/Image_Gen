@@ -36,12 +36,10 @@ duplicate completed image artifacts. No public ports or changes to DEX//REACH
 The following diagram documents the original MacBook-local console variant;
 the current Big Mac-owned Node route and MacBook SSH forward above take precedence.
 
-Controlled generation currently uses the Big Mac graphical-session engine helper
-over a private Unix socket reached through SSH. The helper opens installed models
-locally and runs the existing MFLUX or SDCPP Metal executable; the MacBook verifies
-the transferred output and publishes it in canonical storage. The diagram below
-shows the original SSH execution path, retained for legacy workflows. Current
-ownership, paths, cancellation and measured limits are in the
+Controlled generation uses the Big Mac backend and its installed models. The
+diagram below is historical: current generation does not establish the complete
+cross-host publication chain described there. Current ownership, paths,
+cancellation and measured limits are in the
 [local-engine bridge record](docs/operations/local-engine-bridge-20261021.md).
 
 ```
@@ -58,9 +56,9 @@ sdcpp-workflow/bin/mflux-controlled-generate.sh
         ▼
 Big Mac: MFLUX 0.20.0 / MLX → FLUX.2 Klein 4B 4-bit → PNG in a private mktemp dir
          (secondary path: stable-diffusion.cpp sd-cli → SD1.5 / Real-ESRGAN, same ephemeral rules)
-        │  PNG streamed back over SSH stdout; remote temp dir deleted (trap) and verified gone
+        │  Legacy path: PNG streamed over SSH stdout; remote temp deleted
         ▼
-MacBook: /Users/andrew/images_made/<run-id>-s<seed>-<source>.png   (sole durable copy)
+MacBook: /Users/andrew/images_made/<run-id>-s<seed>-<source>.png   (canonical destination by policy; current backend path below does not publish here)
         │
         ▼
 GET /api/images/<file>  →  DexDiffusion result panel
@@ -176,41 +174,82 @@ The exact proven invocation is in `sdcpp-workflow/bin/mflux-remote-generate.sh`
 `mflux-generate-flux2 --model <model path> --base-model flux2-klein-4b --prompt … --steps 4 --seed … --width … --height … --output <remote tmp>`.
 It runs with `HF_HUB_OFFLINE=1`.
 
-**Latency path (2026-10-16).** `mflux-controlled-generate.sh` now makes two ssh round trips
+**Historical latency path (2026-10-16).** `mflux-controlled-generate.sh` made two ssh round trips
 (one merged preflight for hostname + runtime + model with the same `route` /
 `route-hostname` / `mflux-runtime` / `mflux-model` gates, then the generate call), and both
 reuse one authenticated connection through a private OpenSSH control socket
 (`~/.ssh/dexdiffusion-cm/`, mode 0700, `ControlPersist=120`). Set `DEX_SSH_MUX=0` to disable
 reuse. Every run's `controlled-manifest.json` carries a `timings` block (preflight, ssh total,
 remote generate, validation, canonicalization; no prompt data) and the log line `MFLUX_TIMING:`.
-The job stage now reads Checking Big Mac and model → Generating on Big Mac → Finalizing in
-canonical storage → Complete.
+Its historical job stage read Checking Big Mac and model → Generating on Big Mac → Finalizing in
+canonical storage → Complete; do not treat that UI stage as publication evidence for the current backend.
 
 ## Image storage
 
-`/Users/andrew/images_made` is **the sole durable generated-image authority**.
+`/Users/andrew/images_made` on the MacBook is **the canonical original destination by policy**. The current Big Mac backend writes generation artifacts under `/Volumes/wc2tb/DexDiffusion/images`; until a cross-host publication transport completes and acknowledges a verified MacBook write, those files are working/staging/pending artifacts, not canonically published originals.
 
-- Every successful generation from any entrypoint (UI, API or a hand-run script) ends
-  with exactly one file there, named `<run-id>-s<seed>-<source>.png`, and never
-  overwrites an existing file.
+- A Big Mac render completing or appearing in its local image store does not prove
+  canonical publication. Source now implements an opt-in `macbook-pull-v1` outbox,
+  authenticated through the existing loopback tunnel, plus a MacBook worker that
+  verifies digest, commits by no-clobber link, fsyncs a receipt, then acknowledges.
+  This source is not deployed; production publication remains unverified until the
+  separately approved Stage 2 deployment and real artifact acceptance.
+- When a canonical write is implemented, it must target exactly
+  `/Users/andrew/images_made`, reject collisions, verify content identity, durably
+  acknowledge success, and retain the Big Mac source until policy permits removal.
 - Run directories (`sdcpp-workflow/runs/<run-id>/`) keep manifests, reports, logs and
   `canonical-images.json` (run file → image id/path/URL), **never image bytes**.
-- Images are served only by `GET /api/images/<file>`, which accepts plain filenames
-  inside that folder. Traversal, absolute paths, symlinks and `.incoming-*` all
-  return 404.
+- The current Big Mac API serves files from its configured working image root.
+  This serving path is not evidence that the MacBook canonical destination was written.
 - Implementation: `operator-console/image-store.js`; the shell entrypoint is
   `operator-console/bin/canonicalize-image.js`, called by `sdcpp-lib.sh`.
+- Cross-host source implementation: `operator-console/publication-outbox.js`,
+  `operator-console/bin/canonical-publication-worker.js`, and the constrained
+  `/api/publications/*` routes in `operator-console/server.js`. On MacBook, the
+  native wrapper requests `bin/dexdiffusion publication-sync`; `lockf` prevents
+  duplicate workers and the UI applies three bounded retries with backoff.
+  Historical images/indexes/journals have no opt-in marker and are not relabeled.
 - Latest image: `ls -t /Users/andrew/images_made | head -1`, also printed by
   `bin/dexdiffusion status`.
+
+### Stage 2 deployment gate (not authorized in the source-closure task)
+
+1. Reconcile the dirty Big Mac checkout against its own HEAD and remote; preserve
+   every existing diff and untracked file. Andrew approval required; recover from
+   the private source snapshots and do not overwrite remote-only work.
+2. Save checksummed backups of the active runner, plist, and service state before
+   deployment. Approval required; restore those exact owned files on rollback.
+3. Deploy only reviewed backend source on Big Mac and restart only the verified
+   DexDiffusion service while idle. Separate runtime approval required; restore
+   the saved backend checkout/service definition if health checks fail.
+4. Install the MacBook worker/source and rebuild/install the native wrapper.
+   Separate install approval required; restore the prior app bundle and source
+   checkout snapshot on failure.
+5. Verify MacBook canonical-root ownership, permissions, free space, and no
+   symlink path components. Approval required before any permission change; stop
+   without changing permissions if the root is not safely writable.
+6. Publish one explicitly authorized test artifact, compare Big Mac and MacBook
+   SHA-256 plus durable receipt and outbox acknowledgment. Approval required for
+   the artifact write; preserve both copies throughout validation.
+7. Exercise interrupted transfer and lost-ack retries with an owned test artifact.
+   Approval required; retain the source and receipt, and remove nothing during
+   rollback.
+8. Validate Chat/FLUX compute coexistence and performance under an approved idle
+   window. Approval required; stop the test job through its owned cancellation
+   path and preserve its records.
+9. If acceptance fails, unload/restore only the verified DexDiffusion service,
+   restore the saved source/app, and leave images, journals, models, and unrelated
+   workloads unchanged. Approval required for rollback activation.
 
 ## Big Mac
 
 - Route: `ssh westcat`. Expected identity is user `bigmac`, host `bigmac`
   (`ssh westcat 'whoami; hostname'`).
-- Big Mac is a remote execution machine only. No HTTP service, no public/LAN ports.
-- **Retention:** Big Mac does not retain generated images. MFLUX output goes to a
-  private `mktemp -d` directory that a trap deletes on any exit, and the bridge
-  verifies it is gone. SDCPP scripts register remote image paths for deletion on exit.
+- Big Mac runs the loopback-only Node backend and compute workloads. Port 31337
+  remains bound to `127.0.0.1`; no public/LAN service exposure is allowed.
+- **Image retention:** `/Volumes/wc2tb/DexDiffusion/images` is Big Mac working,
+  staging, or pending-publication storage. Existing Big Mac files are preserved;
+  this policy does not retroactively classify or remove historical artifacts.
   Models, venv and caches stay by design.
 
 ## Starting, stopping, status
@@ -443,7 +482,7 @@ for the dated live proof.
 - **Voice → Voices & long-form**: persistent profiles (cloned with several reference samples + transcripts, designed from a description, or a Kokoro preset), sample diagnostics, per-engine validation, an honest capability matrix, a per-render performance direction (only where the engine can honor it: VoiceDesign yes, Kokoro/Qwen Base no), and long-form text with no 2,000-character limit (paragraph/sentence/clause chunking, tags kept whole, crossfade + boundary pauses, one stitched canonical WAV with chunk lineage, failures read "failed at chunk 7/14: …").
 - **Drama** (new nav item): paste a script → deterministic parse (or optional local-model parse that cannot rewrite dialogue) → review/correct lines → bind speakers to saved voices → render line / scene / project (every re-render is a new Take; you choose the active one) → assemble a scene or the whole drama into one WAV (optional music/ambience/SFX tracks). An **unsaved** script lives only in server memory; **Save project** is the explicit act that writes it to disk. Dialogue is never copied into job logs.
 - **Where things live:** voice profiles `sdcpp-workflow/state/voice-profiles/<vp-id>/profile.json`, samples `…/samples/<sm-id>.wav` (MacBook only); Drama projects `sdcpp-workflow/state/drama/<dp-id>.json` (only when saved); generated speech and drama exports `/Users/andrew/audio_made/voice/` (id-served via `/api/media/:id`).
-- Big Mac stays compute only; every render is a normal job under the heavy-compute lease. Prompt/voice-prompt caching is not implemented (the installed Qwen runtime has no such API). Details: `operator-console/docs/voice-drama-20261002.md`.
+- Big Mac hosts compute and the loopback backend; every render is a normal job under the heavy-compute lease. Prompt/voice-prompt caching is not implemented (the installed Qwen runtime has no such API). Details: `operator-console/docs/voice-drama-20261002.md`.
 - Tests: `cd operator-console && npm test` (unit/server), `npm run test:browser` (real Chrome, hermetic fixtures; the voice/drama suite uses your running state directory and cleans up after itself).
 
 ## Protected invariants (do not change)
@@ -452,7 +491,7 @@ for the dated live proof.
 - Remote web access is **Tailscale Serve HTTPS :8443, tailnet-only**. **Never Funnel**
   for DexDiffusion. The separate DEX//REACH Funnel on `:443` is not ours; do not touch it.
 - Big Mac is never exposed; the MacBook reaches it only via `ssh westcat`.
-- Generated images live only in `/Users/andrew/images_made`; Big Mac keeps zero copies.
+- Canonical originals belong on MacBook at `/Users/andrew/images_made`; Big Mac image files remain working/staging/pending artifacts until an individually verified publication record proves a MacBook write. Existing files are not retroactively relabeled.
 - MFLUX (`flux2-klein-4b`) is the primary backend; SDCPP (restored) is secondary/optional.
 - Never trust ssh exit codes to Big Mac (Tailscale SSH returns 0); use output or in-band markers.
 - The Dock launcher is `/Applications/DexDiffusion.app` only.
@@ -519,3 +558,92 @@ DexDiffusion V12 operates with a unified real-time architecture:
 - **Create actions:** `Generate image` starts exactly one job; a second click cannot restart or hide it. A separate `Cancel job` control is bound to the job id and shows `Stopping — checking the worker…` → verified / unverified / refused, never a green false success.
 - **Source of truth for this work:** `docs/operations/arena-v2-studio-20261020/EXECUTION_LEDGER.md` (ticket status, gates, blockers) and the copied master instruction beside it.
 - **Still open:** canonical source resolver and Library→Edit→Enhance→3D/World handoffs, Create layout/Advanced disclosure, the remaining control sweep, native V2 scroll evidence, and every native/worker/novice acceptance gate. None of these is claimed complete.
+
+## Runtime recovery contract (2026-11-02 source checkpoint)
+
+`bin/dexdiffusion start` separates SSH reachability from backend readiness. It accepts recovery only after an in-band marker follows the expected Big Mac API identity/cwd and Studio checks. The service installer must confirm launchd registration, API/Studio responses, and the listener process identity; a registered but unhealthy service is left untouched. The CLI uses exact ownership checks before signalling an SSH forward, one shared `lockf` recovery lock, a propagated 40-second recovery deadline, and bounded stage errors. The logged-in Aqua LaunchAgent remains the only live-supported service domain; reboot/logout and pre-login availability are not proven.
+
+The native wrapper retries recoverable navigation failures at most twice per sequence. While a page is open, two failed frontend health probes show **Degraded** and request one bounded native-helper recovery; ordinary browser clients only see status and do not receive shell execution. WebKit success requires the Studio interface to initialize and render. These source changes are not live until separately deployed/installed and verified.
+
+Native helper commands now run through `scripts/bounded-command.py`, which caps
+captured output, enforces a timeout, and terminates/reaps only its owned process
+group. The startup watchdog's two progress deferrals and stale-navigation guard
+are executable Swift policy fixtures. These source-level tests do not prove the
+installed app's runtime behavior.
+
+**Storage contract:** the user-selected canonical original destination is `/Users/andrew/images_made` on MacBook. Big Mac `/Volumes/wc2tb/DexDiffusion/images` is working/staging/pending-publication storage. Source now includes a bounded cross-host outbox/worker flow, but it is not deployed; render completion alone is not canonical publication. Historical files and journals remain untouched. See the source-closure entry in `OPERATIONAL_STATE.md`.
+
+## Persistent MacBook recovery controller — 2026-11-03
+
+`local.dexdiffusion.recovery` is the single per-user MacBook recovery LaunchAgent.
+It runs one bounded controller tick at login and every 60 seconds; it remains
+active when the Studio window closes and runs again after the next login. The
+Big Mac's existing `local.dexdiffusion.server` LaunchAgent remains the backend
+process owner. The MacBook controller does not create another backend service
+or replace that agent.
+
+The controller records state in the user's DexDiffusion Application Support
+directory with mode `0600`, rotates its structured JSON-lines log at 128 KiB,
+and shares a kernel lock with simultaneous controller ticks. Only
+`bin/dexdiffusion start` executes repairs, under its existing cross-process
+`lockf` lock and ownership checks. JavaScript requests a controller tick after
+two failed health probes; Swift forwards that request and displays the result.
+Application launch still performs its explicit bounded startup check.
+
+Policy defaults: two independently completed failures before an automatic
+repair; at least 60 seconds between episodes, exponential cooldown up to 300
+seconds plus 0–10 seconds of jitter; at most three automatic episodes in a
+rolling 15 minutes; 40 seconds for the shell repair command and 110 seconds for
+the complete remote-diagnosis/repair/verification episode; circuit reset after
+five minutes of continuously verified health or an explicit `recovery-retry`.
+The healthy path requires the expected backend identity and a complete Studio
+HTML body. A partial HTTP 200 is failure. The shell's Studio probe allows 15
+seconds.
+
+Before asking the shell helper to repair a tunnel, the controller checks SSH
+authentication, remote API identity, a complete remote Studio transfer, the
+resource arbiter, and active jobs. Unknown backend identity, foreign port
+ownership, or missing SSH authentication is `BLOCKED`; a busy lease/job or
+temporarily unavailable backend is `BACKOFF`. It never restarts a Big Mac
+backend that it cannot verify healthy, never edits code/configuration or
+permissions, and never changes credentials. The Big Mac launchd service owns
+recovery from its own process exit. Canonical publication status is measured
+and reported separately and never triggers connectivity repair.
+
+| Evidence | Classification | Automatic action | Maximum / verification |
+| --- | --- | --- | --- |
+| API identity passes; Studio body is slow, incomplete, or truncated | `STUDIO_TRANSFER_INCOMPLETE` | No backend restart; after two failures, ask the locked helper to verify/repair only the owned tunnel | 3 episodes/15 min; verify the full 200 response |
+| Local port has no listener; remote backend and resource admission verify | `SSH_TUNNEL_ABSENT` | Create the exact project SSH forward with keepalives | 3 episodes/15 min; recheck listener, identity, full Studio |
+| Exact owned tunnel fails while remote backend passes | `BACKEND_OR_TUNNEL_UNAVAILABLE` | Shell helper rechecks PID, full command, port ownership, then replaces only that tunnel | 3 episodes/15 min; PID/argv recheck and full Studio |
+| Big Mac API/service is unavailable | `BACKEND_OR_TUNNEL_UNAVAILABLE` | Controller enters `BACKOFF`; Big Mac's registered KeepAlive LaunchAgent owns service restart | No MacBook service restart unless remote identity/Studio/resource checks pass |
+| Foreign port owner or ambiguous backend identity | `FOREIGN_PORT_OWNER` / `AMBIGUOUS_BACKEND_IDENTITY` | `BLOCKED`; preserve listener and evidence | No automatic retry mutation; operator resolves ownership |
+| SSH/Tailscale route or authentication unavailable | `SSH_AUTHENTICATION_UNAVAILABLE` | `BLOCKED`; no key, Tailscale, or security changes | Retry after connectivity/authentication is restored |
+| Active resource lease, queued work, or active image job | `DEX_RESOURCE_OR_ACTIVE_JOB_BUSY` | `BACKOFF`; do not dispatch service/tunnel repair | Recheck on the next tick |
+| Canonical publication pending/failed/blocked | Publication status, separate from recovery | Preserve outbox/journals; use the publication workflow only | Verify canonical identity independently |
+| Missing dependency or filesystem permission failure | Backend/service unavailable until separately diagnosed | No package install or permission change | Use `bin/dexdiffusion doctor` and owner-specific logs |
+
+Read-only diagnostics and explicit retry:
+
+```sh
+bin/dexdiffusion recovery-status
+bin/dexdiffusion recovery-retry
+scripts/install-recovery-agent.sh install
+scripts/install-recovery-agent.sh uninstall
+```
+
+`recovery-status` reports the current probe, last verified time, failure class,
+backend identity, tunnel ownership, full-transfer result, lock/episode state,
+attempt count/circuit, native Swift source fingerprint, resource lease,
+publication status, and any blocking reason. It does not repair or persist a
+probe result. `recovery-retry` explicitly clears the automatic circuit and
+still requires safe ownership, SSH, backend, transfer, and resource evidence.
+
+The LaunchAgent is per-user and therefore has no pre-login guarantee. Source
+policy and fixture tests cover sleep/network transitions through repeated
+bounded ticks; this release does not claim a physical sleep/wake soak.
+
+## November 2026 — MacBook Studio connection recovery diagnostics
+
+If Big Mac `/api/version` and `/dexdiffusion/` both return HTTP 200 but MacBook Studio stalls, distinguish short API connectivity from complete Studio transfer. The source recovery launcher checks the full Studio response body, verifies the exact project-owned SSH port listener before any signalling, uses bounded SSH/backend readiness verification and keepalives, and serializes recovery callers through a kernel lock. The native wrapper must not interrupt a verified Studio bootstrap merely because a helper finishes late. Browser health changes to `degraded` only after two completed failed checks and requests native recovery with a cooldown. Historical `server-error.log` contents alone are not evidence of a current backend crash. Preserve all uncommitted work, pending publication journals, and media.
+
+The November 3 source candidate's Brave/unit checks passed, but native MacBook Dock installation and long-run stability remain unverified until an explicitly fingerprinted production rollout. GitHub source publication does not itself update the installed `/Applications/DexDiffusion.app` or an unconfigured GitHub Pages website.

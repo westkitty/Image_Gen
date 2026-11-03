@@ -63,6 +63,40 @@ test('system-info reports primary target, canonical storage, derived capabilitie
   assert.doesNotMatch(text, /password|secret|authkey|private[_ -]?key|BEGIN [A-Z ]*KEY|hf_[A-Za-z0-9]{10}/i);
 });
 
+test('system-info separates canonical MacBook storage from Big Mac pending working images', async () => {
+  const getInfo = createSystemInfo({
+    probes: {
+      tailscale: async () => ({ available: false, reason: 'offline' }),
+      launcher: async () => ({ appPath: SYSTEM.launcher.appPath, installed: false, dockEntries: null }),
+    },
+    getStoragePaths: () => ({
+      dataRoot: '/Volumes/wc2tb/DexDiffusion',
+      imageRoot: '/Volumes/wc2tb/DexDiffusion/images',
+    }),
+  });
+  const info = await getInfo({ targets: TARGETS, build: { sshTarget: 'westcat' } });
+  assert.equal(info.storage.canonicalImages, '/Users/andrew/images_made');
+  assert.equal(info.storage.workingImages, '/Volumes/wc2tb/DexDiffusion/images');
+  assert.equal(info.storage.publication, 'pending-unverified');
+  assert.equal(info.generation.remoteRetention, 'pending-publication');
+  assert.match(info.generation.retentionNote, /canonical publication to \/Users\/andrew\/images_made must remain pending/);
+  assert.doesNotMatch(info.generation.retentionNote, /Final images are stored/);
+});
+
+test('system-info never labels a noncanonical override as published', async () => {
+  const getInfo = createSystemInfo({
+    probes: {
+      tailscale: async () => ({ available: false, reason: 'offline' }),
+      launcher: async () => ({ appPath: SYSTEM.launcher.appPath, installed: false, dockEntries: null }),
+    },
+    getStoragePaths: () => ({ imageRoot: '/tmp/dex-working-images' }),
+  });
+  const info = await getInfo({ targets: TARGETS });
+  assert.equal(info.storage.canonicalImages, '/Users/andrew/images_made');
+  assert.equal(info.storage.workingImages, '/tmp/dex-working-images');
+  assert.equal(info.storage.publication, 'pending-unverified');
+});
+
 test('exactly one primary target (MFLUX), and capabilities carry per-target runtime', () => {
   const src = fs.readFileSync(path.join(ROOT, 'operator-console', 'server.js'), 'utf8');
   assert.equal((src.match(/^\s*primary: true,$/gm) || []).length, 1, 'exactly one primary target');

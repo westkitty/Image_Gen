@@ -1,0 +1,28 @@
+[concept-a-refinement +3.2s] START Concept A.1 shell has Dexter, ten SVG modules, and accent state
+[concept-a-refinement +5.5s] PASS Concept A.1 shell has Dexter, ten SVG modules, and accent state (2288 ms)
+[concept-a-refinement +5.5s] START contextual inspector and Generate result remain live surfaces
+[concept-a-refinement +6.6s] PASS contextual inspector and Generate result remain live surfaces (1088 ms)
+[concept-a-refinement +6.6s] START Help provides step cards, FAQ disclosure, and full tutorial routing
+[concept-a-refinement +7.9s] PASS Help provides step cards, FAQ disclosure, and full tutorial routing (1245 ms)
+[concept-a-refinement +7.9s] START queue dock expands from the shared V12 snapshot and Music planned tabs stay disabled
+[concept-a-refinement +8.8s] PASS queue dock expands from the shared V12 snapshot and Music planned tabs stay disabled (924 ms)
+[concept-a-refinement +8.8s] START Voice and Music primary actions stay visible above the shared queue dock
+[concept-a-refinement +9.6s] PASS Voice and Music primary actions stay visible above the shared queue dock (796 ms)
+[concept-a-refinement +9.6s] START queue progress is truthful and Help delegation is removed on teardown
+[concept-a-refinement +10.4s] PASS queue progress is truthful and Help delegation is removed on teardown (786 ms)
+[concept-a-refinement +10.4s] START command palette lists and navigates the complete Concept A module set
+[concept-a-refinement +11.3s] PASS command palette lists and navigates the complete Concept A module set (906 ms)
+[concept-a-refinement +11.3s] START shared dialogs move focus inside and restore their opener
+[concept-a-refinement +12.6s] PASS shared dialogs move focus inside and restore their opener (1275 ms)
+[concept-a-refinement +12.6s] START narrow Concept A geometry has no document-wide horizontal overflow
+[concept-a-refinement +13.3s] PASS narrow Concept A geometry has no document-wide horizontal overflow (792 ms)
+[concept-a-refinement +13.3s] START Dexter stays identifiable, the inspector works as a mobile drawer, and Quick Prompt keeps its caret
+[concept-a-refinement +14.2s] PASS Dexter stays identifiable, the inspector works as a mobile drawer, and Quick Prompt keeps its caret (851 ms)
+[concept-a-refinement +14.2s] START missing Workstation preview is labeled without fabricating an image
+[concept-a-refinement +14.9s] PASS missing Workstation preview is labeled without fabricating an image (667 ms)
+[concept-a-refinement +14.9s] START 3D source preview failure is explained without a broken-image placeholder
+[concept-a-refinement +15.6s] PASS 3D source preview failure is explained without a broken-image placeholder (771 ms)
+[concept-a-refinement +15.6s] START Library switches between canonical images and the separate mixed-media index
+[concept-a-refinement +16.5s] PASS Library switches between canonical images and the separate mixed-media index (896 ms)
+[concept-a-refinement +16.5s] START unsaved Drama script survives a cancelled command-palette navigation
+[concept-a-refinement +17.5s] PASS unsaved Drama script survives a cancelled command-palette navigation (971 ms)

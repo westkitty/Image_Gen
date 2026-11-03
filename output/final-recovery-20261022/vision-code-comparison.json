@@ -1,0 +1,10 @@
+{
+  "operator-console/bin/vision-detailer": {
+    "text_bytes": 40912,
+    "text_sha256": "59a909796f7be72133de107bd0ed15ff940cf14889cebce87541730ce10987c6"
+  },
+  "output/final-recovery-20261022/vision-detailer-current-source": {
+    "text_bytes": 40912,
+    "text_sha256": "59a909796f7be72133de107bd0ed15ff940cf14889cebce87541730ce10987c6"
+  }
+}

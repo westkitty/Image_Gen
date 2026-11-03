@@ -1,0 +1,17 @@
+✔ worker validates closed requests and owns cancellation/recovery (2308.518ms)
+✔ transport ownership forbids traversal and malformed identifiers (0.232875ms)
+✔ generator parses sampling controls and rejects arbitrary command arguments (1.299583ms)
+✔ isolated fixture servers do not enable the live bridge implicitly (0.09175ms)
+✔ model availability follows worker reads and reports unavailable worker (0.111708ms)
+✔ install registry preserves six adapters and original paths (103.146458ms)
+✔ worker native batch uses the existing all-output transaction and rolls back partial publication (241.93975ms)
+✔ lost cleanup acknowledgment and cancellation cannot commit canonical images (193.37575ms)
+✔ benchmark reads owned structured Metal and tensor evidence without a legacy raw log (5.692542ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2995.235042

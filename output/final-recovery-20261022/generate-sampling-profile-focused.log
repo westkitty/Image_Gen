@@ -1,0 +1,24 @@
+[generate-sampling +1.3s] START SDCPP target shows sampler, CLIP skip and tiling and sends the chosen values
+[generate-sampling +3.1s] PASS SDCPP target shows sampler, CLIP skip and tiling and sends the chosen values (1807 ms)
+[generate-sampling +3.1s] START two different samplers produce two different requests; defaults add no clip skip or tiling
+[generate-sampling +4.4s] PASS two different samplers produce two different requests; defaults add no clip skip or tiling (1312 ms)
+[generate-sampling +4.4s] START a target default such as dpm++2m is shown and sent as its canonical id
+[generate-sampling +5.5s] PASS a target default such as dpm++2m is shown and sent as its canonical id (1116 ms)
+[generate-sampling +5.5s] START MFLUX target hides the controls, explains why, and sends no sampling fields
+[generate-sampling +6.7s] PASS MFLUX target hides the controls, explains why, and sends no sampling fields (1169 ms)
+[generate-sampling +6.7s] START inspector shows the effective sampler, CLIP skip and tiling and follows the controls
+[generate-sampling +9.0s] PASS inspector shows the effective sampler, CLIP skip and tiling and follows the controls (2306 ms)
+[generate-sampling +9.0s] START legacy V1-V3 sampler selects offer only supported ids and no unsupported A1111 aliases
+[generate-sampling +13.4s] PASS legacy V1-V3 sampler selects offer only supported ids and no unsupported A1111 aliases (4462 ms)
+[generate-sampling +13.4s] START Preview request shows the same effective request and worker command that Generate sends
+[generate-sampling +14.8s] PASS Preview request shows the same effective request and worker command that Generate sends (1334 ms)
+[generate-sampling +14.8s] START Preview request for MFLUX names the MFLUX worker and carries no SD-only flags; invalid input is rejected visibly
+[generate-sampling +16.1s] PASS Preview request for MFLUX names the MFLUX worker and carries no SD-only flags; invalid input is rejected visibly (1328 ms)
+[generate-sampling +16.1s] START Advanced sampling: eta follows the sampler, RNG is sent, unavailable options are listed, MFLUX hides it all
+[generate-sampling +18.7s] PASS Advanced sampling: eta follows the sampler, RNG is sent, unavailable options are listed, MFLUX hides it all (2599 ms)
+[generate-sampling +18.7s] START server accepts eta/rng/new samplers/kl_optimal end to end (preview uses the real validator) and rejects bad combinations
+[generate-sampling +18.7s] PASS server accepts eta/rng/new samplers/kl_optimal end to end (preview uses the real validator) and rejects bad combinations (29 ms)
+[generate-sampling +18.7s] START scheduler list comes from the shared choices and includes KL optimal
+[generate-sampling +19.8s] PASS scheduler list comes from the shared choices and includes KL optimal (1107 ms)
+[generate-sampling +19.8s] START controls remain usable at 390x844
+[generate-sampling +21.5s] PASS controls remain usable at 390x844 (1655 ms)

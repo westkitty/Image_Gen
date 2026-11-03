@@ -1,0 +1,4 @@
+[interrupt +1.6s] START Interrupt is hidden when idle, appears while generating, and a confirmed stop returns Create to idle
+[interrupt +3.7s] PASS Interrupt is hidden when idle, appears while generating, and a confirmed stop returns Create to idle (2124 ms)
+[interrupt +3.7s] START an unverified remote stop is reported as such (heavy work paused), never as success
+[interrupt +5.2s] PASS an unverified remote stop is reported as such (heavy work paused), never as success (1436 ms)

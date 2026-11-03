@@ -1,0 +1,22 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {chromium}=require('/Users/andrew/Image_Gen/operator-console/node_modules/playwright-core');
+const {startServer,launchBrowser,installModelSnapshots,runCleanups}=require('/Users/andrew/Image_Gen/operator-console/tests/browser/helpers');
+(async()=>{let srv,browser;try{
+ srv=await startServer();browser=await launchBrowser(chromium);const page=await browser.newPage({viewport:{width:1280,height:900}});
+ await installModelSnapshots(page,srv.base);
+ await page.route('**/api/extra-networks**',r=>r.fulfill({json:{loras:[],vaes:[],embeddings:{count:0,items:[]}}}));
+ await page.goto(srv.base+'/dexdiffusion/');await page.waitForFunction(()=>window.__dex&&__dex.state.modelTargets.length>3);await page.waitForTimeout(300);
+ await page.evaluate(()=>{const a={id:'lcm_sdxl_asset',name:'lcm_sdxl',filename:'lcm_sdxl.safetensors',family:'sdxl',compatibility:'Compatible',proof_status:'PROVEN',proof_target_ids:['sdxl-base'],default_weight:1,min_weight:0,max_weight:2,step:0.05};__dex.setState({target:'sdxl-base',steps:20,cfg:7,sampler:'euler_a',scheduler:'discrete',assets:{loras:[a,{...a,id:'lightning_asset',name:'sdxl_lightning_4step_lora',filename:'sdxl_lightning_4step_lora.safetensors'}],vaes:[],embeddings:{count:0,items:[]}}});});
+ const selected=page.locator('[data-v="2"] [data-dex-field="create-lora-adapter"]');
+ const toggle=page.locator('[data-v="2"] [data-dex-field="use-lora"]');
+ await selected.selectOption('lcm_sdxl_asset');await toggle.check();
+ await page.waitForFunction(()=>__dex.state.cfg===1.5&&__dex.state.steps===4);
+ await selected.selectOption('lightning_asset');
+ await page.waitForFunction(()=>!__dex.state.createLora.enabled&&__dex.state.cfg===7&&__dex.state.steps===20);
+ assert.deepEqual(await page.evaluate(()=>[__dex.state.steps,__dex.state.cfg,__dex.state.sampler,__dex.state.scheduler]),[20,7,'euler_a','discrete']);
+ await toggle.check();await page.evaluate(()=>__dex.setCreateLoraField('steps',6));await selected.selectOption('lcm_sdxl_asset');
+ await page.waitForFunction(()=>!__dex.state.createLora.enabled&&__dex.state.steps===6&&__dex.state.cfg===7);
+ console.log('PASS real V2 adapter selection restores ordinary settings and preserves explicit overrides; no generation');
+ await page.screenshot({path:'/Users/andrew/Image_Gen/output/final-recovery-20261022/lora-selection.png'});
+}finally{if(browser)await browser.close();if(srv)await srv.stop();await runCleanups();}})().catch(e=>{console.error(e);process.exitCode=1});

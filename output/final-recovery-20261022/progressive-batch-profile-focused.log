@@ -1,0 +1,8 @@
+[progressive-batch +1.1s] START images appear one by one while the batch is still running; the Fast batch flag is off by default
+[progressive-batch +4.1s] PASS images appear one by one while the batch is still running; the Fast batch flag is off by default (3010 ms)
+[progressive-batch +4.1s] START a failed last cell leaves the first three finished images and ends PARTIAL
+[progressive-batch +7.0s] PASS a failed last cell leaves the first three finished images and ends PARTIAL (2881 ms)
+[progressive-batch +7.0s] START cancelling the remainder keeps finished images and returns Create to idle
+[progressive-batch +9.4s] PASS cancelling the remainder keeps finished images and returns Create to idle (2471 ms)
+[progressive-batch +9.4s] START a page refresh re-attaches to the running batch and restores finished cells and the batch size
+[progressive-batch +12.2s] PASS a page refresh re-attaches to the running batch and restores finished cells and the batch size (2766 ms)

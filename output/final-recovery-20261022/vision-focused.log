@@ -1,0 +1,22 @@
+✔ detailer: binary is compiled and available (0.498167ms)
+✔ detailer: provides delta-oriented default prompts (0.0895ms)
+✔ detailer: executes face detection and generates valid mask PNG (2.004333ms)
+✔ detailer: executes hand detection and marks is_derived_roi: true (0.089375ms)
+✔ detailer: fails cleanly when image is missing (2.292333ms)
+✔ detailer: options are validated before the native binary runs (2.906375ms)
+✔ detailer: no target is a valid empty result and an all-transparent alpha mask (1491.438875ms)
+✔ detailer: mask is source-sized, alpha-painted, bounded by the padded target and leaves the rest untouched (0.263416ms)
+✔ detailer: selection is deterministic (same detections, same mask bytes) (0.109708ms)
+✔ detailer: a stalled detector is killed within the budget and the error names the stage (0.233333ms)
+✔ detailer: unreadable image fails with an actionable message, not a hang (12.214334ms)
+✔ safe detector stall is bounded, reaps only owned worker, produces no mask, then healthy retry succeeds (1019.888084ms)
+✔ cancelled detector reaps its owned child and never auto-retries (33.529709ms)
+✔ detector unavailable and unreadable output use stable failure codes (67.148125ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2825.732

@@ -1,0 +1,6 @@
+PASS  git diff --cached --check
+PASS  npm run check
+SKIP  protected unit files (*style*, *wildcard*)
+PASS  unit suite: 1015/1015 passed, fail=0 cancelled=0 skipped=0 (exit 0)
+PASS  browser:concept-a-refinement (14 scenarios)
+PASS  browser:create-controls (4 scenarios)

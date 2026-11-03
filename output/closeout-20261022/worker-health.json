@@ -1,0 +1,58 @@
+{
+  "ok": true,
+  "models": {
+    "sd15": true,
+    "sdxl-base": true,
+    "sdxl-turbo": true,
+    "flux-fp8": true,
+    "flux2-klein-4b": true,
+    "sdxl-photonic": true,
+    "sdxl-homochi": true,
+    "sdxl-pony": true,
+    "sd15-homofidelis": true,
+    "sdxl-juggernaut": true,
+    "sdxl-realvisxl": true,
+    "sdxl-cyberrealistic": true,
+    "sdxl-epicrealism": true,
+    "sdxl-biglust": true,
+    "sdxl-lustify": true,
+    "sdxl-biglove": true,
+    "sdxl-biglove-photo1": true,
+    "sdxl-biglove-photo45": true,
+    "sd15-auto-v1-5-pruned-emaonly": true
+  },
+  "secondary": {
+    "primaryModel": {
+      "id": "flux2-klein-4b",
+      "role": "protected-primary",
+      "backend": "mflux"
+    },
+    "activeSecondaryModel": "sd15",
+    "secondaryModelState": "active",
+    "sourcePath": "/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors",
+    "activePath": "/Users/bigmac/Library/Caches/DexDiffusion/secondary-model/current/model.safetensors",
+    "backend": "sdcpp",
+    "modelIdentity": {
+      "target": "sd15",
+      "filename": "v1-5-pruned-emaonly.safetensors",
+      "bytes": 4265146304
+    },
+    "lastSwitchResult": {
+      "status": "pass",
+      "at": 1792590701
+    }
+  },
+  "pid": 81338,
+  "uid": 503,
+  "active": null,
+  "access": {
+    "checkpoint": true,
+    "sdxl_lightning_4step_lora": true,
+    "hyper-sdxl-8steps-cfg-lora": true,
+    "lcm_sdxl": true,
+    "lcm_sd15": true,
+    "hyper-sd15-8steps-cfg-lora": true,
+    "pixelart_lora": true
+  },
+  "recovery_uncertain": []
+}

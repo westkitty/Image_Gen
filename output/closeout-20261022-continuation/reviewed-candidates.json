@@ -1,0 +1,254 @@
+{
+  "DEXDIFFUSION.md": {
+    "bytes": 41017,
+    "sha256": "ca0108374d539a100a1bde7d205a089c4891cf4f111d736f8a12647471d63887"
+  },
+  "Image_Gen_Bible.md": {
+    "bytes": 172863,
+    "sha256": "2ed6f8ac3ed6eaa0bf31f9e80d59b835e4f237f7dabd71dd128b2c9191451f14"
+  },
+  "OPERATIONAL_STATE.md": {
+    "bytes": 108953,
+    "sha256": "9d87a5adeb5eebc0248370a13765b49362f67c809d331f8fa2ccf1b69584dcfc"
+  },
+  "operator-console/capabilities.js": {
+    "bytes": 15035,
+    "sha256": "ee9387e32c8039092c5a88348b2d091fabb18f13ece8aa4473a9ee4a737ae49e"
+  },
+  "operator-console/controlled-args.js": {
+    "bytes": 11639,
+    "sha256": "834f329ef394de44c68500a93e693927a5164d818bfba46e3fd412f47c8e906b"
+  },
+  "operator-console/extra-networks.js": {
+    "bytes": 12559,
+    "sha256": "a4ab8782116474091d21ab8104e00f0baef6ad171b390b671d9575cea195d944"
+  },
+  "operator-console/image-store.js": {
+    "bytes": 32830,
+    "sha256": "daaf376d88ec81ca6c2739224f7e863684d151f6468eb50633098b037b9c442c"
+  },
+  "operator-console/model-registry.js": {
+    "bytes": 28683,
+    "sha256": "f20e516a7b15895c58823f3b5546d6014929cdd977ea215b9a667786f53fb12d"
+  },
+  "operator-console/public/dexdiffusion/component.js": {
+    "bytes": 177058,
+    "sha256": "fafd9af7e8b90cd23a01cb5b269cefcfc0bce554505dddffe7d906e0e1c74bce"
+  },
+  "operator-console/public/dexdiffusion/concept-a.js": {
+    "bytes": 78920,
+    "sha256": "840dfb09b659adbcd16995092dd542ec45895aa801db34bdaef7b6f929bf9355"
+  },
+  "operator-console/public/dexdiffusion/index.html": {
+    "bytes": 172976,
+    "sha256": "f70429406717f63e7f74433833a291166a3042431b6e5ef91e8ad7d665fb5b7f"
+  },
+  "operator-console/public/dexdiffusion/lightbox.js": {
+    "bytes": 12345,
+    "sha256": "accd25fa7a42a5e90897a854efa8882019ec0329ec7a6155210c32a89c755729"
+  },
+  "operator-console/public/dexdiffusion/media-ui.js": {
+    "bytes": 39478,
+    "sha256": "77048bafa6e11f6550f258477578995602a30365f43535596643462b4df777cc"
+  },
+  "operator-console/public/dexdiffusion/workstation-ui.js": {
+    "bytes": 169343,
+    "sha256": "eb19f38642eac93ebce23577530b863790d15c01c247c4bf63b60f18e3c558a7"
+  },
+  "operator-console/public/model-presets.js": {
+    "bytes": 11242,
+    "sha256": "b6e3147740ee1f27844529f3824ce4117fe398bf829b9d92aaf0cbb008990ff2"
+  },
+  "operator-console/server.js": {
+    "bytes": 325353,
+    "sha256": "08bda5caddcbea202faaaeea1238aa35f4cc4deb6c9ac800c1faa62bb59eb9bc"
+  },
+  "operator-console/tests/browser/concept-a-refinement.browser.js": {
+    "bytes": 24276,
+    "sha256": "33d3b19ac371d6254fb7f1dfeaa914a5cf5414a1d0bcddfd28cbbb8787b7e68a"
+  },
+  "operator-console/tests/browser/edit-workbench.browser.js": {
+    "bytes": 53713,
+    "sha256": "108d8fa42f426ba16203afd071bdee447bb910cae659d59b2a46d77570961f83"
+  },
+  "operator-console/tests/browser/interaction-matrix.browser.js": {
+    "bytes": 34506,
+    "sha256": "a4be8017400256c7d7bc942f67d11c26fc5ab1c3e35d331831d635422f4786e3"
+  },
+  "operator-console/tests/browser/library.browser.js": {
+    "bytes": 19080,
+    "sha256": "6f418b1149da581542b397cf23336746467c418dfa89c0a281502f631f5a75b5"
+  },
+  "operator-console/tests/controlled-args.test.js": {
+    "bytes": 21673,
+    "sha256": "d0ec1cd99967754ff0ec730a390e9feb806d9a77a84b63dc10d7a42f9fe7b740"
+  },
+  "operator-console/tests/edit-resources-server.test.js": {
+    "bytes": 4498,
+    "sha256": "68927cb01b90c6372af6613a3dfa264152e46e0c6b6a07adde22fceeb0782167"
+  },
+  "operator-console/tests/extra-networks.test.js": {
+    "bytes": 4280,
+    "sha256": "a25a24b16ef6dbf84a7be60022f20df654ed5344c1540f79ca957e87eb60ddd1"
+  },
+  "operator-console/tests/mflux-bridge.test.js": {
+    "bytes": 15261,
+    "sha256": "a13b24545899d84b6db3ecd1481ffe16d88bbf61d2a059f6d630a4cda2649d7a"
+  },
+  "operator-console/tests/model-cards.test.js": {
+    "bytes": 7164,
+    "sha256": "66e59aa0f92b13ba63a9ffcc027d2658cbd851958ab2eed449adc199c25294ff"
+  },
+  "operator-console/tests/model-inspect.test.js": {
+    "bytes": 8782,
+    "sha256": "a217d7504f1c190b1bb91ef047f3fa10193a176f19d5abd70f45a79bfefd4023"
+  },
+  "operator-console/tests/model-presets.test.js": {
+    "bytes": 5129,
+    "sha256": "5ee756d23dff3d9b481d7907166145f0e34530d838d1bcecfa000eef9852d5f7"
+  },
+  "operator-console/tests/prompt-intelligence.test.js": {
+    "bytes": 11171,
+    "sha256": "0430270412b0b22878b39fd1c94a9b986a31f9ed02dfaaac6c3d224620563b7a"
+  },
+  "operator-console/tests/release-preflight.test.js": {
+    "bytes": 2895,
+    "sha256": "65470d41f855ea083ac92a3814d34722fc0b8df8a728d7420c37e3acf76c79c0"
+  },
+  "operator-console/tests/scratch-lifecycle.test.js": {
+    "bytes": 7693,
+    "sha256": "c4eda3cf10b1ffd82505bc56458bff783eb542be4292510c01144a6ba26c577f"
+  },
+  "operator-console/tests/studio-shell.test.js": {
+    "bytes": 34334,
+    "sha256": "b92a62b87268b62927eaa11f5a2269dd577feeb5805739f95e913a21f82eeeb0"
+  },
+  "operator-console/workstation.js": {
+    "bytes": 16540,
+    "sha256": "de0f7247bd82dcc073af35af12db9fc429c2848ad3140918e5e996e29aa5a35a"
+  },
+  "scripts/release-preflight.sh": {
+    "bytes": 6274,
+    "sha256": "bf8ecf7d9b07a826ca765d79e104c42111ca7183ee92bd25431709f5d64ea288"
+  },
+  "sdcpp-workflow/bin/mflux-controlled-generate.sh": {
+    "bytes": 16553,
+    "sha256": "883c44ad7c56246edfd93ce060c0736462e28ea51309fd8ba370fdcded6717a7"
+  },
+  "sdcpp-workflow/bin/mflux-remote-generate.sh": {
+    "bytes": 6366,
+    "sha256": "6b83f61da5221471c6a6cb3b6ab91560857e35a4a4198f28dc6a35fb3b68aafd"
+  },
+  "sdcpp-workflow/bin/sdcpp-cli-generate.sh": {
+    "bytes": 12146,
+    "sha256": "0f99636db5ce36c0f51b273328a3440072d242e6eac04f72c91b9c842eadc2c9"
+  },
+  "sdcpp-workflow/bin/sdcpp-controlled-generate.sh": {
+    "bytes": 56066,
+    "sha256": "34f6439cba843f6365e38386e215faba2f5e9a28738b000ed67c061a1377d199"
+  },
+  "sdcpp-workflow/bin/sdcpp-discover-assets.sh": {
+    "bytes": 5274,
+    "sha256": "ea4c30373aecd2d17bb1abe9aa44b315602935599d25fe528172a49014a39338"
+  },
+  "sdcpp-workflow/bin/sdcpp-img2img.sh": {
+    "bytes": 13662,
+    "sha256": "a8cc0a1eb90cfd0adf8fd6385b6086f07df7f0ae8b4f0da4c45fefaf6351a54e"
+  },
+  "sdcpp-workflow/bin/sdcpp-inpaint.sh": {
+    "bytes": 14255,
+    "sha256": "655c2ddbd5145ddf7ce0ed92762f6be0820a16490154ddb7ed00f816e2caecea"
+  },
+  "sdcpp-workflow/bin/sdcpp-remote-cancel.sh": {
+    "bytes": 5785,
+    "sha256": "62088739de440ae41c39345dd90ba24534be85dac811784cf01ab3123206b280"
+  },
+  "docs/operations/local-engine-bridge-20261021.json": {
+    "bytes": 154887,
+    "sha256": "c8a08dd28b909ad8fc718d309d9a210b932c44ac418bb1a23a6c3ee5cb8524d3"
+  },
+  "docs/operations/local-engine-bridge-20261021.md": {
+    "bytes": 9362,
+    "sha256": "2c8527ab86bdffbd47cc3dfe532c522a18aea16e423166fda8cb49a1891f4e00"
+  },
+  "docs/operations/lora-assets-20261021.json": {
+    "bytes": 23519,
+    "sha256": "b4e4cbe004f2603f9a8ea476c44959fdf31f45a0fd6cc928c758a034bf20386a"
+  },
+  "docs/operations/lora-metal-performance-20261021.json": {
+    "bytes": 9595,
+    "sha256": "19b66eb5f5990ff0c28f536b3e748c7ceeaa1c9812a61bdcf033153a3bc60933"
+  },
+  "docs/operations/model-source-coverage-20261021.json": {
+    "bytes": 14511,
+    "sha256": "9ff4fc545f00170ff5327c7582dc0ca165a619b5a42a23fdde775813f393c93f"
+  },
+  "docs/operations/release-closeout-20261022.json": {
+    "bytes": 20651,
+    "sha256": "e82f816f38c5a4530025b0575a7b09d2e2c93640e8dc972d119cc79108f7509c"
+  },
+  "operator-console/bin/local-engine-control.js": {
+    "bytes": 923,
+    "sha256": "cbb7b312a84813e183eacc32e97c9e0ff7f5806d0c9dde3b3dd285d336226a4e"
+  },
+  "operator-console/bin/local-engine-generate.js": {
+    "bytes": 9296,
+    "sha256": "eb47c86147182244494d2731e6b9f00770e37571412f175f1797f385853c760e"
+  },
+  "operator-console/local-engine-client.js": {
+    "bytes": 2302,
+    "sha256": "f2c4f024a0ba514b0bdcf72ffc46001c0cb20d3bb52269e090e29bf0534f04c1"
+  },
+  "operator-console/local-engine-routing.js": {
+    "bytes": 620,
+    "sha256": "29aeb8171a9839c3993813756bb65e961aad9a4942d8d739bff3b6783d1baf9d"
+  },
+  "operator-console/lora-runtime-policy.js": {
+    "bytes": 5931,
+    "sha256": "dc5cf5addfce974748d87f78f29930b03e2b037122c78105779e496a664dba83"
+  },
+  "operator-console/tests/local-engine-bridge.test.js": {
+    "bytes": 6943,
+    "sha256": "4c869662c8558c20242c6f49503e3dac39f25b8ab74b5a236fa5eec60f2593d6"
+  },
+  "operator-console/tests/lora-runtime-policy.test.js": {
+    "bytes": 1500,
+    "sha256": "aa553a63bd3bb742e79c54c41978c3cc16cf1fe7c26d804d3edbb8abed0ef8e3"
+  },
+  "sdcpp-workflow/bin/mflux-rslora-convert.py": {
+    "bytes": 5796,
+    "sha256": "2394fc6ca5df40da54b372b4e1def5421a3114099aed309bb239e1959ceebf7e"
+  },
+  "sdcpp-workflow/bin/sdcpp-lora-benchmark.mjs": {
+    "bytes": 15830,
+    "sha256": "ec3c30ced7d7df81fbb9858b96c8133e946fefb5f2f8fa9b3a38697caccea6af"
+  },
+  "sdcpp-workflow/worker/EngineHost.swift": {
+    "bytes": 850,
+    "sha256": "286b4557beca5270f925e22a022bde10edd130a6e1de27a73f8b9212a830db70"
+  },
+  "sdcpp-workflow/worker/README.md": {
+    "bytes": 1859,
+    "sha256": "a0facf3682e22f2ccb3b32c8748faf3517403872f137a756f3756789370d8423"
+  },
+  "sdcpp-workflow/worker/build-registry.js": {
+    "bytes": 3761,
+    "sha256": "4aa315aa01f9cca093200bd263ad7b3cfc4df3812aefb15cacf3cd7c3f5ad909"
+  },
+  "sdcpp-workflow/worker/engine-child.py": {
+    "bytes": 792,
+    "sha256": "55b616691a1c26d34b4c4b8d5b309d279dee234ae63358ce036221b5ebae451b"
+  },
+  "sdcpp-workflow/worker/engine-worker.py": {
+    "bytes": 27982,
+    "sha256": "39fe1bf6afa62af0fe6de2fd88089e00d15b1af2687ede0f7aee315b7c232b12"
+  },
+  "sdcpp-workflow/worker/install-remote.sh": {
+    "bytes": 1969,
+    "sha256": "360c2af88e63edd6e13cc5fc32a9b6712cf7cd5080cd98880fb6a6920df069db"
+  },
+  "sdcpp-workflow/worker/test_engine_worker.py": {
+    "bytes": 11284,
+    "sha256": "7f9dcaf49fc844bdc9a4c4735a15c797c1e5f814ddd0cc6ce455f3bc97dc18e5"
+  }
+}

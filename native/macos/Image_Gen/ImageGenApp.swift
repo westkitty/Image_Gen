@@ -1,7 +1,44 @@
 import Cocoa
 import WebKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKDownloadDelegate, WKUIDelegate {
+enum StartupWatchdogDecision: Equatable {
+    case ignoreStaleCallback
+    case alreadyVerified
+    case deferFailure(attempt: Int)
+    case showFailure
+}
+
+struct StartupWatchdogPolicy {
+    private(set) var deferrals = 0
+    let maximumDeferrals: Int
+
+    init(maximumDeferrals: Int = 2) {
+        self.maximumDeferrals = max(0, maximumDeferrals)
+    }
+
+    mutating func reset() { deferrals = 0 }
+
+    mutating func evaluate(callbackToken: Int, currentToken: Int, webViewIsCurrent: Bool,
+                           studioVerified: Bool, startupIsProgressing: Bool) -> StartupWatchdogDecision {
+        guard callbackToken == currentToken, webViewIsCurrent else { return .ignoreStaleCallback }
+        guard !studioVerified else { return .alreadyVerified }
+        if startupIsProgressing && deferrals < maximumDeferrals {
+            deferrals += 1
+            return .deferFailure(attempt: deferrals)
+        }
+        return .showFailure
+    }
+}
+
+private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
+    weak var delegate: WKScriptMessageHandler?
+    init(_ delegate: WKScriptMessageHandler) { self.delegate = delegate }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(userContentController, didReceive: message)
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKDownloadDelegate, WKUIDelegate, WKScriptMessageHandler {
     private var window: NSWindow!
     private var webView: WKWebView!
     private var statusLabel: NSTextField!
@@ -9,11 +46,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var serviceStartupInProgress = false
     private var navigationStarted = false
     private var studioVerified = false
+    private var activeNavigation: WKNavigation?
     private var navigationToken = 0
-    private var startupWatchdogDeferrals = 0
+    private var startupWatchdogPolicy = StartupWatchdogPolicy()
     private var bootstrapRetryCount = 0
     private var reconnectAttempts = 0
     private var pendingReconnectAfterStartup = false
+    private var scriptMessageProxy: WeakScriptMessageHandler?
+    private var lastNativeRecoveryAttempt = Date.distantPast
     private var failureOverlay: NSView?
     private var failureDetailLabel: NSTextField?
 
@@ -52,11 +92,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     func windowWillClose(_ notification: Notification) {
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "dexRecovery")
         window = nil
         webView = nil
         statusLabel = nil
         navigationStarted = false
         studioVerified = false
+        activeNavigation = nil
         failureOverlay = nil
         failureDetailLabel = nil
     }
@@ -79,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         guard let wv = webView else { return }
         navigationStarted = true
         studioVerified = false
-        startupWatchdogDeferrals = 0
+        startupWatchdogPolicy.reset()
         navigationToken += 1
         let token = navigationToken
         setStatus("Loading DexDiffusion at \(consoleURL.absoluteString)...")
@@ -87,31 +129,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         // A rebuilt Studio can change many JS files while WebKit remains open.
         // Revalidate the HTML from the local tunnel, not the old page cache.
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        wv.load(request)
+        activeNavigation = wv.load(request)
         // Backend recovery and the SSH forward can take longer than a normal
         // warm navigation. Keep the page visible while they progress; only
         // surface the watchdog after one bounded startup window.
         DispatchQueue.main.asyncAfter(deadline: .now() + 35) { [weak self, weak wv] in
             guard let self = self, let wv = wv, self.webView === wv,
                   self.navigationToken == token, !self.studioVerified else { return }
-            if (self.serviceStartupInProgress || wv.isLoading) && self.startupWatchdogDeferrals < 2 {
-                self.startupWatchdogDeferrals += 1
-                let attempt = self.startupWatchdogDeferrals
-                self.appendLog("WKWebView startup is still progressing; deferring failure overlay \(attempt)/2")
-                self.setStatus("DexDiffusion is still recovering or loading Studio; waiting before reporting failure...")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self, weak wv] in
-                    guard let self = self, let wv = wv, self.webView === wv,
-                          self.navigationToken == token, !self.studioVerified else { return }
-                    self.finishStartupWatchdog(for: wv, token: token)
-                }
-                return
-            }
             self.finishStartupWatchdog(for: wv, token: token)
         }
     }
 
     private func finishStartupWatchdog(for webView: WKWebView, token: Int) {
-        guard self.webView === webView, navigationToken == token, !studioVerified else { return }
+        let decision = startupWatchdogPolicy.evaluate(callbackToken: token, currentToken: navigationToken,
+            webViewIsCurrent: self.webView === webView, studioVerified: studioVerified,
+            startupIsProgressing: serviceStartupInProgress || webView.isLoading)
+        switch decision {
+        case .ignoreStaleCallback, .alreadyVerified:
+            return
+        case .deferFailure(let attempt):
+            appendLog("WKWebView startup is still progressing; deferring failure overlay \(attempt)/2")
+            setStatus("DexDiffusion is still recovering or loading Studio; waiting before reporting failure...")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self, weak webView] in
+                guard let self = self, let webView = webView else { return }
+                self.finishStartupWatchdog(for: webView, token: token)
+            }
+            return
+        case .showFailure:
+            break
+        }
         appendLog("WKWebView watchdog: Studio has not verified its interface after the bounded startup window")
         setStatus("Studio has not finished loading. View > Reload to retry; Help > Copy Error Report for details.")
         showLoadFailure("Studio did not finish loading. The Big Mac connection may be unavailable or WebKit may be stalled. Retry connection or copy the error report.")
@@ -525,6 +571,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard navigation === activeNavigation else { return }
         appendLog("webView didFinish navigation: \(consoleURL.absoluteString)")
         setStatus("Verifying DexDiffusion Studio interface...")
         // Navigation success alone is insufficient: previously it reported
@@ -534,7 +581,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             let js = "({initialized:!!window.__dex,rendered:!!document.querySelector('#app-root > [data-v]'),renderError:!!(window.__dex && window.__dex.__renderError)})"
             webView.evaluateJavaScript(js) { [weak self, weak webView] result, error in
                 DispatchQueue.main.async {
-                    guard let self = self, let webView = webView, self.webView === webView else { return }
+                    guard let self = self, let webView = webView, self.webView === webView,
+                          navigation === self.activeNavigation else { return }
                     let flags = result as? [String: Any] ?? [:]
                     let initialized = flags["initialized"] as? Bool ?? false
                     let rendered = flags["rendered"] as? Bool ?? false
@@ -578,7 +626,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        handleNavigationFailure(error, phase: "didFail")
+        handleNavigationFailure(error, phase: "didFail", navigation: navigation)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -586,10 +634,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
             return // Obsolete reload, not a real connection failure.
         }
-        handleNavigationFailure(error, phase: "didFailProvisionalNavigation")
+        handleNavigationFailure(error, phase: "didFailProvisionalNavigation", navigation: navigation)
     }
 
-    private func handleNavigationFailure(_ error: Error, phase: String) {
+    private func handleNavigationFailure(_ error: Error, phase: String, navigation: WKNavigation?) {
+        guard navigation === activeNavigation else {
+            appendLog("Ignoring stale WebKit callback from an obsolete navigation")
+            return
+        }
         studioVerified = false
         let nsError = error as NSError
         appendLog("webView \(phase) (domain \(nsError.domain), code \(nsError.code)): \(error.localizedDescription)")
@@ -614,6 +666,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             setStatus("DexDiffusion recovery attempts were exhausted. View > Reload or Retry connection to try again.")
             return
         }
+        let now = Date()
+        if now.timeIntervalSince(lastNativeRecoveryAttempt) < 60 {
+            setStatus("Connection recovery is already running or cooling down; retry remains available.")
+            return
+        }
+        lastNativeRecoveryAttempt = now
         reconnectAttempts += 1
         pendingReconnectAfterStartup = true
         setStatus("DexDiffusion connection failed; checking the backend service and SSH tunnel (attempt \(reconnectAttempts)/2)...")
@@ -749,6 +807,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         failureOverlay = nil
         failureDetailLabel = nil
         let config = WKWebViewConfiguration()
+        let contentController = WKUserContentController()
+        let proxy = WeakScriptMessageHandler(self)
+        scriptMessageProxy = proxy
+        contentController.add(proxy, name: "dexRecovery")
+        contentController.addUserScript(WKUserScript(source: "window.__dexNativeWrapper = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        config.userContentController = contentController
         webView = WKWebView(frame: .zero, configuration: config)
         // Keep startup visually distinct from an unrendered white document.
         webView.underPageBackgroundColor = NSColor(calibratedRed: 0.031, green: 0.035, blue: 0.055, alpha: 1)
@@ -796,6 +860,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        let origin = message.frameInfo.securityOrigin
+        guard message.name == "dexRecovery", let action = message.body as? String,
+              ["backend-degraded", "publication-pending"].contains(action),
+              message.frameInfo.isMainFrame, origin.protocol == "http",
+              origin.host == "127.0.0.1", origin.port == 31337,
+              message.webView === webView else { return }
+        DispatchQueue.main.async { [weak self] in
+            if action == "publication-pending" {
+                self?.runPublicationSync()
+                return
+            }
+            guard let self = self, !self.serviceStartupInProgress else { return }
+            self.appendLog("Native Studio requested a policy-checked recovery tick after repeated backend health failures")
+            self.setStatus("Backend is degraded; checking recovery state...")
+            let helper = "\(self.projectRoot)/bin/dexdiffusion"
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self = self else { return }
+                let result = self.runShell("\(shellQuote(helper)) recovery-tick", timeout: 300)
+                self.appendLog("bin/dexdiffusion recovery-tick (exit \(result.code)):\n\(result.output)")
+                DispatchQueue.main.async {
+                    if result.code == 0 {
+                        self.setStatus("Recovery check complete; Studio will update when its next health probe passes.")
+                    } else {
+                        self.setStatus("Recovery is pending or blocked; see System diagnostics.")
+                    }
+                }
+            }
+        }
+    }
+
+    private func runPublicationSync() {
+        let helper = "\(projectRoot)/bin/dexdiffusion"
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self = self else { return }
+            let result = self.runShell("\(shellQuote(helper)) publication-sync", timeout: 45)
+            self.appendLog("bin/dexdiffusion publication-sync (exit \(result.code)):\n\(result.output)")
+        }
+    }
+
     // MARK: - Service startup
 
     private func ensureServicesThenLoad() {
@@ -813,7 +917,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 self.serviceStartupInProgress = false
                 if self.pendingReconnectAfterStartup {
                     self.pendingReconnectAfterStartup = false
-                    self.loadConsole()
+                    // Never tear down a now-verified Studio document on a late recovery completion.
+                    if !self.studioVerified { self.loadConsole() }
                 }
             }
         }
@@ -821,7 +926,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     private func ensureOperatorConsoleViaHelper() {
         let helper = "\(projectRoot)/bin/dexdiffusion"
-        let result = runShell("\(shellQuote(helper)) start", timeout: 45)
+        let result = runShell("\(shellQuote(helper)) start", timeout: 300)
         appendLog("bin/dexdiffusion start (exit \(result.code)):\n\(result.output)")
         if result.code != 0 {
             DispatchQueue.main.async {
@@ -913,7 +1018,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     private func currentConsoleVersion() -> (reachable: Bool, matchesExpectedRoot: Bool, cwd: String?, gitHead: String?, pid: Int?) {
-        let result = runShell("curl -fsS --max-time 2 \(serverBaseURL.absoluteString)/api/version", timeout: 4)
+        let result = runShell("curl -fsS --max-time 6 \(serverBaseURL.absoluteString)/api/version", timeout: 9)
         guard result.code == 0, let data = result.output.data(using: .utf8) else {
             return (false, false, nil, nil, nil)
         }
@@ -967,8 +1072,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private func runShell(_ command: String, timeout: TimeInterval) -> (code: Int32, output: String) {
         let process = Process()
         let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-lc", command]
+        let outputLock = NSLock()
+        var captured = Data()
+        let outputLimit = 64 * 1024
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty else { handle.readabilityHandler = nil; return }
+            outputLock.lock()
+            if captured.count < outputLimit {
+                captured.append(data.prefix(outputLimit - captured.count))
+            }
+            outputLock.unlock()
+        }
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = ["\(projectRoot)/scripts/bounded-command.py", "--timeout", String(timeout), "--output-limit", String(outputLimit), "--", command]
         process.standardOutput = pipe
         process.standardError = pipe
 
@@ -980,13 +1097,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
         let semaphore = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in semaphore.signal() }
-        if semaphore.wait(timeout: .now() + timeout) == .timedOut {
+        // The child runner owns a process group and performs TERM/KILL cleanup
+        // at `timeout`; this outer margin lets it drain output and reap children.
+        if semaphore.wait(timeout: .now() + timeout + 2) == .timedOut {
             process.terminate()
-            return (124, "Timed out: \(command)")
+            _ = semaphore.wait(timeout: .now() + 2)
+            pipe.fileHandleForReading.readabilityHandler = nil
+            outputLock.lock()
+            let output = String(data: captured, encoding: .utf8) ?? ""
+            outputLock.unlock()
+            return (124, "Timed out: \(command)\n" + output)
         }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+        pipe.fileHandleForReading.readabilityHandler = nil
+        outputLock.lock()
+        let output = String(data: captured, encoding: .utf8) ?? ""
+        outputLock.unlock()
+        return (process.terminationStatus, output)
     }
 
     private func shellQuote(_ value: String) -> String {

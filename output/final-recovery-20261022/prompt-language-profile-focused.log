@@ -1,0 +1,8 @@
+[prompt-language +1.4s] START the old blanket claim is gone and help text matches the selected backend
+[prompt-language +3.5s] PASS the old blanket claim is gone and help text matches the selected backend (2063 ms)
+[prompt-language +3.5s] START typing keeps focus and cursor while MFLUX emphasis notes appear and clear
+[prompt-language +5.9s] PASS typing keeps focus and cursor while MFLUX emphasis notes appear and clear (2421 ms)
+[prompt-language +5.9s] START PR-23: Ctrl+Up/Down weights the word at the caret and Alt+Right moves an element; the form state follows
+[prompt-language +8.0s] PASS PR-23: Ctrl+Up/Down weights the word at the caret and Alt+Right moves an element; the form state follows (2113 ms)
+[prompt-language +8.0s] START the server rejects schedule/alternation/AND with offset and hint, and accepts supported emphasis
+[prompt-language +8.1s] PASS the server rejects schedule/alternation/AND with offset and hint, and accepts supported emphasis (34 ms)

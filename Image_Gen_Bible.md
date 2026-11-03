@@ -84,6 +84,10 @@ Validation performed:
 
 ## Chronological Ledger
 
+## 2026-11-02 — Canonical image destination policy and source trace
+
+Andrew selected `/Users/andrew/images_made` on MacBook as the canonical original destination. Big Mac `/Volumes/wc2tb/DexDiffusion/images` is working/staging/pending-publication storage. The source-closure implementation adds a marked Big Mac outbox, an existing-tunnel MacBook pull worker, digest-verified no-clobber finalization, durable receipt, acknowledgment, and crash reconciliation. It remains undeployed and has isolated fixture coverage only; no production artifact was transferred. This decision does not classify or alter historical files. See `DEXDIFFUSION.md` for the governing contract and `OPERATIONAL_STATE.md` for stage-by-stage evidence.
+
 ### Entry 1 - A1111 Workbench UI/UX Upgrade
 
 Summary:
@@ -2917,3 +2921,17 @@ Local and origin recovery branch remain `d1d542631fd041ddf54b148a173da19415fa4dd
 - The release-verification tests, attributed compressed GLB fixture and QA documentation were published as GitHub commit 0365bcf8cf87014891e0a11bbb9894f08795049d on fix/omni-release-verification-20261101, parent main merge a702dfeace5051bc0effc42c1ce3f1d2fe741f5f.
 - The above records source-only follow-up validation. No native app installation, MacBook Dock proof, production Big Mac checkout switch, server restart, model execution or 6DoF spatial readiness was claimed.
 - This is an append-only commit-receipt entry; no source changes are included in this documentation follow-up.
+
+## 2026-11-02 — DexDiffusion runtime audit reconciliation note
+
+Live MacBook/Big Mac identity, active service and endpoint evidence are recorded in `OPERATIONAL_STATE.md` under the 2026-11-02 runtime audit checkpoint. Current sources disagree on canonical image ownership: active Big Mac runtime configuration and `/api/system-info` report `/Volumes/wc2tb/DexDiffusion/images`, while older product statements designate `/Users/andrew/images_made`. This note preserves that contradiction for an explicit owner decision; no files were moved or rewritten. Do not infer source edits are deployed: at the audit checkpoint Big Mac served `b3090f9`, the MacBook app stamp was `df765a1`, and new fixes remained source-only.
+
+## 2026-11-02 — DexDiffusion source closure addendum (not deployed)
+
+The source tree now includes a bounded native helper process-group runner and
+executable Swift startup-watchdog policy tests, alongside the canonical
+publication outbox/worker described in `DEXDIFFUSION.md`. Focused fixtures
+exercise DD-02/03/04/08/09/10/11; full npm results and the exact Git state are
+recorded in the latest `OPERATIONAL_STATE.md` closure entry. This is source and
+isolated-test evidence only: no backend/app installation, live publication,
+commit, or push is claimed.

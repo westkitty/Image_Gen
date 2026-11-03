@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { request, saveOwner } = require('../local-engine-client');
 const { createImageStore } = require('../image-store');
+const { createControlledImageStore, publishCompletedControlledRun } = require('../controlled-publication');
 const { adapterId, resolveLoraRuntimePolicy } = require('../lora-runtime-policy');
 const { canonicalSampler } = require('../controlled-args');
 const workflow = path.resolve(__dirname, '../../sdcpp-workflow');
@@ -118,7 +119,13 @@ async function main() {
       }
       throw new Error(state.error || state.status);
     }
-    const store = createImageStore(process.env.DEX_IMAGES_ROOT_OVERRIDE ? { root: process.env.DEX_IMAGES_ROOT_OVERRIDE, runsRoot } : { runsRoot });
+    const publicationEnabled = !!process.env.DEX_PUBLICATION_OUTBOX_DIR;
+    const store = createControlledImageStore({
+      createImageStore,
+      ...(process.env.DEX_IMAGES_ROOT_OVERRIDE ? { root: process.env.DEX_IMAGES_ROOT_OVERRIDE } : {}),
+      runsRoot,
+      publicationEnabled,
+    });
     const downloads=[];
     stagingDir=fs.mkdtempSync(path.join(os.tmpdir(),'dex-engine-transfer-'));
     const logicalOutputs=[];
@@ -130,7 +137,7 @@ async function main() {
       const temp = path.join(stagingDir, 'output-'+index+'.png');
       fs.writeFileSync(temp, data, { mode: 0o600, flag: 'wx' });
       const runFile='controlled-'+args.target+(count>1?'-b'+String(index).padStart(2,'0'):'')+'.png';
-      downloads.push({src:temp,runDir,runId,runFile,seed:seed+index});
+      downloads.push({src:temp,runDir,runId,runFile,seed:seed+index,bytes:data.length,sha256:result.sha256});
       logicalOutputs.push(path.join(runDir,runFile));
     }
     if (stopping) throw new Error('cancelled before publication');
@@ -138,7 +145,16 @@ async function main() {
     // before committing canonical images; no network await follows publication.
     const entries=await publishAfterAcknowledgment({
       acknowledge: () => owned('ack'),
-      publish: () => store.publishFiles(downloads,runDir),
+      publish: () => publishCompletedControlledRun({
+        workerState: state,
+        jobId: process.env.DEXDIFFUSION_JOB_ID,
+        runId,
+        runDir,
+        downloads,
+        store,
+        publicationEnabled,
+        isStopping: () => stopping,
+      }),
       isStopping: () => stopping,
     });
     const entry=entries[0];

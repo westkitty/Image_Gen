@@ -11,10 +11,18 @@ USER_UID="$(/usr/bin/id -u bigmac)"
 AGENT_DOMAIN="user/$USER_UID"
 AGENT_DEST="$USER_HOME/Library/LaunchAgents/$LABEL.plist"
 AGENT_SOURCE="$ROOT/scripts/$LABEL.agent-legacy.plist"
-STATE_DIR="$USER_HOME/Library/Application Support/DexDiffusion"
-TCC_MARKER="$STATE_DIR/backend-service-tcc-disabled"
 ENABLE_AFTER_TCC=0
 USER_SESSION=0
+
+recovery_remaining() {
+  local now="$(/bin/date +%s)"
+  if [[ -z "${DEX_RECOVERY_DEADLINE:-}" ]]; then
+    printf '40\n'
+  else
+    local left=$(( DEX_RECOVERY_DEADLINE - now ))
+    (( left > 0 )) && printf '%s\n' "$left" || return 1
+  fi
+}
 
 case "${1:-}" in
   "") ;;
@@ -48,32 +56,34 @@ if [[ "$USER_SESSION" == 1 ]]; then
     echo "ERROR: existing LaunchAgent differs from project source; preserving it." >&2; exit 5;
   fi
   AGENT_LOADED="$(/bin/launchctl print "gui/$USER_UID/$LABEL" 2>&1 || true)"
+  SERVICE_REGISTERED=0
   if /usr/bin/grep -F "$ROOT/scripts/run-backend-service.sh" <<<"$AGENT_LOADED" >/dev/null; then
-    /bin/rm -f "$TCC_MARKER"
-    echo "SERVICE_ALREADY_LOADED domain=gui/$USER_UID label=$LABEL"
-    exit 0
+    SERVICE_REGISTERED=1
   fi
   LISTENER="$(/usr/sbin/lsof -nP -iTCP:31337 -sTCP:LISTEN -t 2>/dev/null | /usr/bin/head -1 || true)"
-  if [[ -n "$LISTENER" ]]; then
+  if [[ -n "$LISTENER" && "$SERVICE_REGISTERED" == 0 ]]; then
     echo "ERROR: port 31337 is already owned by PID $LISTENER; refusing to start another backend." >&2
     exit 6
   fi
   if /usr/bin/grep -F '"local.dexdiffusion.server" => disabled' < <(/bin/launchctl print-disabled "gui/$USER_UID" 2>&1) >/dev/null; then
-    if [[ "$ENABLE_AFTER_TCC" != 1 && ! -f "$TCC_MARKER" ]]; then
-      echo "ERROR: user-session service is disabled after a removable-volume privacy denial." >&2
-      echo "This job was not disabled by the installer; inspect launchd state before enabling it." >&2
+    if [[ "$ENABLE_AFTER_TCC" != 1 ]]; then
+      echo "ERROR: user-session service is disabled in launchd; preserving its current state." >&2
+      echo "Inspect launchd and storage-access permissions; use --enable-after-tcc only after confirming re-enable is intended." >&2
       exit 9
     fi
     /bin/launchctl enable "gui/$USER_UID/$LABEL"
-    echo "Retrying the previously TCC-disabled user service once; failure will disable it again."
+    echo "Retrying the explicitly re-enabled user service once; failure will leave launchd throttling in effect."
   fi
   /bin/mkdir -p "$USER_HOME/Library/LaunchAgents"
   if [[ ! -e "$AGENT_DEST" ]]; then
     /usr/bin/install -o bigmac -g staff -m 0644 "$AGENT_SOURCE" "$AGENT_DEST"
   fi
-  /bin/launchctl bootstrap "gui/$USER_UID" "$AGENT_DEST"
+  if [[ "$SERVICE_REGISTERED" == 0 ]]; then
+    /bin/launchctl bootstrap "gui/$USER_UID" "$AGENT_DEST"
+  fi
   READY=0
-  for _ in {1..30}; do
+  for ((attempt=0; attempt<30; attempt++)); do
+    recovery_remaining >/dev/null || break
     if /usr/bin/curl -fs --max-time 2 http://127.0.0.1:31337/api/version -o "/tmp/dexdiffusion-version.$$.json" &&
        /usr/bin/curl -fs --max-time 2 http://127.0.0.1:31337/dexdiffusion/ -o /dev/null &&
        /usr/bin/python3 - "$ROOT/operator-console" "/tmp/dexdiffusion-version.$$.json" <<'PY'
@@ -85,28 +95,32 @@ pid = str(version.get('pid', ''))
 owners = subprocess.run(['/usr/sbin/lsof','-nP','-iTCP:31337','-sTCP:LISTEN','-t'],capture_output=True,text=True)
 owner = subprocess.run(['/bin/ps','-o','user=','-p',pid],capture_output=True,text=True)
 if owners.returncode or pid not in owners.stdout.split() or owner.returncode or owner.stdout.strip() != 'bigmac': raise SystemExit(1)
+command = subprocess.run(['/bin/ps','-o','comm=,args=','-p',pid],capture_output=True,text=True)
+if command.returncode: raise SystemExit(1)
+parts = command.stdout.strip().split(None, 1)
+if len(parts) != 2 or parts[0].rsplit('/', 1)[-1] != 'node' or 'server.js' not in parts[1]: raise SystemExit(1)
 PY
     then READY=1; break; fi
     /bin/sleep 1
   done
   /bin/rm -f "/tmp/dexdiffusion-version.$$.json"
   if [[ "$READY" != 1 ]]; then
-    /bin/launchctl bootout "gui/$USER_UID/$LABEL" >/dev/null 2>&1 || true
-    if /usr/bin/log show --last 3m --style compact --predicate 'process == "tccd"' 2>/dev/null |
-        /usr/bin/grep -F 'kTCCServiceSystemPolicyRemovableVolumes' |
-        /usr/bin/grep -F 'Refusing TCCAccessRequest' >/dev/null; then
-      if /bin/launchctl disable "gui/$USER_UID/$LABEL"; then
-        /bin/mkdir -p "$STATE_DIR"
-        /usr/bin/touch "$TCC_MARKER"
-      fi
-      echo "ERROR: macOS TCC denied Node Removable Volumes access in the user session; service unloaded to prevent a launch loop." >&2
+    if [[ "$SERVICE_REGISTERED" == 0 ]]; then
+      /bin/launchctl bootout "gui/$USER_UID/$LABEL" >/dev/null 2>&1 || true
+    fi
+    if [[ "$SERVICE_REGISTERED" == 1 ]]; then
+      echo "ERROR: service is registered but not API-ready; leaving the existing service untouched." >&2
     else
-      echo "ERROR: user-session service did not pass API/Studio identity checks; service unloaded." >&2
+      echo "ERROR: newly registered service did not pass API/Studio identity checks; launchd retains its configured throttling." >&2
+      echo "Recent TCC messages are not attributed to this Node process without matching client and failed-operation evidence." >&2
     fi
     exit 8
   fi
-  /bin/rm -f "$TCC_MARKER"
-  echo "SERVICE_READY domain=gui/$USER_UID label=$LABEL user=bigmac api=200 studio=200"
+  if [[ "$SERVICE_REGISTERED" == 1 ]]; then
+    echo "SERVICE_READY domain=gui/$USER_UID label=$LABEL user=bigmac api=200 studio=200 existing=1"
+  else
+    echo "SERVICE_READY domain=gui/$USER_UID label=$LABEL user=bigmac api=200 studio=200 existing=0"
+  fi
   exit 0
 fi
 
@@ -148,21 +162,21 @@ migrate_agent_file() {
 if agent_loaded; then exit 4; fi
 
 LOADED="$(/bin/launchctl print "system/$LABEL" 2>&1 || true)"
+SYSTEM_REGISTERED=0
 if /usr/bin/grep -F "$ROOT/scripts/run-backend-service.sh" <<<"$LOADED" >/dev/null; then
   if [[ -e "$DEST" ]] && /usr/bin/cmp -s "$SOURCE" "$DEST"; then
-    migrate_agent_file
-    echo "SERVICE_ALREADY_LOADED domain=system label=$LABEL"
-    exit 0
+    SYSTEM_REGISTERED=1
+  else
+    echo "ERROR: system service is loaded but its installed definition differs; preserving it." >&2
+    exit 5
   fi
-  echo "ERROR: system service is loaded but its installed definition differs; preserving it." >&2
-  exit 5
 fi
 
 DISABLED="$(/bin/launchctl print-disabled system 2>&1 || true)"
 if /usr/bin/grep -F '"local.dexdiffusion.server" => disabled' <<<"$DISABLED" >/dev/null; then
   if [[ "$ENABLE_AFTER_TCC" != 1 ]]; then
-    echo "ERROR: system service is intentionally disabled after a removable-volume privacy denial." >&2
-    echo "Grant Node Removable Volumes access in the Big Mac GUI session, then rerun with --enable-after-tcc." >&2
+    echo "ERROR: system service is disabled in launchd; preserving its current state." >&2
+    echo "Inspect launchd and storage-access permissions; use --enable-after-tcc only after confirming re-enable is intended." >&2
     exit 9
   fi
   /bin/launchctl enable "system/$LABEL"
@@ -178,7 +192,7 @@ if [[ -e "$AGENT_DEST" ]] && ! /usr/bin/cmp -s "$AGENT_SOURCE" "$AGENT_DEST"; th
 fi
 
 listener="$(/usr/sbin/lsof -nP -iTCP:31337 -sTCP:LISTEN -t 2>/dev/null | /usr/bin/head -1 || true)"
-if [[ -n "$listener" ]]; then
+if [[ -n "$listener" && "$SYSTEM_REGISTERED" == 0 ]]; then
   echo "ERROR: port 31337 is already owned by PID $listener; refusing to start another backend." >&2
   exit 6
 fi
@@ -190,16 +204,19 @@ if [[ ! -e "$DEST" ]]; then
   /bin/mv "$temp" "$DEST"
 fi
 
-/bin/launchctl bootstrap system "$DEST"
-LOADED="$(/bin/launchctl print "system/$LABEL" 2>&1 || true)"
-if ! /usr/bin/grep -F "$ROOT/scripts/run-backend-service.sh" <<<"$LOADED" >/dev/null; then
-  echo "ERROR: launchd did not retain the project runner in the system domain." >&2
-  echo "$LOADED" | /usr/bin/head -30 >&2
-  exit 7
+if [[ "$SYSTEM_REGISTERED" == 0 ]]; then
+  /bin/launchctl bootstrap system "$DEST"
+  LOADED="$(/bin/launchctl print "system/$LABEL" 2>&1 || true)"
+  if ! /usr/bin/grep -F "$ROOT/scripts/run-backend-service.sh" <<<"$LOADED" >/dev/null; then
+    echo "ERROR: launchd did not retain the project runner in the system domain." >&2
+    echo "$LOADED" | /usr/bin/head -30 >&2
+    exit 7
+  fi
 fi
 
 ready=0
-for _ in {1..30}; do
+for ((attempt=0; attempt<30; attempt++)); do
+  recovery_remaining >/dev/null || break
   if /usr/bin/curl -fs --max-time 2 http://127.0.0.1:31337/api/version -o /tmp/dexdiffusion-version.$$.json &&
      /usr/bin/curl -fs --max-time 2 http://127.0.0.1:31337/dexdiffusion/ -o /dev/null &&
      /usr/bin/python3 - "$ROOT/operator-console" /tmp/dexdiffusion-version.$$.json <<'PY'
@@ -216,26 +233,22 @@ if owners.returncode or pid not in owners.stdout.split():
 owner = subprocess.run(['/bin/ps','-o','user=','-p',pid],capture_output=True,text=True)
 if owner.returncode or owner.stdout.strip() != 'bigmac':
     raise SystemExit(1)
+command = subprocess.run(['/bin/ps','-o','comm=,args=','-p',pid],capture_output=True,text=True)
+parts = command.stdout.strip().split(None, 1)
+if command.returncode or len(parts) != 2 or parts[0].rsplit('/', 1)[-1] != 'node' or 'server.js' not in parts[1]:
+    raise SystemExit(1)
 PY
   then ready=1; break; fi
   /bin/sleep 1
 done
 /bin/rm -f /tmp/dexdiffusion-version.$$.json
 if [[ "$ready" != 1 ]]; then
-  if /usr/bin/log show --last 3m --style compact --predicate 'process == "tccd"' 2>/dev/null |
-      /usr/bin/grep -F 'kTCCServiceSystemPolicyRemovableVolumes' |
-      /usr/bin/grep -F 'Refusing TCCAccessRequest' >/dev/null; then
-    /bin/launchctl bootout "system/$LABEL" >/dev/null 2>&1 || true
-    /bin/launchctl disable "system/$LABEL"
-    echo "ERROR: macOS TCC denied Node Removable Volumes access in the background session." >&2
-    echo "The daemon has been unloaded and disabled to prevent a launch loop. Grant access in the Big Mac GUI, then rerun with --enable-after-tcc." >&2
-    exit 8
-  fi
   echo "ERROR: system service loaded but project API/Studio did not become ready as bigmac." >&2
+  echo "Recent TCC messages are not attributed to this Node process without matching client and failed-operation evidence." >&2
   /bin/launchctl print "system/$LABEL" 2>&1 | /usr/bin/head -50 >&2 || true
   /usr/bin/tail -40 "$ROOT/operator-console/server-error.log" >&2 || true
   exit 8
 fi
 
-migrate_agent_file
-echo "SERVICE_READY domain=system label=$LABEL user=bigmac api=200 studio=200"
+if [[ "$SYSTEM_REGISTERED" == 0 ]]; then migrate_agent_file; fi
+echo "SERVICE_READY domain=system label=$LABEL user=bigmac api=200 studio=200 existing=$SYSTEM_REGISTERED"

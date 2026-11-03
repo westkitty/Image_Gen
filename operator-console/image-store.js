@@ -62,7 +62,7 @@ function fsyncDirectory(dir) {
   try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 }
 
-function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANONICAL_IMAGE_ROOT), runsRoot = path.resolve(__dirname, '../sdcpp-workflow/runs'), fault } = {}) {
+function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANONICAL_IMAGE_ROOT), runsRoot = path.resolve(__dirname, '../sdcpp-workflow/runs'), fault, onPublished, publicationIntentSchema } = {}) {
   const rootDir = path.resolve(root);
   const runsRootDir = path.resolve(runsRoot);
   const inventoryCache = new Map();
@@ -224,6 +224,10 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
           if (fs.existsSync(path.join(rootDir, id))) continue;
           const inode = fs.statSync(row.incoming);
           const entry = { run_file: row.runFile, run_id: path.basename(runDir), image_id: id, image_path: path.join(rootDir, id), image_url: imageUrl(id), ...row.validation, published_at: new Date().toISOString() };
+          if (onPublished || publicationIntentSchema) entry.publication = {
+            state: 'PUBLICATION_PENDING', protocol: 'macbook-pull-v1',
+            ...(publicationIntentSchema ? { intent_schema: publicationIntentSchema } : {}),
+          };
           if (row.seed !== undefined) entry.seed = String(row.seed);
           if (owner) entry.job_id = owner.job_id;
           const planned = [...linked, entry];
@@ -241,6 +245,9 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
       at('before-metadata');
       writeRunIndex(runDir, [...images, ...entries]);
       committed = true;
+      // Cross-host publication is explicitly opt-in and only records new
+      // artifacts after their Big Mac image bytes and run index are durable.
+      if (onPublished) for (const entry of entries) onPublished(entry);
       const durableJournal = JSON.parse(fs.readFileSync(journal, 'utf8'));
       writeJsonAtomic(journal, { ...durableJournal, phase: 'run-index-committed', cleanup_state: 'metadata-committed' });
       at('after-metadata');

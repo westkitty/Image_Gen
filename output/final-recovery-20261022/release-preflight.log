@@ -1,0 +1,3 @@
+PASS  git diff --cached --check
+PASS  npm run check
+SKIP  protected unit files (*style*, *wildcard*)

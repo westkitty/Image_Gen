@@ -1,0 +1,7 @@
+PASS  git diff --cached --check
+PASS  npm run check
+PASS  unit suite: 138/138 passed, fail=0 cancelled=0 skipped=0 (exit 0)
+PASS  browser:edit-workbench (29 scenarios)
+FAIL  browser:library exit=0 pass=9 fail=1 (log /tmp/dex-preflight-KMcpw7/b-library.log)
+PASS  browser:interaction-matrix (252 scenarios)
+FAIL  RELEASE PREFLIGHT (logs: /tmp/dex-preflight-KMcpw7)

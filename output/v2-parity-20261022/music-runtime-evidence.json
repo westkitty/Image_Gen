@@ -1,0 +1,53 @@
+{
+  "dir": "/var/folders/lm/f_zcrpb94bvg69m2y35klb8r0000gn/T/dex-runtime-music-Xne9mc",
+  "started": "2026-10-22T18:36:27.526Z",
+  "jobs": [
+    {
+      "worker": "magenta-rt",
+      "status": "COMPLETE",
+      "gate": null,
+      "error": null,
+      "seconds": 44,
+      "artifact": {
+        "id": "20261022-183712-magenta-rt-music.wav",
+        "duration": 4,
+        "seed": null
+      },
+      "file": {
+        "bytes": 768044,
+        "riff": "RIFF",
+        "wave": "WAVE",
+        "sha256": "cd75911937a7e0a1b1b9051d56459a963b2b35667eb1bbe40ee1c5a935ac0528",
+        "declaredSha": "cd75911937a7e0a1b1b9051d56459a963b2b35667eb1bbe40ee1c5a935ac0528",
+        "channels": 2,
+        "rate": 48000,
+        "bits": 16,
+        "seconds": 4
+      }
+    },
+    {
+      "worker": "ace-step",
+      "status": "COMPLETE",
+      "gate": null,
+      "error": null,
+      "seconds": 355,
+      "artifact": {
+        "id": "20261022-184307-ace-step-song.wav",
+        "duration": 10,
+        "seed": 7
+      },
+      "file": {
+        "bytes": 1920044,
+        "riff": "RIFF",
+        "wave": "WAVE",
+        "sha256": "b2ccd126e5169f035c1c0c4d977807cf37a2ed5a533359aeca595859f120f7bd",
+        "declaredSha": "b2ccd126e5169f035c1c0c4d977807cf37a2ed5a533359aeca595859f120f7bd",
+        "channels": 2,
+        "rate": 48000,
+        "bits": 16,
+        "seconds": 10
+      }
+    }
+  ],
+  "finished": "2026-10-22T18:43:08.562Z"
+}

@@ -28,7 +28,7 @@ test('canonical image root is exactly /Users/andrew/images_made and the server u
   assert.match(fs.readFileSync(path.join(ROOT, 'image-store.js'), 'utf8'), /root = \(process\.env\.DEX_IMAGES_ROOT_OVERRIDE \|\| CANONICAL_IMAGE_ROOT\)/);
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   assert.match(src, /const STORAGE_PATHS = resolveStoragePaths\(process\.env/);
-  assert.match(src, /createImageStore\(\{ root: STORAGE_PATHS\.imageRoot, runsRoot: RUNS_DIR \}\)/);
+  assert.match(src, /createImageStore\(\{ root: STORAGE_PATHS\.imageRoot, runsRoot: RUNS_DIR,[\s\S]*?onPublished:/);
   const lib = fs.readFileSync(path.join(WORKFLOW_BIN, 'sdcpp-lib.sh'), 'utf8');
   assert.match(lib, /^DEX_IMAGES_ROOT="\$\{DEX_IMAGES_ROOT_OVERRIDE:-\/Users\/andrew\/images_made\}"$/m);
 });

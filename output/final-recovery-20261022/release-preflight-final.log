@@ -1,0 +1,7 @@
+PASS  git diff --cached --check
+PASS  npm run check
+SKIP  protected unit files (*style*, *wildcard*)
+FAIL  unit suite: exit=1 tests=1015 pass=1014 fail=1 cancelled=0
+✖ worker validates closed requests and owns cancellation/recovery (7109.799709ms)
+✖ failing tests:
+✖ worker validates closed requests and owns cancellation/recovery (7109.799709ms)

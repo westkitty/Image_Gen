@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function loadComponent() {
+function loadComponent(fetchImpl, native = false) {
   const file = path.join(__dirname, '..', 'public', 'dexdiffusion', 'component.js');
   const code = fs.readFileSync(file, 'utf8');
   class DCLogic {
@@ -22,18 +22,19 @@ function loadComponent() {
   }
   const DexClient = require('../public/dexdiffusion/client-helpers.js');
   const sandbox = {
-    window: {}, DCLogic, console,
+    window: { __dexNativeWrapper: native, __recoveryMessages: [], webkit: { messageHandlers: { dexRecovery: { postMessage(value) { sandbox.window.__recoveryMessages.push(value); } } } } }, DCLogic, console, AbortController,
     DexClient,
     React: { createElement: (type, props, ...children) => ({ __vnode: true, type, props: props || {}, children }) },
     localStorage: { getItem: () => null, setItem() {} },
-    fetch: () => Promise.reject(new Error('no network in tests')),
+    fetch: fetchImpl || (() => Promise.reject(new Error('no network in tests'))),
     AbortSignal: { timeout: () => null },
-    setInterval: () => 0, clearInterval() {}, setTimeout: () => 0,
+    setInterval: () => 0, clearInterval() {}, setTimeout: () => 0, clearTimeout() {},
     navigator: { clipboard: { writeText() {} } },
     document: {}, requestAnimationFrame: () => 0,
   };
   vm.createContext(sandbox);
   vm.runInContext(code, sandbox);
+  sandbox.window.DexDiffusionComponent.__testWindow = sandbox.window;
   return sandbox.window.DexDiffusionComponent;
 }
 
@@ -122,4 +123,36 @@ test('onSelectPreset normalizes prototype display labels', () => {
   assert.equal(c.state.preset, 'fast');
   c.onSelectPreset('Custom');
   assert.equal(c.state.preset, 'balanced');
+});
+
+
+test('backend health becomes degraded only after repeated failures and returns healthy on recovery', async () => {
+  const Component = loadComponent(() => Promise.reject(new Error('offline')));
+  const c = new Component();
+  c._backendMounted = true;
+  c.state.backendUrl = 'http://backend';
+  await c.pingBackend();
+  assert.equal(c.state.backendOnline, null, 'one transient probe does not declare an outage');
+  await c.pingBackend();
+  assert.equal(c.state.backendOnline, false);
+  assert.equal(c.state.backendHealth, 'degraded');
+
+  const HealthyComponent = loadComponent(async () => ({ ok: true, json: async () => ({ name: 'Image_Gen Operator Console' }) }));
+  const recovered = new HealthyComponent();
+  recovered._backendMounted = true;
+  recovered.state.backendUrl = 'http://backend';
+  recovered._pingFailures = 2;
+  recovered.state.backendOnline = false;
+  recovered.state.backendHealth = 'degraded';
+  await recovered.pingBackend();
+  assert.equal(recovered.state.backendOnline, true);
+  assert.equal(recovered.state.backendHealth, 'healthy');
+
+  const NativeComponent = loadComponent(() => Promise.reject(new Error('offline')), true);
+  const native = new NativeComponent();
+  native._backendMounted = true;
+  native.state.backendUrl = 'http://backend';
+  await native.pingBackend();
+  await native.pingBackend();
+  assert.deepEqual(Array.from(NativeComponent.__testWindow.__recoveryMessages), ['backend-degraded']);
 });

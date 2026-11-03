@@ -19,6 +19,7 @@ test('executed server finalization rejects metadata failure before success reach
 test('generic server completion requires a fresh canonical receipt and releases lease on rejection', () => {
   const store=M.createJobStore(null); let releases=0;
   const sync=load('syncGenericTerminal','function updateSequentialProgress',{
+    crossHostPublicationEnabled:false,
     jobStore:store, TERMINAL:J.TERMINAL, artifactReceipt:J.artifactReceipt,
     JOB_IMAGE_FIELDS:['controlledOutputImage','hiresBaseImage','hiresFinalImage','upscaledImage'],RUNS_DIR:'/owned/runs',path,
     imageStore:{resolveImage:id=>id==='valid.png'?{path:'/owned/valid.png'}:null,readRunIndex:run=>run.endsWith('20261003-120000-legacy')?[{image_id:'valid.png'}]:[],acknowledgePublication:()=>({acknowledged:0,unresolved:[]})},
@@ -59,6 +60,7 @@ test('generic server completion requires a fresh canonical receipt and releases 
 test('a canonical output committed before terminal cancellation is retained with an API artifact receipt', () => {
   const store=M.createJobStore(null);
   const sync=load('syncGenericTerminal','function updateSequentialProgress',{
+    crossHostPublicationEnabled:false,
     jobStore:store, TERMINAL:J.TERMINAL, artifactReceipt:J.artifactReceipt,
     JOB_IMAGE_FIELDS:['controlledOutputImage','hiresBaseImage','hiresFinalImage','upscaledImage'],
     RUNS_DIR:'/owned/runs',path,

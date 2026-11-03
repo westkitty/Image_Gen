@@ -1,0 +1,10 @@
+[form-stability +2.8s] START typing in the prompt box survives a continuous re-render storm: no lost keys, focus kept
+[form-stability +5.6s] PASS typing in the prompt box survives a continuous re-render storm: no lost keys, focus kept (2842 ms)
+[form-stability +5.6s] START the caret stays where the user put it while the form is rebuilt
+[form-stability +6.5s] PASS the caret stays where the user put it while the form is rebuilt (861 ms)
+[form-stability +6.5s] START other fields keep focus too: negative prompt text and numeric inputs
+[form-stability +8.3s] PASS other fields keep focus too: negative prompt text and numeric inputs (1836 ms)
+[form-stability +8.3s] START a persistent Node widget (the model picker) keeps keyboard focus across re-renders
+[form-stability +10.8s] PASS a persistent Node widget (the model picker) keeps keyboard focus across re-renders (2422 ms)
+[form-stability +10.8s] START typing straight after load and after a target switch keeps focus (the original startup churn)
+[form-stability +15.6s] PASS typing straight after load and after a target switch keeps focus (the original startup churn) (4836 ms)

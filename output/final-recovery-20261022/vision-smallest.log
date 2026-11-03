@@ -1,0 +1,25 @@
+✖ detailer: no target is a valid empty result and an all-transparent alpha mask (41369.490458ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 41499.9685
+
+✖ failing tests:
+
+test at operator-console/tests/detailer.test.js:135:1
+✖ detailer: no target is a valid empty result and an all-transparent alpha mask (41369.490458ms)
+  Error [DetailerError]: Apple Vision detector did not finish within 20000 ms (stopped in stage 'vision-begin'). Retry when the detector is available. (tried 2 times)
+      at terminate (/Users/andrew/Image_Gen/operator-console/detailer.js:95:19)
+      at Timeout.<anonymous> (/Users/andrew/Image_Gen/operator-console/detailer.js:106:32)
+      at listOnTimeout (node:internal/timers:685:17)
+      at process.processTimers (node:internal/timers:618:7) {
+    code: 'timeout',
+    status: 504,
+    stage: 'vision-begin',
+    elapsed_ms: 20006,
+    worker_cleanup: 'succeeded'
+  }

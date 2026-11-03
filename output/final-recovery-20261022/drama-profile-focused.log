@@ -1,0 +1,32 @@
+[drama-studio +5.9s] START Studio: seven stages inside one Drama module; state line; classification proof; re-parse previews before it changes anything
+[drama-studio +9.2s] PASS Studio: seven stages inside one Drama module; state line; classification proof; re-parse previews before it changes anything (3293 ms)
+[drama-studio +9.2s] START Save and Continue waits for durable Drama save and reads the saved project back
+[drama-studio +10.0s] PASS Save and Continue waits for durable Drama save and reads the saved project back (780 ms)
+[drama-studio +10.0s] START browser Back during an unsaved Drama script is declined by beforeunload and preserves the draft
+[drama-studio +14.5s] PASS browser Back during an unsaved Drama script is declined by beforeunload and preserves the draft (4452 ms)
+[drama-studio +14.5s] START unparsed Drama script offers no fake Save action and remains in memory when switching modules
+[drama-studio +15.1s] PASS unparsed Drama script offers no fake Save action and remains in memory when switching modules (667 ms)
+[drama-studio +15.1s] START Save failure keeps Drama draft and pending navigation; delayed save accepts one continuation only
+[drama-studio +16.1s] PASS Save failure keeps Drama draft and pending navigation; delayed save accepts one continuation only (937 ms)
+[drama-studio +16.1s] START Cast Bible: voices, role, pronunciation, FX rack, optional pacing; unsupported controls are disabled with the engine evidence
+[drama-studio +17.4s] PASS Cast Bible: voices, role, pronunciation, FX rack, optional pacing; unsupported controls are disabled with the engine evidence (1293 ms)
+[drama-studio +17.4s] START Direct: script cues are cues (never speech), bound to a locally generated effect; timeline model, waveforms and keyboard editing work
+[drama-studio +18.5s] PASS Direct: script cues are cues (never speech), bound to a locally generated effect; timeline model, waveforms and keyboard editing work (1152 ms)
+[drama-studio +18.5s] START Produce: the one-click button is gated by the plan; progress, cancel and resume are shown from real job state; nothing reaches Big Mac
+[drama-studio +22.0s] PASS Produce: the one-click button is gated by the plan; progress, cancel and resume are shown from real job state; nothing reaches Big Mac (3482 ms)
+[drama-studio +22.0s] START Review / Master / Export: honest QA, persisted mastering & delivery settings, manual assembly refuses with named lines, private package, historical labels
+[drama-studio +23.6s] PASS Review / Master / Export: honest QA, persisted mastering & delivery settings, manual assembly refuses with named lines, private package, historical labels (1660 ms)
+[drama-studio +23.6s] START Voice Designer: capability truth, create → describe → (fixture audition) → compare → approve; bank export is metadata-only by default
+[drama-studio +25.2s] PASS Voice Designer: capability truth, create → describe → (fixture audition) → compare → approve; bank export is metadata-only by default (1563 ms)
+[drama-studio +25.2s] START responsive @375px: every stage and the Designer have no horizontal page overflow
+[drama-studio +29.8s] PASS responsive @375px: every stage and the Designer have no horizontal page overflow (4601 ms)
+[drama-studio +29.8s] START responsive @768px: every stage and the Designer have no horizontal page overflow
+[drama-studio +34.4s] PASS responsive @768px: every stage and the Designer have no horizontal page overflow (4593 ms)
+[drama-studio +34.4s] START accessibility: tabs have roles/selection, every control is a labelled native control, reduced motion removes the progress animation
+[drama-studio +35.8s] PASS accessibility: tabs have roles/selection, every control is a labelled native control, reduced motion removes the progress animation (1401 ms)
+[drama-studio +35.8s] PHASE cleanup owned projects
+[drama-studio +35.8s] PHASE cleanup owned profiles
+[drama-studio +35.8s] PHASE close browser
+[drama-studio +38.4s] PHASE stop test server
+
+13/13 drama studio browser checks passed

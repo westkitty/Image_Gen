@@ -1,0 +1,92 @@
+{
+  "at": "2026-10-22T18:39:33.340Z",
+  "glb": [
+    {
+      "id": "asset3d-mesh.glb",
+      "status": 200,
+      "bytes": 6324096,
+      "magic": "glTF",
+      "version": 2,
+      "declaredLen": 6324096,
+      "jsonChunk": true,
+      "binChunk": true,
+      "binEnd": 6324096,
+      "meshes": 1,
+      "accessors": 2,
+      "textures": 0,
+      "images": 0,
+      "verts": 175654,
+      "shaMatchesRegistry": true,
+      "downloadIdentical": true,
+      "downloadDisposition": "attachment; filename=\"asset3d-mesh.glb\"",
+      "viewerStatus": "3D Asset asset3d-mesh.glb · 175,654 vertices · GLB mesh",
+      "render": {
+        "litPct": 12.71,
+        "orbitChangedCells": 251,
+        "resetChangedCells": 0
+      }
+    },
+    {
+      "id": "asset3d-mesh-2.glb",
+      "status": 200,
+      "bytes": 5346696,
+      "magic": "glTF",
+      "version": 2,
+      "declaredLen": 5346696,
+      "jsonChunk": true,
+      "binChunk": true,
+      "binEnd": 5346696,
+      "meshes": 1,
+      "accessors": 2,
+      "textures": 0,
+      "images": 0,
+      "verts": 148504,
+      "shaMatchesRegistry": true,
+      "downloadIdentical": true,
+      "downloadDisposition": "attachment; filename=\"asset3d-mesh-2.glb\"",
+      "viewerStatus": "3D Asset asset3d-mesh-2.glb · 148,504 vertices · GLB mesh",
+      "render": {
+        "litPct": 12.41,
+        "orbitChangedCells": 256,
+        "resetChangedCells": 0
+      }
+    },
+    {
+      "id": "asset3d-textured.glb",
+      "status": 200,
+      "bytes": 14653172,
+      "magic": "glTF",
+      "version": 2,
+      "declaredLen": 14653172,
+      "jsonChunk": true,
+      "binChunk": true,
+      "binEnd": 14653172,
+      "meshes": 1,
+      "accessors": 3,
+      "textures": 1,
+      "images": 1,
+      "verts": 235283,
+      "shaMatchesRegistry": true,
+      "downloadIdentical": true,
+      "downloadDisposition": "attachment; filename=\"asset3d-textured.glb\"",
+      "viewerStatus": "3D Asset asset3d-textured.glb · 235,283 vertices · textured GLB",
+      "render": {
+        "litPct": 12.67,
+        "orbitChangedCells": 241,
+        "resetChangedCells": 0
+      }
+    }
+  ],
+  "world": {
+    "project": "wp-5689d7e3",
+    "status": "PARTIAL",
+    "mode": "complete360",
+    "plyBytes": 418529,
+    "plySha": "3a0f9bc8146b81e67e07ab0e782fbb01f8b1f14e18912aa91251ec7727b6c68a",
+    "viewerStatus": "Complete 360 World · Progressive Preview PLY 27890 vertices · displaying 27890 points",
+    "litPct": 3.65,
+    "moveChangedCells": 261,
+    "resetChangedCells": 0,
+    "patchesIntercepted": 1
+  }
+}

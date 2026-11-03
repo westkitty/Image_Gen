@@ -1,0 +1,58 @@
+ M DEXDIFFUSION.md
+ M Image_Gen_Bible.md
+ M OPERATIONAL_STATE.md
+ M operator-console/capabilities.js
+ M operator-console/controlled-args.js
+ M operator-console/extra-networks.js
+ M operator-console/image-store.js
+ M operator-console/model-registry.js
+ M operator-console/public/dexdiffusion/component.js
+ M operator-console/public/dexdiffusion/concept-a.js
+ M operator-console/public/dexdiffusion/index.html
+ M operator-console/public/dexdiffusion/lightbox.js
+ M operator-console/public/dexdiffusion/media-ui.js
+ M operator-console/public/dexdiffusion/workstation-ui.js
+ M operator-console/public/model-presets.js
+ M operator-console/server.js
+ M operator-console/tests/browser/edit-workbench.browser.js
+ M operator-console/tests/browser/interaction-matrix.browser.js
+ M operator-console/tests/browser/library.browser.js
+ M operator-console/tests/controlled-args.test.js
+ M operator-console/tests/edit-resources-server.test.js
+ M operator-console/tests/extra-networks.test.js
+ M operator-console/tests/mflux-bridge.test.js
+ M operator-console/tests/model-cards.test.js
+ M operator-console/tests/model-inspect.test.js
+ M operator-console/tests/model-presets.test.js
+ M operator-console/tests/prompt-intelligence.test.js
+ M operator-console/tests/release-preflight.test.js
+ M operator-console/tests/scratch-lifecycle.test.js
+ M operator-console/tests/studio-shell.test.js
+ M operator-console/workstation.js
+ M scripts/release-preflight.sh
+ M sdcpp-workflow/bin/mflux-controlled-generate.sh
+ M sdcpp-workflow/bin/mflux-remote-generate.sh
+ M sdcpp-workflow/bin/sdcpp-cli-generate.sh
+ M sdcpp-workflow/bin/sdcpp-controlled-generate.sh
+ M sdcpp-workflow/bin/sdcpp-discover-assets.sh
+ M sdcpp-workflow/bin/sdcpp-img2img.sh
+ M sdcpp-workflow/bin/sdcpp-inpaint.sh
+ M sdcpp-workflow/bin/sdcpp-remote-cancel.sh
+?? ARENA_DEXDIFFUSION_V2_STUDIO_MASTER_EXECUTION_PROMPT_2026-10-20.md
+?? docs/operations/local-engine-bridge-20261021.json
+?? docs/operations/local-engine-bridge-20261021.md
+?? docs/operations/lora-assets-20261021.json
+?? docs/operations/lora-metal-performance-20261021.json
+?? docs/operations/model-source-coverage-20261021.json
+?? docs/operations/release-closeout-20261022.json
+?? operator-console/bin/local-engine-control.js
+?? operator-console/bin/local-engine-generate.js
+?? operator-console/local-engine-client.js
+?? operator-console/local-engine-routing.js
+?? operator-console/lora-runtime-policy.js
+?? operator-console/tests/local-engine-bridge.test.js
+?? operator-console/tests/lora-runtime-policy.test.js
+?? output/closeout-20261022/
+?? sdcpp-workflow/bin/mflux-rslora-convert.py
+?? sdcpp-workflow/bin/sdcpp-lora-benchmark.mjs
+?? sdcpp-workflow/worker/

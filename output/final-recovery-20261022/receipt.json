@@ -1,0 +1,62 @@
+{
+  "schema": "dexdiffusion.final-recovery.v1",
+  "observedAt": "2026-10-22T09:54:36.085173+00:00",
+  "overall": "IN_PROGRESS",
+  "target": {
+    "host": "MacBook-Air.local",
+    "root": "/Users/andrew/Image_Gen",
+    "branch": "docs/dexdiffusion-omni-recovery-20261021",
+    "startingHead": "d1d542631fd041ddf54b148a173da19415fa4dd6",
+    "origin": "git@github.com:westkitty/Image_Gen.git"
+  },
+  "checkpoint": {
+    "path": "/Users/andrew/.dexdiffusion-release-checkpoints/20261022T093516Z",
+    "files": 107,
+    "archiveBytes": 1269215,
+    "verified": true
+  },
+  "cleanup": {
+    "performed": false,
+    "reason": "Entry free space already exceeded unchanged 6 GiB reserve; no user data removed"
+  },
+  "vision": {
+    "initialSmallestTest": "FAIL: hand vision-begin timeout twice, owned workers reaped",
+    "sample": "vision-hand-sample.txt: Apple Neural Engine model load synchronous wait",
+    "binaryDrift": "Current-source rebuild and existing binary have identical __text SHA256; production binary untouched",
+    "laterRealModes": "unchanged native binary face, hand, person all PASS",
+    "focused": "14/14 pass; historical positive-image-dependent tests return early when missing",
+    "permanentColdInitializationCause": "UNKNOWN"
+  },
+  "review": {
+    "advisory": "Two important source defects repaired; independent reviewer found no further critical/important source issues",
+    "repairs": [
+      "Adapter change restores ordinary settings through existing disable helper and retains manual overrides",
+      "Generated registry includes existing KL Optimal scheduler",
+      "Worker socket fixture uses owned short temporary root under macOS path limit"
+    ],
+    "focused": "39/39 before fixture repair; long-path worker suite 9/9 after fixture repair",
+    "installedRegistry": "KL Optimal update pending; effective running contract not yet reconciled",
+    "realBrowser": "PASS V2 adapter selection restores normal settings and preserves explicit overrides; no inference",
+    "legacyProfiles": "7 suites /45 scenarios PASS after explicit developer shell profiles; normal V2 and protected suites unchanged"
+  },
+  "validation": {
+    "firstRun": "Stopped exit143 for review repairs",
+    "secondRun": "1014/1015 unit pass, one socket fixture failure; stopped exit143 before browsers",
+    "currentRun": "Full default gate after fixture-profile repairs IN PROGRESS",
+    "thirdRun": "Unit1015/1015 PASS; ConceptA14/14 and Create4/4 PASS; stopped exit143 for legacy Drama fixture mismatch"
+  },
+  "git": {
+    "staged": false,
+    "committed": false,
+    "pushed": false,
+    "candidateSecretScan": "gitleaks clean, 66 candidate files; final scan pending"
+  },
+  "runtime": {
+    "serverRecovered": true,
+    "pid": 4170,
+    "bind": "127.0.0.1:31337",
+    "doctor": "WARN only optional LTX Video missing",
+    "installedApp": "arm64, matching Swift/icon fingerprints and starting HEAD, one canonical Dock entry",
+    "postCommitNativeAndGeneration": "NOT RUN"
+  }
+}

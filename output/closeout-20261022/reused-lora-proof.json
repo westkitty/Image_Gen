@@ -1,0 +1,109 @@
+[
+  {
+    "name": "Hyper-SDXL",
+    "run_id": "20261021-134644-controlled-sdxl-base-f44dec4f",
+    "status": "PASS",
+    "image_url": "/api/images/20261021-134644-controlled-sdxl-base-f44dec4f-s731960-controlled-sdxl-base.png",
+    "sha256": "f26e62d21fec7072bd25084a3df49f169f38b704472b8e9d9ad1a2f89663605d",
+    "prior_hash_matches": true,
+    "dimensions": [
+      512,
+      512
+    ],
+    "metal_evidence": true,
+    "remote_cleanup": true
+  },
+  {
+    "name": "LCM-SDXL",
+    "run_id": "20261021-134750-controlled-sdxl-base-257f891e",
+    "status": "PASS",
+    "image_url": "/api/images/20261021-134750-controlled-sdxl-base-257f891e-s731960-controlled-sdxl-base.png",
+    "sha256": "04d6261fc772aa54f98d8604b69e2d5d8673d4ad10ca7de77ca2c1766ca3d31c",
+    "prior_hash_matches": true,
+    "dimensions": [
+      512,
+      512
+    ],
+    "metal_evidence": true,
+    "remote_cleanup": true
+  },
+  {
+    "name": "LCM-SD1.5",
+    "run_id": "20261021-134831-controlled-sd15-727105b4",
+    "status": "PASS",
+    "image_url": "/api/images/20261021-134831-controlled-sd15-727105b4-s731960-controlled-sd15.png",
+    "sha256": "694a48b5eb33b69f928df1ab2d017d15463b730a84ccfd07e71aa26b0aac347f",
+    "prior_hash_matches": true,
+    "dimensions": [
+      512,
+      512
+    ],
+    "metal_evidence": true,
+    "remote_cleanup": true
+  },
+  {
+    "name": "Hyper-SD15",
+    "run_id": "20261021-135144-controlled-sd15-8c303aaf",
+    "status": "PASS",
+    "image_url": "/api/images/20261021-135144-controlled-sd15-8c303aaf-s731960-controlled-sd15.png",
+    "sha256": "b84b315b9b2108d6e760ae250bedc04b665e294f861595a161c1b08cbe99097e",
+    "prior_hash_matches": true,
+    "dimensions": [
+      512,
+      512
+    ],
+    "metal_evidence": true,
+    "remote_cleanup": true
+  },
+  {
+    "name": "Pixel Art 1.0",
+    "run_id": "20261021-135320-controlled-flux2-klein-4b-e56e9acc",
+    "status": "PASS",
+    "image_url": "/api/images/20261021-135320-controlled-flux2-klein-4b-e56e9acc-s731960-controlled-flux2-klein-4b.png",
+    "sha256": "8edf5c7cff839f29442ed464074d030b78a2092f06b0f89a1adee548036f2a81",
+    "prior_hash_matches": true,
+    "dimensions": [
+      512,
+      512
+    ],
+    "metal_evidence": false,
+    "remote_cleanup": true
+  },
+  {
+    "name": "Pixel Art 0.5",
+    "run_id": "20261021-135348-controlled-flux2-klein-4b-d774d2ef",
+    "status": "PASS",
+    "image_url": "/api/images/20261021-135348-controlled-flux2-klein-4b-d774d2ef-s731960-controlled-flux2-klein-4b.png",
+    "sha256": "1b06638f83751906190877c053978261ab620921acee02237a446d2e9c278977",
+    "prior_hash_matches": true,
+    "dimensions": [
+      512,
+      512
+    ],
+    "metal_evidence": false,
+    "remote_cleanup": true
+  },
+  {
+    "name": "FLUX.2 OFF",
+    "run_id": "20261021-135415-controlled-flux2-klein-4b-1f501a6a",
+    "status": "PASS",
+    "image_url": "/api/images/20261021-135415-controlled-flux2-klein-4b-1f501a6a-s731960-controlled-flux2-klein-4b.png",
+    "sha256": "3d425eb2391b30db749e19acd8266e4360fcfb2e332489970ba08a6ebf579914",
+    "prior_hash_matches": true,
+    "dimensions": [
+      512,
+      512
+    ],
+    "metal_evidence": false,
+    "remote_cleanup": true
+  },
+  {
+    "name": "SDXL Lightning",
+    "run_id": "20261021-134407-controlled-sdxl-base-2ab8aefe",
+    "sha256": "d6b1985bb6d8173000b8d90339f2cf7c23baa6368a00c3789274ef7f86673873",
+    "prior_hash_matches": true,
+    "image_url": "/api/images/20261021-134407-controlled-sdxl-base-2ab8aefe-s976936195-controlled-sdxl-base.png",
+    "metal_evidence": true,
+    "remote_cleanup": true
+  }
+]

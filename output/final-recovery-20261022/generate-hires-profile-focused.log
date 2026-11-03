@@ -1,0 +1,10 @@
+[generate-hires +3.5s] START OP-4A independent second pass: sends exactly the chosen second-pass fields to hires-2pass; blanks inherit; exclusive with in-engine hires
+[generate-hires +5.9s] PASS OP-4A independent second pass: sends exactly the chosen second-pass fields to hires-2pass; blanks inherit; exclusive with in-engine hires (2398 ms)
+[generate-hires +5.9s] START scale mode: panel, final-size preview, request carries scale and the chosen upscaler
+[generate-hires +7.2s] PASS scale mode: panel, final-size preview, request carries scale and the chosen upscaler (1337 ms)
+[generate-hires +7.2s] START resize-to mode sends width and height (no scale) and the preview shows them
+[generate-hires +8.5s] PASS resize-to mode sends width and height (no scale) and the preview shows them (1328 ms)
+[generate-hires +8.5s] START MFLUX target and a disabled High-Res checkbox send no hires fields
+[generate-hires +10.1s] PASS MFLUX target and a disabled High-Res checkbox send no hires fields (1557 ms)
+[generate-hires +10.1s] START real server validator: accepts both modes and all upscalers, rejects every bad combination
+[generate-hires +10.1s] PASS real server validator: accepts both modes and all upscalers, rejects every bad combination (39 ms)
