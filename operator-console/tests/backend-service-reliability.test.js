@@ -164,3 +164,15 @@ test('service recovery and readiness checks have explicit finite bounds', () => 
   assert.match(branch, /PROBE_TIMEOUT \* 3/);
   assert.doesNotMatch(branch, /while true/);
 });
+
+test('installer identity check reads ps comm and args separately (combined column truncates comm)', () => {
+  const code = installer.split('\n').filter(line => !line.trimStart().startsWith('#')).join('\n');
+  assert.doesNotMatch(code, /'comm=,args='/);
+  assert.equal((code.match(/'-o','comm=','-p',pid/g) || []).length, 2);
+  assert.equal((code.match(/'-o','args=','-p',pid/g) || []).length, 2);
+  // The truncation is real: a combined column cuts this Node's executable path to 16 bytes.
+  const combined = cp.spawnSync('/bin/ps', ['-o', 'comm=,args=', '-p', String(process.pid)], { encoding: 'utf8' }).stdout.trim().split(/\s+/)[0];
+  const alone = cp.spawnSync('/bin/ps', ['-o', 'comm=', '-p', String(process.pid)], { encoding: 'utf8' }).stdout.trim();
+  if (alone.length > 16) assert.notEqual(combined, alone);
+  assert.equal(alone.split('/').pop(), 'node');
+});

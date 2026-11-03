@@ -95,10 +95,11 @@ pid = str(version.get('pid', ''))
 owners = subprocess.run(['/usr/sbin/lsof','-nP','-iTCP:31337','-sTCP:LISTEN','-t'],capture_output=True,text=True)
 owner = subprocess.run(['/bin/ps','-o','user=','-p',pid],capture_output=True,text=True)
 if owners.returncode or pid not in owners.stdout.split() or owner.returncode or owner.stdout.strip() != 'bigmac': raise SystemExit(1)
-command = subprocess.run(['/bin/ps','-o','comm=,args=','-p',pid],capture_output=True,text=True)
-if command.returncode: raise SystemExit(1)
-parts = command.stdout.strip().split(None, 1)
-if len(parts) != 2 or parts[0].rsplit('/', 1)[-1] != 'node' or 'server.js' not in parts[1]: raise SystemExit(1)
+# comm and args are read separately: a combined comm=,args= column truncates comm to 16 bytes.
+comm = subprocess.run(['/bin/ps','-o','comm=','-p',pid],capture_output=True,text=True)
+args = subprocess.run(['/bin/ps','-o','args=','-p',pid],capture_output=True,text=True)
+if comm.returncode or args.returncode: raise SystemExit(1)
+if comm.stdout.strip().rsplit('/', 1)[-1] != 'node' or 'server.js' not in args.stdout: raise SystemExit(1)
 PY
     then READY=1; break; fi
     /bin/sleep 1
@@ -233,9 +234,10 @@ if owners.returncode or pid not in owners.stdout.split():
 owner = subprocess.run(['/bin/ps','-o','user=','-p',pid],capture_output=True,text=True)
 if owner.returncode or owner.stdout.strip() != 'bigmac':
     raise SystemExit(1)
-command = subprocess.run(['/bin/ps','-o','comm=,args=','-p',pid],capture_output=True,text=True)
-parts = command.stdout.strip().split(None, 1)
-if command.returncode or len(parts) != 2 or parts[0].rsplit('/', 1)[-1] != 'node' or 'server.js' not in parts[1]:
+# comm and args are read separately: a combined comm=,args= column truncates comm to 16 bytes.
+comm = subprocess.run(['/bin/ps','-o','comm=','-p',pid],capture_output=True,text=True)
+args = subprocess.run(['/bin/ps','-o','args=','-p',pid],capture_output=True,text=True)
+if comm.returncode or args.returncode or comm.stdout.strip().rsplit('/', 1)[-1] != 'node' or 'server.js' not in args.stdout:
     raise SystemExit(1)
 PY
   then ready=1; break; fi
