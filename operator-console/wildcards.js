@@ -141,8 +141,22 @@ function extractWildcardTokens(prompt) {
   return [...new Set(tokens)];
 }
 
+/**
+ * One bank's items (comment and blank lines dropped), resolved case-insensitively through the index so no client
+ * text ever becomes a path. Returns null for an unknown bank. `limit` caps the list for the UI.
+ */
+function getWildcardItems(name, wildcardsDir = DEFAULT_WILDCARDS_DIR, limit = 2000) {
+  if (typeof name !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(name)) return null;
+  const entry = buildWildcardIndex(wildcardsDir).get(name.toLowerCase());
+  if (!entry) return null;
+  let lines = [];
+  try { lines = fs.readFileSync(entry.filePath, 'utf8').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#')); } catch (_) { lines = []; }
+  return { name: entry.originalName, count: lines.length, items: lines.slice(0, limit), truncated: lines.length > limit };
+}
+
 module.exports = {
   buildWildcardIndex,
+  getWildcardItems,
   getWildcardCatalog,
   expandWildcards,
   extractWildcardTokens,

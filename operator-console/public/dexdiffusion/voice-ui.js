@@ -13,6 +13,8 @@
   const h = (...a) => React.createElement(...a);
   const { css, tone, btn, chip } = window.DexUI;
   const numText = (window.DexUI && window.DexUI.numText) || (p => p);   // numeric text inputs (see DexUI.numText in workstation-ui.js)
+  const kokoroChoice = (voices, value, onChange, title) => window.DexModal ? window.DexModal.kokoroChoice(h, voices, value, onChange, title)
+    : h('select', { value, style: css.input, 'aria-label': title, onChange: e => onChange(e.target.value) }, ...((voices || []).map(v => h('option', { key: v, value: v }, v))));
   const field = (label, control) => h('label', { style: { display: 'grid', gap: 4, minWidth: 0 } }, h('span', { style: css.label }, label), control);
   const fmtT = s => (s == null || !isFinite(s)) ? '—' : Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
   const TERMINAL = ['COMPLETE', 'FAILED', 'INTERRUPTED', 'CANCELLED'];
@@ -368,12 +370,17 @@
       h('div', { style: css.grid2 },
         field('Name', h('input', { value: p.name, style: css.input, onChange: e => this.saveVoiceProfile(p.id, { name: e.target.value }) })),
         field('Default delivery direction', h('input', { value: p.default_direction || '', placeholder: 'e.g. calm, measured', style: css.input, onChange: e => this.saveVoiceProfile(p.id, { default_direction: e.target.value }) }))),
-      field('Render engine', h('select', { value: p.preferred_engine || '', style: css.input, 'aria-label': 'Render engine for ' + p.name,
+      field('Render engine', window.DexModal ? window.DexModal.choiceButton(h, { id: 'voice-engine', title: 'Render engine for ' + p.name, ariaLabel: 'Render engine for ' + p.name,
+        subtitle: 'Engine status is reported separately from profile approval. Unverified engines may fail their runtime availability check.',
+        value: p.preferred_engine || '', placeholder: 'Choose an engine', attrs: { 'data-voice-engine': p.id },
+        options: (vp.engines || []).filter(e => Array.isArray(e.voice_types) && e.voice_types.includes(p.type)).map(e => ({ value: e.id, label: e.label, badge: e.status || 'IMPLEMENTED / UNVERIFIED', hint: e.description || ('Voice types: ' + e.voice_types.join(', ')) })),
+        onChange: v => this.saveVoiceProfile(p.id, { preferred_engine: v }) })
+        : h('select', { value: p.preferred_engine || '', style: css.input, 'aria-label': 'Render engine for ' + p.name,
         title: 'Engine status is reported separately from profile approval. Unverified engines may fail their runtime availability check.',
         onChange: e => this.saveVoiceProfile(p.id, { preferred_engine: e.target.value }) },
         ...((vp.engines || []).filter(e => Array.isArray(e.voice_types) && e.voice_types.includes(p.type)).map(e => h('option', { key: e.id, value: e.id }, `${e.label} · ${e.status || 'IMPLEMENTED / UNVERIFIED'}`))))),
       p.type === 'designed' ? field('Voice description', h('textarea', { rows: 3, value: p.description || '', style: Object.assign({}, css.input, { resize: 'vertical' }), onChange: e => this.saveVoiceProfile(p.id, { description: e.target.value }) })) : null,
-      p.type === 'preset' ? h('div', { style: css.grid2 }, field('Kokoro voice', h('select', { value: p.preset_voice, style: css.input, onChange: e => this.saveVoiceProfile(p.id, { preset_voice: e.target.value }) }, ...((vp.kokoroVoices || []).map(v => h('option', { key: v, value: v }, v))))),
+      p.type === 'preset' ? h('div', { style: css.grid2 }, field('Kokoro voice', kokoroChoice(vp.kokoroVoices, p.preset_voice, v => this.saveVoiceProfile(p.id, { preset_voice: v }), 'Kokoro voice for ' + p.name)),
         field('Default speed', h('input', numText({ min: '0.5', max: '2', step: '0.05', value: String(p.default_speed || 1), style: css.input, onChange: e => this.saveVoiceProfile(p.id, { default_speed: e.target.value }) })))) : null,
       field('Notes', h('input', {
         value: p.notes || '',
@@ -478,7 +485,7 @@
       h('div', { style: css.row }, ...[['cloned', 'Cloned (reference samples · Qwen Base)'], ['designed', 'Designed (description · Qwen VoiceDesign)'], ['preset', 'Preset (Kokoro voice)']].map(([k, l]) => btn(l, () => { nf.type = k; this.vpSet({}); }, nf.type === k ? '#a78bfa' : '#94a3b8', { 'data-new-type': k }))),
       field('Name', h('input', { value: nf.name, placeholder: 'e.g. Tiger', 'data-new-name': '1', style: css.input, onInput: e => { nf.name = e.target.value; } })),
       nf.type === 'designed' ? field('Voice description', h('textarea', { rows: 3, value: nf.description, placeholder: 'e.g. middle-aged, gravelly, British, measured pace', style: Object.assign({}, css.input, { resize: 'vertical' }), onInput: e => { nf.description = e.target.value; } })) : null,
-      nf.type === 'preset' ? field('Kokoro voice', h('select', { value: nf.preset_voice, style: css.input, onChange: e => { nf.preset_voice = e.target.value; } }, ...((vp.kokoroVoices || []).map(v => h('option', { key: v, value: v }, v))))) : null,
+      nf.type === 'preset' ? field('Kokoro voice', kokoroChoice(vp.kokoroVoices, nf.preset_voice, v => { nf.preset_voice = v; this.vpSet({}); }, 'Kokoro voice for the new profile')) : null,
       h('div', { style: css.row }, btn('Create voice', () => this.createVoiceProfile(), '#65d66e', { 'data-create-voice': '1' }), btn('Cancel', () => this.vpSet({ creating: false }), '#94a3b8'))) : null;
     const prefs = vp.directorPreferences || {};
     const presetIds = ['neutral', 'formal_dry', 'restrained_irritation', 'contempt'];
@@ -523,7 +530,18 @@
         conversionProject ? field('Dialogue line assigned to this target profile', h('select', { value: vp.conversionLineId || '', style: css.input, onChange: e => this.vpSet({ conversionLineId: e.target.value }) },
           h('option', { value: '' }, 'Select a dialogue line'), ...conversionLines.map(line => h('option', { key: line.id, value: line.id }, `${line.speaker}: ${line.text.slice(0, 100)}`)))) : null,
         btn('Add as a Drama take', () => this.attachConvertedTake(), vp.conversionLineId ? '#38bdf8' : tone.off, { disabled: !vp.conversionLineId, 'data-openvoice-attach': '1' })) : null);
-    return h('div', { 'data-voice-profiles': '1', style: { display: 'grid', gap: 12, minWidth: 0 } }, preferencePanel, conversionPanel,
+    // Director preferences and Voice conversion open in their own modals; the page shows one line each.
+    const M = window.DexModal;
+    const panelModal = vp.panelModal || null;
+    const closePanel = () => this.vpSet({ panelModal: null });
+    const launchers = M ? h('div', { style: { display: 'grid', gap: 8 } },
+      M.launcher(h, { title: 'Director preferences', summary: (prefs.default_direction ? 'Default direction: ' + prefs.default_direction : 'No default direction') + ' · speed ' + (prefs.speed || 1) + ' · ' + (prefs.acting_styles || []).length + ' acting styles',
+        label: 'Edit preferences', onOpen: () => this.vpSet({ panelModal: 'prefs' }), attrs: { 'data-open-director-preferences': '1' } }),
+      M.launcher(h, { title: 'Voice conversion · OpenVoice V2', summary: (converterAvailable ? 'CPU ready' : 'Unavailable until verified on Big Mac') + ' · ' + targets.length + ' approved target voice' + (targets.length === 1 ? '' : 's') + (vp.conversionBusy ? ' · conversion running' : ''),
+        label: 'Open conversion', onOpen: () => this.vpSet({ panelModal: 'conversion' }), attrs: { 'data-open-voice-conversion': '1' } })) : null;
+    const panelFrame = M && panelModal === 'prefs' ? M.frame(h, { id: 'director-preferences', title: 'Director preferences', subtitle: 'Saved on this Mac.', size: 'md', onClose: closePanel }, preferencePanel)
+      : M && panelModal === 'conversion' ? M.frame(h, { id: 'voice-conversion', title: 'Voice conversion · OpenVoice V2', size: 'md', onClose: closePanel }, conversionPanel) : null;
+    return h('div', { 'data-voice-profiles': '1', style: { display: 'grid', gap: 12, minWidth: 0 } }, ...(M ? [launchers, panelFrame] : [preferencePanel, conversionPanel]),
       h('div', { style: css.panel },
         h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Voice profiles'), h('span', { style: css.muted }, list.length + ' saved'), h('div', { style: { flex: 1 } }), btn('＋ New voice', () => this.vpSet({ creating: true }), '#a78bfa', { 'data-new-voice-button': '1' })),
         list.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,210px),1fr))', gap: 8 } }, ...list.map(p => h('button', { key: p.id, type: 'button', 'data-profile': p.id, onClick: () => { this.vpSet({ selected: p.id, pending: null }); this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'voice-profile', id: p.id }); if (p.type === 'cloned') this.loadCloneEvaluations(p.id); },

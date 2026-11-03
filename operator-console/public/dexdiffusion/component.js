@@ -35,7 +35,7 @@ class Component extends DCLogic {
     chatModels: [], chatModel: 'gemma3:4b', chatSessionId: null, chatMessages: [], chatDraft: '',
     chatRunning: false, chatStreamText: '', chatStatus: '', chatError: '', chatJobId: null,
     chatSessionMode: 'temporary', chatSaveNext: false, chatSavedSessions: [], chatSavedSessionsLoaded: false,
-    chatHistoryCredential: '', chatHistoryStatus: '', chatExportFormat: 'json',
+    chatHistoryCredential: '', chatHistoryStatus: '', chatExportFormat: 'json', chatSettingsOpen: false,
     activeAssetSelection: null,
     // Create
     target: 'sd15',
@@ -338,9 +338,9 @@ class Component extends DCLogic {
       return;
     }
     if (e.key === 'Escape') {
-      if (this.state.showLoraPicker || this.state.showWildcards || this.state.showNegWildcards) {
+      if (this.state.showLoraPicker || this.state.showWildcards || this.state.showNegWildcards || this.state.chatSettingsOpen) {
         e.preventDefault();
-        this.setState({ showLoraPicker: false, showWildcards: false, showNegWildcards: false });
+        this.setState({ showLoraPicker: false, showWildcards: false, showNegWildcards: false, chatSettingsOpen: false });
         return;
       }
     }
@@ -1430,6 +1430,29 @@ class Component extends DCLogic {
       if (r.ok) { const d = await r.json(); this.setState({ wildcards: d.wildcards || [] }); }
     } catch {}
   }
+  // Prompt Builder modal (prompt-builder.js) for the Create prompt or negative prompt. Create expands __tokens__ at
+  // generation, so tokens may stay in the text.
+  openPromptBuilder({ field = 'prompt', tab = 'wildcards' } = {}) {
+    const PB = window.DexPromptBuilder;
+    if (!PB) { this.setState(s => ({ showWildcards: !s.showWildcards, wildcardFilter: '' })); return; }
+    const neg = field === 'negative';
+    const spec = (typeof this._targetSpec === 'function' && this._targetSpec(this.state.target)) || (this.state.modelTargets || []).find(t => t.id === this.state.target) || { id: this.state.target };
+    this.setState({ showWildcards: false, showNegWildcards: false });
+    PB.open({ backendUrl: this.state.backendUrl, text: neg ? (this.state.negPrompt || '') : (this.state.prompt || ''), target: spec, field, tab, allowTokens: true,
+      onApply: text => { this.setState(neg ? { negPrompt: text } : { prompt: text }); this.toast((neg ? 'Negative prompt' : 'Prompt') + ' updated from the Prompt Builder', '#38bdf8'); } });
+  }
+  // Compact "Wildcards" + "Randomize" launchers for any prompt field outside Create (Edit, Music). Those routes do not
+  // expand __tokens__, so the builder inserts resolved text only (allowTokens:false).
+  promptBuilderButtons({ id, title, getText, setText, target = null, allowTokens = false }) {
+    const PB = window.DexPromptBuilder;
+    if (!PB) return null;
+    const open = tab => PB.open({ backendUrl: this.state.backendUrl, text: getText() || '', target: target || { id: 'text', label: title || 'this prompt' }, plainText: !!(target && target.plainText) || !target, field: 'prompt', tab, allowTokens,
+      onApply: text => { setText(text); this.toast((title || 'Prompt') + ' updated from the Prompt Builder', '#38bdf8'); } });
+    const st = { border: '1px solid rgba(148,163,184,.22)', background: 'transparent', color: '#b8c7d6', borderRadius: 6, padding: '4px 10px', fontSize: 11, minHeight: 30, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
+    return React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' }, 'data-prompt-builder-tools': id },
+      React.createElement('button', { type: 'button', 'aria-haspopup': 'dialog', 'data-open-prompt-builder': id, onClick: () => open('wildcards'), style: st }, '⊞ Wildcards & syntax'),
+      React.createElement('button', { type: 'button', 'aria-haspopup': 'dialog', 'data-open-prompt-randomizer': id, onClick: () => open('randomize'), style: st }, '🎲 Randomize'));
+  }
   insertWildcard(name) {
     this.setState(s => ({ prompt: (s.prompt ? s.prompt + ' ' : '') + '__' + name + '__', showWildcards: false, wildcardFilter: '' }));
     this.toast('Inserted __' + name + '__', '#38bdf8');
@@ -2090,11 +2113,17 @@ class Component extends DCLogic {
           );
         })(),
         h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' } },
-          h('label', { style: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#94a3b8' } },
+          h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#94a3b8', minWidth: 0 } },
             'Model',
-            h('select', { 'data-chat-model': 'true', value: this.state.chatModel, disabled: !ready || this.state.chatRunning, onChange: e => this.setState({ chatModel: e.target.value }), style: { border: '1px solid rgba(148,163,184,.25)', background: '#111722', color: '#f8fafc', borderRadius: 6, padding: '3px 8px', fontSize: 11 } },
+            window.DexModal ? window.DexModal.choiceButton(h, { id: 'chat-model', title: 'Chat model', subtitle: 'The model that answers in this conversation. Only approved, installed models are listed.',
+              value: this.state.chatModel, disabled: !ready || this.state.chatRunning, placeholder: 'No model', attrs: { 'data-chat-model': 'true' },
+              style: { minHeight: 30, padding: '3px 8px', fontSize: 11, width: 'auto', maxWidth: 260 },
+              options: this.state.chatModels.map(m => ({ value: m.name, label: m.label || m.name, hint: [m.role, m.description, m.size].filter(Boolean).join(' · ') || m.name, badge: m.installed === false ? 'not installed' : undefined, disabled: m.installed === false, reason: 'Not installed on Big Mac.' })),
+              onChange: v => this.setState({ chatModel: v }) })
+            : h('select', { 'data-chat-model': 'true', value: this.state.chatModel, disabled: !ready || this.state.chatRunning, onChange: e => this.setState({ chatModel: e.target.value }), style: { border: '1px solid rgba(148,163,184,.25)', background: '#111722', color: '#f8fafc', borderRadius: 6, padding: '3px 8px', fontSize: 11 } },
               this.state.chatModels.map(m => h('option', { key: m.name, value: m.name }, m.label || m.name)))
           ),
+          h('button', { type: 'button', 'data-chat-settings-open': 'true', 'aria-haspopup': 'dialog', onClick: () => this.setState({ chatSettingsOpen: true }), style: { border: '1px solid rgba(167,139,250,.4)', background: 'rgba(167,139,250,.1)', color: '#ddd6fe', borderRadius: 6, padding: '3px 9px', fontSize: 11, cursor: 'pointer' } }, '⚙ Settings & history'),
           h('button', { type: 'button', 'data-chat-refresh': 'true', onClick: () => this.loadChatAvailability(), disabled: checking && a.phase === 'checking', style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Check again'),
           h('button', { type: 'button', 'data-chat-new': 'true', onClick: () => this.newChat(), disabled: this.state.chatRunning, style: { border: '1px solid rgba(56,189,248,.35)', background: 'rgba(56,189,248,.1)', color: '#38bdf8', borderRadius: 6, padding: '3px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 600 } }, 'New temporary chat'),
           h('button', { type: 'button', 'data-chat-delete': 'true', onClick: () => this.deleteChat(), disabled: !this.state.chatSessionId || this.state.chatRunning, style: { border: '1px solid rgba(239,68,68,.3)', background: 'transparent', color: '#fca5a5', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Delete chat'),
@@ -2119,17 +2148,18 @@ class Component extends DCLogic {
         this.state.chatSessionMode === 'saved' || (!this.state.chatSessionId && this.state.chatSaveNext)
           ? 'Saved Chat is explicit opt-in. Messages are retained on this Mac for authorized history access, export and deletion.'
           : 'Temporary Chat is not written to saved history. Reloading loses access to this temporary session.'),
-      // Collapsible status / credentials panel
-      h('details', { 'data-chat-settings-details': 'true', open: true, style: { border: '1px solid rgba(148,163,184,.14)', borderRadius: 7, padding: '6px 10px', background: 'rgba(15,23,42,.35)' } },
-        h('summary', { style: { fontSize: 11, color: '#94a3b8', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-          h('span', { style: { fontWeight: 600 } }, '⚙ Connection & Saved History Settings'),
-          h('span', { style: { fontSize: 10, color: '#64748b' } }, 'click to collapse/expand')
-        ),
-        h('div', { style: { display: 'grid', gap: 6, marginTop: 8 } },
-          h('div', { role: 'status', 'aria-live': 'polite', style: { display: 'grid', gap: 5 } },
+      // One status line stays on screen; connection details and saved-history controls live in the Settings modal.
+      // While Chat is not ready the connection and feature rows stay visible (they explain why); once ready they move into the modal.
+      h('div', { 'data-chat-settings-summary': 'true', role: 'status', 'aria-live': 'polite', style: { display: 'grid', gap: 5 } },
+        ready ? null : row('connection', 'Ollama', conn, conn.state === 'available' ? '#86efac' : conn.state === 'failed' ? '#fca5a5' : '#cbd5e1'),
+        ready ? null : row('feature', 'Chat feature', feat, '#fcd34d'),
+        row('generation', 'Chat generation', { state: ready ? 'ready' : 'unavailable', text: ready ? 'Ready for a temporary session' : 'Unavailable until Chat is enabled and an approved model is installed' }, ready ? '#86efac' : '#fcd34d')),
+      this.state.chatSettingsOpen && window.DexModal ? window.DexModal.frame(h, { id: 'chat-settings', title: 'Chat settings & saved history', size: 'md', subtitle: 'Connection status, the saved-history credential, export format and saved conversations.', onClose: () => this.setState({ chatSettingsOpen: false }),
+        footer: [h('button', { type: 'button', className: 'dx-btn dx-primary', onClick: () => this.setState({ chatSettingsOpen: false }) }, 'Done')] },
+        h('div', { 'data-chat-settings-details': 'true', style: { display: 'grid', gap: 8 } },
+          ready ? h('div', { role: 'status', 'aria-live': 'polite', style: { display: 'grid', gap: 5 } },
             row('connection', 'Ollama', conn, conn.state === 'available' ? '#86efac' : conn.state === 'failed' ? '#fca5a5' : '#cbd5e1'),
-            row('feature', 'Chat feature', feat, '#fcd34d'),
-            row('generation', 'Chat generation', { state: ready ? 'ready' : 'unavailable', text: ready ? 'Ready for a temporary session' : 'Unavailable until Chat is enabled and an approved model is installed' }, ready ? '#86efac' : '#fcd34d')),
+            row('feature', 'Chat feature', feat, '#fcd34d')) : null,
           h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end', marginTop: 2 } },
             h('label', { style: { display: 'grid', gap: 3, flex: '1 1 200px', fontSize: 11, color: '#cbd5e1' } }, 'Saved-history credential (kept in this tab only)',
               h('input', { type: 'password', 'data-chat-history-credential': 'true', value: this.state.chatHistoryCredential, autoComplete: 'off', onInput: e => this.setState({ chatHistoryCredential: e.target.value, chatSavedSessionsLoaded: false, chatSavedSessions: [], chatSaveNext: false }), style: { border: '1px solid rgba(148,163,184,.25)', background: '#111722', color: '#f8fafc', borderRadius: 5, padding: '4px 8px', fontSize: 11 } })),
@@ -2141,12 +2171,11 @@ class Component extends DCLogic {
           h('label', { style: { display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, color: '#cbd5e1' } },
             h('input', { type: 'checkbox', 'data-chat-save-next': 'true', checked: this.state.chatSaveNext, disabled: !!this.state.chatSessionId || this.state.chatRunning || !this.state.chatSavedSessionsLoaded,
               onChange: e => this.setState({ chatSaveNext: e.target.checked }) }), 'Save the next conversation privately on this Mac (explicit opt-in)'),
-          this.state.chatSavedSessions.length > 0 && h('label', { style: { display: 'grid', gap: 3, fontSize: 11, color: '#cbd5e1' } }, 'Saved conversations',
-            h('select', { 'data-chat-saved-list': 'true', value: '', disabled: this.state.chatRunning, onChange: e => { if (e.target.value) this.openSavedChat(e.target.value); }, style: { border: '1px solid rgba(148,163,184,.25)', background: '#111722', color: '#f8fafc', borderRadius: 5, padding: '4px 8px', fontSize: 11 } },
-              h('option', { value: '' }, 'Choose a saved conversation'),
-              this.state.chatSavedSessions.map(s => h('option', { key: s.session_id, value: s.session_id }, `${s.created_at} · ${s.model} · ${s.message_count} messages`))))
-        )
-      ),
+          this.state.chatSavedSessions.length > 0 && h('div', { style: { display: 'grid', gap: 3, fontSize: 11, color: '#cbd5e1' } }, 'Saved conversations',
+            window.DexModal.choiceButton(h, { id: 'chat-saved', title: 'Open a saved conversation', value: '', placeholder: 'Choose a saved conversation (' + this.state.chatSavedSessions.length + ')', disabled: this.state.chatRunning, attrs: { 'data-chat-saved-list': 'true' },
+              options: this.state.chatSavedSessions.map(s => ({ value: s.session_id, label: `${s.created_at} · ${s.model}`, hint: `${s.message_count} messages`, group: s.model })),
+              onChange: v => { this.setState({ chatSettingsOpen: false }); this.openSavedChat(v); } }))
+        )) : null,
       // Transcript messages
       h('div', { 'data-chat-messages': 'true', role: 'log', 'aria-live': 'off', style: { display: 'grid', gap: 8, minHeight: 60, flex: '1 0 auto' } },
         messages.length ? messages.map(m => h('article', { key: m.message_id, 'data-chat-message': m.role, 'data-chat-message-status': m.status, style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', border: '1px solid rgba(148,163,184,.18)', borderRadius: 8, padding: 10, background: m.role === 'user' ? 'rgba(56,189,248,.05)' : 'rgba(15,23,42,.4)' } },
@@ -3328,9 +3357,17 @@ class Component extends DCLogic {
         }, stableLabel(enhancingPrompt ? 1 : 0, ['✨ Enhance', '✕ Cancel enhance'])),
 
         React.createElement('button', {
-          onClick: () => this.setState(s => ({ showWildcards: !s.showWildcards, wildcardFilter: '' })),
+          type: 'button', 'data-dex-field': 'open-prompt-builder', 'aria-haspopup': 'dialog',
+          title: 'Open the Prompt Builder: browse wildcards, model syntax, roll a preview and insert',
+          onClick: () => this.openPromptBuilder({ field: 'prompt', tab: 'wildcards' }),
           style: { border: '1px solid ' + (showWildcards ? accent : 'rgba(148,163,184,.18)'), background: 'transparent', color: showWildcards ? accent : '#b8c7d6', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }
         }, wildcardFilter ? ('__ ' + wildcardFilter + '… (' + wcFiltered.length + ')') : ('⊞ Wildcards (' + wildcards.length + ')')),
+        React.createElement('button', {
+          type: 'button', 'data-dex-field': 'open-prompt-randomizer', 'aria-haspopup': 'dialog',
+          title: 'Randomize: a brand-new prompt or swap pieces in and out, with a randomness slider',
+          onClick: () => this.openPromptBuilder({ field: 'prompt', tab: 'randomize' }),
+          style: { border: '1px solid rgba(148,163,184,.18)', background: 'transparent', color: '#b8c7d6', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }
+        }, '🎲 Randomize'),
 
         React.createElement('button', {
           type: 'button',
@@ -3375,17 +3412,24 @@ class Component extends DCLogic {
           )) : React.createElement('div', { style: { fontSize: 12, color: '#5a6678', padding: 6 } }, wildcardFilter ? 'No match for "' + wildcardFilter + '"' : 'No wildcards')
         ) : null,
 
-        // LoRA picker popover
+        // LoRA picker: a centered modal over the studio (backdrop click or Escape closes it).
+        this.state.showLoraPicker ? React.createElement('div', {
+          'data-dex-field': 'lora-picker-backdrop', 'aria-hidden': 'true',
+          onMousedown: () => this.setState({ showLoraPicker: false }),
+          style: { position: 'fixed', inset: 0, zIndex: 13000, background: 'rgba(2,6,12,.72)', backdropFilter: 'blur(4px)' }
+        }) : null,
         this.state.showLoraPicker ? React.createElement('div', {
           'data-dex-field': 'lora-picker-popover',
           role: 'dialog',
+          'aria-modal': 'true',
           'aria-label': 'Select LoRA',
+          onKeydown: e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.setState({ showLoraPicker: false }); } },
           style: {
-            position: 'absolute', top: '110%', left: 0, zIndex: 65,
-            background: '#0c1018', border: '1px solid rgba(148,163,184,.25)',
-            borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column',
-            gap: 8, minWidth: 320, maxWidth: 420, width: '100%',
-            boxShadow: '0 12px 32px rgba(0,0,0,.6)'
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 13001,
+            background: '#0d1622', border: '1px solid rgba(148,163,184,.3)',
+            borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column',
+            gap: 10, width: 'min(760px, calc(100vw - 32px))', maxHeight: 'min(88vh, 880px)', overflowY: 'auto', boxSizing: 'border-box',
+            boxShadow: '0 24px 70px rgba(0,0,0,.6)'
           }
         },
           React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
@@ -3642,8 +3686,8 @@ class Component extends DCLogic {
         }, stableLabel(this.state.enhancingNegPrompt ? 1 : 0, ['✨ Enhance Negative', '✕ Cancel enhance'])),
 
         React.createElement('button', {
-          type: 'button',
-          onClick: () => this.setState(st => ({ showNegWildcards: !st.showNegWildcards, negWildcardFilter: '' })),
+          type: 'button', 'data-dex-field': 'open-negative-prompt-builder', 'aria-haspopup': 'dialog',
+          onClick: () => this.openPromptBuilder({ field: 'negative', tab: 'wildcards' }),
           style: { border: '1px solid ' + (this.state.showNegWildcards ? accent : 'rgba(148,163,184,.18)'), background: 'transparent', color: this.state.showNegWildcards ? accent : '#b8c7d6', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }
         }, this.state.negWildcardFilter ? ('__ ' + this.state.negWildcardFilter + '… (' + negWcFiltered.length + ')') : ('⊞ Wildcards (' + wildcards.length + ')')),
 

@@ -61,7 +61,7 @@ async function finishPreservedRun(srv, report, liveProfilePath, beforeProfile) {
   try {
     await installModelSnapshots(page, srv.base); await page.goto(srv.base + '/dexdiffusion/');
     await page.waitForFunction(() => window.__dex && __dex.state && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
-    await page.evaluate(() => { __dex.setScreen('voice'); __dex.vpSet({ tab: 'profiles' }); });
+    await page.evaluate(() => { __dex.setScreen('voice'); __dex.vpSet({ tab: 'profiles', panelModal: 'conversion' }); });   // Voice conversion opens in its modal
     await page.evaluate(() => __dex.loadVoiceProfiles());
     await page.getByLabel('Approved target voice').selectOption(profileId);
     await page.evaluate(({ stageId: stg, jobId: job, artifactId: art }) => {
@@ -202,7 +202,7 @@ async function finishPreservedRun(srv, report, liveProfilePath, beforeProfile) {
     await installModelSnapshots(page, srv.base);
     await page.goto(srv.base + '/dexdiffusion/');
     await page.waitForFunction(() => window.__dex && __dex.state && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
-    await page.evaluate(() => { __dex.setScreen('voice'); __dex.vpSet({ tab: 'profiles' }); });
+    await page.evaluate(() => { __dex.setScreen('voice'); __dex.vpSet({ tab: 'profiles', panelModal: 'conversion' }); });   // Voice conversion opens in its modal
     const sourceFile = path.join(os.tmpdir(), `dexvoice-source-${process.pid}.wav`);
     fs.writeFileSync(sourceFile, sourceBytes, { flag: 'wx', mode: 0o600 });
     try {

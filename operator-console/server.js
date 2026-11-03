@@ -40,7 +40,7 @@ const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime, targetV
 const { rulesForTarget, validateDimensions } = require('./dimension-policy');
 const { enhancePrompt: runPromptEnhance, extractProtectedLiterals } = require('./prompt-enhancement');
 const { PROFILES, resolvePromptProfile } = require('./prompt-profiles');
-const { getWildcardCatalog, expandWildcards: expandWildcardsUtil } = require('./wildcards');
+const { getWildcardCatalog, getWildcardItems, expandWildcards: expandWildcardsUtil } = require('./wildcards');
 const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily, resolveTargetFamily } = require('./extra-networks');
 const EditModels = require('./edit-models');
 const { resolveLoraRuntimePolicy, routesFor } = require('./lora-runtime-policy');
@@ -3026,6 +3026,13 @@ app.get('/api/wildcards', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message, wildcards: [] });
   }
+});
+
+// One bank's items for the Prompt Builder (browse, insert literal text, swap pieces). Read-only.
+app.get('/api/wildcards/:name', (req, res) => {
+  const bank = getWildcardItems(req.params.name, WILDCARDS_DIR);
+  if (!bank) return res.status(404).json({ error: 'Unknown wildcard bank' });
+  res.json(bank);
 });
 
 app.post('/api/wildcards/expand', (req, res) => {

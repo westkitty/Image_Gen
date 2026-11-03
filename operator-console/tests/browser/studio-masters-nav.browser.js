@@ -137,8 +137,14 @@ const overflow = page => page.evaluate(() => ({ scroll: document.documentElement
     await page.getByRole('tab', { name: 'Chat' }).click();
     await page.locator('[data-chat-refresh]').click();
     await page.locator('[data-chat-status="generation"] [data-chat-state="ready"]').waitFor();
-    assert.equal(await page.locator('[data-chat-save-next]').isDisabled(), true, 'saved history stays locked without a credential');
-    await page.locator('[data-chat-model]').selectOption('qwen3.8:27b-mlx');
+    // Saved-history controls live in the Chat settings modal; the model is chosen in its own modal.
+    await page.locator('[data-chat-settings-open]').click();
+    assert.equal(await page.locator('[data-dex-modal="chat-settings"] [data-chat-save-next]').isDisabled(), true, 'saved history stays locked without a credential');
+    await page.keyboard.press('Escape');
+    await page.locator('[data-dex-modal="chat-settings"]').waitFor({ state: 'detached' });
+    await page.locator('[data-chat-model]').click();
+    await page.locator('[data-dex-modal="chat-model"] [data-choice-value="qwen3.8:27b-mlx"]').click();
+    await page.waitForFunction(() => __dex.state.chatModel === 'qwen3.8:27b-mlx');
     await page.locator('[data-chat-composer]').fill('Fixture user text');
     await page.waitForFunction(() => window.__dex && __dex.state.chatDraft === 'Fixture user text');
     await page.locator('[data-chat-send]').click();
@@ -151,18 +157,23 @@ const overflow = page => page.evaluate(() => ({ scroll: document.documentElement
     assert.equal(requestCount, 2);
     await page.locator('[data-chat-new]').click();
     await page.waitForFunction(() => document.querySelectorAll('[data-chat-message]').length === 0);
+    await page.locator('[data-chat-settings-open]').click();
     await page.locator('[data-chat-history-credential]').fill('fixture-credential-12345678901234567890');
     await page.locator('[data-chat-history-unlock]').click();
     await page.waitForFunction(() => __dex.state.chatSavedSessionsLoaded);
     await page.locator('[data-chat-save-next]').check();
+    await page.locator('[data-dex-modal="chat-settings"] .dx-modal-foot button').click();
     await page.locator('[data-chat-composer]').fill('Saved fixture text');
     await page.waitForFunction(() => window.__dex && __dex.state.chatDraft === 'Saved fixture text');
     await page.locator('[data-chat-send]').click();
     await page.locator('[data-chat-message="assistant"]').filter({ hasText: 'Fixture reply 3' }).waitFor();
     assert.equal(savedCreates, 1, 'saved mode was explicitly requested once');
     assert.equal(await page.locator('[data-chat-export]').isEnabled(), true);
-    await page.locator('[data-chat-saved-list]').waitFor();
-    assert.equal(await page.locator('[data-chat-saved-list] option').count(), 2);
+    await page.locator('[data-chat-settings-open]').click();
+    await page.locator('[data-chat-saved-list]').click();
+    await page.locator('[data-dex-modal="chat-saved"] [data-choice-value]').first().waitFor();
+    assert.equal(await page.locator('[data-dex-modal="chat-saved"] [data-choice-value]').count(), 1, 'one saved conversation is offered');
+    await page.keyboard.press('Escape');
     assert.deepEqual(errors, []);
     await page.close();
   }

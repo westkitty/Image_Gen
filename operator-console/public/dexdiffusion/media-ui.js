@@ -305,7 +305,8 @@
     const body = m.voiceMode === 'speech' ? h('div', { style: { display: 'grid', gap: 10 } },
       field('Text to speak', this._text('voiceText', 'What should be said…', 4)),
       h('div', { style: css.grid2 },
-        field('Voice', h('select', { style: css.input, value: m.kokoroVoice || 'af_heart', onChange: e => this.mSet({ kokoroVoice: e.target.value }) }, ...voices.map(v => h('option', { value: v }, v)))),
+        field('Voice', window.DexModal ? window.DexModal.kokoroChoice(h, voices, m.kokoroVoice || 'af_heart', v => this.mSet({ kokoroVoice: v }), 'Kokoro voice')
+          : h('select', { style: css.input, value: m.kokoroVoice || 'af_heart', onChange: e => this.mSet({ kokoroVoice: e.target.value }) }, ...voices.map(v => h('option', { value: v }, v)))),
         field('Speed', this._input('speed', { numeric: true, min: '0.5', max: '2', step: '0.05' }))),
       h('div', { style: css.muted }, 'Kokoro is deterministic (no seed). Language follows the voice (a = US English, b = UK English).'))
       : m.voiceMode === 'clone' ? h('div', { style: { display: 'grid', gap: 10 } },
@@ -342,6 +343,8 @@
           : 'Magenta RealTime 2 (mrt2_small): instrumental music from a text prompt, 2–60 s. No lyrics, seed or reference.'),
         h('div', { style: { display: 'grid', gap: 10 } },
           field(ace ? 'Song description' : 'Music prompt', this._text('musicPrompt', 'e.g. dreamy synth-pop about a night drive', 3)),
+          this.promptBuilderButtons ? this.promptBuilderButtons({ id: 'music', title: ace ? 'Song description' : 'Music prompt', getText: () => (this._mtext || {}).musicPrompt, setText: t => { this._mtext.musicPrompt = t; this.mSet({}); },
+            target: { id: worker, label: ace ? 'ACE-Step' : 'Magenta RT', plainText: true } }) : null,
           notUsed(ace, note, h('div', { style: { display: 'grid', gap: 10 } },
             h('label', { style: Object.assign({}, css.row, { color: '#dbe4ee', fontSize: 12 }) }, h('input', { type: 'checkbox', checked: !!m.instrumental, onChange: e => this.mSet({ instrumental: e.target.checked }) }), 'Instrumental (no vocals)'),
             m.instrumental ? null : field('Lyrics', this._text('musicLyrics', '[verse]\n…\n[chorus]\n…', 5)),

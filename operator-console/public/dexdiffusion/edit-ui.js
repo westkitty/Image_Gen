@@ -287,14 +287,24 @@
     const root = document.createElement('div'); root.style.cssText = 'position:relative;min-width:0;'; root.setAttribute('data-model-picker', ctx);
     const trigger = document.createElement('button'); trigger.type = 'button'; trigger.setAttribute('aria-haspopup', 'listbox');
     trigger.style.cssText = 'width:100%;text-align:left;border:1px solid rgba(148,163,184,.25);background:#0b1420;color:#e8f0f7;border-radius:8px;padding:8px 10px;min-height:42px;cursor:pointer;display:flex;gap:8px;align-items:center;font:600 13px DM Sans,system-ui,sans-serif;';
+    // The choices open in a centered modal over the studio (not a dropdown), so long model lists have room to breathe.
+    const overlay = document.createElement('div'); overlay.setAttribute('data-model-picker-modal', ctx);
+    overlay.style.cssText = 'display:none;position:fixed;inset:0;z-index:13000;background:rgba(2,6,12,.72);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+    const dialog = document.createElement('div'); dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true'); dialog.setAttribute('aria-label', (ctx === 'edit' ? 'Edit' : 'Create') + ' model');
+    dialog.style.cssText = 'width:min(820px,100%);max-height:min(88vh,860px);display:flex;flex-direction:column;border:1px solid rgba(148,163,184,.3);background:#0a111c;border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.6);overflow:hidden;box-sizing:border-box;';
+    const head = document.createElement('div'); head.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(148,163,184,.16);';
+    const headTitle = document.createElement('div'); headTitle.style.cssText = 'font:800 15px DM Sans,sans-serif;color:#f1f5f9;flex:1;'; headTitle.textContent = 'Choose a model' + (ctx === 'edit' ? ' for Edit' : '');
+    const closeBtn = document.createElement('button'); closeBtn.type = 'button'; closeBtn.textContent = '✕'; closeBtn.setAttribute('aria-label', 'Close model picker');
+    closeBtn.style.cssText = 'min-width:36px;min-height:36px;border:1px solid rgba(148,163,184,.25);background:transparent;color:#cbd5e1;border-radius:8px;cursor:pointer;font-size:15px;';
+    head.append(headTitle, closeBtn);
     const panel = document.createElement('div'); panel.setAttribute('role', 'listbox'); panel.setAttribute('aria-label', 'Model choices');
-    panel.style.cssText = 'display:none;position:absolute;z-index:60;left:0;right:0;top:calc(100% + 4px);min-width:min(100%,320px);max-height:min(60vh,460px);overflow:auto;border:1px solid rgba(148,163,184,.3);background:#0a111c;border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.6);padding:8px;';
+    panel.style.cssText = 'overflow:auto;padding:12px 14px;min-height:0;';
     const search = document.createElement('input'); search.type = 'search'; search.placeholder = 'Search models…'; search.setAttribute('aria-label', 'Search models');
     search.style.cssText = 'width:100%;border:1px solid rgba(148,163,184,.25);background:#05080d;color:#e2e8f0;border-radius:7px;padding:8px;min-height:36px;margin-bottom:6px;font:13px DM Sans,system-ui,sans-serif;';
     const chips = document.createElement('div'); chips.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;';
     const list = document.createElement('div');
     const foot = document.createElement('div'); foot.style.cssText = 'margin-top:6px;font:11px DM Sans,sans-serif;color:#8193a8;';
-    panel.append(search, chips, list, foot); root.append(trigger, panel);
+    panel.append(search, chips, list, foot); dialog.append(head, panel); overlay.append(dialog); root.append(trigger, overlay);
     const mk = (tag, css2, text) => { const n = document.createElement(tag); n.style.cssText = css2; if (text != null) n.textContent = text; return n; };
     const chipEl = (text, active, fn) => { const b = mk('button', `border:1px solid ${active ? '#38bdf8' : 'rgba(148,163,184,.25)'};background:${active ? 'rgba(56,189,248,.16)' : 'transparent'};color:${active ? '#7dd3fc' : '#a8b6c8'};border-radius:999px;padding:3px 10px;min-height:28px;font:700 11px DM Sans,sans-serif;cursor:pointer;`, text); b.type = 'button'; b.addEventListener('click', fn); return b; };
     function draw() {
@@ -340,8 +350,18 @@
       document.addEventListener('keydown', user, true); document.addEventListener('pointerdown', user, true);
       Promise.resolve(done).catch(() => {}).then(() => setTimeout(() => { tick(); stop(); }, 1500));
     }
-    function close() { q.open = false; panel.style.display = 'none'; trigger.setAttribute('aria-expanded', 'false'); draw(); }
-    function open() { q.open = true; panel.style.display = 'block'; draw(); setTimeout(() => search.focus(), 0); }
+    function close() { q.open = false; overlay.style.display = 'none'; trigger.setAttribute('aria-expanded', 'false'); draw(); }
+    function open() { q.open = true; overlay.style.display = 'flex'; draw(); setTimeout(() => search.focus(), 0); }
+    closeBtn.addEventListener('click', () => { close(); trigger.focus(); });
+    overlay.addEventListener('mousedown', e => { if (e.target === overlay) { close(); trigger.focus(); } });
+    dialog.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); trigger.focus(); return; }
+      if (e.key !== 'Tab') return;
+      const f = Array.from(dialog.querySelectorAll('button:not([disabled]),input')).filter(n => n.getClientRects().length);
+      if (!f.length) return;
+      if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+    });
     trigger.addEventListener('click', () => (q.open ? close() : open()));
     search.addEventListener('input', () => { q.query = search.value; draw(); });
     panel.addEventListener('keydown', e => {
@@ -355,7 +375,7 @@
         : e.key === 'ArrowDown' ? (current + 1) % options.length : (current <= 0 ? options.length - 1 : current - 1);
       options[next].focus();
     });
-    document.addEventListener('click', e => { if (q.open && !root.contains(e.target)) close(); }, true);
+    document.addEventListener('click', e => { if (q.open && !root.contains(e.target) && !e.target.closest('[data-dex-modal]')) close(); }, true);
     const shell = document.createElement('div');
     if (ctx === 'create') { const lb = document.createElement('div'); lb.textContent = 'Model'; lb.style.cssText = 'font-size:10px;color:#6090a8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;'; shell.append(lb, root); } else shell.append(root);
     const picker = { root, shell, update(p) {
@@ -712,6 +732,8 @@
     const ph = st.promptStatus.available ? 'Describe the edit…' : st.promptStatus.message + ' — enter a prompt';
     return h('div', { style: { display: 'grid', gap: 8 } },
       label('Prompt', h('textarea', { rows: 3, 'data-edit-prompt': '1', value: st.prompt || '', placeholder: ph, style: Object.assign({}, css.input, { resize: 'vertical', borderColor: !String(st.prompt || '').trim() && ed.attempt ? '#f87171' : undefined }), onInput: e => { st.prompt = e.target.value; this._edSyncRun(); } })),
+      this.promptBuilderButtons ? this.promptBuilderButtons({ id: 'edit', title: 'Edit prompt', getText: () => this._ed().state.prompt, setText: t => { this._ed().state.prompt = t; this.edSet({}); },
+        target: (this.state.modelTargets || []).find(t => t.id === st.editModel) || null }) : null,
       label('Negative prompt', h('textarea', { rows: 2, 'data-edit-negative': '1', value: st.negative || '', placeholder: 'low quality, blurry…', style: Object.assign({}, css.input, { resize: 'vertical' }), onInput: e => { st.negative = e.target.value; } })));
   };
   // Every installed checkpoint is listed in the Edit catalog, but only the ones the edit worker can actually run for the
