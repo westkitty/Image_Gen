@@ -56,3 +56,15 @@ Residual: tunnel-stall root cause unknown; Library does not surface MacBook cano
 NEXT ACTION: after the next reboot run `launchctl print gui/$(id -u)/local.dexdiffusion.recovery` and
   `bin/dexdiffusion recovery-status`
 ```
+
+## Post-merge status (2026-11-03, main b855c9c)
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| Merge of MacBook tree with PR #22 | PASS | `origin/main` = `b855c9c` (read back with `git ls-remote`) |
+| Recovery controller live | PASS | `recovery-status`: HEALTHY, publication CLEAR, 131 launchd runs, last exit 0 |
+| Installer tests | PASS | backend-service-reliability + dock-tunnel-recovery 29/29 |
+| Big Mac `install-backend-service.sh` | DRIFT, not deployed | Big Mac runs `df765a1` (sha 7e0f5b78…); main has 1d1b2fe6…, which honours `DEX_RECOVERY_DEADLINE`. The remote write was blocked pending operator approval. |
+| GitHub Pages | NOT_CONFIGURED | Repo public; `GET /pages` 404; `.github/workflows/pages.yml` present. Enabling it publishes the site and needs operator approval. |
+| Reboot/logout recovery | NOT TESTED | Needs explicit permission to log out or reboot |
+| Full suite | 113/117 files with Pillow on PATH | The remaining failures are environmental: no numpy (world-sharp-color ×2), host-gated (canonicalizer-outbox-cli, passes 4/4 on bigmac), Homebrew python3 lacks Pillow (local-engine-bridge, 23/23 under /usr/bin/python3) |
