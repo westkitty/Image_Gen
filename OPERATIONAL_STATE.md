@@ -1,5 +1,13 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## PR #23 install and Dock tile target fix — 2026-11-03 (`main` `62ccc48`, both Macs)
+
+- PR #23 (Studio modals, Prompt Builder, any-checkpoint edit, `37a4461`) was fast-forwarded into `main` and pushed; GitHub shows it MERGED. No merge commit.
+- **MacBook:** on `main` `62ccc48`, clean. `/Applications/DexDiffusion.app` rebuilt from `62ccc48`; `bin/dexdiffusion status`: revision UP TO DATE, icon OK (approved artwork unchanged), dock INSTALLED (1 entry), opens CANONICAL.
+- **Big Mac:** had been updated by file copy (HEAD `b3090f9`, 16 commits behind, dirty tree mostly identical to `main`). Moved to `main` `62ccc48` without overwriting local work; backup at `/Users/bigmac/Image_Gen-backup-pre-37a4461-20261103-124108`. Two genuine local edits remain uncommitted: `OPERATIONAL_STATE.md`, `operator-console/tests/system-info.test.js`. `local.dexdiffusion.server` restarted once (no jobs active) and now runs the `37a4461` server code; `62ccc48` changes only MacBook-side installer/status/docs/test, so no further restart.
+- **Dock tile opened the wrong app (fixed, `62ccc48`):** the artwork was never the problem. Every previous build was archived in `~/Library/Application Support/DexDiffusion/retired-launchers/` as a working bundle with the same id `local.image-gen.wrapper`. Unregistering did not stick, because Spotlight/Finder re-registered them, even after a rename while `Info.plist` existed. 60 copies were registered, so the tile, which also carries the bundle id, could launch an old copy. Archives are now `*.app.retired` with `Contents/Info.plist.retired`. No file was removed; to restore one, rename both back. 64 archives neutralised; Launch Services now lists only `/Applications/DexDiffusion.app` for the id. The running app was relaunched with `open -b local.image-gen.wrapper` and runs from `/Applications`. Tests: native-wrapper-launch, system-info and recovery-controller-launchd, 23/23 pass.
+- **Not verified:** a physical click on the Dock tile (headless session). One transient 56 s `/api/version` over the tunnel right after relaunch made `status` briefly print "PORT HELD BY FOREIGN PROCESS" for the healthy project tunnel. That label covers any health-probe failure. Direct Big Mac probes took ms; later tunnel probes took about 0.2 s; status UP since.
+
 ## Backend service outage investigation — 2026-11-02 (live SSH evidence)
 
 - Both `/Users/andrew/Image_Gen` and `/Users/bigmac/Image_Gen` were on `main`, HEAD `b3090f9b13d95b7992fe8adfadda13b99913331e`, remote `westkitty/Image_Gen`; both already had unrelated dirty and untracked work, preserved.
