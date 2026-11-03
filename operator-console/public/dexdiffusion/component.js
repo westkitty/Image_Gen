@@ -4237,7 +4237,7 @@ class Component extends DCLogic {
       jobChipBorder: isGenerating ? 'rgba(56,189,248,.2)' : jobStatus==='complete' ? 'rgba(101,214,110,.2)' : jobStatus==='error' ? 'rgba(239,68,68,.2)' : 'rgba(251,191,36,.2)',
       // System
       backendUrl, backendStatusColor: backendOnline === true ? '#65d66e' : backendOnline === null ? '#fbbf24' : '#ef4444',
-      backendStatusText: backendOnline === true ? '✓ Online' : backendOnline === null ? 'Checking…' : '✗ Offline',
+      backendStatusText: backendOnline === true ? '✓ Online' : backendOnline === null ? 'Checking…' : '⚠ Degraded',
       onBackendUrlChange: e=>{ const u=DexClient.resolveBackendBase(e.target.value); this._pingGeneration++; this._pingController?.abort(); this._pingController=null; clearTimeout(this._pingRetryTimer); this._pingFailures=0; this._nativeRecoveryRequested=false; this.setState({backendUrl:u,backendOnline:null,backendHealth:'unknown'}); try { localStorage.setItem('dex_backend_url',u); } catch {} },
       onVerifyBackend: ()=>{ this.pingBackend(); this.toast('Pinging backend…', '#38bdf8'); },
       onStartServer: ()=>{ fetch(this.state.backendUrl+'/api/actions/server-start',{method:'POST'}).then(r=>r.json()).then(d=>{ const {job_id}=d; if(job_id) this._startPoll(job_id,()=>{ this.toast('Server started','#65d66e'); this.pingBackend(); }); }).catch(()=>this.toast('Start failed','#ef4444')); },
