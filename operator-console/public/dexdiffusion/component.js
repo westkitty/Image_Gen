@@ -97,6 +97,7 @@ class Component extends DCLogic {
     // Global
     backendUrl: (() => { try { return DexClient.resolveBackendBase(localStorage.getItem('dex_backend_url')); } catch { return ''; } })(),
     backendOnline: null, // Unknown until a version probe completes; do not display an outage on launch.
+    backendHealth: 'unknown',
     runs: (() => { try { return JSON.parse(localStorage.getItem('dex_runs') || '[]'); } catch { return []; } })(),
     selectedRunId: '', selectedRunDetail: null, loadingRunDetail: false, runSearch: '',
     worldProjects: [], worldLoading: false, worldSourceArtifact: '', worldWorkerStatus: null, worldProjectsError: '', worldWorkersError: '', worldPollPausedJobId: '', worldPollError: '',
@@ -108,7 +109,7 @@ class Component extends DCLogic {
     toasts: [],
   };
 
-  _pingTimer = null; _pingRetryTimer = null; _pingController = null; _pingGeneration = 0; _pingFailures = 0; _backendMounted = false;
+  _pingTimer = null; _pingRetryTimer = null; _pingController = null; _pingGeneration = 0; _pingFailures = 0; _nativeRecoveryRequested = false; _lastNativeRecoveryAt = -Infinity; _backendMounted = false;
   _pollTimer = null; _worldPollTimer = null; _asset3dPollTimer = null; _worldMilestoneTimer = null; _toastId = 0;
   _completedImageCache = { key: null, node: null };
 
@@ -341,15 +342,15 @@ class Component extends DCLogic {
 
   // ── Backend ping ──────────────────────────────────────────────
   async pingBackend() {
-    // A short deadline or a superseded probe is not proof the backend went offline.
-    // Cancel stale checks, confirm an outage twice, and recover promptly on a valid response.
+    // A focus or timer event must not cancel a useful in-flight probe.
+    // Two independently completed failures and a cooldown precede native recovery.
+    if (!this._backendMounted || this._pingController) return;
     const generation = ++this._pingGeneration;
     const base = this.state.backendUrl;
     clearTimeout(this._pingRetryTimer);
-    this._pingController?.abort();
     const controller = new AbortController();
     this._pingController = controller;
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), 12000);
     try {
       const response = await fetch(base + '/api/version', { signal: controller.signal, cache: 'no-store' });
       if (!response.ok) throw new Error('Backend version check returned HTTP ' + response.status);
@@ -357,14 +358,25 @@ class Component extends DCLogic {
       if (!version || version.name !== 'Image_Gen Operator Console') throw new Error('Unexpected backend identity');
       if (!this._backendMounted || generation !== this._pingGeneration || base !== this.state.backendUrl) return;
       this._pingFailures = 0;
-      if (this.state.backendOnline !== true) this.setState({ backendOnline: true });
-    } catch {
+      this._nativeRecoveryRequested = false;
+      if (this.state.backendOnline !== true || this.state.backendHealth !== 'healthy')
+        this.setState({ backendOnline: true, backendHealth: 'healthy' });
+    } catch (_) {
       if (!this._backendMounted || generation !== this._pingGeneration || base !== this.state.backendUrl) return;
       this._pingFailures++;
       if (this._pingFailures < 2) {
-        this._pingRetryTimer = setTimeout(() => this.pingBackend(), 1200);
-      } else if (this.state.backendOnline !== false) {
-        this.setState({ backendOnline: false });
+        this._pingRetryTimer = setTimeout(() => this.pingBackend(), 1500);
+      } else {
+        if (this.state.backendOnline !== false || this.state.backendHealth !== 'degraded')
+          this.setState({ backendOnline: false, backendHealth: 'degraded' });
+        const now = Date.now();
+        if (!this._nativeRecoveryRequested && now - this._lastNativeRecoveryAt >= 60000 &&
+            typeof window !== 'undefined' && window.__dexNativeWrapper === true &&
+            window.webkit?.messageHandlers?.dexRecovery) {
+          this._nativeRecoveryRequested = true;
+          this._lastNativeRecoveryAt = now;
+          window.webkit.messageHandlers.dexRecovery.postMessage('backend-degraded');
+        }
       }
     } finally {
       clearTimeout(timeout);
@@ -4197,7 +4209,7 @@ class Component extends DCLogic {
       // System
       backendUrl, backendStatusColor: backendOnline === true ? '#65d66e' : backendOnline === null ? '#fbbf24' : '#ef4444',
       backendStatusText: backendOnline === true ? '✓ Online' : backendOnline === null ? 'Checking…' : '✗ Offline',
-      onBackendUrlChange: e=>{ const u=DexClient.resolveBackendBase(e.target.value); this._pingGeneration++; this._pingController?.abort(); clearTimeout(this._pingRetryTimer); this._pingFailures=0; this.setState({backendUrl:u,backendOnline:null}); try { localStorage.setItem('dex_backend_url',u); } catch {} },
+      onBackendUrlChange: e=>{ const u=DexClient.resolveBackendBase(e.target.value); this._pingGeneration++; this._pingController?.abort(); this._pingController=null; clearTimeout(this._pingRetryTimer); this._pingFailures=0; this._nativeRecoveryRequested=false; this.setState({backendUrl:u,backendOnline:null,backendHealth:'unknown'}); try { localStorage.setItem('dex_backend_url',u); } catch {} },
       onVerifyBackend: ()=>{ this.pingBackend(); this.toast('Pinging backend…', '#38bdf8'); },
       onStartServer: ()=>{ fetch(this.state.backendUrl+'/api/actions/server-start',{method:'POST'}).then(r=>r.json()).then(d=>{ const {job_id}=d; if(job_id) this._startPoll(job_id,()=>{ this.toast('Server started','#65d66e'); this.pingBackend(); }); }).catch(()=>this.toast('Start failed','#ef4444')); },
       onStopServer: ()=>{ fetch(this.state.backendUrl+'/api/actions/server-stop',{method:'POST'}).then(r=>r.json()).then(d=>{ const {job_id}=d; if(job_id) this._startPoll(job_id,()=>{ this.toast('Server stopped','#fbbf24'); this.pingBackend(); }); }).catch(()=>this.toast('Stop failed','#ef4444')); },

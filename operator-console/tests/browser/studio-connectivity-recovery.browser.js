@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { chromium, webkit } = require('playwright-core');
-const { startServer, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, launchBrowser, runCleanups, openStudio } = require('./helpers');
 
 (async () => {
   const { base } = await startServer();
@@ -31,13 +31,20 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
           }
           await route.continue().catch(() => {});
         });
-        await page.goto(base + '/dexdiffusion/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await openStudio(page, base + '/dexdiffusion/', { waitUntil: 'domcontentloaded', timeout: 30000 });
         await page.waitForFunction(() => window.__dex && __dex.state.backendOnline === null, null, { timeout: 15000 });
         assert.equal(await page.locator('[data-studio-offline]').count(), 0,
           engine.name + ': no false outage banner before a health result');
         release();
         await page.waitForFunction(() => __dex.state.backendOnline === true, null, { timeout: 15000 });
         assert.equal(await page.locator('[data-studio-offline]').count(), 0);
+
+        // Losing the backend after Studio has opened must leave the current
+        // workspace and unsent draft available for recovery without a reload.
+        const prompt = page.locator('textarea[data-dex-field="prompt"]');
+        await prompt.fill('connectivity recovery draft');
+        await page.evaluate(() => __dex.setScreen('library', { skipUnsavedGuard: true }));
+        await page.waitForFunction(() => __dex.state.screens[__dex.state.version] === 'library');
 
         // One transient fetch failure should not immediately erase an established
         // healthy connection. Two distinct failed attempts do mark an outage.
@@ -74,6 +81,10 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
         await page.waitForFunction(() => __dex.state.backendOnline === false, null, { timeout: 15000 });
         assert.ok(failedProbes >= 2, engine.name + ': two distinct probes were attempted');
         assert.match(await page.locator('[data-studio-offline]').innerText(), /Connection lost/);
+        assert.equal(await page.evaluate(() => __dex.state.screens[__dex.state.version]), 'library',
+          engine.name + ': outage keeps the active workspace');
+        assert.equal(await page.evaluate(() => __dex.state.prompt), 'connectivity recovery draft',
+          engine.name + ': outage keeps the unsent prompt draft');
         await page.unroute('**/api/version');
         await page.locator('[data-studio-offline]').getByRole('button', { name: 'Retry connection' }).click();
         await page.waitForFunction(() => __dex.state.backendOnline === true, null, { timeout: 15000 });
@@ -85,10 +96,11 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
         // WKWebView environments without AbortSignal.timeout must still probe
         // successfully: ping uses AbortController and a cleared timer instead.
         const oldSafari = await browser.newPage({ serviceWorkers: 'block' });
-        await oldSafari.addInitScript(() => {
+        await openStudio(oldSafari, base + '/dexdiffusion/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await oldSafari.evaluate(() => {
           try { Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined }); } catch (_) {}
         });
-        await oldSafari.goto(base + '/dexdiffusion/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await oldSafari.evaluate(() => __dex.pingBackend());
         await oldSafari.waitForFunction(() => window.__dex && __dex.state.backendOnline === true, null, { timeout: 15000 });
         assert.equal(await oldSafari.locator('[data-studio-offline]').count(), 0);
         await oldSafari.close();
@@ -108,17 +120,21 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
             await route.continue().catch(() => {});
           }
         });
-        await racing.goto(base + '/dexdiffusion/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await openStudio(racing, base + '/dexdiffusion/', { waitUntil: 'domcontentloaded', timeout: 30000 });
         await firstStarted;
         await racing.waitForFunction(() => window.__dex !== undefined, null, { timeout: 10000 });
         await racing.evaluate(() => __dex.pingBackend());
-        await racing.waitForFunction(() => __dex.state.backendOnline === true, null, { timeout: 15000 });
-        releaseLate();
         await racing.waitForTimeout(200);
+        assert.equal(await racing.evaluate(() => __dex._pingController !== null), true,
+          engine.name + ': a second probe must not cancel a blocked first probe');
+        releaseLate();
+        await racing.waitForFunction(() => __dex.state.backendOnline === true, null, { timeout: 15000 });
+        assert.equal(await racing.evaluate(() => __dex.state._pingFailures || __dex._pingFailures), 0,
+          engine.name + ': transient failure followed by a valid retry resets failures');
         assert.equal(await racing.evaluate(() => __dex.state.backendOnline), true,
-          engine.name + ': obsolete failed request cannot erase fresh success');
+          engine.name + ': the native recovery policy preserves eventual success');
         await racing.close();
-        console.log(engine.name + ': connectivity startup, two-strike outage, retry, WebKit-safe timeout, stale result PASS');
+        console.log(engine.name + ': connectivity startup, two-strike outage, retry, WebKit-safe timeout, single-flight retry PASS');
       } finally {
         await browser.close();
       }

@@ -86,7 +86,10 @@ test('Native WebKit load errors show accessible retry and diagnostic controls in
   assert.match(panel,/Copy error report/);
   assert.match(panel,/#selector\(retryConnection\)/);
   assert.match(panel,/host\.addSubview\(panel, positioned: \.above, relativeTo: webView\)/);
-  assert.match(src,/webView didFailProvisionalNavigation[\s\S]*?showLoadFailure\(/);
+  const provisional = src.slice(src.indexOf('func webView(_ webView: WKWebView, didFailProvisionalNavigation'), src.indexOf('private func handleNavigationFailure'));
+  const failureHandler = src.slice(src.indexOf('private func handleNavigationFailure'), src.indexOf('@objc private func copyErrorReport'));
+  assert.match(provisional,/handleNavigationFailure\(error, phase: "didFailProvisionalNavigation"/);
+  assert.match(failureHandler,/showLoadFailure\(/);
   assert.match(src,/WKWebView watchdog:[\s\S]*?showLoadFailure\(/);
   assert.match(src,/self\.studioVerified = true[\s\S]*?self\.hideLoadFailure\(\)/);
   const retry=src.slice(src.indexOf('    @objc private func retryConnection()'),src.indexOf('    private func hideLoadFailure()'));

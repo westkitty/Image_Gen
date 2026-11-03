@@ -1,7 +1,16 @@
 import Cocoa
 import WebKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKDownloadDelegate, WKUIDelegate {
+// WKWebView retains its message handlers: proxy prevents a wrapper retain cycle.
+private final class WeakDexRecoveryHandler: NSObject, WKScriptMessageHandler {
+    weak var delegate: WKScriptMessageHandler?
+    init(_ delegate: WKScriptMessageHandler) { self.delegate = delegate }
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(controller, didReceive: message)
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKDownloadDelegate, WKUIDelegate, WKScriptMessageHandler {
     private var window: NSWindow!
     private var webView: WKWebView!
     private var statusLabel: NSTextField!
@@ -14,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var bootstrapRetryCount = 0
     private var reconnectAttempts = 0
     private var pendingReconnectAfterStartup = false
+    private var lastNativeRecoveryAttempt = Date.distantPast
     private var failureOverlay: NSView?
     private var failureDetailLabel: NSTextField?
 
@@ -52,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     func windowWillClose(_ notification: Notification) {
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "dexRecovery")
         window = nil
         webView = nil
         statusLabel = nil
@@ -614,6 +625,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             setStatus("DexDiffusion recovery attempts were exhausted. View > Reload or Retry connection to try again.")
             return
         }
+        let now = Date()
+        if now.timeIntervalSince(lastNativeRecoveryAttempt) < 60 {
+            setStatus("Connection recovery is already running or cooling down; retry remains available.")
+            return
+        }
+        lastNativeRecoveryAttempt = now
         reconnectAttempts += 1
         pendingReconnectAfterStartup = true
         setStatus("DexDiffusion connection failed; checking the backend service and SSH tunnel (attempt \(reconnectAttempts)/2)...")
@@ -749,6 +766,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         failureOverlay = nil
         failureDetailLabel = nil
         let config = WKWebViewConfiguration()
+        config.userContentController.addUserScript(WKUserScript(
+            source: "window.__dexNativeWrapper = true;",
+            injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        config.userContentController.add(WeakDexRecoveryHandler(self), name: "dexRecovery")
         webView = WKWebView(frame: .zero, configuration: config)
         // Keep startup visually distinct from an unrendered white document.
         webView.underPageBackgroundColor = NSColor(calibratedRed: 0.031, green: 0.035, blue: 0.055, alpha: 1)
@@ -796,6 +817,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    // Only the current local Studio main frame may request native recovery.
+    // The shell launcher still owns tunnel-identity checks and all signalling.
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        let origin = message.frameInfo.securityOrigin
+        guard message.name == "dexRecovery",
+              message.body as? String == "backend-degraded",
+              message.frameInfo.isMainFrame,
+              origin.protocol == "http", origin.host == "127.0.0.1", origin.port == 31337,
+              message.webView === webView else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, !self.serviceStartupInProgress else { return }
+            let now = Date()
+            guard now.timeIntervalSince(self.lastNativeRecoveryAttempt) >= 60 else { return }
+            self.lastNativeRecoveryAttempt = now
+            self.appendLog("Native Studio requested bounded recovery after confirmed backend health failures")
+            self.setStatus("Connection degraded; checking the Big Mac tunnel without interrupting Studio...")
+            self.pendingReconnectAfterStartup = !self.studioVerified
+            self.ensureServicesThenLoad()
+        }
+    }
+
     // MARK: - Service startup
 
     private func ensureServicesThenLoad() {
@@ -813,7 +855,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 self.serviceStartupInProgress = false
                 if self.pendingReconnectAfterStartup {
                     self.pendingReconnectAfterStartup = false
-                    self.loadConsole()
+                    // Never tear down a now-verified Studio document on a late recovery completion.
+                    if !self.studioVerified { self.loadConsole() }
                 }
             }
         }
@@ -821,7 +864,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     private func ensureOperatorConsoleViaHelper() {
         let helper = "\(projectRoot)/bin/dexdiffusion"
-        let result = runShell("\(shellQuote(helper)) start", timeout: 45)
+        let result = runShell("\(shellQuote(helper)) start", timeout: 120)
         appendLog("bin/dexdiffusion start (exit \(result.code)):\n\(result.output)")
         if result.code != 0 {
             DispatchQueue.main.async {
@@ -913,7 +956,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     private func currentConsoleVersion() -> (reachable: Bool, matchesExpectedRoot: Bool, cwd: String?, gitHead: String?, pid: Int?) {
-        let result = runShell("curl -fsS --max-time 2 \(serverBaseURL.absoluteString)/api/version", timeout: 4)
+        let result = runShell("curl -fsS --max-time 6 \(serverBaseURL.absoluteString)/api/version", timeout: 9)
         guard result.code == 0, let data = result.output.data(using: .utf8) else {
             return (false, false, nil, nil, nil)
         }

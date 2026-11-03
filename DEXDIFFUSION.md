@@ -519,3 +519,10 @@ DexDiffusion V12 operates with a unified real-time architecture:
 - **Create actions:** `Generate image` starts exactly one job; a second click cannot restart or hide it. A separate `Cancel job` control is bound to the job id and shows `Stopping — checking the worker…` → verified / unverified / refused, never a green false success.
 - **Source of truth for this work:** `docs/operations/arena-v2-studio-20261020/EXECUTION_LEDGER.md` (ticket status, gates, blockers) and the copied master instruction beside it.
 - **Still open:** canonical source resolver and Library→Edit→Enhance→3D/World handoffs, Create layout/Advanced disclosure, the remaining control sweep, native V2 scroll evidence, and every native/worker/novice acceptance gate. None of these is claimed complete.
+
+
+## November 2026 — MacBook Studio connection recovery diagnostics
+
+If Big Mac `/api/version` and `/dexdiffusion/` both return HTTP 200 but MacBook Studio stalls, distinguish short API connectivity from complete Studio transfer. The source recovery launcher checks the full Studio response body, verifies the exact project-owned SSH port listener before any signalling, uses bounded SSH/backend readiness verification and keepalives, and serializes recovery callers through a kernel lock. The native wrapper must not interrupt a verified Studio bootstrap merely because a helper finishes late. Browser health changes to `degraded` only after two completed failed checks and requests native recovery with a cooldown. Historical `server-error.log` contents alone are not evidence of a current backend crash. Preserve all uncommitted work, pending publication journals, and media.
+
+The November 3 source candidate's Brave/unit checks passed, but native MacBook Dock installation and long-run stability remain unverified until an explicitly fingerprinted production rollout. GitHub source publication does not itself update the installed `/Applications/DexDiffusion.app` or an unconfigured GitHub Pages website.
