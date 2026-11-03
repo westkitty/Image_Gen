@@ -80,3 +80,15 @@ NEXT ACTION: after the next reboot run `launchctl print gui/$(id -u)/local.dexdi
   - The agent was unloaded and only the project-owned tunnel (PID 99069, verified by command and listener) was stopped. Port 31337 was confirmed free.
   - On `launchctl bootstrap`, the first run moved RECOVERING → VERIFYING → HEALTHY in about 18 s with new tunnel PID 23081. Backend PID 24709 was unchanged and publication was CLEAR.
 - **Big Mac reboot: NOT RUN, awaiting a separate decision.** Big Mac auto-logs in as `bigmac`, FileVault is off and passwordless sudo is available. However, it also hosts other projects' public services (westcat-website, crockett-website, crockett-esign containers, Jellyfin, Ollama, Postgres), and a reboot would interrupt all of them.
+
+### MacBook reboot (operator-performed, 2026-11-03 11:15:32 local)
+
+- **Controller after reboot: PASS.** At 11:17:28 the LaunchAgent found `SSH_TUNNEL_ABSENT` and rebuilt the tunnel (PID 1459). It was VERIFIED at 11:17:39 and stayed HEALTHY on every tick until 13:01:10. Big Mac did not reboot; its backend stayed at PID 24709.
+- **Separate incident at 13:02.** Studio transfers through the existing tunnel stalled for about 2 minutes: STUDIO_TRANSFER_INCOMPLETE → DEGRADED → RECOVERING. The controller was HEALTHY again at 13:04:55, still on tunnel 1459. Root cause not determined: no sleep, wake or network-loss events on the MacBook, and Big Mac stayed up.
+- **App defect.** The native watchdog shows its failure overlay after about 55 s (13:03:19). Nothing reloaded Studio once recovery finished, so the overlay stayed until a manual Retry. Fixed in `3d121e9`:
+  - While the overlay is up, the app probes the full Studio transfer (HTTP 200 and complete length) every 15 s.
+  - It reloads once a probe passes.
+  - Probes are bounded to 40 and the count resets only when Studio verifies.
+  - Policy fixture and source tests pass 9/9.
+  - Installed app fingerprint matches.
+  - Not yet observed live: the running app instance predates the rebuild.
