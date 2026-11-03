@@ -2917,3 +2917,12 @@ Local and origin recovery branch remain `d1d542631fd041ddf54b148a173da19415fa4dd
 - The release-verification tests, attributed compressed GLB fixture and QA documentation were published as GitHub commit 0365bcf8cf87014891e0a11bbb9894f08795049d on fix/omni-release-verification-20261101, parent main merge a702dfeace5051bc0effc42c1ce3f1d2fe741f5f.
 - The above records source-only follow-up validation. No native app installation, MacBook Dock proof, production Big Mac checkout switch, server restart, model execution or 6DoF spatial readiness was claimed.
 - This is an append-only commit-receipt entry; no source changes are included in this documentation follow-up.
+
+
+
+## 2026-11-03 — Live image generation and cross-host publication repair (proof branch)
+
+- Implementation commit 4ac574fad5ccf3b64755fb21dff56a5f3096c9cd, isolated fix/dexdiffusion-publication-proof-20261103 based on GitHub main 315bee25c3d0fbaf0fa65198b256628ad4f47893. Changes: stable API process identity, durable Big Mac publication outbox, both worker publication hooks, explicit MacBook consumer publication-sync, four new tests, source storage truth. Dirty main checkout work on both machines preserved.
+- Big Mac production process 24709 served full 184,781-byte Studio and stable /api/version after owned idle restart. Three real FLUX.2 Klein 4B generation jobs completed; final job f41053ab-c6ea-4e94-8cf3-ebd5a3ad40f6 established one new PUBLICATION_PENDING entry. This is not proof of canonical MacBook receipt.
+- Relevant clean-branch test suite 86/86 PASS, syntax and diff checks PASS, preexisting MFLUX Python Pillow interpreter used. The active Big Mac backend still executes its dirty worktree code, not the clean source branch artifact.
+- MacBook resource admission remained blocked, so no native Dock app, recovery LaunchAgent, physical WKWebView journey or real publication-sync run was modified or proven. Storage integrity warnings for historical path mismatches remain; do not delete originals, journals, models or backups. No Pages deployment claimed. See Operational State for evidence and checkpoints.
