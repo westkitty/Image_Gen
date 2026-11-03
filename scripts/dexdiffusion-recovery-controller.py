@@ -94,10 +94,12 @@ def _owned_tunnel() -> tuple[str, str | None]:
         argv = shlex.split(cmd)
     except (OSError, subprocess.TimeoutExpired, ValueError):
         return "UNKNOWN", pid
+    compressed = ["-f", "-N", "-o", "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=15",
+                  "-o", "ServerAliveCountMax=3", "-o", "Compression=yes", "-L", "31337:127.0.0.1:31337", REMOTE]
     exact = ["-f", "-N", "-o", "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=15",
              "-o", "ServerAliveCountMax=3", "-L", "31337:127.0.0.1:31337", REMOTE]
     legacy = ["-f", "-N", "-o", "ExitOnForwardFailure=yes", "-L", "31337:127.0.0.1:31337", REMOTE]
-    if argv and Path(argv[0]).name == "ssh" and argv[1:] in (exact, legacy):
+    if argv and Path(argv[0]).name == "ssh" and argv[1:] in (compressed, exact, legacy):
         return "OWNED", pid
     return "FOREIGN", pid
 

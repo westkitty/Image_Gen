@@ -104,3 +104,14 @@ test('launcher health uses Studio + identity, never optional capabilities endpoi
     assert.equal(out.stdout.trim(),expectHealthy?'HEALTHY':'UNHEALTHY');
   }
 });
+test('compressed tunnel is launched and recognised by the launcher and the recovery controller',()=>{
+ const owned=between('owned_ssh_tunnel_pid() {','\n# Prints the pid');
+ const run=cmd=>cp.spawnSync('/bin/bash',['-c',`set -euo pipefail\nPORT=31337; SSH_TARGET=westcat\nps(){ if [[ "$*" == *"comm="* ]]; then echo ssh; else printf '%s\\n' '${cmd}'; fi; }\n${owned}\nowned_ssh_tunnel_pid 1111`],{encoding:'utf8'}).status;
+ assert.equal(run('ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o Compression=yes -L 31337:127.0.0.1:31337 westcat'),0);
+ assert.equal(run('ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -L 31337:127.0.0.1:31337 westcat'),0);
+ assert.notEqual(run('ssh -f -N -o Compression=yes -L 31337:127.0.0.1:31337 westcat'),0);
+ assert.match(source,/ServerAliveCountMax=3 \\\n\s+-o Compression=yes -L "\$PORT:127\.0\.0\.1:31337" "\$SSH_TARGET"/);
+ const controller=fs.readFileSync(path.resolve(__dirname,'../../scripts/dexdiffusion-recovery-controller.py'),'utf8');
+ assert.match(controller,/"ServerAliveCountMax=3", "-o", "Compression=yes", "-L", "31337:127\.0\.0\.1:31337", REMOTE\]/);
+ assert.match(controller,/argv\[1:\] in \(compressed, exact, legacy\)/);
+});

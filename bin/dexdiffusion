@@ -110,8 +110,10 @@ except ValueError:
     raise SystemExit(1)
 forward = ['-L', f'{sys.argv[2]}:127.0.0.1:31337', sys.argv[3]]
 base = ['-f', '-N', '-o', 'ExitOnForwardFailure=yes']
+alive = ['-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3']
 allowed = [base + forward,
-           base + ['-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3'] + forward]
+           base + alive + forward,
+           base + alive + ['-o', 'Compression=yes'] + forward]
 if not argv or os.path.basename(argv[0]) != 'ssh' or argv[1:] not in allowed:
     raise SystemExit(1)
 PY
@@ -301,8 +303,10 @@ cmd_start_unlocked() {
         fi
       fi
       if [ "$reused_tunnel" -ne 1 ]; then
+        # Compression: Studio is ~1.35 MB of uncompressed JS (~0.36 MB gzipped); off the
+        # LAN the Macs can be 10-360 KB/s apart, enough to miss the native startup window.
         ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
-          -L "$PORT:127.0.0.1:31337" "$SSH_TARGET"
+          -o Compression=yes -L "$PORT:127.0.0.1:31337" "$SSH_TARGET"
       fi
     fi
     for _ in $(seq 1 40); do
