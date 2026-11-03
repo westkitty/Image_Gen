@@ -7,9 +7,22 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { request, saveOwner } = require('../local-engine-client');
 const { createImageStore } = require('../image-store');
+const { resolveStoragePaths, assertDataRootMount } = require('../storage-paths');
+const { createPublicationOutbox } = require('../publication-outbox');
 const { adapterId, resolveLoraRuntimePolicy } = require('../lora-runtime-policy');
 const { canonicalSampler } = require('../controlled-args');
 const workflow = path.resolve(__dirname, '../../sdcpp-workflow');
+function createJobImageStore(env = process.env, host = os.hostname()) {
+  const paths = resolveStoragePaths(env);
+  const crossHostPublication = !!paths.dataRoot && host.toLowerCase() === 'bigmac';
+  if (crossHostPublication) assertDataRootMount(paths);
+  const opts = { root: paths.imageRoot, runsRoot: paths.runsDir };
+  if (crossHostPublication) {
+    const outbox = createPublicationOutbox(path.join(paths.stateDir, 'publications'));
+    opts.onPublished = entry => outbox.create(entry, path.join(paths.imageRoot, entry.image_id));
+  }
+  return createImageStore(opts);
+}
 async function publishAfterAcknowledgment({ acknowledge, publish, isStopping }) {
   const cleanup = await acknowledge();
   if (!cleanup.acknowledged || !cleanup.cleanup) throw new Error('Remote cleanup not verified');
@@ -118,7 +131,7 @@ async function main() {
       }
       throw new Error(state.error || state.status);
     }
-    const store = createImageStore(process.env.DEX_IMAGES_ROOT_OVERRIDE ? { root: process.env.DEX_IMAGES_ROOT_OVERRIDE, runsRoot } : { runsRoot });
+    const store = createJobImageStore(process.env);
     const downloads=[];
     stagingDir=fs.mkdtempSync(path.join(os.tmpdir(),'dex-engine-transfer-'));
     const logicalOutputs=[];
@@ -165,4 +178,4 @@ if (require.main === module) main().catch(e => {
   if (!reasonPrinted) { const failure = classifyEngineError(e); console.log('First failed gate: ' + failure.gate + '\nENGINE_FAILURE_REASON: ' + failure.reason); }
   console.error('Local engine generation failed: ' + e.message); process.exitCode = 1;
 });
-module.exports = { parse, publishAfterAcknowledgment, classifyEngineError };
+module.exports = { parse, publishAfterAcknowledgment, classifyEngineError, createJobImageStore };

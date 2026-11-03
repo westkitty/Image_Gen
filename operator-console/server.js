@@ -27,6 +27,7 @@ const { createModelInspector, familyFromArch } = require('./model-inspect');
 const M = require('./media');
 const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
+const { createPublicationOutbox } = require('./publication-outbox');
 const { validateImage } = require('./image-validation');
 const { artifactReceipt, TERMINAL } = require('./job-contract');
 const { createWorldStore } = require('./world-project');
@@ -71,11 +72,25 @@ const STORAGE_PATHS = resolveStoragePaths(process.env, path.resolve(__dirname, '
 assertDataRootMount(STORAGE_PATHS);
 const WORKFLOW_ROOT = STORAGE_PATHS.workflowRoot;
 const RUNS_DIR = STORAGE_PATHS.runsDir;
-const imageStore = createImageStore({ root: STORAGE_PATHS.imageRoot, runsRoot: RUNS_DIR });
+const STATE_DIR = STORAGE_PATHS.stateDir;
+const publicationOutbox = createPublicationOutbox(path.join(STATE_DIR, 'publications'));
+const crossHostPublicationEnabled = !!STORAGE_PATHS.dataRoot && !TestIsolation.enabled() && os.hostname().toLowerCase() === 'bigmac';
+const imageStore = createImageStore({ root: STORAGE_PATHS.imageRoot, runsRoot: RUNS_DIR,
+  onPublished: crossHostPublicationEnabled ? entry => publicationOutbox.create(entry, path.join(STORAGE_PATHS.imageRoot, entry.image_id)) : undefined });
 imageStore.ensureRoot();
+if (crossHostPublicationEnabled) {
+  // Rebuild only explicitly marked new outbox entries after a crash between
+  // run-index commit and outbox commit. Historical indexes remain untouched.
+  try {
+    for (const run of fs.readdirSync(RUNS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())) {
+      for (const entry of imageStore.readRunIndex(path.join(RUNS_DIR, run.name)).filter(e => e.publication && e.publication.protocol === 'macbook-pull-v1')) {
+        if (!publicationOutbox.read(entry.image_id)) publicationOutbox.create(entry, path.join(STORAGE_PATHS.imageRoot, entry.image_id));
+      }
+    }
+  } catch (error) { console.error('Cross-host publication outbox reconciliation failed:', error.message); }
+}
 const CONFIG_DIR = path.join(WORKFLOW_ROOT, 'config');
 // DEX_STATE_DIR remains an explicit override; DEX_DATA_ROOT supplies a durable, relocatable default.
-const STATE_DIR = STORAGE_PATHS.stateDir;
 const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
 // Lineage + Keepers, keyed by canonical image id (metadata only, never prompts).
 const imageMeta = W.createImageMetaStore(path.join(STATE_DIR, 'image-meta.json'));
@@ -147,6 +162,53 @@ if (!fs.existsSync(MASK_UPLOADS_DIR)) fs.mkdirSync(MASK_UPLOADS_DIR, { recursive
 
 app.use(express.json({ limit: '5mb' }));
 app.use(createTailscaleAuthGate());
+
+// MacBook pulls only exact, newly recorded image IDs through the existing
+// loopback tunnel. No filesystem paths are accepted from clients.
+app.get('/api/publications/status', (_req, res) => {
+  const rows = publicationOutbox.all();
+  const counts = {};
+  for (const row of rows) counts[row.state] = (counts[row.state] || 0) + 1;
+  res.json({ enabled: crossHostPublicationEnabled, counts, pending: rows.filter(r => r.state !== 'CANONICAL_VERIFIED').length });
+});
+app.get('/api/publications/pending', (req, res) => {
+  const limit = Math.max(1, Math.min(8, Number(req.query.limit) || 8));
+  res.json({ items: crossHostPublicationEnabled ? publicationOutbox.all().filter(r => ['PUBLICATION_PENDING', 'PUBLICATION_FAILED_RETRYABLE'].includes(r.state)).slice(0, limit).map(({ image_id, expected_bytes, sha256, state }) => ({ image_id, expected_bytes, sha256, state })) : [] });
+});
+app.get('/api/publications/:id/content', (req, res) => {
+  if (!crossHostPublicationEnabled) return res.sendStatus(404);
+  const record = publicationOutbox.read(req.params.id), image = imageStore.resolveImage(req.params.id);
+  if (!record || !image || !['PUBLICATION_PENDING', 'PUBLICATION_FAILED_RETRYABLE'].includes(record.state)) return res.sendStatus(404);
+  try {
+    const st = fs.lstatSync(image.path), hash = crypto.createHash('sha256').update(fs.readFileSync(image.path)).digest('hex');
+    if (!st.isFile() || st.isSymbolicLink() || st.dev !== record.dev || st.ino !== record.ino || st.size !== record.expected_bytes || hash !== record.sha256) return res.status(409).json({ error: 'artifact identity changed' });
+    res.set('Content-Type', 'application/octet-stream'); res.set('Content-Length', String(record.expected_bytes)); res.set('X-Dex-Artifact-SHA256', record.sha256);
+    return fs.createReadStream(image.path).pipe(res);
+  } catch (_) { return res.status(503).json({ error: 'artifact unavailable' }); }
+});
+app.post('/api/publications/:id/ack', (req, res) => {
+  if (!crossHostPublicationEnabled) return res.sendStatus(404);
+  const record = publicationOutbox.read(req.params.id), receipt = req.body || {};
+  const expectedDestination = path.join('/Users/andrew/images_made', req.params.id);
+  if (!record) return res.sendStatus(404);
+  if (receipt.schema !== 'dexdiffusion.canonical_receipt.v1' || receipt.image_id !== record.image_id || receipt.destination !== expectedDestination || receipt.bytes !== record.expected_bytes || receipt.sha256 !== record.sha256 || !Number.isFinite(Date.parse(receipt.verified_at))) return res.status(400).json({ error: 'receipt does not match pending artifact' });
+  if (record.state === 'CANONICAL_VERIFIED') return res.json({ state: record.state, image_id: record.image_id, idempotent: true });
+  try {
+    const image = imageStore.resolveImage(record.image_id), st = image && fs.lstatSync(image.path);
+    const sha = image && crypto.createHash('sha256').update(fs.readFileSync(image.path)).digest('hex');
+    if (!st || !st.isFile() || st.isSymbolicLink() || st.dev !== record.dev || st.ino !== record.ino || st.size !== record.expected_bytes || sha !== record.sha256) return res.status(409).json({ error: 'Big Mac artifact identity changed' });
+    const updated = publicationOutbox.update(record.image_id, { state: 'CANONICAL_VERIFIED', attempts: record.attempts + 1, receipt: { destination: expectedDestination, bytes: record.expected_bytes, sha256: record.sha256, verified_at: receipt.verified_at } });
+    return res.json({ state: updated.state, image_id: updated.image_id });
+  } catch (_) { return res.status(503).json({ error: 'acknowledgment could not be persisted' }); }
+});
+app.post('/api/publications/:id/failure', (req, res) => {
+  if (!crossHostPublicationEnabled) return res.sendStatus(404);
+  const record = publicationOutbox.read(req.params.id);
+  if (!record) return res.sendStatus(404);
+  const blocked = req.body && req.body.code === 'destination-conflict';
+  const updated = publicationOutbox.update(record.image_id, { state: blocked ? 'PUBLICATION_BLOCKED' : 'PUBLICATION_FAILED_RETRYABLE', attempts: record.attempts + 1, last_failure_code: blocked ? 'destination-conflict' : 'transfer-or-commit-failed' });
+  res.json({ state: updated.state });
+});
 app.get('/', (req, res) => {
   res.redirect(302, '/dexdiffusion/');
 });
@@ -549,24 +611,28 @@ const jobs = {}; // in-memory job state
 const jobSensitives = {};
 
 
+// Stable identity for the lifetime of this Node process.
+const PROCESS_STARTED_AT = new Date().toISOString();
+
+let PROCESS_GIT_HEAD = 'unknown';
+try {
+  PROCESS_GIT_HEAD = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+    cwd: path.resolve(__dirname, '..'),
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore']
+  }).trim();
+} catch (_) {}
+
 function getBuildInfo() {
-  let gitHead = 'unknown';
-  try {
-    gitHead = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
-      cwd: path.resolve(__dirname, '..'),
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore']
-    }).trim();
-  } catch (_) {}
   return {
     name: 'Image_Gen Operator Console',
     version: APP_VERSION,
-    gitHead,
+    gitHead: PROCESS_GIT_HEAD,
     pid: process.pid,
     cwd: __dirname,
     bind: `http://${HOST}:${PORT}`,
     workflowRoot: WORKFLOW_ROOT,
-    startedAt: new Date().toISOString()
+    startedAt: PROCESS_STARTED_AT
   };
 }
 
@@ -5718,7 +5784,11 @@ app.get('/api/publication-recovery', (req, res) => {
 
 // Read-only operational metadata (access URLs, primary engine, storage,
 // launcher, legacy status). See system-info.js; never includes secrets.
-const getSystemInfo = createSystemInfo({ getAssets: () => assetCache, getEvidence: () => evidenceStore.read() });
+const getSystemInfo = createSystemInfo({
+  getAssets: () => assetCache,
+  getEvidence: () => evidenceStore.read(),
+  getStoragePaths: () => STORAGE_PATHS,
+});
 app.get('/api/system-info', async (req, res) => {
   try {
     if (req.query.refresh === '1') await refreshAssets();

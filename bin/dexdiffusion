@@ -572,6 +572,13 @@ case "${1:-status}" in
     echo "Activated native DexDiffusion app: $APP_PATH"
     ;;
   doctor) cmd_doctor ;;
+  publication-sync)
+    # Explicit one-shot pull; never launches automatically or overwrites originals.
+    mkdir -p "$HOME/Library/Caches/DexDiffusion"
+    command -v lockf >/dev/null 2>&1 || { echo "ERROR: lockf unavailable; publication worker not started" >&2; exit 1; }
+    command -v node >/dev/null 2>&1 || { echo "ERROR: Node.js unavailable; publication worker not started" >&2; exit 1; }
+    lockf -t 0 "$HOME/Library/Caches/DexDiffusion/canonical-publication.lock" node "$CONSOLE_DIR/bin/canonical-publication-worker.js"
+    ;;
   -h|--help|help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) echo "usage: bin/dexdiffusion {start|stop|restart|status|open|doctor}" >&2; exit 2 ;;
+  *) echo "usage: bin/dexdiffusion {start|stop|restart|status|open|doctor|publication-sync}" >&2; exit 2 ;;
 esac
