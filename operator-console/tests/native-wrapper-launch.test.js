@@ -99,3 +99,13 @@ test('Native WebKit load errors show accessible retry and diagnostic controls in
   assert.match(retry,/ensureServicesThenLoad\(\)/);
   assert.match(src,/guard !self\.studioVerified else \{ return \}/,'helper errors after successful bootstrap must not create an overlay');
 });
+
+test('failure overlay keeps probing the full Studio transfer and reloads automatically', () => {
+  const src = read('native/macos/Image_Gen/ImageGenApp.swift');
+  const panel = src.slice(src.indexOf('    private func showLoadFailure('), src.indexOf('    @objc private func openLogs()'));
+  assert.match(panel, /startAutoRetry\(\)/);
+  assert.match(panel, /autoRetryPolicy\.next\(studioVerified: self\.studioVerified, probePassed: passed\)/);
+  assert.match(panel, /case \.reload:[\s\S]{0,300}?self\.loadConsole\(\)/);
+  assert.match(panel, /statusCode == 200 && bytes > 0 && \(expected <= 0 \|\| Int64\(bytes\) == expected\)/);
+  assert.match(src, /self\.hideLoadFailure\(\)\s+self\.autoRetryPolicy\.reset\(\)/, 'attempts reset only after Studio verifies');
+});

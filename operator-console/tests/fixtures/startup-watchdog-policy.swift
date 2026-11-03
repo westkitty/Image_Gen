@@ -17,6 +17,16 @@ struct StartupWatchdogPolicyFixture {
         policy.reset()
         precondition(policy.evaluate(callbackToken: 8, currentToken: 8, webViewIsCurrent: true,
             studioVerified: false, startupIsProgressing: false) == .showFailure)
+        // A transient stall: probes fail, then the full transfer passes and the overlay reloads Studio.
+        var retry = FailureAutoRetryPolicy(maximumAttempts: 3)
+        precondition(retry.next(studioVerified: false, probePassed: false) == .probeAgain(attempt: 1))
+        precondition(retry.next(studioVerified: false, probePassed: true) == .reload)
+        // A page that serves but never initializes stays bounded across reloads.
+        precondition(retry.next(studioVerified: false, probePassed: true) == .reload)
+        precondition(retry.next(studioVerified: false, probePassed: true) == .stop)
+        retry.reset()
+        precondition(retry.next(studioVerified: true, probePassed: false) == .stop)
+        precondition(retry.attempts == 0)
         print("WATCHDOG_POLICY_PASS")
     }
 }

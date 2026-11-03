@@ -30,6 +30,34 @@ struct StartupWatchdogPolicy {
     }
 }
 
+enum FailureAutoRetryDecision: Equatable {
+    case stop
+    case reload
+    case probeAgain(attempt: Int)
+}
+
+// While the failure overlay is visible, keep probing the local Studio and reload once
+// it is reachable again; a transient tunnel stall must not need a manual Retry.
+struct FailureAutoRetryPolicy {
+    private(set) var attempts = 0
+    let maximumAttempts: Int
+
+    init(maximumAttempts: Int = 40) {
+        self.maximumAttempts = max(0, maximumAttempts)
+    }
+
+    mutating func reset() { attempts = 0 }
+
+    // Attempts reset only when Studio verifies, so a page that serves but never
+    // initializes cannot reload forever.
+    mutating func next(studioVerified: Bool, probePassed: Bool) -> FailureAutoRetryDecision {
+        guard !studioVerified else { return .stop }
+        guard attempts < maximumAttempts else { return .stop }
+        attempts += 1
+        return probePassed ? .reload : .probeAgain(attempt: attempts)
+    }
+}
+
 private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
     weak var delegate: WKScriptMessageHandler?
     init(_ delegate: WKScriptMessageHandler) { self.delegate = delegate }
@@ -56,6 +84,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var lastNativeRecoveryAttempt = Date.distantPast
     private var failureOverlay: NSView?
     private var failureDetailLabel: NSTextField?
+    private var autoRetryPolicy = FailureAutoRetryPolicy()
+    private var autoRetryActive = false
 
     private let projectRoot: String = {
         if let env = ProcessInfo.processInfo.environment["IMAGE_GEN_ROOT"], !env.isEmpty {
@@ -408,6 +438,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         // Retry includes the shell-managed local tunnel, unlike a page-only reload.
         bootstrapRetryCount = 0
         reconnectAttempts = 0
+        autoRetryPolicy.reset()
         pendingReconnectAfterStartup = true
         setStatus("Checking DexDiffusion tunnel and retrying Studio...")
         ensureServicesThenLoad()
@@ -469,8 +500,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             ])
             failureOverlay = panel
         }
-        failureDetailLabel?.stringValue = detail
+        failureDetailLabel?.stringValue = detail + " DexDiffusion keeps checking and reloads automatically when Studio answers again."
         failureOverlay?.isHidden = false
+        startAutoRetry()
+    }
+
+    private func startAutoRetry() {
+        guard !autoRetryActive else { return }
+        autoRetryActive = true
+        scheduleAutoRetryProbe(after: 15)
+    }
+
+    private func scheduleAutoRetryProbe(after seconds: Double) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            guard let self = self, self.webView != nil else { self?.autoRetryActive = false; return }
+            self.probeStudioTransfer { passed in
+                switch self.autoRetryPolicy.next(studioVerified: self.studioVerified, probePassed: passed) {
+                case .stop:
+                    self.autoRetryActive = false
+                    if !self.studioVerified {
+                        self.appendLog("Automatic Studio retry stopped after \(self.autoRetryPolicy.attempts) probes")
+                        self.setStatus("Studio is still unreachable. Use Retry connection or Help > Copy Error Report.")
+                    }
+                case .reload:
+                    self.autoRetryActive = false
+                    self.appendLog("Automatic Studio retry: full Studio transfer passed; reloading")
+                    self.setStatus("Studio is reachable again; reloading...")
+                    self.loadConsole()
+                case .probeAgain(let attempt):
+                    self.setStatus("Studio unreachable; checking again automatically (\(attempt)/\(self.autoRetryPolicy.maximumAttempts))...")
+                    self.scheduleAutoRetryProbe(after: 15)
+                }
+            }
+        }
+    }
+
+    // Same evidence the recovery controller uses: HTTP 200 and the complete Studio document.
+    private func probeStudioTransfer(_ completion: @escaping (Bool) -> Void) {
+        var request = URLRequest(url: consoleURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
+        request.httpMethod = "GET"
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            let http = response as? HTTPURLResponse
+            let bytes = data?.count ?? 0
+            let expected = http?.expectedContentLength ?? -1
+            let passed = error == nil && http?.statusCode == 200 && bytes > 0 && (expected <= 0 || Int64(bytes) == expected)
+            DispatchQueue.main.async { completion(passed) }
+        }.resume()
     }
 
     @objc private func openLogs() {
@@ -590,6 +665,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                     if error == nil && initialized && rendered && !renderError {
                         self.studioVerified = true
                         self.hideLoadFailure()
+                        self.autoRetryPolicy.reset()
                         self.bootstrapRetryCount = 0
                         self.reconnectAttempts = 0
                         let head = Bundle.main.object(forInfoDictionaryKey: "DexDiffusionSourceHead") as? String ?? "unknown"
