@@ -68,3 +68,15 @@ NEXT ACTION: after the next reboot run `launchctl print gui/$(id -u)/local.dexdi
 | GitHub Pages | NOT_CONFIGURED | Repo public; `GET /pages` 404; `.github/workflows/pages.yml` present. Enabling it publishes the site and needs operator approval. |
 | Reboot/logout recovery | NOT TESTED | Needs explicit permission to log out or reboot |
 | Full suite | 113/117 files with Pillow on PATH | The remaining failures are environmental: no numpy (world-sharp-color ×2), host-gated (canonicalizer-outbox-cli, passes 4/4 on bigmac), Homebrew python3 lacks Pillow (local-engine-bridge, 23/23 under /usr/bin/python3) |
+
+### Follow-up (2026-11-03, operator-approved)
+
+- **GitHub Pages:** won't be done. The operator decided Pages is out of scope for this project, so it is no longer open.
+- **Installer deployed to Big Mac.** The backup is `rollout-20261103/install-backend-service.before-b855c9c.sh` (sha 7e0f5b78…).
+  - The first live run found a defect. `ps -o comm=,args=` truncates `comm` to 16 bytes (`/opt/homebrew/bi`), so a healthy registered backend got exit 8 ("not API-ready").
+  - Fixed in `4edc353` by reading comm and args separately, with a regression test. Reliability and tunnel tests pass 30/30.
+  - The redeployed file (sha 42414d67…, identical to main) returned `SERVICE_READY … existing=1`, rc 0. Backend PID 24709 was untouched.
+- **MacBook login simulation: PASS.** This is a reload of the LaunchAgent, not a physical reboot.
+  - The agent was unloaded and only the project-owned tunnel (PID 99069, verified by command and listener) was stopped. Port 31337 was confirmed free.
+  - On `launchctl bootstrap`, the first run moved RECOVERING → VERIFYING → HEALTHY in about 18 s with new tunnel PID 23081. Backend PID 24709 was unchanged and publication was CLEAR.
+- **Big Mac reboot: NOT RUN, awaiting a separate decision.** Big Mac auto-logs in as `bigmac`, FileVault is off and passwordless sudo is available. However, it also hosts other projects' public services (westcat-website, crockett-website, crockett-esign containers, Jellyfin, Ollama, Postgres), and a reboot would interrupt all of them.
