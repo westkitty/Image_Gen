@@ -14,6 +14,23 @@ function createPublicationOutbox(root) {
     try { fd = fs.openSync(tmp, 'wx', 0o600); fs.writeFileSync(fd, JSON.stringify(value) + '\n'); fs.fsyncSync(fd); fs.closeSync(fd); fd = undefined; fs.renameSync(tmp, target); syncDir(); }
     finally { if (fd !== undefined) try { fs.closeSync(fd); } catch (_) {} try { fs.unlinkSync(tmp); } catch (_) {} }
   }
+  function createOnly(target, value) {
+    const tmp = target + '.' + crypto.randomBytes(8).toString('hex') + '.tmp';
+    let fd;
+    try {
+      fd = fs.openSync(tmp, 'wx', 0o600);
+      fs.writeFileSync(fd, JSON.stringify(value) + '\n'); fs.fsyncSync(fd);
+      fs.closeSync(fd); fd = undefined;
+      try { fs.linkSync(tmp, target); syncDir(); return value; }
+      catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        return null;
+      }
+    } finally {
+      if (fd !== undefined) try { fs.closeSync(fd); } catch (_) {}
+      try { fs.unlinkSync(tmp); } catch (_) {}
+    }
+  }
   function read(id) { try { return JSON.parse(fs.readFileSync(file(id), 'utf8')); } catch (e) { if (e.code === 'ENOENT') return null; throw e; } }
   function hashFile(target) {
     const hash = crypto.createHash('sha256'), fd = fs.openSync(target, 'r'), buffer = Buffer.alloc(1024 * 1024);
@@ -29,9 +46,23 @@ function createPublicationOutbox(root) {
     const record = { schema: 'dexdiffusion.publication_outbox.v1', image_id: entry.image_id, run_id: entry.run_id,
       run_file: entry.run_file, expected_bytes: actual.size, sha256, dev: st.dev, ino: st.ino,
       state: 'PUBLICATION_PENDING', attempts: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    const target = file(entry.image_id);
     const existing = read(entry.image_id);
-    if (existing) { if (existing.sha256 !== sha256 || existing.ino !== st.ino) throw new Error('publication outbox identity collision'); return existing; }
-    atomicWrite(file(entry.image_id), record); return record;
+    if (existing) {
+      if (existing.image_id !== record.image_id || existing.run_id !== record.run_id || existing.run_file !== record.run_file
+        || existing.expected_bytes !== record.expected_bytes || existing.sha256 !== sha256 || existing.dev !== st.dev || existing.ino !== st.ino) {
+        throw new Error('publication outbox identity collision');
+      }
+      return existing;
+    }
+    const created = createOnly(target, record);
+    if (created) return created;
+    const raced = read(entry.image_id);
+    if (!raced || raced.image_id !== record.image_id || raced.run_id !== record.run_id || raced.run_file !== record.run_file
+      || raced.expected_bytes !== record.expected_bytes || raced.sha256 !== sha256 || raced.dev !== st.dev || raced.ino !== st.ino) {
+      throw new Error('publication outbox identity collision');
+    }
+    return raced;
   }
   function all() {
     let names = []; try { names = fs.readdirSync(dir).filter(n => /^[a-f0-9]{64}\.json$/.test(n)); } catch (_) { return []; }

@@ -60,7 +60,7 @@ fi
 # bound could not be enforced (no perl), in which case the command is NOT run: there is no unbounded fallback.
 PROBE_TIMEOUT="${DEX_PROBE_TIMEOUT:-4}"   # DEX_PROBE_TIMEOUT: seconds per local probe (ssh gets 3x); tests shorten it
 API_HEALTH_TIMEOUT="${DEX_API_HEALTH_TIMEOUT:-6}"
-STUDIO_HEALTH_TIMEOUT="${DEX_STUDIO_HEALTH_TIMEOUT:-12}"
+STUDIO_HEALTH_TIMEOUT="${DEX_STUDIO_HEALTH_TIMEOUT:-15}"
 bounded() {
   local secs="$1"; shift
   command -v perl >/dev/null 2>&1 || return 125
@@ -153,7 +153,9 @@ healthy() {
   pid="$(printf '%s' "$version" | json_field pid)" || return 1
   if [ "$(hostname -s)" = bigmac ]; then expected_cwd="$CONSOLE_DIR"; else expected_cwd="/Users/bigmac/Image_Gen/operator-console"; fi
   [ "$cwd" = "$expected_cwd" ] && [[ "$pid" =~ ^[0-9]+$ ]] || return 1
-  curl -fsS --max-time "$STUDIO_HEALTH_TIMEOUT" -o /dev/null "$LOCAL_URL" 2>/dev/null
+  # A slow or truncated HTML response is not evidence that the backend needs a
+  # restart. Allow the documented bounded 15-second full document transfer.
+  curl -fsS --connect-timeout 4 --max-time "$STUDIO_HEALTH_TIMEOUT" -o /dev/null "$LOCAL_URL" 2>/dev/null
 }
 
 tailnet_url() {
@@ -555,14 +557,25 @@ print("\nOverall: %s  (checked %s)" % (d["overall"], d["checkedAt"]))
 sys.exit(1 if d["overall"] == "FAIL" else 0)'
 }
 
+cmd_recovery() {
+  local controller="$ROOT/scripts/dexdiffusion-recovery-controller.py"
+  [ -x "$controller" ] || { echo "ERROR: recovery controller is missing or not executable: $controller" >&2; return 1; }
+  python3 "$controller" "$@"
+}
+
 case "${1:-status}" in
   __locked-start) cmd_start_unlocked ;;
-  start) cmd_start ;;
+  start) cmd_recovery ;;
+  __controller-start)
+    [ "${DEX_RECOVERY_CONTROLLER_ROOT:-}" = "$ROOT" ] || { echo 'ERROR: recovery executor requires the controller.' >&2; exit 2; }
+    cmd_start ;;
   stop) cmd_stop ;;
-  restart) cmd_stop; cmd_start ;;
+  restart) cmd_stop; cmd_recovery --manual ;;
   status) cmd_status ;;
   open)
-    cmd_start >/dev/null
+    # A non-HEALTHY controller verdict must not keep the app closed: the native
+    # window shows its own diagnostics and Retry, still routed via the controller.
+    cmd_recovery >/dev/null || echo "WARN: recovery controller did not verify health; opening the app to show diagnostics." >&2
     if [ ! -d "$APP_PATH" ]; then
       echo "ERROR: native DexDiffusion app is missing: $APP_PATH" >&2
       echo "       Build and install it with: scripts/install-macos-app.sh" >&2
@@ -572,13 +585,17 @@ case "${1:-status}" in
     echo "Activated native DexDiffusion app: $APP_PATH"
     ;;
   doctor) cmd_doctor ;;
+  recovery-status) cmd_recovery --status ;;
+  recovery-tick) cmd_recovery ;;
+  recovery-retry) cmd_recovery --manual ;;
   publication-sync)
-    # Explicit one-shot pull; never launches automatically or overwrites originals.
+    # One-shot pull; lockf prevents duplicate workers and the worker itself has
+    # bounded HTTP requests and a fixed canonical destination.
     mkdir -p "$HOME/Library/Caches/DexDiffusion"
     command -v lockf >/dev/null 2>&1 || { echo "ERROR: lockf unavailable; publication worker not started" >&2; exit 1; }
-    command -v node >/dev/null 2>&1 || { echo "ERROR: Node.js unavailable; publication worker not started" >&2; exit 1; }
+    command -v node >/dev/null 2>&1 || { echo "ERROR: Node.js is unavailable; publication worker not started" >&2; exit 1; }
     lockf -t 0 "$HOME/Library/Caches/DexDiffusion/canonical-publication.lock" node "$CONSOLE_DIR/bin/canonical-publication-worker.js"
     ;;
   -h|--help|help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) echo "usage: bin/dexdiffusion {start|stop|restart|status|open|doctor|publication-sync}" >&2; exit 2 ;;
+  *) echo "usage: bin/dexdiffusion {start|stop|restart|status|open|doctor|recovery-status|recovery-tick|recovery-retry|publication-sync}" >&2; exit 2 ;;
 esac

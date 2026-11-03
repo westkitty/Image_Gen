@@ -98,6 +98,7 @@ class Component extends DCLogic {
     backendUrl: (() => { try { return DexClient.resolveBackendBase(localStorage.getItem('dex_backend_url')); } catch { return ''; } })(),
     backendOnline: null, // Unknown until a version probe completes; do not display an outage on launch.
     backendHealth: 'unknown',
+    publicationStatus: null,
     runs: (() => { try { return JSON.parse(localStorage.getItem('dex_runs') || '[]'); } catch { return []; } })(),
     selectedRunId: '', selectedRunDetail: null, loadingRunDetail: false, runSearch: '',
     worldProjects: [], worldLoading: false, worldSourceArtifact: '', worldWorkerStatus: null, worldProjectsError: '', worldWorkersError: '', worldPollPausedJobId: '', worldPollError: '',
@@ -109,7 +110,7 @@ class Component extends DCLogic {
     toasts: [],
   };
 
-  _pingTimer = null; _pingRetryTimer = null; _pingController = null; _pingGeneration = 0; _pingFailures = 0; _nativeRecoveryRequested = false; _lastNativeRecoveryAt = -Infinity; _backendMounted = false;
+  _pingTimer = null; _pingRetryTimer = null; _pingController = null; _pingGeneration = 0; _pingFailures = 0; _nativeRecoveryRequested = false; _lastNativeRecoveryAt = -Infinity; _publicationRecoveryRequested = false; _publicationRecoveryAttempts = 0; _backendMounted = false;
   _pollTimer = null; _worldPollTimer = null; _asset3dPollTimer = null; _worldMilestoneTimer = null; _toastId = 0;
   _completedImageCache = { key: null, node: null };
 
@@ -156,6 +157,8 @@ class Component extends DCLogic {
     window.addEventListener('beforeunload', this._beforeUnloadHandler);
     this.pingBackend();
     this._pingTimer = setInterval(() => this.pingBackend(), 20000);
+    this.refreshPublicationStatus();
+    this._publicationTimer = setInterval(() => this.refreshPublicationStatus(), 20000);
     this.loadRuns();
     this.load3dSourceImages();
     this.loadWorldProjects();
@@ -183,6 +186,7 @@ class Component extends DCLogic {
     document.removeEventListener('visibilitychange', this._backendVisibilityHandler);
     this._worldFetchToken = (this._worldFetchToken || 0) + 1;
     clearInterval(this._pingTimer); clearInterval(this._pollTimer); clearInterval(this._worldPollTimer); clearInterval(this._asset3dPollTimer); clearInterval(this._worldMilestoneTimer);
+    clearInterval(this._publicationTimer);
     this._pollGeneration = (this._pollGeneration || 0) + 1;
     for (const controller of this._jobWaitControllers || []) controller.abort();
     this._detailerDetectController?.abort();
@@ -197,6 +201,25 @@ class Component extends DCLogic {
     if (screen === 'library') return 'media';
     if (screen === 'models' || screen === 'system') return 'settings';
     return screen || 'workstation';
+  }
+
+  async refreshPublicationStatus() {
+    if (!this._backendMounted || this.state.backendOnline === false) return;
+    try {
+      const response = await fetch(this.state.backendUrl + '/api/publications/status', { signal: AbortSignal.timeout(5000) });
+      if (!response.ok) return;
+      const status = await response.json();
+      if (!this._backendMounted) return;
+      this.setState({ publicationStatus: status });
+      const pending = Number(status.pending || 0);
+      if (pending === 0) this._publicationRecoveryAttempts = 0;
+      if (pending > 0 && this._publicationRecoveryAttempts < 3 && window.__dexNativeWrapper === true && window.webkit?.messageHandlers?.dexRecovery && !this._publicationRecoveryRequested) {
+        this._publicationRecoveryRequested = true;
+        this._publicationRecoveryAttempts++;
+        window.webkit.messageHandlers.dexRecovery.postMessage('publication-pending');
+        setTimeout(() => { this._publicationRecoveryRequested = false; }, [10000, 30000, 120000][this._publicationRecoveryAttempts - 1]);
+      }
+    } catch (_) { /* Unknown status remains distinct from confirmed pending. */ }
   }
 
   _unsavedWorkspaceWork() {
@@ -3997,6 +4020,12 @@ class Component extends DCLogic {
         h('div', { style: { flex: 1 } }),
         actionButton('Refresh', () => this.loadSystemInfo(), '#94a3b8')),
       !si ? h('div', { style: { color: '#94a3b8', fontSize: 12, marginTop: 8 } }, 'System info not loaded yet (GET /api/system-info).') : h('div', null,
+        siSection('Canonical publication', [
+          siRow('Status', s.publicationStatus == null ? 'UNKNOWN · status endpoint not confirmed' :
+            Number(s.publicationStatus.pending || 0) > 0 ? 'PUBLICATION_PENDING · canonical copy still required' : 'CANONICAL_VERIFIED · no pending artifacts'),
+          siRow('Retryable', s.publicationStatus && s.publicationStatus.counts ? (s.publicationStatus.counts.PUBLICATION_FAILED_RETRYABLE || 0) : 'unknown'),
+          siRow('Blocked', s.publicationStatus && s.publicationStatus.counts ? (s.publicationStatus.counts.PUBLICATION_BLOCKED || 0) : 'unknown'),
+        ]),
         siSection('Access', [
           siRow('Local', si.network.localUrl, true),
           siRow('Tailnet', siTs && siTs.serveConfigured ? siTs.url + '  (' + siTs.scope + ')' : ((siTs && siTs.reason) || 'unknown'), true),
@@ -4199,7 +4228,7 @@ class Component extends DCLogic {
         : isGenerating ? ('generating · ' + ((this.state.jobStage || {}).label || 'Waiting for backend'))
         : jobStatus==='complete' ? ('done · seed ' + lastSeed) : jobStatus==='error' ? 'error · check backend' : 'idle · no job',
       // Status chips
-      backendDot, backendLabel: backendOnline === true ? 'Backend' : backendOnline === null ? 'Checking' : 'Offline',
+      backendDot, backendLabel: backendOnline === true ? 'Backend' : backendOnline === null ? 'Checking' : 'Degraded',
       backendChipBg: backendOnline === true ? 'rgba(101,214,110,.08)' : backendOnline === null ? 'rgba(251,191,36,.08)' : 'rgba(239,68,68,.08)',
       backendChipBorder: backendOnline === true ? 'rgba(101,214,110,.2)' : backendOnline === null ? 'rgba(251,191,36,.2)' : 'rgba(239,68,68,.2)',
       jobDot, jobLabel: jobStatus==='cancelling' ? 'Stopping…' : jobStatus==='cancelled' ? 'Cancelled' : jobStatus==='cancel-unverified' ? 'Check required'
