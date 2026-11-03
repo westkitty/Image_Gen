@@ -105,6 +105,7 @@ function mount(app, deps) {
       const args = ['--init-img', a.init, '--strength', String(clampStrength(a.strength)), ...(p.prompt ? ['--prompt', p.prompt] : []), ...(p.negative_prompt ? ['--negative', p.negative_prompt] : []),
         '--steps', String(p.steps), '--width', String(a.w), '--height', String(a.h), '--cfg', String(p.cfg_scale), '--sampler', p.sampler, '--seed', String(a.seed), '--out-name', a.name];
       if (p.scheduler) args.push('--scheduler', p.scheduler);
+      if (Array.isArray(p.modelArgs)) args.push(...p.modelArgs);   // server-resolved --model-path (edit model), or nothing
       if (a.mask) args.splice(2, 0, '--mask', a.mask);
       // Run as a NESTED script (DEX_TOP_PID = this server): sdcpp-lib.sh then leaves the pass image in its run folder instead of
       // publishing it to the canonical store, exactly as hires-fix / batch / xyz parents do. Only the chain's final run is published.
@@ -234,6 +235,8 @@ function mount(app, deps) {
       const body = { ...(req.body || {}) };
       const resErr = D.resolveEditResources(body);
       if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
+      const editModel = D.resolveEditModelFor ? D.resolveEditModelFor(body) : { args: [] };
+      if (editModel.error) return res.status(editModel.status).json({ error: editModel.error, gate: 'edit-model' });
       const srcInfo = D.resolveImageSource(body);
       if (srcInfo.error || !srcInfo.path || !fs.existsSync(srcInfo.path)) { if (srcInfo.temp) try { fs.unlinkSync(srcInfo.temp); } catch (_) {} return res.status(404).json({ error: srcInfo.error || 'Choose a source image from the library', gate: 'source' }); }
       const dims = D.pngSize(srcInfo.path);
@@ -258,7 +261,7 @@ function mount(app, deps) {
       job.lineageOp = KINDS[kind].lineage;
       job.genRecord = D.editGenRecord(body, params, { strength, script: { kind, ...sc.options } });
       job.tempFiles = [srcInfo.temp].filter(Boolean);
-      D.withLease(jobId, () => { runChain(jobId, kind, { init: srcInfo.path, src: dims, params, seed, strength, options: sc.options, passes: sc.passes, workW, workH }).catch(e => { job.status = 'FAIL'; job.stderr += '\n' + e.message; }); });
+      D.withLease(jobId, () => { runChain(jobId, kind, { init: srcInfo.path, src: dims, params: Object.assign({}, params, { modelArgs: editModel.args }), seed, strength, options: sc.options, passes: sc.passes, workW, workH }).catch(e => { job.status = 'FAIL'; job.stderr += '\n' + e.message; }); });
       res.json({ job_id: jobId, status: job.status, passes: sc.passes, result_size: `${sc.out.w}x${sc.out.h}` });
     };
   }

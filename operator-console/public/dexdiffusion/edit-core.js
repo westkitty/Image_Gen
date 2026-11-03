@@ -138,7 +138,9 @@
   // record (+ optional in-memory session snapshot) — never from Create's form.
   const EDIT_DEFAULTS = { steps: 20, cfg: 7, strength: 0.75, sampler: 'euler_a', scheduler: 'discrete', vae: 'auto', preset: null };
   // editWorker: the model the edit worker really loads (/api/capabilities editWorkerTarget). When known, Edit always runs on it.
-  function applyRecallToEdit(recall, { snapshot, op, targets, activeSecondary, editWorker } = {}) {
+  // editModels: Set (or array) of target ids the edit workers can load per request (/api/capabilities editModels). When the
+  // source model is one of them Edit keeps it; otherwise it falls back to the worker's configured model.
+  function applyRecallToEdit(recall, { snapshot, op, targets, activeSecondary, editWorker, editModels } = {}) {
     const r = recall || {};
     const p = r.params || {};
     const snap = snapshot && snapshot.imageId === r.imageId ? snapshot : null;
@@ -151,7 +153,10 @@
     if (!r.recorded) notes.push('This image has no recorded generation settings (created before settings were stored). Showing neutral defaults.');
     if (p.target && !spec) notes.push(`Source model "${p.target}" is not a currently available target.`);
     if (promptAvail.available && promptAvail.scope === 'extension') notes.push('The recorded prompt is the outpaint extension prompt: it describes only the area that was added.');
-    if (editWorker && p.target && p.target !== editWorker) notes.push(`Edit runs on ${editWorker} (the edit worker's model); the source was made with ${spec ? (spec.label || spec.id) : p.target}.`);
+    const selectable = editModels ? new Set(editModels) : null;
+    const keepSource = !!(selectable && p.target && selectable.has(p.target) && editable);
+    if (keepSource) { /* the source's own checkpoint runs the edit */ }
+    else if (editWorker && p.target && p.target !== editWorker) notes.push(`Edit runs on ${editWorker} (the edit worker's model); the source was made with ${spec ? (spec.label || spec.id) : p.target}.`);
     else if (spec && !editable) notes.push(`${spec.label || spec.id} cannot run image edits; Edit will use ${activeSecondary || 'the active SDCPP model'}.`);
     return {
       version: 1,
@@ -159,7 +164,7 @@
       op: op || 'img2img',
       recalledFrom: { imageId: r.imageId, recorded: !!r.recorded, missing: r.missing || [], sessionPrompt: !!(promptAvail && promptAvail.session) },
       sourceModel: p.target || null,
-      editModel: editWorker || (editable ? p.target : (activeSecondary || null)),
+      editModel: keepSource ? p.target : (editWorker || (editable ? p.target : (activeSecondary || null))),
       params: {
         seed: p.seed != null ? p.seed : -1,
         width: p.width, height: p.height,

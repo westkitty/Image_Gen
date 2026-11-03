@@ -56,11 +56,19 @@
   };
   P.edSet = function (patch) { Object.assign(this._ed(), typeof patch === 'function' ? patch(this._ed()) : patch); this.setState({ _edTick: (this.state._edTick || 0) + 1 }); };
   P.edQuiet = function (patch) { Object.assign(this._ed(), patch); }; // state write without a re-render
-  // Edit runs on the model the edit worker actually loads (server: editWorkerTarget = sdcpp.env REMOTE_MODEL), never the
-  // secondary slot: offering other checkpoints here made the choice a silent no-op and mislabelled the results.
+  // Edit runs on the model the edit worker actually loads. Without per-request selection that is only the worker's configured
+  // model (server: editWorkerTarget = sdcpp.env REMOTE_MODEL), never the secondary slot. When the server advertises
+  // capabilityData.editModels, every listed SD 1.5 / SDXL checkpoint is offered and sent as edit_model (server-resolved
+  // --model-path), so the choice is real and lineage names the model that ran.
+  P._editModelIds = function () {
+    const cd = this.state.capabilityData || {};
+    return Array.isArray(cd.editModels) ? new Set(cd.editModels.concat(cd.editWorkerTarget ? [cd.editWorkerTarget] : [])) : null;
+  };
   P._editTargets = function () {
     const usable = (this.state.modelTargets || []).filter(t => (t.backend || 'sdcpp') !== 'mflux' && !['model-missing', 'dormant', 'model-inaccessible', 'worker-unavailable'].includes(t.runtime) && !['broken', 'dormant'].includes(String(t.status).toLowerCase()));
     const worker = this.state.capabilityData && this.state.capabilityData.editWorkerTarget;
+    const selectable = this._editModelIds();
+    if (selectable) return usable.filter(t => selectable.has(t.id));
     return worker ? usable.filter(t => t.id === worker) : usable;
   };
   P._activeSecondary = function () { return (this.state.modelState && this.state.modelState.activeSecondaryModel) || (this.state.systemInfo && this.state.systemInfo.modelState && this.state.systemInfo.modelState.activeSecondaryModel) || null; };
@@ -132,7 +140,7 @@
     }
     const view = r.data;
     const recall = view.recall || E.buildRecall(view);
-    const st = E.applyRecallToEdit(recall, { snapshot: this._snaps && this._snaps.get(imageId), op, targets: this._editTargets().concat(this.state.modelTargets || []), activeSecondary: this._activeSecondary(), editWorker: this.state.capabilityData && this.state.capabilityData.editWorkerTarget });
+    const st = E.applyRecallToEdit(recall, { snapshot: this._snaps && this._snaps.get(imageId), op, targets: this._editTargets().concat(this.state.modelTargets || []), activeSecondary: this._activeSecondary(), editWorker: this.state.capabilityData && this.state.capabilityData.editWorkerTarget, editModels: this._editModelIds() });
     const url = this.state.backendUrl + view.url;
     const loaded = await new Promise(res => { const im = new Image(); im.onload = () => res(true); im.onerror = () => res(false); im.src = url; });
     if (requestId !== this._editOpenRequestId) return false;
@@ -182,7 +190,7 @@
     const d = await r.json().catch(() => ({ error: r.statusText }));
     if (!r.ok) { this.toast(d.error || 'Import rejected', '#ef4444'); return; }
     const recall = { schema: E.RECALL_SCHEMA, imageId: 'staged:' + d.id, recorded: false, params: { loras: [] }, missing: [], prompt: { available: false, reason: 'Imported images carry no generation record' } };
-    const st = E.applyRecallToEdit(recall, { op: this._ed().op, targets: this._editTargets(), activeSecondary: this._activeSecondary(), editWorker: this.state.capabilityData && this.state.capabilityData.editWorkerTarget });
+    const st = E.applyRecallToEdit(recall, { op: this._ed().op, targets: this._editTargets(), activeSecondary: this._activeSecondary(), editWorker: this.state.capabilityData && this.state.capabilityData.editWorkerTarget, editModels: this._editModelIds() });
     const src = { key: 'staged:' + d.id, imageId: null, staged: true, stagedId: d.id, url: d.url, width: d.width, height: d.height, meta: { operation: 'imported (temporary)' }, recall };
     this._maskFor(src, true);
     this.wsSet({ editSourceId: 'staged:' + d.id, editSource: Object.assign({ id: d.id, stagedId: d.id, staged: true, meta: src.meta }, { url: d.url, width: d.width, height: d.height }), editOriginalId: 'staged:' + d.id });
@@ -561,6 +569,9 @@
       prompt: String(st.prompt || '').trim(), negative_prompt: st.negative || '', steps: +p.steps || 20, cfg_scale: +p.cfg || 7, seed,
       sampler: p.sampler, scheduler: p.scheduler, vae: p.vae || 'auto', loras: this._effectiveLoras(st.loras, catalog), save_prompts: !!this.state.savePrompts });
     if (!body.prompt) delete body.prompt;
+    // Per-request edit model: only when the server can honour it (otherwise the worker's configured model runs).
+    const selectable = this._editModelIds();
+    if (selectable && st.editModel && selectable.has(st.editModel)) body.edit_model = st.editModel;
     // A1111 img2img "Script" dropdown: a chosen stock script reroutes Run to /api/scripts/<kind> with the same prompt and sampling.
     const sc = ed.script || {};
     if (sc.kind && SCRIPT_OP[sc.kind] === op) {
@@ -601,7 +612,8 @@
       // The edit worker loads its own configured model (editWorkerTarget), not the secondary slot: switching the slot would
       // only cost ~5 s and replace the user's loaded model for nothing.
       const worker = this.state.capabilityData && this.state.capabilityData.editWorkerTarget;
-      if (target && target !== active && target !== worker) {
+      const selectable = this._editModelIds();
+      if (target && target !== active && target !== worker && !(selectable && selectable.has(target))) {
         setRun({ stage: { key: 'switching-model', label: 'Switching edit model to ' + target + ' (Big Mac)', percent: null, determinate: false } });
         const sw = await this._api('/api/models/secondary/activate', { target });
         if (!sw.ok) throw Object.assign(new Error(sw.data.error || 'model switch rejected'), { stage: 'switching-model' });
@@ -683,7 +695,7 @@
     const bits = [['model', st.sourceModel || '—'], ['seed', p.seed], ['size', (src.width || p.width) + '×' + (src.height || p.height)], ['steps', p.steps], ['CFG', p.cfg], ['sampler', p.sampler], ['scheduler', p.scheduler], ['VAE', p.vae === 'auto' ? 'default' : p.vae], ['LoRAs', st.loras.length]];
     return h('div', { 'data-recall-banner': '1', role: 'status', style: { border: '1px solid ' + (rc.recorded ? 'rgba(101,214,110,.35)' : 'rgba(251,191,36,.4)'), background: rc.recorded ? 'rgba(101,214,110,.06)' : 'rgba(251,191,36,.07)', borderRadius: 9, padding: '8px 10px', display: 'grid', gap: 5, minWidth: 0 } },
       h('div', { style: css.row }, h('b', { style: { color: rc.recorded ? '#86efac' : '#fde68a', fontSize: 12 } }, rc.recorded ? '✓ Recalled this image’s recorded settings' : '⚠ No recorded settings for this image'),
-        h('div', { style: { flex: 1 } }), btn('Re-apply source settings', () => { const r = src.recall; this.edSet({ state: E.applyRecallToEdit(r, { snapshot: this._snaps && this._snaps.get(src.imageId), op: ed.op, targets: this._editTargets().concat(this.state.modelTargets || []), activeSecondary: this._activeSecondary(), editWorker: this.state.capabilityData && this.state.capabilityData.editWorkerTarget }) }); this.loadEditAssets(); }, '#94a3b8')),
+        h('div', { style: { flex: 1 } }), btn('Re-apply source settings', () => { const r = src.recall; this.edSet({ state: E.applyRecallToEdit(r, { snapshot: this._snaps && this._snaps.get(src.imageId), op: ed.op, targets: this._editTargets().concat(this.state.modelTargets || []), activeSecondary: this._activeSecondary(), editWorker: this.state.capabilityData && this.state.capabilityData.editWorkerTarget, editModels: this._editModelIds() }) }); this.loadEditAssets(); }, '#94a3b8')),
       h('div', { style: css.row }, ...bits.map(([k, v]) => h('span', { key: k, style: pillStyle('#94a3b8') }, k + ' ' + v))),
       !st.promptStatus.available ? h('div', { 'data-prompt-unavailable': '1', style: { color: '#fde68a', fontSize: 12 } }, '🔒 ' + st.promptStatus.message + '. Enter the prompt you want for this edit.') : st.promptStatus.session ? h('div', { style: css.muted }, 'Prompt restored from this session (not stored on disk — prompt saving is off).') : null,
       ...st.notes.map(n => h('div', { key: n, style: { color: '#fde68a', fontSize: 11 } }, '• ' + n)),
@@ -712,6 +724,7 @@
       const why = (t.backend || 'sdcpp') === 'mflux' ? 'FLUX.2 Klein has no ' + label + ' path here (text-to-image only).'
         : String(t.status).toLowerCase() === 'broken' ? 'Marked broken; not usable for ' + label + '.'
         : t.runtime === 'model-missing' ? 'Model file missing.'
+        : this._editModelIds() ? 'The edit workers load single-file SD 1.5 / SDXL checkpoints only; ' + label + ' is not available for this model.'
         : worker ? label + ' runs on ' + worker + ' only; this checkpoint is text-to-image.' : 'No ' + label + ' worker is available for this checkpoint.';
       return Object.assign({}, t, { unsupported: why });
     });
@@ -724,8 +737,9 @@
     const sOut = h('span', { style: { color: '#38bdf8', fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, minWidth: 36 } }, Number(strength).toFixed(2));
     return h('div', { style: { display: 'grid', gap: 8 } },
       h('div', { style: { display: 'grid', gap: 4, minWidth: 0 } }, h('span', { style: css.label }, 'Edit model'), this.buildModelPicker('edit', this._editCatalog(targets, op), st.editModel, id => { this.edSet({ state: Object.assign({}, st, { editModel: id }), assetsFor: null }); this.loadEditAssets(); })),
-      this.state.capabilityData && this.state.capabilityData.editWorkerTarget ? h('div', { style: css.muted, 'data-edit-worker-model': this.state.capabilityData.editWorkerTarget }, 'Img2Img, Inpaint, Outpaint and the scripts run on ' + this.state.capabilityData.editWorkerTarget + ' (the edit worker\'s configured model); other checkpoints are not used by Edit.') : null,
-      st.editModel && st.editModel !== this._activeSecondary() && !(this.state.capabilityData && this.state.capabilityData.editWorkerTarget === st.editModel) ? h('div', { style: { color: '#fde68a', fontSize: 11 } }, 'Switching to ' + st.editModel + ' happens when you press Run (the Big Mac secondary slot is replaced).') : null,
+      this._editModelIds() ? h('div', { style: css.muted, 'data-edit-model-select': 'true', 'data-edit-worker-model': (this.state.capabilityData && this.state.capabilityData.editWorkerTarget) || '' }, 'Img2Img, Inpaint, Outpaint and the scripts run on the model chosen here (SD 1.5 and SDXL checkpoints; FLUX.2 Klein uses Reference edit). The default is ' + ((this.state.capabilityData && this.state.capabilityData.editWorkerTarget) || 'the edit worker\'s configured model') + '.')
+        : this.state.capabilityData && this.state.capabilityData.editWorkerTarget ? h('div', { style: css.muted, 'data-edit-worker-model': this.state.capabilityData.editWorkerTarget }, 'Img2Img, Inpaint, Outpaint and the scripts run on ' + this.state.capabilityData.editWorkerTarget + ' (the edit worker\'s configured model); other checkpoints are not used by Edit.') : null,
+      st.editModel && !this._editModelIds() && st.editModel !== this._activeSecondary() && !(this.state.capabilityData && this.state.capabilityData.editWorkerTarget === st.editModel) ? h('div', { style: { color: '#fde68a', fontSize: 11 } }, 'Switching to ' + st.editModel + ' happens when you press Run (the Big Mac secondary slot is replaced).') : null,
       h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,92px),1fr))', gap: 8 } },
         label('Steps', numField(this, 'steps', { min: '1', max: '150', step: '1' })), label('CFG', numField(this, 'cfg', { min: '1', max: '30', step: '0.5' })),
         label('Seed (−1 = random)', numField(this, 'seed', { step: '1' })),

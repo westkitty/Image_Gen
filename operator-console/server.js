@@ -42,6 +42,7 @@ const { enhancePrompt: runPromptEnhance, extractProtectedLiterals } = require('.
 const { PROFILES, resolvePromptProfile } = require('./prompt-profiles');
 const { getWildcardCatalog, expandWildcards: expandWildcardsUtil } = require('./wildcards');
 const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily, resolveTargetFamily } = require('./extra-networks');
+const EditModels = require('./edit-models');
 const { resolveLoraRuntimePolicy, routesFor } = require('./lora-runtime-policy');
 const { MODEL_CARDS, getModelCards, getModelCardById, checkModelSwitchWarnings } = require('./model-registry');
 const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt, ATTEMPT_TIMEOUT_MS } = require('./detailer');
@@ -693,7 +694,7 @@ function resolveEditResources(body) {
 function editLoraUnsupported(body) {
   const loras = Array.isArray(body && body.__loras) ? body.__loras : [];
   if (!loras.length) return null;
-  if (editWorkerTarget() !== 'sd15') return 'LoRA-backed edits are supported only when the edit worker uses the verified SD1.5 foundation checkpoint.';
+  if ((body.__editTarget !== undefined ? body.__editTarget : editWorkerTarget()) !== 'sd15') return 'LoRA-backed edits are supported only when the edit worker uses the verified SD1.5 foundation checkpoint.';
   if (loras.length !== 1) return 'LoRA-backed edits accept one verified SD1.5 adapter at a time.';
   const name = String(loras[0].name || '').replace(/\.(safetensors|ckpt|pt|bin)$/i, '').toLowerCase();
   const expected = name === 'lcm_sd15'
@@ -717,9 +718,19 @@ function editWorkerTarget() {
   const t = CONTROLLED_TARGETS.find(x => x.modelFile === file && !x.aliasOf) || CONTROLLED_TARGETS.find(x => x.modelFile === file);
   return t ? (t.aliasOf || t.id) : null;   // a same-checkpoint alias names its canonical target
 }
+// Optional per-request edit model (body.edit_model, a target id). Resolved server-side to an approved checkpoint path and
+// passed to the edit worker as --model-path; empty keeps the worker's configured REMOTE_MODEL. Sets body.__editTarget so
+// lineage and the LoRA gate name the model that really ran. -> { args } | { error, status }
+function resolveEditModelFor(body) {
+  const r = EditModels.resolveEditModel(body && body.edit_model, { targets: allControlledTargets(), targetModels: TARGET_MODELS, familyOf: resolveTargetFamily, workerTarget: editWorkerTarget() });
+  if (r.error) return r;
+  body.__editTarget = r.target;
+  delete body.edit_model;
+  return { args: r.args };
+}
 function editGenRecord(body, params, extra = {}) {
   const save = !!params.save_prompts;
-  const active = editWorkerTarget() || (assetCache && assetCache.activeSecondaryModel) || null;
+  const active = body.__editTarget || editWorkerTarget() || (assetCache && assetCache.activeSecondaryModel) || null;
   return {
     gen_schema: 1,
     loras: body.__loras || [],
@@ -2209,6 +2220,9 @@ function buildImageEditPreview(kind, body) {
     const vaePath = resolveVaePath(params.vae);
     if (vaePath) args.push('--vae', vaePath);
   }
+  const editModel = EditModels.resolveEditModel(body && body.edit_model, { targets: allControlledTargets(), targetModels: TARGET_MODELS, familyOf: resolveTargetFamily, workerTarget: editWorkerTarget() });
+  if (editModel.error) return { ok: false, status: editModel.status, error: editModel.error };
+  args.push(...editModel.args);
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
   return {
     ok: true,
@@ -2837,6 +2851,8 @@ app.get('/api/capabilities', (req, res) => {
   res.json({
     configuration: { degraded: configWarnings.length > 0, warnings: configWarnings },
     editWorkerTarget: editWorkerTarget(),   // model routing proof remains independently derived from the engine
+    // Models the edit workers can load per request (body.edit_model → server-resolved --model-path).
+    editModels: EditModels.editModelIds(allControlledTargets(), { targetModels: TARGET_MODELS, familyOf: resolveTargetFamily }),
     app: { name: 'SDCPP Workbench', version: 'a1111-workbench-2026-06-22' },
     backend: { type: 'stable-diffusion.cpp workflow bridge', workflowRoot: WORKFLOW_ROOT, runsDir: RUNS_DIR, localTunnelPort: localPort },
     assetCache: { present: !!assets, cacheAgeMinutes, discoveredAt: assets ? assets.discovered_at_iso : null },
@@ -3676,6 +3692,8 @@ app.post('/api/actions/img2img', (req, res) => {
   const body = { ...(req.body || {}) };
   const resErr = resolveEditResources(body);
   if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
+  const editModel = resolveEditModelFor(body);
+  if (editModel.error) return res.status(editModel.status).json({ error: editModel.error, gate: 'edit-model' });
   const editLoraError = editLoraUnsupported(body);
   if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
   const srcInfo = resolveImageSource(body);
@@ -3766,6 +3784,7 @@ app.post('/api/actions/img2img', (req, res) => {
     if (vaePath) args.push('--vae', vaePath);
   }
 
+  args.push(...editModel.args);
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
   const summary = getRedactedCommandSummary('bin/sdcpp-img2img.sh', args, sensitives);
   const jobId = createJob('img2img', summary, sanitizeRequestParams(
@@ -3801,6 +3820,8 @@ function handleInpaint(req, res) {
   const inpaintOpts = inpaintReq.options;
   const resErr = resolveEditResources(body);
   if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
+  const editModel = resolveEditModelFor(body);
+  if (editModel.error) return res.status(editModel.status).json({ error: editModel.error, gate: 'edit-model' });
   const editLoraError = editLoraUnsupported(body);
   if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
   const srcInfo = resolveImageSource(body);
@@ -3947,6 +3968,7 @@ function handleInpaint(req, res) {
     if (vaePath) args.push('--vae', vaePath);
   }
 
+  args.push(...editModel.args);
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
   const summary = getRedactedCommandSummary('bin/sdcpp-inpaint.sh', args, sensitives);
   const jobId = createJob('inpaint', summary, sanitizeRequestParams(
@@ -4187,6 +4209,8 @@ app.post('/api/actions/outpaint', (req, res) => {
   if (usedExtensionPrompt) body.prompt = body.extension_prompt.trim();
   const resErr = resolveEditResources(body);
   if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
+  const editModel = resolveEditModelFor(body);
+  if (editModel.error) return res.status(editModel.status).json({ error: editModel.error, gate: 'edit-model' });
   const editLoraError = editLoraUnsupported(body);
   if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
   if (src.error) return res.status(404).json({ error: src.error, gate: 'source' });
@@ -4216,6 +4240,7 @@ app.post('/api/actions/outpaint', (req, res) => {
   if (params.sampler) args.push('--sampler', params.sampler);
   if (params.scheduler) args.push('--scheduler', params.scheduler);
   if (params.seed) args.push('--seed', String(params.seed));
+  args.push(...editModel.args);
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
   const summary = getRedactedCommandSummary('bin/sdcpp-inpaint.sh', args, sensitives) + ` (outpaint L${plan.left} R${plan.right} T${plan.top} B${plan.bottom})`;
   const jobId = createJob('outpaint', summary, sanitizeRequestParams({ ...params, image_id: body.image_id, strength, extend: { left: plan.left, right: plan.right, top: plan.top, bottom: plan.bottom } }, params.save_prompts));
@@ -4654,7 +4679,7 @@ require('./hires-2pass').mount(app, { WORKFLOW_ROOT, RUNS_DIR, MASK_UPLOADS_DIR,
   runStamp: () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; } });
 // Multi-pass stock scripts (SD upscale, Loopback, Poor man's / mk2 outpainting): one leased job, one sd-cli pass per step.
 require('./script-chains').mount(app, { WORKFLOW_ROOT, RUNS_DIR, MASK_UPLOADS_DIR, JOB_TIMEOUT_MS, jobs, jobStore, jobSensitives, createJob, withLease,
-  resolveImageSource, resolveEditResources, pngSize, normalizeGenerationBody, validateGenerationParams, sanitizeRequestParams, editGenRecord,
+  resolveImageSource, resolveEditResources, resolveEditModelFor, pngSize, normalizeGenerationBody, validateGenerationParams, sanitizeRequestParams, editGenRecord,
   redactSensitiveText, updateSequentialProgress, finalizeJobImages, recordEditResults, recordJobEvidence, syncGenericTerminal,
   runStamp: () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; } });
 require('./prompt-scripts').mount(app, { expandWildcards, normalizeControlledGenerationBody, validateControlledGenerationParams, allControlledTargets, CONTROLLED_TARGETS, targetCapabilities, queueRunner, W, LARGE_REQUEST_IMAGES, crypto });

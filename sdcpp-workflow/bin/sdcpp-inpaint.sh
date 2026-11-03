@@ -39,6 +39,8 @@ Usage: $(basename "$0") [options]
   --vae PATH
   --seed N|random|fixed
   --out-name NAME      base name for output PNG (no extension)
+  --model-path PATH    checkpoint for this pass instead of REMOTE_MODEL. Server-resolved only (edit_model → TARGET_MODELS);
+                       must be a .safetensors under an approved checkpoint root, no traversal or shell characters.
   -h, --help
 EOF
 }
@@ -59,6 +61,7 @@ while [ "$#" -gt 0 ]; do
     --vae) ARG_VAE="${2:?}"; shift 2 ;;
     --seed) ARG_SEED="${2:?}"; shift 2 ;;
     --out-name) ARG_OUT_NAME="${2:?}"; shift 2 ;;
+    --model-path) ARG_MODEL_PATH="${2:?}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) fail "args" "Unknown argument: $1 (see --help)" ;;
   esac
@@ -66,6 +69,12 @@ done
 
 [ -z "$ARG_INIT_IMG" ] && fail "args" "--init-img is required"
 [ -z "$ARG_MASK" ] && fail "args" "--mask is required"
+if [ -n "${ARG_MODEL_PATH:-}" ]; then
+  case "$ARG_MODEL_PATH" in *..*|*[\;\&\|\`\'\"\<\>\(\)\{\}\*\?]*) fail "model-path" "unsafe --model-path" ;; esac
+  printf '%s' "$ARG_MODEL_PATH" | grep -Eq '^(/Volumes/wc2tb/ImageGen/checkpoints/|/Volumes/wc2tb/dex-imagegen/models/checkpoints/|\$HOME/sdcpp-staging/models/)[A-Za-z0-9._ /-]+\.safetensors$' \
+    || fail "model-path" "--model-path must be a .safetensors under an approved checkpoint root"
+  REMOTE_MODEL="$ARG_MODEL_PATH"
+fi
 
 # ----- validate init image path ---------------------------------------------
 INIT_IMG_ABS="$(cd "$(dirname "$ARG_INIT_IMG")" 2>/dev/null && pwd)/$(basename "$ARG_INIT_IMG")" \
