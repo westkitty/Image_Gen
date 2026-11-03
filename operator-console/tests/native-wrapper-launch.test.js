@@ -10,7 +10,9 @@ const read = relative => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 
 test('CLI open activates only the installed native app after starting the backend', () => {
   const src = read('bin/dexdiffusion');
-  assert.match(src, /open\)\s+cmd_start >/);
+  // open asks the single recovery controller and still activates the app when it is not HEALTHY.
+  assert.match(src, /open\)[\s\S]{0,300}?cmd_recovery >\/dev\/null \|\| echo "WARN/);
+  assert.doesNotMatch(src, /open\)\s+cmd_start\b/);
   assert.match(src, /\/usr\/bin\/open -a "\$APP_PATH"/);
   assert.match(src, /APP_PATH="\/Applications\/DexDiffusion\.app"/);
   assert.doesNotMatch(src, /open "\$LOCAL_URL"|open\s+"\$BASE\/dexdiffusion\//);

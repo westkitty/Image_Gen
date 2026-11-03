@@ -127,7 +127,7 @@ async function probeLauncher() {
 }
 
 
-function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale, launcher: probeLauncher }, getAssets = () => null, getEvidence = () => ({}) } = {}) {
+function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale, launcher: probeLauncher }, getAssets = () => null, getEvidence = () => ({}), getStoragePaths = () => null } = {}) {
   let cache = null;
   let cachedAt = 0;
   return async function getSystemInfo({ targets = [], build = {} } = {}) {
@@ -139,11 +139,22 @@ function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale,
     const primary = targets.find(t => t.id === SYSTEM.primaryTargetId) || null;
     const { network } = SYSTEM;
     const assets = getAssets();
+    const storagePaths = getStoragePaths();
+    // Big Mac's DEX_DATA_ROOT is working/staging storage. The user-selected
+    // canonical originals destination remains on the MacBook; no cross-host
+    // publication transport is currently wired into this service.
+    const canonicalImages = CANONICAL_IMAGE_ROOT;
+    const workingImages = storagePaths && storagePaths.imageRoot ? storagePaths.imageRoot : CANONICAL_IMAGE_ROOT;
+    const externalStorage = !!(storagePaths && storagePaths.dataRoot);
+    const publicationPending = externalStorage || workingImages !== canonicalImages;
+    const generation = publicationPending
+      ? { ...SYSTEM.generation, remoteRetention: 'pending-publication', retentionNote: `Working images remain in ${workingImages}; canonical publication to ${canonicalImages} must remain pending until a verified write and acknowledgment.` }
+      : SYSTEM.generation;
     return {
       app: { ...SYSTEM.app, version: build.version || null, gitHead: build.gitHead || null, pid: build.pid || null, startedAt: build.startedAt || null },
       primaryTarget: primary && { id: primary.id, label: primary.label, backend: primary.backend || 'sdcpp', status: primary.status },
-      generation: { ...SYSTEM.generation, remoteHost: build.sshTarget || 'westcat', route: `ssh ${build.sshTarget || 'westcat'}`, mflux: SYSTEM.mflux },
-      storage: { canonicalImages: CANONICAL_IMAGE_ROOT, rule: 'Sole durable location for generated images. Run directories keep metadata only.' },
+      generation: { ...generation, remoteHost: build.sshTarget || 'westcat', route: `ssh ${build.sshTarget || 'westcat'}`, mflux: SYSTEM.mflux },
+      storage: { canonicalImages, workingImages, publication: publicationPending ? 'pending-unverified' : 'local-canonical', rule: 'Canonical originals are written to the MacBook destination only after verified publication; Big Mac images are working or pending artifacts.' },
       network: {
         localBind: `${network.localHost}:${network.localPort}`,
         localUrl: `http://${network.localHost}:${network.localPort}${network.localPath}`,
