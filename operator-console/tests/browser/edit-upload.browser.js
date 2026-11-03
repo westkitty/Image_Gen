@@ -81,7 +81,7 @@ const toasts = page => page.evaluate(() => __dex.state.toasts.map(t => t.msg));
       assert.equal(rows.length, total, 'every installed target is listed');
       const ok = rows.filter(r => !r.disabled), no = rows.filter(r => r.disabled);
       assert.ok(ok.length >= 1 && no.length >= 1, 'some selectable, some not');
-      assert.ok(no.every(r => /text-to-image|runs on|Marked broken|missing|no .* worker/i.test(r.text)), 'every unavailable row states its reason: ' + JSON.stringify(no.slice(0, 2)));
+      assert.ok(no.every(r => /text-to-image|runs on|single-file|Marked broken|missing|no .* worker/i.test(r.text)), 'every unavailable row states its reason: ' + JSON.stringify(no.slice(0, 2)));
       await page.keyboard.press('Escape');
     });
     assert.deepEqual(errors, []);

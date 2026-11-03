@@ -39,7 +39,7 @@ const { results, test, phase, exitCode } = runner('voice-drama');
       assert.match(await page.$eval('[data-engine-caps]', e => e.textContent), /Delivery \/ performance direction/);
       await page.fill('[data-profile-render] textarea', 'word '.repeat(1200));
       await page.waitForFunction(() => /long-form/.test(document.querySelector('[data-profile-render]').innerText));
-      await page.click('[data-new-voice-button]'); await page.click('[data-new-type="preset"]'); await page.waitForSelector('[data-new-voice] select'); await page.fill('[data-new-name]', 'ZZ-UI-Preset'); await page.waitForFunction(() => __dex.vp.newForm.name === 'ZZ-UI-Preset'); await page.click('[data-create-voice]');
+      await page.click('[data-new-voice-button]'); await page.click('[data-new-type="preset"]'); await page.waitForSelector('[data-new-voice] [data-kokoro-voice]'); await page.fill('[data-new-name]', 'ZZ-UI-Preset'); await page.waitForFunction(() => __dex.vp.newForm.name === 'ZZ-UI-Preset'); await page.click('[data-create-voice]');
       await page.waitForSelector('[data-profile-editor]:has-text("ZZ-UI-Preset")');
       assert.equal(await page.isEnabled('[data-profile-render] input[placeholder*="unavailable"]'), false, 'Kokoro cannot honor direction → disabled, with explanation');
       assert.match(await page.innerText('[data-profile-render]'), /not supported by Kokoro/i);
@@ -127,7 +127,7 @@ const { results, test, phase, exitCode } = runner('voice-drama');
         r.fulfill({ json: { status: 'COMPLETE', label: 'Done', artifact: { artifact_id: 'art-own-1', url: '/api/media/none.wav', download_url: '/api/media/none.wav', duration: 1.5, sha256: 'ab'.repeat(32), meta: {} } } });
       });
       await page.evaluate(() => __dex.setScreen('voice')); await page.waitForSelector('[data-voice-profiles]'); await page.waitForFunction(() => __dex.vp && __dex.vp.profiles);
-      const mk = async name => { await page.click('[data-new-voice-button]'); await page.click('[data-new-type="preset"]'); await page.waitForSelector('[data-new-voice] select'); await page.fill('[data-new-name]', name); await page.waitForFunction(n => __dex.vp.newForm.name === n, name); await page.click('[data-create-voice]'); await page.waitForSelector(`[data-profile-editor]:has-text("${name}")`); };
+      const mk = async name => { await page.click('[data-new-voice-button]'); await page.click('[data-new-type="preset"]'); await page.waitForSelector('[data-new-voice] [data-kokoro-voice]'); await page.fill('[data-new-name]', name); await page.waitForFunction(n => __dex.vp.newForm.name === n, name); await page.click('[data-create-voice]'); await page.waitForSelector(`[data-profile-editor]:has-text("${name}")`); };
       await mk('ZZ-UI-Own-A'); await mk('ZZ-UI-Own-B');
       (await api('GET', '/api/voice/profiles')).profiles.filter(x => !existingProfiles.has(x.id) && x.name.startsWith('ZZ-UI-Own-')).forEach(x => made.profiles.push(x.id));
       // start on B (the profile created last is selected), then look at A while it runs
