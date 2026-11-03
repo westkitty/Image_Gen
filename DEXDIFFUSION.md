@@ -243,6 +243,8 @@ canonical storage → Complete; do not treat that UI stage as publication eviden
 
 ## Big Mac
 
+> **Superseded 2026-11-03 for topology:** the Node backend now runs persistently on Big Mac (`gui/503/local.dexdiffusion.server`) and keeps working images on `/Volumes/wc2tb/DexDiffusion` until the MacBook acknowledges a verified canonical copy. See *Current topology and persistent recovery* below. The bullets that follow are historical.
+
 - Route: `ssh westcat`. Expected identity is user `bigmac`, host `bigmac`
   (`ssh westcat 'whoami; hostname'`).
 - Big Mac runs the loopback-only Node backend and compute workloads. Port 31337
@@ -253,6 +255,8 @@ canonical storage → Complete; do not treat that UI stage as publication eviden
   Models, venv and caches stay by design.
 
 ## Starting, stopping, status
+
+> **2026-11-03:** on the MacBook, `start`, `open`, `restart` and the Dock app all go through the single recovery controller; the paragraph below about a MacBook-local console is historical. See *Current topology and persistent recovery*.
 
 Use `bin/dexdiffusion`. It only ever signals the process whose `/api/version`
 reports this checkout's `operator-console` directory and owns port 31337.
@@ -593,8 +597,8 @@ Application launch still performs its explicit bounded startup check.
 Policy defaults: two independently completed failures before an automatic
 repair; at least 60 seconds between episodes, exponential cooldown up to 300
 seconds plus 0–10 seconds of jitter; at most three automatic episodes in a
-rolling 15 minutes; 40 seconds for the shell repair command and 110 seconds for
-the complete remote-diagnosis/repair/verification episode; circuit reset after
+rolling 15 minutes; 105 seconds for the shell repair command (`__controller-start`)
+and 180 seconds for the complete remote-diagnosis/repair/verification episode; circuit reset after
 five minutes of continuously verified health or an explicit `recovery-retry`.
 The healthy path requires the expected backend identity and a complete Studio
 HTML body. A partial HTTP 200 is failure. The shell's Studio probe allows 15
@@ -608,7 +612,9 @@ temporarily unavailable backend is `BACKOFF`. It never restarts a Big Mac
 backend that it cannot verify healthy, never edits code/configuration or
 permissions, and never changes credentials. The Big Mac launchd service owns
 recovery from its own process exit. Canonical publication status is measured
-and reported separately and never triggers connectivity repair.
+and reported separately and never triggers connectivity repair. After a verified
+healthy probe with pending items, the controller runs `publication-sync` (own lock,
+90-second cap, 60–900-second backoff).
 
 | Evidence | Classification | Automatic action | Maximum / verification |
 | --- | --- | --- | --- |
@@ -647,3 +653,58 @@ bounded ticks; this release does not claim a physical sleep/wake soak.
 If Big Mac `/api/version` and `/dexdiffusion/` both return HTTP 200 but MacBook Studio stalls, distinguish short API connectivity from complete Studio transfer. The source recovery launcher checks the full Studio response body, verifies the exact project-owned SSH port listener before any signalling, uses bounded SSH/backend readiness verification and keepalives, and serializes recovery callers through a kernel lock. The native wrapper must not interrupt a verified Studio bootstrap merely because a helper finishes late. Browser health changes to `degraded` only after two completed failed checks and requests native recovery with a cooldown. Historical `server-error.log` contents alone are not evidence of a current backend crash. Preserve all uncommitted work, pending publication journals, and media.
 
 The November 3 source candidate's Brave/unit checks passed, but native MacBook Dock installation and long-run stability remain unverified until an explicitly fingerprinted production rollout. GitHub source publication does not itself update the installed `/Applications/DexDiffusion.app` or an unconfigured GitHub Pages website.
+
+## Current topology and persistent recovery (2026-11-03)
+
+```
+MacBook (andrew)                                   Big Mac (bigmac, Aqua session)
+/Applications/DexDiffusion.app (WKWebView)         gui/503/local.dexdiffusion.server
+  -> bin/dexdiffusion (thin adapter)                 Node backend on 127.0.0.1:31337
+  -> scripts/dexdiffusion-recovery-controller.py     MFLUX/SDCPP, resource arbiter
+     (launchd gui/501/local.dexdiffusion.recovery,   working images + publication outbox
+      every 60 s; the only recovery decision-maker)  on /Volumes/wc2tb/DexDiffusion
+  -> owned ssh -L 31337:127.0.0.1:31337 westcat  <------------------------------+
+  -> publication-sync -> /Users/andrew/images_made  (pull, verify, receipt, ACK)
+```
+
+**Storage contract.** `/Users/andrew/images_made` holds the canonical originals. A
+successful Big Mac generation writes its working copy and a durable outbox record
+(`PUBLICATION_PENDING`). The MacBook pulls it, checks size and SHA-256, links it into
+place without overwriting anything, writes a receipt under
+`~/Library/Application Support/DexDiffusion/publication-receipts/`, and POSTs an ACK.
+Only then is the record `CANONICAL_VERIFIED`. Big Mac keeps its working copy; no
+garbage collection is authorized.
+
+**Recovery controller.** One launchd tick every 60 s (and every `start`/`open`/native
+Retry) runs `scripts/dexdiffusion-recovery-controller.py` under one lock:
+
+- Healthy means a verified backend identity plus a complete Studio transfer. When
+  healthy, it changes nothing and, if anything is pending, runs `publication-sync`
+  (own lock, 90 s cap, 60–900 s backoff). Publication failures never trigger repair.
+- Repair needs two completed failed probes, an SSH-verified healthy and idle Big Mac,
+  at least 60 s cooldown and at most 3 episodes per 15 min. It replaces only the
+  project-owned tunnel, or repairs the Big Mac user service, and never touches a
+  foreign listener or active inference.
+- States are persisted in `~/Library/Application Support/DexDiffusion/recovery/state.json`
+  (log `controller.jsonl`). A corrupt file fails closed (BLOCKED); an interrupted
+  in-flight state becomes `INTERRUPTED_RECOVERY` and needs a fresh probe.
+
+```bash
+bin/dexdiffusion recovery-status          # read-only live diagnostic (JSON)
+bin/dexdiffusion recovery-retry           # explicit manual retry; resets the circuit, keeps safety checks
+bin/dexdiffusion publication-sync         # one-shot pull of pending images
+scripts/install-recovery-agent.sh install    # idempotent; refuses to overwrite a different plist
+scripts/install-recovery-agent.sh uninstall  # boots out and keeps the plist as .disabled-<stamp>
+launchctl print gui/$(id -u)/local.dexdiffusion.recovery | egrep 'state =|runs =|last exit'
+curl -fsS http://127.0.0.1:31337/api/publications/status
+```
+
+**Triage.** Status `BLOCKED` with `SSH_AUTHENTICATION_UNAVAILABLE`: fix SSH yourself;
+nothing retries keys. `FOREIGN_PORT_OWNER`: something else holds port 31337, so
+nothing is signalled. `CIRCUIT_OPEN`: three episodes failed; read `controller.jsonl`,
+then use `recovery-retry`. Publication `RETRY_BACKOFF` or a `PUBLICATION_BLOCKED`
+count: inspect the outbox record; a filename collision is never overwritten.
+
+**Limits.** Big Mac's backend needs an Aqua login, because removable-volume access
+fails from a system daemon (that daemon stays disabled). Physical reboot and logout
+persistence are configured (RunAtLoad on both agents) but not yet exercised.

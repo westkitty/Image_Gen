@@ -8,7 +8,10 @@
 // DEX_IMAGES_ROOT_OVERRIDE is honoured for tests only.
 
 const path = require('path');
+const os = require('node:os');
 const { createImageStore } = require('../image-store');
+const { resolveStoragePaths, assertDataRootMount } = require('../storage-paths');
+const { createPublicationOutbox } = require('../publication-outbox');
 
 const args = process.argv.slice(2);
 const sourceMode = args[0] === '--source';
@@ -18,7 +21,17 @@ if (!dirs.length && !sourceMode) {
   process.exit(2);
 }
 const override = process.env.DEX_IMAGES_ROOT_OVERRIDE;
-const store = createImageStore(override ? { root: override } : {});
+const paths = resolveStoragePaths(process.env);
+const crossHostPublication = !!paths.dataRoot && os.hostname().toLowerCase() === 'bigmac';
+if (crossHostPublication) assertDataRootMount(paths);
+const outbox = crossHostPublication ? createPublicationOutbox(path.join(paths.stateDir, 'publications')) : null;
+const storeOptions = paths.dataRoot
+  ? { root: paths.imageRoot, runsRoot: paths.runsDir }
+  : (override ? { root: override } : {});
+if (outbox) {
+  storeOptions.onPublished = entry => outbox.create(entry, path.join(paths.imageRoot, entry.image_id));
+}
+const store = createImageStore(storeOptions);
 let failed = false;
 if (sourceMode) {
   const opts = {};

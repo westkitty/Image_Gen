@@ -28,7 +28,6 @@ const M = require('./media');
 const { createMediaBridge, KOKORO_VOICES } = require('./media-bridge');
 const { createImageStore } = require('./image-store');
 const { createPublicationOutbox } = require('./publication-outbox');
-const { createControlledPublicationManager } = require('./controlled-publication');
 const { validateImage } = require('./image-validation');
 const { artifactReceipt, TERMINAL } = require('./job-contract');
 const { createWorldStore } = require('./world-project');
@@ -76,16 +75,18 @@ const RUNS_DIR = STORAGE_PATHS.runsDir;
 const STATE_DIR = STORAGE_PATHS.stateDir;
 const publicationOutbox = createPublicationOutbox(path.join(STATE_DIR, 'publications'));
 const crossHostPublicationEnabled = !!STORAGE_PATHS.dataRoot && !TestIsolation.enabled() && os.hostname().toLowerCase() === 'bigmac';
-const controlledPublication = createControlledPublicationManager({ runsRoot: RUNS_DIR, imageRoot: STORAGE_PATHS.imageRoot, outbox: publicationOutbox });
 const imageStore = createImageStore({ root: STORAGE_PATHS.imageRoot, runsRoot: RUNS_DIR,
   onPublished: crossHostPublicationEnabled ? entry => publicationOutbox.create(entry, path.join(STORAGE_PATHS.imageRoot, entry.image_id)) : undefined });
 imageStore.ensureRoot();
 if (crossHostPublicationEnabled) {
-  // Reconcile a bounded recent window. Controlled-generation recovery requires
-  // its versioned intent marker, exact owner, publish decision, index and bytes.
+  // Rebuild only explicitly marked new outbox entries after a crash between
+  // run-index commit and outbox commit. Historical indexes remain untouched.
   try {
-    const recovered = controlledPublication.reconcileRecent();
-    if (recovered.recovered || recovered.unresolved.length) console.log('Cross-host publication outbox reconciliation:', JSON.stringify(recovered));
+    for (const run of fs.readdirSync(RUNS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())) {
+      for (const entry of imageStore.readRunIndex(path.join(RUNS_DIR, run.name)).filter(e => e.publication && e.publication.protocol === 'macbook-pull-v1')) {
+        if (!publicationOutbox.read(entry.image_id)) publicationOutbox.create(entry, path.join(STORAGE_PATHS.imageRoot, entry.image_id));
+      }
+    }
   } catch (error) { console.error('Cross-host publication outbox reconciliation failed:', error.message); }
 }
 const CONFIG_DIR = path.join(WORKFLOW_ROOT, 'config');
@@ -610,24 +611,28 @@ const jobs = {}; // in-memory job state
 const jobSensitives = {};
 
 
+// Stable identity for the lifetime of this Node process.
+const PROCESS_STARTED_AT = new Date().toISOString();
+
+let PROCESS_GIT_HEAD = 'unknown';
+try {
+  PROCESS_GIT_HEAD = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+    cwd: path.resolve(__dirname, '..'),
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore']
+  }).trim();
+} catch (_) {}
+
 function getBuildInfo() {
-  let gitHead = 'unknown';
-  try {
-    gitHead = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
-      cwd: path.resolve(__dirname, '..'),
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore']
-    }).trim();
-  } catch (_) {}
   return {
     name: 'Image_Gen Operator Console',
     version: APP_VERSION,
-    gitHead,
+    gitHead: PROCESS_GIT_HEAD,
     pid: process.pid,
     cwd: __dirname,
     bind: `http://${HOST}:${PORT}`,
     workflowRoot: WORKFLOW_ROOT,
-    startedAt: new Date().toISOString()
+    startedAt: PROCESS_STARTED_AT
   };
 }
 
@@ -1294,14 +1299,7 @@ function syncGenericTerminal(job) {
   let st = map[job.status];
   if (!st) return;
   const g = jobStore.get(job.id);
-  if (!g || TERMINAL.has(g.status)) {
-    if (crossHostPublicationEnabled && g && g.status === 'COMPLETE' && job.status === 'PASS') {
-      try { controlledPublication.registerCompletedJob(job, g); }
-      catch (error) { console.error('Controlled publication registration deferred:', error.message); }
-    }
-    if (!holdsLease(job)) arbiter.release(job.id);
-    return;
-  }
+  if (!g || TERMINAL.has(g.status)) { if (!holdsLease(job)) arbiter.release(job.id); return; }
   const fromResults = (job.results || []).filter(r => r.imageId).map(r => r.imageId);
   const fromFields = JOB_IMAGE_FIELDS.map(field => job[field + 'Url']).filter(Boolean).map(url => decodeURIComponent(url.split('/').pop()));
   // Legacy Hi-Res/CLI/plot callers need receipts too; their images may be
@@ -1339,10 +1337,6 @@ function syncGenericTerminal(job) {
   // A terminal API state and its artifact receipt are one durable jobs.json
   // write. Flush before releasing compute or reporting the terminal event.
   try { jobStore.flush(); } catch (err) { job.stderr += `\ngeneric-job-flush: ${err.message}`; }
-  if (crossHostPublicationEnabled && st === 'COMPLETE' && job.status === 'PASS') {
-    try { controlledPublication.registerCompletedJob(job, jobStore.get(job.id)); }
-    catch (error) { console.error('Controlled publication registration deferred:', error.message); }
-  }
   if ((st === 'COMPLETE' || st === 'CANCELLED') && ids.length) {
     const acknowledged = imageStore.acknowledgePublication(job.id, ids);
     if (acknowledged.unresolved.length) console.error('Publication receipt acknowledgement unresolved:', JSON.stringify({ job_id: job.id, ...acknowledged }));
@@ -1680,13 +1674,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
   job.status = 'running';
   if (jobStore.get(jobId) && jobStore.get(jobId).status === 'QUEUED') jobStore.transition(jobId, 'RUNNING');
   job.results = job.results || [];
-  const env = {
-    ...process.env,
-    ...STORAGE_ENV,
-    SDCPP_REDACT_PROMPTS: params.save_prompts ? '0' : '1',
-    DEXDIFFUSION_JOB_ID: jobId,
-    ...(crossHostPublicationEnabled ? { DEX_PUBLICATION_OUTBOX_DIR: path.join(STATE_DIR, 'publications') } : {}),
-  };
+  const env = { ...process.env, ...STORAGE_ENV, SDCPP_REDACT_PROMPTS: params.save_prompts ? '0' : '1', DEXDIFFUSION_JOB_ID: jobId };
   const sensitives = jobSensitives[jobId] || [];
   const native = opts.native !== undefined ? opts.native : nativeBatchEligible(spec, quantity, process.env, params.fast_batch === true);
   const seeds = opts.seeds || W.planSeeds(params.seed, quantity, { consecutive: native });

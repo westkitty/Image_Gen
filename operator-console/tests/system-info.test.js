@@ -63,7 +63,7 @@ test('system-info reports primary target, canonical storage, derived capabilitie
   assert.doesNotMatch(text, /password|secret|authkey|private[_ -]?key|BEGIN [A-Z ]*KEY|hf_[A-Za-z0-9]{10}/i);
 });
 
-test('system-info separates canonical MacBook storage from Big Mac pending working images', async () => {
+test('system-info distinguishes external working images from pending MacBook publication', async () => {
   const getInfo = createSystemInfo({
     probes: {
       tailscale: async () => ({ available: false, reason: 'offline' }),
@@ -79,6 +79,8 @@ test('system-info separates canonical MacBook storage from Big Mac pending worki
   assert.equal(info.storage.workingImages, '/Volumes/wc2tb/DexDiffusion/images');
   assert.equal(info.storage.publication, 'pending-unverified');
   assert.equal(info.generation.remoteRetention, 'pending-publication');
+  assert.match(info.generation.retentionNote, /Working images remain in/);
+  assert.match(info.generation.retentionNote, /verified write and acknowledgment/);
   assert.match(info.generation.retentionNote, /canonical publication to \/Users\/andrew\/images_made must remain pending/);
   assert.doesNotMatch(info.generation.retentionNote, /Final images are stored/);
 });

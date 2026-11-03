@@ -7,10 +7,22 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { request, saveOwner } = require('../local-engine-client');
 const { createImageStore } = require('../image-store');
-const { createControlledImageStore, publishCompletedControlledRun } = require('../controlled-publication');
+const { resolveStoragePaths, assertDataRootMount } = require('../storage-paths');
+const { createPublicationOutbox } = require('../publication-outbox');
 const { adapterId, resolveLoraRuntimePolicy } = require('../lora-runtime-policy');
 const { canonicalSampler } = require('../controlled-args');
 const workflow = path.resolve(__dirname, '../../sdcpp-workflow');
+function createJobImageStore(env = process.env, host = os.hostname()) {
+  const paths = resolveStoragePaths(env);
+  const crossHostPublication = !!paths.dataRoot && host.toLowerCase() === 'bigmac';
+  if (crossHostPublication) assertDataRootMount(paths);
+  const opts = { root: paths.imageRoot, runsRoot: paths.runsDir };
+  if (crossHostPublication) {
+    const outbox = createPublicationOutbox(path.join(paths.stateDir, 'publications'));
+    opts.onPublished = entry => outbox.create(entry, path.join(paths.imageRoot, entry.image_id));
+  }
+  return createImageStore(opts);
+}
 async function publishAfterAcknowledgment({ acknowledge, publish, isStopping }) {
   const cleanup = await acknowledge();
   if (!cleanup.acknowledged || !cleanup.cleanup) throw new Error('Remote cleanup not verified');
@@ -119,13 +131,7 @@ async function main() {
       }
       throw new Error(state.error || state.status);
     }
-    const publicationEnabled = !!process.env.DEX_PUBLICATION_OUTBOX_DIR;
-    const store = createControlledImageStore({
-      createImageStore,
-      ...(process.env.DEX_IMAGES_ROOT_OVERRIDE ? { root: process.env.DEX_IMAGES_ROOT_OVERRIDE } : {}),
-      runsRoot,
-      publicationEnabled,
-    });
+    const store = createJobImageStore(process.env);
     const downloads=[];
     stagingDir=fs.mkdtempSync(path.join(os.tmpdir(),'dex-engine-transfer-'));
     const logicalOutputs=[];
@@ -137,7 +143,7 @@ async function main() {
       const temp = path.join(stagingDir, 'output-'+index+'.png');
       fs.writeFileSync(temp, data, { mode: 0o600, flag: 'wx' });
       const runFile='controlled-'+args.target+(count>1?'-b'+String(index).padStart(2,'0'):'')+'.png';
-      downloads.push({src:temp,runDir,runId,runFile,seed:seed+index,bytes:data.length,sha256:result.sha256});
+      downloads.push({src:temp,runDir,runId,runFile,seed:seed+index});
       logicalOutputs.push(path.join(runDir,runFile));
     }
     if (stopping) throw new Error('cancelled before publication');
@@ -145,16 +151,7 @@ async function main() {
     // before committing canonical images; no network await follows publication.
     const entries=await publishAfterAcknowledgment({
       acknowledge: () => owned('ack'),
-      publish: () => publishCompletedControlledRun({
-        workerState: state,
-        jobId: process.env.DEXDIFFUSION_JOB_ID,
-        runId,
-        runDir,
-        downloads,
-        store,
-        publicationEnabled,
-        isStopping: () => stopping,
-      }),
+      publish: () => store.publishFiles(downloads,runDir),
       isStopping: () => stopping,
     });
     const entry=entries[0];
@@ -181,4 +178,4 @@ if (require.main === module) main().catch(e => {
   if (!reasonPrinted) { const failure = classifyEngineError(e); console.log('First failed gate: ' + failure.gate + '\nENGINE_FAILURE_REASON: ' + failure.reason); }
   console.error('Local engine generation failed: ' + e.message); process.exitCode = 1;
 });
-module.exports = { parse, publishAfterAcknowledgment, classifyEngineError };
+module.exports = { parse, publishAfterAcknowledgment, classifyEngineError, createJobImageStore };
