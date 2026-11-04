@@ -59,6 +59,20 @@ test('job-owned publication journal stays recoverable until its exact durable re
   assert.equal(acknowledged.acknowledged, 1);
   assert.equal(fs.existsSync(path.join(store.root, journal)), false);
 });
+test('a later job can close a journal in an older run only once that run\'s owner has finished', t => {
+  const { run, store } = fixture(t, undefined, { owner: true });
+  const [entry] = store.finalizeRun(run);
+  const journal = fs.readdirSync(store.root).find(n => /^\.pending-.*\.json$/.test(n));
+  const LATER = '22222222-2222-4222-8222-222222222222';
+  assert.equal(store.acknowledgePublication(LATER, [entry.image_id], { ownerFinished: () => false }).acknowledged, 0);
+  assert.ok(fs.existsSync(path.join(store.root, journal)), 'a running owner keeps its journal');
+  fs.appendFileSync(path.join(store.root, entry.image_id), 'changed');
+  assert.equal(store.acknowledgePublication(LATER, [entry.image_id], { ownerFinished: () => true }).acknowledged, 0);
+  assert.ok(fs.existsSync(path.join(store.root, journal)), 'bytes that no longer match keep the journal');
+  fs.writeFileSync(path.join(store.root, entry.image_id), PNG);
+  assert.equal(store.acknowledgePublication(LATER, [entry.image_id], { ownerFinished: () => true }).acknowledged, 1);
+  assert.equal(fs.existsSync(path.join(store.root, journal)), false);
+});
 test('owned transformed canonical copy preserves original on metadata failure', t => {
   const { run, store } = fixture(t); const [entry] = store.finalizeRun(run);
   const failing = createImageStore({ root: store.root, fault: p => { if (p === 'before-metadata') throw new Error('owned transform fault'); } });

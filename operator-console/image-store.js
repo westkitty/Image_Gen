@@ -381,7 +381,7 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
   function publishFile(src, { runDir, runId = path.basename(runDir), seed, runFile = path.basename(src) }) {
     return publishFiles([{ src, runId, seed, runFile }], runDir)[0];
   }
-  function acknowledgePublication(jobId, artifactIds) {
+  function acknowledgePublication(jobId, artifactIds, { ownerFinished } = {}) {
     const wanted = new Set(artifactIds || []);
     const result = { acknowledged: 0, unresolved: [] };
     if (!jobId || !wanted.size) return result;
@@ -392,7 +392,9 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
       const entries = (journal.entries || []).filter(e => wanted.has(e.image_id));
       if (!entries.length) continue;
       const owner = readRunOwner(journal.run_dir), index = readRunIndex(journal.run_dir);
-      if (!owner || owner.job_id !== jobId || entries.some(e => e.job_id !== jobId || !index.some(i => i.job_id === jobId && i.image_id === e.image_id && i.sha256 === e.sha256))) {
+      // Upscale and transform publish into the run folder of the job that made their source. That job is long finished and will never acknowledge them.
+      const receiptJob = owner && owner.job_id !== jobId && ownerFinished && ownerFinished(owner.job_id) ? owner.job_id : jobId;
+      if (!owner || owner.job_id !== receiptJob || entries.some(e => e.job_id !== receiptJob || !index.some(i => i.job_id === receiptJob && i.image_id === e.image_id && i.sha256 === e.sha256))) {
         result.unresolved.push({ journal: name, reason: 'receipt-owner-or-index-mismatch' }); continue;
       }
       try {

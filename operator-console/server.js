@@ -1392,7 +1392,9 @@ function syncGenericTerminal(job) {
   // write. Flush before releasing compute or reporting the terminal event.
   try { jobStore.flush(); } catch (err) { job.stderr += `\ngeneric-job-flush: ${err.message}`; }
   if ((st === 'COMPLETE' || st === 'CANCELLED') && ids.length) {
-    const acknowledged = imageStore.acknowledgePublication(job.id, ids);
+    const acknowledged = imageStore.acknowledgePublication(job.id, ids, {
+      ownerFinished: id => { const owner = jobStore.get(id); return !(jobs[id] && ['queued', 'running', 'pending', 'starting', 'cancelling'].includes(jobs[id].status)) && (!owner || TERMINAL.has(owner.status)); },
+    });
     if (acknowledged.unresolved.length) console.error('Publication receipt acknowledgement unresolved:', JSON.stringify({ job_id: job.id, ...acknowledged }));
   }
   if (!holdsLease(job)) arbiter.release(job.id);
