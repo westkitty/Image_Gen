@@ -36,6 +36,7 @@ const { createAsset3dBridge } = require('./asset3d-bridge');
 const { buildRepairRecord } = require('./import-provenance-repair');
 const { exportAssetPackage } = require('./asset-package');
 const { createSystemInfo } = require('./system-info');
+const { createMacbookImages, sweepImagesHeldOnMacbook } = require('./macbook-images');
 const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime, targetVerification } = require('./capabilities');
 const { rulesForTarget, validateDimensions } = require('./dimension-policy');
 const { enhancePrompt: runPromptEnhance, extractProtectedLiterals } = require('./prompt-enhancement');
@@ -77,9 +78,37 @@ const RUNS_DIR = STORAGE_PATHS.runsDir;
 const STATE_DIR = STORAGE_PATHS.stateDir;
 const publicationOutbox = createPublicationOutbox(path.join(STATE_DIR, 'publications'));
 const crossHostPublicationEnabled = !!STORAGE_PATHS.dataRoot && !TestIsolation.enabled() && os.hostname().toLowerCase() === 'bigmac';
-const imageStore = createImageStore({ root: STORAGE_PATHS.imageRoot, runsRoot: RUNS_DIR,
+const macbookImages = crossHostPublicationEnabled || process.env.DEX_MACBOOK_IMAGES_URL
+  ? createMacbookImages({ baseUrl: process.env.DEX_MACBOOK_IMAGES_URL || 'http://127.0.0.1:31338', manifestFile: path.join(STATE_DIR, 'macbook-images.json') }) : null;
+const imageStore = createImageStore({ root: STORAGE_PATHS.imageRoot, runsRoot: RUNS_DIR, macbookImages,
+  onReplaced: crossHostPublicationEnabled ? (imageId, facts) => {
+    const record = publicationOutbox.read(imageId);
+    if (record && record.state !== 'CANONICAL_VERIFIED') publicationOutbox.update(imageId, facts);
+  } : undefined,
   onPublished: crossHostPublicationEnabled ? entry => publicationOutbox.create(entry, path.join(STORAGE_PATHS.imageRoot, entry.image_id)) : undefined });
 imageStore.ensureRoot();
+let publishedMissingFromMacbook = 0;
+// Any job that may still read an image, its source or its output holds removal back.
+function anyJobActive() {
+  const active = j => ['queued', 'running', 'pending', 'starting', 'cancelling'].includes(j.status);
+  return Object.values(jobs).some(active) || jobStore.list({ limit: 500 }).some(active);
+}
+function pruneOldThumbnails() {
+  const dir = path.join(STATE_DIR, 'thumbnails'), oldest = Date.now() - 24 * 60 * 60 * 1000;
+  let names = []; try { names = fs.readdirSync(dir); } catch (_) { return; }
+  for (const name of names) { const file = path.join(dir, name); try { if (fs.statSync(file).mtimeMs < oldest) fs.unlinkSync(file); } catch (_) {} }
+}
+if (macbookImages) {
+  let refreshes = 0;
+  macbookImages.setOnRefresh(() => {
+    if (!crossHostPublicationEnabled || ++refreshes % 6 !== 1) return;
+    const result = sweepImagesHeldOnMacbook({ records: publicationOutbox.all(), store: imageStore, images: macbookImages, busy: anyJobActive() });
+    publishedMissingFromMacbook = result.missing;
+    pruneOldThumbnails();
+    if (result.removed) console.error('Removed ' + result.removed + ' Big Mac image(s) the MacBook verifiably holds');
+  });
+  macbookImages.start();
+}
 if (crossHostPublicationEnabled) {
   // Rebuild only explicitly marked new outbox entries after a crash between
   // run-index commit and outbox commit. Historical indexes remain untouched.
@@ -177,7 +206,10 @@ app.get('/api/publications/status', (_req, res) => {
 });
 app.get('/api/publications/pending', (req, res) => {
   const limit = Math.max(1, Math.min(8, Number(req.query.limit) || 8));
-  res.json({ items: crossHostPublicationEnabled ? publicationOutbox.all().filter(r => ['PUBLICATION_PENDING', 'PUBLICATION_FAILED_RETRYABLE'].includes(r.state)).slice(0, limit).map(({ image_id, expected_bytes, sha256, state }) => ({ image_id, expected_bytes, sha256, state })) : [] });
+  // An image a job still owns can yet change (a composite rewrites it), so it is not offered until the job has finished.
+  const held = imageStore.journalHeldIds();
+  if (crossHostPublicationEnabled && !held) return res.json({ items: [] });
+  res.json({ items: crossHostPublicationEnabled ? publicationOutbox.all().filter(r => ['PUBLICATION_PENDING', 'PUBLICATION_FAILED_RETRYABLE'].includes(r.state) && !held.has(r.image_id)).slice(0, limit).map(({ image_id, expected_bytes, sha256, state }) => ({ image_id, expected_bytes, sha256, state })) : [] });
 });
 app.get('/api/publications/:id/content', (req, res) => {
   if (!crossHostPublicationEnabled) return res.sendStatus(404);
@@ -209,6 +241,8 @@ app.post('/api/publications/:id/failure', (req, res) => {
   if (!crossHostPublicationEnabled) return res.sendStatus(404);
   const record = publicationOutbox.read(req.params.id);
   if (!record) return res.sendStatus(404);
+  // A worker that lost the acknowledgment's reply reports a failure for a copy already proven; proof is not undone.
+  if (record.state === 'CANONICAL_VERIFIED') return res.json({ state: record.state });
   const blocked = req.body && req.body.code === 'destination-conflict';
   const updated = publicationOutbox.update(record.image_id, { state: blocked ? 'PUBLICATION_BLOCKED' : 'PUBLICATION_FAILED_RETRYABLE', attempts: record.attempts + 1, last_failure_code: blocked ? 'destination-conflict' : 'transfer-or-commit-failed' });
   res.json({ state: updated.state });
@@ -2115,7 +2149,7 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   const hiresError = validateHiresFields(spec, params);
   if (hiresError) return hiresError;
   if (!['txt2img', 'variation', 'seed-lab', 'prompt-ab', 'batch'].includes(params.operation)) return 'Invalid operation';
-  if (params.parent_image_id && !imageStore.resolveImage(params.parent_image_id)) return 'parent_image_id is not a canonical image';
+  if (params.parent_image_id && !imageStore.hasImage(params.parent_image_id)) return 'parent_image_id is not a canonical image';
   if (W.isFixedSeedValue(params.seed) && parseInt(params.seed, 10) + (params.quantity || 1) - 1 > W.MAX_SEED) return 'seed + quantity exceeds the maximum seed';
   const loraRoute = resolveLoraRuntimePolicy({ ...params, steps: steps, cfg_scale: cfgScale });
   if (!loraRoute.ok) return loraRoute.error;
@@ -4281,23 +4315,25 @@ app.post('/api/actions/outpaint', (req, res) => {
 
 // ---- Image lineage + Keepers (metadata only; images are never copied) --------
 function imageView(id) {
-  const img = imageStore.resolveImage(id);
-  if (!img) return null;
+  const onMacbook = imageStore.macbookInfo(id);
+  const img = onMacbook ? null : imageStore.resolveImage(id);
+  if (!onMacbook && !img) return null;
   const src = imageSourceMap().get(id) || null;
   // Filename equality is not image identity. Only enrich from run metadata when
   // the current bytes match the digest recorded at canonical publication.
   const recordedMeta = imageMeta.get(id) || {};
   const expectedIdentity = src && src.sha256;
-  const digest = expectedIdentity ? currentImageDigest(img.path) : null;
+  const digestNow = () => onMacbook ? onMacbook.sha256 : currentImageDigest(img.path);
+  const digest = expectedIdentity ? digestNow() : null;
   const meta = expectedIdentity && digest === expectedIdentity ? recordedMeta
-    : recordedMeta.keeper_identity_sha256 && currentImageDigest(img.path) === recordedMeta.keeper_identity_sha256 ? { keeper: true } : {};
-  const dims = pngSize(img.path) || {};
+    : recordedMeta.keeper_identity_sha256 && digestNow() === recordedMeta.keeper_identity_sha256 ? { keeper: true } : {};
+  const dims = onMacbook ? onMacbook : pngSize(img.path) || {};
   return {
-    id, url: imageStore.imageUrl(id), path: img.path, width: dims.width, height: dims.height,
+    id, url: imageStore.imageUrl(id), path: onMacbook ? path.join('/Users/andrew/images_made', id) : img.path, width: dims.width, height: dims.height,
     runId: meta.runId || (src && src.runId) || null, keeper: !!meta.keeper, meta,
-    parent: meta.parent && imageStore.resolveImage(meta.parent) ? meta.parent : null,
-    children: imageMeta.children(id).filter(c => imageStore.resolveImage(c)),
-    ancestors: imageMeta.ancestors(id).filter(c => imageStore.resolveImage(c)),
+    parent: meta.parent && imageStore.hasImage(meta.parent) ? meta.parent : null,
+    children: imageMeta.children(id).filter(c => imageStore.hasImage(c)),
+    ancestors: imageMeta.ancestors(id).filter(c => imageStore.hasImage(c)),
   };
 }
 app.get('/api/images/:id/meta', (req, res) => {
@@ -4395,7 +4431,11 @@ app.post('/api/images/export', async (req, res) => {
   if (b.pattern != null && (typeof b.pattern !== 'string' || b.pattern.length > ExportService.LIMITS.maxPatternLength)) return res.status(400).json({ error: 'pattern must be a string up to 256 characters' });
   if (b.metadata != null && !['none', 'infotext'].includes(b.metadata)) return res.status(400).json({ error: 'metadata must be none or infotext' });
   const views = [];
-  for (const id of b.ids) { const v = imageView(id); if (!v) return res.status(404).json({ error: `Image not found: ${id}` }); views.push(v); }
+  for (const id of b.ids) {
+    const v = imageView(id), file = v && imageStore.resolveImage(id);
+    if (!file) return res.status(v ? 503 : 404).json({ error: v ? `The MacBook is unavailable, so ${id} cannot be read` : `Image not found: ${id}` });
+    views.push({ ...v, path: file.path });
+  }
   if (exportBusy) return res.status(429).json({ error: 'Another export is running; try again when it finishes.' });
   exportBusy = true;
   try {
@@ -4410,15 +4450,16 @@ app.post('/api/images/export', async (req, res) => {
   } finally { exportBusy = false; }
 });
 app.post('/api/images/:id/keeper', (req, res) => {
-  const image = imageStore.resolveImage(req.params.id);
-  if (!image) return res.status(404).json({ error: 'Image not found' });
-  const keeper = imageMeta.setKeeper(req.params.id, !!(req.body && req.body.keeper), currentImageDigest(image.path));
+  const onMacbook = imageStore.macbookInfo(req.params.id);
+  const image = onMacbook ? null : imageStore.resolveImage(req.params.id);
+  if (!onMacbook && !image) return res.status(404).json({ error: 'Image not found' });
+  const keeper = imageMeta.setKeeper(req.params.id, !!(req.body && req.body.keeper), onMacbook ? onMacbook.sha256 : currentImageDigest(image.path));
   res.json({ id: req.params.id, keeper });
 });
 // Metadata-only flag for known test/regression artifacts: the file is never
 // moved, copied or deleted; flagged images are hidden from default Library views.
 app.post('/api/images/:id/test-artifact', (req, res) => {
-  if (!imageStore.resolveImage(req.params.id)) return res.status(404).json({ error: 'Image not found' });
+  if (!imageStore.hasImage(req.params.id)) return res.status(404).json({ error: 'Image not found' });
   const on = !!(req.body && req.body.test_artifact);
   const note = on ? String((req.body && req.body.note) || 'test artifact').slice(0, 200) : '';
   const cur = imageMeta.get(req.params.id) || {};
@@ -4525,12 +4566,13 @@ let sourceBrowserCache = { at: 0, ids: [], views: new Map() };
 // page, not for every historical image on every search keystroke.
 // Retain imageView's exact digest/keeper identity trust rule.
 function sourceBrowserRecord(id, sourceMap) {
-  const img = imageStore.resolveImage(id);
-  if (!img) return null;
+  const onMacbook = imageStore.macbookInfo(id);
+  const img = onMacbook ? null : imageStore.resolveImage(id);
+  if (!onMacbook && !img) return null;
   const src = sourceMap.get(id) || null;
   const recordedMeta = imageMeta.get(id) || {};
   const expected = src && src.sha256;
-  const current = (expected || recordedMeta.keeper_identity_sha256) ? currentImageDigest(img.path) : null;
+  const current = !(expected || recordedMeta.keeper_identity_sha256) ? null : onMacbook ? onMacbook.sha256 : currentImageDigest(img.path);
   const meta = expected && current === expected ? recordedMeta :
     recordedMeta.keeper_identity_sha256 && current === recordedMeta.keeper_identity_sha256 ? { keeper: true } : {};
   return {
@@ -4571,7 +4613,7 @@ function queryLibraryImages(query) {
   const offset = Math.max(0, parseInt(query.offset, 10) || 0);
   const items = ids.slice(offset, offset + limit).map(imageView).filter(Boolean)
     .map(v => ({ ...v, thumbnailUrl: `/api/thumbnails/${encodeURIComponent(v.id)}`, downloadUrl: `/api/images/${encodeURIComponent(v.id)}/export` }));
-  return { filter, total: ids.length, offset, limit, items };
+  return { filter, total: ids.length, offset, limit, items, ...(macbookImages ? { macbook: macbookImages.isReachable() ? 'reachable' : 'unreachable', macbookMissing: publishedMissingFromMacbook } : {}) };
 }
 app.get('/api/library/images', (req, res) => {
   const { ids, ...query } = req.query; // ids is accepted only through the POST below.
@@ -5459,6 +5501,7 @@ app.post('/api/library/rebuild', (req, res) => {
 // ---- F04: Thumbnail Route ----------------------------------------------------
 app.get('/api/thumbnails/:id', (req, res) => {
   const imageId = req.params.id;
+  if (macbookImages && macbookImages.has(imageId)) return macbookImages.stream('thumbnails', imageId, res, () => res.status(503).send('MacBook unavailable'));
   // Security: verify image belongs to imageStore
   const canonical = imageStore.resolveImage(imageId);
   if (!canonical) return res.status(404).send('Image not found in canonical store');
@@ -6200,8 +6243,8 @@ app.get('/api/run-file', (req, res) => {
   if (!fs.existsSync(fullPath)) {
     // Generated images live in the canonical root; the run dir keeps only a reference.
     const [runId, ...rest] = relPath.split(path.sep);
-    const hit = safeRunId(runId) && rest.length ? imageStore.resolveRunImage(path.join(RUNS_DIR, runId), rest.join('/')) : null;
-    if (hit) return res.redirect(302, hit.url);
+    const entry = safeRunId(runId) && rest.length ? imageStore.findIndexEntry(path.join(RUNS_DIR, runId), rest.join('/')) : null;
+    if (entry && imageStore.hasImage(entry.image_id)) return res.redirect(302, imageStore.imageUrl(entry.image_id));
     return res.status(404).send('File not found');
   }
   // Lexical containment alone permits symlinks into private files outside
@@ -6220,6 +6263,7 @@ app.get('/api/run-file', (req, res) => {
 
 // Canonical generated images. Only plain filenames inside the fixed root are served.
 app.get('/api/images/:id', (req, res) => {
+  if (imageStore.macbookInfo(req.params.id)) return macbookImages.stream('images', req.params.id, res, () => res.status(503).send('MacBook unavailable'));
   const img = imageStore.resolveImage(req.params.id);
   if (!img) return res.status(404).send('Image not found');
   res.set('X-Content-Type-Options', 'nosniff');

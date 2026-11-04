@@ -1008,7 +1008,7 @@
     const items = r.ok && r.data && Array.isArray(r.data.items) ? r.data.items : [];
     const total = r.ok && r.data && Number.isFinite(r.data.total) ? r.data.total : items.length;
     const malformed = r.ok && !(r.data && Array.isArray(r.data.items));
-    this.wsSet({ lib: Object.assign({}, this._ws().lib, { items, total, loading: false,
+    this.wsSet({ lib: Object.assign({}, this._ws().lib, { items, total, loading: false, macbook: r.ok && r.data ? r.data.macbook : undefined, macbookMissing: r.ok && r.data ? r.data.macbookMissing : 0,
       error: !r.ok ? 'Could not load the Library' : malformed ? 'The Library returned an unexpected response, so no images are shown.' : null }) });
   };
   // Full-size viewer over the ACTIVE (filtered + sorted) collection, not just the visible page.
@@ -1142,6 +1142,8 @@
     return h('div', { 'data-lib-pager': 'true', style: Object.assign({}, css.row, { marginTop: 8 }) },
       btn('◀ Previous page', () => go(Math.max(0, lib.offset - size)), '#94a3b8', { disabled: lib.offset <= 0 || lib.loading, 'data-lib-page': 'prev' }),
       h('span', { 'data-lib-range': from + '-' + to + '/' + lib.total, 'aria-live': 'polite', style: css.muted }, 'Showing ' + from + '–' + to + ' of ' + lib.total),
+      lib.macbook === 'unreachable' ? h('span', { 'data-lib-macbook': 'unreachable', role: 'status', style: { fontSize: 11, color: '#fbbf24' } }, 'MacBook unreachable: images kept there cannot open until it is back.') : null,
+      lib.macbookMissing > 0 ? h('span', { 'data-lib-macbook-missing': lib.macbookMissing, role: 'status', style: { fontSize: 11, color: '#fbbf24' } }, lib.macbookMissing + ' copied image' + (lib.macbookMissing === 1 ? ' is' : 's are') + ' no longer in images_made on the MacBook.') : null,
       btn('Next page ▶', () => go(lib.offset + size), '#94a3b8', { disabled: lib.offset + lib.items.length >= lib.total || lib.loading, 'data-lib-page': 'next' }));
   };
   P.buildLibraryWorkbench = function () {

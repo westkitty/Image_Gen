@@ -62,7 +62,7 @@ function fsyncDirectory(dir) {
   try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 }
 
-function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANONICAL_IMAGE_ROOT), runsRoot = path.resolve(__dirname, '../sdcpp-workflow/runs'), fault, onPublished } = {}) {
+function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANONICAL_IMAGE_ROOT), runsRoot = path.resolve(__dirname, '../sdcpp-workflow/runs'), fault, onPublished, onReplaced, macbookImages = null } = {}) {
   const rootDir = path.resolve(root);
   const runsRootDir = path.resolve(runsRoot);
   const inventoryCache = new Map();
@@ -78,10 +78,57 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
     if (!SAFE_IMAGE_ID.test(id) || !isImageName(id)) return null;
     const full = path.resolve(rootDir, id);
     if (path.dirname(full) !== rootDir) return null;
+    const contentType = IMAGE_CONTENT_TYPES[path.extname(id).toLowerCase()];
     let st;
-    try { st = fs.lstatSync(full); } catch (_) { return null; }
+    try { st = fs.lstatSync(full); } catch (_) {
+      // Not kept here: bring it back under its own name for the work that needs a file. The sweep removes it when idle.
+      if (!macbookImages || pendingImageIds().has(id) || !macbookImages.fetchInto(id, full)) return null;
+      return { id, path: full, contentType };
+    }
     if (!st.isFile() || pendingImageIds().has(id)) return null;
-    return { id, path: full, contentType: IMAGE_CONTENT_TYPES[path.extname(id).toLowerCase()] };
+    return { id, path: full, contentType };
+  }
+
+  function isKeptHere(id) {
+    if (typeof id !== 'string' || !SAFE_IMAGE_ID.test(id) || !isImageName(id)) return false;
+    const full = path.join(rootDir, id);
+    try { return path.dirname(full) === rootDir && fs.lstatSync(full).isFile(); } catch (_) { return false; }
+  }
+  // Facts about an image held only on the MacBook, without downloading it. Null when the image is kept here.
+  function macbookInfo(id) {
+    return macbookImages && !isKeptHere(id) && !pendingImageIds().has(id) ? macbookImages.info(id) : null;
+  }
+  // Whether an image exists, without fetching it.
+  function hasImage(id) {
+    return macbookInfo(id) ? true : !pendingImageIds().has(id) && isKeptHere(id);
+  }
+  // Every image a publication journal still lists, in any phase. Null when a journal cannot be read: nothing is then safe to remove.
+  function journalHeldIds() {
+    const held = new Set(pendingImageIds());
+    let names;
+    try { names = fs.readdirSync(rootDir).filter(n => /^\.pending-.*\.json$/.test(n)); } catch (_) { return null; }
+    for (const name of names) {
+      try {
+        const j = JSON.parse(fs.readFileSync(path.join(rootDir, name), 'utf8'));
+        for (const id of j.image_ids || []) held.add(id);
+        for (const r of j.image_records || []) held.add(r.image_id);
+        for (const id of Object.keys(j.entries || {})) held.add(id);
+        if (j.image_id) held.add(j.image_id);
+      } catch (_) { return null; }
+    }
+    return held;
+  }
+  function localFileNames() {
+    try { return fs.readdirSync(rootDir).filter(n => (isImageName(n) && !n.startsWith('.')) || n.startsWith('.macbook-')); } catch (_) { return []; }
+  }
+  // The caller has proven the MacBook holds this image. A job that still owns it keeps it until the job has finished.
+  function removeAfterPublication(id) {
+    if (!macbookImages || !isKeptHere(id)) return false;
+    const held = journalHeldIds();
+    if (!held || held.has(id)) return false;
+    fs.unlinkSync(path.join(rootDir, id));
+    inventoryCache.delete(id);
+    return true;
   }
 
   // Refreshes a bounded, one-level inventory. Image decoding is cached against
@@ -111,6 +158,7 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
     changed.forEach((x, i) => inventoryCache.set(x.id, { signature: x.signature, valid: !!(inspected[i] && inspected[i].valid) }));
     const active = new Set(candidates.filter(x => typeof x === 'string').concat(changed.filter((x, i) => inspected[i] && inspected[i].valid).map(x => x.id)));
     for (const id of inventoryCache.keys()) if (!active.has(id) && !names.some(e => e.name === id)) inventoryCache.delete(id);
+    if (macbookImages) for (const id of macbookImages.ids()) if (SAFE_IMAGE_ID.test(id) && isImageName(id) && !pending.has(id)) active.add(id);
     return [...active].sort((a, b) => a.localeCompare(b));
   }
 
@@ -221,7 +269,8 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
         const base = canonicalBaseName(row);
         for (let i = 1; i < 1000; i++) {
           const id = base + (i > 1 ? '-' + i : '') + path.extname(row.src).toLowerCase();
-          if (fs.existsSync(path.join(rootDir, id))) continue;
+          // A name once used stays used, even after the image has left for the MacBook.
+          if (fs.existsSync(path.join(rootDir, id)) || (macbookImages && macbookImages.has(id)) || images.some(e => e.image_id === id)) continue;
           const inode = fs.statSync(row.incoming);
           const entry = { run_file: row.runFile, run_id: path.basename(runDir), image_id: id, image_path: path.join(rootDir, id), image_url: imageUrl(id), ...row.validation, published_at: new Date().toISOString() };
           if (onPublished) entry.publication = { state: 'PUBLICATION_PENDING', protocol: 'macbook-pull-v1' };
@@ -401,6 +450,7 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
       writeRunIndex(runDir, images.map(e => e === entry ? updated : e)); committed = true;
       fs.unlinkSync(journal);
       syncOwningJournals(runDir, imageId, validation, journal, original.path);
+      if (onReplaced) { const st = fs.lstatSync(original.path); onReplaced(imageId, { expected_bytes: st.size, sha256: updated.sha256, dev: st.dev, ino: st.ino }); }
       return updated;
     } catch (err) { if (replaced && !committed) { fs.renameSync(backup, original.path); restored = true; } throw err; }
     finally {
@@ -487,6 +537,8 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
       const file = safe ? path.join(rootDir, image_id) : null;
       let st; try { if (file) st = fs.lstatSync(file); } catch (_) {}
       const row = { image_id, path: file, inspected_at, owners, reference_state: owners.length ? 'referenced' : 'unreferenced', known_digests: [...new Set(owners.map(r => r.sha256).filter(Boolean))], state: safe ? (st ? 'valid' : 'missing') : 'broken', sha256: null, bytes: null };
+      const held = !st && macbookImages ? macbookImages.info(image_id) : null;
+      if (held) { row.state = 'valid'; row.bytes = held.bytes; row.sha256 = held.sha256; row.held_on = 'macbook'; }
       if (st && !st.isFile()) { row.state = 'broken'; row.reason = 'not-regular-file'; }
       if (st && st.isFile()) { row.bytes = st.size; row.sha256 = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); row.decode = true; }
       return row;
@@ -592,13 +644,20 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
   }
 
   function listRunImageNames(runDir) {
-    return readRunIndex(runDir).filter(e => resolveImage(e.image_id)).map(e => e.run_file);
+    return readRunIndex(runDir).filter(e => hasImage(e.image_id)).map(e => e.run_file);
   }
 
   return {
     root: rootDir,
     ensureRoot,
     resolveImage,
+    hasImage,
+    isKeptHere,
+    journalHeldIds,
+    localFileNames,
+    findIndexEntry,
+    macbookInfo,
+    removeAfterPublication,
     listCanonicalImages,
     imageUrl,
     adoptFile,
