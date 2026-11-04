@@ -154,6 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var activeNavigation: WKNavigation?
     private var navigationToken = 0
     private var startupWatchdogPolicy = StartupWatchdogPolicy()
+    private var studioLoadStartedAt = Date()
     private var bootstrapRetryCount = 0
     private var reconnectAttempts = 0
     private var pendingReconnectAfterStartup = false
@@ -232,6 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         studioVerified = false
         startupWatchdogPolicy.reset()
         navigationToken += 1
+        studioLoadStartedAt = Date()
         let token = navigationToken
         setStatus("Loading DexDiffusion at \(consoleURL.absoluteString)...")
         var request = URLRequest(url: consoleURL)
@@ -250,6 +252,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     private func finishStartupWatchdog(for webView: WKWebView, token: Int) {
+        // The SSH HTML probe does not measure WebKit's complete script transfer.
+        // A cold Studio can exceed the ordinary watchdog window on a slow link.
+        // Keep that navigation alive, but never wait indefinitely on a stalled load.
+        guard self.webView === webView, token == navigationToken, !studioVerified else { return }
+        if webView.isLoading && Date().timeIntervalSince(studioLoadStartedAt) < 180 {
+            setStatus("Studio is still loading over the private connection…")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self, weak webView] in
+                guard let self = self, let webView = webView else { return }
+                self.finishStartupWatchdog(for: webView, token: token)
+            }
+            return
+        }
         let decision = startupWatchdogPolicy.evaluate(callbackToken: token, currentToken: navigationToken,
             webViewIsCurrent: self.webView === webView, studioVerified: studioVerified,
             startupIsProgressing: serviceStartupInProgress || webView.isLoading)
