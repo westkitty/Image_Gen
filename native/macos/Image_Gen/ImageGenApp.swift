@@ -122,6 +122,15 @@ private final class OutputFolderBridge: NSObject, WKScriptMessageHandlerWithRepl
         }
         let path = URL(fileURLWithPath: requested).standardizedFileURL.path
         let images = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("images_made").path
+        if body["action"] as? String == "reveal" {
+            guard let id = body["id"] as? String, !id.isEmpty, !id.hasPrefix("."), !id.contains("/"), !id.contains("\\"), ["png", "jpg", "jpeg", "webp", "gif"].contains(URL(fileURLWithPath: id).pathExtension.lowercased()) else { replyHandler(nil, "Invalid image identity"); return }
+            let root = URL(fileURLWithPath: images).resolvingSymlinksInPath()
+            let file = root.appendingPathComponent(id).resolvingSymlinksInPath()
+            guard root.path == images, file.deletingLastPathComponent() == root, FileManager.default.fileExists(atPath: file.path) else { replyHandler(nil, "Image missing or outside canonical store"); return }
+            NSWorkspace.shared.activateFileViewerSelecting([file])
+            replyHandler("requested", nil)
+            return
+        }
         let onDrive = path.hasPrefix(Self.dataRoot + "/")
         guard path == images || onDrive else {
             replyHandler(nil, "Refused: not an output folder")

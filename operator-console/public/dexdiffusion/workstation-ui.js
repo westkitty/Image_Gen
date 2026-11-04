@@ -970,10 +970,13 @@
     return this._libTags.store;
   };
   P._libSetTagStore = function (store) {
+    if (!this._libTags.loaded || this._libTags.saving || this._libTags.where === 'unavailable') return;
+    this._libTags.saving = true; this._libTags.feedback = 'Saving…';
     const before = this._libTags.store;
     this._libTags.store = store;
     this.wsSet({ lib: Object.assign({}, this._ws().lib) });
-    window.DexLibraryTags.save(store).then(where => { this._libTags.where = where; }).catch(err => {
+    window.DexLibraryTags.save(store).then(where => { this._libTags.where = where; this._libTags.saving = false; this._libTags.feedback = 'Saved'; this.wsSet({ lib: Object.assign({}, this._ws().lib) }); }).catch(err => {
+      this._libTags.saving = false; this._libTags.feedback = 'Save Failed';
       this._libTags.store = before;
       this.wsSet({ lib: Object.assign({}, this._ws().lib) });
       this.toast('Tag not saved: ' + (err && err.message || err), '#ef4444');
@@ -992,12 +995,12 @@
     const T = window.DexLibraryTags, store = this._libTagStore(), tags = T.tagsFor(store, id);
     const add = input => { if (!T.parseTagInput(input.value).length) return; this._libSetTagStore(T.addTags(this._libTags.store, id, input.value)); input.value = ''; };
     return h('div', { 'data-lib-tag-editor': id, style: Object.assign({}, css.row, { flexWrap: 'wrap' }) },
-      h('span', { style: css.label }, 'Tags'),
+      h('span', { role: 'status', 'aria-live': 'polite' }, this._libTags.feedback || 'Tags'),
       ...tags.map(tag => h('span', { key: tag, 'data-lib-image-tag': tag, style: { display: 'inline-flex', alignItems: 'center', gap: 2, border: '1px solid rgba(56,189,248,.35)', borderRadius: 999, padding: '1px 3px 1px 9px', fontSize: 11, color: '#7dd3fc' } }, tag,
         h('button', { type: 'button', 'aria-label': 'Remove tag ' + tag, onClick: () => this._libSetTagStore(T.removeTag(this._libTags.store, id, tag)), style: { border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', minWidth: 22, minHeight: 22, fontWeight: 700 } }, '×'))),
-      h('input', { type: 'text', placeholder: 'Add tags, separated by commas', 'aria-label': 'Add tags to ' + id, 'data-lib-tag-input': id, style: Object.assign({}, css.input, { flex: '1 1 180px', minHeight: 30 }),
+      h('input', { type: 'text', disabled: !this._libTags.loaded || this._libTags.saving || this._libTags.where === 'unavailable', placeholder: 'Add tags, separated by commas', 'aria-label': 'Add tags to ' + id, 'data-lib-tag-input': id, style: Object.assign({}, css.input, { flex: '1 1 180px', minHeight: 30 }),
         onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); add(e.target); } }, onBlur: e => add(e.target) }),
-      h('span', { style: css.muted }, this._libTags.where === 'mac' ? 'Saved on this Mac in images_made' : this._libTags.where === 'unavailable' ? 'Not saving: library-tags.json could not be read' : 'Saved in this browser'));
+      h('span', { style: css.muted }, this._libTags.where === 'mac' ? 'Storage: this Mac · images_made/library-tags.json' : this._libTags.where === 'unavailable' ? 'Not saving: library-tags.json could not be read' : 'Storage: this browser'));
   };
   P.loadLibraryImages = async function (filter, offset) {
     const ws = this._ws(), f = filter || ws.lib.filter, lay = this._libLayout(ws.lib);
@@ -1052,7 +1055,7 @@
     return h('div', { key: id, 'data-lib-thumb': id, style: { position: 'relative', border: '2px solid ' + (selected ? '#38bdf8' : 'rgba(148,163,184,.16)'), borderRadius: 8, overflow: 'hidden', background: '#0a0e14', aspectRatio: '1 / 1' } },
       h('img', { src: url, alt: id, loading: 'lazy', tabIndex: 0, 'data-fullscreen': 'only', 'data-fullscreen-image-id': id, 'data-fullscreen-caption': id, style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'zoom-in' } }),
       h('button', { type: 'button', 'aria-label': 'Select ' + id + ' for details', title: 'Details, lineage and actions', onClick: () => this.selectLibraryImage(id),
-        style: { position: 'absolute', top: 4, right: 4, minWidth: 30, minHeight: 30, borderRadius: 15, border: '1px solid rgba(148,163,184,.5)', background: 'rgba(4,8,14,.85)', color: '#e2e8f0', cursor: 'pointer', fontSize: 14 } }, 'ⓘ'),
+        style: { position: 'absolute', top: 4, right: 4, minWidth: 30, minHeight: 30, borderRadius: 15, border: '1px solid rgba(148,163,184,.5)', background: 'rgba(4,8,14,.85)', color: '#e2e8f0', cursor: 'pointer', fontSize: 14 } }, 'Tags / Details'),
       h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, background: 'rgba(4,8,14,.78)', color: '#dbe4ee', fontSize: 10, padding: '3px 5px', pointerEvents: 'none', fontFamily: "'IBM Plex Mono',monospace" } },
         (it.keeper ? '★ ' : '') + ((it.meta && it.meta.operation) || it.operation || '') + (it.meta && it.meta.seed != null ? ' ' + it.meta.seed : '')));
   };
@@ -1131,7 +1134,7 @@
           onClick: () => this.openLibraryViewer(it.id), onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.openLibraryViewer(it.id); } },
           style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'zoom-in' } }),
         h('button', { type: 'button', 'aria-label': 'Select ' + it.id + ' for details', title: 'Details, lineage and actions', onClick: () => this.selectLibraryImage(it.id),
-          style: { position: 'absolute', top: 3, right: 3, minWidth: lib.density === 'compact' ? 24 : 30, minHeight: lib.density === 'compact' ? 24 : 30, padding: 0, borderRadius: 15, border: '1px solid rgba(148,163,184,.5)', background: 'rgba(4,8,14,.85)', color: '#e2e8f0', cursor: 'pointer', fontSize: 13 } }, 'ⓘ'),
+          style: { position: 'absolute', top: 3, right: 3, minWidth: lib.density === 'compact' ? 24 : 30, minHeight: lib.density === 'compact' ? 24 : 30, padding: 0, borderRadius: 15, border: '1px solid rgba(148,163,184,.5)', background: 'rgba(4,8,14,.85)', color: '#e2e8f0', cursor: 'pointer', fontSize: 13 } }, 'Tags / Details'),
         lib.density !== 'compact' ? h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, background: 'rgba(4,8,14,.78)', color: '#dbe4ee', fontSize: 10, padding: '3px 5px', pointerEvents: 'none', fontFamily: "'IBM Plex Mono',monospace", overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' } },
           (it.keeper ? '★ ' : '') + (m.operation || '') + (m.seed != null ? ' ' + m.seed : '') + (tagsOf(it.id).length ? ' · ' + tagsOf(it.id).join(', ') : '')) : null);
     }));
@@ -1159,6 +1162,9 @@
       h('img', { src: base + sel.url, alt: sel.id, 'data-fullscreen': 'only', 'data-fullscreen-image-id': sel.id, 'data-fullscreen-caption': sel.id, style: { width: '100%', borderRadius: 7, cursor: 'zoom-in' } }),
       h('div', { style: { display: 'grid', gap: 6, alignContent: 'start' } },
         h('div', { style: css.mono }, sel.id),
+        btn('Tags', () => { const el = document.querySelector('[data-lib-tag-editor]'); if (el) { el.scrollIntoView({block: 'center'}); const input = el.querySelector('input'); if (input) input.focus(); } }, '#38bdf8'),
+        this.buildImageTagEditor(sel.id),
+        btn(window.__dexNativeWrapper ? 'Reveal in Finder' : 'Copy image path', () => this.revealLibraryImage(sel.id), '#38bdf8'),
         h('div', { style: css.muted }, [sel.width + '×' + sel.height, sel.meta.operation, sel.meta.target, sel.meta.seed != null ? 'seed ' + sel.meta.seed : null, sel.meta.steps ? sel.meta.steps + ' steps' : null, sel.meta.strength ? 'strength ' + sel.meta.strength : null, sel.keeper ? '★ Keeper' : null].filter(Boolean).join(' · ') || 'legacy image (no lineage recorded)'),
         h('div', { style: css.muted, 'data-library-generation-metadata': sel.id }, [
           sel.meta.target ? 'checkpoint ' + sel.meta.target : null,
@@ -1185,13 +1191,14 @@
           h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export?metadata=1', download: sel.id, 'data-export-link': 'metadata', style: { color: '#94a3b8', fontSize: 12, textDecoration: 'underline', padding: '6px 8px' } }, 'Export PNG with parameters'),
           h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export', download: sel.id, 'data-export-link': 'plain', style: { color: '#94a3b8', fontSize: 12, textDecoration: 'underline', padding: '6px 8px' } }, 'Export plain PNG')),
         this.buildExportPanel([sel.id]),
-        this.buildImageTagEditor(sel.id),
+
         h('div', { style: css.row }, h('span', { style: css.label }, 'Lineage'),
           (sel.ancestors || []).length ? lineageChip(sel.ancestors[sel.ancestors.length - 1], '⇤ Original') : null,
           sel.parent ? lineageChip(sel.parent, '↑ Parent') : h('span', { style: css.muted }, 'no parent'),
           ...(sel.children || []).map((c, i) => lineageChip(c, '↓ Child ' + (i + 1))),
           sel.parent ? btn('Compare with parent', () => { this.wsSet({ compareIds: [sel.parent, sel.id] }); this.loadCompare(); }, '#38bdf8') : null))) : null;
     return h('div', null,
+      btn('Open Images Folder', () => this.openOutputFolder({label: 'Images', path: '/Users/andrew/images_made'}), '#38bdf8'),
       this.buildPngInfoPanel(),
       h('div', { style: css.panel },
         h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Images'), h('span', { style: css.muted }, lib.loading ? 'loading…' : lib.total + ' images'), h('div', { style: { flex: 1 } }), lib.items.length > 1 ? btn('Save all shown (' + lib.items.length + ') as ZIP', () => this.runExport(lib.items.map(it => it.id)), '#94a3b8', { 'data-export-all': String(lib.items.length), disabled: !!ws.exportBusy }) : null, btn('Refresh', () => this.loadLibraryImages(), '#94a3b8')),
@@ -1199,10 +1206,10 @@
         this.buildLibraryControls(),
         this.buildLibraryTagFilter(),
         lib.error ? h('div', { role: 'alert', style: Object.assign({}, css.muted, { color: '#fca5a5' }) }, lib.error) : null,
+        detail,
         lib.items.length ? this.buildLibraryItems()
           : h('div', { style: css.muted }, lib.loading ? '' : 'No images for this filter.'),
-        this.buildLibraryPager(),
-        detail),
+        this.buildLibraryPager()),
       this.buildCompareWorkspace(),
       this.buildDetailerModal());
   };

@@ -106,6 +106,7 @@ async function probeTailscale() {
 
 async function probeLauncher() {
   const { appPath } = SYSTEM.launcher;
+  if (require('os').hostname().split('.')[0] === 'bigmac') return { appPath, installed: null, dockEntries: null, evidence: 'MacBook not checked; server runs on Big Mac' };
   const plist = path.join(appPath, 'Contents', 'Info.plist');
   const result = { appPath, installed: fs.existsSync(plist), installedBundleId: null, iconFile: null, iconPresent: false, dockEntries: null };
   if (result.installed) {
@@ -144,7 +145,7 @@ function outputLocations(canonicalImages, storagePaths) {
     ? { share: WC2TB_SHARE + r.path.slice(WC2TB_MOUNT.length).split('/').map(encodeURIComponent).join('/') } : {}));
 }
 
-function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale, launcher: probeLauncher }, getAssets = () => null, getEvidence = () => ({}), getStoragePaths = () => null } = {}) {
+function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale, launcher: probeLauncher }, getAssets = () => null, getEvidence = () => ({}), getStoragePaths = () => null, getPublication = () => null } = {}) {
   let cache = null;
   let cachedAt = 0;
   return async function getSystemInfo({ targets = [], build = {} } = {}) {
@@ -162,16 +163,14 @@ function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale,
     // publication transport is currently wired into this service.
     const canonicalImages = CANONICAL_IMAGE_ROOT;
     const workingImages = storagePaths && storagePaths.imageRoot ? storagePaths.imageRoot : CANONICAL_IMAGE_ROOT;
-    const externalStorage = !!(storagePaths && storagePaths.dataRoot);
-    const publicationPending = externalStorage || workingImages !== canonicalImages;
-    const generation = publicationPending
-      ? { ...SYSTEM.generation, remoteRetention: 'pending-publication', retentionNote: `Working images remain in ${workingImages}; canonical publication to ${canonicalImages} must remain pending until a verified write and acknowledgment.` }
-      : SYSTEM.generation;
+    let publication = 'unknown';
+    try { const rows = getPublication(); if (Array.isArray(rows)) { publication = rows.some(r => r.state === 'PUBLICATION_BLOCKED') ? 'blocked' : rows.some(r => r.state === 'PUBLICATION_FAILED_RETRYABLE') ? 'retryable' : rows.some(r => r.state !== 'CANONICAL_VERIFIED') ? 'pending' : rows.length ? 'verified' : 'unknown'; } } catch (_) {}
+    const generation = { ...SYSTEM.generation, remoteRetention: 'verified-idle-sweep', retentionNote: 'Working copies remain subject to checksum, verified write and acknowledgment, journal and idle-sweep checks. Publication: ' + publication };
     return {
       app: { ...SYSTEM.app, version: build.version || null, gitHead: build.gitHead || null, pid: build.pid || null, startedAt: build.startedAt || null },
       primaryTarget: primary && { id: primary.id, label: primary.label, backend: primary.backend || 'sdcpp', status: primary.status },
       generation: { ...generation, remoteHost: build.sshTarget || 'westcat', route: `ssh ${build.sshTarget || 'westcat'}`, mflux: SYSTEM.mflux },
-      storage: { outputs: outputLocations(canonicalImages, storagePaths), canonicalImages, workingImages, publication: publicationPending ? 'pending-unverified' : 'local-canonical', rule: 'Canonical originals are written to the MacBook destination only after verified publication; Big Mac images are working or pending artifacts.' },
+      storage: { outputs: outputLocations(canonicalImages, storagePaths), canonicalImages, workingImages, publication, rule: 'Canonical originals are written to the MacBook destination only after verified publication; Big Mac images are working or pending artifacts.' },
       network: {
         localBind: `${network.localHost}:${network.localPort}`,
         localUrl: `http://${network.localHost}:${network.localPort}${network.localPath}`,

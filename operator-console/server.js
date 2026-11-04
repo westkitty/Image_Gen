@@ -5902,6 +5902,7 @@ const getSystemInfo = createSystemInfo({
   getAssets: () => assetCache,
   getEvidence: () => evidenceStore.read(),
   getStoragePaths: () => STORAGE_PATHS,
+  getPublication: () => publicationOutbox.all(),
 });
 app.get('/api/system-info', async (req, res) => {
   try {

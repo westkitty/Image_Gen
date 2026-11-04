@@ -2564,11 +2564,18 @@ class Component extends DCLogic {
   }
 
   // The app opens the folder itself. A browser can only hand a network link to the system, and cannot reach a folder on the MacBook.
+  async revealLibraryImage(id) {
+    const bridge = window.__dexNativeWrapper && window.webkit?.messageHandlers?.dexOutputFolder;
+    if (!bridge) { this.copyText('Image path', '/Users/andrew/images_made/' + id); return; }
+    try { const result = await bridge.postMessage({action: 'reveal', path: '/Users/andrew/images_made', id}); if (result !== 'requested') throw new Error('Finder request failed'); this.toast('Requested Finder reveal; check the selected image in Finder', '#38bdf8'); } catch (e) { this.toast('Could not reveal image: ' + e.message, '#ef4444'); }
+  }
+
   async openOutputFolder(loc) {
     const bridge = window.__dexNativeWrapper === true && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.dexOutputFolder;
     if (bridge) {
       try {
-        await bridge.postMessage({ path: loc.path });
+        const result = await bridge.postMessage({ path: loc.path });
+        if (result !== 'opened') throw new Error(result === 'connecting' ? 'Finder is connecting; opening is not confirmed' : 'Finder did not confirm opening');
         this.toast('Opened ' + loc.label + ' in Finder', '#65d66e');
       } catch (err) { this.toast('Could not open ' + loc.label + ': ' + (err && err.message || err), '#ef4444'); }
       return;
@@ -4058,7 +4065,7 @@ class Component extends DCLogic {
           siRow('Retention', si.generation.retentionNote),
         ]),
         siSection('Mac launcher', [
-          siRow('App', siLauncher.appPath + (siLauncher.installed ? '' : '  (not installed)'), true),
+          siRow('App', siLauncher.appPath + (siLauncher.installed == null ? '  (MacBook: not checked)' : siLauncher.installed ? '' : '  (not installed on checked host)'), true),
           siRow('Dock', siLauncher.dockInstalled == null ? 'unknown' : siLauncher.dockInstalled ? 'installed (' + siLauncher.dockEntries + ')' : 'not in Dock'),
           siRow('Reinstall', siLauncher.installer, true),
         ]),

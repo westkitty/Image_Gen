@@ -13,14 +13,13 @@ DexDiffusion is a private native-WebKit and browser creative workstation. The
 MacBook is the user-facing control and canonical-image-storage machine; Big Mac
 (Apple M4, 32 GiB) is the heavy-inference host.
 
-**Current server topology (2026-11-01 code, verify against live runtime):**
-bin/dexdiffusion starts the Node operator console directly on Big Mac when
-invoked on hostname bigmac. On MacBook, it uses a dedicated SSH local port
-forward from 127.0.0.1:31337 to Big Mac 127.0.0.1:31337, rather than starting
-a second MacBook Node server. Earlier sections describing a MacBook-owned
-Node/API are **historical configurations**, not necessarily the active host
-assignment. The MacBook Dock app still opens
-http://127.0.0.1:31337/dexdiffusion/ through that private route.
+**Current server topology (verified 2026-11-04):** the Node operator console
+runs on Big Mac as `gui/503/local.dexdiffusion.server`, bound to
+`127.0.0.1:31337`. On MacBook, `bin/dexdiffusion start` uses the bounded
+recovery controller to establish or reuse the private SSH forward from local
+port 31337 to Big Mac loopback. A separate MacBook image service listens on
+`127.0.0.1:31338`; its reverse SSH forward lets Big Mac list and read canonical
+MacBook images. Do not start a second MacBook Node server.
 
 **Authority for troubleshooting:** compare /api/version process cwd, pid
 and gitHead against the actual listener PID, host, repository head and the
@@ -33,36 +32,32 @@ duplicate completed image artifacts. No public ports or changes to DEX//REACH
 
 ## Architecture
 
-The following diagram documents the original MacBook-local console variant;
-the current Big Mac-owned Node route and MacBook SSH forward above take precedence.
-
-Controlled generation uses the Big Mac backend and its installed models. The
-diagram below is historical: current generation does not establish the complete
-cross-host publication chain described there. Current ownership, paths,
-cancellation and measured limits are in the
-[local-engine bridge record](docs/operations/local-engine-bridge-20261021.md).
+Controlled generation uses the Big Mac backend and its installed models. Current
+image ownership and publication state are available from `bin/dexdiffusion
+status` and `/api/publications/status`.
 
 ```
-Browser or DexDiffusion.app (MacBook)          Tailnet device (browser)
-        │ http://127.0.0.1:31337                     │ https://macbook-air.tailafb7e8.ts.net:8443
-        │                                            ▼
-        │                               Tailscale Serve on MacBook (tailnet-only)
-        ▼                                            │
-operator-console  (node, bound to 127.0.0.1:31337 only) ◄──┘
-        │  POST /api/actions/generate-controlled
-        ▼
-sdcpp-workflow/bin/mflux-controlled-generate.sh
-        │  ssh westcat
-        ▼
-Big Mac: MFLUX 0.20.0 / MLX → FLUX.2 Klein 4B 4-bit → PNG in a private mktemp dir
-         (secondary path: stable-diffusion.cpp sd-cli → SD1.5 / Real-ESRGAN, same ephemeral rules)
-        │  Legacy path: PNG streamed over SSH stdout; remote temp deleted
-        ▼
-MacBook: /Users/andrew/images_made/<run-id>-s<seed>-<source>.png   (canonical destination by policy; current backend path below does not publish here)
-        │
-        ▼
-GET /api/images/<file>  →  DexDiffusion result panel
+DexDiffusion.app / browser (MacBook)            Direct tailnet browser
+  │ 127.0.0.1:31337                                  │ Big Mac Serve :11443
+  │ owned SSH local forward                          ▼
+  └─────────────────────────────────────────► Big Mac Node backend :31337
+                                                   │ MFLUX / SDCPP workers
+MacBook Serve :8443 (tailnet-only) ────────────────┘
+MacBook image service :31338 ◄── reverse SSH ──────┤
+  │ read-only manifest and image fetch             ▼
+/Users/andrew/images_made ◄── verified publication ─ Big Mac working images
 ```
+
+`/Users/andrew/images_made` is the canonical image store. Big Mac working
+copies live under `/Volumes/wc2tb/DexDiffusion/images`; verified publication
+writes the MacBook copy, and the idle sweep removes eligible Big Mac copies.
+The November 4 handoff recorded 17 verified publications and 0 pending at
+02:35, and `/api/publications/status` currently reports 17 verified and 0
+pending. `/api/system-info` still says `pending-unverified`, so that summary
+conflicts with the publication endpoint. Audio and world outputs currently use
+`/Volumes/wc2tb/DexDiffusion/output/audio` and
+`/Volumes/wc2tb/DexDiffusion/output/worlds`; older files remain at
+`/Users/andrew/audio_made` and `/Users/andrew/worlds`.
 
 ## Quick use
 
@@ -70,7 +65,8 @@ GET /api/images/<file>  →  DexDiffusion result panel
 2. **FLUX.2 Klein 4B (MFLUX) — Primary** is selected by default.
 3. Enter a prompt; optionally pick 512×512 / 1024×1024 and a seed.
 4. Click **Generate Image**. The progress bar shows a percentage.
-5. The result appears in the panel. The file is in `/Users/andrew/images_made`.
+5. The result appears in the panel. Verified canonical images are stored in
+   `/Users/andrew/images_made`; Big Mac working copies remain temporary.
 
 Operational details (URLs, engine, storage, launcher, SDCPP status) are on the
 **System** screen → *About DexDiffusion*.
@@ -81,12 +77,14 @@ Operational details (URLs, engine, storage, launcher, SDCPP status) are on the
 |---|---|
 | Local (canonical) | http://127.0.0.1:31337/dexdiffusion/ |
 | Local (alternate) | http://localhost:31337/dexdiffusion/ |
-| Tailnet | https://macbook-air.tailafb7e8.ts.net:8443/dexdiffusion/ |
+| Tailnet via MacBook forward | https://macbook-air.tailafb7e8.ts.net:8443/dexdiffusion/ |
+| Tailnet direct to Big Mac | https://bigmac.tailafb7e8.ts.net:11443/dexdiffusion/ |
 
 The frontend is **same-origin** (relative `/api/...` calls), so the same code works
 from all three. Verify the tailnet hostname/port with `tailscale serve status`, which
-must show `https://macbook-air.tailafb7e8.ts.net:8443 (tailnet only)` →
-`proxy http://127.0.0.1:31337`.
+should show the MacBook `:8443` route to local port 31337 and Big Mac `:11443`
+route to Big Mac loopback port 31337, both tailnet-only. The MacBook and Big Mac
+also host unrelated Tailscale services; do not alter them.
 
 ## Mac Dock launcher
 
@@ -103,13 +101,13 @@ must show `https://macbook-air.tailafb7e8.ts.net:8443 (tailnet only)` →
 
 **What clicking it does:** the app is a native WebKit **wrapper window** (not a
 browser tab). On launch it runs `bin/dexdiffusion start`, which reuses a healthy
-project-owned console or starts one detached, then loads
+private Big Mac route or starts/reuses the project-owned backend, then loads
 `http://127.0.0.1:31337/dexdiffusion/` in its window. The CLI command
 `bin/dexdiffusion open` activates `/Applications/DexDiffusion.app`; it never
 opens the URL in the default browser. Reopening the Dock app after closing its
 window checks/starts the backend before reloading the native window. The app
-never starts a second server.
-Big Mac is not contacted at launch; it is only needed when you generate.
+never starts a second server. Big Mac is contacted at launch through the
+private SSH forward; it hosts Studio, Library and generation.
 The wrapper does not offer an “Open in Browser” menu action. `bin/dexdiffusion start`
 remains headless and only starts or reuses the project-owned backend.
 Quitting the app **does not** stop the console, so tailnet users keep access. Use
@@ -126,6 +124,10 @@ backend recovers behind it.
 ```bash
 scripts/install-macos-app.sh
 ```
+
+The installer accepts no arguments. Unsupported arguments fail before any
+build or system command runs. The read-only status command is
+`bin/dexdiffusion status`; never pass `status` to the installer.
 
 It compiles the Swift wrapper and builds the icon from the source artwork (needs
 `swiftc` and python3 Pillow when the icon must be rebuilt). If Pillow is absent,
@@ -194,33 +196,34 @@ canonical storage → Complete; do not treat that UI stage as publication eviden
 
 ## Image storage
 
-`/Users/andrew/images_made` on the MacBook is **the canonical original destination by policy**. The current Big Mac backend writes generation artifacts under `/Volumes/wc2tb/DexDiffusion/images`; until a cross-host publication transport completes and acknowledges a verified MacBook write, those files are working/staging/pending artifacts, not canonically published originals.
-
-- A Big Mac render completing or appearing in its local image store does not prove
-  canonical publication. Source now implements an opt-in `macbook-pull-v1` outbox,
-  authenticated through the existing loopback tunnel, plus a MacBook worker that
-  verifies digest, commits by no-clobber link, fsyncs a receipt, then acknowledges.
-  This source is not deployed; production publication remains unverified until the
-  separately approved Stage 2 deployment and real artifact acceptance.
-- When a canonical write is implemented, it must target exactly
-  `/Users/andrew/images_made`, reject collisions, verify content identity, durably
-  acknowledge success, and retain the Big Mac source until policy permits removal.
+`/Users/andrew/images_made` on the MacBook is the canonical image store. The
+MacBook image service exposes its manifest and image bytes read-only on loopback
+port 31338 through a reverse SSH forward. The Big Mac backend reads images from
+that service and may keep working copies under `/Volumes/wc2tb/DexDiffusion/images`.
+New generated images are copied and verified on the MacBook; the handoff recorded
+17 `CANONICAL_VERIFIED` publications and 0 pending at 02:35 on November 4. Big Mac
+working files are not durable model storage and are removed only by the configured
+idle sweep when its safety checks pass. Do not infer publication from job success;
+check `bin/dexdiffusion status` and `/api/publications/status`.
 - Run directories (`sdcpp-workflow/runs/<run-id>/`) keep manifests, reports, logs and
   `canonical-images.json` (run file → image id/path/URL), **never image bytes**.
-- The current Big Mac API serves files from its configured working image root.
-  This serving path is not evidence that the MacBook canonical destination was written.
+- Library discovery includes the MacBook manifest; images are fetched from the
+  MacBook service when needed. The API listing alone does not prove a new image's
+  publication record is acknowledged.
 - Implementation: `operator-console/image-store.js`; the shell entrypoint is
   `operator-console/bin/canonicalize-image.js`, called by `sdcpp-lib.sh`.
-- Cross-host source implementation: `operator-console/publication-outbox.js`,
-  `operator-console/bin/canonical-publication-worker.js`, and the constrained
-  `/api/publications/*` routes in `operator-console/server.js`. On MacBook, the
-  native wrapper requests `bin/dexdiffusion publication-sync`; `lockf` prevents
-  duplicate workers and the UI applies three bounded retries with backoff.
-  Historical images/indexes/journals have no opt-in marker and are not relabeled.
+- Big Mac publication state is exposed by `/api/publications/status`; the
+  MacBook service is implemented in `operator-console/bin/macbook-image-service.js`
+  and the Big Mac reader in `operator-console/macbook-images.js`. Historical
+  images/indexes/journals are not retroactively relabeled.
 - Latest image: `ls -t /Users/andrew/images_made | head -1`, also printed by
   `bin/dexdiffusion status`.
 
-### Stage 2 deployment gate (not authorized in the source-closure task)
+### Historical publication deployment gate (superseded 2026-11-04)
+
+The following checklist records the pre-deployment gate and is retained as
+history. It was superseded by the November 4 live image-service cutover; do not
+use it as current deployment status.
 
 1. Reconcile the dirty Big Mac checkout against its own HEAD and remote; preserve
    every existing diff and untracked file. Andrew approval required; recover from
@@ -350,15 +353,16 @@ curl -s -X POST http://127.0.0.1:31337/api/actions/generate-controlled -H 'conte
 
 | Symptom | Check / fix |
 |---|---|
-| Dock icon missing | `scripts/install-macos-app.sh` (adds exactly one tile). |
-| Dock icon stale (old "IG" icon) or opens the wrong app | Run `bin/dexdiffusion status` and look for `dock: … STALE` / `DUPLICATE`, then re-run `scripts/install-macos-app.sh`. It rewrites the tile and drops stale bookmark data. Verify with the `osascript` / `defaults` commands above. |
+| Dock icon missing | Check `bin/dexdiffusion status`. If repair is needed, run `scripts/install-macos-app.sh` with no arguments; it rebuilds the bundle and refreshes Dock. |
+| Dock icon stale (old "IG" icon) or opens the wrong app | Check the Launcher section of `bin/dexdiffusion status`; repair only with the zero-argument installer. It rebuilds the bundle and can refresh Dock. |
+| Need a read-only app status | Use `bin/dexdiffusion status`. The installer accepts no arguments; `scripts/install-macos-app.sh status` is unsupported. |
 | Wrapper says port is occupied by a different console | Something else holds 31337. `lsof -nP -iTCP:31337 -sTCP:LISTEN` identifies it; stop that process yourself. |
 | UI unavailable locally | `bin/dexdiffusion status` → if DOWN: `bin/dexdiffusion start`; read `operator-console/server.log`. |
-| Tailnet URL unavailable | `tailscale status` (MacBook online and logged in?), `tailscale serve status` (route present?). Restore the route with `tailscale serve --bg --https=8443 http://127.0.0.1:31337`. **Never** use Funnel. The local UI keeps working without Tailscale. |
-| Generation fails, Big Mac unreachable | `ssh westcat 'hostname'`. The UI still opens; only generation needs Big Mac. Job logs: `sdcpp-workflow/runs/<run>/remote-command.log`, `mflux-controlled-generate.log`. |
+| Tailnet URL unavailable | Run `tailscale status` and `tailscale serve status`. DexDiffusion has a MacBook `:8443` proxy to the local tunnel and a direct Big Mac `:11443` proxy; both are tailnet-only. Do not add Funnel or reconfigure either route as routine troubleshooting. |
+| Studio unavailable or Big Mac unreachable | Use `bin/dexdiffusion status` and `bin/dexdiffusion recovery-status` (read-only); `bin/dexdiffusion start` invokes bounded recovery. Confirm `ssh westcat 'whoami; hostname'` reports `bigmac` / `bigmac`. Job logs: `sdcpp-workflow/runs/<run>/remote-command.log`, `mflux-controlled-generate.log`. |
 | MFLUX/model missing | `bin/dexdiffusion status` shows MFLUX env / model PRESENT/MISSING. See OPERATIONAL_STATE.md for the verified install (do not reinstall blindly). |
 | Metal GPU timeout | Known history: full-precision weights from wc2tb timed out. The 4-bit model on internal storage is the fix. Do not switch back. |
-| Generation passed but image missing | `ls -t /Users/andrew/images_made \| head`; `cat sdcpp-workflow/runs/<run>/canonical-images.json`. |
+| Generation passed but image missing | Check `curl -fsS http://127.0.0.1:31337/api/publications/status`, `ls -t /Users/andrew/images_made \| head`, and `sdcpp-workflow/runs/<run>/canonical-images.json`. A Big Mac working copy alone is not proof of canonical publication. |
 | `generator-exit` / `output-*` gate | Read `sdcpp-workflow/runs/<run>/remote-command.log` (prompt-redacted); the job error names the remote exception. |
 | Generation very slow to start | Check Big Mac disk contention; the MFLUX runtime must be the internal venv (`bin/dexdiffusion status` → MFLUX env). |
 | Secondary target "— model missing" | The configured source checkpoint is absent. Restore that exact checkpoint before selecting it; the managed slot never substitutes another model. |
@@ -455,13 +459,13 @@ for the dated live proof.
 
 - **Screens:** Create (images), Voice, Music, Video, Library, Batch, Edit, Enhance, Models, System.
 - **Workers** (`GET /api/workers`): MFLUX, SDCPP, Kokoro (speech), Qwen3-TTS Base (voice clone from a staged reference), Qwen3-TTS VoiceDesign, ACE-Step 1.5 (full song; Turbo + 0.6B LM) and Magenta RealTime 2 small (instrumental, 2–60 s) are all **proven through DexDiffusion**. LTX (video) is not installed. Nothing is downloaded from the UI.
-- **Voice/music execution:** `media-bridge.js` runs `bridges/dexmedia_remote.py` on Big Mac over `ssh westcat` (no server on Big Mac). Private text travels in a 0600 request file the driver deletes on read. Output flow: remote temp → validated WAV → scp → sha256 → `audio_made/{voice,music}` → Library → remote temp removed. Failures name their gate (e.g. `reference-invalid`, `output-invalid`, `checksum`). Jobs cannot be cancelled mid-run. ACE-Step takes ~6–7 min for 30 s. Poll `GET /api/generic-jobs/<id>`.
+- **Voice/music execution:** the Node backend and compute workers run on Big Mac. Private text travels in a 0600 request file the driver deletes on read. New audio is stored under `/Volumes/wc2tb/DexDiffusion/output/audio/{voice,music}`. Older files under `/Users/andrew/audio_made` remain, and some historical records still refer to them. Failures name their gate (e.g. `reference-invalid`, `output-invalid`, `checksum`). Poll `GET /api/generic-jobs/<id>`.
 - **Reinstall/verify the stack:** `scripts/install-bigmac-media-model-stack.sh` (`--verify` is read-only).
 - **Model stack paths** (single source: `operator-console/media.js` `WORKER_PATHS`): models under `/Volumes/wc2tb/generative-models/{voice,music}`; runtimes under `~/Library/Caches/DexDiffusion/{voice/venv, music/ACE-Step-1.5/.venv, music/magenta-rt-venv}` on Big Mac.
 - **Big Mac heavy compute** is one lease (`GET /api/resources`). A second heavy job waits ("Waiting for Big Mac — …"), and a large Ollama model loaded on Big Mac also blocks it (read-only check).
 - **Jobs** are durable (`sdcpp-workflow/state/jobs.json`). After a console restart, finished jobs keep their results. In-flight jobs show INTERRUPTED and are not re-run; re-enter the text to retry when prompt saving was off.
 - **Imports:** Edit and Voice/Music references accept file, drag/drop or paste. They are staged for 24 h in `sdcpp-workflow/state/staging/` and never become canonical media.
-- **Canonical roots:** images `/Users/andrew/images_made`, voice `/Users/andrew/audio_made/voice`, music `/Users/andrew/audio_made/music`, video `/Users/andrew/video_made`. Served only by id: `/api/images/:id`, `/api/media/:id`. Audio playback uses `/api/media/:id`; downloads use the same-origin attachment route `/api/media/:id/download` (MIME, filename, `nosniff`). The native WebKit wrapper handles that route with `WKDownload` and saves a collision-safe filename in `~/Downloads` instead of navigating to the audio player.
+- **Current output roots:** images `/Users/andrew/images_made`, audio `/Volumes/wc2tb/DexDiffusion/output/audio/{voice,music}`, worlds `/Volumes/wc2tb/DexDiffusion/output/worlds`, video `/Volumes/wc2tb/DexDiffusion/video`. Older MacBook audio/world files remain preserved. Media is served by id through `/api/images/:id` and `/api/media/:id`; downloads use `/api/media/:id/download`.
 - **Custom dimensions:** Width and Height remain independent numeric request fields. MFLUX accepts 256–2048 per axis in multiples of 16 (its installed code rounds to 16, so DexDiffusion rejects misalignment explicitly); SDCPP accepts 64–the selected target's `maxWidth`/`maxHeight` in multiples of 8 (the VAE scale factor). Presets are shortcuts only. A model change preserves each valid axis and replaces only an axis that the new target cannot accept.
 - **Secondary hot slot:** FLUX.2 Klein remains the protected MFLUX primary at `$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit`. SDCPP source checkpoints remain in their existing libraries. Exactly one active secondary is represented by `$HOME/Library/Caches/DexDiffusion/secondary-model/current`, an atomic symlink to one version under `secondary-model/versions/`; `current/state.json` is the authority exposed by `GET /api/models/secondary`, `/api/capabilities`, and `/api/system-info`. Switching uses the existing capacity-1 Big Mac lease, rejects a switch while generation is active, validates the replacement before swapping, and stops only the project-owned warm SDCPP server if one exists. Normal controlled SDCPP generation remains per-job `sd-cli` and consumes `current/model.safetensors`.
 - **Activating a future worker (e.g. LTX):** install the runtime and model at the paths shown under *Activation path*, add its execution bridge, prove one real generation, then enable it.
@@ -493,17 +497,17 @@ for the dated live proof.
 
 - **Voice → Voices & long-form**: persistent profiles (cloned with several reference samples + transcripts, designed from a description, or a Kokoro preset), sample diagnostics, per-engine validation, an honest capability matrix, a per-render performance direction (only where the engine can honor it: VoiceDesign yes, Kokoro/Qwen Base no), and long-form text with no 2,000-character limit (paragraph/sentence/clause chunking, tags kept whole, crossfade + boundary pauses, one stitched canonical WAV with chunk lineage, failures read "failed at chunk 7/14: …").
 - **Drama** (new nav item): paste a script → deterministic parse (or optional local-model parse that cannot rewrite dialogue) → review/correct lines → bind speakers to saved voices → render line / scene / project (every re-render is a new Take; you choose the active one) → assemble a scene or the whole drama into one WAV (optional music/ambience/SFX tracks). An **unsaved** script lives only in server memory; **Save project** is the explicit act that writes it to disk. Dialogue is never copied into job logs.
-- **Where things live:** voice profiles `sdcpp-workflow/state/voice-profiles/<vp-id>/profile.json`, samples `…/samples/<sm-id>.wav` (MacBook only); Drama projects `sdcpp-workflow/state/drama/<dp-id>.json` (only when saved); generated speech and drama exports `/Users/andrew/audio_made/voice/` (id-served via `/api/media/:id`).
+- **Where things live:** voice profiles `sdcpp-workflow/state/voice-profiles/<vp-id>/profile.json`, samples `…/samples/<sm-id>.wav`; Drama projects `sdcpp-workflow/state/drama/<dp-id>.json` (only when saved); new generated speech and drama exports are in `/Volumes/wc2tb/DexDiffusion/output/audio/voice/`. Older records can still refer to MacBook paths.
 - Big Mac hosts compute and the loopback backend; every render is a normal job under the heavy-compute lease. Prompt/voice-prompt caching is not implemented (the installed Qwen runtime has no such API). Details: `operator-console/docs/voice-drama-20261002.md`.
 - Tests: `cd operator-console && npm test` (unit/server), `npm run test:browser` (real Chrome, hermetic fixtures; the voice/drama suite uses your running state directory and cleans up after itself).
 
 ## Protected invariants (do not change)
 
 - The node backend stays bound to **127.0.0.1:31337**. Never `0.0.0.0`, never LAN.
-- Remote web access is **Tailscale Serve HTTPS :8443, tailnet-only**. **Never Funnel**
+- Remote web access is **Big Mac Tailscale Serve HTTPS :11443, tailnet-only**. **Never Funnel**
   for DexDiffusion. The separate DEX//REACH Funnel on `:443` is not ours; do not touch it.
-- Big Mac is never exposed; the MacBook reaches it only via `ssh westcat`.
-- Canonical originals belong on MacBook at `/Users/andrew/images_made`; Big Mac image files remain working/staging/pending artifacts until an individually verified publication record proves a MacBook write. Existing files are not retroactively relabeled.
+- Big Mac is not public; tailnet-only Serve is configured there. MacBook local access uses `ssh westcat` forwarding to Big Mac loopback.
+- Canonical images belong on MacBook at `/Users/andrew/images_made`; Big Mac working images are subject to verified publication and the configured idle retention sweep. Existing files are not retroactively relabeled.
 - MFLUX (`flux2-klein-4b`) is the primary backend; SDCPP (restored) is secondary/optional.
 - Never trust ssh exit codes to Big Mac (Tailscale SSH returns 0); use output or in-band markers.
 - The Dock launcher is `/Applications/DexDiffusion.app` only.
@@ -583,7 +587,7 @@ group. The startup watchdog's two progress deferrals and stale-navigation guard
 are executable Swift policy fixtures. These source-level tests do not prove the
 installed app's runtime behavior.
 
-**Storage contract:** the user-selected canonical original destination is `/Users/andrew/images_made` on MacBook. Big Mac `/Volumes/wc2tb/DexDiffusion/images` is working/staging/pending-publication storage. Source now includes a bounded cross-host outbox/worker flow, but it is not deployed; render completion alone is not canonical publication. Historical files and journals remain untouched. See the source-closure entry in `OPERATIONAL_STATE.md`.
+**Storage contract:** `/Users/andrew/images_made` on MacBook holds canonical images. Big Mac `/Volumes/wc2tb/DexDiffusion/images` holds working copies; transfer acknowledgment establishes `CANONICAL_VERIFIED`, after which eligible working copies may be removed by the idle sweep. The Big Mac publication endpoint currently reports 17 verified and 0 pending; `/api/system-info` has a conflicting `pending-unverified` summary. Historical files and journals remain untouched.
 
 ## Persistent MacBook recovery controller — 2026-11-03
 
@@ -672,16 +676,17 @@ MacBook (andrew)                                   Big Mac (bigmac, Aqua session
      (launchd gui/501/local.dexdiffusion.recovery,   working images + publication outbox
       every 60 s; the only recovery decision-maker)  on /Volumes/wc2tb/DexDiffusion
   -> owned ssh -L 31337:127.0.0.1:31337 westcat  <------------------------------+
-  -> publication-sync -> /Users/andrew/images_made  (pull, verify, receipt, ACK)
+  -> publication worker -> /Users/andrew/images_made  (verify and acknowledge)
+MacBook image service :31338 <--- reverse SSH forward --- Big Mac reader
 ```
 
-**Storage contract.** `/Users/andrew/images_made` holds the canonical originals. A
-successful Big Mac generation writes its working copy and a durable outbox record
-(`PUBLICATION_PENDING`). The MacBook pulls it, checks size and SHA-256, links it into
-place without overwriting anything, writes a receipt under
-`~/Library/Application Support/DexDiffusion/publication-receipts/`, and POSTs an ACK.
-Only then is the record `CANONICAL_VERIFIED`. Big Mac keeps its working copy; no
-garbage collection is authorized.
+**Storage contract.** `/Users/andrew/images_made` holds canonical images. Big Mac
+generation writes working copies; verified transfer and acknowledgment produce
+`CANONICAL_VERIFIED`. The MacBook image service on `127.0.0.1:31338` serves the
+canonical images read-only to Big Mac through its reverse SSH forward. Eligible
+Big Mac working copies may be removed by the configured idle sweep after its
+publication and job-safety checks. The current publication API reports 17 verified,
+0 pending; `/api/system-info` has a conflicting `pending-unverified` field.
 
 **Recovery controller.** One launchd tick every 60 s (and every `start`/`open`/native
 Retry) runs `scripts/dexdiffusion-recovery-controller.py` under one lock:

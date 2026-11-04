@@ -20,6 +20,15 @@
 # Safe to re-run; this is also the repair procedure. See DEXDIFFUSION.md.
 set -euo pipefail
 
+# This script has exactly one operation: install/repair the native app.
+# Reject every argument before resolving paths or invoking any build/system tool.
+if [ "$#" -ne 0 ]; then
+  echo "ERROR: unsupported installer argument(s): $*" >&2
+  echo "Usage: $0" >&2
+  echo "For a read-only status report, use: bin/dexdiffusion status" >&2
+  exit 2
+fi
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/native/macos/Image_Gen/ImageGenApp.swift"
 ICON_SRC="$ROOT/operator-console/public/dexdiffusion/uploads/grok_image_1775521844329.jpg"

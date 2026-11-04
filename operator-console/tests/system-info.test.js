@@ -47,7 +47,7 @@ test('system-info reports primary target, canonical storage, derived capabilitie
   assert.equal(info.primaryTarget.id, 'flux2-klein-4b');
   assert.equal(info.storage.canonicalImages, '/Users/andrew/images_made');
   assert.equal(info.generation.route, 'ssh westcat');
-  assert.equal(info.generation.remoteRetention, 'ephemeral');
+  assert.equal(info.generation.remoteRetention, 'verified-idle-sweep');
   assert.equal(info.modelState.primaryModel.id, 'flux2-klein-4b');
   assert.equal(info.modelState.activeSecondaryModel, 'sd15');
   assert.equal(info.modelState.secondaryModelState, 'active');
@@ -78,7 +78,7 @@ test('system-info distinguishes external working images from pending MacBook pub
   const info = await getInfo({ targets: TARGETS, build: { sshTarget: 'westcat' } });
   assert.equal(info.storage.canonicalImages, '/Users/andrew/images_made');
   assert.equal(info.storage.workingImages, '/Volumes/wc2tb/DexDiffusion/images');
-  assert.equal(info.storage.publication, 'pending-unverified');
+  assert.equal(info.storage.publication, 'unknown');
   assert.deepEqual(info.storage.outputs.map(o => [o.id, o.device, o.path, o.share]), [
     ['images', 'MacBook', '/Users/andrew/images_made', undefined],
     ['audio', 'WC2TB', '/Volumes/wc2tb/DexDiffusion/output/audio', 'smb://100.67.12.66/wc2tb/DexDiffusion/output/audio'],
@@ -86,10 +86,10 @@ test('system-info distinguishes external working images from pending MacBook pub
     ['video', 'WC2TB', '/Volumes/wc2tb/DexDiffusion/video', 'smb://100.67.12.66/wc2tb/DexDiffusion/video'],
     ['images-waiting', 'WC2TB', '/Volumes/wc2tb/DexDiffusion/images', 'smb://100.67.12.66/wc2tb/DexDiffusion/images'],
   ]);
-  assert.equal(info.generation.remoteRetention, 'pending-publication');
-  assert.match(info.generation.retentionNote, /Working images remain in/);
+  assert.equal(info.generation.remoteRetention, 'verified-idle-sweep');
+  assert.match(info.generation.retentionNote, /Working copies remain/);
   assert.match(info.generation.retentionNote, /verified write and acknowledgment/);
-  assert.match(info.generation.retentionNote, /canonical publication to \/Users\/andrew\/images_made must remain pending/);
+  assert.match(info.generation.retentionNote, /Publication: unknown/);
   assert.doesNotMatch(info.generation.retentionNote, /Final images are stored/);
 });
 
@@ -104,7 +104,7 @@ test('system-info never labels a noncanonical override as published', async () =
   const info = await getInfo({ targets: TARGETS });
   assert.equal(info.storage.canonicalImages, '/Users/andrew/images_made');
   assert.equal(info.storage.workingImages, '/tmp/dex-working-images');
-  assert.equal(info.storage.publication, 'pending-unverified');
+  assert.equal(info.storage.publication, 'unknown');
 });
 
 test('exactly one primary target (MFLUX), and capabilities carry per-target runtime', () => {
