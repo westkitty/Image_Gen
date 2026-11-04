@@ -514,7 +514,7 @@ for c in json.load(sys.stdin).get("capabilities", []):
   fi
   local latest lsraw lsrc=0
   lsraw="$(bounded "$PROBE_TIMEOUT" ls -t "$IMAGES_ROOT" 2>/dev/null)" || lsrc=$?
-  if [ "$lsrc" -eq 124 ] || [ "$lsrc" -eq 125 ]; then latest="unavailable (probe timed out)"; else latest="$(printf '%s\n' "$lsraw" | grep -v '^\.' | head -1 || true)"; fi
+  if [ "$lsrc" -eq 124 ] || [ "$lsrc" -eq 125 ]; then latest="unavailable (probe timed out)"; else latest="$(printf '%s\n' "$lsraw" | grep -v '^\.' | grep -v '^library-tags\.json$' | head -1 || true)"; fi
 
   cat <<EOF
 DEXDIFFUSION STATUS

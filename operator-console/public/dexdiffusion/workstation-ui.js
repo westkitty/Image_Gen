@@ -997,7 +997,7 @@
         h('button', { type: 'button', 'aria-label': 'Remove tag ' + tag, onClick: () => this._libSetTagStore(T.removeTag(this._libTags.store, id, tag)), style: { border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', minWidth: 22, minHeight: 22, fontWeight: 700 } }, '×'))),
       h('input', { type: 'text', placeholder: 'Add tags, separated by commas', 'aria-label': 'Add tags to ' + id, 'data-lib-tag-input': id, style: Object.assign({}, css.input, { flex: '1 1 180px', minHeight: 30 }),
         onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); add(e.target); } }, onBlur: e => add(e.target) }),
-      h('span', { style: css.muted }, this._libTags.where === 'mac' ? 'Saved on this Mac' : 'Saved in this browser'));
+      h('span', { style: css.muted }, this._libTags.where === 'mac' ? 'Saved on this Mac in images_made' : this._libTags.where === 'unavailable' ? 'Not saving: library-tags.json could not be read' : 'Saved in this browser'));
   };
   P.loadLibraryImages = async function (filter, offset) {
     const ws = this._ws(), f = filter || ws.lib.filter, lay = this._libLayout(ws.lib);

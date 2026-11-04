@@ -1,5 +1,5 @@
 // library-tags.js — Library tags and grouping. Tags belong to this Mac, not to the Big Mac: inside the native app they are
-// kept in a file through the dexLibraryTags bridge, and any other browser keeps them in its own localStorage.
+// kept in ~/images_made/library-tags.json through the dexLibraryTags bridge, and any other browser keeps them in its own localStorage.
 // The pure helpers are exported for Node tests.
 (function (root, factory) {
   const api = factory();
@@ -71,25 +71,36 @@
   function readLocal() { try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || 'null'); } catch (_) { return null; } }
   function clearLocal() { try { localStorage.removeItem(LOCAL_KEY); } catch (_) {} }
 
-  // -> { store, where: 'mac'|'browser', error }. Tags a browser stored before the bridge existed move into the file on first load.
+  // The file is only ever rewritten after it was read successfully: a save replaces the whole store, so saving before a good
+  // read would wipe tags (a damaged file stays on disk for repair, and a tag added while loading cannot replace the lot).
+  let nativeFileRead = false;
+
+  // -> { store, where: 'mac'|'browser'|'unavailable', error }. Tags a browser stored before the bridge existed move into the file on first load.
   async function load() {
     const bridge = nativeBridge();
     if (!bridge) return { store: cleanStore(readLocal()), where: 'browser', error: null };
+    nativeFileRead = false;
     try {
       const text = await bridge.postMessage({ action: 'load' });
       const fromFile = text ? JSON.parse(text) : null;
+      if (text && !(fromFile && typeof fromFile === 'object' && fromFile.images && typeof fromFile.images === 'object' && !Array.isArray(fromFile.images))) throw new Error('library-tags.json is not a tag store');
       const earlier = readLocal();
       const store = mergeStores(fromFile, earlier);
+      nativeFileRead = true;
       if (earlier) { await bridge.postMessage({ action: 'save', text: JSON.stringify(store) }); clearLocal(); }
       return { store, where: 'mac', error: null };
     } catch (err) {
-      return { store: cleanStore(readLocal()), where: 'browser', error: String(err && err.message || err) };
+      return { store: cleanStore(readLocal()), where: nativeFileRead ? 'mac' : 'unavailable', error: String(err && err.message || err) };
     }
   }
   async function save(store) {
     const text = JSON.stringify(store);
     const bridge = nativeBridge();
-    if (bridge) { await bridge.postMessage({ action: 'save', text }); return 'mac'; }
+    if (bridge) {
+      if (!nativeFileRead) throw new Error('library-tags.json has not been read, so it was left untouched');
+      await bridge.postMessage({ action: 'save', text });
+      return 'mac';
+    }
     localStorage.setItem(LOCAL_KEY, text);
     return 'browser';
   }

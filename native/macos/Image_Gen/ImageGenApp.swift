@@ -66,15 +66,14 @@ private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
-// Library tags belong to this Mac: Studio reads and writes them here through a reply bridge, whichever machine serves the page.
+// Library tags belong to this Mac and sit with its images in ~/images_made: Studio reads and writes them through a reply bridge, whichever machine serves the page.
 private final class LibraryTagsBridge: NSObject, WKScriptMessageHandlerWithReply {
     private static let maxBytes = 8 * 1024 * 1024
     private let file: URL
     weak var webView: WKWebView?
 
     override init() {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        file = support.appendingPathComponent("DexDiffusion/library-tags.json")
+        file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("images_made/library-tags.json")
         super.init()
     }
 
@@ -92,8 +91,8 @@ private final class LibraryTagsBridge: NSObject, WKScriptMessageHandlerWithReply
                 replyHandler(try String(contentsOf: file, encoding: .utf8), nil)
             case "save":
                 guard let text = body["text"] as? String, let data = text.data(using: .utf8), data.count <= Self.maxBytes,
-                      (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else {
-                    replyHandler(nil, "Refused: tags are not a JSON object of a sane size")
+                      ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["images"] is [String: Any] else {
+                    replyHandler(nil, "Refused: not a tag store of a sane size")
                     return
                 }
                 try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)

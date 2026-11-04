@@ -46,12 +46,46 @@ test('grouping keeps sort order, repeats multi-tag images under each tag, and na
   assert.deepEqual(T.groupItems(items, 'tag', store).map(g => [g.label, g.items.length]), [['x', 1], ['y', 1], ['Untagged', 2]]);
 });
 
-test('the native app stores tags in one file on this Mac and only for Studio', () => {
+test('the native app stores tags in one file with the Mac images and only for Studio', () => {
   const src = fs.readFileSync(path.resolve(__dirname, '../../native/macos/Image_Gen/ImageGenApp.swift'), 'utf8');
-  assert.match(src, /appendingPathComponent\("DexDiffusion\/library-tags\.json"\)/);
+  assert.match(src, /homeDirectoryForCurrentUser\.appendingPathComponent\("images_made\/library-tags\.json"\)/);
+  assert.doesNotMatch(src, /DexDiffusion\/library-tags\.json/);
+  const cli = fs.readFileSync(path.resolve(__dirname, '../../bin/dexdiffusion'), 'utf8');
+  assert.match(cli, /grep -v '\^library-tags\\\.json\$'/, 'status must not report the tag file as the latest image');
   assert.match(src, /addScriptMessageHandler\(tagsBridge, contentWorld: \.page, name: "dexLibraryTags"\)/);
   assert.match(src, /removeScriptMessageHandler\(forName: "dexLibraryTags", contentWorld: \.page\)/);
   const bridge = src.slice(src.indexOf('private final class LibraryTagsBridge'), src.indexOf('final class AppDelegate'));
   assert.match(bridge, /origin\.host == "127\.0\.0\.1", origin\.port == 31337/);
   assert.match(bridge, /options: \.atomic/);
+});
+
+test('a tag file that was not read is never overwritten', async () => {
+  const saved = [];
+  let onDisk = '{ corrupt';
+  const bridge = { postMessage: async m => { if (m.action === 'load') return onDisk; saved.push(m.text); return true; } };
+  const store = { version: 1, images: { a: ['x'] } };
+  global.window = { __dexNativeWrapper: true, webkit: { messageHandlers: { dexLibraryTags: bridge } } };
+  global.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+  try {
+    await assert.rejects(T.save(store), /left untouched/, 'a tag added before loading finishes must not replace the file');
+    for (const bad of ['{ corrupt', '[]', '{"images":"nope"}']) {
+      onDisk = bad;
+      const result = await T.load();
+      assert.equal(result.where, 'unavailable');
+      assert.ok(result.error);
+      await assert.rejects(T.save(store), /left untouched/);
+    }
+    assert.deepEqual(saved, []);
+    onDisk = '{"version":1,"images":{"b":["y"]}}';
+    const good = await T.load();
+    assert.equal(good.where, 'mac');
+    assert.deepEqual(T.tagsFor(good.store, 'b'), ['y']);
+    assert.equal(await T.save(store), 'mac');
+    assert.equal(saved.length, 1);
+    onDisk = null;
+    assert.equal((await T.load()).where, 'mac', 'no file yet is a good read');
+  } finally {
+    delete global.window;
+    delete global.localStorage;
+  }
 });
