@@ -1,0 +1,21 @@
+#!/bin/bash
+# Runs "ssh <this host's target> <command>" directly. Anything else goes to real ssh.
+set -uo pipefail
+original=("$@")
+real="${DEX_REAL_SSH:-/usr/bin/ssh}"
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -M|-N|-f|-O|-L|-R|-D|-W) exec "$real" "${original[@]}" ;;
+    -[bcEeFIiJlmopQSw]) shift 2 ;;
+    -*) shift ;;
+    *) break ;;
+  esac
+done
+
+if [ "$#" -eq 0 ] || [ "$1" != "${DEX_ON_HOST_SSH_TARGET:-}" ]; then
+  exec "$real" "${original[@]}"
+fi
+shift
+[ "$#" -eq 0 ] && exec /bin/bash -s
+exec /bin/bash -c "$*"

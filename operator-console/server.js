@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const { getWorkflowConfig } = require('./workflow-config');
 const os = require('node:os');
+const { hostToolPaths } = require('./host-tools');
 const crypto = require('crypto');
 const localEngineRouting = require('./local-engine-routing');
 const controlledScriptFor = localEngineRouting.controlledScript;
@@ -1131,6 +1132,11 @@ function readSdcppEnv(key, fallback) {
   } catch (_) { return fallback; }
 }
 const SSH_TARGET_NAME = readSdcppEnv('SSH_TARGET', 'westcat');
+const hostTools = hostToolPaths({ hostname: os.hostname(), sshTarget: SSH_TARGET_NAME, isolated: TestIsolation.enabled() });
+if (hostTools) {
+  process.env.PATH = hostTools.processPath;
+  Object.assign(STORAGE_ENV, hostTools.scriptEnv);
+}
 const TARGET_MODELS = targetModelMap(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-controlled-generate.sh'),
   readSdcppEnv('REMOTE_MODEL', '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors'));
 const evidenceStore = createEvidenceStore(path.join(STATE_DIR, 'capability-evidence.json'));

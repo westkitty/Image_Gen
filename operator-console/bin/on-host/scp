@@ -1,0 +1,23 @@
+#!/bin/bash
+# Copies directly when one side of a two-path scp is this host's target. Anything else goes to real scp.
+set -uo pipefail
+original=("$@")
+real="${DEX_REAL_SCP:-/usr/bin/scp}"
+prefix="${DEX_ON_HOST_SSH_TARGET:-}:"
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -[cFiJloPSX]) shift 2 ;;
+    -*) shift ;;
+    *) break ;;
+  esac
+done
+
+if [ "$#" -ne 2 ] || [ "$prefix" = ":" ]; then exec "$real" "${original[@]}"; fi
+src="$1"; dst="$2"
+case "$src" in "$prefix"*) from_target=1 ;; *) from_target=0 ;; esac
+case "$dst" in "$prefix"*) to_target=1 ;; *) to_target=0 ;; esac
+if [ "$from_target" = 0 ] && [ "$to_target" = 0 ]; then exec "$real" "${original[@]}"; fi
+if [ "$from_target" = 0 ]; then case "$src" in *:*) exec "$real" "${original[@]}" ;; esac; fi
+if [ "$to_target" = 0 ]; then case "$dst" in *:*) exec "$real" "${original[@]}" ;; esac; fi
+exec /bin/cp -f -- "${src#"$prefix"}" "${dst#"$prefix"}"
