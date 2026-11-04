@@ -44,11 +44,23 @@ async function chooseTarget(page, id) {
       const errors = await open(page, srv.base);
       const placeholder = await page.locator('[data-dex-field="prompt"]').getAttribute('placeholder');
       assert.doesNotMatch(placeholder, /A1111 syntax supported/);
+      // The syntax and token note belongs to the Prompt Builder pop-up, not the main screen.
+      const help = page.locator('.dx-modal [data-dex-field="prompt-syntax-help"], [role="dialog"] [data-dex-field="prompt-syntax-help"]').first();
+      const openBuilder = () => page.evaluate(() => __dex.openPromptBuilder({ field: 'prompt', tab: 'wildcards' }));
       await chooseTarget(page, 'sdxl-base');
-      assert.match(await page.locator('[data-dex-field="prompt-syntax-help"]').innerText(), /Not supported yet: \[a:b:0\.5\] scheduling/);
+      assert.equal(await page.locator('[data-dex-field="prompt-syntax-help"]').count(), 0);
+      await openBuilder();
+      assert.match(await help.innerText(), /Not supported yet: \[a:b:0\.5\] scheduling/);
+      await page.keyboard.press('Escape');
       await chooseTarget(page, 'flux2-klein-4b');
-      assert.match(await page.locator('[data-dex-field="prompt-syntax-help"]').innerText(), /plain language/);
-      assert.match(await page.locator('[data-dex-field="token-count"]').innerText(), /unknown for this backend/);
+      assert.equal(await page.locator('[data-dex-field="prompt-syntax-help"]').count(), 0);
+      await openBuilder();
+      assert.match(await help.innerText(), /plain language/);
+      assert.match(await page.locator('[role="dialog"] [data-dex-field="token-count"]').innerText(), /unknown for this backend/);
+      await page.keyboard.press('Escape');
+      assert.match(await page.locator('[data-dex-field="token-count"]').first().innerText(), /unknown for this backend/);
+      await openBuilder();
+      await page.keyboard.press('Escape');
       assert.deepEqual(errors, []);
       await page.close();
     });

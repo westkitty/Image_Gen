@@ -183,6 +183,9 @@
     ['keyup', 'mouseup', 'select', 'input', 'blur'].forEach(ev => construct.addEventListener(ev, remember));
     const count = el('small', 'color:#8193a8;', '', { 'data-pb-field': 'count' });
     const analysis = el('div', 'font-size:11px;line-height:1.45;color:#a8b6c8;', '', { 'data-pb-field': 'analysis', role: 'status' });
+    // What this model's prompt syntax supports. It lives here rather than on the main screen.
+    const syntaxHelp = o.plainText || !DP ? null : el('small', 'font-size:11px;line-height:1.45;color:#8193a8;', DP.syntaxHelp(spec), { 'data-dex-field': 'prompt-syntax-help' });
+    const tokenCount = o.plainText ? null : el('small', 'color:#8193a8;', 'Token count: unknown for this backend (not estimated).', { 'data-dex-field': 'token-count' });
     function refresh() {
       count.textContent = construct.value.length + ' characters · ' + splitPieces(construct.value).length + ' pieces';
       if (!DP || o.plainText) { analysis.textContent = ''; return; }
@@ -224,7 +227,7 @@
     const previewNote = el('small', 'color:#8193a8;line-height:1.4;', o.allowTokens
       ? 'One random draw from the same expansion generation uses. __tokens__ left in the prompt re-roll on every Generate.'
       : 'This section does not expand __tokens__, so Insert uses resolved text: tokens are rolled here first.');
-    right.append(label('Construct prompt'), construct, count, analysis, el('div', 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;'), label('Preview'), preview, previewNote);
+    right.append(label('Construct prompt'), construct, ...(tokenCount ? [tokenCount] : []), count, analysis, ...(syntaxHelp ? [syntaxHelp] : []), el('div', 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;'), label('Preview'), preview, previewNote);
     right.children[4].append(rollBtn, button('Clear', '', () => { construct.value = ''; lastSel = { start: 0, end: 0 }; refresh(); }));
 
     // Tabs

@@ -2252,12 +2252,9 @@
       const DP = window.DexPrompt, target = this._targetSpec() || {};
       if (!DP) return null;
       const notes = DP.notesForTarget(target, s.prompt, s.negPrompt).join(' ');
-      const oneLine = { fontSize: 10, color: '#8888b0', lineHeight: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' };
-      const help = DP.syntaxHelp(target), tokens = 'Token count: unknown for this backend (not estimated).';
       return h('div', { style: { display: 'grid', gap: 0, margin: '1px 0 2px', minWidth: 0 } },
-        h('small', { className: 'ca-muted', 'data-dex-field': 'prompt-syntax-help', title: help, style: oneLine }, help),
         h('small', { className: 'ca-note', 'data-dex-field': 'prompt-notes', role: 'status', hidden: !notes, style: { fontSize: 10, margin: '2px 0' } }, notes),
-        h('small', { className: 'ca-muted', 'data-dex-field': 'token-count', title: tokens, style: oneLine }, tokens));
+        h('small', { className: 'ca-muted', 'data-dex-field': 'token-count', style: { fontSize: 10, color: '#8888b0', lineHeight: '14px', textAlign: 'left', display: 'block' } }, 'Token count: unknown for this backend (not estimated).'));
     })() : null;
     if (curScreen === 'create' && this.buildStylesPanel && this._sty) {
       // V2 loads the style list once, when Create first renders (with the other start-up loads), never as a side effect of
