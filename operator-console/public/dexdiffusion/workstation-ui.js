@@ -918,7 +918,9 @@
   D.cleanLibPrefs = function (p) {
     const n = (v, lo, hi, d) => { v = parseInt(v, 10); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
     return { view: p.view === 'list' ? 'list' : 'grid', rows: n(p.rows, 1, 50, libDefaults.rows), cols: n(p.cols, 0, 12, libDefaults.cols),
-      density: ['compact', 'comfortable', 'large'].includes(p.density) ? p.density : libDefaults.density, sort: p.sort === 'asc' ? 'asc' : 'desc' };
+      density: ['compact', 'comfortable', 'large'].includes(p.density) ? p.density : libDefaults.density,
+      sort: ['desc', 'asc', 'name-asc', 'name-desc'].includes(p.sort) ? p.sort : 'desc',
+      group: ['none', 'day', 'model', 'operation', 'tag'].includes(p.group) ? p.group : 'none' };
   };
   const LIB_MIN = { compact: 72, comfortable: 108, large: 160 };
   // Columns are clamped to what the viewport can hold at the chosen density; the effective value is shown to the user.
@@ -948,13 +950,60 @@
     Object.assign(lib, prefs);
     // Layout changes never reset each other; only a page-size change re-pages from the same first item.
     this.wsSet({ lib });
-    if ('rows' in patch || 'cols' in patch || 'view' in patch || 'sort' in patch) this.loadLibraryImages(undefined, 'offset' in patch ? patch.offset : this._ws().lib.offset);
+    if ('rows' in patch || 'cols' in patch || 'view' in patch || 'sort' in patch || 'tagFilter' in patch) this.loadLibraryImages(undefined, 'offset' in patch ? patch.offset : this._ws().lib.offset);
+  };
+  // Tags live on this Mac, so a tag filter asks the server for exactly the tagged images.
+  P._libQuery = function (filter, limit, offset) {
+    const lib = this._ws().lib, chosen = lib.tagFilter || [];
+    if (chosen.length) return this._api('/api/library/images/query', { filter, sort: lib.sort, limit, offset, ids: window.DexLibraryTags.idsWithAllTags(this._libTagStore(), chosen) });
+    return this._api('/api/library/images?filter=' + encodeURIComponent(filter) + '&sort=' + lib.sort + '&limit=' + limit + '&offset=' + offset, undefined);
+  };
+  P._libTagStore = function () {
+    if (!this._libTags) {
+      this._libTags = { store: window.DexLibraryTags.cleanStore(null), where: 'browser', loaded: false };
+      window.DexLibraryTags.load().then(({ store, where, error }) => {
+        this._libTags = { store, where, loaded: true };
+        if (error) this.toast('Could not read tags from this Mac: ' + error, '#fbbf24');
+        this.wsSet({ lib: Object.assign({}, this._ws().lib) });
+      });
+    }
+    return this._libTags.store;
+  };
+  P._libSetTagStore = function (store) {
+    const before = this._libTags.store;
+    this._libTags.store = store;
+    this.wsSet({ lib: Object.assign({}, this._ws().lib) });
+    window.DexLibraryTags.save(store).then(where => { this._libTags.where = where; }).catch(err => {
+      this._libTags.store = before;
+      this.wsSet({ lib: Object.assign({}, this._ws().lib) });
+      this.toast('Tag not saved: ' + (err && err.message || err), '#ef4444');
+    });
+  };
+  P.buildLibraryTagFilter = function () {
+    const T = window.DexLibraryTags, lib = this._ws().lib, chosen = lib.tagFilter || [], counts = T.tagCounts(this._libTagStore());
+    if (!counts.length) return null;
+    const toggle = tag => this.setLibPrefs({ tagFilter: chosen.includes(tag) ? chosen.filter(t => t !== tag) : chosen.concat(tag), offset: 0 });
+    return h('div', { role: 'group', 'aria-label': 'Filter by tag', 'data-lib-tag-filter': 'true', style: Object.assign({}, css.row, { marginBottom: 8, flexWrap: 'wrap' }) },
+      h('span', { style: css.label }, 'Tags'),
+      ...counts.map(({ tag, count }) => btn(tag + ' (' + count + ')', () => toggle(tag), chosen.includes(tag) ? '#38bdf8' : '#94a3b8', { 'aria-pressed': String(chosen.includes(tag)), 'data-lib-tag': tag })),
+      chosen.length ? btn('Clear tags', () => this.setLibPrefs({ tagFilter: [], offset: 0 }), '#94a3b8') : null);
+  };
+  P.buildImageTagEditor = function (id) {
+    const T = window.DexLibraryTags, store = this._libTagStore(), tags = T.tagsFor(store, id);
+    const add = input => { if (!T.parseTagInput(input.value).length) return; this._libSetTagStore(T.addTags(this._libTags.store, id, input.value)); input.value = ''; };
+    return h('div', { 'data-lib-tag-editor': id, style: Object.assign({}, css.row, { flexWrap: 'wrap' }) },
+      h('span', { style: css.label }, 'Tags'),
+      ...tags.map(tag => h('span', { key: tag, 'data-lib-image-tag': tag, style: { display: 'inline-flex', alignItems: 'center', gap: 2, border: '1px solid rgba(56,189,248,.35)', borderRadius: 999, padding: '1px 3px 1px 9px', fontSize: 11, color: '#7dd3fc' } }, tag,
+        h('button', { type: 'button', 'aria-label': 'Remove tag ' + tag, onClick: () => this._libSetTagStore(T.removeTag(this._libTags.store, id, tag)), style: { border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', minWidth: 22, minHeight: 22, fontWeight: 700 } }, '×'))),
+      h('input', { type: 'text', placeholder: 'Add tags, separated by commas', 'aria-label': 'Add tags to ' + id, 'data-lib-tag-input': id, style: Object.assign({}, css.input, { flex: '1 1 180px', minHeight: 30 }),
+        onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); add(e.target); } }, onBlur: e => add(e.target) }),
+      h('span', { style: css.muted }, this._libTags.where === 'mac' ? 'Saved on this Mac' : 'Saved in this browser'));
   };
   P.loadLibraryImages = async function (filter, offset) {
     const ws = this._ws(), f = filter || ws.lib.filter, lay = this._libLayout(ws.lib);
     const off = filter && filter !== ws.lib.filter ? 0 : Math.max(0, offset == null ? ws.lib.offset : offset);
     this.wsSet({ lib: Object.assign({}, ws.lib, { filter: f, loading: true, offset: off, error: null }) });
-    const r = await this._api('/api/library/images?filter=' + encodeURIComponent(f) + '&sort=' + ws.lib.sort + '&limit=' + lay.pageSize + '&offset=' + off, undefined);
+    const r = await this._libQuery(f, lay.pageSize, off);
     // A malformed 200 (no items array) used to store `undefined` and crash the next render.
     const items = r.ok && r.data && Array.isArray(r.data.items) ? r.data.items : [];
     const total = r.ok && r.data && Number.isFinite(r.data.total) ? r.data.total : items.length;
@@ -966,7 +1015,7 @@
   P.openLibraryViewer = async function (id) {
     const ws = this._ws(), base = this.state.backendUrl;
     let items = ws.lib.items, index = items.findIndex(x => x.id === id);
-    const r = await this._api('/api/library/images?filter=' + encodeURIComponent(ws.lib.filter) + '&sort=' + ws.lib.sort + '&limit=500&offset=0', undefined);
+    const r = await this._libQuery(ws.lib.filter, 500, 0);
     if (r.ok && r.data.items.some(x => x.id === id)) { items = r.data.items; index = items.findIndex(x => x.id === id); }
     if (index < 0) return;
     const self = this, esc = s => (window.CSS && CSS.escape ? CSS.escape(s) : s);
@@ -1051,24 +1100,31 @@
       sel('Rows', 'rows', rowOpts, lib.rows, v => set({ rows: v, offset: 0 })),
       lib.view === 'grid' ? sel('Columns', 'cols', colOpts, lib.cols, v => set({ cols: v })) : null,
       sel('Density', 'density', [['compact', 'Compact'], ['comfortable', 'Comfortable'], ['large', 'Large']], lib.density, v => set({ density: v })),
-      sel('Sort', 'sort', [['desc', 'Newest first'], ['asc', 'Oldest first']], lib.sort, v => set({ sort: v, offset: 0 })),
+      sel('Sort', 'sort', [['desc', 'Newest first'], ['asc', 'Oldest first'], ['name-asc', 'Name A–Z'], ['name-desc', 'Name Z–A']], lib.sort, v => set({ sort: v, offset: 0 })),
+      sel('Group', 'group', window.DexLibraryTags.GROUPS, lib.group || 'none', v => set({ group: v })),
       lib.view === 'grid' ? h('span', { 'data-lib-effective': lay.cols + 'x' + lib.rows, style: css.muted }, lay.cols + ' × ' + lib.rows + (lay.clamped ? ' (limited by screen width)' : '')) : null);
   };
   P.buildLibraryItems = function () {
-    const lib = this._ws().lib, base = this.state.backendUrl, lay = this._libLayout(lib), min = LIB_MIN[lib.density] || 108;
+    const lib = this._ws().lib, store = this._libTagStore(), groups = window.DexLibraryTags.groupItems(lib.items, lib.group, store);
+    if (groups.length === 1 && !groups[0].label) return this._libItemSet(lib.items);
+    return h('div', { 'data-lib-groups': 'true', style: { display: 'grid', gap: 12 } }, ...groups.map(g => h('section', { key: g.label, 'data-lib-group': g.label, 'aria-label': g.label },
+      h('div', { style: Object.assign({}, css.label, { marginBottom: 5 }) }, g.label + ' · ' + g.items.length), this._libItemSet(g.items))));
+  };
+  P._libItemSet = function (items) {
+    const lib = this._ws().lib, base = this.state.backendUrl, lay = this._libLayout(lib), min = LIB_MIN[lib.density] || 108, tagsOf = id => window.DexLibraryTags.tagsFor(this._libTagStore(), id);
     if (lib.view === 'list') {
-      return h('div', { role: 'list', 'data-lib-list': 'true', ref: el => { if (el) this._libMeasure(el.clientWidth); }, style: { display: 'grid', gap: 4 } }, ...lib.items.map(it => {
+      return h('div', { role: 'list', 'data-lib-list': 'true', ref: el => { if (el) this._libMeasure(el.clientWidth); }, style: { display: 'grid', gap: 4 } }, ...items.map(it => {
         const m = it.meta || {}, sel = lib.selectedId === it.id;
         return h('div', { key: it.id, role: 'listitem', 'data-lib-thumb': it.id, style: { display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr) auto', gap: 10, alignItems: 'center', padding: 4, border: '1px solid ' + (sel ? '#38bdf8' : 'rgba(148,163,184,.14)'), borderRadius: 8 } },
           h('button', { type: 'button', 'aria-label': 'Open ' + it.id + ' full size', onClick: () => this.openLibraryViewer(it.id), style: { padding: 0, border: 0, background: '#0a0e14', borderRadius: 6, cursor: 'zoom-in', width: min * 0.7, height: min * 0.7, overflow: 'hidden' } },
             h('img', { src: base + (it.thumbnailUrl || it.url), alt: '', loading: 'lazy', decoding: 'async', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } })),
           h('div', { style: { minWidth: 0 } }, h('div', { style: Object.assign({}, css.mono, { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }) }, (it.keeper ? '★ ' : '') + it.id),
-            h('div', { style: css.muted }, [it.width && it.height ? it.width + '×' + it.height : null, m.operation, m.target, m.seed != null ? 'seed ' + m.seed : null].filter(Boolean).join(' · '))),
+            h('div', { style: css.muted }, [it.width && it.height ? it.width + '×' + it.height : null, m.operation, m.target, m.seed != null ? 'seed ' + m.seed : null, tagsOf(it.id).join(', ') || null].filter(Boolean).join(' · '))),
           h('div', { style: css.row }, btn('Details', () => this.selectLibraryImage(it.id), '#94a3b8'),
             h('a', { href: base + (it.downloadUrl || '/api/images/' + encodeURIComponent(it.id) + '/export'), download: it.id, 'data-lib-download': it.id, style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 6px' } }, 'Download')));
       }));
     }
-    return h('div', { 'data-lib-grid': 'true', ref: el => { if (el) this._libMeasure(el.clientWidth); }, style: { display: 'grid', gridTemplateColumns: 'repeat(' + lay.cols + ',minmax(0,1fr))', gap: 6 } }, ...lib.items.map(it => {
+    return h('div', { 'data-lib-grid': 'true', ref: el => { if (el) this._libMeasure(el.clientWidth); }, style: { display: 'grid', gridTemplateColumns: 'repeat(' + lay.cols + ',minmax(0,1fr))', gap: 6 } }, ...items.map(it => {
       const m = it.meta || {}, sel = lib.selectedId === it.id;
       return h('div', { key: it.id, 'data-lib-thumb': it.id, style: { position: 'relative', border: '2px solid ' + (sel ? '#38bdf8' : 'rgba(148,163,184,.16)'), borderRadius: 8, overflow: 'hidden', background: '#0a0e14', aspectRatio: '1 / 1' } },
         h('img', { src: base + (it.thumbnailUrl || it.url), alt: it.id, loading: 'lazy', decoding: 'async', tabIndex: 0, role: 'button', 'aria-label': 'Open ' + it.id + ' full size',
@@ -1077,7 +1133,7 @@
         h('button', { type: 'button', 'aria-label': 'Select ' + it.id + ' for details', title: 'Details, lineage and actions', onClick: () => this.selectLibraryImage(it.id),
           style: { position: 'absolute', top: 3, right: 3, minWidth: lib.density === 'compact' ? 24 : 30, minHeight: lib.density === 'compact' ? 24 : 30, padding: 0, borderRadius: 15, border: '1px solid rgba(148,163,184,.5)', background: 'rgba(4,8,14,.85)', color: '#e2e8f0', cursor: 'pointer', fontSize: 13 } }, 'ⓘ'),
         lib.density !== 'compact' ? h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, background: 'rgba(4,8,14,.78)', color: '#dbe4ee', fontSize: 10, padding: '3px 5px', pointerEvents: 'none', fontFamily: "'IBM Plex Mono',monospace", overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' } },
-          (it.keeper ? '★ ' : '') + (m.operation || '') + (m.seed != null ? ' ' + m.seed : '')) : null);
+          (it.keeper ? '★ ' : '') + (m.operation || '') + (m.seed != null ? ' ' + m.seed : '') + (tagsOf(it.id).length ? ' · ' + tagsOf(it.id).join(', ') : '')) : null);
     }));
   };
   P.buildLibraryPager = function () {
@@ -1127,6 +1183,7 @@
           h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export?metadata=1', download: sel.id, 'data-export-link': 'metadata', style: { color: '#94a3b8', fontSize: 12, textDecoration: 'underline', padding: '6px 8px' } }, 'Export PNG with parameters'),
           h('a', { href: base + '/api/images/' + encodeURIComponent(sel.id) + '/export', download: sel.id, 'data-export-link': 'plain', style: { color: '#94a3b8', fontSize: 12, textDecoration: 'underline', padding: '6px 8px' } }, 'Export plain PNG')),
         this.buildExportPanel([sel.id]),
+        this.buildImageTagEditor(sel.id),
         h('div', { style: css.row }, h('span', { style: css.label }, 'Lineage'),
           (sel.ancestors || []).length ? lineageChip(sel.ancestors[sel.ancestors.length - 1], '⇤ Original') : null,
           sel.parent ? lineageChip(sel.parent, '↑ Parent') : h('span', { style: css.muted }, 'no parent'),
@@ -1138,6 +1195,7 @@
         h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Images'), h('span', { style: css.muted }, lib.loading ? 'loading…' : lib.total + ' images'), h('div', { style: { flex: 1 } }), lib.items.length > 1 ? btn('Save all shown (' + lib.items.length + ') as ZIP', () => this.runExport(lib.items.map(it => it.id)), '#94a3b8', { 'data-export-all': String(lib.items.length), disabled: !!ws.exportBusy }) : null, btn('Refresh', () => this.loadLibraryImages(), '#94a3b8')),
         h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, ...filters.map(([k, l]) => btn(l, () => this.loadLibraryImages(k), lib.filter === k ? '#38bdf8' : '#94a3b8'))),
         this.buildLibraryControls(),
+        this.buildLibraryTagFilter(),
         lib.error ? h('div', { role: 'alert', style: Object.assign({}, css.muted, { color: '#fca5a5' }) }, lib.error) : null,
         lib.items.length ? this.buildLibraryItems()
           : h('div', { style: css.muted }, lib.loading ? '' : 'No images for this filter.'),
@@ -2142,7 +2200,7 @@
   const _onKeydown = P.onKeydown;
   P.onKeydown = function (e) {
     const tag = (e.target && e.target.tagName || '').toLowerCase();
-    const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
+    const inField = tag === 'input' || tag === 'textarea' || tag === 'select' || !!(e.target && e.target.isContentEditable);
     const curScreen = (this.state.screens && this.state.screens[this.state.version]) || 'create';
     if (!inField && curScreen === 'create') {
       const ws = this._ws();

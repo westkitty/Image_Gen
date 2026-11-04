@@ -66,9 +66,52 @@ private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
+// Library tags belong to this Mac: Studio reads and writes them here through a reply bridge, whichever machine serves the page.
+private final class LibraryTagsBridge: NSObject, WKScriptMessageHandlerWithReply {
+    private static let maxBytes = 8 * 1024 * 1024
+    private let file: URL
+    weak var webView: WKWebView?
+
+    override init() {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        file = support.appendingPathComponent("DexDiffusion/library-tags.json")
+        super.init()
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping (Any?, String?) -> Void) {
+        let origin = message.frameInfo.securityOrigin
+        guard message.frameInfo.isMainFrame, origin.protocol == "http", origin.host == "127.0.0.1", origin.port == 31337,
+              message.webView === webView, let body = message.body as? [String: Any], let action = body["action"] as? String else {
+            replyHandler(nil, "Refused: not from Studio")
+            return
+        }
+        do {
+            switch action {
+            case "load":
+                guard FileManager.default.fileExists(atPath: file.path) else { replyHandler(nil, nil); return }
+                replyHandler(try String(contentsOf: file, encoding: .utf8), nil)
+            case "save":
+                guard let text = body["text"] as? String, let data = text.data(using: .utf8), data.count <= Self.maxBytes,
+                      (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else {
+                    replyHandler(nil, "Refused: tags are not a JSON object of a sane size")
+                    return
+                }
+                try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try data.write(to: file, options: .atomic)
+                replyHandler(true, nil)
+            default:
+                replyHandler(nil, "Unknown action")
+            }
+        } catch {
+            replyHandler(nil, error.localizedDescription)
+        }
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKDownloadDelegate, WKUIDelegate, WKScriptMessageHandler {
     private var window: NSWindow!
     private var webView: WKWebView!
+    private var libraryTagsBridge: LibraryTagsBridge?
     private var statusLabel: NSTextField!
     private var consoleProcess: Process?
     private var serviceStartupInProgress = false
@@ -123,6 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     func windowWillClose(_ notification: Notification) {
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "dexRecovery")
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "dexLibraryTags", contentWorld: .page)
         window = nil
         webView = nil
         statusLabel = nil
@@ -887,9 +931,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let proxy = WeakScriptMessageHandler(self)
         scriptMessageProxy = proxy
         contentController.add(proxy, name: "dexRecovery")
+        let tagsBridge = LibraryTagsBridge()
+        libraryTagsBridge = tagsBridge
+        contentController.addScriptMessageHandler(tagsBridge, contentWorld: .page, name: "dexLibraryTags")
         contentController.addUserScript(WKUserScript(source: "window.__dexNativeWrapper = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.userContentController = contentController
         webView = WKWebView(frame: .zero, configuration: config)
+        tagsBridge.webView = webView
         // Keep startup visually distinct from an unrendered white document.
         webView.underPageBackgroundColor = NSColor(calibratedRed: 0.031, green: 0.035, blue: 0.055, alpha: 1)
         webView.navigationDelegate = self

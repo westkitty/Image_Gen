@@ -41,6 +41,7 @@ const { rulesForTarget, validateDimensions } = require('./dimension-policy');
 const { enhancePrompt: runPromptEnhance, extractProtectedLiterals } = require('./prompt-enhancement');
 const { PROFILES, resolvePromptProfile } = require('./prompt-profiles');
 const { getWildcardCatalog, getWildcardItems, expandWildcards: expandWildcardsUtil } = require('./wildcards');
+const { sortLibraryIds } = require('./library-sort');
 const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily, resolveTargetFamily } = require('./extra-networks');
 const EditModels = require('./edit-models');
 const { resolveLoraRuntimePolicy, routesFor } = require('./lora-runtime-policy');
@@ -4525,31 +4526,40 @@ function verifiedSourceBrowserSnapshot() {
   sourceBrowserCache = { at: Date.now(), ids, views };
   return sourceBrowserCache;
 }
-app.get('/api/library/images', (req, res) => {
-  const filter = String(req.query.filter || 'all');
+function queryLibraryImages(query) {
+  const filter = String(query.filter || 'all');
   const snapshot = verifiedSourceBrowserSnapshot();
   let ids = snapshot.ids.slice();
   const verified = snapshot.views;
+  // A list of ids narrows the result to those images (the client holds tags, so it asks by id).
+  if (Array.isArray(query.ids)) { const wanted = new Set(query.ids.map(String)); ids = ids.filter(id => wanted.has(id)); }
   // Known test/regression artifacts stay on disk but are hidden unless asked for.
-  if (req.query.show_test !== '1') ids = ids.filter(id => !(verified.get(id).meta && verified.get(id).meta.test_artifact));
+  if (String(query.show_test) !== '1') ids = ids.filter(id => !(verified.get(id).meta && verified.get(id).meta.test_artifact));
   if (filter === 'keepers') ids = ids.filter(id => verified.get(id).keeper);
   else if (filter !== 'all') ids = ids.filter(id => { const m = verified.get(id).meta || {}; return m.operation === filter || m.target === filter; });
-  const search = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 120).toLowerCase() : '';
+  const search = typeof query.q === 'string' ? query.q.trim().slice(0, 120).toLowerCase() : '';
   if (search) ids = ids.filter(id => {
     const image = verified.get(id) || {};
     const meta = image.meta || {};
     const words = [id, meta.original_name, meta.operation, meta.target, image.model, image.runId, image.run && image.run.model];
     return words.some(value => typeof value === 'string' && value.toLowerCase().includes(search));
   });
-  // Canonical ids start with the run timestamp, so id order is creation order.
-  ids.sort((a, b) => b.localeCompare(a));
-  if (String(req.query.sort || 'desc') === 'asc') ids.reverse();
+  sortLibraryIds(ids, String(query.sort || 'desc'), id => (verified.get(id).meta || {}).original_name);
   // Server-side paging keeps the grid bounded; the default window stays 200 for older clients.
-  const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 200));
-  const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+  const limit = Math.min(500, Math.max(1, parseInt(query.limit, 10) || 200));
+  const offset = Math.max(0, parseInt(query.offset, 10) || 0);
   const items = ids.slice(offset, offset + limit).map(imageView).filter(Boolean)
     .map(v => ({ ...v, thumbnailUrl: `/api/thumbnails/${encodeURIComponent(v.id)}`, downloadUrl: `/api/images/${encodeURIComponent(v.id)}/export` }));
-  res.json({ filter, total: ids.length, offset, limit, items });
+  return { filter, total: ids.length, offset, limit, items };
+}
+app.get('/api/library/images', (req, res) => {
+  const { ids, ...query } = req.query; // ids is accepted only through the POST below.
+  res.json(queryLibraryImages(query));
+});
+app.post('/api/library/images/query', (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  if (body.ids !== undefined && !Array.isArray(body.ids)) return res.status(400).json({ error: 'ids must be an array' });
+  res.json(queryLibraryImages(body));
 });
 
 // ---- Numbered Batch: parse preview + backend-owned queue ----------------------

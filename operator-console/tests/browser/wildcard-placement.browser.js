@@ -22,31 +22,66 @@ const { test, exitCode } = runner('wildcard-placement');
     await page.evaluate(() => __dex.setState({ prompt: 'one __aa__ two __bb__ three __cc__ four __dd__', negPrompt: 'blurry' }));
 
     await test('four wildcards are all shown; one compact counter in N / limit form', async () => {
-      await page.waitForFunction(() => document.querySelectorAll('[data-wildcard-chip="positive"]').length === 4);
+      await page.waitForFunction(() => document.querySelectorAll('dex-prompt-field [data-wildcard-chip="positive"]').length === 4);
       const c = await page.locator('[data-prompt-counter]:visible').allInnerTexts();
       assert.equal(c.length, 1, 'exactly one visible counter');
       assert.match(c[0], /^\d+ \/ 1000$/);
       await page.fill('[data-dex-field="prompt"]', 'hello');
       await page.waitForFunction(() => document.querySelector('[data-prompt-counter]').textContent === '5 / 1000');
     });
-    await test('reorder moves only the tokens and keeps surrounding text', async () => {
-      await page.evaluate(() => __dex.setState({ prompt: 'one __aa__ two __bb__ three __cc__ four __dd__', negPrompt: 'blurry' }));
-      await page.waitForFunction(() => document.querySelectorAll('[data-wildcard-chip="positive"]').length === 4);
-      await page.click('button[aria-label="Move __cc__ earlier"]');
-      assert.equal((await prompts()).p, 'one __aa__ two __cc__ three __bb__ four __dd__');
-      await page.click('button[aria-label="Move __aa__ later"]');
-      assert.equal((await prompts()).p, 'one __cc__ two __aa__ three __bb__ four __dd__');
-      await page.waitForFunction(() => document.querySelector('button[aria-label="Move __cc__ earlier"]') && document.querySelector('button[aria-label="Move __cc__ earlier"]').disabled, null, { timeout: 5000 });
+    await test('chips sit inside the prompt: + duplicates, x dismisses, keys reorder, and the value stays plain text', async () => {
+      await page.evaluate(() => { document.activeElement.blur(); __dex.setState({ prompt: 'one, __aa__, two, __bb__', negPrompt: 'blurry' }); });
+      const field = page.locator('dex-prompt-field[data-dex-field="prompt"]');
+      await field.locator('[data-token="__bb__"]').waitFor();
+      assert.equal(await field.locator('.dx-pchip').count(), 2);
+      assert.equal(await field.evaluate(e => e.value), 'one, __aa__, two, __bb__');
+      await field.locator('[data-token="__aa__"] [data-chip-duplicate]').click();
+      assert.equal((await prompts()).p, 'one, __aa__, __aa__, two, __bb__');
+      await field.locator('[data-token="__aa__"] [data-chip-remove]').first().click();
+      assert.equal((await prompts()).p, 'one, __aa__, two, __bb__');
+      await field.locator('[data-token="__aa__"]').focus();
+      await page.keyboard.press('ArrowRight');
+      assert.equal((await prompts()).p, 'one, __bb__, two, __aa__', 'keyboard reorder swaps only the tokens');
+      assert.equal(await page.evaluate(() => document.activeElement.dataset.token), '__aa__', 'focus follows the chip');
     });
-    await test('move to the negative prompt and back', async () => {
-      await page.click('button[aria-label="Move __aa__ to the negative prompt"]');
-      let s = await prompts();
-      assert.equal(s.p, 'one __cc__ two three __bb__ four __dd__');
-      assert.equal(s.n, 'blurry, __aa__');
-      await page.waitForSelector('[data-wildcard-chip="negative"]');
-      await page.click('button[aria-label="Move __aa__ to the prompt"]');
-      s = await prompts();
-      assert.equal(s.n, 'blurry'); assert.match(s.p, /__aa__/);
+    await test('dragging a chip moves it inside the prompt and into the negative prompt', async () => {
+      await page.evaluate(() => { document.activeElement.blur(); __dex.setState({ prompt: 'alpha beta, __aa__', negPrompt: 'blurry' }); });
+      const field = page.locator('dex-prompt-field[data-dex-field="prompt"]');
+      await field.locator('[data-token="__aa__"]').waitFor();
+      const start = await field.boundingBox();
+      await field.locator('[data-token="__aa__"]').dragTo(field, { targetPosition: { x: 12, y: 12 } });
+      await page.waitForFunction(() => /^__aa__/.test(__dex.state.prompt));
+      assert.equal((await prompts()).p, '__aa__, alpha beta');
+      assert.ok(start.width > 0);
+      const neg = page.locator('dex-prompt-field[data-dex-field="negative-prompt"]');
+      await neg.evaluate(e => { e.disabled = false; e.removeAttribute('data-ctl-off'); for (let n = e.parentElement; n; n = n.parentElement) { if (n.tagName === 'DETAILS') n.open = true; if (getComputedStyle(n).display === 'none') n.style.display = 'block'; } }); // The default model has no negative prompt; a chip cannot be dropped on a disabled field.
+      await field.locator('[data-token="__aa__"]').dragTo(neg);
+      await page.waitForFunction(() => __dex.state.negPrompt.includes('__aa__'));
+      const s = await prompts();
+      assert.equal(s.p, 'alpha beta'); assert.equal(s.n, 'blurry, __aa__');
+      await neg.locator('[data-wildcard-chip="negative"]').waitFor();
+    });
+    await test('typing a full token becomes a chip; typing, Enter and caret stay normal; the field empties', async () => {
+      const field = page.locator('dex-prompt-field[data-dex-field="prompt"]');
+      await page.evaluate(() => { document.activeElement.blur(); __dex.setState({ prompt: '' }); });
+      await field.click();
+      await page.keyboard.type('red __aa__ fox');
+      await page.waitForFunction(() => __dex.state.prompt === 'red __aa__ fox');
+      assert.equal(await field.locator('.dx-pchip').count(), 1);
+      await page.keyboard.press('Enter'); await page.keyboard.type('next');
+      await page.waitForFunction(() => __dex.state.prompt === 'red __aa__ fox\nnext');
+      await page.keyboard.press('ControlOrMeta+A'); await page.keyboard.press('Backspace');
+      await page.waitForFunction(() => __dex.state.prompt === '');
+      assert.equal(await field.evaluate(e => e.hasAttribute('data-empty')), true);
+    });
+    await test('A1111 keyboard editing still works in the chip field and leaves chips intact', async () => {
+      const field = page.locator('dex-prompt-field[data-dex-field="prompt"]');
+      await page.evaluate(() => { document.activeElement.blur(); __dex.setState({ prompt: 'red fox, __aa__' }); });
+      await field.locator('[data-token="__aa__"]').waitFor();
+      await field.evaluate(e => { e.focus(); e.setSelectionRange(0, 3); });
+      await page.keyboard.press('ControlOrMeta+ArrowUp');
+      await page.waitForFunction(() => __dex.state.prompt === '(red:1.1) fox, __aa__');
+      assert.equal(await field.locator('.dx-pchip').count(), 1);
     });
     await test('seed: Random checkbox, dice and reuse controls', async () => {
       await page.evaluate(() => __dex.setState({ seed: '-1', lastSeed: 4242 }));

@@ -28,6 +28,11 @@ async function newPage(browser, base, ctxOpts, mediaItems = []) {
     const limit = Math.min(500, parseInt(u.searchParams.get('limit') || '200', 10)), offset = parseInt(u.searchParams.get('offset') || '0', 10);
     let ids = filter === 'keepers' ? ALL.filter(x => x.keeper) : ALL.slice();
     if (sort === 'asc') ids = ids.slice().reverse();
+    if (r.request().method() === 'POST') {
+      const body = r.request().postDataJSON();
+      reqs.posts = (reqs.posts || []).concat(body);
+      return r.fulfill({ json: { total: body.ids.length, offset: 0, limit: body.limit, items: ALL.filter(x => body.ids.includes(x.id)) } });
+    }
     reqs.list.push(u.search);
     r.fulfill({ json: { filter, total: ids.length, offset, limit, items: ids.slice(offset, offset + limit) } });
   });
@@ -98,6 +103,35 @@ const counter = page => page.locator('[data-lightbox-count]').innerText();
       await pick(page, 'cols', 0); await pick(page, 'density', 'compact'); const wc = await w();
       await pick(page, 'density', 'large'); const wl = await w();
       assert.ok(wl > wc, 'large cells are wider than compact ones (' + wl + ' vs ' + wc + ')');
+      await ctx.close();
+    });
+
+    await test('sort by name, group, and tag images; a tag filter asks for exactly the tagged images and tags survive reload', async () => {
+      const { page, ctx, errors, reqs } = await newPage(browser, srv.base);
+      await pick(page, 'sort', 'name-asc');
+      await page.waitForFunction(() => __dex._ws().lib.sort === 'name-asc' && !__dex._ws().lib.loading);
+      assert.ok(reqs.list.some(q => q.includes('sort=name-asc')), 'the name sort reaches the server');
+      const first = ALL[0].id, second = ALL[1].id;
+      await page.route(/\/api\/images\/[^/]+\/meta$/, r => { const id = decodeURIComponent(r.request().url().split('/').slice(-2)[0]); r.fulfill({ json: { id, url: '/api/images/' + id, width: 64, height: 64, meta: {} } }); });
+      await page.evaluate(id => __dex.selectLibraryImage(id), first);
+      const input = page.locator('[data-lib-tag-input]'); await input.waitFor();
+      await input.fill('Forest, portrait '); await input.press('Enter');
+      await page.waitForSelector('[data-lib-image-tag="forest"]'); await page.waitForSelector('[data-lib-image-tag="portrait"]');
+      await page.evaluate(id => __dex.selectLibraryImage(id), second);
+      await page.locator('[data-lib-tag-input="' + second + '"]').fill('forest'); await page.locator('[data-lib-tag-input="' + second + '"]').press('Enter');
+      await page.waitForFunction(() => /forest \(2\)/.test((document.querySelector('[data-lib-tag="forest"]') || {}).textContent || ''));
+      assert.match(await page.locator('[data-lib-tag-editor]').innerText(), /Saved in this browser/, 'where the tag lives is stated');
+      await pick(page, 'group', 'tag');
+      await page.waitForSelector('[data-lib-group="forest"]'); await page.waitForSelector('[data-lib-group="Untagged"]');
+      assert.equal(await page.locator('[data-lib-group="forest"] [data-lib-thumb]').count(), 2);
+      await page.locator('[data-lib-tag="portrait"]').click();
+      await page.waitForFunction(() => __dex._ws().lib.items.length === 1);
+      assert.deepEqual(reqs.posts.at(-1).ids, [first], 'only images with the chosen tag are requested');
+      await page.reload(); await page.waitForFunction(() => window.__dex && __dex.state);
+      await page.evaluate(() => __dex.setScreen('library'));
+      await page.waitForSelector('[data-lib-tag="forest"]');
+      assert.equal(await page.locator('[data-lib-control="group"]').inputValue(), 'tag', 'the grouping preference persists');
+      assert.deepEqual(errors, []);
       await ctx.close();
     });
 

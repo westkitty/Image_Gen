@@ -115,7 +115,7 @@
     grid.append(left, right); m.body.append(grid);
 
     // Construct box
-    const construct = el('textarea', null, null, { 'data-pb-field': 'construct', 'aria-label': 'Construct prompt', rows: '7' });
+    const construct = el('dex-prompt-field', null, null, { 'data-pb-field': 'construct', 'aria-label': 'Construct prompt', rows: '7', 'data-dex-field': o.field === 'negative' ? 'pb-negative' : 'pb-prompt' });
     construct.className = 'dx-input'; construct.style.resize = 'vertical'; construct.style.lineHeight = '1.45'; construct.value = o.text || '';
     let lastSel = { start: construct.value.length, end: construct.value.length };
     const remember = () => { lastSel = { start: construct.selectionStart, end: construct.selectionEnd }; };
@@ -183,6 +183,7 @@
     }
     async function loadBanks() {
       try { const r = await fetch(api('/api/wildcards')); const d = await r.json(); state.banks = Array.isArray(d.wildcards) ? d.wildcards : []; } catch (_) { state.banks = []; }
+      if (window.DexPromptChips) window.DexPromptChips.setBankCounts(state.banks);
       if (!state.allowed) state.allowed = new Set(state.banks.map(b => b.name));
       drawPane();
     }

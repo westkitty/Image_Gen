@@ -550,7 +550,7 @@
             <span style="font-size:10px;color:#8888b0;">{{ promptToggleLabel }} {{ promptChevron }}</span>
           </button>
           <div style="display:{{ promptPanelDisplay }};margin-top:6px;">
-            <div style="margin-bottom:2px;"><textarea rows="3" value="{{ prompt }}" onChange="{{ onPromptChange }}" data-dex-field="prompt" aria-label="Describe your image" placeholder="A quiet mountain cabin under the stars..." style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:9px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;line-height:1.5;display:block;"></textarea></div>
+            <div style="margin-bottom:2px;"><dex-prompt-field rows="3" value="{{ prompt }}" onChange="{{ onPromptChange }}" data-dex-field="prompt" aria-label="Describe your image" placeholder="A quiet mountain cabin under the stars..." style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:9px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;line-height:1.5;display:block;"></dex-prompt-field></div>
             <div data-prompt-tools-row style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:2px;"><span data-prompt-counter title="Characters in the prompt. 1000 is interface guidance, not a backend hard limit." style="font-size:10px;color:#8888b0;">{{ promptLen }} / 1000</span>{{ promptTools }}</div>
             {{ promptGuidance }}
           </div>
@@ -564,7 +564,7 @@
             <span style="font-size:10px;color:#8888b0;">{{ negToggleLabel }} {{ negChevron }}</span>
           </button>
           <div style="display:{{ negPanelDisplay }};margin-top:6px;">
-            <div><textarea rows="2" value="{{ negPrompt }}" onChange="{{ onNegChange }}" data-ctl-off="{{ ctlNeg }}" data-dex-field="negative-prompt" aria-label="Negative prompt" placeholder="{{ negPromptPlaceholder }}" disabled="{{ negPromptDisabled }}" style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:9px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;display:block;opacity:{{ negPromptOpacity }};"></textarea></div>
+            <div><dex-prompt-field rows="2" value="{{ negPrompt }}" onChange="{{ onNegChange }}" data-ctl-off="{{ ctlNeg }}" data-dex-field="negative-prompt" aria-label="Negative prompt" placeholder="{{ negPromptPlaceholder }}" disabled="{{ negPromptDisabled }}" style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:9px;outline:none;font-size:13px;font-family:'DM Sans',sans-serif;display:block;opacity:{{ negPromptOpacity }};"></dex-prompt-field></div>
             <div style="margin-top:4px;">{{ negativePromptTools }}</div>
           </div>
         </div>
@@ -876,6 +876,7 @@
 </div>
   </template>
 
+  <script src="prompt-chips.js"></script>
   <script src="dc-runtime.js"></script>
   <script src="client-helpers.js"></script>
   <script src="edit-core.js"></script>
@@ -899,6 +900,7 @@
   <script src="source-asset.js"></script>
   <script src="../model-presets.js"></script>
   <script src="component.js"></script>
+  <script src="library-tags.js"></script>
   <script src="workstation-ui.js"></script>
   <script src="edit-ui.js"></script>
   <script src="lightbox.js"></script>

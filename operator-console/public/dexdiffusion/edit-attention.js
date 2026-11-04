@@ -98,7 +98,7 @@
     return null;
   }
 
-  const PROMPT_FIELDS = 'textarea[data-dex-field="prompt"], textarea[data-dex-field="negative-prompt"], textarea[data-edit-prompt], textarea[data-edit-negative], textarea[data-prompt-edit]';
+  const PROMPT_FIELDS = 'dex-prompt-field, textarea[data-dex-field="prompt"], textarea[data-dex-field="negative-prompt"], textarea[data-edit-prompt], textarea[data-edit-negative], textarea[data-prompt-edit]';
   function install(win) {
     if (!win || win.__dexEditAttention) return;
     win.__dexEditAttention = true;

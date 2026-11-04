@@ -275,7 +275,7 @@ class Component extends DCLogic {
       }
     }
     const tag = (e.target && e.target.tagName || '').toLowerCase();
-    const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
+    const inField = tag === 'input' || tag === 'textarea' || tag === 'select' || !!(e.target && e.target.isContentEditable) || !!(e.target && e.target.closest && e.target.closest('dex-prompt-field'));
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); this.onGenerate(); return; }
     if (inField) return;
     if (e.key === '/') { e.preventDefault(); this.setState({ promptOpen: true }, () => document.querySelector('textarea[placeholder*="Describe the image"]')?.focus()); }
@@ -1193,7 +1193,7 @@ class Component extends DCLogic {
     const phrase = Array.isArray(triggers) ? triggers[0] : String(triggers || '');
     if (!phrase) return;
     const prompt = this.state.prompt || '';
-    const textarea = document.querySelector('textarea[data-dex-field="prompt"]');
+    const textarea = document.querySelector('[data-dex-field="prompt"]');
     if (textarea && textarea.selectionStart != null && textarea.selectionEnd != null) {
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
@@ -1321,31 +1321,8 @@ class Component extends DCLogic {
     this.setState({ prompt: next });
     this.toast('Removed adapter', '#94a3b8');
   }
-  // Wildcard placement: reorder among the wildcards already in the prompt, or move one between positive and negative.
-  // Operations are positional (by occurrence index) so repeated tokens stay unambiguous; only the tokens move, surrounding text is kept.
-  _wcMatches(text) { const re = /__([A-Za-z0-9_-]+)__/g, out = []; let m; while ((m = re.exec(text || '')) !== null) out.push({ name: m[1], token: m[0], at: m.index }); return out; }
+  _wcMatches(text) { return window.DexPromptChips.matchTokens(text || ''); }
   getNegWildcards() { return this._wcMatches(this.state.negPrompt); }
-  moveWildcard(index, dir) {
-    const text = this.state.prompt || '', ms = this._wcMatches(text), a = ms[index], b = ms[index + dir];
-    if (!a || !b) return;
-    const [lo, hi] = a.at < b.at ? [a, b] : [b, a];
-    this.setState({ prompt: text.slice(0, lo.at) + hi.token + text.slice(lo.at + lo.token.length, hi.at) + lo.token + text.slice(hi.at + hi.token.length) });
-  }
-  moveWildcardAcross(index, toNegative) {
-    const from = toNegative ? 'prompt' : 'negPrompt', to = toNegative ? 'negPrompt' : 'prompt';
-    const src = this.state[from] || '', m = this._wcMatches(src)[index];
-    if (!m) return;
-    const rest = (src.slice(0, m.at) + src.slice(m.at + m.token.length)).replace(/\s{2,}/g, ' ').replace(/\s+,/g, ',').replace(/,\s*,/g, ',').replace(/^[,\s]+|[,\s]+$/g, '');
-    const dst = this.state[to] || '';
-    this.setState({ [from]: rest, [to]: dst.includes(m.token) ? dst : (dst.trim() ? dst.trim() + ', ' : '') + m.token });
-    this.toast('Moved ' + m.token + (toNegative ? ' to the negative prompt' : ' to the prompt'), '#38bdf8');
-  }
-  removeWildcard(token) {
-    const prompt = this.state.prompt || '';
-    const next = prompt.replace(token, '').replace(/\s{2,}/g, ' ').trim();
-    this.setState({ prompt: next });
-    this.toast('Removed ' + token, '#94a3b8');
-  }
   addTriggerWord(word) {
     if (!word) return;
     this.setState(s => {
@@ -1360,7 +1337,7 @@ class Component extends DCLogic {
   async loadWildcards() {
     try {
       const r = await fetch(this.state.backendUrl + '/api/wildcards', { signal: AbortSignal.timeout(6000) });
-      if (r.ok) { const d = await r.json(); this.setState({ wildcards: d.wildcards || [] }); }
+      if (r.ok) { const d = await r.json(); window.DexPromptChips.setBankCounts(d.wildcards || []); this.setState({ wildcards: d.wildcards || [] }); }
     } catch {}
   }
   // Prompt Builder modal (prompt-builder.js) for the Create prompt or negative prompt. Create expands __tokens__ at
@@ -1611,7 +1588,7 @@ class Component extends DCLogic {
   insertNegWildcard(name) {
     const token = '__' + name + '__';
     const negPrompt = this.state.negPrompt || '';
-    const textarea = document.querySelector('textarea[data-dex-field="negative-prompt"]');
+    const textarea = document.querySelector('[data-dex-field="negative-prompt"]');
     if (textarea && textarea.selectionStart != null && textarea.selectionEnd != null) {
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
@@ -3301,7 +3278,7 @@ class Component extends DCLogic {
 
     const activeLoras = this.getActiveLoras();
     const activeWildcards = this.getActiveWildcards();
-    const hasActiveResources = activeLoras.length > 0 || activeWildcards.length > 0 || this.getNegWildcards().length > 0;
+    const hasActiveResources = activeLoras.length > 0;
 
     // Active Create LoRA for quick display
     const currentCreateLora = this.state.createLora || {};
@@ -3617,34 +3594,6 @@ class Component extends DCLogic {
             }, '×')
           );
         }),
-        // Wildcard chips: any number, reorderable, movable between positive and negative (buttons, so keyboard and touch work)
-        ...activeWildcards.map((w, i) => {
-          const bank = wildcards.find(b => b.name.toLowerCase() === w.name.toLowerCase());
-          const count = bank ? bank.count : '?';
-          const mini = (label, title, onClick, disabled) => React.createElement('button', { type: 'button', onClick, disabled: !!disabled, title, 'aria-label': title,
-            style: { border: 'none', background: 'transparent', color: disabled ? '#475569' : '#c4b5fd', cursor: disabled ? 'default' : 'pointer', padding: '2px 4px', minWidth: 22, minHeight: 22, fontWeight: 700 } }, label);
-          return React.createElement('span', {
-            key: w.token + ':' + i, 'data-wildcard-chip': 'positive',
-            style: { display: 'inline-flex', alignItems: 'center', gap: 2, border: '1px solid rgba(167,139,250,.3)', background: 'rgba(167,139,250,.1)', borderRadius: 6, padding: '2px 4px', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", color: '#d8b4fe' }
-          },
-            mini('◀', 'Move ' + w.token + ' earlier', () => this.moveWildcard(i, -1), i === 0),
-            '⊞ __' + w.name + '__',
-            React.createElement('span', { style: { color: '#94a3b8', fontSize: 10 } }, '(' + count + ')'),
-            mini('▶', 'Move ' + w.token + ' later', () => this.moveWildcard(i, 1), i === activeWildcards.length - 1),
-            mini('→ neg', 'Move ' + w.token + ' to the negative prompt', () => this.moveWildcardAcross(i, true)),
-            React.createElement('button', {
-              onClick: () => this.removeWildcard(w.token),
-              title: 'Remove Wildcard', 'aria-label': 'Remove ' + w.token,
-              style: { border: 'none', background: 'transparent', color: '#f87171', cursor: 'pointer', marginLeft: 2, fontWeight: 700, minWidth: 22, minHeight: 22 }
-            }, '×')
-          );
-        }),
-        ...this.getNegWildcards().map((w, i) => React.createElement('span', {
-          key: 'neg:' + w.token + ':' + i, 'data-wildcard-chip': 'negative',
-          style: { display: 'inline-flex', alignItems: 'center', gap: 2, border: '1px solid rgba(248,113,113,.35)', background: 'rgba(248,113,113,.08)', borderRadius: 6, padding: '2px 4px', fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", color: '#fca5a5' }
-        }, 'neg ⊞ __' + w.name + '__',
-          React.createElement('button', { type: 'button', onClick: () => this.moveWildcardAcross(i, false), title: 'Move ' + w.token + ' to the prompt', 'aria-label': 'Move ' + w.token + ' to the prompt',
-            style: { border: 'none', background: 'transparent', color: '#c4b5fd', cursor: 'pointer', padding: '2px 4px', minWidth: 22, minHeight: 22, fontWeight: 700 } }, '→ pos')))
       ) : null
     );
 

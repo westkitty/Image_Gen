@@ -41,7 +41,7 @@ const { startServer, launchBrowser, runCleanups, openStudio } = require('./helpe
 
         // Losing the backend after Studio has opened must leave the current
         // workspace and unsent draft available for recovery without a reload.
-        const prompt = page.locator('textarea[data-dex-field="prompt"]');
+        const prompt = page.locator('[data-dex-field="prompt"]');
         await prompt.fill('connectivity recovery draft');
         await page.evaluate(() => __dex.setScreen('library', { skipUnsavedGuard: true }));
         await page.waitForFunction(() => __dex.state.screens[__dex.state.version] === 'library');
