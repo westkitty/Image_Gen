@@ -1,5 +1,16 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## Studio: free page switching, connection report, Library tags, wildcard chips, bank editor — 2026-11-03 (`main` `93d5fb5`, both Macs)
+
+- **Page switching (`8723887`):** Create, Edit and Drama drafts no longer block moving between pages; they stay in memory and closing or reloading still warns. The Drama save dialog is gone.
+- **Connection report (`8723887`):** the offline alert and System copy recent `/api/version` probe failures plus a fresh re-check of the backend. Falls back to selectable text if the clipboard refuses.
+- **Library (`b122d5d`):** sort by date or name, group by date, model, operation or tag (within the current page), filter by tag. Tags are on the Mac in `~/Library/Application Support/DexDiffusion/library-tags.json` through the `dexLibraryTags` native bridge; other browsers use their own localStorage.
+- **Chips (`b122d5d`):** `<dex-prompt-field>` (`prompt-chips.js`) replaces the V2 prompt and negative textareas and the Prompt Builder box. The value stays plain text with `__name__` tokens.
+- **Banks (`93d5fb5`):** Studio edits go to `$DEX_STATE_DIR/wildcards` and override shipped banks; earlier versions go to `.history`, and a removed shipped bank is listed in `.removed.json`. Shipped files are never changed.
+- **Not verified:** chip dragging and the tag file in the native WKWebView (browser tests run in Chromium; the bridge only compiled). SSH cannot read `/Volumes/wc2tb` ("Operation not permitted"), so bank files were checked through the API only.
+- **Open:** `/api/version` over the tunnel stalled again right after the 04:28 UTC relaunch and the controller replaced the tunnel about a minute later. Long-lived tunnel stalls are not explained yet; the new report should capture the next one.
+- Left behind: one `zz_deploy_check-*.txt` in the Big Mac's `state/wildcards/.history` from the deploy check.
+
 ## PR #23 install and Dock tile target fix — 2026-11-03 (`main` `62ccc48`, both Macs)
 
 - PR #23 (Studio modals, Prompt Builder, any-checkpoint edit, `37a4461`) was fast-forwarded into `main` and pushed; GitHub shows it MERGED. No merge commit.
