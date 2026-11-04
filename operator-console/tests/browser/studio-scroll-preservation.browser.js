@@ -19,13 +19,13 @@ const {startServer,launchBrowser,runCleanups, openStudio }=require('./helpers');
  await ollamaSettled;await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  const sample=()=>page.evaluate(()=>{
    const header=document.querySelector('[data-screen-header="create"]');const pane=header?.closest('[data-scroll-pane]');
-   return {pane,scroll:pane?.scrollTop||0,height:pane?.scrollHeight||0,client:pane?.clientHeight||0,advanced:document.querySelector('[data-studio-advanced]')?.open,prompt:document.querySelector('textarea[aria-label="Describe your image"]')?.value||''};
+   return {pane,scroll:pane?.scrollTop||0,height:pane?.scrollHeight||0,client:pane?.clientHeight||0,advanced:document.querySelector('[data-studio-advanced]')?.open,prompt:document.querySelector('[aria-label="Describe your image"]')?.value||''};
  });
  const baseline=await page.evaluate(()=>{const pane=document.querySelector('[data-screen-header="create"]').closest('[data-scroll-pane]');pane.scrollTop=300;window.__studioScrollProbe=pane;return{scroll:pane.scrollTop,possible:pane.scrollHeight-pane.clientHeight};});
  assert.ok(baseline.possible>200,'inspector is scrollable');assert.ok(baseline.scroll>=200,'the intended scroll reached the pane');
  await page.evaluate(()=>__dex.setState({seed:7654321}));
  await page.waitForTimeout(3900);
- const final=await page.evaluate(()=>({oldConnected:window.__studioScrollProbe.isConnected,scroll:window.__studioScrollProbe.scrollTop,advanced:document.querySelector('[data-studio-advanced]')?.open,prompt:document.querySelector('textarea[aria-label="Describe your image"]')?.value}));
+ const final=await page.evaluate(()=>({oldConnected:window.__studioScrollProbe.isConnected,scroll:window.__studioScrollProbe.scrollTop,advanced:document.querySelector('[data-studio-advanced]')?.open,prompt:document.querySelector('[aria-label="Describe your image"]')?.value}));
  assert.equal(final.oldConnected,true,'inspector DOM is not detached');
  assert.ok(Math.abs(final.scroll-baseline.scroll)<=1,'scroll remains stable through state updates and polling');
  assert.equal(final.advanced,true,'Advanced remains open');

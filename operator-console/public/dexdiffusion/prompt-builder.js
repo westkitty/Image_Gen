@@ -71,6 +71,67 @@
     return joinPieces([String(subject || '').trim()].concat(pieces));
   }
 
+  // ── wildcard banks as text ──────────────────────────────────────────────────
+  const safeBankName = raw => String(raw == null ? '' : raw).trim().replace(/^_+|_+$/g, '').replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 120);
+  const FENCE = /^(`{3,}|~{3,})/;
+  // Pasted text or a .txt / .md document -> { banks: [{ name, description, tags, items }], skipped }.
+  // A heading that names a bank ("## bank: colors" or "## __colors__") starts that bank; otherwise everything is one bank
+  // under fallbackName. List markers, code fences and comments are not entries. Duplicates are dropped, ignoring case.
+  function parseBankText(text, fallbackName) {
+    const banks = []; let skipped = 0;
+    const start = name => { const b = { name, description: '', tags: [], items: [], seen: new Set() }; banks.push(b); return b; };
+    let cur = null;
+    for (const raw of String(text == null ? '' : text).replace(/^\uFEFF/, '').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || FENCE.test(line) || /^(-{3,}|\*{3,}|_{3,})$/.test(line)) continue;
+      const head = /^#{1,6}\s+(.*)$/.exec(line) || (line.startsWith('#') ? [null, line.replace(/^#+\s*/, '')] : null);
+      if (head) {
+        const body = head[1].trim();
+        const named = /^(?:bank\s*:\s*)?(?:__)([A-Za-z0-9_-]+)(?:__)\s*$/i.exec(body) || /^bank\s*:\s*(.+)$/i.exec(body);
+        const meta = /^(description|tags)\s*:\s*(.*)$/i.exec(body);
+        if (named) cur = start(safeBankName(named[1]));
+        else if (meta) { cur = cur || start(safeBankName(fallbackName)); if (meta[1].toLowerCase() === 'tags') cur.tags = meta[2].split(',').map(t => t.trim()).filter(Boolean); else cur.description = meta[2].trim(); }
+        else { cur = cur || start(safeBankName(fallbackName)); if (!cur.description && !cur.items.length) cur.description = body; }
+        continue;
+      }
+      const entry = line.replace(/^(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/, '').trim();
+      cur = cur || start(safeBankName(fallbackName));
+      const key = entry.toLowerCase();
+      if (!entry || cur.seen.has(key)) { skipped++; continue; }
+      cur.seen.add(key); cur.items.push(entry);
+    }
+    return { banks: banks.filter(b => b.items.length).map(({ seen, ...b }) => b), skipped };
+  }
+
+  // What to hand a language model so it writes banks this library can take in, with what the library already holds.
+  function bankFormatRequirements(banks) {
+    const index = (banks || []).map(b => '- __' + b.name + '__ (' + (b.count || 0) + ' entries)' + (b.description ? ': ' + b.description : '') + ((b.tags || []).length ? ' [tags: ' + b.tags.join(', ') + ']' : ''));
+    return [
+      'DexDiffusion wildcard bank format',
+      '',
+      'Write wildcard banks for a local image generator in exactly this Markdown format, so they can be pasted in or saved as a .md or .txt file:',
+      '',
+      '## bank: bank_name',
+      '# description: One line saying what this bank holds and when to use it.',
+      '# tags: comma, separated, topics',
+      '- first entry',
+      '- second entry',
+      '',
+      'Rules:',
+      '- One "## bank: name" heading per bank. Several banks can follow each other in one document.',
+      '- Bank names use only letters, numbers, _ and -, with no spaces. Use a name from the list below to add to that bank.',
+      '- Each entry is one line of prompt text that makes sense on its own in an image prompt, in any position after the subject.',
+      '- A generator picks one entry at random each time, so every entry in a bank should be interchangeable with the others.',
+      '- Do not number entries, add commentary, or use a line that starts with #, except the description and tags lines.',
+      '- An entry can use another bank by writing its name between double underscores, like __colors__.',
+      '- No duplicate entries. An entry is at most 4000 characters, and a bank holds at most 20000 entries.',
+      '',
+      'Banks in the library now:',
+      index.length ? index.join('\n') : '(none yet)',
+      ''
+    ].join('\n');
+  }
+
   // Syntax actions; `support` is DexPrompt.supportFor(spec). Each returns { id, label, insert(sel) -> text, status, note }.
   function syntaxActions(support) {
     const s = support || {};
@@ -274,9 +335,111 @@
         bankBox.append(c);
       }
       const allNone = el('div', 'display:flex;gap:6px;');
-      allNone.append(button('All banks', '', () => { state.allowed = new Set(state.banks.map(b => b.name)); drawPane(); }), button('No banks', '', () => { state.allowed = new Set(); drawPane(); }));
+      allNone.style.flexWrap = 'wrap';
+      allNone.append(button('All banks', '', () => { state.allowed = new Set(state.banks.map(b => b.name)); drawPane(); }), button('No banks', '', () => { state.allowed = new Set(); drawPane(); }),
+        button('Copy bank formatting requirements', '', () => copyFormat(status), { 'data-pb-action': 'copy-bank-format' }),
+        button('Edit library', 'dx-accent', () => openBankEditor(), { 'data-pb-action': 'edit-library' }));
       pane.append(el('div', 'font-size:12px;color:#cbd5e1;line-height:1.45;', 'Randomize pieces swaps comma-separated pieces for others from the same wildcard bank (or a random bank); higher randomness changes more pieces, reorders them and adds new ones. New random prompt draws a fresh set of pieces.'),
         sliderRow, opts2, actions, status, label('Draw from these banks'), allNone, bankBox);
+    }
+    async function copyFormat(status) {
+      const text = bankFormatRequirements(state.banks);
+      try { await navigator.clipboard.writeText(text); status.textContent = 'Bank formatting requirements copied. Paste them into your model along with the topic.'; }
+      catch (_) { showText('Bank formatting requirements', text); }
+    }
+    function showText(title, text) {
+      const v = M.open({ id: 'bank-format-text', size: 'md', title, subtitle: 'The clipboard refused the copy. Select this text and copy it.' });
+      const area = el('textarea', null, null, { rows: '18', readonly: 'readonly', 'aria-label': title }); area.className = 'dx-input'; area.value = text;
+      v.body.append(area); area.focus(); area.select();
+    }
+    async function reloadBanks() {
+      state.items = {};
+      await loadBanks();
+      if (o.onBanksChanged) o.onBanksChanged();
+    }
+    const send = async (path, method, body) => {
+      const r = await fetch(api(path), { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+      return d;
+    };
+    // The library: Add, Edit and Remove chips acting on the chosen bank.
+    function openBankEditor() {
+      const lib = M.open({ id: 'bank-library', size: 'md', title: 'Wildcard library', subtitle: state.banks.length + ' banks. Edits are saved on the Big Mac; the previous version of an edited bank is kept.' });
+      let chosen = null;
+      const chips = el('div', 'display:flex;gap:6px;flex-wrap:wrap;', null, { role: 'toolbar', 'aria-label': 'Library actions' });
+      const addChip = button('Add', 'dx-accent', () => openBankForm(null, draw), { 'data-bank-action': 'add' });
+      const editChip = button('Edit', '', () => openBankForm(chosen, draw), { 'data-bank-action': 'edit' });
+      const removeChip = button('Remove', '', async () => {
+        if (!window.confirm('Remove the bank __' + chosen + '__? Prompts that use it will keep the token as plain text.')) return;
+        try { await send('/api/wildcards/' + encodeURIComponent(chosen), 'DELETE'); msg.textContent = 'Removed __' + chosen + '__.'; msg.style.color = '#86efac'; chosen = null; await reloadBanks(); draw(); }
+        catch (e) { msg.textContent = 'Could not remove: ' + e.message; msg.style.color = '#fca5a5'; }
+      }, { 'data-bank-action': 'remove' });
+      chips.append(addChip, editChip, removeChip);
+      const search = el('input', null, null, { type: 'search', placeholder: 'Search banks…', 'aria-label': 'Search banks' }); search.className = 'dx-input';
+      const msg = el('small', 'color:#8193a8;', '', { role: 'status', 'data-bank-status': 'true' });
+      const list = el('div', 'display:grid;gap:4px;max-height:min(50vh,440px);overflow:auto;', null, { 'data-bank-list': 'true' });
+      function draw() {
+        editChip.disabled = removeChip.disabled = !chosen;
+        const t = search.value.trim().toLowerCase();
+        list.replaceChildren(...state.banks.filter(b => !t || b.name.toLowerCase().includes(t) || String(b.description || '').toLowerCase().includes(t)).map(b => {
+          const row = el('button', 'display:grid;gap:2px;text-align:left;width:100%;', null, { 'data-bank-row': b.name, 'aria-pressed': String(chosen === b.name) }); row.type = 'button'; row.className = 'dx-option';
+          if (chosen === b.name) row.style.borderColor = '#38bdf8';
+          row.append(el('b', 'font:600 12px IBM Plex Mono,monospace;overflow-wrap:anywhere;', '__' + b.name + '__ · ' + (b.count || 0) + ' entries' + (b.source === 'user' ? ' · edited' : '')));
+          if (b.description) row.append(el('small', 'color:#8193a8;', b.description));
+          row.addEventListener('click', () => { chosen = b.name; draw(); });
+          return row;
+        }));
+      }
+      search.addEventListener('input', draw);
+      lib.body.append(chips, search, msg, list);
+      draw();
+    }
+    // Add or edit one bank: entries one per line, or paste / bring in a .md or .txt document. A document may hold several banks.
+    async function openBankForm(name, refresh) {
+      const form = M.open({ id: 'bank-form', size: 'md', title: name ? 'Edit __' + name + '__' : 'Add a bank', subtitle: 'One entry per line. Paste text, or bring in a Markdown or text file.' });
+      const field = (text, node) => { const l = el('label', 'display:grid;gap:4px;font-size:12px;color:#cbd5e1;', text); l.append(node); return l; };
+      const nameInput = el('input', null, null, { type: 'text', 'aria-label': 'Bank name', 'data-bank-field': 'name', placeholder: 'bank_name' }); nameInput.className = 'dx-input';
+      const desc = el('input', null, null, { type: 'text', 'aria-label': 'Description', 'data-bank-field': 'description', placeholder: 'What this bank holds' }); desc.className = 'dx-input';
+      const tags = el('input', null, null, { type: 'text', 'aria-label': 'Tags', 'data-bank-field': 'tags', placeholder: 'comma, separated' }); tags.className = 'dx-input';
+      const area = el('textarea', 'resize:vertical;line-height:1.45;', null, { rows: '12', 'aria-label': 'Entries', 'data-bank-field': 'entries' }); area.className = 'dx-input';
+      const file = el('input', 'font-size:12px;color:#cbd5e1;', null, { type: 'file', accept: '.md,.markdown,.txt,text/plain,text/markdown', 'aria-label': 'Bring in a Markdown or text file', 'data-bank-field': 'file' });
+      const note = el('small', 'color:#8193a8;line-height:1.4;', '', { role: 'status', 'data-bank-form-status': 'true' });
+      const parsed = () => parseBankText(area.value, nameInput.value);
+      const refreshNote = () => { const p = parsed(); note.style.color = '#8193a8'; note.textContent = p.banks.length > 1 ? 'This text holds ' + p.banks.length + ' banks: ' + p.banks.map(b => b.name + ' (' + b.items.length + ')').join(', ') + '.' : (p.banks[0] ? p.banks[0].items.length : 0) + ' entries' + (p.skipped ? ', ' + p.skipped + ' duplicates dropped.' : '.'); };
+      area.addEventListener('input', refreshNote);
+      file.addEventListener('change', async () => {
+        const f = file.files && file.files[0]; if (!f) return;
+        if (f.size > 4 * 1024 * 1024) { note.textContent = 'That file is larger than 4 MB.'; note.style.color = '#fca5a5'; return; }
+        const text = await f.text();
+        area.value = area.value.trim() ? area.value.replace(/\s+$/, '') + '\n' + text : text;
+        if (!nameInput.value.trim()) nameInput.value = safeBankName(f.name.replace(/\.[^.]+$/, ''));
+        refreshNote();
+      });
+      form.body.append(field('Name', nameInput), field('Description', desc), field('Tags', tags), field('Entries', area), field('Markdown or text file', file), note);
+      const save = button('Save', 'dx-primary', async () => {
+        const { banks } = parsed();
+        if (!banks.length) { note.textContent = 'There are no entries to save.'; note.style.color = '#fca5a5'; return; }
+        if (banks.some(b => !b.name)) { note.textContent = 'Give the bank a name.'; note.style.color = '#fca5a5'; return; }
+        save.disabled = true;
+        try {
+          for (const b of banks) {
+            const single = banks.length === 1;
+            await send('/api/wildcards/' + encodeURIComponent(b.name), 'PUT', { items: b.items, description: single && desc.value.trim() ? desc.value.trim() : b.description, tags: single && tags.value.trim() ? tags.value.split(',').map(t => t.trim()).filter(Boolean) : b.tags });
+          }
+          await reloadBanks(); refresh(); form.close('saved');
+        } catch (e) { note.textContent = 'Not saved: ' + e.message; note.style.color = '#fca5a5'; save.disabled = false; }
+      }, { 'data-bank-action': 'save' });
+      form.footer.append(button('Cancel', '', () => form.close('cancel')), save);
+      if (name) {
+        nameInput.value = name; nameInput.readOnly = true;
+        try {
+          const r = await fetch(api('/api/wildcards/' + encodeURIComponent(name) + '?all=1')); const d = await r.json();
+          if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+          area.value = d.items.join('\n'); desc.value = d.description || ''; tags.value = (d.tags || []).join(', ');
+        } catch (e) { note.textContent = 'Could not load this bank: ' + e.message; note.style.color = '#fca5a5'; save.disabled = true; }
+        refreshNote();
+      }
     }
     function drawPane() {
       pane.replaceChildren();
@@ -301,5 +464,5 @@
     return m;
   }
 
-  return { splitPieces, joinPieces, randomizePieces, newRandomPrompt, syntaxActions, STATUS_TEXT, open };
+  return { splitPieces, joinPieces, randomizePieces, newRandomPrompt, syntaxActions, STATUS_TEXT, parseBankText, bankFormatRequirements, open };
 });

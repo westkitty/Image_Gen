@@ -83,6 +83,51 @@ const { test, exitCode } = runner('wildcard-placement');
       await page.waitForFunction(() => __dex.state.prompt === '(red:1.1) fox, __aa__');
       assert.equal(await field.locator('.dx-pchip').count(), 1);
     });
+    await test('bank library: copy the format, add from pasted text and from a file, edit, remove; tokens expand from edited banks', async () => {
+      await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
+      await page.evaluate(() => { document.activeElement.blur(); __dex.setState({ prompt: 'a fox' }); __dex.openPromptBuilder({ field: 'prompt', tab: 'randomize' }); });
+      await page.locator('[data-pb-action="copy-bank-format"]').click();
+      await page.waitForFunction(async () => /## bank: bank_name/.test(await navigator.clipboard.readText()));
+      const format = await page.evaluate(() => navigator.clipboard.readText());
+      assert.match(format, /Banks in the library now:\n- __/, 'the format lists the banks that exist');
+
+      await page.locator('[data-pb-action="edit-library"]').click();
+      assert.equal(await page.locator('[data-bank-action="edit"]').isDisabled(), true, 'Edit waits for a chosen bank');
+      await page.locator('[data-bank-action="add"]').click();
+      await page.locator('[data-bank-field="name"]').fill('zz test bank');
+      await page.locator('[data-bank-field="entries"]').fill('# Heading becomes the description\n- solo entry\n* Solo Entry\n1. second entry\n');
+      assert.match(await page.locator('[data-bank-form-status]').innerText(), /2 entries, 1 duplicates dropped/);
+      await page.locator('[data-bank-action="save"]').click();
+      await page.locator('[data-bank-row="zz_test_bank"]').waitFor();
+      const saved = await page.evaluate(async () => (await fetch('/api/wildcards/zz_test_bank')).json());
+      assert.deepEqual(saved.items, ['solo entry', 'second entry']); assert.equal(saved.description, 'Heading becomes the description');
+
+      await page.locator('[data-bank-action="add"]').click();
+      await page.locator('[data-bank-field="file"]').setInputFiles({ name: 'two banks.md', mimeType: 'text/markdown', buffer: Buffer.from('## bank: zz_one\n# tags: a, b\n- one\n\n## bank: zz_two\n- two\n') });
+      await page.waitForFunction(() => /holds 2 banks/.test(document.querySelector('[data-bank-form-status]').textContent));
+      await page.locator('[data-bank-action="save"]').click();
+      await page.locator('[data-bank-row="zz_two"]').waitFor();
+      assert.deepEqual((await page.evaluate(async () => (await fetch('/api/wildcards/zz_one')).json())).tags, ['a', 'b']);
+
+      await page.locator('[data-bank-row="zz_test_bank"]').click();
+      await page.locator('[data-bank-action="edit"]').click();
+      await page.waitForFunction(() => /solo entry/.test((document.querySelector('[data-bank-field="entries"]') || {}).value || ''));
+      await page.locator('[data-bank-field="entries"]').fill('only entry');
+      await page.locator('[data-bank-action="save"]').click();
+      await page.waitForFunction(async () => (await (await fetch('/api/wildcards/zz_test_bank')).json()).count === 1);
+      const expanded = await page.evaluate(async () => (await (await fetch('/api/wildcards/expand', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: '__zz_test_bank__' }) })).json()).expanded);
+      assert.equal(expanded, 'only entry', 'generation expands from the edited bank');
+
+      for (const name of ['zz_test_bank', 'zz_one', 'zz_two']) {
+        page.once('dialog', d => d.accept());
+        await page.locator('[data-bank-row="' + name + '"]').click();
+        await page.locator('[data-bank-action="remove"]').click();
+        await page.locator('[data-bank-row="' + name + '"]').waitFor({ state: 'detached' });
+      }
+      assert.equal((await page.evaluate(async () => (await fetch('/api/wildcards/zz_one')).status)), 404);
+      await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+      assert.deepEqual(errors, []);
+    });
     await test('seed: Random checkbox, dice and reuse controls', async () => {
       await page.evaluate(() => __dex.setState({ seed: '-1', lastSeed: 4242 }));
       await page.waitForSelector('[data-dex-field="seed-random"]');

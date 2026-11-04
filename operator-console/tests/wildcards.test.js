@@ -4,7 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { getWildcardCatalog, expandWildcards, extractWildcardTokens } = require('../wildcards');
+const os = require('node:os');
+const { getWildcardCatalog, getWildcardItems, saveBank, removeBank, expandWildcards, extractWildcardTokens } = require('../wildcards');
 
 test('wildcards: loads catalog with 15 He-Maker banks and provenance', () => {
   const catalog = getWildcardCatalog();
@@ -61,4 +62,46 @@ test('wildcards: circular references terminate cleanly at maxDepth', () => {
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+function bankDirs() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-banks-'));
+  const shipped = path.join(root, 'shipped'), user = path.join(root, 'user');
+  fs.mkdirSync(shipped);
+  fs.writeFileSync(path.join(shipped, 'colors.txt'), '# Color palettes\nred\nblue\n');
+  return { shipped, user };
+}
+
+test('wildcards: an edit lands in the user folder, wins over the shipped bank, and leaves the shipped file alone', () => {
+  const { shipped, user } = bankDirs();
+  const before = fs.readFileSync(path.join(shipped, 'colors.txt'), 'utf8');
+  assert.deepEqual(saveBank(user, shipped, 'COLORS', [' green ', 'Green', '# not an entry', ''], { description: 'Mine', tags: ['a'] }), { name: 'colors', count: 1 });
+  assert.equal(fs.readFileSync(path.join(shipped, 'colors.txt'), 'utf8'), before);
+  const bank = getWildcardItems('colors', shipped, 2000, user);
+  assert.deepEqual([bank.items, bank.description, bank.tags, bank.source], [['green'], 'Mine', ['a'], 'user']);
+  assert.equal(expandWildcards('__colors__', { wildcardsDir: shipped, userDir: user }), 'green');
+  assert.equal(getWildcardCatalog(shipped, user)[0].source, 'user');
+});
+
+test('wildcards: saving again and removing keep the earlier versions; a removed shipped bank stays gone until saved again', () => {
+  const { shipped, user } = bankDirs();
+  saveBank(user, shipped, 'colors', ['one']);
+  saveBank(user, shipped, 'colors', ['two']);
+  assert.equal(fs.readdirSync(path.join(user, '.history')).length, 1);
+  assert.equal(removeBank(user, shipped, 'colors'), true);
+  assert.equal(fs.readdirSync(path.join(user, '.history')).length, 2);
+  assert.equal(getWildcardItems('colors', shipped, 2000, user), null);
+  assert.equal(expandWildcards('__colors__', { wildcardsDir: shipped, userDir: user }), '__colors__');
+  assert.equal(fs.existsSync(path.join(shipped, 'colors.txt')), true);
+  saveBank(user, shipped, 'colors', ['back']);
+  assert.deepEqual(getWildcardItems('colors', shipped, 2000, user).items, ['back']);
+  assert.equal(removeBank(user, shipped, 'unknown'), false);
+});
+
+test('wildcards: bad names and oversized banks are refused', () => {
+  const { shipped, user } = bankDirs();
+  assert.throws(() => saveBank(user, shipped, '../evil', ['x']), /Bank names/);
+  assert.throws(() => saveBank(user, shipped, 'long', ['x'.repeat(4001)]), /longer than/);
+  assert.equal(getWildcardItems('../evil', shipped, 2000, user), null);
+  assert.equal(removeBank(user, shipped, '../evil'), false);
 });

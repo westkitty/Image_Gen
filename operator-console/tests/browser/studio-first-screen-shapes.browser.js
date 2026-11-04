@@ -15,7 +15,7 @@ const {startServer,launchBrowser,runCleanups}=require('./helpers');
    const pane=document.querySelector('[data-screen-header="create"]').closest('[data-scroll-pane]');
    const footer=document.querySelector('[data-studio-primary-action]');
    const rect=el=>{const r=el?.getBoundingClientRect();return r?{y:r.y,bottom:r.bottom,height:r.height}:null};
-   return {pane:rect(pane),footer:rect(footer),quality:rect(pane.querySelector('select[aria-label="Quality preset"]')),prompt:rect(pane.querySelector('textarea[aria-label="Describe your image"]')),model:rect(pane.querySelector('[data-model-picker="create"] > button')),shapes:[...pane.querySelectorAll('[data-studio-shape]')].map(el=>({id:el.dataset.studioShape,box:rect(el)})),generate:rect(footer.querySelector('[aria-label="Generate image"]')),guide:rect(pane.querySelector('[data-screen-header="create"] > div:nth-child(2)'))};
+   return {pane:rect(pane),footer:rect(footer),quality:rect(pane.querySelector('select[aria-label="Quality preset"]')),prompt:rect(pane.querySelector('[aria-label="Describe your image"]')),model:rect(pane.querySelector('[data-model-picker="create"] > button')),shapes:[...pane.querySelectorAll('[data-studio-shape]')].map(el=>({id:el.dataset.studioShape,box:rect(el)})),generate:rect(footer.querySelector('[aria-label="Generate image"]')),guide:rect(pane.querySelector('[data-screen-header="create"] > div:nth-child(2)'))};
   });
   assert.equal(result.shapes.length,4,'all four shape choices exist');
   for(const [name,box] of [['prompt',result.prompt],['model',result.model],['quality',result.quality],...result.shapes.map(x=>[x.id,x.box])]){

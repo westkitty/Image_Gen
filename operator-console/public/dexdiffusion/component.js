@@ -1349,6 +1349,7 @@ class Component extends DCLogic {
     const spec = (typeof this._targetSpec === 'function' && this._targetSpec(this.state.target)) || (this.state.modelTargets || []).find(t => t.id === this.state.target) || { id: this.state.target };
     this.setState({ showWildcards: false, showNegWildcards: false });
     PB.open({ backendUrl: this.state.backendUrl, text: neg ? (this.state.negPrompt || '') : (this.state.prompt || ''), target: spec, field, tab, allowTokens: true,
+      onBanksChanged: () => this.loadWildcards(),
       onApply: text => { this.setState(neg ? { negPrompt: text } : { prompt: text }); this.toast((neg ? 'Negative prompt' : 'Prompt') + ' updated from the Prompt Builder', '#38bdf8'); } });
   }
   // Compact "Wildcards" + "Randomize" launchers for any prompt field outside Create (Edit, Music). Those routes do not

@@ -60,7 +60,7 @@ test('getWildcardItems resolves banks case-insensitively and refuses path-like n
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wc-items-'));
   try {
     fs.writeFileSync(path.join(dir, 'Colors.txt'), '# comment\nred\n\nblue\n');
-    assert.deepEqual(getWildcardItems('colors', dir), { name: 'Colors', count: 2, items: ['red', 'blue'], truncated: false });
+    assert.deepEqual(getWildcardItems('colors', dir), { name: 'Colors', count: 2, items: ['red', 'blue'], truncated: false, description: 'comment', tags: [], source: 'shipped' });
     assert.equal(getWildcardItems('../etc/passwd', dir), null);
     assert.equal(getWildcardItems('missing', dir), null);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -70,4 +70,23 @@ test('the Studio page loads the modal and builder scripts before the component',
   const html = fs.readFileSync(path.join(__dirname, '../public/dexdiffusion/index.html'), 'utf8');
   const at = n => html.indexOf('src="' + n + '"');
   assert.ok(at('dex-modal.js') > 0 && at('prompt-builder.js') > at('dex-modal.js') && at('component.js') > at('prompt-builder.js'));
+});
+
+test('bank text: plain lines, Markdown lists and metadata become one named bank', () => {
+  const PB = require('../public/dexdiffusion/prompt-builder.js');
+  const { banks, skipped } = PB.parseBankText('# My colours\n\n- red\n* Red\n+ [x] blue\n1. green\n2) teal\n---\n```\nplain line\n```\n', 'my bank!');
+  assert.equal(skipped, 1);
+  assert.deepEqual(banks, [{ name: 'my_bank', description: 'My colours', tags: [], items: ['red', 'blue', 'green', 'teal', 'plain line'] }]);
+});
+
+test('bank text: headings that name banks split a document, and the format text round-trips', () => {
+  const PB = require('../public/dexdiffusion/prompt-builder.js');
+  const { banks } = PB.parseBankText('## bank: alpha\n# description: first\n# tags: x, y\n- a\n\n## __beta__\n- __alpha__ at dusk\n', 'ignored');
+  assert.deepEqual(banks.map(b => [b.name, b.description, b.tags, b.items]), [['alpha', 'first', ['x', 'y'], ['a']], ['beta', '', [], ['__alpha__ at dusk']]]);
+  assert.deepEqual(PB.parseBankText('', 'x').banks, []);
+  const format = PB.bankFormatRequirements([{ name: 'colors', count: 3, description: 'Palettes', tags: ['art'] }]);
+  assert.match(format, /- __colors__ \(3 entries\): Palettes \[tags: art\]/);
+  const example = format.slice(format.indexOf('## bank: bank_name'), format.indexOf('Rules:'));
+  assert.deepEqual(PB.parseBankText(example, '').banks[0].items, ['first entry', 'second entry']);
+  assert.match(PB.bankFormatRequirements([]), /\(none yet\)/);
 });

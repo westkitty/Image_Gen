@@ -40,7 +40,7 @@ const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime, targetV
 const { rulesForTarget, validateDimensions } = require('./dimension-policy');
 const { enhancePrompt: runPromptEnhance, extractProtectedLiterals } = require('./prompt-enhancement');
 const { PROFILES, resolvePromptProfile } = require('./prompt-profiles');
-const { getWildcardCatalog, getWildcardItems, expandWildcards: expandWildcardsUtil } = require('./wildcards');
+const { getWildcardCatalog, getWildcardItems, saveBank, removeBank, expandWildcards: expandWildcardsUtil } = require('./wildcards');
 const { sortLibraryIds } = require('./library-sort');
 const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily, resolveTargetFamily } = require('./extra-networks');
 const EditModels = require('./edit-models');
@@ -142,6 +142,8 @@ const MODEL_STAGE_DOC = 'operator-console/docs/model-staging-sdxl-turbo-flux.md'
 const GENERATION_JOB_SCHEMA = path.join(__dirname, 'schemas/generation-job.schema.json');
 const MODEL_COMPATIBILITY_REGISTRY = path.join(__dirname, 'schemas/model-compatibility.json');
 const WILDCARDS_DIR = path.join(__dirname, 'wildcards');
+// Banks edited in Studio are kept with the app's state, so an update of the app never overwrites them.
+const USER_WILDCARDS_DIR = path.join(STATE_DIR, 'wildcards');
 let OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || 'http://127.0.0.1:11436';
 if (OLLAMA_BASE_URL === 'http://127.0.0.1:11436' && os.hostname() === 'bigmac' && !TestIsolation.enabled()) {
   OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
@@ -639,7 +641,7 @@ function getBuildInfo() {
 }
 
 function expandWildcards(prompt, maxDepth = 6) {
-  return expandWildcardsUtil(prompt, { maxDepth, wildcardsDir: WILDCARDS_DIR });
+  return expandWildcardsUtil(prompt, { maxDepth, wildcardsDir: WILDCARDS_DIR, userDir: USER_WILDCARDS_DIR });
 }
 
 function validatePrompt(prompt) {
@@ -3023,17 +3025,36 @@ app.post('/api/prompt/resolve-profile', (req, res) => {
 
 app.get('/api/wildcards', (req, res) => {
   try {
-    res.json({ wildcards: getWildcardCatalog(WILDCARDS_DIR) });
+    res.json({ wildcards: getWildcardCatalog(WILDCARDS_DIR, USER_WILDCARDS_DIR) });
   } catch (err) {
     res.status(500).json({ error: err.message, wildcards: [] });
   }
 });
 
-// One bank's items for the Prompt Builder (browse, insert literal text, swap pieces). Read-only.
+// One bank's items for the Prompt Builder (browse, insert literal text, swap pieces). The editor asks for all of them.
 app.get('/api/wildcards/:name', (req, res) => {
-  const bank = getWildcardItems(req.params.name, WILDCARDS_DIR);
+  const limit = req.query.all === '1' ? Infinity : undefined;
+  const bank = getWildcardItems(req.params.name, WILDCARDS_DIR, limit, USER_WILDCARDS_DIR);
   if (!bank) return res.status(404).json({ error: 'Unknown wildcard bank' });
   res.json(bank);
+});
+
+app.put('/api/wildcards/:name', (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  try {
+    res.json(saveBank(USER_WILDCARDS_DIR, WILDCARDS_DIR, req.params.name, Array.isArray(body.items) ? body.items : [], { description: body.description, tags: body.tags }));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/wildcards/:name', (req, res) => {
+  try {
+    if (!removeBank(USER_WILDCARDS_DIR, WILDCARDS_DIR, req.params.name)) return res.status(404).json({ error: 'Unknown wildcard bank' });
+    res.json({ removed: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/wildcards/expand', (req, res) => {
