@@ -270,7 +270,42 @@
     return out;
   }
 
+  // Plain text a person can paste into a bug report. Every section says what was measured, including what did not answer.
+  function buildConnectionReport(d) {
+    const data = d || {};
+    const clip = (text, max) => { const t = String(text == null ? '' : text); return t.length > max ? t.slice(0, max) + ' … [cut, ' + t.length + ' characters in all]' : t; };
+    const lines = [
+      'DexDiffusion connection report',
+      'Generated: ' + (data.generatedAt || ''),
+      'Page: ' + (data.page || ''),
+      'Backend URL: ' + (data.backendUrl || ''),
+      'Native app: ' + (data.nativeWrapper ? 'yes' : 'no'),
+      'Browser: ' + (data.userAgent || ''),
+      'Screen: ' + (data.screen || ''),
+      '',
+      'What the app believes',
+      'Backend online: ' + data.backendOnline,
+      'Backend health: ' + (data.backendHealth || 'unknown'),
+      'Consecutive failed probes: ' + (data.consecutiveFailures || 0),
+      'Job status: ' + (data.jobStatus || 'idle') + (data.activeJobId ? ' (' + data.activeJobId + ')' : ''),
+      'Last error shown: ' + (data.errorMsg || 'none'),
+      'Publication status: ' + JSON.stringify(data.publicationStatus == null ? null : data.publicationStatus),
+      '',
+      'Recent health probes, oldest first (/api/version)'
+    ];
+    const probes = data.probes || [];
+    if (!probes.length) lines.push('none recorded since this page loaded');
+    for (const p of probes) lines.push(new Date(p.at).toISOString() + '  ' + (p.ok ? 'OK' : 'FAILED') + '  ' + p.ms + ' ms' + (p.error ? '  ' + p.error : ''));
+    lines.push('', 'Checked again when this report was made');
+    for (const c of data.checks || []) {
+      lines.push(c.path + '  ' + (c.error ? 'FAILED  ' + c.ms + ' ms  ' + c.error : 'HTTP ' + c.status + '  ' + c.ms + ' ms'));
+      if (c.body) lines.push(clip(c.body, 2000));
+    }
+    return lines.join('\n') + '\n';
+  }
+
   return {
+    buildConnectionReport,
     resolveBackendBase, jobProgressPercent, chooseInitialTarget, targetOptionLabel, capabilityBadge,
     dimensionIssue, dimensionsForTarget, dimensionInfo,
     maskDilate, maskErode, maskBlur, maskFeather, maskInvert, maskCoverage, maskVerdict, FULL_MASK_COVERAGE,

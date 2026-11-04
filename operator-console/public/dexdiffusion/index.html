@@ -401,7 +401,7 @@
     <div>{{ doctorPanel }}</div><div>{{ systemInfoPanel }}</div>
     {{ truthStatusPanel }}
     <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:15px;">
-      <div style="font-size:15px;font-weight:700;color:#e8e8f8;margin-bottom:13px;">Backend connection</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:13px;"><div style="font-size:15px;font-weight:700;color:#e8e8f8;">Backend connection</div><button type="button" data-copy-connection-report onClick="{{ onCopyConnectionReport }}" style="border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#b0b0d0;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer;">Copy connection report</button></div>
       <div style="margin-bottom:12px;">
         <div style="font-size:10px;color:#7070a0;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;">Backend URL</div>
         <div style="display:flex;gap:8px;">
@@ -509,7 +509,7 @@
   </div>
   </sc-if>
   {{ v2Drawer }}
-  <sc-if value="{{ offlineWarning }}"><div role="alert" data-studio-offline style="padding:10px 16px;background:#402317;color:#fff1d6;border-bottom:1px solid #edaa64;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">Connection lost. Existing jobs may still be running. <button type="button" onClick="{{ onVerifyBackend }}">Retry connection</button><button type="button" onClick="{{ navSystem }}">Open System details</button></div></sc-if>
+  <sc-if value="{{ offlineWarning }}"><div role="alert" data-studio-offline style="padding:10px 16px;background:#402317;color:#fff1d6;border-bottom:1px solid #edaa64;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">Connection lost. Existing jobs may still be running. <button type="button" onClick="{{ onVerifyBackend }}">Retry connection</button><button type="button" onClick="{{ navSystem }}">Open System details</button><button type="button" data-copy-connection-report onClick="{{ onCopyConnectionReport }}">Copy what's broken</button></div></sc-if>
   <div style="flex:1;min-height:0;overflow:hidden;">
     <sc-if value="{{ isCreate }}" hint-placeholder-val="{{ true }}">
   <div data-studio-create style="display:grid;grid-template-columns:1fr 370px;height:100%;">
@@ -665,7 +665,7 @@
     </section>
     {{ truthStatusPanel }}
     <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:15px;">
-      <div style="font-size:15px;font-weight:700;color:#e8e8f8;margin-bottom:13px;">Backend connection</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:13px;"><div style="font-size:15px;font-weight:700;color:#e8e8f8;">Backend connection</div><button type="button" data-copy-connection-report onClick="{{ onCopyConnectionReport }}" style="border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#b0b0d0;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer;">Copy connection report</button></div>
       <div style="margin-bottom:12px;">
         <div style="font-size:10px;color:#7070a0;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;">Backend URL</div>
         <div style="display:flex;gap:8px;">
@@ -827,7 +827,7 @@
     <div>{{ doctorPanel }}</div><div>{{ systemInfoPanel }}</div>
     {{ truthStatusPanel }}
     <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:15px;">
-      <div style="font-size:15px;font-weight:700;color:#e8e8f8;margin-bottom:13px;">Backend connection</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:13px;"><div style="font-size:15px;font-weight:700;color:#e8e8f8;">Backend connection</div><button type="button" data-copy-connection-report onClick="{{ onCopyConnectionReport }}" style="border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#b0b0d0;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer;">Copy connection report</button></div>
       <div style="margin-bottom:12px;">
         <div style="font-size:10px;color:#7070a0;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;">Backend URL</div>
         <div style="display:flex;gap:8px;">

@@ -103,7 +103,6 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
     });
     await test('provenance: Edit carries the SELECTED image\'s parameters, not the Create form', async () => {
       const { page, ctx, errors } = await newPage(browser, srv.base);
-      page.once('dialog', dialog => dialog.accept()); // This scenario intentionally switches away while preserving the Create draft in memory.
       await page.evaluate(() => __dex.setState({ steps: 99, cfg: 21, seed: '424242', width: 1024, height: 768, prompt: 'CREATE-FORM-PROMPT', negPrompt: 'CREATE-NEG', scheduler: 'exponential', target: 'flux2-klein-4b' }));
       await openEdit(page, 'fx-landscape.png', 'img2img');
       const st = await page.evaluate(() => JSON.parse(JSON.stringify(__dex.ed.state)));
@@ -146,19 +145,21 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       assert.equal(before.mask.includes('base64,'), true);
       assert.equal(before.selection.kind, 'image');
 
-      let dialogPromise = page.waitForEvent('dialog');
-      const leavePromise = page.evaluate(() => __dex.setScreen('library'));
-      let dialog = await dialogPromise; assert.match(dialog.message(), /unsaved Edit changes/); await dialog.dismiss();
-      await leavePromise;
-      assert.equal(await page.evaluate(() => __dex.state.screens[__dex.state.version]), 'edit');
-      assert.equal(await page.evaluate(() => __dex.state.screens[__dex.state.version]), 'edit');
+      // Leaving Edit with unsaved work never asks anything; coming back finds the draft and its mask untouched.
+      const asked = []; const onDialog = d => { asked.push(d.message()); d.dismiss(); }; page.on('dialog', onDialog);
+      assert.equal(await page.evaluate(() => __dex.setScreen('library')), true);
+      assert.equal(await page.evaluate(() => __dex.state.screens[__dex.state.version]), 'library');
+      assert.equal(await page.evaluate(() => __dex.setScreen('edit')), true);
+      await page.waitForSelector('[data-edit-prompt]');
+      page.off('dialog', onDialog);
+      assert.deepEqual(asked, [], 'no dialog on page switch');
       assert.deepEqual(await page.evaluate(() => ({ id: __dex.ed.source.imageId, prompt: __dex.ed.state.prompt, steps: __dex.ed.state.params.steps, mask: __dex._maskDataUrl() })), {
         id: before.id, prompt: before.prompt, steps: before.steps, mask: before.mask,
       });
-      assert.deepEqual(await prompt.evaluate(e => ({ focused: document.activeElement === e, start: e.selectionStart, end: e.selectionEnd, direction: e.selectionDirection })), { focused: true, start: 4, end: 13, direction: 'forward' });
-      await page.screenshot({ path: outPath('dirty-edit-navigation-cancelled.png') });
+      await page.screenshot({ path: outPath('dirty-edit-navigation-kept.png') });
 
-      dialogPromise = page.waitForEvent('dialog');
+      let dialog;
+      let dialogPromise = page.waitForEvent('dialog');
       const declinedOpen = page.evaluate(() => __dex.openImageInEdit('fx-portrait.png', 'img2img'));
       dialog = await dialogPromise; assert.match(dialog.message(), /Discard unsaved Edit changes/); await dialog.dismiss();
       assert.equal(await declinedOpen, false);

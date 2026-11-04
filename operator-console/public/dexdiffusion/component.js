@@ -237,76 +237,6 @@ class Component extends DCLogic {
 
   _hasUnsavedWorkspaceWork() { return !!this._unsavedWorkspaceWork(); }
 
-  _confirmWorkspaceLeave(targetScreen) {
-    const current = this.state.screens[this.state.version];
-    const dirty = this._unsavedWorkspaceWork();
-    if (!dirty || this._workspaceForScreen(current) !== dirty.workspace || this._workspaceForScreen(current) === this._workspaceForScreen(targetScreen)) return true;
-    if (dirty.workspace === 'drama' && this._canSaveDramaBeforeLeaving()) {
-      this._showDramaLeaveDialog(targetScreen);
-      return false;
-    }
-    return window.confirm(`${dirty.label} are not saved to a durable project. Switch workspaces? This draft stays in memory while DexDiffusion remains open; closing or reloading the page loses it.`);
-  }
-
-  _canSaveDramaBeforeLeaving() {
-    const dm = this.dm, text = this._dmText || {};
-    if (!dm || !dm.current || !dm.current.id || typeof this.dramaSave !== 'function') return false;
-    // Save project persists parsed project state. A modified script/title still in
-    // the text editor has not been applied to that project and must not be implied saved.
-    return (!String(text.script || '').trim() || text.script === dm.current.source_script) &&
-      (!String(text.title || '').trim() || text.title === dm.current.title);
-  }
-
-  _showDramaLeaveDialog(targetScreen) {
-    if (this._pendingWorkspaceNavigation) return;
-    const opener = document.activeElement;
-    const dialog = document.createElement('section');
-    dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true');
-    dialog.setAttribute('aria-labelledby', 'dex-leave-title'); dialog.dataset.workspaceLeaveDialog = 'drama';
-    Object.assign(dialog.style, { position: 'fixed', zIndex: '2147483000', inset: '0', display: 'grid', placeItems: 'center', margin: '0', width: '100vw', height: '100vh', padding: '16px', boxSizing: 'border-box', border: '0', background: '#020617c9', color: '#e5e7eb', font: '14px system-ui' });
-    const panel = document.createElement('div');
-    Object.assign(panel.style, { width: 'min(460px, calc(100vw - 32px))', padding: '22px', borderRadius: '14px', border: '1px solid rgba(148,163,184,.35)', background: '#111827', boxShadow: '0 24px 80px #000b' });
-    const title = document.createElement('h2'); title.id = 'dex-leave-title'; title.textContent = 'Unsaved Drama project';
-    const message = document.createElement('p'); message.textContent = 'Save and continue waits for the project save to succeed. You can also stay here or leave the draft in memory without saving it.';
-    const error = document.createElement('p'); error.setAttribute('role', 'alert'); error.hidden = true; Object.assign(error.style, { color: '#fca5a5' });
-    const actions = document.createElement('div'); Object.assign(actions.style, { display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'flex-end', marginTop: '18px' });
-    const button = (label, action, primary) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; Object.assign(b.style, { minHeight: '40px', padding: '8px 12px', borderRadius: '8px', border: '1px solid #64748b', background: primary ? '#65d66e' : '#1f2937', color: primary ? '#07120a' : '#e5e7eb', fontWeight: '700', cursor: 'pointer' }); b.addEventListener('click', action); return b; };
-    const stay = button('Stay', () => this._finishDramaLeaveDialog(false), false);
-    const leave = button('Leave draft in memory', () => this._finishDramaLeaveDialog(true), false);
-    const save = button('Save and continue', async () => {
-      if (this._pendingWorkspaceNavigation?.saving) return;
-      this._pendingWorkspaceNavigation.saving = true; [stay, leave, save].forEach(b => b.disabled = true);
-      let ok = false;
-      try { ok = await this.dramaSave(true); } catch (e) { error.textContent = 'Save did not complete: ' + (e && e.message || 'unexpected error') + '. The current workspace and draft are unchanged.'; error.hidden = false; }
-      if (ok) { this._pendingWorkspaceNavigation.saving = false; this._finishDramaLeaveDialog(true); return; }
-      if (!this._pendingWorkspaceNavigation) return;
-      this._pendingWorkspaceNavigation.saving = false; [stay, leave, save].forEach(b => b.disabled = false);
-      error.textContent = 'Save did not complete. The current workspace and draft are unchanged. Resolve the error and retry, or stay.'; error.hidden = false;
-      save.focus();
-    }, true);
-    actions.append(stay, leave, save); panel.append(title, message, error, actions); dialog.append(panel);
-    this._pendingWorkspaceNavigation = { targetScreen, opener, dialog };
-    dialog.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && !this._pendingWorkspaceNavigation?.saving) { e.preventDefault(); this._finishDramaLeaveDialog(false); return; }
-      if (e.key === 'Tab') {
-        const controls = [stay, leave, save].filter(b => !b.disabled), first = controls[0], last = controls[controls.length - 1];
-        if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { e.preventDefault(); last?.focus(); }
-        else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { e.preventDefault(); first?.focus(); }
-      }
-    });
-    document.body.appendChild(dialog); save.focus();
-  }
-
-  _finishDramaLeaveDialog(continueNavigation) {
-    const pending = this._pendingWorkspaceNavigation;
-    if (!pending || pending.saving) return false;
-    this._pendingWorkspaceNavigation = null;
-    pending.dialog.remove();
-    if (continueNavigation) this.setScreen(pending.targetScreen, { skipUnsavedGuard: true });
-    else if (pending.opener && pending.opener.isConnected) pending.opener.focus();
-    return true;
-  }
-
   /** @param {{kind:'image'|'audio'|'voice-profile'|'drama-project'|'asset3d'|'world-project',id:string}|null} selection */
   setActiveAssetSelection(selection) {
     if (selection == null) { this.setState({ activeAssetSelection: null }); return true; }
@@ -374,18 +304,21 @@ class Component extends DCLogic {
     const controller = new AbortController();
     this._pingController = controller;
     const timeout = setTimeout(() => controller.abort(), 12000);
+    const pingStarted = Date.now();
     try {
       const response = await fetch(base + '/api/version', { signal: controller.signal, cache: 'no-store' });
       if (!response.ok) throw new Error('Backend version check returned HTTP ' + response.status);
       const version = await response.json();
       if (!version || version.name !== 'Image_Gen Operator Console') throw new Error('Unexpected backend identity');
       if (!this._backendMounted || generation !== this._pingGeneration || base !== this.state.backendUrl) return;
+      this._recordConnectionProbe({ at: pingStarted, ok: true, ms: Date.now() - pingStarted });
       this._pingFailures = 0;
       this._nativeRecoveryRequested = false;
       if (this.state.backendOnline !== true || this.state.backendHealth !== 'healthy')
         this.setState({ backendOnline: true, backendHealth: 'healthy' });
-    } catch (_) {
+    } catch (err) {
       if (!this._backendMounted || generation !== this._pingGeneration || base !== this.state.backendUrl) return;
+      this._recordConnectionProbe({ at: pingStarted, ok: false, ms: Date.now() - pingStarted, error: err && err.name === 'AbortError' ? 'No answer within 12 s (timed out)' : String(err && err.message || err) });
       this._pingFailures++;
       if (this._pingFailures < 2) {
         this._pingRetryTimer = setTimeout(() => this.pingBackend(), 1500);
@@ -1782,8 +1715,6 @@ class Component extends DCLogic {
     if (this.state.version === 2 && s === 'workstation') s = 'create';
     // The Chat leaf exists only in the opt-in masters layout of V2.
     if (s === 'chat' && !(this.state.version === 2 && this.state.studioLayout === 'masters')) s = 'create';
-    if (this._pendingWorkspaceNavigation && !(opts && opts.skipUnsavedGuard)) return false;
-    if (!(opts && opts.skipUnsavedGuard) && !this._confirmWorkspaceLeave(s)) return false;
     const { version, screens } = this.state;
     const from = screens[version];
     this._workspaceScrollPositions = this._workspaceScrollPositions || {};
@@ -2583,6 +2514,58 @@ class Component extends DCLogic {
       screens: { ...this.state.screens, [this.state.version]: 'create' }
     });
     this.toast('Run settings loaded into Create', '#65d66e');
+  }
+
+  _recordConnectionProbe(probe) {
+    this._connectionProbes = (this._connectionProbes || []).concat(probe).slice(-20);
+    if (!probe.ok) this._lastConnectionFailureAt = probe.at;
+  }
+
+  // Asks the backend the same questions again at copy time, so the report says what answers now and what does not.
+  async _gatherConnectionReport() {
+    const base = this.state.backendUrl;
+    const paths = ['/api/version', '/api/publications/status', '/api/jobs?limit=5', '/api/system-info'];
+    const checks = await Promise.all(paths.map(async path => {
+      const started = Date.now();
+      try {
+        const r = await fetch(base + path, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+        return { path, status: r.status, ms: Date.now() - started, body: await r.text() };
+      } catch (err) {
+        return { path, ms: Date.now() - started, error: err && err.name === 'TimeoutError' ? 'No answer within 6 s (timed out)' : String(err && err.message || err) };
+      }
+    }));
+    const { backendOnline, backendHealth, jobStatus, activeJobId, errorMsg, publicationStatus } = this.state;
+    return DexClient.buildConnectionReport({
+      generatedAt: new Date().toISOString(), page: location.href, backendUrl: base || '(same origin)', userAgent: navigator.userAgent,
+      nativeWrapper: window.__dexNativeWrapper === true, screen: this.state.screens[this.state.version],
+      backendOnline, backendHealth, jobStatus, activeJobId, errorMsg, publicationStatus,
+      consecutiveFailures: this._pingFailures, probes: this._connectionProbes || [], checks
+    });
+  }
+
+  // The clipboard write starts inside the click and is handed the pending text, because WebKit refuses a write that starts after an await.
+  async copyConnectionReport() {
+    this.toast('Collecting connection report…', '#38bdf8');
+    const pending = this._gatherConnectionReport();
+    try {
+      if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': pending.then(text => new Blob([text], { type: 'text/plain' })) })]);
+      } else {
+        await navigator.clipboard.writeText(await pending);
+      }
+      this.toast('Connection report copied', '#65d66e');
+    } catch (_) {
+      this._showReportToCopy(await pending);
+    }
+  }
+
+  _showReportToCopy(text) {
+    const m = window.DexModal.open({ id: 'connection-report', size: 'lg', title: 'Connection report', subtitle: 'The clipboard refused the copy. Select this text and copy it.' });
+    const area = document.createElement('textarea');
+    area.className = 'dx-input'; area.readOnly = true; area.rows = 18; area.value = text;
+    area.setAttribute('aria-label', 'Connection report'); area.setAttribute('data-connection-report', 'true');
+    m.body.append(area);
+    area.focus(); area.select();
   }
 
   copyText(label, text) {
@@ -4283,6 +4266,7 @@ class Component extends DCLogic {
       backendUrl, backendStatusColor: backendOnline === true ? '#65d66e' : backendOnline === null ? '#fbbf24' : '#ef4444',
       backendStatusText: backendOnline === true ? '✓ Online' : backendOnline === null ? 'Checking…' : '⚠ Degraded',
       onBackendUrlChange: e=>{ const u=DexClient.resolveBackendBase(e.target.value); this._pingGeneration++; this._pingController?.abort(); this._pingController=null; clearTimeout(this._pingRetryTimer); this._pingFailures=0; this._nativeRecoveryRequested=false; this.setState({backendUrl:u,backendOnline:null,backendHealth:'unknown'}); try { localStorage.setItem('dex_backend_url',u); } catch {} },
+      onCopyConnectionReport: ()=>this.copyConnectionReport(),
       onVerifyBackend: ()=>{ this.pingBackend(); this.toast('Pinging backend…', '#38bdf8'); },
       onStartServer: ()=>{ fetch(this.state.backendUrl+'/api/actions/server-start',{method:'POST'}).then(r=>r.json()).then(d=>{ const {job_id}=d; if(job_id) this._startPoll(job_id,()=>{ this.toast('Server started','#65d66e'); this.pingBackend(); }); }).catch(()=>this.toast('Start failed','#ef4444')); },
       onStopServer: ()=>{ fetch(this.state.backendUrl+'/api/actions/server-stop',{method:'POST'}).then(r=>r.json()).then(d=>{ const {job_id}=d; if(job_id) this._startPoll(job_id,()=>{ this.toast('Server stopped','#fbbf24'); this.pingBackend(); }); }).catch(()=>this.toast('Stop failed','#ef4444')); },

@@ -164,17 +164,35 @@ async function open(page, base, { jobs = false } = {}) {
       assert.equal(await page.evaluate(() => __dex.state.prompt), 'keep me', 'opening Context never edits the form');
       assert.notEqual(before.t, await page.evaluate(() => __dex.state.target));
       // Library: nothing selected -> honest empty state.
-      // The unsaved-work guard still applies while the drawer is open: declining keeps the screen and the typed prompt.
-      const asked = []; page.once('dialog', d => { asked.push(d.message()); d.dismiss(); });
-      assert.equal(await page.evaluate(() => __dex.setScreen('library')), false);
-      assert.match(asked[0] || '', /not saved|Switch workspaces/i);
-      assert.equal(await page.evaluate(() => __dex.state.screens[2]), 'create'); assert.equal(await page.evaluate(() => __dex.state.prompt), 'keep me');
-      page.once('dialog', d => d.accept());
+      // Switching pages with a typed prompt never asks anything, and the prompt is still there.
+      const asked = []; const onDialog = d => { asked.push(d.message()); d.dismiss(); }; page.on('dialog', onDialog);
       assert.equal(await page.evaluate(() => __dex.setScreen('library')), true);
+      page.off('dialog', onDialog);
+      assert.deepEqual(asked, [], 'no dialog on page switch');
+      assert.equal(await page.evaluate(() => __dex.state.screens[2]), 'library'); assert.equal(await page.evaluate(() => __dex.state.prompt), 'keep me');
       await page.waitForFunction(() => /Select an indexed image/.test(document.querySelector('[data-v2-drawer="context"]').innerText), null, { timeout: 10000 })
         .catch(async e => { throw new Error('Library context text was: ' + JSON.stringify((await page.locator('[data-v2-drawer]').innerText()).slice(0, 400))); });
       assert.deepEqual(errors, []);
       await page.close();
+    });
+
+    await test('connection alert copies a report of what failed, and falls back to selectable text', async () => {
+      const ctx = await browser.newContext({ viewport: { width: 1348, height: 735 }, permissions: ['clipboard-read', 'clipboard-write'] });
+      const page = await ctx.newPage();
+      const errors = await open(page, srv.base);
+      await page.evaluate(() => { __dex._recordConnectionProbe({ at: Date.now(), ok: false, ms: 12001, error: 'No answer within 12 s (timed out)' }); __dex.setState({ backendOnline: false, backendHealth: 'degraded', errorMsg: 'simulated failure' }); });
+      const alert = page.locator('[data-studio-offline]'); await alert.waitFor({ state: 'visible' });
+      await alert.locator('[data-copy-connection-report]').click();
+      await page.waitForFunction(async () => /Consecutive failed probes/.test(await navigator.clipboard.readText()), null, { timeout: 15000 });
+      const copied = await page.evaluate(() => navigator.clipboard.readText());
+      assert.match(copied, /Backend online: false/); assert.match(copied, /Last error shown: simulated failure/);
+      assert.match(copied, /FAILED {2}12001 ms {2}No answer within 12 s/); assert.match(copied, /\/api\/version {2}HTTP 200/);
+      await page.evaluate(() => { navigator.clipboard.write = () => Promise.reject(new Error('refused')); navigator.clipboard.writeText = () => Promise.reject(new Error('refused')); });
+      await alert.locator('[data-copy-connection-report]').click();
+      const area = page.locator('[data-connection-report]'); await area.waitFor({ state: 'visible', timeout: 15000 });
+      assert.match(await area.inputValue(), /Backend health: degraded/);
+      assert.deepEqual(errors, []);
+      await ctx.close();
     });
 
     await test('row 6: Context at 390x844 stays inside the viewport and is keyboard-operable', async () => {

@@ -127,7 +127,6 @@
     const op = OPS.some(x => x[0] === mode) ? mode : (ed.op || 'img2img');
     const replacing = !!(ed.source && (ed.source.imageId || ed.source.key) !== imageId);
     if (replacing && !this._confirmEditDraftDiscard('open ' + imageId)) return false;
-    if (!o.quiet && !this._confirmWorkspaceLeave('edit')) return false;
     const acceptedDraft = replacing ? this._editDraftSnapshot() : null;
     const requestId = this._editOpenRequestId = (this._editOpenRequestId || 0) + 1;
     const r = await this._api('/api/images/' + encodeURIComponent(imageId) + '/meta');
@@ -160,7 +159,7 @@
     this.edSet({ loading: null, error: null, source: src, state: st, op, run: { status: 'idle' }, log: null, maskInfo: null });
     this._editDraftBaseline = this._editDraftSnapshot();
     this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'image', id: imageId });
-    if (!o.quiet) this.setScreen('edit', { skipUnsavedGuard: true });
+    if (!o.quiet) this.setScreen('edit');
     this.loadEditAssets();
     if (!o.quiet) this.toast('Loaded ' + short(imageId) + (st.recalledFrom.recorded ? ' with its recorded settings' : ' (no recorded settings)'), '#a78bfa');
     return true;
@@ -185,7 +184,7 @@
   P.importEditSource = async function (file) {
     if (!file) return;
     if (file.size > 25 * 1024 * 1024) { this.toast('Image too large (25 MB max)', '#ef4444'); return; }
-    if (!this._confirmEditDraftDiscard('import this image') || !this._confirmWorkspaceLeave('edit')) return false;
+    if (!this._confirmEditDraftDiscard('import this image')) return false;
     const r = await fetch(this.state.backendUrl + '/api/staging?accept=image', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
     const d = await r.json().catch(() => ({ error: r.statusText }));
     if (!r.ok) { this.toast(d.error || 'Import rejected', '#ef4444'); return; }
@@ -196,7 +195,7 @@
     this.wsSet({ editSourceId: 'staged:' + d.id, editSource: Object.assign({ id: d.id, stagedId: d.id, staged: true, meta: src.meta }, { url: d.url, width: d.width, height: d.height }), editOriginalId: 'staged:' + d.id });
     st.params.width = d.width; st.params.height = d.height;
     this._editDraftBaseline = null;
-    this.setScreen('edit', { skipUnsavedGuard: true });
+    this.setScreen('edit');
     this.edSet({ source: src, state: st, loading: null, error: null, run: { status: 'idle' }, maskInfo: null });
     this._editDraftBaseline = this._editDraftSnapshot();
     this.toast('Imported ' + d.width + '×' + d.height + ' as a temporary source', '#a78bfa');

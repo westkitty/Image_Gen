@@ -42,6 +42,8 @@ function harness() {
     _pingFailures:0,
     _nativeRecoveryRequested:false,
     _lastNativeRecoveryAt:-Infinity,
+    probes:[],
+    _recordConnectionProbe(probe){this.probes.push(probe);},
     setState(value){Object.assign(this.state,value);}
   });
   return {c,deliveries,queue,timers,advance:ms=>{tick+=ms;}, fetchCalls:()=>fetchCalls};
@@ -54,6 +56,8 @@ test('one failed check cannot trigger native restart, second confirmed failure m
   assert.equal(h.c._pingFailures,1);
   assert.equal(h.c.state.backendOnline,null);
   assert.deepEqual(h.deliveries,[]);
+  assert.equal(h.c.probes[0].ok,false);
+  assert.equal(h.c.probes[0].error,'connection stalled','the failure reason is kept for the report');
   await h.c.pingBackend();
   assert.equal(h.c.state.backendOnline,false);
   assert.equal(h.c.state.backendHealth,'degraded');

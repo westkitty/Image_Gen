@@ -245,24 +245,17 @@ test('a remembered Chat screen is restored only in the masters layout', { skip: 
   } finally { close(); }
 });
 
-test('unsaved-work protection runs once per master or leaf change and can keep the user in place', { skip: needsDom }, async () => {
-  let answer = false;
-  const { w, doc, inst, confirms, close } = boot({ storage: masters, confirm: () => answer });
+test('a typed prompt never stops a master, leaf or utility change and stays in memory', { skip: needsDom }, async () => {
+  const { w, doc, inst, confirms, close } = boot({ storage: masters, confirm: () => false });
   try {
     await settle(w);
     inst.setState({ prompt: 'a lighthouse at dusk' }); await settle(w);
     click(w, q(doc, '[data-master-tab="audio"]')); await settle(w);
-    assert.equal(confirms.length, 1, 'exactly one confirmation per attempt');
-    assert.equal(inst.state.screens[2], 'create', 'declining keeps the draft and the screen');
-    assert.equal(inst.state.prompt, 'a lighthouse at dusk');
-    click(w, q(doc, '[data-subnav-leaf="batch"]')); await settle(w);
-    assert.equal(confirms.length, 1, 'a leaf in the same workspace group needs no confirmation');
-    click(w, q(doc, '[data-subnav-leaf="create"]')); await settle(w);
-    answer = true;
+    assert.notEqual(inst.state.screens[2], 'create', 'the master change happens');
     click(w, q(doc, '[data-studio-utility="library"]')); await settle(w);
-    assert.equal(confirms.length, 2);
     assert.equal(inst.state.screens[2], 'library');
-    assert.equal(inst.state.prompt, 'a lighthouse at dusk', 'leaving never discards the in-memory draft');
+    assert.equal(confirms.length, 0, 'nothing asks for confirmation');
+    assert.equal(inst.state.prompt, 'a lighthouse at dusk', 'the draft is kept');
   } finally { close(); }
 });
 
