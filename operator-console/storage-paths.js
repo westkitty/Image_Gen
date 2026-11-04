@@ -24,10 +24,10 @@ function resolveStoragePaths(env = process.env, legacyWorkflowRoot = path.resolv
   } else if (dataRoot) {
     mediaRoots = {
       image: imageRoot,
-      voice: path.join(dataRoot, 'audio', 'voice'),
-      music: path.join(dataRoot, 'audio', 'music'),
+      voice: path.join(dataRoot, 'output', 'audio', 'voice'),
+      music: path.join(dataRoot, 'output', 'audio', 'music'),
       video: path.join(dataRoot, 'video'),
-      world: path.join(dataRoot, 'worlds'),
+      world: path.join(dataRoot, 'output', 'worlds'),
     };
   }
   const scratchRoot = env.DEX_SCRATCH_ROOT

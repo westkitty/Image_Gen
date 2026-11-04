@@ -59,6 +59,16 @@ test('the native app stores tags in one file with the Mac images and only for St
   assert.match(bridge, /options: \.atomic/);
 });
 
+test('the native app opens only output folders in Finder, and only for Studio', () => {
+  const src = fs.readFileSync(path.resolve(__dirname, '../../native/macos/Image_Gen/ImageGenApp.swift'), 'utf8');
+  assert.match(src, /addScriptMessageHandler\(folderBridge, contentWorld: \.page, name: "dexOutputFolder"\)/);
+  assert.match(src, /removeScriptMessageHandler\(forName: "dexOutputFolder", contentWorld: \.page\)/);
+  const bridge = src.slice(src.indexOf('private final class OutputFolderBridge'), src.indexOf('final class AppDelegate'));
+  assert.match(bridge, /origin\.host == "127\.0\.0\.1", origin\.port == 31337/);
+  assert.match(bridge, /standardizedFileURL/);
+  assert.match(bridge, /guard path == images \|\| onDrive else/);
+});
+
 test('a tag file that was not read is never overwritten', async () => {
   const saved = [];
   let onDisk = '{ corrupt';

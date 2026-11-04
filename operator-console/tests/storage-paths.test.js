@@ -25,10 +25,10 @@ test('DEX_DATA_ROOT relocates durable data while keeping executable workflow sou
   assert.equal(p.imageRoot, '/Volumes/wc2tb/DexDiffusion/images');
   assert.deepEqual(p.mediaRoots, {
     image: '/Volumes/wc2tb/DexDiffusion/images',
-    voice: '/Volumes/wc2tb/DexDiffusion/audio/voice',
-    music: '/Volumes/wc2tb/DexDiffusion/audio/music',
+    voice: '/Volumes/wc2tb/DexDiffusion/output/audio/voice',
+    music: '/Volumes/wc2tb/DexDiffusion/output/audio/music',
     video: '/Volumes/wc2tb/DexDiffusion/video',
-    world: '/Volumes/wc2tb/DexDiffusion/worlds',
+    world: '/Volumes/wc2tb/DexDiffusion/output/worlds',
   });
   assert.equal(p.scratchRoot, '/Volumes/wc2tb/DexDiffusion/scratch');
   assert.equal(p.maskUploadsDir, '/Volumes/wc2tb/DexDiffusion/scratch/mask-uploads');

@@ -107,10 +107,45 @@ private final class LibraryTagsBridge: NSObject, WKScriptMessageHandlerWithReply
     }
 }
 
+// Opens an output folder in Finder for the System screen. Only the MacBook image folder and DexDiffusion's folders on WC2TB can be opened.
+private final class OutputFolderBridge: NSObject, WKScriptMessageHandlerWithReply {
+    private static let dataRoot = "/Volumes/wc2tb/DexDiffusion"
+    private static let shareRoot = "smb://100.67.12.66/wc2tb/DexDiffusion"
+    weak var webView: WKWebView?
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping (Any?, String?) -> Void) {
+        let origin = message.frameInfo.securityOrigin
+        guard message.frameInfo.isMainFrame, origin.protocol == "http", origin.host == "127.0.0.1", origin.port == 31337,
+              message.webView === webView, let body = message.body as? [String: Any], let requested = body["path"] as? String else {
+            replyHandler(nil, "Refused: not from Studio")
+            return
+        }
+        let path = URL(fileURLWithPath: requested).standardizedFileURL.path
+        let images = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("images_made").path
+        let onDrive = path.hasPrefix(Self.dataRoot + "/")
+        guard path == images || onDrive else {
+            replyHandler(nil, "Refused: not an output folder")
+            return
+        }
+        var isFolder: ObjCBool = false
+        if FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), isFolder.boolValue {
+            replyHandler(NSWorkspace.shared.open(URL(fileURLWithPath: path, isDirectory: true)) ? "opened" : nil, nil)
+        } else if onDrive, !FileManager.default.fileExists(atPath: Self.dataRoot),
+                  let suffix = String(path.dropFirst(Self.dataRoot.count)).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+                  let share = URL(string: Self.shareRoot + suffix) {
+            // WC2TB is not connected: let Finder connect to it.
+            replyHandler(NSWorkspace.shared.open(share) ? "connecting" : nil, nil)
+        } else {
+            replyHandler(nil, "\(path) does not exist yet")
+        }
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKDownloadDelegate, WKUIDelegate, WKScriptMessageHandler {
     private var window: NSWindow!
     private var webView: WKWebView!
     private var libraryTagsBridge: LibraryTagsBridge?
+    private var outputFolderBridge: OutputFolderBridge?
     private var statusLabel: NSTextField!
     private var consoleProcess: Process?
     private var serviceStartupInProgress = false
@@ -166,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func windowWillClose(_ notification: Notification) {
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "dexRecovery")
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "dexLibraryTags", contentWorld: .page)
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "dexOutputFolder", contentWorld: .page)
         window = nil
         webView = nil
         statusLabel = nil
@@ -933,10 +969,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let tagsBridge = LibraryTagsBridge()
         libraryTagsBridge = tagsBridge
         contentController.addScriptMessageHandler(tagsBridge, contentWorld: .page, name: "dexLibraryTags")
+        let folderBridge = OutputFolderBridge()
+        outputFolderBridge = folderBridge
+        contentController.addScriptMessageHandler(folderBridge, contentWorld: .page, name: "dexOutputFolder")
         contentController.addUserScript(WKUserScript(source: "window.__dexNativeWrapper = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.userContentController = contentController
         webView = WKWebView(frame: .zero, configuration: config)
         tagsBridge.webView = webView
+        folderBridge.webView = webView
         // Keep startup visually distinct from an unrendered white document.
         webView.underPageBackgroundColor = NSColor(calibratedRed: 0.031, green: 0.035, blue: 0.055, alpha: 1)
         webView.navigationDelegate = self

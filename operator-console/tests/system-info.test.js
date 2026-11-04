@@ -72,12 +72,20 @@ test('system-info distinguishes external working images from pending MacBook pub
     getStoragePaths: () => ({
       dataRoot: '/Volumes/wc2tb/DexDiffusion',
       imageRoot: '/Volumes/wc2tb/DexDiffusion/images',
+      mediaRoots: { voice: '/Volumes/wc2tb/DexDiffusion/output/audio/voice', music: '/Volumes/wc2tb/DexDiffusion/output/audio/music', world: '/Volumes/wc2tb/DexDiffusion/output/worlds', video: '/Volumes/wc2tb/DexDiffusion/video' },
     }),
   });
   const info = await getInfo({ targets: TARGETS, build: { sshTarget: 'westcat' } });
   assert.equal(info.storage.canonicalImages, '/Users/andrew/images_made');
   assert.equal(info.storage.workingImages, '/Volumes/wc2tb/DexDiffusion/images');
   assert.equal(info.storage.publication, 'pending-unverified');
+  assert.deepEqual(info.storage.outputs.map(o => [o.id, o.device, o.path, o.share]), [
+    ['images', 'MacBook', '/Users/andrew/images_made', undefined],
+    ['audio', 'WC2TB', '/Volumes/wc2tb/DexDiffusion/output/audio', 'smb://100.67.12.66/wc2tb/DexDiffusion/output/audio'],
+    ['worlds', 'WC2TB', '/Volumes/wc2tb/DexDiffusion/output/worlds', 'smb://100.67.12.66/wc2tb/DexDiffusion/output/worlds'],
+    ['video', 'WC2TB', '/Volumes/wc2tb/DexDiffusion/video', 'smb://100.67.12.66/wc2tb/DexDiffusion/video'],
+    ['images-waiting', 'WC2TB', '/Volumes/wc2tb/DexDiffusion/images', 'smb://100.67.12.66/wc2tb/DexDiffusion/images'],
+  ]);
   assert.equal(info.generation.remoteRetention, 'pending-publication');
   assert.match(info.generation.retentionNote, /Working images remain in/);
   assert.match(info.generation.retentionNote, /verified write and acknowledgment/);

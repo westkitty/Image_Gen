@@ -2546,6 +2546,42 @@ class Component extends DCLogic {
     area.focus(); area.select();
   }
 
+  // System: a pull-down of where outputs go, each with its path to copy and a button to open it in Finder.
+  buildOutputLocations(si, actionButton) {
+    const h = React.createElement, rows = (si.storage && si.storage.outputs) || [];
+    if (!rows.length) return null;
+    const mono = { fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, color: '#e2e8f0', overflowWrap: 'anywhere' };
+    return h('details', { 'data-output-locations': 'true', open: !!this._outputsOpen, onToggle: e => { this._outputsOpen = !!e.target.open; }, style: { marginTop: 10, border: '1px solid rgba(148,163,184,.18)', borderRadius: 7, padding: '7px 10px' } },
+      h('summary', { style: { cursor: 'pointer', fontSize: 10, fontWeight: 800, color: '#94a3b8', letterSpacing: '.08em', textTransform: 'uppercase' } }, 'Where outputs go'),
+      ...rows.map(loc => h('div', { key: loc.id, 'data-output-location': loc.id, style: { display: 'grid', gap: 4, padding: '8px 0 2px', borderTop: '1px solid rgba(148,163,184,.1)', marginTop: 7 } },
+        h('div', { style: { fontSize: 12, color: '#cbd5e1' } }, loc.label + ' · ' + loc.device),
+        h('div', { style: mono, 'data-output-path': loc.id }, loc.path),
+        loc.share ? h('div', { style: Object.assign({}, mono, { color: '#94a3b8' }), 'data-output-share': loc.id }, loc.share) : null,
+        h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+          actionButton('Copy path', () => this.copyText(loc.label + ' path', loc.path), '#94a3b8'),
+          loc.share ? actionButton('Copy network link', () => this.copyText(loc.label + ' network link', loc.share), '#94a3b8') : null,
+          actionButton('Open in Finder', () => this.openOutputFolder(loc), '#38bdf8')))));
+  }
+
+  // The app opens the folder itself. A browser can only hand a network link to the system, and cannot reach a folder on the MacBook.
+  async openOutputFolder(loc) {
+    const bridge = window.__dexNativeWrapper === true && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.dexOutputFolder;
+    if (bridge) {
+      try {
+        await bridge.postMessage({ path: loc.path });
+        this.toast('Opened ' + loc.label + ' in Finder', '#65d66e');
+      } catch (err) { this.toast('Could not open ' + loc.label + ': ' + (err && err.message || err), '#ef4444'); }
+      return;
+    }
+    if (loc.share) {
+      window.location.href = loc.share;
+      this.toast('Asked this device to open ' + loc.share, '#38bdf8');
+      return;
+    }
+    this.copyText(loc.label + ' path', loc.path);
+    this.toast('A browser cannot open this MacBook folder. Path copied: in Finder press Shift-Command-G and paste it.', '#fbbf24');
+  }
+
   copyText(label, text) {
     try {
       navigator.clipboard.writeText(text);
@@ -3997,6 +4033,7 @@ class Component extends DCLogic {
         h('div', { style: { flex: 1 } }),
         actionButton('Refresh', () => this.loadSystemInfo(), '#94a3b8')),
       !si ? h('div', { style: { color: '#94a3b8', fontSize: 12, marginTop: 8 } }, 'System info not loaded yet (GET /api/system-info).') : h('div', null,
+        this.buildOutputLocations(si, actionButton),
         siSection('Canonical publication', [
           siRow('Status', s.publicationStatus == null ? 'UNKNOWN · status endpoint not confirmed' :
             Number(s.publicationStatus.pending || 0) > 0 ? 'PUBLICATION_PENDING · canonical copy still required' : 'CANONICAL_VERIFIED · no pending artifacts'),

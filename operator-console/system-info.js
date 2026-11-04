@@ -127,6 +127,23 @@ async function probeLauncher() {
 }
 
 
+// Where each kind of output goes, for the System screen. `share` is how another Mac reaches a folder on the WC2TB drive.
+const WC2TB_MOUNT = '/Volumes/wc2tb/';
+const WC2TB_SHARE = 'smb://100.67.12.66/wc2tb/';
+function outputLocations(canonicalImages, storagePaths) {
+  const roots = (storagePaths && storagePaths.mediaRoots) || {};
+  const audio = roots.voice && roots.music && path.dirname(roots.voice) === path.dirname(roots.music) ? path.dirname(roots.voice) : null;
+  const rows = [
+    { id: 'images', label: 'Images', device: 'MacBook', path: canonicalImages },
+    { id: 'audio', label: 'Audio', device: 'WC2TB', path: audio },
+    { id: 'worlds', label: 'Worlds', device: 'WC2TB', path: roots.world || null },
+    { id: 'video', label: 'Video', device: 'WC2TB', path: roots.video || null },
+    { id: 'images-waiting', label: 'Images waiting to reach the MacBook', device: 'WC2TB', path: storagePaths && storagePaths.imageRoot !== canonicalImages ? storagePaths.imageRoot : null },
+  ];
+  return rows.filter(r => r.path).map(r => Object.assign(r, r.path.startsWith(WC2TB_MOUNT)
+    ? { share: WC2TB_SHARE + r.path.slice(WC2TB_MOUNT.length).split('/').map(encodeURIComponent).join('/') } : {}));
+}
+
 function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale, launcher: probeLauncher }, getAssets = () => null, getEvidence = () => ({}), getStoragePaths = () => null } = {}) {
   let cache = null;
   let cachedAt = 0;
@@ -154,7 +171,7 @@ function createSystemInfo({ ttlMs = 30000, probes = { tailscale: probeTailscale,
       app: { ...SYSTEM.app, version: build.version || null, gitHead: build.gitHead || null, pid: build.pid || null, startedAt: build.startedAt || null },
       primaryTarget: primary && { id: primary.id, label: primary.label, backend: primary.backend || 'sdcpp', status: primary.status },
       generation: { ...generation, remoteHost: build.sshTarget || 'westcat', route: `ssh ${build.sshTarget || 'westcat'}`, mflux: SYSTEM.mflux },
-      storage: { canonicalImages, workingImages, publication: publicationPending ? 'pending-unverified' : 'local-canonical', rule: 'Canonical originals are written to the MacBook destination only after verified publication; Big Mac images are working or pending artifacts.' },
+      storage: { outputs: outputLocations(canonicalImages, storagePaths), canonicalImages, workingImages, publication: publicationPending ? 'pending-unverified' : 'local-canonical', rule: 'Canonical originals are written to the MacBook destination only after verified publication; Big Mac images are working or pending artifacts.' },
       network: {
         localBind: `${network.localHost}:${network.localPort}`,
         localUrl: `http://${network.localHost}:${network.localPort}${network.localPath}`,
