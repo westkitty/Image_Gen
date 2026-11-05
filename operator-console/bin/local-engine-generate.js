@@ -51,7 +51,7 @@ function classifyEngineError(err, modelPath, { prompt, negativePrompt } = {}) {
 }
 function parse(argv) {
   const args = {};
-  const allowed = new Set(['target','prompt','negative-prompt','width','height','steps','seed','cfg','sampler','scheduler','save-prompts','lora-id','lora-strength','lora-ids','lora-strengths','backend-override','lora-apply-mode','clip-skip','tiling','eta','rng','vae','model-path','api','hires-scale','hires-width','hires-height','hires-steps','hires-denoise','hires-upscaler','batch-count']);
+  const allowed = new Set(['target','prompt','negative-prompt','width','height','steps','seed','cfg','sampler','scheduler','save-prompts','lora-id','lora-strength','lora-ids','lora-strengths','backend-override','lora-apply-mode','clip-skip','tiling','eta','rng','vae','model-path','api','hires-scale','hires-width','hires-height','hires-steps','hires-denoise','hires-upscaler','batch-count','init-image','strength']);
   for (let i = 0; i < argv.length; i += 2) {
     if (argv[i] === '--tiling') { args.tiling = true; i--; continue; }
     const key = argv[i].replace(/^--/, '');
@@ -92,19 +92,29 @@ async function main() {
     if (!vae) throw new Error('VAE path does not match an installed registry ID');
     settings.vae_id = vae[0];
   }
+  // img2img: the server resolves the init image; its bytes (never its path) cross the worker socket.
+  let init = null;
+  if (args['init-image'] !== undefined || args.strength !== undefined) {
+    const strength = Number(args.strength);
+    if (args['init-image'] === undefined || !Number.isFinite(strength) || strength < 0.01 || strength > 0.99) throw new Error('img2img needs --init-image and a --strength between 0.01 and 0.99');
+    if (Number(args['batch-count'] || 1) !== 1 || Object.keys(settings).some(k => k.startsWith('hires_'))) throw new Error('img2img runs one image without hires fix');
+    const bytes = fs.readFileSync(args['init-image']);
+    if (bytes.length > 16 * 1024 * 1024 || !bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) throw new Error('The init image must be a PNG of at most 16 MB');
+    init = { init_image: bytes.toString('base64'), strength };
+  }
   // Fail before announcing a remote run when the worker cannot accept requests.
   // This keeps a missing socket from being mistaken for an orphaned inference.
   const health = await request({op:'health'});
   if ((health.recovery_uncertain || []).length) throw new Error('Big Mac local engine recovery requires process reconciliation');
   const d = new Date(), stamp = d.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
-  const runId = `${stamp}-controlled-${args.target}-${crypto.randomBytes(4).toString('hex')}`;
+  const runId = `${stamp}-${init ? 'img2img' : 'controlled'}-${args.target}-${crypto.randomBytes(4).toString('hex')}`;
   const token = crypto.randomBytes(32).toString('hex');
   const seed = args.seed === undefined || Number(args.seed) < 0 ? crypto.randomInt(0, 2147483647) : Number(args.seed);
   const count = Number(args['batch-count'] || 1);
   const req = { ...(count>1?{batch_count:count}:{}), op: 'generate', run_id: runId, token, target: args.target, prompt, negative_prompt: args['negative-prompt'] || '',
     width: Number(args.width || spec.defaultWidth), height: Number(args.height || spec.defaultHeight), steps: params.steps,
     cfg: params.cfg_scale, sampler: params.sampler, scheduler: params.scheduler, seed,
-    settings, save_prompts: args['save-prompts'] === 'true', loras: loras.map(l => ({ id: adapterId(l.name), strength: l.weight })) };
+    settings, save_prompts: args['save-prompts'] === 'true', loras: loras.map(l => ({ id: adapterId(l.name), strength: l.weight })), ...(init || {}) };
   const runsRoot = process.env.DEX_RUNS_DIR ? path.resolve(process.env.DEX_RUNS_DIR) : path.join(workflow, 'runs');
   const runDir = path.join(runsRoot, runId);
   fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
@@ -166,7 +176,7 @@ async function main() {
       backend: spec.backend || 'sdcpp', controlledOutputImage: logicalOutput, image_id: entry.image_id,
       local_png: logicalOutput, width: req.width, height: req.height, steps: req.steps, seed_label: String(seed),
       sampler:req.sampler,scheduler:req.scheduler,cfg_scale:req.cfg,loras:req.loras,
-      prompt: req.save_prompts ? prompt : '[REDACTED]', runtime_controlled_proven: true, worker: state, native_batch_count:count, images:entries };
+      prompt: req.save_prompts ? prompt : '[REDACTED]', runtime_controlled_proven: true, ...(init ? { operation: 'img2img', strength: init.strength } : {}), worker: state, native_batch_count:count, images:entries };
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
     for (const output of count>1?logicalOutputs:[]) console.log('CONTROLLED_BATCH_IMAGE: '+output);
     console.log('SDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: ' + args.target + '\nCONTROLLED_OUTPUT_IMAGE: ' + logicalOutput + '\nCONTROLLED_MANIFEST: ' + manifestPath);

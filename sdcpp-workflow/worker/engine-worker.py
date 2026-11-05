@@ -24,6 +24,10 @@ SOCKET = ROOT / 'engine.sock'
 RUN_ID = re.compile(r'^20\d{6}-\d{6}-[A-Za-z0-9_-]{1,80}$')
 TERMINAL = {'complete', 'failed', 'cancelled'}
 INTERPRETER_CHECK_INTERVAL = 20
+# img2img: the init image travels inside the request as base64 PNG bytes, never as a path.
+MAX_INIT_IMAGE_BYTES = 16 * 1024 * 1024
+MAX_REQUEST_BYTES = 24 * 1024 * 1024
+PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
 
 
 def interpreter_snapshot(executable=None, script=None, realpath=os.path.realpath):
@@ -94,7 +98,8 @@ def number(value, lo, hi, integer=False):
 
 def validate(req, registry):
     allowed = {'op', 'run_id', 'token', 'target', 'prompt', 'negative_prompt', 'width', 'height',
-               'steps', 'seed', 'cfg', 'sampler', 'scheduler', 'loras', 'save_prompts', 'settings', 'batch_count', 'index'}
+               'steps', 'seed', 'cfg', 'sampler', 'scheduler', 'loras', 'save_prompts', 'settings', 'batch_count', 'index',
+               'init_image', 'strength'}
     if set(req) - allowed:
         raise ValueError('unknown fields; paths and commands are forbidden')
     if req.get('op') not in {'generate', 'status', 'cancel', 'result', 'ack', 'health', 'activate'}:
@@ -107,6 +112,8 @@ def validate(req, registry):
         if req.get('target') not in registry['models'] or registry['models'][req['target']].get('backend') == 'mflux':
             raise ValueError('invalid secondary target')
         return
+    if req['op'] != 'generate' and ('init_image' in req or 'strength' in req):
+        raise ValueError('init image is only accepted with generate')
     if req['op'] != 'generate':
         if req['op'] == 'result':
             number(req.get('index',0),0,15,True)
@@ -168,6 +175,11 @@ def validate(req, registry):
             raise ValueError('invalid hires dimensions')
         if settings.get('hires_upscaler','Latent') not in registry.get('hires_upscalers', []):
             raise ValueError('invalid hires upscaler')
+    if 'init_image' in req or 'strength' in req:
+        init_image_bytes(req)
+        number(req.get('strength'), 0.01, 0.99)
+        if count != 1 or any(k.startswith('hires_') for k in settings):
+            raise ValueError('img2img runs one image without hires fix')
     loras = req.get('loras', [])
     if not isinstance(loras, list) or len(loras) > 4:
         raise ValueError('too many adapters per job')
@@ -192,6 +204,19 @@ def validate(req, registry):
         for key, value in policy.get('recipe', {}).items():
             if req.get('cfg' if key == 'cfg_scale' else key) != value:
                 raise ValueError('adapter requires its verified recipe')
+
+
+def init_image_bytes(req):
+    data = req.get('init_image')
+    if not isinstance(data, str) or len(data) > (MAX_INIT_IMAGE_BYTES * 4) // 3 + 4:
+        raise ValueError('invalid init image')
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except ValueError:
+        raise ValueError('invalid init image')
+    if not raw.startswith(PNG_MAGIC) or len(raw) > MAX_INIT_IMAGE_BYTES:
+        raise ValueError('init image must be a PNG')
+    return raw
 
 
 def evidence_lines(lines, req, engine_prompt):
@@ -415,6 +440,15 @@ class Worker:
             env = {**os.environ, 'HF_HUB_OFFLINE': '1', 'TOKENIZERS_PARALLELISM': 'false'}
             count=int(req.get('batch_count',1))
             output = tmp / ('output.png' if count==1 else 'output-b%02d.png')
+            init = None
+            if 'init_image' in req:
+                # Normalize to the requested size (RGB PNG) so every engine conditions on the same pixels.
+                init = tmp / 'init.png'
+                init.write_bytes(init_image_bytes(req))
+                subprocess.run([self.registry['image_python'], '-c',
+                    'from PIL import Image; import sys; i=Image.open(sys.argv[1]); i.load(); assert i.format=="PNG"; '
+                    'i=i.convert("RGB"); s=(int(sys.argv[2]),int(sys.argv[3])); i=i if i.size==s else i.resize(s, Image.LANCZOS); i.save(sys.argv[1])',
+                    str(init), str(req['width']), str(req['height'])], check=True, capture_output=True, text=True, timeout=60)
             if spec.get('backend') == 'mflux':
                 # Keep existing rsLoRA conversion/cache semantics, never duplicate original weights.
                 mroot = Path.home() / 'Library/Caches/DexDiffusion/mflux'
@@ -439,6 +473,9 @@ class Worker:
                     args += ['--lora', str(derived), str(loras[0]['strength'])]
                 args += ['--prompt', prompt, '--steps', str(req['steps']), '--seed', str(req['seed']),
                          '--width', str(req['width']), '--height', str(req['height']), '--output', str(output)]
+                if init is not None:
+                    # MFLUX image strength is how much of the init image is KEPT; strength here is A1111 denoising.
+                    args += ['--image-path', str(init), '--image-strength', str(round(1 - req['strength'], 4))]
             else:
                 for adapter in loras:
                     p = self.registry['adapters'][adapter['id']]['path']
@@ -450,6 +487,8 @@ class Worker:
                         '--cfg-scale', str(req['cfg']), '--sampling-method', self.registry['samplers'][req['sampler']],
                         '--scheduler', req['scheduler'], '--seed', str(req['seed']), '--backend', settings.get('backend','MTL0'),
                         '--diffusion-fa', '-o', str(output), '-v']
+                if init is not None:
+                    args += ['-i', str(init), '--strength', str(req['strength'])]
                 if loras:
                     args += ['--lora-model-dir', str(Path(self.registry['adapters'][loras[0]['id']]['path']).parent), '--lora-apply-mode', settings.get('lora_apply_mode','at_runtime')]
                 if count>1:
@@ -528,8 +567,8 @@ class Handler(socketserver.StreamRequestHandler):
         if hasattr(self.connection, 'getpeereid') and self.connection.getpeereid()[0] != os.getuid():
             return
         try:
-            raw = self.rfile.readline(131073)
-            if len(raw) > 131072:
+            raw = self.rfile.readline(MAX_REQUEST_BYTES + 1)
+            if len(raw) > MAX_REQUEST_BYTES:
                 raise ValueError('request too large')
             req = json.loads(raw)
             if not isinstance(req, dict):
@@ -544,7 +583,7 @@ class Handler(socketserver.StreamRequestHandler):
 
 
 def client():
-    req = sys.stdin.buffer.readline(131073)
+    req = sys.stdin.buffer.readline(MAX_REQUEST_BYTES + 1)
     with socket.socket(socket.AF_UNIX) as s:
         s.settimeout(20)
         s.connect(str(SOCKET))

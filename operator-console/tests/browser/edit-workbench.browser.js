@@ -101,6 +101,25 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       assert.equal(posts.length, 0, 'startup preference restoration must not POST model activation');
       await ctx.close();
     });
+    await test('img2img offers FLUX.2 Klein when the server lists it, switches to its settings and sends it as edit_model', async () => {
+      const { page, ctx, posts } = await newPage(browser, srv.base);
+      await page.evaluate(() => { const cd = __dex.state.capabilityData; __dex.setState({ capabilityData: Object.assign({}, cd, { img2imgModels: (cd.editModels || []).concat(['flux2-klein-4b']) }) }); });
+      await openEdit(page, 'fx-landscape.png', 'img2img');
+      assert.ok(await page.evaluate(() => __dex._editTargets().some(t => t.id === 'flux2-klein-4b')), 'Klein is selectable for img2img');
+      const p = await page.evaluate(() => { const st = __dex.ed.state, spec = __dex.state.modelTargets.find(t => t.id === 'flux2-klein-4b');
+        __dex.edSet({ state: Object.assign({}, st, { editModel: 'flux2-klein-4b', params: DexEdit.paramsForEditModel(st.params, spec) }) }); return __dex.ed.state.params; });
+      assert.deepEqual([p.steps, p.cfg, p.sampler], [4, 1, 'euler'], 'FLUX defaults replace out-of-range SDXL numbers');
+      await clickRun(page);
+      await page.waitForFunction(() => true);
+      await new Promise(r => setTimeout(r, 500));
+      const sent = posts.find(p => p.url.endsWith('/img2img'));
+      assert.ok(sent, 'img2img was posted');
+      assert.equal(sent.body.edit_model, 'flux2-klein-4b');
+      await page.evaluate(() => __dex.openImageInEdit('fx-landscape.png', 'inpaint'));
+      await page.waitForFunction(() => __dex.ed && __dex.ed.op === 'inpaint' && !__dex.ed.loading);
+      assert.ok(!(await page.evaluate(() => __dex._editTargets().some(t => t.id === 'flux2-klein-4b'))), 'inpaint keeps the edit-worker list');
+      await ctx.close();
+    });
     await test('provenance: Edit carries the SELECTED image\'s parameters, not the Create form', async () => {
       const { page, ctx, errors } = await newPage(browser, srv.base);
       await page.evaluate(() => __dex.setState({ steps: 99, cfg: 21, seed: '424242', width: 1024, height: 768, prompt: 'CREATE-FORM-PROMPT', negPrompt: 'CREATE-NEG', scheduler: 'exponential', target: 'flux2-klein-4b' }));

@@ -60,14 +60,17 @@
   // model (server: editWorkerTarget = sdcpp.env REMOTE_MODEL), never the secondary slot. When the server advertises
   // capabilityData.editModels, every listed SD 1.5 / SDXL checkpoint is offered and sent as edit_model (server-resolved
   // --model-path), so the choice is real and lineage names the model that ran.
-  P._editModelIds = function () {
+  // img2img can also run on the Big Mac local engine (FLUX models, LoRAs): the server lists those ids as img2imgModels.
+  P._editModelIds = function (op) {
     const cd = this.state.capabilityData || {};
-    return Array.isArray(cd.editModels) ? new Set(cd.editModels.concat(cd.editWorkerTarget ? [cd.editWorkerTarget] : [])) : null;
+    const o = op || (this.ed && this.ed.op) || 'img2img';
+    const list = o === 'img2img' && Array.isArray(cd.img2imgModels) ? cd.img2imgModels : cd.editModels;
+    return Array.isArray(list) ? new Set(list.concat(cd.editWorkerTarget ? [cd.editWorkerTarget] : [])) : null;
   };
   P._editTargets = function () {
-    const usable = (this.state.modelTargets || []).filter(t => (t.backend || 'sdcpp') !== 'mflux' && !['model-missing', 'dormant', 'model-inaccessible', 'worker-unavailable'].includes(t.runtime) && !['broken', 'dormant'].includes(String(t.status).toLowerCase()));
-    const worker = this.state.capabilityData && this.state.capabilityData.editWorkerTarget;
     const selectable = this._editModelIds();
+    const usable = (this.state.modelTargets || []).filter(t => ((t.backend || 'sdcpp') !== 'mflux' || (selectable && selectable.has(t.id))) && !['model-missing', 'dormant', 'model-inaccessible', 'worker-unavailable'].includes(t.runtime) && !['broken', 'dormant'].includes(String(t.status).toLowerCase()));
+    const worker = this.state.capabilityData && this.state.capabilityData.editWorkerTarget;
     if (selectable) return usable.filter(t => selectable.has(t.id));
     return worker ? usable.filter(t => t.id === worker) : usable;
   };
@@ -139,9 +142,10 @@
     }
     const view = r.data;
     const recall = view.recall || E.buildRecall(view);
-    const st = E.applyRecallToEdit(recall, { snapshot: this._snaps && this._snaps.get(imageId), op, targets: this._editTargets().concat(this.state.modelTargets || []), activeSecondary: this._activeSecondary(), editWorker: this.state.capabilityData && this.state.capabilityData.editWorkerTarget, editModels: this._editModelIds() });
+    const st = E.applyRecallToEdit(recall, { snapshot: this._snaps && this._snaps.get(imageId), op, targets: this._editTargets().concat(this.state.modelTargets || []), activeSecondary: this._activeSecondary(), editWorker: this.state.capabilityData && this.state.capabilityData.editWorkerTarget, editModels: this._editModelIds(op) });
     const url = this.state.backendUrl + view.url;
-    const loaded = await new Promise(res => { const im = new Image(); im.onload = () => res(true); im.onerror = () => res(false); im.src = url; });
+    // Bounded: a source that never finishes loading must not leave Edit stuck on its loading card.
+    const loaded = await new Promise(res => { const im = new Image(); const t = setTimeout(() => { im.src = ''; res(false); }, 45000); im.onload = () => { clearTimeout(t); res(true); }; im.onerror = () => { clearTimeout(t); res(false); }; im.src = url; });
     if (requestId !== this._editOpenRequestId) return false;
     if (!loaded) {
       if (!ed.source) this.edSet({ error: { stage: 'load-pixels', message: 'The source image file could not be loaded: ' + view.id, imageId } });
@@ -742,7 +746,7 @@
     const label = OP_LABEL[op] || 'this operation';
     return (this.state.modelTargets || []).map(t => {
       if (ok.has(t.id)) return t;
-      const why = (t.backend || 'sdcpp') === 'mflux' ? 'FLUX.2 Klein has no ' + label + ' path here (text-to-image only).'
+      const why = (t.backend || 'sdcpp') === 'mflux' ? 'FLUX.2 Klein has no ' + label + ' path here' + (op === 'img2img' ? ' (the Big Mac engine is not available).' : '; use Img2Img or Reference edit.')
         : String(t.status).toLowerCase() === 'broken' ? 'Marked broken; not usable for ' + label + '.'
         : t.runtime === 'model-missing' ? 'Model file missing.'
         : this._editModelIds() ? 'The edit workers load single-file SD 1.5 / SDXL checkpoints only; ' + label + ' is not available for this model.'
@@ -757,8 +761,8 @@
     const strength = op === 'outpaint' ? (ed.outpaintStrength != null ? ed.outpaintStrength : 0.85) : p.strength;
     const sOut = h('span', { style: { color: '#38bdf8', fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, minWidth: 36 } }, Number(strength).toFixed(2));
     return h('div', { style: { display: 'grid', gap: 8 } },
-      h('div', { style: { display: 'grid', gap: 4, minWidth: 0 } }, h('span', { style: css.label }, 'Edit model'), this.buildModelPicker('edit', this._editCatalog(targets, op), st.editModel, id => { this.edSet({ state: Object.assign({}, st, { editModel: id }), assetsFor: null }); this.loadEditAssets(); })),
-      this._editModelIds() ? h('div', { style: css.muted, 'data-edit-model-select': 'true', 'data-edit-worker-model': (this.state.capabilityData && this.state.capabilityData.editWorkerTarget) || '' }, 'Img2Img, Inpaint, Outpaint and the scripts run on the model chosen here (SD 1.5 and SDXL checkpoints; FLUX.2 Klein uses Reference edit). The default is ' + ((this.state.capabilityData && this.state.capabilityData.editWorkerTarget) || 'the edit worker\'s configured model') + '.')
+      h('div', { style: { display: 'grid', gap: 4, minWidth: 0 } }, h('span', { style: css.label }, 'Edit model'), this.buildModelPicker('edit', this._editCatalog(targets, op), st.editModel, id => { this.edSet({ state: Object.assign({}, st, { editModel: id, params: E.paramsForEditModel(st.params, (this.state.modelTargets || []).find(t => t.id === id)) }), assetsFor: null }); this.loadEditAssets(); })),
+      this._editModelIds() ? h('div', { style: css.muted, 'data-edit-model-select': 'true', 'data-edit-worker-model': (this.state.capabilityData && this.state.capabilityData.editWorkerTarget) || '' }, (op === 'img2img' ? 'Img2Img runs on the model chosen here, including FLUX.2 Klein and FLUX.1 Schnell, with any LoRA that model takes in Create. Inpaint, Outpaint and the scripts use SD 1.5 and SDXL checkpoints. The default is ' : 'Inpaint, Outpaint and the scripts run on the model chosen here (SD 1.5 and SDXL checkpoints; FLUX models are available in Img2Img). The default is ') + ((this.state.capabilityData && this.state.capabilityData.editWorkerTarget) || 'the edit worker\'s configured model') + '.')
         : this.state.capabilityData && this.state.capabilityData.editWorkerTarget ? h('div', { style: css.muted, 'data-edit-worker-model': this.state.capabilityData.editWorkerTarget }, 'Img2Img, Inpaint, Outpaint and the scripts run on ' + this.state.capabilityData.editWorkerTarget + ' (the edit worker\'s configured model); other checkpoints are not used by Edit.') : null,
       st.editModel && !this._editModelIds() && st.editModel !== this._activeSecondary() && !(this.state.capabilityData && this.state.capabilityData.editWorkerTarget === st.editModel) ? h('div', { style: { color: '#fde68a', fontSize: 11 } }, 'Switching to ' + st.editModel + ' happens when you press Run (the Big Mac secondary slot is replaced).') : null,
       h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,92px),1fr))', gap: 8 } },

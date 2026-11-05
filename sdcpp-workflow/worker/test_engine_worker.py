@@ -58,6 +58,23 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(loras=loras), self.assertRaises(ValueError):
                 m.validate({**base, 'loras': loras}, reg)
 
+    def test_img2img_init_image_validation(self):
+        import base64, io
+        from PIL import Image
+        buf = io.BytesIO(); Image.new('RGB', (8, 8), 'blue').save(buf, 'PNG')
+        png = base64.b64encode(buf.getvalue()).decode()
+        base = {**self.req, 'loras': []}
+        m.validate({**base, 'init_image': png, 'strength': 0.6}, self.registry)
+        for change in [{'init_image': png}, {'strength': 0.5}, {'init_image': png, 'strength': 1.0},
+                       {'init_image': base64.b64encode(b'GIF89a....').decode(), 'strength': 0.5},
+                       {'init_image': '/tmp/evil.png', 'strength': 0.5}, {'init_image': 7, 'strength': 0.5},
+                       {'init_image': png, 'strength': 0.5, 'batch_count': 2},
+                       {'init_image': png, 'strength': 0.5, 'settings': {'hires_scale': 1.5}}]:
+            with self.subTest(change=sorted(change)), self.assertRaises(ValueError):
+                m.validate({**base, **change}, self.registry)
+        with self.assertRaises(ValueError):
+            m.validate({'op': 'status', 'run_id': base['run_id'], 'token': base['token'], 'init_image': png, 'strength': 0.5}, self.registry)
+
     def test_both_prompts_and_multiline_fragments_are_excluded_from_evidence(self):
         req={**self.req,'prompt':'first line\nprivate at_runtime phrase','negative_prompt':'failed to load private negative'}
         lines=['  negative_prompt: "failed to load private negative"',
@@ -223,6 +240,18 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(job['cleanup'])
         self.worker.request({'op':'ack','run_id':self.req['run_id'],'token':self.req['token']})
         self.assertFalse((self.root/'jobs'/self.req['run_id']/'output.png').exists())
+
+    def test_img2img_passes_resized_init_image_to_sdcpp(self):
+        import base64, io
+        from PIL import Image
+        fake=self.root/'fake-engine'
+        fake.write_text('#!'+sys.executable+'\nfrom PIL import Image\nimport sys,json\na=sys.argv\ni=Image.open(a[a.index("-i")+1])\nopen(sys.argv[a.index("-o")+1]+".args","w").write(json.dumps([a[a.index("--strength")+1],i.size]))\nImage.new("RGB",(512,512),"red").save(a[a.index("-o")+1])\n')
+        self.worker.registry['image_python']=sys.executable
+        buf=io.BytesIO(); Image.new('RGB',(300,200),'blue').save(buf,'PNG')
+        self.worker.request({**self.req,'init_image':base64.b64encode(buf.getvalue()).decode(),'strength':0.55})
+        job=self.wait_terminal()
+        self.assertEqual(job['status'],'complete',job)
+        self.assertEqual(job['dimensions'],[512,512])
 
     def test_real_unix_socket_permissions_and_rejection(self):
         code = 'import importlib.util,pathlib; s=importlib.util.spec_from_file_location("w",'+repr(str(Path(__file__).with_name('engine-worker.py')))+'); m=importlib.util.module_from_spec(s);s.loader.exec_module(m);m.ROOT=pathlib.Path('+repr(str(self.root))+');m.SOCKET=m.ROOT/"engine.sock";m.serve()'

@@ -2901,6 +2901,8 @@ app.get('/api/capabilities', (req, res) => {
     editWorkerTarget: editWorkerTarget(),   // model routing proof remains independently derived from the engine
     // Models the edit workers can load per request (body.edit_model → server-resolved --model-path).
     editModels: EditModels.editModelIds(allControlledTargets(), { targetModels: TARGET_MODELS, familyOf: resolveTargetFamily }),
+    // img2img also runs on the local engine (FLUX models, LoRAs), so it can offer more models than inpaint/outpaint.
+    img2imgModels: EditModels.img2imgModelIds(allControlledTargets(), { targetModels: TARGET_MODELS, familyOf: resolveTargetFamily, engine: localEngineRouting.enabled() }),
     app: { name: 'SDCPP Workbench', version: 'a1111-workbench-2026-06-22' },
     backend: { type: 'stable-diffusion.cpp workflow bridge', workflowRoot: WORKFLOW_ROOT, runsDir: RUNS_DIR, localTunnelPort: localPort },
     assetCache: { present: !!assets, cacheAgeMinutes, discoveredAt: assets ? assets.discovered_at_iso : null },
@@ -3762,6 +3764,47 @@ app.post('/api/validate/inpaint', (req, res) => {
 });
 
 // img2img — gated behind img2imgSupported; init image must be within runs/
+// img2img goes to the Big Mac local engine (the Create path) when the edit workers cannot serve the request: a FLUX
+// model, or any LoRA. Plain SD 1.5 / SDXL img2img keeps the proven edit worker. -> spec | null | { error, status }
+function engineImg2imgSpec(body) {
+  if (!localEngineRouting.enabled()) return null;
+  const requested = typeof body.edit_model === 'string' && body.edit_model.trim() ? body.edit_model.trim() : editWorkerTarget();
+  const targets = allControlledTargets();
+  const spec = targets[requested];
+  if (!spec) return null;
+  const hasLoras = (Array.isArray(body.loras) && body.loras.length > 0) || /<lora:/i.test(String(body.prompt || ''));
+  const runner = EditModels.img2imgRunner(spec, { hasLoras, engine: true, targetModels: TARGET_MODELS, familyOf: resolveTargetFamily });
+  return runner === 'worker' ? null : runner === 'engine' ? spec : runner;
+}
+// Controlled (Create) params for an engine img2img run; reuses the Create validation and LoRA runtime policy.
+function engineImg2imgParams(spec, params, loras, allTargetById) {
+  const mflux = spec.backend === 'mflux';
+  // The engine conditions on the source resized to width x height: fit it inside the model's limits, keeping the shape.
+  let width = Number(params.width) || spec.defaultWidth, height = Number(params.height) || spec.defaultHeight;
+  const fit = Math.min(1, (spec.maxWidth || 2048) / width, (spec.maxHeight || 2048) / height);
+  const unit = mflux ? 16 : 8;
+  width = Math.max(unit * 8, Math.floor(width * fit / unit) * unit);
+  height = Math.max(unit * 8, Math.floor(height * fit / unit) * unit);
+  const cp = normalizeControlledGenerationBody({
+    target: spec.id, prompt: params.prompt, negative_prompt: mflux || spec.noNegativePrompt ? '' : params.negative_prompt,
+    width, height, steps: params.steps,
+    cfg_scale: mflux ? '' : (spec.fixedCfgScale !== undefined ? spec.fixedCfgScale : (spec.id === 'flux-fp8' ? 1 : params.cfg_scale)),
+    seed: params.seed, save_prompts: params.save_prompts, vae: mflux ? 'auto' : params.vae, loras,
+    ...(mflux ? {} : { sampler: spec.id === 'flux-fp8' ? 'euler' : params.sampler, scheduler: params.scheduler }),
+  });
+  if (!mflux) {
+    const rr = EC.resolveResources({ prompt: cp.prompt, loras: cp.loras });
+    cp.prompt = rr.backendPrompt;
+    cp.loras = rr.loras;
+  } else if (/<lora:/i.test(cp.prompt)) {
+    const rr = EC.resolveResources({ prompt: cp.prompt, loras: cp.loras });
+    cp.prompt = EC.stripLoraTags(cp.prompt);
+    cp.loras = rr.loras;
+  }
+  const err = validateControlledGenerationParams(cp, allTargetById, { loraShapeChecked: true });
+  return err ? { error: err } : { params: cp };
+}
+
 app.post('/api/actions/img2img', (req, res) => {
   if (!img2imgSupported) {
     return res.status(409).json({
@@ -3773,12 +3816,23 @@ app.post('/api/actions/img2img', (req, res) => {
   }
 
   const body = { ...(req.body || {}) };
-  const resErr = resolveEditResources(body);
-  if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
-  const editModel = resolveEditModelFor(body);
-  if (editModel.error) return res.status(editModel.status).json({ error: editModel.error, gate: 'edit-model' });
-  const editLoraError = editLoraUnsupported(body);
-  if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
+  const engineSpec = engineImg2imgSpec(body);
+  if (engineSpec && engineSpec.error) return res.status(engineSpec.status).json({ error: engineSpec.error, gate: 'edit-model' });
+  let editModel = { args: [] }, engineLoras = null;
+  if (engineSpec) {
+    const shapeErr = validateStructuredLoras(body.loras);
+    if (shapeErr) return res.status(400).json({ error: shapeErr, gate: 'resources' });
+    engineLoras = Array.isArray(body.loras) ? body.loras : [];
+    body.__editTarget = engineSpec.aliasOf || engineSpec.id;
+    delete body.loras; delete body.edit_model;
+  } else {
+    const resErr = resolveEditResources(body);
+    if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
+    editModel = resolveEditModelFor(body);
+    if (editModel.error) return res.status(editModel.status).json({ error: editModel.error, gate: 'edit-model' });
+    const editLoraError = editLoraUnsupported(body);
+    if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
+  }
   const srcInfo = resolveImageSource(body);
   cleanupRejectedSource(res, srcInfo);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
@@ -3853,6 +3907,29 @@ app.post('/api/actions/img2img', (req, res) => {
     params.steps = String(cliSteps);
   }
 
+  if (engineSpec) {
+    const allTargetById = allControlledTargets();
+    const ep = engineImg2imgParams(engineSpec, params, engineLoras, allTargetById);
+    if (ep.error) { if (prepPath) try { fs.unlinkSync(prepPath); } catch (_) {} return res.status(400).json({ error: ep.error, gate: 'engine-params' }); }
+    const cp = ep.params;
+    const engineArgs = buildControlledArgs(engineSpec, cp, { seedValue: cp.seed, isDiscovered: !CONTROLLED_TARGET_BY_ID[cp.target], resolveVaePath })
+      .concat(['--init-image', initImgPath, '--strength', String(strength)]);
+    const engineScript = localEngineRouting.controlledScript(engineSpec);
+    body.__loras = cp.loras || [];
+    const sensitives = [cp.prompt, cp.negative_prompt, params.prompt].filter(Boolean);
+    const jobId = createJob('img2img', getRedactedCommandSummary(engineScript, engineArgs, sensitives), sanitizeRequestParams(
+      { ...params, steps: cp.steps || params.steps, cfg_scale: cp.cfg_scale, run_id: runId, init_image_file: initImageFile, strength, target: engineSpec.id }, params.save_prompts
+    ));
+    jobSensitives[jobId] = sensitives;
+    jobs[jobId].sourceImageId = srcInfo.imageId || null;
+    jobs[jobId].genRecord = editGenRecord(body, { ...params, steps: cp.steps || params.steps, cfg_scale: cp.cfg_scale, sampler: cp.sampler || params.sampler }, Object.assign({ strength, engine: engineSpec.backend === 'mflux' ? 'mflux' : 'sdcpp-engine' },
+      resizeReq.spec ? { resize: resizeReq.spec.by !== undefined ? { mode: resizeReq.spec.mode, by: resizeReq.spec.by, to: `${body.width}x${body.height}` } : { mode: resizeReq.spec.mode, to: `${body.width}x${body.height}` } } : {},
+      stepsRequested ? { exact_steps: true, steps: stepsRequested } : {}));
+    jobs[jobId].lineageOp = 'img2img';
+    jobs[jobId].tempFiles = [prepPath, srcInfo.temp].filter(Boolean);
+    runAction(jobId, engineScript, engineArgs, params.save_prompts);
+    return res.json({ job_id: jobId, status: jobs[jobId].status, engine: true, target: engineSpec.id });
+  }
   const args = ['--init-img', initImgPath, '--strength', String(strength), '--prompt', params.prompt];
   if (params.negative_prompt) args.push('--negative', params.negative_prompt);
   if (params.steps) args.push('--steps', String(params.steps));
