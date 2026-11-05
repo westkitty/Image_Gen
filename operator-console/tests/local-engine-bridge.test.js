@@ -109,3 +109,21 @@ test('benchmark reads owned structured Metal and tensor evidence without a legac
   assert.equal(metrics.engineGenerationSeconds,10.45);assert.equal(metrics.remoteCleanup,'verified');
   assert.equal(extractMetrics('',{runId:'other-run'},stdout).backend,'UNKNOWN','another run cannot supply proof');
 });
+
+test('install registry limits each ControlNet to its own architecture and keeps paths on WC2TB', () => {
+  const result=spawnSync(process.execPath,[path.resolve(__dirname,'../../sdcpp-workflow/worker/build-registry.js')],{encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+  const registry=JSON.parse(result.stdout);
+  assert.match(registry.sdcli_control,/^\/Volumes\/wc2tb\//);
+  assert.notEqual(registry.sdcli_control,registry.sdcli,'ordinary jobs keep the stock sd-cli');
+  const { sd15, sdxl } = { sd15: registry.controlnets['openpose-sd15'], sdxl: registry.controlnets['openpose-sdxl'] };
+  for (const cn of [sd15, sdxl]) assert.match(cn.path,/^\/Volumes\/wc2tb\/ImageGen\/controlnet\//);
+  assert.ok(sd15.targets.includes('sd15') && !sd15.targets.includes('sdxl-base'));
+  assert.ok(sdxl.targets.includes('sdxl-base') && sdxl.targets.includes('sdxl-pony') && !sdxl.targets.includes('sd15'));
+  assert.ok(![...sd15.targets, ...sdxl.targets].some(t => /flux|klein/.test(t)), 'no ControlNet for FLUX');
+});
+test('generator accepts ControlNet arguments only as a set', () => {
+  assert.deepEqual(parse(['--target','sdxl-base','--control-net','openpose-sdxl','--control-image','/tmp/p.png','--control-strength','0.9']),
+    {target:'sdxl-base','control-net':'openpose-sdxl','control-image':'/tmp/p.png','control-strength':'0.9'});
+  assert.throws(() => parse(['--target','sdxl-base','--control-model-path','/x']));
+});

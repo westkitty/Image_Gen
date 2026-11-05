@@ -89,8 +89,10 @@ test('explicit capability ids (native batch, High-Res Refine) never swallow ordi
   assert.equal(capabilityForJob({ commandAction: 'controlled-generate', capabilityId: 'quantity-native-batch' }, 'sdcpp').id, 'quantity-native-batch');
   assert.equal(capabilityForJob({ commandAction: 'controlled-generate', capabilityId: 'hires-refine' }, 'sdcpp').id, 'hires-refine');
   const cn = CAPABILITIES.find(c => c.id === 'controlnet');
-  assert.equal(cn.implemented, false);
-  assert.match(cn.reason, /ENGINE SUPPORTED — MODEL ASSET MISSING/);
+  // ControlNet is a real controlled job now (OpenPose on SD 1.5 / SDXL), recorded under its own capability id.
+  assert.notEqual(cn.implemented, false);
+  assert.deepEqual(cn.job, { action: 'controlled-generate', capabilityId: true });
+  assert.equal(capabilityForJob({ commandAction: 'controlled-generate', capabilityId: 'controlnet' }, 'sdcpp').id, 'controlnet');
 });
 
 test('full-mask guard and blank-mask rejection are both enforced server-side', () => {

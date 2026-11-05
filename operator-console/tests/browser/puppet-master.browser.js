@@ -45,10 +45,10 @@ const joint = (p, pi, ji) => p.people[pi].keypoints[ji];
   const base = await startStatic();
   const browser = await launchBrowser(chromium);
   try {
-    await test('notice is visible and says no ControlNet is installed', async () => {
+    await test('notice is visible and says which plans ControlNet understands', async () => {
       const { page, ctx, errors, foreign } = await open(browser, base);
       const text = await page.locator('[data-puppet-notice]').innerText();
-      assert.match(text, /Pose authoring only — no ControlNet model is installed, so poses cannot yet condition generation\./);
+      assert.match(text, /Humanoid \(OpenPose 18\) poses can guide generation through ControlNet/);
       assert.equal(await page.locator('iframe').count(), 0);
       assert.deepEqual(errors, []); assert.deepEqual(foreign, []);
       await ctx.close();
