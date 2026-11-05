@@ -51,7 +51,7 @@ function classifyEngineError(err, modelPath, { prompt, negativePrompt } = {}) {
 }
 function parse(argv) {
   const args = {};
-  const allowed = new Set(['target','prompt','negative-prompt','width','height','steps','seed','cfg','sampler','scheduler','save-prompts','lora-id','lora-strength','lora-ids','lora-strengths','backend-override','lora-apply-mode','clip-skip','tiling','eta','rng','vae','model-path','api','hires-scale','hires-width','hires-height','hires-steps','hires-denoise','hires-upscaler','batch-count','init-image','strength']);
+  const allowed = new Set(['target','prompt','negative-prompt','width','height','steps','seed','cfg','sampler','scheduler','save-prompts','lora-id','lora-strength','lora-ids','lora-strengths','backend-override','lora-apply-mode','clip-skip','tiling','eta','rng','vae','model-path','api','hires-scale','hires-width','hires-height','hires-steps','hires-denoise','hires-upscaler','batch-count','init-image','strength','control-net','control-image','control-strength']);
   for (let i = 0; i < argv.length; i += 2) {
     if (argv[i] === '--tiling') { args.tiling = true; i--; continue; }
     const key = argv[i].replace(/^--/, '');
@@ -102,6 +102,17 @@ async function main() {
     if (bytes.length > 16 * 1024 * 1024 || !bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) throw new Error('The init image must be a PNG of at most 16 MB');
     init = { init_image: bytes.toString('base64'), strength };
   }
+  // ControlNet: a registry id plus the pose/control image bytes (never a path) cross the worker socket.
+  let control = null;
+  if (args['control-net'] !== undefined || args['control-image'] !== undefined || args['control-strength'] !== undefined) {
+    const strength = Number(args['control-strength']);
+    if (!args['control-net'] || !args['control-image'] || !Number.isFinite(strength) || strength < 0 || strength > 2) throw new Error('ControlNet needs --control-net, --control-image and a --control-strength between 0 and 2');
+    if (!registry.controlnets || !registry.controlnets[args['control-net']]) throw new Error('ControlNet is not installed in the engine registry');
+    if (Object.keys(settings).some(k => k.startsWith('hires_'))) throw new Error('ControlNet runs without hires fix');
+    const bytes = fs.readFileSync(args['control-image']);
+    if (bytes.length > 16 * 1024 * 1024 || !bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) throw new Error('The control image must be a PNG of at most 16 MB');
+    control = { control: { id: args['control-net'], image: bytes.toString('base64'), strength } };
+  }
   // Fail before announcing a remote run when the worker cannot accept requests.
   // This keeps a missing socket from being mistaken for an orphaned inference.
   const health = await request({op:'health'});
@@ -114,7 +125,7 @@ async function main() {
   const req = { ...(count>1?{batch_count:count}:{}), op: 'generate', run_id: runId, token, target: args.target, prompt, negative_prompt: args['negative-prompt'] || '',
     width: Number(args.width || spec.defaultWidth), height: Number(args.height || spec.defaultHeight), steps: params.steps,
     cfg: params.cfg_scale, sampler: params.sampler, scheduler: params.scheduler, seed,
-    settings, save_prompts: args['save-prompts'] === 'true', loras: loras.map(l => ({ id: adapterId(l.name), strength: l.weight })), ...(init || {}) };
+    settings, save_prompts: args['save-prompts'] === 'true', loras: loras.map(l => ({ id: adapterId(l.name), strength: l.weight })), ...(init || {}), ...(control || {}) };
   const runsRoot = process.env.DEX_RUNS_DIR ? path.resolve(process.env.DEX_RUNS_DIR) : path.join(workflow, 'runs');
   const runDir = path.join(runsRoot, runId);
   fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
@@ -176,7 +187,7 @@ async function main() {
       backend: spec.backend || 'sdcpp', controlledOutputImage: logicalOutput, image_id: entry.image_id,
       local_png: logicalOutput, width: req.width, height: req.height, steps: req.steps, seed_label: String(seed),
       sampler:req.sampler,scheduler:req.scheduler,cfg_scale:req.cfg,loras:req.loras,
-      prompt: req.save_prompts ? prompt : '[REDACTED]', runtime_controlled_proven: true, ...(init ? { operation: 'img2img', strength: init.strength } : {}), worker: state, native_batch_count:count, images:entries };
+      prompt: req.save_prompts ? prompt : '[REDACTED]', runtime_controlled_proven: true, ...(init ? { operation: 'img2img', strength: init.strength } : {}), ...(control ? { controlnet: { model: control.control.id, strength: control.control.strength } } : {}), worker: state, native_batch_count:count, images:entries };
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
     for (const output of count>1?logicalOutputs:[]) console.log('CONTROLLED_BATCH_IMAGE: '+output);
     console.log('SDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: ' + args.target + '\nCONTROLLED_OUTPUT_IMAGE: ' + logicalOutput + '\nCONTROLLED_MANIFEST: ' + manifestPath);

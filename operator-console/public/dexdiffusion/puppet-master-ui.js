@@ -5,13 +5,13 @@
 //       backgroundUrl: 'blob:...' /* optional, data:image/* or blob: only */, onChange(pose) {}, onExport({ png, json, plan, openpose }) {} });
 //   pm.getPose() / pm.setPose(pose) / pm.setBackground(url|null) / pm.destroy()
 //
-// Secure by construction: no remote URLs, no iframes, no dynamic code evaluation, no external scripts. Authoring only —
-// no ControlNet model is installed, so poses cannot condition generation.
+// Secure by construction: no remote URLs, no iframes, no dynamic code evaluation, no external scripts. Create's ControlNet
+// panel (controlnet-ui.js) hosts it and sends the rendered OpenPose map with the request.
 (function () {
   'use strict';
   const PP = window.DexPuppetPose;
   if (!PP) { console.error('puppet-master-ui: puppet-pose.js must load first'); return; }
-  const NOTICE = 'Pose authoring only — no ControlNet model is installed, so poses cannot yet condition generation.';
+  const NOTICE = 'Humanoid (OpenPose 18) poses can guide generation through ControlNet on SD 1.5 and SDXL checkpoints. Quadruped and winged plans are for reference only.';
   const HIT_PX = 14, HISTORY_MAX = 100, KEY_COALESCE_MS = 600;
   const SAFE_BG = /^(data:image\/(png|jpeg|webp|gif);|blob:)/i;
 
