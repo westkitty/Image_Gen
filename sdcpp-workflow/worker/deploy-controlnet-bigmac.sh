@@ -21,6 +21,8 @@ dest_dir="$wc/engines/sdcpp-controlnet-7f0e728"
 build_root=/Volumes/wc2tb/DexDiffusion/controlnet-smoke/patched-build
 stamp="$(date +%Y%m%d-%H%M%S)"
 uid="$(id -u)"
+# The branch that was checked out before this one, for the undo note.
+prev_branch="$(git -C "$repo" rev-parse --abbrev-ref '@{-1}' 2>/dev/null || echo main)"
 
 say "checks"
 [ -d "$wc" ] && [ -w "$wc" ] || stop "WC2TB ($wc) is not writable from this shell"
@@ -83,7 +85,7 @@ cat <<EOF
 DEPLOYED. To undo:
   cp -p "$root/engine-worker.py.bak-$stamp" "$root/engine-worker.py"
   cp -p "$root/registry.json.bak-$stamp" "$root/registry.json"
-  cd "$repo" && git checkout main
+  cd "$repo" && git checkout $prev_branch
   launchctl kickstart -k gui/$uid/local.dexdiffusion.engine-worker
   launchctl kickstart -k gui/$uid/local.dexdiffusion.server
 EOF
