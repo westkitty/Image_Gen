@@ -27,12 +27,16 @@
   document.head.appendChild(css);
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  // Resolves to the info object, null (nothing archived: 404, cached) or {error:true} (network/server failure: never cached).
   function getInfo(kind, id) {
     var key = kind + '/' + id;
-    if (cache[key]) return cache[key];
-    cache[key] = fetch('/api/source-info/' + kind + '/' + encodeURIComponent(id), { headers: { Accept: 'application/json' } })
-      .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
-    return cache[key];
+    if (cache[key]) return Promise.resolve(cache[key]);
+    return fetch('/api/source-info/' + kind + '/' + encodeURIComponent(id), { headers: { Accept: 'application/json' } })
+      .then(function (r) {
+        if (r.status === 404) { cache[key] = { missing: true }; return cache[key]; }
+        if (!r.ok) return { error: true };
+        return r.json().then(function (j) { cache[key] = j; return j; });
+      }).catch(function () { return { error: true }; });
   }
 
   function promptEl() { return document.querySelector('[data-dex-field="prompt"]'); }
@@ -64,7 +68,8 @@
     if (!card) { card = document.createElement('div'); card.className = 'dsh-card'; card.setAttribute('role', 'tooltip'); document.body.appendChild(card); }
     card.onmouseenter = function () { clearTimeout(hideTimer); };
     var h = '';
-    if (!info) h = '<h4>No archived information</h4><p>Nothing has been archived for this item yet.</p>';
+    if (info && info.error) h = '<h4>Could not load</h4><p>The source information could not be loaded just now. Hover again to retry.</p>';
+    else if (!info || info.missing) h = '<h4>No archived information</h4><p>Nothing has been archived for this item yet.</p>';
     else {
       h += '<h4>' + esc(info.title) + '</h4>' + (info.status ? '<span class="dsh-badge">' + esc(info.status) + '</span>' : '');
       if (info.summary) h += '<p>' + esc(info.summary) + '</p>';

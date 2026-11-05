@@ -54,6 +54,19 @@ const { test, exitCode } = runner('source-hover');
       assert.ok((await page.locator('.dsh-card [data-role="msg"]').innerText()).length > 0);
     });
 
+    await test('a failed source lookup is not cached: hovering again loads the card', async () => {
+      let calls = 0;
+      await page.route('**/api/source-info/lora/klein_fixes_nsfw_klein4b', r => (++calls === 1 ? r.abort() : r.continue()));
+      const row = page.locator('[data-lora-id="klein_fixes_nsfw_klein4b"]');
+      await row.hover();
+      await page.waitForSelector('.dsh-card h4:has-text("Could not load")');
+      await page.locator('[data-lora-id="klein_ultimate_blowjob_klein4b"]').hover();
+      await page.waitForTimeout(250);
+      await row.hover();
+      await page.waitForSelector('.dsh-card code');
+      assert.ok(calls >= 2);
+    });
+
     await test('no page errors', async () => { assert.deepEqual(errors, []); });
   } finally { await browser.close(); srv.stop && srv.stop(); }
   process.exit(exitCode());
