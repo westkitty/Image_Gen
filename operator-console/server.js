@@ -44,6 +44,7 @@ const { enhancePrompt: runPromptEnhance, extractProtectedLiterals } = require('.
 const { PROFILES, resolvePromptProfile } = require('./prompt-profiles');
 const { getWildcardCatalog, getWildcardItems, saveBank, removeBank, expandWildcards: expandWildcardsUtil } = require('./wildcards');
 const { sortLibraryIds } = require('./library-sort');
+const SourceInfo = require('./source-info');
 const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily, resolveTargetFamily } = require('./extra-networks');
 const EditModels = require('./edit-models');
 const { resolveLoraRuntimePolicy, routesFor } = require('./lora-runtime-policy');
@@ -2166,6 +2167,7 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
     params.lora_apply_mode = loraRoute.route.lora_apply_mode;
     params.mflux_lora_id = loraRoute.route.mflux_lora_id;
     params.mflux_lora_strength = loraRoute.route.mflux_lora_strength;
+    params.mflux_lora_plain = loraRoute.route.mflux_lora_plain === true;
   }
   return null;
 }
@@ -3236,10 +3238,19 @@ app.post('/api/models/inspect', async (req, res) => {
   }
 });
 
+app.get('/api/source-info/:kind/:id', (req, res) => {
+  const info = SourceInfo.getInfo(req.params.kind, req.params.id);
+  if (!info) return res.status(404).json({ error: 'No archived source information for this item.' });
+  res.json(info);
+});
+
 app.get('/api/extra-networks', (req, res) => {
   const targetId = req.query.target || 'flux2-klein-4b';
   const assets = readJsonCache(ASSETS_CACHE) || {};
-  const loras = buildLoraCards(withHeaderFacts(withLoraProofs(assets.loras, targetId)), targetId);
+  const stagedWithRoutes = SourceInfo.stagedLoraAssets().map(a => Object.assign({}, a, { production_routes: routesFor(targetId, a.filename) }));
+  const known = new Set((assets.loras || []).map(a => String(a.filename || '').toLowerCase()));
+  const merged = [...(assets.loras || []), ...stagedWithRoutes.filter(a => !known.has(a.filename.toLowerCase()))];
+  const loras = buildLoraCards(withHeaderFacts(withLoraProofs(merged, targetId)), targetId);
   const vaes = buildVaeCards(withHeaderFacts(assets.vaes), targetId);
   const embeddings = buildEmbeddingState(withHeaderFacts(assets.embeddings), targetId);
   res.json({ loras, vaes, embeddings });

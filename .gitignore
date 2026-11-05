@@ -76,3 +76,8 @@ Image_Gen_*.zip
 __MACOSX/
 operator-console/dexdiffusion.pid
 operator-console/.server.pid
+
+# Archived third-party source text (CivitAI/Hugging Face descriptions) is kept on disk, not published to this public repo.
+# Only the catalog (filenames, hashes, trigger words) is tracked. Regenerate the rest with scripts/archive-sources.js.
+operator-console/source-archive/*
+!operator-console/source-archive/lora-catalog.json

@@ -141,7 +141,7 @@ function buildLoraCards(discoveredLoras = [], currentTargetId = 'flux2-klein-4b'
 
   return discoveredLoras.map(lora => {
     const filename = lora.filename || '';
-    const curated = CURATED_LORA_PROVENANCE[filename.toLowerCase()] || null;
+    const curated = lora.curated || CURATED_LORA_PROVENANCE[filename.toLowerCase()] || null;
     const baseName = filename.replace(/\.(safetensors|ckpt|pt|bin)$/i, '');
     const family = curated?.family || lora.header_family || inferAssetFamily(filename);
     let compatibility = evaluateCompatibility(family, targetFamily, 'lora');
@@ -155,6 +155,8 @@ function buildLoraCards(discoveredLoras = [], currentTargetId = 'flux2-klein-4b'
       ? productionRoutes.find(r => r && r.target === currentTargetId && r.family_only === true && r.verified === false) || null
       : null;
     if (familyRoute) compatibility = 'Compatible';
+    // Staged community adapters: the server policy accepts them on this target, but they stay labelled untested.
+    if (lora.staged === true && productionRoutes.some(r => r && r.target === currentTargetId && r.production === true)) compatibility = 'Compatible';
 
     // Known trigger words and notes
     let triggerWords = [];
@@ -189,9 +191,12 @@ function buildLoraCards(discoveredLoras = [], currentTargetId = 'flux2-klein-4b'
       is_speed_adapter: isSpeedAdapter || curated?.classification === 'acceleration',
       family_only: !!familyRoute,
       target_proof: familyRoute ? 'Unproven on this checkpoint' : (proofStatus === 'PROVEN' && proofTargetIds.includes(currentTargetId) ? 'PROVEN' : null),
-      default_weight: 1.0,
-      min_weight: baseName === 'pixelart_lora' ? 0.25 : 0.0,
-      max_weight: baseName === 'pixelart_lora' ? 1.5 : 2.0,
+      default_weight: lora.default_weight ?? 1.0,
+      min_weight: lora.min_weight ?? (baseName === 'pixelart_lora' ? 0.25 : 0.0),
+      max_weight: lora.max_weight ?? (baseName === 'pixelart_lora' ? 1.5 : 2.0),
+      plain_mflux: lora.plain_mflux === true,
+      untested: lora.untested === true,
+      staged: lora.staged === true,
       step: 0.05,
       status: lora.status || 'available',
       provenance: lora.full_path ? 'local-wc2tb' : 'staged',

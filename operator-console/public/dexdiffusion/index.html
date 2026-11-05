@@ -285,6 +285,7 @@
         <div>{{ keyboardHelp }}</div><div>{{ createWorkbench }}</div><div>{{ settingsDrawer }}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
           {{ targetSelectV1 }}
+          <div data-lora-slot="V1" style="grid-column:1 / -1;">{{ createLoraControls }}</div>
           <div><div style="font-size:10px;color:#6090a8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Preset</div><select style="width:100%;border:1px solid rgba(148,163,184,.16);background:#091420;color:#e8f0f7;border-radius:7px;padding:7px;outline:none;font-size:12px;font-family:'DM Sans',sans-serif;" onChange="{{ onPresetChange }}"><option>Fast (SD1.5)</option><option>Smoke test</option><option>Custom</option></select></div>
         </div>
         
@@ -570,6 +571,7 @@
         </div>
         <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-bottom:5px;">
           {{ targetSelectV2 }}
+          <div data-lora-slot="V2" style="grid-column:1 / -1;">{{ createLoraControls }}</div>
           <div><div style="font-size:10px;color:#8888b0;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;">Quality preset</div><select aria-label="Quality preset" style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:7px;outline:none;font-size:12px;font-family:'DM Sans',sans-serif;" onChange="{{ onPresetChange }}"><option>Fast</option><option value="Smoke test">Quick preview</option><option>Custom</option></select></div>
         </div>
 <div style="margin-bottom:2px;color:#ddd6fe;font-size:12px;font-weight:700;">Image shape</div>
@@ -726,6 +728,7 @@
         <div>{{ keyboardHelp }}</div><div>{{ createWorkbench }}</div><div>{{ settingsDrawer }}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
           {{ targetSelectV3 }}
+          <div data-lora-slot="V3" style="grid-column:1 / -1;">{{ createLoraControlsV3 }}</div>
           <div><div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#7070a0;font-weight:600;margin-bottom:4px;">Preset</div><select style="width:100%;border:1px solid rgba(255,255,255,.09);background:#141418;color:#f4f4f8;border-radius:6px;padding:8px;outline:none;font-size:12px;font-family:'Space Grotesk',sans-serif;" onChange="{{ onPresetChange }}"><option>Fast</option><option>Smoke</option><option>Custom</option></select></div>
         </div>
         <div style="border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px;background:rgba(20,20,24,.55);">
@@ -914,6 +917,7 @@
   <script src="a11y.js"></script>
   <script src="../notify.js"></script>
   <script src="pwa.js"></script>
+  <script src="source-hover.js"></script>
   <script src="../dexdiffusion-v12.js"></script>
   <script>
     // Bootstrap: mount the ported DexDiffusion component onto the DC runtime.

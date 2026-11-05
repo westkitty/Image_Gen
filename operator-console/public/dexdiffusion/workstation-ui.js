@@ -216,7 +216,7 @@
     const targetSpec = typeof this._targetSpec === 'function' ? (this._targetSpec(target) || {}) : {};
     return (this.state.assets && this.state.assets.loras || []).map(l => {
       const targetFamily = targetSpec.family || (target.indexOf('sdxl') === 0 ? 'sdxl' : target === 'sd15' || target.indexOf('sd15-') === 0 ? 'sd15' : target.indexOf('flux2-') === 0 ? 'flux2' : '');
-      const route = (l.production_routes || []).find(r => r.target === target && (r.recipe && r.backend_override || targetSpec.backend === 'mflux' && r.backend === 'mflux' && r.rslora_equivalent)) || null;
+      const route = (l.production_routes || []).find(r => r.target === target && (r.recipe && r.backend_override || targetSpec.backend === 'mflux' && r.backend === 'mflux' && (r.rslora_equivalent || r.plain))) || null;
       // A server route for this exact checkpoint means the runtime policy already
       // accepted the adapter family (e.g. an SDXL accelerator on a Pony checkpoint).
       const familyMatches = l.family === targetFamily || !!route;
@@ -225,12 +225,14 @@
       const backendMatches = !l.proof_backend || l.proof_backend === (targetSpec.backend || 'sdcpp');
       const metalProven = ['AT_RUNTIME_ONLY_PROVEN', 'FUNCTIONAL_METAL'].includes(l.metal_inference_status) && (l.metal_target_ids || []).includes(target);
       const modeAvailable = !l.proof_apply_modes || l.proof_apply_modes.includes('immediately') || metalProven;
-      const mfluxStyle = targetSpec.backend === 'mflux' && l.name === 'pixelart_lora' && l.mflux_rslora_verified === true && route;
+      const mfluxStyle = targetSpec.backend === 'mflux' && ((l.name === 'pixelart_lora' && l.mflux_rslora_verified === true) || l.plain_mflux === true) && route;
       const hasProductionRoute = !!route && (route.production === true || !!route.backend_override || !!route.rslora_equivalent);
       const isCompat = l.compatibility === 'Compatible';
       const routeProven = metalProven || hasProductionRoute || (provenTarget && backendMatches && modeAvailable);
       const enabled = !!mfluxStyle || (familyMatches && !l.rs_lora && isCompat && (routeProven || (!l.proof_status && !l.proof_target_ids)));
-      const routeStatus = mfluxStyle
+      const routeStatus = mfluxStyle && l.plain_mflux
+        ? 'STYLE · MFLUX · staged, UNTESTED (no inference receipt yet)'
+        : mfluxStyle
         ? 'STYLE · MFLUX · rsLoRA scaling verified; no acceleration claim'
         : metalProven
         ? (l.metal_performance_status === 'MEASURED'
@@ -439,6 +441,73 @@
     const next = Object.assign({}, state, { strength: clamped });
     this._persistCreateLora(next);
   };
+
+  // ── LoRA picker: same modal pattern as the model picker (edit-ui.js _modelPicker), with source hover cards ──
+  function makeLoraPicker() {
+    const props = { options: [], selectedId: '', disabled: false, onPick: () => {} };
+    const q = { open: false, query: '' };
+    const mk = (tag, cssText, text) => { const n = document.createElement(tag); if (cssText) n.style.cssText = cssText; if (text != null) n.textContent = text; return n; };
+    const shell = mk('div', 'position:relative;min-width:0;width:100%;');
+    const trigger = mk('button', 'width:100%;text-align:left;border:1px solid rgba(148,163,184,.25);background:#0b1420;color:#e8f0f7;border-radius:8px;padding:8px 10px;min-height:38px;cursor:pointer;display:flex;gap:8px;align-items:center;font:13px DM Sans,system-ui,sans-serif;');
+    trigger.type = 'button'; trigger.setAttribute('aria-haspopup', 'listbox'); trigger.setAttribute('data-dex-field', 'create-lora-adapter');
+    const overlay = mk('div', 'display:none;position:fixed;inset:0;z-index:13000;background:rgba(2,6,12,.72);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;');
+    overlay.setAttribute('data-lora-picker-modal', '1');
+    const dialog = mk('div', 'width:min(720px,100%);max-height:min(88vh,820px);display:flex;flex-direction:column;border:1px solid rgba(148,163,184,.3);background:#0a111c;border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.6);');
+    dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true'); dialog.setAttribute('aria-label', 'Choose a LoRA adapter');
+    const head = mk('div', 'display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(148,163,184,.16);');
+    const closeBtn = mk('button', 'min-width:36px;min-height:36px;border:1px solid rgba(148,163,184,.25);background:transparent;color:#cbd5e1;border-radius:8px;cursor:pointer;font-size:15px;', '✕');
+    closeBtn.type = 'button'; closeBtn.setAttribute('aria-label', 'Close LoRA picker');
+    head.append(mk('div', 'font:800 15px DM Sans,sans-serif;color:#f1f5f9;flex:1;', 'Choose a LoRA'), closeBtn);
+    const panel = mk('div', 'overflow:auto;padding:12px 14px;min-height:0;');
+    panel.setAttribute('role', 'listbox'); panel.setAttribute('aria-label', 'LoRA choices');
+    const search = mk('input', 'width:100%;border:1px solid rgba(148,163,184,.25);background:#05080d;color:#e2e8f0;border-radius:7px;padding:8px;min-height:36px;margin-bottom:6px;font:13px DM Sans,system-ui,sans-serif;box-sizing:border-box;');
+    search.type = 'search'; search.placeholder = 'Search LoRAs…'; search.setAttribute('aria-label', 'Search LoRAs');
+    const list = mk('div'); const foot = mk('div', 'margin-top:6px;font:11px DM Sans,sans-serif;color:#8193a8;');
+    panel.append(search, list, foot); dialog.append(head, panel); overlay.append(dialog); shell.append(trigger, overlay);
+    function row(l) {
+      const wrap = mk('div', 'display:flex;gap:2px;align-items:stretch;margin:2px 0;'); wrap.setAttribute('data-source-hover', 'lora:' + l.id);
+      const active = l.id === props.selectedId;
+      const b = mk('button', `display:grid;gap:2px;width:100%;text-align:left;border:1px solid ${active ? '#65d66e' : 'transparent'};background:${active ? 'rgba(101,214,110,.08)' : 'transparent'};color:#e8f0f7;border-radius:8px;padding:7px 9px;cursor:pointer;font:12px DM Sans,sans-serif;${l.use_enabled ? '' : 'opacity:.62;'}`);
+      b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', String(active)); b.setAttribute('data-lora-id', l.id);
+      const top = mk('div', 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;');
+      top.append(mk('b', 'font-weight:700;', l.name),
+        mk('span', 'font-size:10px;color:#7f8ca8;', String(l.family || '').toUpperCase()),
+        mk('span', `font-size:10px;font-weight:700;border:1px solid ${l.use_enabled ? (l.untested ? '#fbbf2455' : '#65d66e55') : '#f8717155'};color:${l.use_enabled ? (l.untested ? '#fcd34d' : '#86efac') : '#fca5a5'};border-radius:5px;padding:1px 6px;`, l.use_enabled ? (l.untested ? 'UNTESTED' : 'PROVEN') : 'UNAVAILABLE'));
+      b.append(top);
+      const sub = l.use_enabled ? ((l.trigger_words || []).length ? 'Triggers: ' + l.trigger_words.join(', ') : (l.description || '')) : (l.unavailable_reason || '');
+      if (sub) b.append(mk('div', 'font-size:11px;color:#8193a8;line-height:1.35;', String(sub).slice(0, 160)));
+      b.addEventListener('click', () => { close(); trigger.focus(); props.onPick(l.id); });
+      b.style.flex = '1 1 auto'; b.style.minWidth = '0'; wrap.append(b); return wrap;
+    }
+    function draw() {
+      const qq = q.query.trim().toLowerCase();
+      const opts = props.options.filter(l => !qq || (l.name + ' ' + (l.family || '') + ' ' + (l.trigger_words || []).join(' ')).toLowerCase().includes(qq));
+      const none = mk('button', 'display:block;width:100%;text-align:left;border:1px solid transparent;background:transparent;color:#94a3b8;border-radius:8px;padding:7px 9px;cursor:pointer;font:12px DM Sans,sans-serif;', 'None (no LoRA)');
+      none.type = 'button'; none.setAttribute('role', 'option'); none.addEventListener('click', () => { close(); trigger.focus(); props.onPick(''); });
+      const usable = opts.filter(l => l.use_enabled), blocked = opts.filter(l => !l.use_enabled);
+      const label = t => mk('div', 'font:800 10px DM Sans,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#7f8ca8;padding:8px 4px 3px;', t);
+      list.replaceChildren(none, ...(usable.length ? [label('Usable with this model'), ...usable.map(row)] : []), ...(blocked.length ? [label('Not usable with this model'), ...blocked.map(row)] : []),
+        ...(!props.options.length ? [mk('div', 'color:#8193a8;font-size:12px;padding:8px 4px;', 'No adapters discovered.')] : []));
+      foot.textContent = opts.length + ' of ' + props.options.length + ' LoRAs';
+      const sel = props.options.find(l => l.id === props.selectedId);
+      trigger.replaceChildren(mk('span', 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', sel ? sel.name : (props.options.length ? 'Select a LoRA adapter' : 'No adapters discovered')),
+        mk('span', 'color:#7f8ca8;', '▾'));
+      trigger.disabled = !!props.disabled; trigger.setAttribute('aria-expanded', String(q.open));
+    }
+    function close() { q.open = false; overlay.style.display = 'none'; draw(); }
+    function open() { if (props.disabled) return; q.open = true; overlay.style.display = 'flex'; draw(); setTimeout(() => search.focus(), 0); }
+    trigger.addEventListener('click', () => (q.open ? close() : open()));
+    closeBtn.addEventListener('click', () => { close(); trigger.focus(); });
+    overlay.addEventListener('mousedown', e => { if (e.target === overlay) { close(); trigger.focus(); } });
+    dialog.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); trigger.focus(); } });
+    search.addEventListener('input', () => { q.query = search.value; draw(); });
+    return { shell, update(p) { Object.assign(props, p); draw(); } };
+  }
+  P.buildLoraPicker = function (options, selectedId, disabled, onPick) {
+    const pk = this._loraPickerInst || (this._loraPickerInst = makeLoraPicker());
+    pk.update({ options, selectedId, disabled, onPick });
+    return pk.shell;
+  };
   P.buildCreateLoraControls = function () {
     const state = this.state.createLora || {}, options = this._createLoraOptions();
     const selected = options.find(l => l.id === state.selectedId) || null;
@@ -446,8 +515,7 @@
     const strength = Number(state.strength ?? (selected && selected.default_weight) ?? 1);
     const checkbox = h('label', { className: 'ca-check-row', style: { display: 'inline-flex', alignItems: 'center', gap: 7 }, title: enabledOptions.length ? 'Enable one proven adapter for this checkpoint.' : 'No adapter is proven for this checkpoint and backend.' },
       h('input', { type: 'checkbox', 'data-dex-field': 'use-lora', checked: !!state.enabled, disabled: !selected || !selected.use_enabled || this.state.jobStatus === 'generating', onChange: e => this.setCreateLoraEnabled(e.target.checked) }), h('span', null, 'Use LoRA'));
-    const select = h('label', { className: 'ca-field', style: { minWidth: 0, width: '100%', gridColumn: '1 / -1' } }, this.state.version === 2 ? null : h('span', null, 'Adapter'), h('select', { 'aria-label': 'Adapter', 'data-dex-field': 'create-lora-adapter', value: state.selectedId || '', disabled: this.state.jobStatus === 'generating', style: { width: '100%', minWidth: 0 }, onChange: e => {
-      const val = e.target.value;
+    const select = h('div', { className: 'ca-field', role: 'group', 'aria-label': 'Adapter', style: { minWidth: 0, width: '100%', gridColumn: '1 / -1' } }, this.state.version === 2 ? null : h('span', null, 'Adapter'), this.buildLoraPicker(options, state.selectedId || '', this.state.jobStatus === 'generating', val => {
       if (!val) {
         this.selectCreateLora('');
       } else {
@@ -460,8 +528,7 @@
           this._persistCreateLora(next);
         }
       }
-    } },
-      h('option', { value: '' }, options.length ? 'Select a compatible adapter' : 'No adapters discovered'), ...options.map(l => h('option', { key: l.id, value: l.id, disabled: !l.use_enabled }, l.name + (l.use_enabled ? ' · PROVEN' : ' · ' + l.unavailable_reason)))));
+    }));
     const reason = !enabledOptions.length ? h('small', { className: 'ca-muted', role: 'status', 'data-dex-field': 'lora-unavailable', style: { gridColumn: '1 / -1', lineHeight: 1.25 } }, selected ? selected.unavailable_reason : 'Only adapters proven for this checkpoint and backend can be used.') : null;
     const advanced = h('details', { 'data-dex-field': 'lora-advanced', open: !!state.advanced, onToggle: e => this._persistCreateLora(Object.assign({}, this.state.createLora || {}, { advanced: e.target.open })), style: { flexBasis: '100%' } },
       h('summary', { style: { cursor: 'pointer', color: '#b7c7d8', fontSize: 12 } }, 'Advanced'),
@@ -2257,6 +2324,7 @@
     vals.samplerValue = D.canonicalSamplerId(s.sampler);
     vals.createWorkbench = this.buildCreateWorkbench(vals.modelsListDisplay);
     vals.createLoraControls = curScreen === 'create' ? this.buildCreateLoraControls() : null;
+    vals.createLoraControlsV3 = vals.createLoraControls;
     vals.promptGuidance = curScreen === 'create' ? (() => {
       const DP = window.DexPrompt, target = this._targetSpec() || {};
       if (!DP) return null;

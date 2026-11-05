@@ -1,0 +1,336 @@
+[
+ {
+  "slug": "klein_anatomy_male",
+  "civitai_id": 2364523,
+  "version_id": 2877826,
+  "bucket": "klein_4b",
+  "filename": "klein_anatomy_male_klein4b.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [
+   "circumcised penis",
+   "uncut penis"
+  ],
+  "recommended_weight": 0.6,
+  "hf_url": "https://huggingface.co/Danrhema/Male/resolve/main/Klein_Anatomy_4B.safetensors",
+  "sha256": "5ba42cba6118aa4831d2b957aa90c705f6ad87f3cad85c861f7139e9be1021d6",
+  "size_bytes": 184832432,
+  "candidates": null
+ },
+ {
+  "slug": "klein_anatomy_fixer",
+  "civitai_id": 2324991,
+  "version_id": 2617474,
+  "bucket": "klein_4b",
+  "filename": "klein_anatomy_fixer_klein4b.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [],
+  "recommended_weight": 2.5,
+  "hf_url": null,
+  "sha256": "e035a00e66790d203f93eb714fa57f768847f316fa5810758dc563fd093a4eb9",
+  "size_bytes": 11571232,
+  "candidates": null
+ },
+ {
+  "slug": "klein_fixes_nsfw",
+  "civitai_id": 2482439,
+  "version_id": 2802658,
+  "bucket": "klein_4b",
+  "filename": "klein_fixes_nsfw_klein4b.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [
+   "pubic hair",
+   "anus",
+   "perianal hair"
+  ],
+  "recommended_weight": 0.5,
+  "hf_url": "https://huggingface.co/UnifiedHorusRA/TheFourHorsemenV2/resolve/main/Klein_Fixes_NSFW/Flux_2_Klein_4B/FLUX_NSFW_Fix.safetensors",
+  "sha256": "fd8b9455ad344ed6c8017dbc9eefd34a4851a33e7bbb0c8d2d9a4c3632ba0320",
+  "size_bytes": 184832184,
+  "candidates": null
+ },
+ {
+  "slug": "klein_ultimate_blowjob",
+  "civitai_id": 2520572,
+  "version_id": 2860994,
+  "bucket": "klein_4b",
+  "filename": "klein_ultimate_blowjob_klein4b.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [],
+  "recommended_weight": 0.6,
+  "hf_url": null,
+  "sha256": "f33aba36e25161721faf08eb3316a4a1fe6316f64ce595b938572361dcb76f4c",
+  "size_bytes": 369643968,
+  "candidates": null
+ },
+ {
+  "slug": "klein_party_time_nudity",
+  "civitai_id": 2458332,
+  "version_id": null,
+  "bucket": "klein_4b",
+  "filename": "klein_party_time_nudity_klein4b.safetensors",
+  "staged_status": "AMBIGUOUS",
+  "trigger_words": [],
+  "recommended_weight": 0.5,
+  "hf_url": null,
+  "sha256": null,
+  "size_bytes": null,
+  "candidates": [
+   [
+    3373883,
+    "v2.1_klein4B"
+   ],
+   [
+    3028757,
+    "v2.0_klein4B"
+   ],
+   [
+    2843015,
+    "v1.0_klein4B"
+   ]
+  ]
+ },
+ {
+  "slug": "klein_aesthetic",
+  "civitai_id": 2381858,
+  "version_id": 2678431,
+  "bucket": "klein_4b",
+  "filename": "klein_aesthetic_klein4b.safetensors",
+  "staged_status": "WRONG_ARCH",
+  "trigger_words": [],
+  "recommended_weight": 0.5,
+  "hf_url": null,
+  "sha256": "7243d2664fa35beff2cc43e3e4073d98dfaef1ed16f8a462f3a7a6547c8cf98b",
+  "size_bytes": 192702824,
+  "candidates": null
+ },
+ {
+  "slug": "klein9_male_asshole",
+  "civitai_id": 2449377,
+  "version_id": 2754120,
+  "bucket": "klein_9b",
+  "filename": "klein9_male_asshole_klein9b.safetensors",
+  "staged_status": "WRONG_ARCH",
+  "trigger_words": [
+   "naked man asshole, penis and testicle",
+   "naked man asshole and testicle"
+  ],
+  "recommended_weight": null,
+  "hf_url": "https://huggingface.co/UnifiedHorusRA/TheFourHorsemenV2/resolve/main/Male_Asshole_-_Flux2_Klein/Flux_2_Klein_9B/maleasshole-f2-klein-9b.safetensors",
+  "sha256": "253684f483ad94028b137ecb3424b129c7b0393d33cc5c778843c3fa21ad264e",
+  "size_bytes": 165717400,
+  "candidates": null
+ },
+ {
+  "slug": "klein9_diverse_male_nudity",
+  "civitai_id": 1120962,
+  "version_id": 2694231,
+  "bucket": "klein_9b",
+  "filename": "klein9_diverse_male_nudity_klein9b.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [
+   "penis",
+   "large",
+   "small",
+   "circumcised",
+   "uncircumcised",
+   "flaccid",
+   "erect"
+  ],
+  "recommended_weight": null,
+  "hf_url": "https://huggingface.co/Pseudolukian/MyFlux2Klein9bModels/resolve/main/diverse_male_nudity_Flux2_Klein_base_9b_000009600.safetensors",
+  "sha256": "51b0172ad6073d12e560dbd8ccb618e0e01d2d8c45866a0ccb81abb46e50c4de",
+  "size_bytes": 165704432,
+  "candidates": null
+ },
+ {
+  "slug": "klein9_penis_coachbate",
+  "civitai_id": 2333003,
+  "version_id": 2624332,
+  "bucket": "klein_9b",
+  "filename": "klein9_penis_coachbate_klein9b.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [
+   "p3n15"
+  ],
+  "recommended_weight": null,
+  "hf_url": null,
+  "sha256": "08c225394795b2c402421b5e5e2145cd38722a2c467ecb9f8df69a4f74e50adf",
+  "size_bytes": 165704456,
+  "candidates": null
+ },
+ {
+  "slug": "klein9_muscle_morpher",
+  "civitai_id": 2481299,
+  "version_id": 2789728,
+  "bucket": "klein_9b",
+  "filename": "klein9_muscle_morpher_klein9b.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [
+   "muscle_morph"
+  ],
+  "recommended_weight": null,
+  "hf_url": null,
+  "sha256": "301af8431b468e5c27eba80f90df49ad0f7dc7c1d39275a1aa730c4547eee6f7",
+  "size_bytes": 165704464,
+  "candidates": null
+ },
+ {
+  "slug": "sdxl_real_penis",
+  "civitai_id": 2364747,
+  "version_id": null,
+  "bucket": "sdxl",
+  "filename": "sdxl_real_penis_sdxl.safetensors",
+  "staged_status": "AMBIGUOUS",
+  "trigger_words": [],
+  "recommended_weight": 0.5,
+  "hf_url": null,
+  "sha256": null,
+  "size_bytes": null,
+  "candidates": []
+ },
+ {
+  "slug": "sdxl_uncircumcised_penis",
+  "civitai_id": 1591594,
+  "version_id": 1801096,
+  "bucket": "sdxl",
+  "filename": "sdxl_uncircumcised_penis_sdxl.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [
+   "Uncircumcised_Penis"
+  ],
+  "recommended_weight": null,
+  "hf_url": null,
+  "sha256": "c4c9666dd150bb3d83e67d0193d6beb10f8b4bafc7aaafaa9c2b351ac48e4c6b",
+  "size_bytes": 228454796,
+  "candidates": null
+ },
+ {
+  "slug": "sdxl_uncut_penis",
+  "civitai_id": 245442,
+  "version_id": 276883,
+  "bucket": "sdxl",
+  "filename": "sdxl_uncut_penis_sdxl.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [],
+  "recommended_weight": null,
+  "hf_url": null,
+  "sha256": "968178e38e00e892ba4e29c48967a7f7b8dbbdbfc376adfeb475a8ec878be568",
+  "size_bytes": 228462388,
+  "candidates": null
+ },
+ {
+  "slug": "sdxl_cum_on_face_gay",
+  "civitai_id": 556821,
+  "version_id": 619769,
+  "bucket": "sdxl",
+  "filename": "sdxl_cum_on_face_gay_sdxl.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [],
+  "recommended_weight": null,
+  "hf_url": null,
+  "sha256": "43b74683a79b8266d3a45c20f9d214cd1b256e55d0fbd56746940dcf5c8166a4",
+  "size_bytes": 228458164,
+  "candidates": null
+ },
+ {
+  "slug": "sdxl_gay_porn",
+  "civitai_id": 548419,
+  "version_id": null,
+  "bucket": "sdxl",
+  "filename": "sdxl_gay_porn_sdxl.safetensors",
+  "staged_status": "AMBIGUOUS",
+  "trigger_words": [],
+  "recommended_weight": null,
+  "hf_url": null,
+  "sha256": null,
+  "size_bytes": null,
+  "candidates": [
+   [
+    1423435,
+    "Megapack XL v1.0"
+   ],
+   [
+    713930,
+    "Gay Porn - Duo Focus v1.0"
+   ],
+   [
+    610081,
+    "Gay Porn - General V1"
+   ]
+  ]
+ },
+ {
+  "slug": "sdxl_beach_gay_porn",
+  "civitai_id": 1352676,
+  "version_id": 1527904,
+  "bucket": "sdxl",
+  "filename": "sdxl_beach_gay_porn_sdxl.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [
+   "beach"
+  ],
+  "recommended_weight": null,
+  "hf_url": null,
+  "sha256": "5abdafa31e42266fc62c5dbc696a7900168209079c702948471cbc30f39be510",
+  "size_bytes": 228459780,
+  "candidates": null
+ },
+ {
+  "slug": "sdxl_gay_erotic_cuddle",
+  "civitai_id": 434642,
+  "version_id": 484132,
+  "bucket": "sdxl",
+  "filename": "sdxl_gay_erotic_cuddle_sdxl.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [],
+  "recommended_weight": null,
+  "hf_url": null,
+  "sha256": "b050db46664de0b9ad1a6a854a4e93d7ecab79e515a0f611459873cfa77a3216",
+  "size_bytes": 228456988,
+  "candidates": null
+ },
+ {
+  "slug": "sdxl_sexy_young_male",
+  "civitai_id": 628271,
+  "version_id": 702393,
+  "bucket": "sdxl",
+  "filename": "sdxl_sexy_young_male_sdxl.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [],
+  "recommended_weight": null,
+  "hf_url": null,
+  "sha256": "2258821e5ec1c1e8a0e61cc4fbe6480a1ba6cd80bee8bd826a2616e2e66acd18",
+  "size_bytes": 228816092,
+  "candidates": null
+ },
+ {
+  "slug": "sdxl_better_male_face",
+  "civitai_id": 1784080,
+  "version_id": 2019113,
+  "bucket": "sdxl",
+  "filename": "sdxl_better_male_face_sdxl.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [
+   "handsomeface"
+  ],
+  "recommended_weight": null,
+  "hf_url": null,
+  "sha256": "3260008a47a76011090963b39ed0144c532402ec9b1959ce8f7a266383195976",
+  "size_bytes": 228455060,
+  "candidates": null
+ },
+ {
+  "slug": "sdxl_morphed_muscle",
+  "civitai_id": 124773,
+  "version_id": 136266,
+  "bucket": "sdxl",
+  "filename": "sdxl_morphed_muscle_sdxl.safetensors",
+  "staged_status": "OK",
+  "trigger_words": [],
+  "recommended_weight": null,
+  "hf_url": null,
+  "sha256": "07c1553bad1a364cb1ad13e9990de4f8228d48fe7e4ff9c3cf27cb51b0afc61f",
+  "size_bytes": 228486604,
+  "candidates": null
+ }
+]

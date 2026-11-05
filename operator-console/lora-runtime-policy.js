@@ -6,7 +6,30 @@ const { FAMILIES, resolveTargetFamily } = require('./extra-networks');
 // adapter, checkpoint target, recipe, backend, and application mode were
 // validated together. A new adapter or recipe stays unavailable until added
 // with a real inference receipt.
+// Staged community adapters (source-archive/lora-catalog.json, files verified by size, header,
+// sha256 and architecture gate). They have NO inference receipt: every one is
+// FILE_INSTALLED_UNTESTED and labelled so in the UI.
+//  - FLUX.2 Klein 4B: plain (non-rsLoRA) adapters passed to `mflux-generate-flux2 --lora <path> <strength>`.
+//  - SDXL 1.0: style adapters applied by sd.cpp (MTL0, at_runtime) on any SDXL-family checkpoint.
+// One adapter per generation.
+const STAGED_ROOT = '/Volumes/wc2tb/DexDiffusion/models/loras/';
+function stagedAdapters() {
+  let catalog = [];
+  try { catalog = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, 'source-archive', 'lora-catalog.json'), 'utf8')); } catch (_) {}
+  const out = {};
+  for (const c of catalog) {
+    if (c.staged_status !== 'OK') continue;
+    const id = String(c.filename).replace(/\.safetensors$/i, '').toLowerCase();
+    const base = { path: STAGED_ROOT + c.bucket + '/' + c.filename, untested: true, staged: true };
+    if (c.bucket === 'klein_4b') out[id] = { ...base, targets: ['flux2-klein-4b'], family: 'flux2', backend: 'mflux', plain: true, strength: { min: 0.1, max: 3 } };
+    else if (c.bucket === 'sdxl') out[id] = { ...base, targets: ['sdxl-base'], family: 'sdxl', style: true,
+      production: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' },
+      fallbacks: [{ backend_override: 'cpu', lora_apply_mode: 'immediately' }], strength: { min: 0, max: 2 } };
+  }
+  return out;
+}
 const ADAPTERS = Object.freeze({
+  ...stagedAdapters(),
   'sdxl_lightning_4step_lora': {
     targets: ['sdxl-base'], family: 'sdxl',
     // sd.cpp: CFG 1 = prompt-conditioned without guidance (the distilled convention; CFG 0 would be unconditioned and ignore the prompt).
@@ -72,7 +95,7 @@ function recipeMatches(expected, params) {
 function targetSupport(spec, target) {
   if (!spec || spec.disabled) return null;
   if (spec.targets.includes(target)) return 'verified';
-  if (spec.backend === 'mflux' || !spec.recipe) return null;
+  if (spec.backend === 'mflux' || (!spec.recipe && !spec.style)) return null;
   const allowed = FAMILY_TARGET_FAMILIES[spec.family];
   return allowed && allowed.includes(resolveTargetFamily(target)) ? 'family' : null;
 }
@@ -94,11 +117,11 @@ function resolveLoraRuntimePolicy(params) {
   if (spec.backend === 'mflux') {
     const strength = Number(loras[0].weight);
     if (!Number.isFinite(strength) || strength < spec.strength.min || strength > spec.strength.max) {
-      return { ok: false, error: `Pixel Art strength must be ${spec.strength.min.toFixed(2)}–${spec.strength.max.toFixed(2)}.` };
+      return { ok: false, error: `${loras[0].name} strength must be ${spec.strength.min.toFixed(2)}–${spec.strength.max.toFixed(2)}.` };
     }
-    return { ok: true, route: { mflux_lora_id: id, mflux_lora_strength: strength } };
+    return { ok: true, route: { mflux_lora_id: id, mflux_lora_strength: strength, ...(spec.plain ? { mflux_lora_plain: true, untested: true } : {}) } };
   }
-  if (!recipeMatches(spec.recipe, params)) {
+  if (spec.recipe && !recipeMatches(spec.recipe, params)) {
     return { ok: false, error: `${loras[0].name} requires its verified ${spec.recipe.steps}-step ${spec.recipe.sampler}/${spec.recipe.scheduler}, CFG ${spec.recipe.cfg_scale} recipe.` };
   }
 
@@ -127,12 +150,12 @@ function routesFor(target, name) {
   const id = adapterId(name), spec = ADAPTERS[id];
   const support = targetSupport(spec, target);
   if (!support) return [];
-  if (spec.backend === 'mflux') return [{ target, backend: 'mflux', rslora_equivalent: true, production: true }];
+  if (spec.backend === 'mflux') return [{ target, backend: 'mflux', production: true, ...(spec.plain ? { plain: true, untested: true } : { rslora_equivalent: true }) }];
   const proof = support === 'verified'
     ? { verified: true }
     : { verified: false, family_only: true, family: spec.family, verified_targets: [...spec.targets], proof: FAMILY_ONLY_PROOF };
   return [
-    { target, ...spec.production, production: true, recipe: { ...spec.recipe }, ...proof },
+    { target, ...spec.production, production: true, recipe: { ...spec.recipe }, ...proof, ...(spec.untested ? { untested: true } : {}) },
     ...(spec.fallbacks || []).map(route => ({ target, ...route, production: false, recipe: { ...spec.recipe }, ...proof })),
   ];
 }

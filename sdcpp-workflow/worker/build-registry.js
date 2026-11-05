@@ -14,6 +14,7 @@ const targets = vm.runInNewContext(declaration + '\nCONTROLLED_TARGETS');
 const models = targetModelMap(path.join(root, 'sdcpp-workflow/bin/sdcpp-controlled-generate.sh'), '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors');
 const assets = JSON.parse(fs.readFileSync(path.join(root, 'docs/operations/lora-assets-20261021.json'))).assets;
 const adapters = Object.fromEntries(Object.entries(ADAPTERS).map(([id, policy]) => {
+  if (policy.path) return [id, { ...policy }];
   const asset = assets.find(a => a.filename.replace(/\.safetensors$/, '').toLowerCase() === id);
   if (!asset) throw new Error('missing installed adapter ' + id);
   return [id, { ...policy, path: '/Volumes/wc2tb/dex-imagegen/models/loras/' + asset.filename }];
@@ -46,7 +47,7 @@ const result = {
 // adapter: the explicitly verified targets plus same-family checkpoints (acceleration adapters only; family-only
 // routes are unproven on those checkpoints, see lora-runtime-policy targetSupport).
 for (const [id, adapter] of Object.entries(result.adapters)) {
-  if (adapter.backend === 'mflux' || !adapter.recipe) continue;
+  if (adapter.backend === 'mflux' || (!adapter.recipe && !adapter.style)) continue;
   adapter.targets = [...new Set([...adapter.targets, ...Object.keys(result.models).filter(m => targetSupport(ADAPTERS[id], m))])];
 }
 process.stdout.write(JSON.stringify(result, null, 2) + '\n');

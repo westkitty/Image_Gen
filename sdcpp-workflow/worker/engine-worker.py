@@ -415,7 +415,12 @@ class Worker:
                 env.update(HF_HOME=str(mroot / 'cache/huggingface'), XDG_CACHE_HOME=str(mroot / 'cache/xdg'))
                 args = [str(mroot / 'venv/bin/mflux-generate-flux2'), '--model', str(mroot / 'flux2-klein-4b-4bit'),
                         '--base-model', 'flux2-klein-4b']
-                if loras:
+                if loras and self.registry['adapters'][loras[0]['id']].get('plain'):
+                    plain_path = self.registry['adapters'][loras[0]['id']]['path']
+                    with open(plain_path, 'rb') as f:
+                        f.read(1)
+                    args += ['--lora', plain_path, str(loras[0]['strength'])]
+                elif loras:
                     derived = mroot / 'loras/pixelart_lora-rslora-r128-a64.safetensors'
                     convert_args = [str(mroot / 'venv/bin/python'), str(self.root / 'mflux-rslora-convert.py'),
                                     self.registry['adapters'][loras[0]['id']]['path'], str(derived)]
@@ -436,7 +441,7 @@ class Worker:
                         '--scheduler', req['scheduler'], '--seed', str(req['seed']), '--backend', settings.get('backend','MTL0'),
                         '--diffusion-fa', '-o', str(output), '-v']
                 if loras:
-                    args += ['--lora-model-dir', self.registry['lora_root'], '--lora-apply-mode', settings.get('lora_apply_mode','at_runtime')]
+                    args += ['--lora-model-dir', str(Path(self.registry['adapters'][loras[0]['id']]['path']).parent), '--lora-apply-mode', settings.get('lora_apply_mode','at_runtime')]
                 if count>1:
                     args += ['-b',str(count)]
                 args += spec.get('engine_args', [])
