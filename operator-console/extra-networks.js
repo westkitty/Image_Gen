@@ -197,6 +197,7 @@ function buildLoraCards(discoveredLoras = [], currentTargetId = 'flux2-klein-4b'
       plain_mflux: lora.plain_mflux === true,
       untested: lora.untested === true,
       staged: lora.staged === true,
+      slider: lora.slider === true,
       step: 0.05,
       status: lora.status || 'available',
       provenance: lora.full_path ? 'local-wc2tb' : 'staged',

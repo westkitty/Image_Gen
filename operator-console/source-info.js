@@ -43,7 +43,7 @@ function stagedLoraAssets() {
       },
       default_weight: c.recommended_weight ?? (c.bucket === 'klein_4b' ? 0.6 : 0.7),
       min_weight: weightBounds(c).min, max_weight: weightBounds(c).max,
-      plain_mflux: c.bucket === 'klein_4b', untested: true, staged: true,
+      plain_mflux: c.bucket === 'klein_4b', untested: true, staged: true, slider: /fixer/i.test(c.slug),
       proof_status: 'FILE_INSTALLED_UNTESTED',
     };
   });

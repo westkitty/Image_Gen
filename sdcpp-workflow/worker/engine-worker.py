@@ -169,8 +169,14 @@ def validate(req, registry):
         if settings.get('hires_upscaler','Latent') not in registry.get('hires_upscalers', []):
             raise ValueError('invalid hires upscaler')
     loras = req.get('loras', [])
-    if not isinstance(loras, list) or len(loras) > 1:
-        raise ValueError('one verified adapter per job')
+    if not isinstance(loras, list) or len(loras) > 4:
+        raise ValueError('too many adapters per job')
+    if len(loras) > 1:
+        # Only staged adapters stack, on one engine, without repeats (the server policy enforces the weight cap).
+        pols = [registry['adapters'].get(a.get('id')) if isinstance(a, dict) else None for a in loras]
+        if any(not p or not p.get('staged') for p in pols) or len({a['id'] for a in loras}) != len(loras) \
+                or len({p.get('backend') == 'mflux' for p in pols}) != 1:
+            raise ValueError('only distinct staged adapters for one engine can be combined')
     for adapter in loras:
         if not isinstance(adapter, dict) or set(adapter) != {'id', 'strength'}:
             raise ValueError('invalid adapter shape')
@@ -415,11 +421,15 @@ class Worker:
                 env.update(HF_HOME=str(mroot / 'cache/huggingface'), XDG_CACHE_HOME=str(mroot / 'cache/xdg'))
                 args = [str(mroot / 'venv/bin/mflux-generate-flux2'), '--model', str(mroot / 'flux2-klein-4b-4bit'),
                         '--base-model', 'flux2-klein-4b']
-                if loras and self.registry['adapters'][loras[0]['id']].get('plain'):
-                    plain_path = self.registry['adapters'][loras[0]['id']]['path']
-                    with open(plain_path, 'rb') as f:
-                        f.read(1)
-                    args += ['--lora', plain_path, str(loras[0]['strength'])]
+                if loras and all(self.registry['adapters'][a['id']].get('plain') for a in loras):
+                    plain_paths = [self.registry['adapters'][a['id']]['path'] for a in loras]
+                    for plain_path in plain_paths:
+                        with open(plain_path, 'rb') as f:
+                            f.read(1)
+                    if len(loras) == 1:
+                        args += ['--lora', plain_paths[0], str(loras[0]['strength'])]
+                    else:
+                        args += ['--lora-paths', *plain_paths, '--lora-scales', *[str(a['strength']) for a in loras]]
                 elif loras:
                     derived = mroot / 'loras/pixelart_lora-rslora-r128-a64.safetensors'
                     convert_args = [str(mroot / 'venv/bin/python'), str(self.root / 'mflux-rslora-convert.py'),

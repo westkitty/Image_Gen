@@ -51,7 +51,7 @@ function classifyEngineError(err, modelPath, { prompt, negativePrompt } = {}) {
 }
 function parse(argv) {
   const args = {};
-  const allowed = new Set(['target','prompt','negative-prompt','width','height','steps','seed','cfg','sampler','scheduler','save-prompts','lora-id','lora-strength','backend-override','lora-apply-mode','clip-skip','tiling','eta','rng','vae','model-path','api','hires-scale','hires-width','hires-height','hires-steps','hires-denoise','hires-upscaler','batch-count']);
+  const allowed = new Set(['target','prompt','negative-prompt','width','height','steps','seed','cfg','sampler','scheduler','save-prompts','lora-id','lora-strength','lora-ids','lora-strengths','backend-override','lora-apply-mode','clip-skip','tiling','eta','rng','vae','model-path','api','hires-scale','hires-width','hires-height','hires-steps','hires-denoise','hires-upscaler','batch-count']);
   for (let i = 0; i < argv.length; i += 2) {
     if (argv[i] === '--tiling') { args.tiling = true; i--; continue; }
     const key = argv[i].replace(/^--/, '');
@@ -71,6 +71,11 @@ async function main() {
   let prompt = args.prompt || '';
   prompt = prompt.replace(/<lora:([^:>]+):([^>]+)>/gi, (_, name, weight) => { loras.push({ name, weight: Number(weight) }); return ''; });
   if (args['lora-id']) loras.push({ name: args['lora-id'], weight: Number(args['lora-strength']) });
+  if (args['lora-ids']) {
+    const ids = String(args['lora-ids']).split(','), ws = String(args['lora-strengths'] || '').split(',');
+    if (ids.length !== ws.length || args['lora-id']) throw new Error('lora-ids and lora-strengths must pair up');
+    ids.forEach((id, i) => loras.push({ name: id, weight: Number(ws[i]) }));
+  }
   const params = { target: args.target, steps: Number(args.steps || spec.defaultSteps), cfg_scale: Number(args.cfg ?? spec.defaultCfgScale ?? 1),
     sampler: canonicalSampler(args.sampler || spec.defaultSampler || 'euler'), scheduler: args.scheduler || 'discrete', loras,
     backend_override: args['backend-override'], lora_apply_mode: args['lora-apply-mode'] };

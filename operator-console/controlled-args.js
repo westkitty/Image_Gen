@@ -163,6 +163,8 @@ function buildControlledArgs(spec, params, { seedValue, isDiscovered = false, re
     if (params.rng) args.push('--rng', String(params.rng));
     if (params.lora_apply_mode) args.push('--lora-apply-mode', String(params.lora_apply_mode));
     if (params.backend_override) args.push('--backend-override', String(params.backend_override));
+  } else if (Array.isArray(params.mflux_loras) && params.mflux_loras.length > 1 && params.mflux_lora_plain === true) {
+    args.push('--lora-ids', params.mflux_loras.map(l => String(l.id)).join(','), '--lora-strengths', params.mflux_loras.map(l => String(l.strength)).join(','));
   } else if (params.mflux_lora_id === 'pixelart_lora' || params.mflux_lora_plain === true) {
     args.push('--lora-id', String(params.mflux_lora_id), '--lora-strength', String(params.mflux_lora_strength));
   }

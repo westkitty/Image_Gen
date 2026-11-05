@@ -67,6 +67,28 @@ const { test, exitCode } = runner('source-hover');
       assert.ok(calls >= 2);
     });
 
+    await test('several staged LoRAs can be stacked, weighted, capped and removed', async () => {
+      await page.evaluate(() => __dex._setStack([]));
+      await page.locator('[data-lora-id="klein_anatomy_fixer_klein4b"] ').click();
+      await page.locator('[data-lora-id="klein_anatomy_male_klein4b"]').click();
+      await page.locator('[data-lora-id="klein_fixes_nsfw_klein4b"]').click();
+      await page.keyboard.press('Escape');
+      await page.evaluate(() => document.querySelector('[data-lora-picker-modal]').style.display = 'none');
+      const eff = await page.evaluate(() => __dex.getEffectiveCreateLoras().map(l => [l.id, l.weight]));
+      assert.deepEqual(eff.map(x => x[0]), ['klein_anatomy_fixer_klein4b', 'klein_anatomy_male_klein4b', 'klein_fixes_nsfw_klein4b']);
+      assert.equal(await page.locator('[data-stack-item]').count(), 3);
+      assert.match(await page.locator('[data-dex-field="lora-stack-total"]').innerText(), /Total strength 1\.10 \/ 1\.8/);
+      await page.locator('[data-stack-item="klein_anatomy_male_klein4b"] input').fill('1.5');
+      await page.locator('[data-stack-item="klein_anatomy_male_klein4b"] input').blur();
+      assert.match(await page.locator('[data-dex-field="lora-stack-total"]').innerText(), /over the limit/);
+      await page.locator('[data-stack-item="klein_anatomy_male_klein4b"] button').click();
+      await page.waitForFunction(() => document.querySelectorAll('[data-stack-item]').length === 2);
+      assert.equal(await page.locator('[data-stack-item]').count(), 2);
+      assert.equal(await page.evaluate(() => __dex.getEffectiveCreateLoras().length), 2);
+      assert.match(await page.locator('[data-dex-field="lora-stack-total"]').innerText(), /Total strength 0\.50/);
+      await page.evaluate(() => __dex._setStack([]));
+    });
+
     await test('no page errors', async () => { assert.deepEqual(errors, []); });
   } finally { await browser.close(); srv.stop && srv.stop(); }
   process.exit(exitCode());

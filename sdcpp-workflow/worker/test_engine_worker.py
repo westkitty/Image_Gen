@@ -46,6 +46,18 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 m.validate({**self.req,**change},self.registry)
 
+
+    def test_staged_adapters_stack_but_nothing_else_does(self):
+        mk = lambda i: {'targets': ['sdxl-base'], 'staged': True, 'style': True, 'production': {'backend_override':'MTL0','lora_apply_mode':'at_runtime'}, 'strength': {'min': 0, 'max': 2}}
+        reg = {**self.registry, 'adapters': {**self.registry['adapters'], 'a_sdxl': mk(1), 'b_sdxl': mk(2), 'c_sdxl': mk(3), 'd_sdxl': mk(4), 'e_sdxl': mk(5)}}
+        base = {**self.req, 'steps': 20, 'cfg': 7}
+        m.validate({**base, 'loras': [{'id': 'a_sdxl', 'strength': 0.5}, {'id': 'b_sdxl', 'strength': 0.5}]}, reg)
+        for loras in ([{'id': 'a_sdxl', 'strength': 0.5}, {'id': 'a_sdxl', 'strength': 0.5}],
+                      [{'id': 'a_sdxl', 'strength': 0.5}, {'id': 'sdxl_lightning_4step_lora', 'strength': 1}],
+                      [{'id': i + '_sdxl', 'strength': 0.2} for i in 'abcde']):
+            with self.subTest(loras=loras), self.assertRaises(ValueError):
+                m.validate({**base, 'loras': loras}, reg)
+
     def test_both_prompts_and_multiline_fragments_are_excluded_from_evidence(self):
         req={**self.req,'prompt':'first line\nprivate at_runtime phrase','negative_prompt':'failed to load private negative'}
         lines=['  negative_prompt: "failed to load private negative"',

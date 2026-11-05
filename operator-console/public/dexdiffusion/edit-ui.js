@@ -251,7 +251,7 @@
     const effLoras = isCreate && typeof this.getEffectiveCreateLoras === 'function' ? this.getEffectiveCreateLoras() : [];
     const quickActive = isCreate && effLoras.length > 0;
     const countText = isCreate
-      ? (quickActive ? `1 active (${effLoras[0].name} · ${effLoras[0].weight.toFixed(2)})` : 'None')
+      ? (quickActive ? (effLoras.length > 1 ? `${effLoras.length} active (${effLoras.map(l => l.name + ' · ' + l.weight.toFixed(2)).join(', ')})` : `1 active (${effLoras[0].name} · ${effLoras[0].weight.toFixed(2)})`) : 'None')
       : `${loras.length} active`;
     const titleText = isCreate ? 'Resources · VAE' : ('Resources · LoRA' + (cfg.showVae ? ' & VAE' : ''));
     return h('div', { 'data-resources': cfg.scope, style: { border: '1px solid rgba(167,139,250,.28)', borderRadius: 9, padding: 10, display: 'grid', gap: 8, background: 'rgba(14,10,28,.35)', minWidth: 0 } },

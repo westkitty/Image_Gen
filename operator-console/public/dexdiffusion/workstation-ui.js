@@ -286,7 +286,64 @@
     return preset && preset.kind === 'lora' ? preset.recommended || null : null;
   };
 
+  // ── LoRA stack: several staged adapters in one generation (limits mirror lora-runtime-policy.js) ──
+  const STACK_KEY = 'dex_create_lora_stack_v1', STACK_MAX = 4, STACK_SUM_MAX = 1.8;
+  P._stack = function () {
+    if (Array.isArray(this.state.createLoraStack)) return this.state.createLoraStack;
+    try { const a = JSON.parse(localStorage.getItem(STACK_KEY) || '[]'); return Array.isArray(a) ? a.filter(x => x && typeof x.id === 'string' && Number.isFinite(Number(x.weight))) : []; } catch (_) { return []; }
+  };
+  P._setStack = function (list) {
+    try { localStorage.setItem(STACK_KEY, JSON.stringify(list)); } catch (_) {}
+    this.setState({ createLoraStack: list });
+  };
+  P._stackItems = function () {
+    const opts = this._createLoraOptions();
+    return this._stack().map(e => ({ entry: e, option: opts.find(o => o.id === e.id) || null }));
+  };
+  P._stackUsable = function () { return this._stackItems().filter(x => x.option && x.option.staged && x.option.use_enabled); };
+  P._stackSum = function (items) { return items.filter(x => !(x.option && x.option.slider)).reduce((n, x) => n + (Number(x.entry.weight) || 0), 0); };
+  P.toggleCreateStack = function (id) {
+    const opts = this._createLoraOptions(), o = opts.find(x => x.id === id);
+    if (!o || !o.staged) return;
+    const cur = this._stack();
+    if (cur.some(e => e.id === id)) { this._setStack(cur.filter(e => e.id !== id)); return; }
+    if (!o.use_enabled) { this.toast(o.unavailable_reason || 'That LoRA is not usable with this model.', '#fbbf24'); return; }
+    if (cur.length >= STACK_MAX) { this.toast('At most ' + STACK_MAX + ' LoRAs can be combined.', '#fbbf24'); return; }
+    // A stack replaces any single accelerator/style adapter, which cannot be combined with these.
+    if ((this.state.createLora || {}).selectedId) this.selectCreateLora('');
+    this._setStack(cur.concat([{ id, weight: o.default_weight != null ? o.default_weight : 0.6 }]));
+  };
+  P.setCreateStackWeight = function (id, weight) {
+    const o = this._createLoraOptions().find(x => x.id === id), w = Number(weight);
+    if (!Number.isFinite(w)) return;
+    const lo = o && o.min_weight != null ? o.min_weight : 0, hi = o && o.max_weight != null ? o.max_weight : 2;
+    this._setStack(this._stack().map(e => e.id === id ? Object.assign({}, e, { weight: Math.min(hi, Math.max(lo, w)) }) : e));
+  };
+  P.buildCreateLoraStack = function () {
+    const items = this._stackItems();
+    if (!items.length) return null;
+    const sum = this._stackSum(items), over = sum > STACK_SUM_MAX + 1e-9, unusable = items.filter(x => !x.option || !x.option.use_enabled);
+    const chip = ({ entry, option }) => h('div', { key: entry.id, 'data-stack-item': entry.id, style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', border: '1px solid rgba(148,163,184,.25)', borderRadius: 7, padding: '4px 6px', opacity: option && option.use_enabled ? 1 : .55 } },
+      h('b', { style: { fontSize: 12, flex: '1 1 140px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' } }, option ? option.name : entry.id),
+      option && option.slider ? h('span', { style: { fontSize: 10, color: '#7f8ca8' } }, 'slider') : null,
+      h('input', { type: 'number', 'aria-label': 'Strength for ' + entry.id, step: 0.05, min: option ? option.min_weight : 0, max: option ? option.max_weight : 2, value: entry.weight, style: { width: 64 }, disabled: this.state.jobStatus === 'generating', onChange: e => this.setCreateStackWeight(entry.id, e.target.value) }),
+      h('button', { type: 'button', 'aria-label': 'Remove ' + entry.id, disabled: this.state.jobStatus === 'generating', onClick: () => this.toggleCreateStack(entry.id), style: { border: 0, background: 'transparent', color: '#f87171', cursor: 'pointer', fontSize: 14 } }, '✕'));
+    return h('div', { 'data-dex-field': 'lora-stack', style: { gridColumn: '1 / -1', display: 'grid', gap: 4 } },
+      h('div', { style: { fontSize: 11, color: '#93c5fd' } }, items.length + ' LoRA' + (items.length > 1 ? 's' : '') + ' stacked · untested'),
+      ...items.map(chip),
+      h('small', { role: 'status', 'data-dex-field': 'lora-stack-total', style: { color: over ? '#fca5a5' : '#8193a8', fontSize: 11 } },
+        'Total strength ' + sum.toFixed(2) + ' / ' + STACK_SUM_MAX + ' (slider adapters not counted)' + (over ? ' — over the limit; the request will be refused.' : '') + (unusable.length ? ' · ' + unusable.length + ' not usable with this model, ignored.' : '')));
+  };
+
   P.getEffectiveCreateLoras = function () {
+    const stacked = this._stackUsable();
+    if (stacked.length) {
+      return stacked.map(({ entry, option }) => {
+        const lo = option.min_weight != null ? option.min_weight : 0, hi = option.max_weight != null ? option.max_weight : 2;
+        const w = Number(entry.weight);
+        return { name: option.name, weight: Number.isFinite(w) ? Math.min(hi, Math.max(lo, w)) : (option.default_weight || 0.6), id: option.id, adapter: option.filename || option.name, stacked: true };
+      });
+    }
     const state = this.state.createLora;
     if (!state || !state.selectedId || state.enabled === false) return [];
     const options = this._createLoraOptions();
@@ -466,17 +523,17 @@
     panel.append(search, list, foot); dialog.append(head, panel); overlay.append(dialog); shell.append(trigger, overlay);
     function row(l) {
       const wrap = mk('div', 'display:flex;gap:2px;align-items:stretch;margin:2px 0;'); wrap.setAttribute('data-source-hover', 'lora:' + l.id);
-      const active = l.id === props.selectedId;
+      const active = l.id === props.selectedId || l.inStack === true;
       const b = mk('button', `display:grid;gap:2px;width:100%;text-align:left;border:1px solid ${active ? '#65d66e' : 'transparent'};background:${active ? 'rgba(101,214,110,.08)' : 'transparent'};color:#e8f0f7;border-radius:8px;padding:7px 9px;cursor:pointer;font:12px DM Sans,sans-serif;${l.use_enabled ? '' : 'opacity:.62;'}`);
       b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', String(active)); b.setAttribute('data-lora-id', l.id);
       const top = mk('div', 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;');
       top.append(mk('b', 'font-weight:700;', l.name),
         mk('span', 'font-size:10px;color:#7f8ca8;', String(l.family || '').toUpperCase()),
-        mk('span', `font-size:10px;font-weight:700;border:1px solid ${l.use_enabled ? (l.untested ? '#fbbf2455' : '#65d66e55') : '#f8717155'};color:${l.use_enabled ? (l.untested ? '#fcd34d' : '#86efac') : '#fca5a5'};border-radius:5px;padding:1px 6px;`, l.use_enabled ? (l.untested ? 'UNTESTED' : 'PROVEN') : 'UNAVAILABLE'));
+        mk('span', `font-size:10px;font-weight:700;border:1px solid ${l.use_enabled ? (l.untested ? '#fbbf2455' : '#65d66e55') : '#f8717155'};color:${l.use_enabled ? (l.untested ? '#fcd34d' : '#86efac') : '#fca5a5'};border-radius:5px;padding:1px 6px;`, l.inStack ? '✓ IN STACK' : (l.use_enabled ? (l.untested ? 'UNTESTED' : 'PROVEN') : 'UNAVAILABLE')));
       b.append(top);
       const sub = l.use_enabled ? ((l.trigger_words || []).length ? 'Triggers: ' + l.trigger_words.join(', ') : (l.description || '')) : (l.unavailable_reason || '');
       if (sub) b.append(mk('div', 'font-size:11px;color:#8193a8;line-height:1.35;', String(sub).slice(0, 160)));
-      b.addEventListener('click', () => { close(); trigger.focus(); props.onPick(l.id); });
+      b.addEventListener('click', () => { if (l.staged) { props.onPick(l.id); return; } close(); trigger.focus(); props.onPick(l.id); });
       b.style.flex = '1 1 auto'; b.style.minWidth = '0'; wrap.append(b); return wrap;
     }
     function draw() {
@@ -489,8 +546,8 @@
       list.replaceChildren(none, ...(usable.length ? [label('Usable with this model'), ...usable.map(row)] : []), ...(blocked.length ? [label('Not usable with this model'), ...blocked.map(row)] : []),
         ...(!props.options.length ? [mk('div', 'color:#8193a8;font-size:12px;padding:8px 4px;', 'No adapters discovered.')] : []));
       foot.textContent = opts.length + ' of ' + props.options.length + ' LoRAs';
-      const sel = props.options.find(l => l.id === props.selectedId);
-      trigger.replaceChildren(mk('span', 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', sel ? sel.name : (props.options.length ? 'Select a LoRA adapter' : 'No adapters discovered')),
+      const sel = props.options.find(l => l.id === props.selectedId), stacked = props.options.filter(l => l.inStack);
+      trigger.replaceChildren(mk('span', 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', stacked.length ? stacked.length + ' stacked: ' + stacked.map(l => l.name).join(', ') : sel ? sel.name : (props.options.length ? 'Select a LoRA adapter' : 'No adapters discovered')),
         mk('span', 'color:#7f8ca8;', '▾'));
       trigger.disabled = !!props.disabled; trigger.setAttribute('aria-expanded', String(q.open));
     }
@@ -515,7 +572,9 @@
     const strength = Number(state.strength ?? (selected && selected.default_weight) ?? 1);
     const checkbox = h('label', { className: 'ca-check-row', style: { display: 'inline-flex', alignItems: 'center', gap: 7 }, title: enabledOptions.length ? 'Enable one proven adapter for this checkpoint.' : 'No adapter is proven for this checkpoint and backend.' },
       h('input', { type: 'checkbox', 'data-dex-field': 'use-lora', checked: !!state.enabled, disabled: !selected || !selected.use_enabled || this.state.jobStatus === 'generating', onChange: e => this.setCreateLoraEnabled(e.target.checked) }), h('span', null, 'Use LoRA'));
-    const select = h('div', { className: 'ca-field', role: 'group', 'aria-label': 'Adapter', style: { minWidth: 0, width: '100%', gridColumn: '1 / -1' } }, this.state.version === 2 ? null : h('span', null, 'Adapter'), this.buildLoraPicker(options, state.selectedId || '', this.state.jobStatus === 'generating', val => {
+    const select = h('div', { className: 'ca-field', role: 'group', 'aria-label': 'Adapter', style: { minWidth: 0, width: '100%', gridColumn: '1 / -1' } }, this.state.version === 2 ? null : h('span', null, 'Adapter'), this.buildLoraPicker(options.map(o => Object.assign({}, o, { inStack: this._stack().some(e => e.id === o.id) })), state.selectedId || '', this.state.jobStatus === 'generating', val => {
+      if (val && (options.find(x => x.id === val) || {}).staged) { this.toggleCreateStack(val); return; }
+      if (val && this._stack().length) this._setStack([]);
       if (!val) {
         this.selectCreateLora('');
       } else {
@@ -537,7 +596,7 @@
         h('label', { className: 'ca-field' }, h('span', null, 'Exact strength'), h('input', numText({ min: selected.min_weight, max: selected.max_weight, step: selected.step, decimal: true, value: strength, disabled: !state.enabled || !selected.use_enabled, 'aria-label': 'Exact LoRA strength', 'data-dex-field': 'lora-strength-number', onInput: e => this.setCreateLoraStrength(e.target.value, selected.min_weight, selected.max_weight) }))),
         h('div', { className: 'ca-muted', 'data-dex-field': 'lora-recipe' }, (() => { const r = this._createLoraRecipe(selected); const x = r && r.recommended || {}; return state.enabled ? 'Effective recipe: ' + (x.steps || this.state.steps) + ' steps · ' + (x.sampler || this.state.sampler) + ' · ' + (x.scheduler || 'engine default') + ' · CFG ' + (x.cfg != null ? x.cfg : this.state.cfg) + ' · ' + selected.route_status + ' (selected automatically)' : 'LoRA off · current settings: ' + this.state.steps + ' steps · ' + this.state.sampler + ' · ' + (this.state.scheduler || 'engine default') + ' · CFG ' + this.state.cfg; })()),
         h('button', { type: 'button', className: 'ca-secondary', disabled: !state.enabled || !selected.use_enabled, onClick: () => { const next = Object.assign({}, this.state.createLora || {}, { overrides: {} }); this._persistCreateLora(next); next.recipeSettings = this._applyCreateLoraRecipe(selected, next.savedSettings || {}, {}); this._persistCreateLora(next); } }, 'Reset to recommended settings')) : h('div', { className: 'ca-muted' }, 'Select an adapter to inspect its validated settings.'));
-    return h('div', { className: 'ca-form-actions', 'data-dex-field': 'create-lora-controls', style: { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 4, alignItems: 'center', minWidth: 0, width: '100%' } }, checkbox, select, advanced, reason);
+    return h('div', { className: 'ca-form-actions', 'data-dex-field': 'create-lora-controls', style: { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 4, alignItems: 'center', minWidth: 0, width: '100%' } }, checkbox, select, this.buildCreateLoraStack(), advanced, reason);
   };
 
   P.onGenerate = async function (over, opts) {

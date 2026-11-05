@@ -12,6 +12,9 @@ const { FAMILIES, resolveTargetFamily } = require('./extra-networks');
 //  - FLUX.2 Klein 4B: plain (non-rsLoRA) adapters passed to `mflux-generate-flux2 --lora <path> <strength>`.
 //  - SDXL 1.0: style adapters applied by sd.cpp (MTL0, at_runtime) on any SDXL-family checkpoint.
 // One adapter per generation.
+// Stacking limits for staged adapters. Slider-style adapters (the Klein anatomy fixer, strength 2-3) are not counted in the sum.
+const MAX_STACK = 4;
+const MAX_STACK_WEIGHT_SUM = 1.8;
 const STAGED_ROOT = '/Volumes/wc2tb/DexDiffusion/models/loras/';
 function stagedAdapters() {
   let catalog = [];
@@ -20,7 +23,7 @@ function stagedAdapters() {
   for (const c of catalog) {
     if (c.staged_status !== 'OK') continue;
     const id = String(c.filename).replace(/\.safetensors$/i, '').toLowerCase();
-    const base = { path: STAGED_ROOT + c.bucket + '/' + c.filename, untested: true, staged: true };
+    const base = { path: STAGED_ROOT + c.bucket + '/' + c.filename, untested: true, staged: true, ...(/fixer/i.test(c.slug) ? { slider: true } : {}) };
     if (c.bucket === 'klein_4b') out[id] = { ...base, targets: ['flux2-klein-4b'], family: 'flux2', backend: 'mflux', plain: true, strength: { min: 0.1, max: 3 } };
     else if (c.bucket === 'sdxl') out[id] = { ...base, targets: ['sdxl-base'], family: 'sdxl', style: true,
       production: { backend_override: 'MTL0', lora_apply_mode: 'at_runtime' },
@@ -100,10 +103,41 @@ function targetSupport(spec, target) {
   return allowed && allowed.includes(resolveTargetFamily(target)) ? 'family' : null;
 }
 
+
+// Several staged adapters in one generation. Only staged adapters stack (accelerators and rsLoRA styles need their own
+// verified recipe), all on the same engine, each valid on the target, at most MAX_STACK, weight sum capped.
+function resolveStack(params, loras) {
+  if (loras.length > MAX_STACK) return { ok: false, error: `At most ${MAX_STACK} LoRAs can be combined in one generation.` };
+  const seen = new Set(), items = [];
+  for (const l of loras) {
+    const id = adapterId(l.name), spec = ADAPTERS[id];
+    if (!spec) return { ok: false, error: `LoRA "${l.name}" has no verified production route.` };
+    if (!spec.staged) return { ok: false, error: `${l.name} cannot be combined with other LoRAs; use it on its own.` };
+    if (seen.has(id)) return { ok: false, error: `${l.name} is selected more than once.` };
+    seen.add(id);
+    if (!targetSupport(spec, params.target)) return { ok: false, error: `${l.name} is not usable with ${params.target}.` };
+    const w = Number(l.weight);
+    if (!Number.isFinite(w) || w < spec.strength.min || w > spec.strength.max) return { ok: false, error: `${l.name} strength must be ${spec.strength.min.toFixed(2)}–${spec.strength.max.toFixed(2)}.` };
+    items.push({ id, spec, weight: w });
+  }
+  const backend = items[0].spec.backend === 'mflux' ? 'mflux' : 'sdcpp';
+  if (items.some(i => (i.spec.backend === 'mflux' ? 'mflux' : 'sdcpp') !== backend)) return { ok: false, error: 'LoRAs for different engines cannot be combined.' };
+  const sum = items.filter(i => !i.spec.slider).reduce((n, i) => n + i.weight, 0);
+  if (sum > MAX_STACK_WEIGHT_SUM + 1e-9) return { ok: false, error: `Combined LoRA strength is ${sum.toFixed(2)}; the limit is ${MAX_STACK_WEIGHT_SUM} (slider adapters are not counted).` };
+  if (backend === 'mflux') return { ok: true, route: { mflux_loras: items.map(i => ({ id: i.id, strength: i.weight })), mflux_lora_plain: true, untested: true } };
+  const requestedBackend = String(params.backend_override || '').toLowerCase();
+  const mode = String(params.lora_apply_mode || '');
+  const production = items[0].spec.production;
+  if ((requestedBackend && requestedBackend !== production.backend_override.toLowerCase()) || (mode && mode !== production.lora_apply_mode)) {
+    return { ok: false, error: 'Combined LoRAs run only on the Metal at_runtime route.' };
+  }
+  return { ok: true, route: { ...production }, family_only: true, untested: true };
+}
+
 function resolveLoraRuntimePolicy(params) {
   const loras = Array.isArray(params && params.loras) ? params.loras : [];
   if (!loras.length) return { ok: true, route: null };
-  if (loras.length !== 1) return { ok: false, error: 'Only one verified LoRA is supported per generation.' };
+  if (loras.length > 1) return resolveStack(params, loras);
   const id = adapterId(loras[0].name);
   const spec = ADAPTERS[id];
   if (!spec) return { ok: false, error: `LoRA "${loras[0].name}" has no verified production route.` };
@@ -160,4 +194,4 @@ function routesFor(target, name) {
   ];
 }
 
-module.exports = { ADAPTERS, FAMILY_ONLY_PROOF, adapterId, targetSupport, resolveLoraRuntimePolicy, routesFor };
+module.exports = { MAX_STACK, MAX_STACK_WEIGHT_SUM, ADAPTERS, FAMILY_ONLY_PROOF, adapterId, targetSupport, resolveLoraRuntimePolicy, routesFor };

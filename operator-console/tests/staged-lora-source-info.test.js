@@ -81,3 +81,28 @@ test('args: the plain mflux adapter is forwarded to the generator, nothing else 
   assert.ok(i >= 0 && withLora[i + 1] === 'klein_anatomy_male_klein4b' && withLora[i + 3] === '0.6');
   assert.ok(!buildControlledArgs(spec, base).includes('--lora-id'));
 });
+
+test('stacks: staged adapters combine (max 4, weight sum 1.8, slider not counted); nothing else does', () => {
+  const k = (n, w) => ({ name: n, weight: w });
+  const run = (target, loras) => resolveLoraRuntimePolicy({ target, loras });
+  const ok = run('flux2-klein-4b', [k('klein_anatomy_fixer_klein4b', 2.5), k('klein_anatomy_male_klein4b', 0.6), k('klein_fixes_nsfw_klein4b', 0.5)]);
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.route.mflux_loras.map(l => l.id), ['klein_anatomy_fixer_klein4b', 'klein_anatomy_male_klein4b', 'klein_fixes_nsfw_klein4b']);
+  assert.match(run('flux2-klein-4b', [k('klein_anatomy_male_klein4b', 1), k('klein_fixes_nsfw_klein4b', 1)]).error, /1\.8/);
+  assert.match(run('flux2-klein-4b', [k('klein_anatomy_male_klein4b', .3), k('klein_anatomy_male_klein4b', .3)]).error, /more than once/);
+  assert.equal(run('flux2-klein-4b', [k('klein_anatomy_male_klein4b', .1), k('klein_fixes_nsfw_klein4b', .1), k('klein_ultimate_blowjob_klein4b', .1), k('klein_anatomy_fixer_klein4b', 2), k('klein_anatomy_male_klein4b', .1)]).ok, false);
+  assert.equal(run('flux2-klein-4b', [k('klein_anatomy_male_klein4b', .3), k('pixelart_lora', .5)]).ok, false);
+  assert.equal(run('flux2-klein-4b', [k('klein_anatomy_male_klein4b', .3), k('sdxl_uncut_penis_sdxl', .3)]).ok, false);
+  assert.equal(run('sdxl-juggernaut', [k('sdxl_uncut_penis_sdxl', .7), k('sdxl_better_male_face_sdxl', .5)]).route.lora_apply_mode, 'at_runtime');
+  assert.equal(run('sdxl-base', [k('sdxl_uncut_penis_sdxl', .7), k('sdxl_lightning_4step_lora', 1)]).ok, false);
+  assert.equal(run('sdxl-base', [k('klein_anatomy_male_klein4b', .3), k('klein_fixes_nsfw_klein4b', .3)]).ok, false);
+});
+
+test('args: a stack is forwarded as paired lists; one adapter keeps the single-adapter flags', () => {
+  const spec = { id: 'flux2-klein-4b', backend: 'mflux' };
+  const base = { target: 'flux2-klein-4b', prompt: 'x', width: 1024, height: 1024, steps: 4, seed: 1, cfg_scale: 1, save_prompts: false, mflux_lora_plain: true };
+  const a = buildControlledArgs(spec, Object.assign({}, base, { mflux_loras: [{ id: 'a', strength: 0.5 }, { id: 'b', strength: 0.25 }] }));
+  assert.equal(a[a.indexOf('--lora-ids') + 1], 'a,b');
+  assert.equal(a[a.indexOf('--lora-strengths') + 1], '0.5,0.25');
+  assert.ok(!a.includes('--lora-id'));
+});

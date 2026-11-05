@@ -2168,6 +2168,7 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
     params.mflux_lora_id = loraRoute.route.mflux_lora_id;
     params.mflux_lora_strength = loraRoute.route.mflux_lora_strength;
     params.mflux_lora_plain = loraRoute.route.mflux_lora_plain === true;
+    params.mflux_loras = loraRoute.route.mflux_loras;
   }
   return null;
 }
