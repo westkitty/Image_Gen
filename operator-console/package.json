@@ -17,6 +17,7 @@
     "test:browser:library": "node tests/browser/library.browser.js",
     "test:browser:wildcards": "node tests/browser/wildcard-placement.browser.js",
     "test:browser:system-outputs": "node tests/browser/system-outputs.browser.js",
+    "test:browser:layout-theme": "node tests/browser/studio-layout-theme.browser.js",
     "test:browser:favorites": "node tests/browser/model-favorites.browser.js",
     "test:browser:notifications": "node tests/browser/notifications.browser.js",
     "test:browser:pwa": "node tests/browser/pwa.browser.js",

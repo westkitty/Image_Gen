@@ -99,3 +99,15 @@ test('img2img runner: FLUX and LoRA requests go to the local engine; plain SD/SD
   assert.equal(EM.img2imgRunner(TARGETS['sdxl-juggernaut'], { ...o, hasLoras: true }).status, 409);
   assert.equal(EM.img2imgRunner(TARGETS['flux2-klein-4b'], { ...o, engine: false }), 'worker', 'bridge off keeps the old gates');
 });
+
+
+test('engine img2img validates LoRA tags against the chosen target, never the generic SD1.5 form default', () => {
+  const form = { model: 'sd15', prompt: 'adult portrait <lora:sdxl_better_male_face_sdxl:0.5>' };
+  const sd = EM.validationParamsForImg2Img(form, { id: 'sdxl-base' });
+  assert.equal(sd.target, 'sdxl-base');
+  assert.equal(sd.model, 'sd15', 'do not mutate the existing edit form');
+  assert.equal(form.target, undefined, 'do not introduce state outside validation');
+  assert.strictEqual(EM.validationParamsForImg2Img(form, null), form, 'legacy edit-worker validation stays unchanged');
+  const server = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  assert.match(server, /const genErr = validateGenerationParams\(EditModels\.validationParamsForImg2Img\(params, engineSpec\)\)/);
+});

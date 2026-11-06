@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { resolveLoraRuntimePolicy, routesFor, ADAPTERS } = require('../lora-runtime-policy');
+const { resolveLoraRuntimePolicy, routesFor, ADAPTERS, registeredStagedSdLora } = require('../lora-runtime-policy');
 const SourceInfo = require('../source-info');
 const { buildLoraCards } = require('../extra-networks');
 const { buildControlledArgs } = require('../controlled-args');
@@ -105,4 +105,18 @@ test('args: a stack is forwarded as paired lists; one adapter keeps the single-a
   assert.equal(a[a.indexOf('--lora-ids') + 1], 'a,b');
   assert.equal(a[a.indexOf('--lora-strengths') + 1], '0.5,0.25');
   assert.ok(!a.includes('--lora-id'));
+});
+
+
+test('staged SDXL prompt tags need an approved adapter, matching checkpoint and readable file', () => {
+  const present = { isFile: () => true };
+  const absent = { isFile: () => false };
+  assert.equal(registeredStagedSdLora('sdxl_better_male_face_sdxl', 'sdxl-base', present), true);
+  assert.equal(registeredStagedSdLora('sdxl_better_male_face_sdxl.safetensors', 'sdxl-juggernaut', present), true);
+  assert.equal(registeredStagedSdLora('sdxl_better_male_face_sdxl', 'sd15', present), false);
+  assert.equal(registeredStagedSdLora('sdxl_better_male_face_sdxl', 'flux2-klein-4b', present), false);
+  assert.equal(registeredStagedSdLora('klein_anatomy_male_klein4b', 'flux2-klein-4b', present), false);
+  assert.equal(registeredStagedSdLora('nonexistent_adapter', 'sdxl-base', present), false);
+  assert.equal(registeredStagedSdLora('../bad.safetensors', 'sdxl-base', present), false);
+  assert.equal(registeredStagedSdLora('sdxl_better_male_face_sdxl', 'sdxl-base', absent), false);
 });

@@ -70,4 +70,10 @@ function img2imgRunner(spec, { hasLoras = false, engine = false, targetModels = 
   return el.ok ? 'engine' : { error: (spec.label || spec.id) + ' cannot be used for img2img: ' + el.reason, status: 409 };
 }
 
-module.exports = { img2imgRunner, APPROVED_CHECKPOINT, SINGLE_FILE_FAMILIES, editModelEligibility, resolveEditModel, editModelIds, engineEditEligibility, img2imgModelIds };
+// Generic edit-form validation defaults model=sd15; the engine-selected target
+// is authoritative when validating prompt LoRAs in an img2img request.
+function validationParamsForImg2Img(params, engineSpec) {
+  return engineSpec ? { ...params, target: engineSpec.id } : params;
+}
+
+module.exports = { img2imgRunner, APPROVED_CHECKPOINT, SINGLE_FILE_FAMILIES, editModelEligibility, resolveEditModel, editModelIds, engineEditEligibility, img2imgModelIds, validationParamsForImg2Img };

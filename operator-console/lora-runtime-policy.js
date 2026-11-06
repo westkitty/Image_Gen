@@ -84,6 +84,19 @@ function adapterId(name) {
   return String(name || '').replace(/\.(safetensors|ckpt|pt|bin)$/i, '').toLowerCase();
 }
 
+// The discovery cache covers legacy LoRAs, but newer staged SDXL adapters are
+// owned by this pinned policy. A staged filename is permitted in an SD.cpp
+// prompt only when its exact registered file exists and the target matches.
+// Never infer permission from a filename, prompt tag or model family alone.
+function registeredStagedSdLora(name, target, { isFile = file => {
+  try { return require('fs').statSync(file).isFile(); } catch (_) { return false; }
+} } = {}) {
+  const spec = ADAPTERS[adapterId(name)];
+  if (!spec || !spec.staged || spec.backend === 'mflux' ||
+      !spec.path || !spec.path.startsWith(STAGED_ROOT) || !targetSupport(spec, target)) return false;
+  try { return isFile(spec.path) === true; } catch (_) { return false; }
+}
+
 function recipeMatches(expected, params) {
   return Object.entries(expected).every(([key, value]) => {
     const actual = key === 'steps' ? Number(params.steps) : Number(params[key]);
@@ -194,4 +207,4 @@ function routesFor(target, name) {
   ];
 }
 
-module.exports = { MAX_STACK, MAX_STACK_WEIGHT_SUM, ADAPTERS, FAMILY_ONLY_PROOF, adapterId, targetSupport, resolveLoraRuntimePolicy, routesFor };
+module.exports = { MAX_STACK, MAX_STACK_WEIGHT_SUM, ADAPTERS, FAMILY_ONLY_PROOF, adapterId, targetSupport, registeredStagedSdLora, resolveLoraRuntimePolicy, routesFor };

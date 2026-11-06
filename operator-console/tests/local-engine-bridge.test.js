@@ -44,11 +44,24 @@ test('model availability follows worker reads and reports unavailable worker', (
   assert.equal(targetRuntime({id:'sd15'}, {localEngineEnabled:true,localEngineModels:{sd15:false}}, {}),'model-inaccessible');
   assert.equal(targetRuntime({id:'sd15'}, {localEngineEnabled:true}, {}),'worker-unavailable');
 });
-test('install registry preserves six adapters and original paths', () => {
+test('install registry preserves legacy adapters as new adapters are added', () => {
   const result=spawnSync(process.execPath,[path.resolve(__dirname,'../../sdcpp-workflow/worker/build-registry.js')],{encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
   const registry=JSON.parse(result.stdout);
-  assert.equal(Object.keys(registry.adapters).length,6);
+  // The registry has grown beyond the original six adapters. Protect each
+  // established ID without making the test fail whenever a new LoRA is added.
+  const originalAdapters = [
+    'sdxl_lightning_4step_lora',
+    'hyper-sdxl-8steps-cfg-lora',
+    'lcm_sdxl',
+    'lcm_sd15',
+    'hyper-sd15-8steps-cfg-lora',
+    'pixelart_lora',
+  ];
+  assert.ok(Object.keys(registry.adapters).length >= originalAdapters.length);
+  for (const id of originalAdapters) {
+    assert.ok(Object.hasOwn(registry.adapters, id), 'missing original adapter: ' + id);
+  }
   for (const scheduler of ['discrete','karras','exponential','ays','sgm_uniform','simple','kl_optimal','lcm']) {
     assert.ok(registry.schedulers.includes(scheduler), 'worker accepts the existing controlled scheduler ' + scheduler);
   }

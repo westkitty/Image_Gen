@@ -47,7 +47,7 @@ const { sortLibraryIds } = require('./library-sort');
 const SourceInfo = require('./source-info');
 const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily, resolveTargetFamily } = require('./extra-networks');
 const EditModels = require('./edit-models');
-const { resolveLoraRuntimePolicy, routesFor } = require('./lora-runtime-policy');
+const { resolveLoraRuntimePolicy, routesFor, registeredStagedSdLora } = require('./lora-runtime-policy');
 const { MODEL_CARDS, getModelCards, getModelCardById, checkModelSwitchWarnings } = require('./model-registry');
 const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt, ATTEMPT_TIMEOUT_MS } = require('./detailer');
 const ControlNet = require('./controlnet');
@@ -685,7 +685,7 @@ function expandWildcards(prompt, maxDepth = 6) {
 function validatePrompt(prompt) {
   return typeof prompt === 'string' && prompt.trim().length > 0 && prompt.length <= 4000;
 }
-function validatePromptLoras(prompt, backend) {
+function validatePromptLoras(prompt, backend, target) {
   if (typeof prompt !== 'string') return { ok: true };
   const scan = NetworkTokens.scanNetworkTokens(prompt);
   if (scan.issues.length) return { ok: false, error: scan.issues[0].message };
@@ -704,7 +704,8 @@ function validatePromptLoras(prompt, backend) {
     }
   }
   for (const t of scan.tokens) {
-    if (!allowedNames.has(t.name)) return { ok: false, error: `LoRA "${t.name}" is not in the discovered assets allowlist.` };
+    if (!allowedNames.has(t.name) && !registeredStagedSdLora(t.name, target))
+      return { ok: false, error: `LoRA "${t.name}" is not in the discovered assets allowlist or approved staged adapter registry.` };
   }
   return { ok: true };
 }
@@ -2088,7 +2089,7 @@ function normalizeControlledGenerationBody(body) {
 function validateGenerationParams(params) {
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
   const gTgt = params.target ? CONTROLLED_TARGETS.find(t => t.id === params.target) : null;
-  const loraErr = validatePromptLoras(params.prompt, gTgt && gTgt.backend);
+  const loraErr = validatePromptLoras(params.prompt, gTgt && gTgt.backend, params.target);
   if (!loraErr.ok) return loraErr.error;
   if (params.negative_prompt && /<lora:[^>]+>/i.test(params.negative_prompt)) {
     return 'LoRA tags are not supported in negative prompts; LoRA modifies model execution globally, not negative conditioning alone. Place LoRAs in the positive prompt or select them with the LoRA picker.';
@@ -2121,7 +2122,7 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   if (params.api && !ALLOWED_APIS.has(params.api)) return 'Invalid API';
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
   const cTgt = allTargetById[params.target] || CONTROLLED_TARGETS.find(t => t.id === params.target);
-  const loraErr = validatePromptLoras(params.prompt, cTgt && cTgt.backend);
+  const loraErr = validatePromptLoras(params.prompt, cTgt && cTgt.backend, params.target);
   if (!loraErr.ok) return loraErr.error;
   if (params.negative_prompt && /<lora:[^>]+>/i.test(params.negative_prompt)) {
     return 'LoRA tags are not supported in negative prompts; LoRA modifies model execution globally, not negative conditioning alone. Place LoRAs in the positive prompt or select them with the LoRA picker.';
@@ -3968,7 +3969,9 @@ app.post('/api/actions/img2img', (req, res) => {
   }
 
   const params = normalizeGenerationBody(body);
-  const genErr = validateGenerationParams(params);
+  // This generic edit form defaults `model` to SD1.5. Engine img2img must
+  // validate LoRA tags against the actual selected checkpoint, not that default.
+  const genErr = validateGenerationParams(EditModels.validationParamsForImg2Img(params, engineSpec));
   if (genErr) { if (prepPath) try { fs.unlinkSync(prepPath); } catch (_) {} return res.status(400).json({ error: genErr }); }
   // "Do exactly the amount of steps": sd.cpp runs floor(steps * strength), so ask for the step count that yields the requested one.
   let stepsRequested = null;
