@@ -47,9 +47,11 @@ const { sortLibraryIds } = require('./library-sort');
 const SourceInfo = require('./source-info');
 const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily, resolveTargetFamily } = require('./extra-networks');
 const EditModels = require('./edit-models');
-const { resolveLoraRuntimePolicy, routesFor } = require('./lora-runtime-policy');
+const { resolveLoraRuntimePolicy, routesFor, registeredStagedSdLora } = require('./lora-runtime-policy');
 const { MODEL_CARDS, getModelCards, getModelCardById, checkModelSwitchWarnings } = require('./model-registry');
 const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt, ATTEMPT_TIMEOUT_MS } = require('./detailer');
+const ControlNet = require('./controlnet');
+const VisionPose = require('./vision-pose');
 const { createEventBus } = require('./event-bus');
 const { projectOperationalJob, projectGenericProgress, genericJobLabel, createGenericJobEventPublisher } = require('./operational-jobs');
 const { createTimingStore } = require('./timing-store');
@@ -683,7 +685,7 @@ function expandWildcards(prompt, maxDepth = 6) {
 function validatePrompt(prompt) {
   return typeof prompt === 'string' && prompt.trim().length > 0 && prompt.length <= 4000;
 }
-function validatePromptLoras(prompt, backend) {
+function validatePromptLoras(prompt, backend, target) {
   if (typeof prompt !== 'string') return { ok: true };
   const scan = NetworkTokens.scanNetworkTokens(prompt);
   if (scan.issues.length) return { ok: false, error: scan.issues[0].message };
@@ -702,7 +704,8 @@ function validatePromptLoras(prompt, backend) {
     }
   }
   for (const t of scan.tokens) {
-    if (!allowedNames.has(t.name)) return { ok: false, error: `LoRA "${t.name}" is not in the discovered assets allowlist.` };
+    if (!allowedNames.has(t.name) && !registeredStagedSdLora(t.name, target))
+      return { ok: false, error: `LoRA "${t.name}" is not in the discovered assets allowlist or approved staged adapter registry.` };
   }
   return { ok: true };
 }
@@ -1739,10 +1742,12 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
   job.nativeBatch = native;
   if (native) job.capabilityId = 'quantity-native-batch';
   else if (hiresRequested(params)) job.capabilityId = 'hires-refine';
+  if (params.__control) job.capabilityId = 'controlnet';
   const runsTotal = native ? 1 : quantity;
   const controlledScript = controlledScriptFor(spec);
   const finish = () => {
     job.completedAt = Date.now();
+    cleanupJobTempFiles(job);
     recordJobEvidence(job);
     if (opts.onDone) { try { opts.onDone(job); } catch (_) {} }
   };
@@ -1802,6 +1807,7 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
             vae: spec.backend === 'mflux' ? undefined : (params.vae || 'auto'),
             preset: params.preset || undefined,
             loras: params.loras || [],
+            controlnet: params.__control ? { model: params.__control.model, strength: params.__control.strength } : undefined,
             prompt_saved: !!params.save_prompts,
             prompt: params.save_prompts ? EC.stripLoraTags(params.prompt) : undefined,
             negative_prompt: params.save_prompts && !(spec.backend === 'mflux' || spec.noNegativePrompt) ? params.negative_prompt : undefined,
@@ -1822,6 +1828,8 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
       resolveVaePath,
       batchCount: native ? quantity : 1,
     });
+    // ControlNet: server-resolved control PNG; the bridge sends its bytes and the registry id to the worker.
+    if (params.__control) args.push('--control-net', params.__control.model, '--control-image', params.__control.imagePath, '--control-strength', String(params.__control.strength));
 
     const child = spawn(controlledScript, args, { cwd: WORKFLOW_ROOT, shell: false, env, detached: true });
     job.activeChildPid = child.pid;
@@ -2081,7 +2089,7 @@ function normalizeControlledGenerationBody(body) {
 function validateGenerationParams(params) {
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
   const gTgt = params.target ? CONTROLLED_TARGETS.find(t => t.id === params.target) : null;
-  const loraErr = validatePromptLoras(params.prompt, gTgt && gTgt.backend);
+  const loraErr = validatePromptLoras(params.prompt, gTgt && gTgt.backend, params.target);
   if (!loraErr.ok) return loraErr.error;
   if (params.negative_prompt && /<lora:[^>]+>/i.test(params.negative_prompt)) {
     return 'LoRA tags are not supported in negative prompts; LoRA modifies model execution globally, not negative conditioning alone. Place LoRAs in the positive prompt or select them with the LoRA picker.';
@@ -2114,7 +2122,7 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   if (params.api && !ALLOWED_APIS.has(params.api)) return 'Invalid API';
   if (!validatePrompt(params.prompt)) return 'Invalid prompt';
   const cTgt = allTargetById[params.target] || CONTROLLED_TARGETS.find(t => t.id === params.target);
-  const loraErr = validatePromptLoras(params.prompt, cTgt && cTgt.backend);
+  const loraErr = validatePromptLoras(params.prompt, cTgt && cTgt.backend, params.target);
   if (!loraErr.ok) return loraErr.error;
   if (params.negative_prompt && /<lora:[^>]+>/i.test(params.negative_prompt)) {
     return 'LoRA tags are not supported in negative prompts; LoRA modifies model execution globally, not negative conditioning alone. Place LoRAs in the positive prompt or select them with the LoRA picker.';
@@ -2901,6 +2909,9 @@ app.get('/api/capabilities', (req, res) => {
     editWorkerTarget: editWorkerTarget(),   // model routing proof remains independently derived from the engine
     // Models the edit workers can load per request (body.edit_model → server-resolved --model-path).
     editModels: EditModels.editModelIds(allControlledTargets(), { targetModels: TARGET_MODELS, familyOf: resolveTargetFamily }),
+    // img2img also runs on the local engine (FLUX models, LoRAs), so it can offer more models than inpaint/outpaint.
+    controlnets: localEngineRouting.enabled() ? controlnetCatalog() : [],
+    img2imgModels: EditModels.img2imgModelIds(allControlledTargets(), { targetModels: TARGET_MODELS, familyOf: resolveTargetFamily, engine: localEngineRouting.enabled() }),
     app: { name: 'SDCPP Workbench', version: 'a1111-workbench-2026-06-22' },
     backend: { type: 'stable-diffusion.cpp workflow bridge', workflowRoot: WORKFLOW_ROOT, runsDir: RUNS_DIR, localTunnelPort: localPort },
     assetCache: { present: !!assets, cacheAgeMinutes, discoveredAt: assets ? assets.discovered_at_iso : null },
@@ -3385,6 +3396,44 @@ app.post('/api/detailer/run', async (req, res) => {
   }
 });
 
+// ── ControlNet (OpenPose on SD 1.5 / SDXL via the Big Mac local engine) ──
+// Which checkpoints each ControlNet works with; the Studio uses this to show only compatible models.
+function controlnetCatalog() {
+  const targets = allControlledTargets();
+  return ControlNet.publicControlnets().map(c => ({ ...c,
+    targets: Object.values(targets).filter(t => ControlNet.controlnetsForTarget(t, resolveTargetFamily).includes(c.id)).map(t => t.id) }));
+}
+app.get('/api/controlnet/status', (req, res) => {
+  res.json({ engine: localEngineRouting.enabled(), poseDetector: VisionPose.isAvailable(), strength: ControlNet.STRENGTH, controlnets: controlnetCatalog() });
+});
+// Detect the body pose in a photo (Library image_id, or a PNG/JPEG data URL) -> OpenPose COCO-18 JSON for the pose editor.
+app.post('/api/controlnet/detect-pose', async (req, res) => {
+  const body = req.body || {};
+  let imagePath = null, temp = null;
+  try {
+    if (typeof body.image_id === 'string' && body.image_id) {
+      const img = imageStore.resolveImage(body.image_id);
+      if (!img || !fs.existsSync(img.path)) return res.status(404).json({ error: 'Image not found' });
+      imagePath = img.path;
+    } else {
+      const m = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/.exec(String(body.image || ''));
+      if (!m) return res.status(400).json({ error: 'Send image_id or a PNG/JPEG data URL' });
+      const bytes = Buffer.from(m[2], 'base64');
+      if (bytes.length > ControlNet.MAX_IMAGE_BYTES) return res.status(413).json({ error: 'Image is larger than 16 MB' });
+      fs.mkdirSync(MASK_UPLOADS_DIR, { recursive: true });
+      temp = imagePath = path.join(MASK_UPLOADS_DIR, `pose-src-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${m[1] === 'png' ? 'png' : 'jpg'}`);
+      fs.writeFileSync(temp, bytes, { mode: 0o600 });
+    }
+    const pose = await VisionPose.detectPose(imagePath);
+    if (!pose.people.length) return res.status(422).json({ error: 'No person found in this image. Try a clearer full-body photo, or pose the figure by hand.', code: 'no_person', pose });
+    res.json({ status: 'ok', pose });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message, code: err.code || 'pose_failed' });
+  } finally {
+    if (temp) try { fs.unlinkSync(temp); } catch (_) {}
+  }
+});
+
 app.get('/api/ollama/status', async (req, res) => {
   const result = await ollamaRequest('/api/tags', null, 10000);
   if (!result.ok) return res.status(result.status).json({ error: result.error, baseUrl: OLLAMA_BASE_URL });
@@ -3471,17 +3520,40 @@ function startControlledJob(params, allTargetById, opts = {}) {
     isDiscovered: !CONTROLLED_TARGET_BY_ID[params.target],
     resolveVaePath,
   });
+  if (params.__control) args.push('--control-net', params.__control.model, '--control-strength', String(params.__control.strength));
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
   const summary = getRedactedCommandSummary(controlledScript, args, sensitives) + (params.quantity > 1 ? ` (quantity: ${params.quantity})` : '');
-  const jobId = createJob('controlled-generate', summary, sanitizeRequestParams({ ...params, target: spec.id }, params.save_prompts));
+  const { __control, ...recordParams } = params;
+  const jobId = createJob('controlled-generate', summary, sanitizeRequestParams({ ...recordParams, target: spec.id, ...(__control ? { controlnet: { model: __control.model, strength: __control.strength } } : {}) }, params.save_prompts));
   jobSensitives[jobId] = sensitives;
   runControlledSequential(jobId, spec, params, params.quantity, opts);
   return { jobId, spec };
 }
 
+// ControlNet request -> { control: { model, strength, imagePath, temp } } | { control: null } | { error, status }
+function resolveControlnetRequest(raw, spec, params) {
+  const n = ControlNet.normalizeControlnet(raw, spec, resolveTargetFamily);
+  if (n.error) return { error: n.error, status: 400 };
+  if (!n.control) return { control: null };
+  if (!localEngineRouting.enabled()) return { error: 'ControlNet runs on the Big Mac local engine, which is not enabled.', status: 409 };
+  if (hiresRequested(params)) return { error: 'ControlNet runs without Hires fix. Turn Hires fix off or upscale afterwards.', status: 400 };
+  let bytes = n.control.png;
+  if (!bytes) {
+    const img = imageStore.resolveImage(n.control.imageId);
+    if (!img || !fs.existsSync(img.path)) return { error: 'ControlNet image not found', status: 404 };
+    bytes = fs.readFileSync(img.path);
+    if (!ControlNet.isPng(bytes) || bytes.length > ControlNet.MAX_IMAGE_BYTES) return { error: 'ControlNet image must be a PNG of at most 16 MB', status: 400 };
+  }
+  fs.mkdirSync(MASK_UPLOADS_DIR, { recursive: true });
+  const imagePath = path.join(MASK_UPLOADS_DIR, `control-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.png`);
+  fs.writeFileSync(imagePath, bytes, { mode: 0o600 });
+  return { control: { model: n.control.model, strength: n.control.strength, imagePath } };
+}
+
 app.post('/api/actions/generate-controlled', (req, res) => {
   const allTargetById = allControlledTargets();
-  const params = normalizeControlledGenerationBody(req.body || {});
+  const rawControl = req.body && req.body.controlnet;
+  const params = normalizeControlledGenerationBody(Object.fromEntries(Object.entries(req.body || {}).filter(([k]) => k !== 'controlnet')));
   const loraShapeErr = params.invalidKey ? null : validateStructuredLoras(params.loras);
   if (loraShapeErr) return res.status(400).json({ error: loraShapeErr });
   if (!params.invalidKey) {
@@ -3498,8 +3570,13 @@ app.post('/api/actions/generate-controlled', (req, res) => {
   }
   const err = validateControlledGenerationParams(params, allTargetById, { loraShapeChecked: true });
   if (err) return res.status(400).json({ error: err });
+  const cn = resolveControlnetRequest(rawControl, allTargetById[params.target], params);
+  if (cn.error) return res.status(cn.status).json({ error: cn.error, gate: 'controlnet' });
+  if (cn.control) params.__control = cn.control;
 
-  const { jobId, spec } = startControlledJob(params, allTargetById);
+  // ControlNet runs image by image so every run gets the same control image.
+  const { jobId, spec } = startControlledJob(params, allTargetById, cn.control ? { native: false } : {});
+  if (cn.control) jobs[jobId].tempFiles = [...(jobs[jobId].tempFiles || []), cn.control.imagePath];
 
   res.json({
     job_id: jobId,
@@ -3762,6 +3839,47 @@ app.post('/api/validate/inpaint', (req, res) => {
 });
 
 // img2img — gated behind img2imgSupported; init image must be within runs/
+// img2img goes to the Big Mac local engine (the Create path) when the edit workers cannot serve the request: a FLUX
+// model, or any LoRA. Plain SD 1.5 / SDXL img2img keeps the proven edit worker. -> spec | null | { error, status }
+function engineImg2imgSpec(body) {
+  if (!localEngineRouting.enabled()) return null;
+  const requested = typeof body.edit_model === 'string' && body.edit_model.trim() ? body.edit_model.trim() : editWorkerTarget();
+  const targets = allControlledTargets();
+  const spec = targets[requested];
+  if (!spec) return null;
+  const hasLoras = (Array.isArray(body.loras) && body.loras.length > 0) || /<lora:/i.test(String(body.prompt || ''));
+  const runner = EditModels.img2imgRunner(spec, { hasLoras, engine: true, targetModels: TARGET_MODELS, familyOf: resolveTargetFamily });
+  return runner === 'worker' ? null : runner === 'engine' ? spec : runner;
+}
+// Controlled (Create) params for an engine img2img run; reuses the Create validation and LoRA runtime policy.
+function engineImg2imgParams(spec, params, loras, allTargetById) {
+  const mflux = spec.backend === 'mflux';
+  // The engine conditions on the source resized to width x height: fit it inside the model's limits, keeping the shape.
+  let width = Number(params.width) || spec.defaultWidth, height = Number(params.height) || spec.defaultHeight;
+  const fit = Math.min(1, (spec.maxWidth || 2048) / width, (spec.maxHeight || 2048) / height);
+  const unit = mflux ? 16 : 8;
+  width = Math.max(unit * 8, Math.floor(width * fit / unit) * unit);
+  height = Math.max(unit * 8, Math.floor(height * fit / unit) * unit);
+  const cp = normalizeControlledGenerationBody({
+    target: spec.id, prompt: params.prompt, negative_prompt: mflux || spec.noNegativePrompt ? '' : params.negative_prompt,
+    width, height, steps: params.steps,
+    cfg_scale: mflux ? '' : (spec.fixedCfgScale !== undefined ? spec.fixedCfgScale : (spec.id === 'flux-fp8' ? 1 : params.cfg_scale)),
+    seed: params.seed, save_prompts: params.save_prompts, vae: mflux ? 'auto' : params.vae, loras,
+    ...(mflux ? {} : { sampler: spec.id === 'flux-fp8' ? 'euler' : params.sampler, scheduler: params.scheduler }),
+  });
+  if (!mflux) {
+    const rr = EC.resolveResources({ prompt: cp.prompt, loras: cp.loras });
+    cp.prompt = rr.backendPrompt;
+    cp.loras = rr.loras;
+  } else if (/<lora:/i.test(cp.prompt)) {
+    const rr = EC.resolveResources({ prompt: cp.prompt, loras: cp.loras });
+    cp.prompt = EC.stripLoraTags(cp.prompt);
+    cp.loras = rr.loras;
+  }
+  const err = validateControlledGenerationParams(cp, allTargetById, { loraShapeChecked: true });
+  return err ? { error: err } : { params: cp };
+}
+
 app.post('/api/actions/img2img', (req, res) => {
   if (!img2imgSupported) {
     return res.status(409).json({
@@ -3773,12 +3891,23 @@ app.post('/api/actions/img2img', (req, res) => {
   }
 
   const body = { ...(req.body || {}) };
-  const resErr = resolveEditResources(body);
-  if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
-  const editModel = resolveEditModelFor(body);
-  if (editModel.error) return res.status(editModel.status).json({ error: editModel.error, gate: 'edit-model' });
-  const editLoraError = editLoraUnsupported(body);
-  if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
+  const engineSpec = engineImg2imgSpec(body);
+  if (engineSpec && engineSpec.error) return res.status(engineSpec.status).json({ error: engineSpec.error, gate: 'edit-model' });
+  let editModel = { args: [] }, engineLoras = null;
+  if (engineSpec) {
+    const shapeErr = validateStructuredLoras(body.loras);
+    if (shapeErr) return res.status(400).json({ error: shapeErr, gate: 'resources' });
+    engineLoras = Array.isArray(body.loras) ? body.loras : [];
+    body.__editTarget = engineSpec.aliasOf || engineSpec.id;
+    delete body.loras; delete body.edit_model;
+  } else {
+    const resErr = resolveEditResources(body);
+    if (resErr) return res.status(400).json({ error: resErr, gate: 'resources' });
+    editModel = resolveEditModelFor(body);
+    if (editModel.error) return res.status(editModel.status).json({ error: editModel.error, gate: 'edit-model' });
+    const editLoraError = editLoraUnsupported(body);
+    if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
+  }
   const srcInfo = resolveImageSource(body);
   cleanupRejectedSource(res, srcInfo);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
@@ -3840,7 +3969,9 @@ app.post('/api/actions/img2img', (req, res) => {
   }
 
   const params = normalizeGenerationBody(body);
-  const genErr = validateGenerationParams(params);
+  // This generic edit form defaults `model` to SD1.5. Engine img2img must
+  // validate LoRA tags against the actual selected checkpoint, not that default.
+  const genErr = validateGenerationParams(EditModels.validationParamsForImg2Img(params, engineSpec));
   if (genErr) { if (prepPath) try { fs.unlinkSync(prepPath); } catch (_) {} return res.status(400).json({ error: genErr }); }
   // "Do exactly the amount of steps": sd.cpp runs floor(steps * strength), so ask for the step count that yields the requested one.
   let stepsRequested = null;
@@ -3853,6 +3984,29 @@ app.post('/api/actions/img2img', (req, res) => {
     params.steps = String(cliSteps);
   }
 
+  if (engineSpec) {
+    const allTargetById = allControlledTargets();
+    const ep = engineImg2imgParams(engineSpec, params, engineLoras, allTargetById);
+    if (ep.error) { if (prepPath) try { fs.unlinkSync(prepPath); } catch (_) {} return res.status(400).json({ error: ep.error, gate: 'engine-params' }); }
+    const cp = ep.params;
+    const engineArgs = buildControlledArgs(engineSpec, cp, { seedValue: cp.seed, isDiscovered: !CONTROLLED_TARGET_BY_ID[cp.target], resolveVaePath })
+      .concat(['--init-image', initImgPath, '--strength', String(strength)]);
+    const engineScript = localEngineRouting.controlledScript(engineSpec);
+    body.__loras = cp.loras || [];
+    const sensitives = [cp.prompt, cp.negative_prompt, params.prompt].filter(Boolean);
+    const jobId = createJob('img2img', getRedactedCommandSummary(engineScript, engineArgs, sensitives), sanitizeRequestParams(
+      { ...params, steps: cp.steps || params.steps, cfg_scale: cp.cfg_scale, run_id: runId, init_image_file: initImageFile, strength, target: engineSpec.id }, params.save_prompts
+    ));
+    jobSensitives[jobId] = sensitives;
+    jobs[jobId].sourceImageId = srcInfo.imageId || null;
+    jobs[jobId].genRecord = editGenRecord(body, { ...params, steps: cp.steps || params.steps, cfg_scale: cp.cfg_scale, sampler: cp.sampler || params.sampler }, Object.assign({ strength, engine: engineSpec.backend === 'mflux' ? 'mflux' : 'sdcpp-engine' },
+      resizeReq.spec ? { resize: resizeReq.spec.by !== undefined ? { mode: resizeReq.spec.mode, by: resizeReq.spec.by, to: `${body.width}x${body.height}` } : { mode: resizeReq.spec.mode, to: `${body.width}x${body.height}` } } : {},
+      stepsRequested ? { exact_steps: true, steps: stepsRequested } : {}));
+    jobs[jobId].lineageOp = 'img2img';
+    jobs[jobId].tempFiles = [prepPath, srcInfo.temp].filter(Boolean);
+    runAction(jobId, engineScript, engineArgs, params.save_prompts);
+    return res.json({ job_id: jobId, status: jobs[jobId].status, engine: true, target: engineSpec.id });
+  }
   const args = ['--init-img', initImgPath, '--strength', String(strength), '--prompt', params.prompt];
   if (params.negative_prompt) args.push('--negative', params.negative_prompt);
   if (params.steps) args.push('--steps', String(params.steps));

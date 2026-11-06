@@ -205,6 +205,12 @@
       delete merged.loras;
     }
     delete merged.exactReplay;
+    // ControlNet (controlnet-ui.js): the pose map travels with the request; an exact replay keeps its own.
+    if (!isExactReplay || !cleanOver.controlnet) {
+      const cnBody = typeof this._cnBody === 'function' ? this._cnBody() : null;
+      if (cnBody) merged.controlnet = cnBody;
+      else delete merged.controlnet;
+    }
     return merged;
   };
 
@@ -1801,6 +1807,7 @@
             h('select', { value: ws.hiresUpscaler, 'data-dex-field': 'hires-upscaler', 'aria-label': 'Hires upscaler', onChange: e => this.wsSet({ hiresUpscaler: e.target.value }), style: Object.assign({}, css.input, { width: 'auto' }) },
               ...D.HIRES_UPSCALERS.map(u => h('option', { key: u, value: u }, u)))),
           h('div', { style: css.muted, 'data-dex-field': 'hires-unavailable' }, 'This in-engine pass reuses the first-pass prompt, sampler, scheduler and checkpoint. For separate second-pass settings use “Independent second pass” below; a refiner switch point (latent handoff) is not available with the installed engine.')) : null) : null,
+      typeof this.buildControlNetPanel === 'function' ? this.buildControlNetPanel(spec) : null,
       this._secondPassPanel(spec));
   };
   // OP-4A: independent pixel-space second pass (base → upscale → img2img with its own settings). Blank = inherit from the base pass.

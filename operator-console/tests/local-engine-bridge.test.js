@@ -44,11 +44,24 @@ test('model availability follows worker reads and reports unavailable worker', (
   assert.equal(targetRuntime({id:'sd15'}, {localEngineEnabled:true,localEngineModels:{sd15:false}}, {}),'model-inaccessible');
   assert.equal(targetRuntime({id:'sd15'}, {localEngineEnabled:true}, {}),'worker-unavailable');
 });
-test('install registry preserves six adapters and original paths', () => {
+test('install registry preserves legacy adapters as new adapters are added', () => {
   const result=spawnSync(process.execPath,[path.resolve(__dirname,'../../sdcpp-workflow/worker/build-registry.js')],{encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
   const registry=JSON.parse(result.stdout);
-  assert.equal(Object.keys(registry.adapters).length,6);
+  // The registry has grown beyond the original six adapters. Protect each
+  // established ID without making the test fail whenever a new LoRA is added.
+  const originalAdapters = [
+    'sdxl_lightning_4step_lora',
+    'hyper-sdxl-8steps-cfg-lora',
+    'lcm_sdxl',
+    'lcm_sd15',
+    'hyper-sd15-8steps-cfg-lora',
+    'pixelart_lora',
+  ];
+  assert.ok(Object.keys(registry.adapters).length >= originalAdapters.length);
+  for (const id of originalAdapters) {
+    assert.ok(Object.hasOwn(registry.adapters, id), 'missing original adapter: ' + id);
+  }
   for (const scheduler of ['discrete','karras','exponential','ays','sgm_uniform','simple','kl_optimal','lcm']) {
     assert.ok(registry.schedulers.includes(scheduler), 'worker accepts the existing controlled scheduler ' + scheduler);
   }
@@ -108,4 +121,22 @@ test('benchmark reads owned structured Metal and tensor evidence without a legac
   assert.equal(metrics.backend,'MTL0');assert.deepEqual(metrics.adapterTensorsApplied,['834/834']);
   assert.equal(metrics.engineGenerationSeconds,10.45);assert.equal(metrics.remoteCleanup,'verified');
   assert.equal(extractMetrics('',{runId:'other-run'},stdout).backend,'UNKNOWN','another run cannot supply proof');
+});
+
+test('install registry limits each ControlNet to its own architecture and keeps paths on WC2TB', () => {
+  const result=spawnSync(process.execPath,[path.resolve(__dirname,'../../sdcpp-workflow/worker/build-registry.js')],{encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+  const registry=JSON.parse(result.stdout);
+  assert.match(registry.sdcli_control,/^\/Volumes\/wc2tb\//);
+  assert.notEqual(registry.sdcli_control,registry.sdcli,'ordinary jobs keep the stock sd-cli');
+  const { sd15, sdxl } = { sd15: registry.controlnets['openpose-sd15'], sdxl: registry.controlnets['openpose-sdxl'] };
+  for (const cn of [sd15, sdxl]) assert.match(cn.path,/^\/Volumes\/wc2tb\/ImageGen\/controlnet\//);
+  assert.ok(sd15.targets.includes('sd15') && !sd15.targets.includes('sdxl-base'));
+  assert.ok(sdxl.targets.includes('sdxl-base') && sdxl.targets.includes('sdxl-pony') && !sdxl.targets.includes('sd15'));
+  assert.ok(![...sd15.targets, ...sdxl.targets].some(t => /flux|klein/.test(t)), 'no ControlNet for FLUX');
+});
+test('generator accepts ControlNet arguments only as a set', () => {
+  assert.deepEqual(parse(['--target','sdxl-base','--control-net','openpose-sdxl','--control-image','/tmp/p.png','--control-strength','0.9']),
+    {target:'sdxl-base','control-net':'openpose-sdxl','control-image':'/tmp/p.png','control-strength':'0.9'});
+  assert.throws(() => parse(['--target','sdxl-base','--control-model-path','/x']));
 });

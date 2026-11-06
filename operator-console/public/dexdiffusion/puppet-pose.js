@@ -1,5 +1,5 @@
 // Puppet Master pose model (CN-10 export, CN-14 body plans, CN-15 groundwork). Pure; no DOM except renderToCanvas(ctx).
-// Authoring only: no ControlNet weights are installed, so nothing here conditions generation.
+// openpose18 poses rendered by renderToCanvas are the control images Create's ControlNet panel sends (controlnet-ui.js).
 //
 // Body plans
 //   openpose18  COCO-18 in OpenPose order, 17 limbs, ControlNet openpose-annotator colours. Exportable as OpenPose JSON.

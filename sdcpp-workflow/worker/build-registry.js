@@ -8,6 +8,8 @@ const root = path.resolve(__dirname, '../..');
 const { targetModelMap } = require(path.join(root, 'operator-console/capabilities'));
 const { ADAPTERS, targetSupport } = require(path.join(root, 'operator-console/lora-runtime-policy'));
 const { SDCLI_SAMPLER, HIRES_UPSCALERS } = require(path.join(root, 'operator-console/controlled-args'));
+const { CONTROLNETS, SDCLI_CONTROL, controlnetsForTarget } = require(path.join(root, 'operator-console/controlnet'));
+const { resolveTargetFamily } = require(path.join(root, 'operator-console/extra-networks'));
 const source = fs.readFileSync(path.join(root, 'operator-console/server.js'), 'utf8');
 const declaration = source.slice(source.indexOf('const CONTROLLED_TARGETS = ['), source.indexOf('const CONTROLLED_TARGET_BY_ID'));
 const targets = vm.runInNewContext(declaration + '\nCONTROLLED_TARGETS');
@@ -50,4 +52,9 @@ for (const [id, adapter] of Object.entries(result.adapters)) {
   if (adapter.backend === 'mflux' || (!adapter.recipe && !adapter.style)) continue;
   adapter.targets = [...new Set([...adapter.targets, ...Object.keys(result.models).filter(m => targetSupport(ADAPTERS[id], m))])];
 }
+// ControlNet: WC2TB-only model paths, each limited to the checkpoints of its own architecture, plus the ControlNet-capable
+// sd-cli (also on WC2TB). Ordinary jobs keep result.sdcli.
+result.sdcli_control = SDCLI_CONTROL;
+result.controlnets = Object.fromEntries(Object.values(CONTROLNETS).map(c => [c.id, { path: c.path, family: c.family,
+  targets: Object.values(result.models).filter(m => controlnetsForTarget(m, resolveTargetFamily).includes(c.id)).map(m => m.id) }]));
 process.stdout.write(JSON.stringify(result, null, 2) + '\n');

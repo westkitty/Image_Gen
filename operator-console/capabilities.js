@@ -37,7 +37,8 @@ const CAPABILITIES = [
   { id: 'quantity-native-batch', label: 'Quantity · native sd-cli batch (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'sd15Model'], job: { action: 'controlled-generate', capabilityId: true } },
   { id: 'hires-refine', label: 'High-Res Refine · native 2nd pass (SDCPP)', backend: 'sdcpp', needs: ['sdCli', 'sd15Model'], job: { action: 'controlled-generate', capabilityId: true } },
   { id: 'outpaint', label: 'Outpaint (canvas prep + SDCPP inpaint)', backend: 'sdcpp', needs: ['sdCli', 'sd15Model'], job: { action: 'outpaint' } },
-  { id: 'controlnet', label: 'ControlNet (SD1.5 Canny)', backend: 'sdcpp', implemented: false, reason: 'ENGINE SUPPORTED — MODEL ASSET MISSING: no SD1.5 ControlNet model on Big Mac (needs e.g. control_v11p_sd15_canny)', needs: [], job: { action: 'controlnet' } },
+  // OpenPose ControlNet on SD 1.5 / SDXL through the local engine; models and the ControlNet sd-cli build live on WC2TB.
+  { id: 'controlnet', label: 'ControlNet · OpenPose (SD 1.5 / SDXL)', backend: 'sdcpp', needs: [], job: { action: 'controlled-generate', capabilityId: true } },
 ];
 
 // Failures of these gates are request/validation problems, not runtime breakage.

@@ -44,4 +44,36 @@ function editModelIds(targets = {}, opts = {}) {
   return Object.values(targets).filter(t => editModelEligibility(t, opts).ok).map(t => t.id);
 }
 
-module.exports = { APPROVED_CHECKPOINT, SINGLE_FILE_FAMILIES, editModelEligibility, resolveEditModel, editModelIds };
+// img2img through the Big Mac local engine (the path Create uses) loads every installed target, including the FLUX
+// models the edit workers cannot: FLUX.1 Schnell (sd-cli, with its own encoders) and FLUX.2 Klein (MFLUX). The engine
+// resolves the model from its own registry by id, so only the id crosses; the edit workers stay as they are.
+function engineEditEligibility(spec, { targetModels = {} } = {}) {
+  if (!spec || !spec.id) return { ok: false, reason: 'Unknown edit model.' };
+  const status = String(spec.status || '').toLowerCase();
+  if (status === 'broken' || status === 'dormant') return { ok: false, reason: 'Marked ' + status + '; not usable for editing.' };
+  if ((spec.backend || 'sdcpp') === 'mflux') return { ok: true, engine: 'mflux' };
+  if (!(targetModels[spec.aliasOf || spec.id] || spec.modelPath)) return { ok: false, reason: 'No installed model file for this target.' };
+  return { ok: true, engine: 'sdcpp' };
+}
+
+// Ids offered for img2img: the edit-worker set, plus every engine-loadable target when the engine bridge is on.
+function img2imgModelIds(targets = {}, opts = {}) {
+  return Object.values(targets).filter(t => editModelEligibility(t, opts).ok || (opts.engine && engineEditEligibility(t, opts).ok)).map(t => t.id);
+}
+
+// Which runner serves one img2img request: 'worker' (edit worker, the proven SD 1.5 / SDXL path without LoRAs),
+// 'engine' (local engine: FLUX models, or any LoRA) or { error, status } when nothing can run it.
+function img2imgRunner(spec, { hasLoras = false, engine = false, targetModels = {}, familyOf } = {}) {
+  if (!engine || !spec) return 'worker';
+  if (editModelEligibility(spec, { targetModels, familyOf }).ok && !hasLoras) return 'worker';
+  const el = engineEditEligibility(spec, { targetModels });
+  return el.ok ? 'engine' : { error: (spec.label || spec.id) + ' cannot be used for img2img: ' + el.reason, status: 409 };
+}
+
+// Generic edit-form validation defaults model=sd15; the engine-selected target
+// is authoritative when validating prompt LoRAs in an img2img request.
+function validationParamsForImg2Img(params, engineSpec) {
+  return engineSpec ? { ...params, target: engineSpec.id } : params;
+}
+
+module.exports = { img2imgRunner, APPROVED_CHECKPOINT, SINGLE_FILE_FAMILIES, editModelEligibility, resolveEditModel, editModelIds, engineEditEligibility, img2imgModelIds, validationParamsForImg2Img };

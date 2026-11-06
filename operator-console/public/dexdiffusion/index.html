@@ -665,6 +665,7 @@
       </select>
       <small>The five-master layout groups the same creative destinations and adds Chat. Switch back here any time.</small>
     </section>
+    <div>{{ themeEditorPanel }}</div>
     {{ truthStatusPanel }}
     <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:15px;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:13px;"><div style="font-size:15px;font-weight:700;color:#e8e8f8;">Backend connection</div><button type="button" data-copy-connection-report onClick="{{ onCopyConnectionReport }}" style="border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#b0b0d0;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer;">Copy connection report</button></div>
@@ -879,6 +880,7 @@
 </div>
   </template>
 
+  <script src="studio-theme.js"></script>
   <script src="prompt-chips.js"></script>
   <script src="dc-runtime.js"></script>
   <script src="client-helpers.js"></script>
@@ -899,12 +901,14 @@
   <script src="puppet-pose.js"></script>
   <script src="puppet-master-ui.js"></script>
   <script src="studio-nav.js"></script>
+  <script src="studio-split.js"></script>
   <script src="chat-client.js"></script>
   <script src="source-asset.js"></script>
   <script src="../model-presets.js"></script>
   <script src="component.js"></script>
   <script src="library-tags.js"></script>
   <script src="workstation-ui.js"></script>
+  <script src="controlnet-ui.js"></script>
   <script src="edit-ui.js"></script>
   <script src="lightbox.js"></script>
   <script src="media-ui.js"></script>

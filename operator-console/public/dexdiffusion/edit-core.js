@@ -140,20 +140,32 @@
   // editWorker: the model the edit worker really loads (/api/capabilities editWorkerTarget). When known, Edit always runs on it.
   // editModels: Set (or array) of target ids the edit workers can load per request (/api/capabilities editModels). When the
   // source model is one of them Edit keeps it; otherwise it falls back to the worker's configured model.
+  // Switching the edit model keeps the user's numbers unless the new model cannot take them: FLUX models are distilled
+  // (guidance 1, Euler, a few steps), so out-of-range values fall back to that model's own defaults.
+  function paramsForEditModel(params, spec) {
+    const p = Object.assign({}, params || {});
+    if (!spec) return p;
+    const flux = (spec.backend || 'sdcpp') === 'mflux' || spec.fixedCfgScale !== undefined || spec.id === 'flux-fp8';
+    if (spec.maxSteps && Number(p.steps) > spec.maxSteps) p.steps = spec.defaultSteps || spec.maxSteps;
+    if (spec.minSteps && Number(p.steps) < spec.minSteps) p.steps = spec.defaultSteps || spec.minSteps;
+    if (flux) { p.cfg = spec.fixedCfgScale !== undefined ? spec.fixedCfgScale : 1; p.sampler = 'euler'; }
+    return p;
+  }
   function applyRecallToEdit(recall, { snapshot, op, targets, activeSecondary, editWorker, editModels } = {}) {
     const r = recall || {};
     const p = r.params || {};
     const snap = snapshot && snapshot.imageId === r.imageId ? snapshot : null;
     const targetList = Array.isArray(targets) ? targets : [];
     const spec = targetList.find(t => t.id === p.target) || null;
-    const editable = !!spec && (spec.backend || 'sdcpp') !== 'mflux';
+    const selectable = editModels ? new Set(editModels) : null;
+    // FLUX.2 Klein (MFLUX) is editable only where the server lists it (img2img on the local engine).
+    const editable = !!spec && ((spec.backend || 'sdcpp') !== 'mflux' || !!(selectable && selectable.has(spec.id)));
     const promptAvail = r.prompt && r.prompt.available ? r.prompt : snap ? { available: true, text: snap.prompt, negative: snap.negative, reason: null, session: true } : (r.prompt || { available: false, reason: 'No source record' });
     const loras = (p.loras && p.loras.length ? p.loras : (snap && snap.loras) || []);
     const notes = [];
     if (!r.recorded) notes.push('This image has no recorded generation settings (created before settings were stored). Showing neutral defaults.');
     if (p.target && !spec) notes.push(`Source model "${p.target}" is not a currently available target.`);
     if (promptAvail.available && promptAvail.scope === 'extension') notes.push('The recorded prompt is the outpaint extension prompt: it describes only the area that was added.');
-    const selectable = editModels ? new Set(editModels) : null;
     const keepSource = !!(selectable && p.target && selectable.has(p.target) && editable);
     if (keepSource) { /* the source's own checkpoint runs the edit */ }
     else if (editWorker && p.target && p.target !== editWorker) notes.push(`Edit runs on ${editWorker} (the edit worker's model); the source was made with ${spec ? (spec.label || spec.id) : p.target}.`);
@@ -353,7 +365,7 @@
 
   return {
     LORA_RE, parseLoraTags, stripLoraTags, normalizeLoras, serializeLoraTags, resolveResources, checkLoraCompat, formatWeight, clampWeight,
-    canonicalSampler, RECALL_SCHEMA, buildRecall, snapshotFromRequest, applyRecallToEdit, EDIT_DEFAULTS,
+    canonicalSampler, RECALL_SCHEMA, buildRecall, snapshotFromRequest, applyRecallToEdit, paramsForEditModel, EDIT_DEFAULTS,
     fitScale, viewScale, viewOrigin, screenToImage, imageToScreen, clampPan, zoomAt, zoomTo100, clampToImage,
     parseSdProgress, deriveStage,
     familyOf, readinessOf, groupModels, FAMILY_LABEL,

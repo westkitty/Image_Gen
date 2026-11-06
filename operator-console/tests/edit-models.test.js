@@ -67,11 +67,47 @@ test('the approved-root pattern matches the edit workers\' own --model-path chec
 
 test('server: every edit route resolves edit_model before running and passes its args to the worker', () => {
   const src = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
-  assert.equal((src.match(/const editModel = resolveEditModelFor\(body\);/g) || []).length, 3, 'img2img, inpaint and outpaint');
+  assert.equal((src.match(/const editModel = resolveEditModelFor\(body\);/g) || []).length, 2, 'inpaint and outpaint');
+  assert.equal((src.match(/ editModel = resolveEditModelFor\(body\);/g) || []).length, 3, 'img2img resolves it too when the edit worker runs');
+  assert.match(src, /const engineSpec = engineImg2imgSpec\(body\);/, 'img2img picks the engine for FLUX models and LoRAs');
   assert.equal((src.match(/args\.push\(\.\.\.editModel\.args\);/g) || []).length, 4, 'three routes plus the request preview');
   assert.match(src, /editModels: EditModels\.editModelIds\(/);
   assert.match(src, /body\.__editTarget \|\| editWorkerTarget\(\)/, 'lineage names the model that ran');
   const chains = fs.readFileSync(path.join(__dirname, '../script-chains.js'), 'utf8');
   assert.match(chains, /D\.resolveEditModelFor\(body\)/);
   assert.match(chains, /args\.push\(\.\.\.p\.modelArgs\)/);
+});
+
+test('img2img offers FLUX models (Schnell and Klein) only when the local engine is on', () => {
+  const o = { targetModels: MODELS, familyOf: resolveTargetFamily };
+  assert.deepEqual(EM.engineEditEligibility(TARGETS['flux2-klein-4b'], o), { ok: true, engine: 'mflux' });
+  assert.deepEqual(EM.engineEditEligibility(TARGETS['flux-fp8'], o), { ok: true, engine: 'sdcpp' });
+  assert.equal(EM.engineEditEligibility(TARGETS['sdxl-juggernaut'], o).ok, false, 'broken stays out');
+  assert.equal(EM.engineEditEligibility({ id: 'sdxl-nofile', backend: 'sdcpp' }, o).ok, false, 'no installed file stays out');
+  const off = EM.img2imgModelIds(TARGETS, o), on = EM.img2imgModelIds(TARGETS, { ...o, engine: true });
+  assert.ok(!off.includes('flux-fp8') && !off.includes('flux2-klein-4b'));
+  assert.ok(on.includes('flux-fp8') && on.includes('flux2-klein-4b') && on.includes('sdxl-photonic'));
+  assert.ok(!on.includes('sdxl-juggernaut'));
+});
+
+test('img2img runner: FLUX and LoRA requests go to the local engine; plain SD/SDXL keeps the edit worker', () => {
+  const o = { targetModels: MODELS, familyOf: resolveTargetFamily, engine: true };
+  assert.equal(EM.img2imgRunner(TARGETS['sdxl-photonic'], o), 'worker');
+  assert.equal(EM.img2imgRunner(TARGETS['sdxl-photonic'], { ...o, hasLoras: true }), 'engine');
+  assert.equal(EM.img2imgRunner(TARGETS['flux2-klein-4b'], o), 'engine');
+  assert.equal(EM.img2imgRunner(TARGETS['flux-fp8'], { ...o, hasLoras: true }), 'engine');
+  assert.equal(EM.img2imgRunner(TARGETS['sdxl-juggernaut'], { ...o, hasLoras: true }).status, 409);
+  assert.equal(EM.img2imgRunner(TARGETS['flux2-klein-4b'], { ...o, engine: false }), 'worker', 'bridge off keeps the old gates');
+});
+
+
+test('engine img2img validates LoRA tags against the chosen target, never the generic SD1.5 form default', () => {
+  const form = { model: 'sd15', prompt: 'adult portrait <lora:sdxl_better_male_face_sdxl:0.5>' };
+  const sd = EM.validationParamsForImg2Img(form, { id: 'sdxl-base' });
+  assert.equal(sd.target, 'sdxl-base');
+  assert.equal(sd.model, 'sd15', 'do not mutate the existing edit form');
+  assert.equal(form.target, undefined, 'do not introduce state outside validation');
+  assert.strictEqual(EM.validationParamsForImg2Img(form, null), form, 'legacy edit-worker validation stays unchanged');
+  const server = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  assert.match(server, /const genErr = validateGenerationParams\(EditModels\.validationParamsForImg2Img\(params, engineSpec\)\)/);
 });
