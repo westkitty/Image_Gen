@@ -29,6 +29,14 @@
   const chip = (text, color) => h('span', { style: { border: '1px solid ' + color + '55', color, background: color + '12', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700 } }, text);
   const fmtTime = s => (s == null || !isFinite(s)) ? '—' : Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
 
+  // Worker proof is scoped to the worker's own execution bridge. It is not the
+  // same evidence as a separately proven generation capability in System Info.
+  P._workerProofLabel = function (worker) {
+    if (worker.proven) return 'proven';
+    if (worker.bridged && worker.enabled) return 'bridge proof pending';
+    return 'not proven';
+  };
+
   // ── state ────────────────────────────────────────────────────────
   P._mws = function () {
     if (!this.mws) this.mws = { voiceMode: 'speech', workers: null, resources: null, lib: { kind: 'all', items: [], counts: {}, showTest: false, loading: false }, refs: {}, refErrors: {}, jobs: {}, options: null, speed: 1, language: 'en', vSeed: '', mSeed: '', aceDuration: 30, magDuration: 8, musicWorker: 'ace-step', kokoroVoice: 'af_heart', instrumental: false, influence: 0.5 };
@@ -414,7 +422,7 @@
       h('div', { style: { minWidth: 0 } }, h('div', { style: { color: '#e2e8f0', fontWeight: 700 } }, w.label), h('div', { style: css.muted }, w.media_kind + ' · ' + w.resource_class + ' resource')),
       h('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap', alignContent: 'start' } }, chip(w.state || '—', w.enabled && w.proven ? tone.ok : tone.warn),
         chip('runtime ' + (w.runtime_available ? '✓' : '✗'), w.runtime_available ? tone.ok : tone.off), chip('model ' + (w.model_available ? '✓' : '✗'), w.model_available ? tone.ok : tone.off),
-        chip(w.proven ? 'proven' : 'not proven', w.proven ? tone.ok : tone.off)));
+        chip(this._workerProofLabel(w), w.proven ? tone.ok : w.bridged && w.enabled ? tone.warn : tone.off)));
     return h('div', { style: css.panel },
       h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Workers & Big Mac resources'), h('div', { style: { flex: 1 } }), btn('Refresh', () => this.loadWorkers(), '#94a3b8')),
       ...((m.workers || []).map(row)),
