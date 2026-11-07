@@ -7,6 +7,7 @@ const { chromium } = require('playwright-core');
 const { startServer, installModelSnapshots, runner, launchBrowser, runCleanups, openStudio, chooseModel } = require('./helpers');
 
 const { test, results, exitCode } = runner('form-stability');
+const promptValue = locator => locator.evaluate(el => el.value);
 
 async function open(page, base) {
   const errors = [];
@@ -15,8 +16,7 @@ async function open(page, base) {
     await page.route('**/api/models/secondary/activate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ modelState: {} }) }));
   await openStudio(page, base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
 
-  await page.locator('[data-studio-nav]').waitFor();
-  await page.locator('[data-studio-category="create"]').click();
+  await page.locator('[aria-label="Describe your image"]').waitFor({ state: 'visible' });
   await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
   return errors;
 }
@@ -50,7 +50,7 @@ const stopStorm = page => page.evaluate(() => { window.__storm.stop = true; retu
       const stats = await stopStorm(page);
       assert.ok(stats.renders >= 5, 'the storm really rerendered the form: ' + JSON.stringify(stats));
       assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('[aria-label="Describe your image"]')), true, 'focus retained');
-      assert.equal(await page.locator('[aria-label="Describe your image"]').inputValue(), text);
+      assert.equal(await promptValue(page.locator('[aria-label="Describe your image"]')), text);
       assert.deepEqual(errors, []);
       await page.close();
     });
@@ -67,7 +67,7 @@ const stopStorm = page => page.evaluate(() => { window.__storm.stop = true; retu
       await page.keyboard.type('Y', { delay: 15 });
       const stats = await stopStorm(page);
       assert.ok(stats.renders >= 5, JSON.stringify(stats));
-      assert.equal(await page.locator('[aria-label="Describe your image"]').inputValue(), 'hello XYworld');
+      assert.equal(await promptValue(page.locator('[aria-label="Describe your image"]')), 'hello XYworld');
       assert.deepEqual(errors, []);
       await page.close();
     });
@@ -89,10 +89,10 @@ const stopStorm = page => page.evaluate(() => { window.__storm.stop = true; retu
       await page.waitForFunction(() => window.__storm && window.__storm.n >= 10, null, { timeout: 7000 });
       const s1 = await stopStorm(page);
       assert.ok(s1.renders >= 10, JSON.stringify(s1));
-      assert.equal(await page.locator('[aria-label="Negative prompt"]').inputValue(), 'blurry, low quality');
+      assert.equal(await promptValue(page.locator('[aria-label="Negative prompt"]')), 'blurry, low quality');
       await chooseModel(page, 'flux2-klein-4b');
       assert.equal(await negativePrompt.isEnabled(), false, 'switching to MFLUX disables unsupported negative prompts');
-      assert.equal(await negativePrompt.inputValue(), 'blurry, low quality', 'unsupported target preserves the negative draft');
+      assert.equal(await promptValue(negativePrompt), 'blurry, low quality', 'unsupported target preserves the negative draft');
       await chooseModel(page, 'sdxl-base');
       await page.waitForFunction(() => !document.querySelector('[aria-label="Negative prompt"]').disabled);
       await page.locator('[data-dex-field="clip-skip"]').click();   // click first: elements cannot be clicked mid-storm
@@ -115,7 +115,6 @@ const stopStorm = page => page.evaluate(() => { window.__storm.stop = true; retu
       await installModelSnapshots(page, srv.base);
             await page.route('**/api/models/secondary/activate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ modelState: {} }) }));
       await openStudio(page, srv.base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
-      await page.locator('[data-studio-nav]').waitFor();
       await page.waitForSelector('[data-model-picker="create"] > button');
       await page.waitForTimeout(1500);
       await page.locator('[data-model-picker="create"] > button').focus();
@@ -140,7 +139,7 @@ const stopStorm = page => page.evaluate(() => { window.__storm.stop = true; retu
         await page.locator('[aria-label="Describe your image"]').click();
         await page.keyboard.type('a red fox (snowy:1.4) forest at dawn', { delay: 20 });
         await page.waitForTimeout(150);
-        assert.equal(await page.locator('[aria-label="Describe your image"]').inputValue(), 'a red fox (snowy:1.4) forest at dawn', 'round ' + round);
+        assert.equal(await promptValue(page.locator('[aria-label="Describe your image"]')), 'a red fox (snowy:1.4) forest at dawn', 'round ' + round);
         assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('[aria-label="Describe your image"]')), true, 'focus round ' + round);
         assert.deepEqual(errors, []);
         await page.close();

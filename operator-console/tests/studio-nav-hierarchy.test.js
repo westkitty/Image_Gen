@@ -310,6 +310,24 @@ test('keyboard: arrow keys, Home and End rove within each bar; Enter or click ac
   } finally { close(); }
 });
 
+test('global letter shortcuts ignore modifiers and IME composition', { skip: needsDom }, async () => {
+  const { w, inst, close } = boot({ storage: masters });
+  try {
+    await settle(w);
+    const promptOpen = inst.state.promptOpen;
+    w.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true, cancelable: true }));
+    assert.equal(inst.state.promptOpen, promptOpen, 'Ctrl+P remains a browser shortcut');
+    w.dispatchEvent(new w.KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true }));
+    assert.equal(inst.state.settingsOpen, false, 'Cmd+S does not toggle the settings drawer');
+    w.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'l', altKey: true, bubbles: true, cancelable: true }));
+    assert.equal(inst.state.screens[2], 'create', 'Alt+L does not navigate away');
+    w.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'p', isComposing: true, bubbles: true, cancelable: true }));
+    assert.equal(inst.state.promptOpen, promptOpen, 'IME composition is left to the text input system');
+    w.dispatchEvent(new w.KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true }));
+    assert.equal(inst.state.settingsOpen, true, 'unmodified shortcut still works');
+  } finally { close(); }
+});
+
 test('bars are not rebuilt by unrelated renders, and one click navigates once', { skip: needsDom }, async () => {
   const { w, doc, inst, close } = boot({ storage: masters });
   try {

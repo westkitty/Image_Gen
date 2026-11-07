@@ -419,7 +419,11 @@ cmd_status() {
       up="UP (Big Mac backend: $cwd, remote pid $(printf '%s' "$v" | json_field pid))"
     fi
   elif [ -n "$lpid" ]; then
-    up="PORT HELD BY FOREIGN PROCESS"
+    if owned_ssh_tunnel_pid "$lpid"; then
+      up="UNKNOWN (owned SSH tunnel unresponsive or backend unknown)"
+    else
+      up="PORT HELD BY FOREIGN PROCESS"
+    fi
   fi
   local ts ts_url="not configured" ts_scope="-" tsrc=0
   ts="$(tailnet_url)" || tsrc=$?
@@ -485,7 +489,9 @@ print("%s [%s, %s]" % (t[0]["label"], t[0]["id"], t[0]["status"]) if t else "non
   others="$(bounded "$PROBE_TIMEOUT" mdfind "kMDItemCFBundleIdentifier == 'local.image-gen.wrapper'" 2>/dev/null)" || mrc=$?
   if [ "$mrc" -eq 0 ]; then
     # Spotlight can lag a rename; only a copy that still has its Info.plist can claim the id.
-    others="$(printf '%s\n' "$others" | grep -v -x -e "$APP_PATH" -e '' | while IFS= read -r p; do if [ -f "$p/Contents/Info.plist" ]; then echo "$p"; fi; done | wc -l | tr -d ' ')"
+    # grep -v exits 1 when Spotlight returns only the canonical app path. With
+    # pipefail that used to terminate this read-only status command silently.
+    others="$(printf '%s\n' "$others" | awk -v canonical="$APP_PATH" 'NF && $0 != canonical' | while IFS= read -r p; do if [ -f "$p/Contents/Info.plist" ]; then echo "$p"; fi; done | wc -l | tr -d ' ')"
     if [ "$others" = "0" ]; then opens="CANONICAL (only $APP_PATH carries local.image-gen.wrapper)"
     else opens="CONFLICT ($others other copies carry local.image-gen.wrapper — run scripts/install-macos-app.sh)"; fi
   fi

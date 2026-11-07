@@ -42,8 +42,10 @@ class Component extends DCLogic {
     prompt: '', negPrompt: '',
     promptOpen: true,
     negPromptOpen: false,
-    settingsOpen: false, compactMode: localStorage.getItem('dex_compact_mode') === 'true',
-    selectedVae: 'default', favoriteName: '',
+    settingsOpen: false,
+    compactMode: (() => { try { return localStorage.getItem('dex_compact_mode') === 'true'; } catch (_) { return false; } })(),
+    selectedVae: (() => { try { return localStorage.getItem('dex_selected_vae') || 'default'; } catch (_) { return 'default'; } })(),
+    favoriteName: '',
     // Recipes (formerly Favorite presets). Prompt text persists only when prompt saving is on;
     // older presets that stored prompts are scrubbed on load when it is off.
     favoritePresets: (() => {
@@ -248,6 +250,9 @@ class Component extends DCLogic {
   }
 
   onKeydown(e) {
+    // Never consume keys while an input method editor is composing text. Some
+    // WebKit builds report Escape/Enter during composition as ordinary keys.
+    if (e.isComposing || e.keyCode === 229) return;
     if (this.state.focusViewer) {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.closeFocusViewer(); }
       return; // A focused preview must not trigger global Create/Library shortcuts.
@@ -276,8 +281,12 @@ class Component extends DCLogic {
     }
     const tag = (e.target && e.target.tagName || '').toLowerCase();
     const inField = tag === 'input' || tag === 'textarea' || tag === 'select' || !!(e.target && e.target.isContentEditable) || !!(e.target && e.target.closest && e.target.closest('dex-prompt-field'));
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); this.onGenerate(); return; }
+    const command = e.metaKey || e.ctrlKey;
+    if (command && !e.altKey && !e.shiftKey && e.key === 'Enter') { e.preventDefault(); this.onGenerate(); return; }
     if (inField) return;
+    // Letter shortcuts are single-key commands. Preserve browser and system
+    // shortcuts such as Cmd/Ctrl+P, Cmd/Ctrl+L, and Shift+letter input.
+    if (command || e.altKey || e.shiftKey || e.repeat) return;
     if (e.key === '/') { e.preventDefault(); this.setState({ promptOpen: true }, () => document.querySelector('textarea[placeholder*="Describe the image"]')?.focus()); }
     if (e.key.toLowerCase() === 'p') this.setState(s => ({ promptOpen: !s.promptOpen }));
     if (e.key.toLowerCase() === 's') this.setState(s => ({ settingsOpen: !s.settingsOpen }));
@@ -2362,6 +2371,22 @@ class Component extends DCLogic {
     return value;
   }
 
+  setSelectedVae(value) {
+    const selectedVae = String(value || 'default');
+    let saved = true;
+    try { localStorage.setItem('dex_selected_vae', selectedVae); } catch (_) { saved = false; }
+    this.setState({ selectedVae });
+    if (!saved) this.toast('VAE selection changed for this session, but could not be saved.', '#fca5a5');
+  }
+
+  setCompactMode(enabled) {
+    const compactMode = !!enabled;
+    let saved = true;
+    try { localStorage.setItem('dex_compact_mode', String(compactMode)); } catch (_) { saved = false; }
+    this.setState({ compactMode });
+    if (!saved) this.toast('Compact mode changed for this session, but could not be saved.', '#fca5a5');
+  }
+
   validationMessages() {
     const p = this.currentParams();
     const out = [];
@@ -3927,7 +3952,7 @@ class Component extends DCLogic {
             React.createElement('button', {
               type: 'button',
               onClick: () => {
-                this.setState({ selectedVae: v.filename });
+                this.setSelectedVae(v.filename);
                 this.toast('Selected VAE: ' + v.filename, '#65d66e');
               },
               style: { border: '1px solid ' + (isSelected ? '#65d66e' : '#38bdf8'), background: 'transparent', color: isSelected ? '#65d66e' : '#38bdf8', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }
@@ -3963,11 +3988,11 @@ class Component extends DCLogic {
         actionButton('Save Recipe', () => this.saveFavoritePreset())),
       favoritePresetRows);
     const vaes = (assets && assets.vaes) || [];
-    const vaeSelect = h('select', { value: s.selectedVae, onChange: e => this.setState({ selectedVae: e.target.value }), style: panelInput },
+    const vaeSelect = h('select', { value: s.selectedVae, onChange: e => this.setSelectedVae(e.target.value), style: panelInput },
       h('option', { value: 'default' }, 'Default / backend-selected'),
       h('option', { value: 'none' }, 'None'),
       ...vaes.map(v => h('option', { key: v.id || v.filename || v.name, value: v.filename || v.name }, v.name || v.filename)));
-    const compactToggle = h('button', { onClick: () => { const compactMode = !this.state.compactMode; localStorage.setItem('dex_compact_mode', String(compactMode)); this.setState({ compactMode }); },
+    const compactToggle = h('button', { onClick: () => this.setCompactMode(!this.state.compactMode),
       style: { ...panelInput, cursor: 'pointer', textAlign: 'left' } }, s.compactMode ? 'Compact on' : 'Compact off');
     const settingsDrawerBody = h('div', { style: { padding: 11, display: 'grid', gap: 10 } },
       validationPanel,

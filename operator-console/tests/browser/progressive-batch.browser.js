@@ -82,6 +82,38 @@ const statuses = page => page.evaluate(() => (__dex._ws().results || []).map(r =
       assert.equal(await statuses(page), 'DONE,DONE,QUEUED,QUEUED');
       await ctx.close();
     });
+
+    await test('Batch keeps the newest preview when parsing pasted text completes out of order', async () => {
+      const { page, ctx } = await boot(browser, srv.base, () => ({ id: 'job-b1', status: 'running', seeds: [], controlledTarget: 'sd15', results: [] }));
+      let releaseOld;
+      let oldSeenResolve;
+      let newSeenResolve;
+      const oldSeen = new Promise(resolve => { oldSeenResolve = resolve; });
+      const newSeen = new Promise(resolve => { newSeenResolve = resolve; });
+      const oldCanFinish = new Promise(resolve => { releaseOld = resolve; });
+      await page.route('**/api/batch/parse', async route => {
+        const text = route.request().postDataJSON().text;
+        if (text.includes('Older')) {
+          oldSeenResolve();
+          await oldCanFinish;
+          await route.fulfill({ json: { ok: true, count: 1, entries: [{ number: 1, title: 'Older', prompt: 'old body' }], errors: [], warnings: [] } });
+        } else {
+          newSeenResolve();
+          await route.fulfill({ json: { ok: true, count: 1, entries: [{ number: 2, title: 'Newest', prompt: 'new body' }], errors: [], warnings: [] } });
+        }
+      });
+      await page.evaluate(() => {
+        __dex.parseBatch('1. Older\n\nold body');
+        __dex.parseBatch('2. Newest\n\nnew body');
+      });
+      await Promise.all([oldSeen, newSeen]);
+      await page.waitForFunction(() => __dex._ws().parse && __dex._ws().parse.entries[0].title === 'Newest');
+      releaseOld();
+      await page.waitForTimeout(100);
+      assert.equal(await page.evaluate(() => __dex._ws().batchText), '2. Newest\n\nnew body');
+      assert.equal(await page.evaluate(() => __dex._ws().parse.entries[0].title), 'Newest');
+      await ctx.close();
+    });
   } finally { await srv.stop(); }
   process.exit(exitCode());
 })();

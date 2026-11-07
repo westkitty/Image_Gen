@@ -22,8 +22,7 @@ async function openGenerate(page, base) {
   });
   await openStudio(page, base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
 
-  await page.locator('[data-studio-nav]').waitFor();
-  await page.locator('[data-studio-category="create"]').click();
+  await page.getByRole('textbox', { name: 'Describe your image', exact: true }).waitFor({ state: 'visible' });
   await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
   await page.waitForTimeout(300);
   return { errors, bodies };

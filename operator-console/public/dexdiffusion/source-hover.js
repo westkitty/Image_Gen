@@ -8,7 +8,7 @@
   if (window.__dexSourceHover) return;
   window.__dexSourceHover = true;
 
-  var cache = {};
+  var cache = {}, pending = {};
   var card = null, hideTimer = null;
 
   var css = document.createElement('style');
@@ -17,7 +17,7 @@
     '.dsh-item{padding:6px 9px;border-radius:5px;cursor:pointer;display:flex;gap:8px;align-items:baseline}' +
     '.dsh-item[aria-selected=true]{background:rgba(96,144,168,.22)}.dsh-item:hover,.dsh-item.dsh-hot{background:rgba(96,144,168,.38)}' +
     '.dsh-item[aria-disabled=true]{opacity:.5}' +
-    '.dsh-card{position:fixed;z-index:99999;width:340px;max-height:70vh;overflow:auto;background:#101a29;border:1px solid rgba(148,163,184,.35);border-radius:9px;box-shadow:0 14px 36px rgba(0,0,0,.55);padding:12px;font:12px/1.45 "DM Sans",system-ui,sans-serif;color:#dbe6f1}' +
+    '.dsh-card{position:fixed;z-index:99999;width:min(340px,calc(100vw - 16px));max-height:min(70vh,560px);overflow:auto;overflow-wrap:anywhere;background:#101a29;border:1px solid rgba(148,163,184,.35);border-radius:9px;box-shadow:0 14px 36px rgba(0,0,0,.55);padding:12px;font:12px/1.45 "DM Sans",system-ui,sans-serif;color:#dbe6f1;pointer-events:none}.dsh-card .dsh-btn{pointer-events:auto}' +
     '.dsh-card h4{margin:0 0 4px;font-size:13px;color:#fff}.dsh-card .dsh-badge{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:1px 6px;border-radius:9px;background:#27384d;color:#9fc2dd;margin-bottom:6px}' +
     '.dsh-card p{margin:6px 0;color:#c4d3e2}.dsh-card ul{margin:4px 0 6px 16px;padding:0}.dsh-card li{margin:2px 0}' +
     '.dsh-card .dsh-k{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#7f9bb5;margin-top:8px}' +
@@ -31,12 +31,19 @@
   function getInfo(kind, id) {
     var key = kind + '/' + id;
     if (cache[key]) return Promise.resolve(cache[key]);
-    return fetch('/api/source-info/' + kind + '/' + encodeURIComponent(id), { headers: { Accept: 'application/json' } })
+    if (pending[key]) return pending[key];
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, 4000);
+    pending[key] = fetch('/api/source-info/' + kind + '/' + encodeURIComponent(id), { headers: { Accept: 'application/json' }, signal: controller.signal })
       .then(function (r) {
         if (r.status === 404) { cache[key] = { missing: true }; return cache[key]; }
         if (!r.ok) return { error: true };
         return r.json().then(function (j) { cache[key] = j; return j; });
-      }).catch(function () { return { error: true }; });
+      }).catch(function () { return { error: true }; }).finally(function () {
+        clearTimeout(timeout);
+        delete pending[key];
+      });
+    return pending[key];
   }
 
   function promptEl() { return document.querySelector('[data-dex-field="prompt"]'); }
@@ -68,7 +75,8 @@
     if (!card) { card = document.createElement('div'); card.className = 'dsh-card'; card.setAttribute('role', 'tooltip'); document.body.appendChild(card); }
     card.onmouseenter = function () { clearTimeout(hideTimer); };
     var h = '';
-    if (info && info.error) h = '<h4>Could not load</h4><p>The source information could not be loaded just now. Hover again to retry.</p>';
+    if (info && info.loading) h = '<h4>Loading source information…</h4><p>Checking the local source archive.</p>';
+    else if (info && info.error) h = '<h4>Could not load</h4><p>The source information could not be loaded just now. Hover again to retry.</p>';
     else if (!info || info.missing) h = '<h4>No archived information</h4><p>Nothing has been archived for this item yet.</p>';
     else {
       h += '<h4>' + esc(info.title) + '</h4>' + (info.status ? '<span class="dsh-badge">' + esc(info.status) + '</span>' : '');
@@ -92,10 +100,23 @@
       var text = b.dataset.act === 'rand' ? randomize(info) : (info.trigger_words || []).filter(missing).slice(0, 3).join(', ');
       msg.textContent = !text ? 'Nothing new to add — already in the prompt.' : appendToPrompt(text) ? 'Added to prompt: ' + text : 'Prompt box not found.';
     };
-    var r = anchor.getBoundingClientRect(), left = r.right + 8;
-    if (left + 340 > window.innerWidth) left = Math.max(8, r.left - 348);
-    card.style.left = left + 'px';
-    card.style.top = Math.max(8, Math.min(r.top, window.innerHeight - card.offsetHeight - 8)) + 'px';
+    var r = anchor.getBoundingClientRect(), gap = 8, pad = 8;
+    var width = Math.min(340, Math.max(0, window.innerWidth - pad * 2));
+    card.style.width = width + 'px';
+    var height = Math.min(card.offsetHeight, window.innerHeight - pad * 2);
+    var right = r.right + gap, left;
+    if (right + width <= window.innerWidth - pad) left = right;
+    else if (r.left - gap - width >= pad) left = r.left - gap - width;
+    else left = Math.max(pad, Math.min(r.left, window.innerWidth - width - pad));
+    // When neither side fits (common in a narrow native window), use the
+    // vertical space around the row instead of covering neighboring controls.
+    var top = r.top;
+    if (window.innerWidth < 700 || (right + width > window.innerWidth - pad && r.left - gap - width < pad)) {
+      if (r.bottom + gap + height <= window.innerHeight - pad) top = r.bottom + gap;
+      else if (r.top - gap - height >= pad) top = r.top - gap - height;
+    }
+    card.style.left = Math.max(pad, Math.min(left, window.innerWidth - width - pad)) + 'px';
+    card.style.top = Math.max(pad, Math.min(top, window.innerHeight - height - pad)) + 'px';
   }
 
   var showTimer = null, anchorEl = null;
@@ -106,6 +127,7 @@
     var kind = spec.shift(), id = spec.join(':');
     if (!kind || !id) return;
     anchorEl = el;
+    renderCard({ loading: true }, el);
     getInfo(kind, id).then(function (info) { if (anchorEl === el) renderCard(info, el); });
   }
   document.addEventListener('mouseover', function (e) {

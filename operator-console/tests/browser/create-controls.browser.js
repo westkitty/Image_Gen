@@ -56,7 +56,7 @@ const { test, exitCode } = runner('create-controls');
         proof_status: 'PROVEN', proof_target_ids: [proven], proof_backend: 'sdcpp', proof_apply_modes: ['immediately'], metal_inference_status: 'FUNCTIONAL_METAL', metal_target_ids: [proven],
         production_routes: Array.from(new Set([proven, target])).flatMap(t => routesFor(t, filename)) })), target);
       await page.unroute('**/api/extra-networks**');
-      await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: cardsFor(new URL(r.request().url()).searchParams.get('target')), vaes: [], embeddings: { count: 0, items: [] } } }));
+      await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: cardsFor(new URL(r.request().url()).searchParams.get('target')), vaes: [{ name: 'fixture-vae', path: 'x' }], embeddings: { count: 0, items: [] } } }));
       await page.route('**/api/models/secondary/activate', r => r.fulfill({ json: { ok: true, activeSecondaryModel: 'sdxl-lustify', modelState: {} } }));
       const lustify = await page.evaluate(() => (__dex.state.modelTargets || []).find(t => t.id === 'sdxl-lustify'));
       assert.ok(lustify, 'sdxl-lustify is in the real capability catalogue');
@@ -81,6 +81,36 @@ const { test, exitCode } = runner('create-controls');
       await page.click('[data-dex-field="accelerator-off-btn"]');
       await page.waitForFunction(() => !__dex.state.createLora.enabled);
       assert.deepEqual(await settings(), [30, 5, 'dpm++2m', 'karras'], 'previous settings restored');
+      await page.keyboard.press('Escape');
+    });
+    await test('Settings drawer saves VAE and compact choices; storage failure leaves controls responsive and visible', async () => {
+      await page.evaluate(() => __dex.setState({ target: 'sd15', selectedVae: 'default', compactMode: false }));
+      await page.getByRole('button', { name: /Settings drawer/ }).click();
+      const vae = page.locator('select').filter({ has: page.locator('option[value="fixture-vae"]') });
+      await vae.waitFor({ state: 'visible' });
+      await vae.selectOption('fixture-vae');
+      assert.equal(await page.evaluate(() => __dex.state.selectedVae), 'fixture-vae');
+      assert.equal(await page.evaluate(() => localStorage.getItem('dex_selected_vae')), 'fixture-vae');
+      await page.getByRole('button', { name: 'Compact off', exact: true }).click();
+      assert.equal(await page.evaluate(() => __dex.state.compactMode), true);
+      assert.equal(await page.evaluate(() => localStorage.getItem('dex_compact_mode')), 'true');
+
+      await page.evaluate(() => {
+        const original = Storage.prototype.setItem;
+        window.__restoreSetItem = () => { Storage.prototype.setItem = original; };
+        Storage.prototype.setItem = function (key, value) {
+          if (key === 'dex_compact_mode') throw new DOMException('storage blocked', 'QuotaExceededError');
+          return original.call(this, key, value);
+        };
+      });
+      await page.getByRole('button', { name: 'Compact on', exact: true }).click();
+      assert.equal(await page.evaluate(() => __dex.state.compactMode), false, 'session state changes even when saving fails');
+      await page.getByText('Compact mode changed for this session, but could not be saved.').waitFor({ state: 'visible' });
+      await page.evaluate(() => window.__restoreSetItem());
+      await page.reload();
+      await page.waitForFunction(() => window.__dex && __dex.state.capabilityData);
+      assert.equal(await page.evaluate(() => __dex.state.selectedVae), 'fixture-vae');
+      assert.equal(await page.evaluate(() => __dex.state.compactMode), true, 'last successfully saved compact preference is restored');
     });
     assert.deepEqual(errors, []);
     await ctx.close();

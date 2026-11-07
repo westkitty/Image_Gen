@@ -99,15 +99,17 @@ async function runAndCapture(page, posts) {
       for (const k of ['left', 'right', 'top', 'bottom']) assert.equal(k in body, false, 'canvas-extension fields are not mixed in: ' + k);
       await ctx.close();
     });
-    await test('Edit names the model the edit worker really runs and offers only that model', async () => {
+    await test('Edit names its default worker model and offers only compatible checkpoints', async () => {
       const { page, ctx } = await newPage(browser, srv.base);
       await openEdit(page, 'img2img');
       const worker = await page.evaluate(() => __dex.state.capabilityData.editWorkerTarget);
       assert.equal(worker, 'sd15');
-      assert.match(await page.locator('[data-edit-worker-model]').innerText(), /run on sd15/);
-      assert.deepEqual(await page.evaluate(() => __dex._editTargets().map(t => t.id)), ['sd15']);
-      assert.equal(await page.evaluate(() => __dex.ed.state.editModel), 'sd15', 'a Photonic source still edits on sd15, and says so');
-      assert.ok(await page.evaluate(() => __dex.ed.state.notes.some(n => /Edit runs on sd15/.test(n))));
+      assert.match(await page.locator('[data-edit-worker-model]').innerText(), /default is sd15/);
+      const editTargets = await page.evaluate(() => __dex._editTargets().map(t => t.id));
+      assert.ok(editTargets.includes('sd15') && editTargets.includes('sdxl-base'));
+      assert.ok(editTargets.every(id => !id.startsWith('flux')), 'FLUX stays out of the SD-based edit worker list: ' + JSON.stringify(editTargets));
+      assert.equal(await page.evaluate(() => __dex.ed.state.editModel), 'sdxl-photonic', 'the compatible source checkpoint remains selected for Edit');
+      assert.match(await page.locator('[data-model-picker="edit"]').innerText(), /Photonic/i, 'the picker names the selected source checkpoint');
       await ctx.close();
     });
     await test('server dry run (real validators, no job): pass counts, result sizes and engine refusals', async () => {

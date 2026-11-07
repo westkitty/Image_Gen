@@ -17,8 +17,7 @@ async function open(page, base) {
   await page.route(ENDPOINT, route => { bodies.push(JSON.parse(route.request().postData() || '{}')); route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'intercepted by test' }) }); });
   await openStudio(page, base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
 
-  await page.locator('[data-studio-nav]').waitFor();
-  await page.locator('[data-studio-category="create"]').click();
+  await page.getByRole('textbox', { name: 'Describe your image', exact: true }).waitFor({ state: 'visible' });
   await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
   return { errors, bodies };
 }

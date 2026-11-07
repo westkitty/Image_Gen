@@ -64,6 +64,23 @@ test('a hanging lsof reports the web status as UNKNOWN, never DOWN', t => {
   for (const pid of fx.pids('lsof')) assert.equal(alive(pid), false, `fake lsof process ${pid} was reaped`);
 });
 
+test('an owned SSH tunnel with a timed-out version probe is UNKNOWN, while an unrelated listener stays foreign', () => {
+  const src = fs.readFileSync(BIN, 'utf8');
+  const statusBlock = src.slice(src.indexOf('cmd_status() {'), src.indexOf('\n}', src.indexOf('cmd_status() {')));
+  assert.match(statusBlock, /owned_ssh_tunnel_pid "\$lpid"[\s\S]*UNKNOWN \(owned SSH tunnel unresponsive or backend unknown\)/);
+  assert.match(statusBlock, /else\n\s+up="PORT HELD BY FOREIGN PROCESS"/);
+  assert.match(src, /version_json\(\) \{ curl -fsS --max-time "\$API_HEALTH_TIMEOUT"/);
+});
+
+test('canonical-only Spotlight result does not abort the read-only status report', t => {
+  const fx = fixture(t);
+  fx.script('mdfind', 'printf "/Applications/DexDiffusion.app\\n"');
+  const r = status(fx);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.out, /status:\s+DOWN/);
+  assert.match(r.out, /opens:\s+CANONICAL/);
+});
+
 test('a hanging dock query reports the dock as UNKNOWN, never MISSING', t => {
   const fx = fixture(t); fx.hang('defaults');
   const r = status(fx);

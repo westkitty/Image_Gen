@@ -573,12 +573,16 @@
   };
   P.buildCreateLoraControls = function () {
     const state = this.state.createLora || {}, options = this._createLoraOptions();
+    if (!options.length) return h('div', { className: 'ca-form-actions', 'data-dex-field': 'create-lora-controls', role: 'status', style: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, padding: '3px 0', color: '#8491a5', fontSize: 11 } },
+      h('strong', { style: { color: '#b8c7d6', fontWeight: 700 } }, 'LoRA'),
+      h('span', null, 'No adapters available for this model. Use the LoRA picker to review installed adapters.'));
+    const narrow = window.innerWidth <= 700;
     const selected = options.find(l => l.id === state.selectedId) || null;
     const enabledOptions = options.filter(l => l.use_enabled);
     const strength = Number(state.strength ?? (selected && selected.default_weight) ?? 1);
     const checkbox = h('label', { className: 'ca-check-row', style: { display: 'inline-flex', alignItems: 'center', gap: 7 }, title: enabledOptions.length ? 'Enable one proven adapter for this checkpoint.' : 'No adapter is proven for this checkpoint and backend.' },
       h('input', { type: 'checkbox', 'data-dex-field': 'use-lora', checked: !!state.enabled, disabled: !selected || !selected.use_enabled || this.state.jobStatus === 'generating', onChange: e => this.setCreateLoraEnabled(e.target.checked) }), h('span', null, 'Use LoRA'));
-    const select = h('div', { className: 'ca-field', role: 'group', 'aria-label': 'Adapter', style: { minWidth: 0, width: '100%', gridColumn: '1 / -1' } }, this.state.version === 2 ? null : h('span', null, 'Adapter'), this.buildLoraPicker(options.map(o => Object.assign({}, o, { inStack: this._stack().some(e => e.id === o.id) })), state.selectedId || '', this.state.jobStatus === 'generating', val => {
+    const select = h('div', { className: 'ca-field', role: 'group', 'aria-label': 'Adapter', style: { minWidth: 0, width: '100%', gridColumn: narrow ? '2' : '1 / -1' } }, this.state.version === 2 ? null : h('span', null, 'Adapter'), this.buildLoraPicker(options.map(o => Object.assign({}, o, { inStack: this._stack().some(e => e.id === o.id) })), state.selectedId || '', this.state.jobStatus === 'generating', val => {
       if (val && (options.find(x => x.id === val) || {}).staged) { this.toggleCreateStack(val); return; }
       if (val && this._stack().length) this._setStack([]);
       if (!val) {
@@ -595,14 +599,14 @@
       }
     }));
     const reason = !enabledOptions.length ? h('small', { className: 'ca-muted', role: 'status', 'data-dex-field': 'lora-unavailable', style: { gridColumn: '1 / -1', lineHeight: 1.25 } }, selected ? selected.unavailable_reason : 'Only adapters proven for this checkpoint and backend can be used.') : null;
-    const advanced = h('details', { 'data-dex-field': 'lora-advanced', open: !!state.advanced, onToggle: e => this._persistCreateLora(Object.assign({}, this.state.createLora || {}, { advanced: e.target.open })), style: { flexBasis: '100%' } },
+    const advanced = selected ? h('details', { 'data-dex-field': 'lora-advanced', open: !!state.advanced, onToggle: e => this._persistCreateLora(Object.assign({}, this.state.createLora || {}, { advanced: e.target.open })), style: { flexBasis: '100%', gridColumn: '1 / -1' } },
       h('summary', { style: { cursor: 'pointer', color: '#b7c7d8', fontSize: 12 } }, 'Advanced'),
-      selected ? h('div', { className: 'ca-form-grid', style: { marginTop: 8 } },
+      h('div', { className: 'ca-form-grid', style: { marginTop: 8 } },
         h('label', { className: 'ca-field' }, h('span', null, 'Strength · ' + strength.toFixed(2)), h('input', { type: 'range', min: selected.min_weight, max: selected.max_weight, step: selected.step, value: strength, disabled: !state.enabled || !selected.use_enabled, 'aria-label': 'LoRA strength', 'data-dex-field': 'lora-strength-slider', onInput: e => this.setCreateLoraStrength(e.target.value, selected.min_weight, selected.max_weight) })),
         h('label', { className: 'ca-field' }, h('span', null, 'Exact strength'), h('input', numText({ min: selected.min_weight, max: selected.max_weight, step: selected.step, decimal: true, value: strength, disabled: !state.enabled || !selected.use_enabled, 'aria-label': 'Exact LoRA strength', 'data-dex-field': 'lora-strength-number', onInput: e => this.setCreateLoraStrength(e.target.value, selected.min_weight, selected.max_weight) }))),
         h('div', { className: 'ca-muted', 'data-dex-field': 'lora-recipe' }, (() => { const r = this._createLoraRecipe(selected); const x = r && r.recommended || {}; return state.enabled ? 'Effective recipe: ' + (x.steps || this.state.steps) + ' steps · ' + (x.sampler || this.state.sampler) + ' · ' + (x.scheduler || 'engine default') + ' · CFG ' + (x.cfg != null ? x.cfg : this.state.cfg) + ' · ' + selected.route_status + ' (selected automatically)' : 'LoRA off · current settings: ' + this.state.steps + ' steps · ' + this.state.sampler + ' · ' + (this.state.scheduler || 'engine default') + ' · CFG ' + this.state.cfg; })()),
-        h('button', { type: 'button', className: 'ca-secondary', disabled: !state.enabled || !selected.use_enabled, onClick: () => { const next = Object.assign({}, this.state.createLora || {}, { overrides: {} }); this._persistCreateLora(next); next.recipeSettings = this._applyCreateLoraRecipe(selected, next.savedSettings || {}, {}); this._persistCreateLora(next); } }, 'Reset to recommended settings')) : h('div', { className: 'ca-muted' }, 'Select an adapter to inspect its validated settings.'));
-    return h('div', { className: 'ca-form-actions', 'data-dex-field': 'create-lora-controls', style: { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 4, alignItems: 'center', minWidth: 0, width: '100%' } }, checkbox, select, this.buildCreateLoraStack(), advanced, reason);
+        h('button', { type: 'button', className: 'ca-secondary', disabled: !state.enabled || !selected.use_enabled, onClick: () => { const next = Object.assign({}, this.state.createLora || {}, { overrides: {} }); this._persistCreateLora(next); next.recipeSettings = this._applyCreateLoraRecipe(selected, next.savedSettings || {}, {}); this._persistCreateLora(next); } }, 'Reset to recommended settings'))) : null;
+    return h('div', { className: 'ca-form-actions', 'data-dex-field': 'create-lora-controls', style: { display: 'grid', gridTemplateColumns: narrow ? 'auto minmax(0,1fr)' : 'minmax(0,1fr) auto', gap: narrow ? 3 : 4, alignItems: 'center', minWidth: 0, width: '100%' } }, checkbox, select, this.buildCreateLoraStack(), advanced, reason);
   };
 
   P.onGenerate = async function (over, opts) {
@@ -1372,9 +1376,13 @@
   // ── Batch: numbered prompts + backend queue ─────────────────────
   P.parseBatch = async function (text) {
     const t = text !== undefined ? text : this._ws().batchText;
+    // Parsing happens on every keystroke. Responses may arrive out of order,
+    // so only the request for the latest pasted text may update the preview.
+    const requestId = this._batchParseRequestId = (this._batchParseRequestId || 0) + 1;
     this.wsSet({ batchText: t });
-    if (!t.trim()) { this.wsSet({ parse: null }); return; }
+    if (!t.trim()) { this.wsSet({ parse: null, preflight: null, confirmLarge: false }); return; }
     const r = await this._api('/api/batch/parse', { text: t });
+    if (requestId !== this._batchParseRequestId) return;
     this.wsSet({ parse: r.ok ? r.data : { ok: false, count: 0, errors: [r.data.error || 'parse failed'], warnings: [], entries: [] }, preflight: null, confirmLarge: false });
   };
   P.startBatch = async function () {

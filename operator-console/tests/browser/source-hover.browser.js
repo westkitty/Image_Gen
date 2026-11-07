@@ -28,6 +28,39 @@ const { test, exitCode } = runner('source-hover');
       await page.keyboard.press('Escape');
     });
 
+    await test('source hover card stays inside a narrow native-sized window', async () => {
+      await page.setViewportSize({ width: 390, height: 800 });
+      await page.click('[data-model-picker="create"] button[aria-haspopup="listbox"]');
+      await page.locator('[data-model-id="flux2-klein-4b"]').first().hover();
+      const card = page.locator('.dsh-card');
+      await card.waitFor({ state: 'visible' });
+      const box = await card.boundingBox();
+      assert.ok(box.x >= 0 && box.y >= 0, `card origin must be visible: ${JSON.stringify(box)}`);
+      assert.ok(box.x + box.width <= 390, `card must fit viewport width: ${JSON.stringify(box)}`);
+      assert.ok(box.y + box.height <= 800, `card must fit viewport height: ${JSON.stringify(box)}`);
+      await page.keyboard.press('Escape');
+      await page.setViewportSize({ width: 1280, height: 900 });
+    });
+
+    await test('slow source lookups show a loading state without blocking the picker', async () => {
+      await page.route('**/api/source-info/lora/klein_anatomy_fixer_klein4b', async route => {
+        await page.waitForTimeout(450);
+        await route.continue();
+      });
+      await page.evaluate(() => __dex.selectModelWithValidation && __dex.selectModelWithValidation('flux2-klein-4b'));
+      await page.waitForSelector('[data-dex-field="create-lora-adapter"]');
+      await page.click('[data-dex-field="create-lora-adapter"]');
+      const row = page.locator('[data-lora-id="klein_anatomy_fixer_klein4b"]');
+      await row.hover();
+      const card = page.locator('.dsh-card');
+      await card.waitFor({ state: 'visible' });
+      await page.waitForFunction(() => document.querySelector('.dsh-card h4')?.textContent.includes('Loading source information'));
+      assert.equal(await card.locator('[data-act]').count(), 0, 'loading card has no premature actions');
+      await page.waitForFunction(() => !document.querySelector('.dsh-card h4')?.textContent.includes('Loading source information'));
+      await page.keyboard.press('Escape');
+      await page.unroute('**/api/source-info/lora/klein_anatomy_fixer_klein4b');
+    });
+
     await test('LoRA picker lists staged Klein LoRAs and hover shows triggers, usage and source', async () => {
       await page.evaluate(() => __dex.selectModelWithValidation && __dex.selectModelWithValidation('flux2-klein-4b'));
       await page.waitForSelector('[data-dex-field="create-lora-adapter"]');
@@ -72,6 +105,7 @@ const { test, exitCode } = runner('source-hover');
       await page.locator('[data-lora-id="klein_anatomy_fixer_klein4b"] ').click();
       await page.locator('[data-lora-id="klein_anatomy_male_klein4b"]').click();
       await page.locator('[data-lora-id="klein_fixes_nsfw_klein4b"]').click();
+      await page.waitForFunction(() => document.querySelectorAll('[data-stack-item]').length === 3);
       await page.keyboard.press('Escape');
       await page.evaluate(() => document.querySelector('[data-lora-picker-modal]').style.display = 'none');
       const eff = await page.evaluate(() => __dex.getEffectiveCreateLoras().map(l => [l.id, l.weight]));
@@ -80,6 +114,7 @@ const { test, exitCode } = runner('source-hover');
       assert.match(await page.locator('[data-dex-field="lora-stack-total"]').innerText(), /Total strength 1\.10 \/ 1\.8/);
       await page.locator('[data-stack-item="klein_anatomy_male_klein4b"] input').fill('1.5');
       await page.locator('[data-stack-item="klein_anatomy_male_klein4b"] input').blur();
+      await page.waitForFunction(() => document.querySelector('[data-dex-field="lora-stack-total"]')?.textContent.includes('over the limit'));
       assert.match(await page.locator('[data-dex-field="lora-stack-total"]').innerText(), /over the limit/);
       await page.locator('[data-stack-item="klein_anatomy_male_klein4b"] button').click();
       await page.waitForFunction(() => document.querySelectorAll('[data-stack-item]').length === 2);
