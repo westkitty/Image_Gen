@@ -1852,6 +1852,10 @@
   };
 
   // ── Detailer (Apple Vision Face / Hand / Person) ──────────────
+  P._detailerInpaintModels = function () {
+    const ids = new Set(this.state.capabilityData?.editModels || []);
+    return (this.state.modelTargets || []).filter(t => ids.has(t.id) && !t.aliasOf && !['broken','dormant'].includes(String(t.status || '').toLowerCase()) && !['model-missing','model-inaccessible','worker-unavailable'].includes(String(t.runtime || '').toLowerCase()));
+  };
   P.openDetailer = function (imageId) {
     this._detailerDetectController?.abort();
     this._detailerPreviewToken = this._detailerRunToken = null;
@@ -1860,10 +1864,13 @@
     const active = this._activeResult();
     const targetId = imageId || (active && active.imageId) || (ws.lib && ws.lib.selectedId) || null;
     if (!targetId) { this.toast('Select an image to detail', '#fbbf24'); return; }
+    const editTargets = this._detailerInpaintModels();
+    const defaultEdit = editTargets.find(t => t.id === 'sdxl-photonic') || editTargets.find(t => t.id === this.state.target) || editTargets[0];
     this.wsSet({
       detailer: {
         open: true,
-        imageId: targetId,
+        imageId: targetId, editModel: defaultEdit?.id || '', editModelTargets: editTargets.map(t => ({ id:t.id, label:t.label || t.id })),
+        detector: 'apple-vision', target: '', selectedInstances: [], manualCorrections: [], maskEditMode:'add', repairExpansion:0, presets:[], presetName:'', selectedPreset:'',
         mode: 'face',
         threshold: 0.3,
         padding: 0.2,
@@ -1878,6 +1885,65 @@
         note: ''
       }
     });
+    fetch(this.state.backendUrl + '/api/detailer/presets').then(r => r.json()).then(data => {
+      const current=this._ws().detailer;
+      if(current?.open && current.imageId===targetId) this.wsSet({detailer:Object.assign({},current,{presets:Array.isArray(data.presets)?data.presets:[]})});
+    }).catch(()=>{});
+    fetch(this.state.backendUrl + '/api/detailer/status').then(r=>r.json()).then(data=>{
+      const current=this._ws().detailer;if(current?.open&&current.imageId===targetId)this.wsSet({detailer:Object.assign({},current,{providers:data.providers||[]})});
+    }).catch(()=>{});
+  };
+
+  P.applyDetailerPreset = function (id) {
+    const d=this._ws().detailer||{}, p=(d.presets||[]).find(x=>x.id===id); if(!p)return;
+    const vision=['face','hands','person'].includes(p.id);
+    const mode=p.id==='hands'?'hand':p.id==='person'?'person':'face';
+    this.wsSet({detailer:Object.assign({},d,{selectedPreset:id,detector:vision?'apple-vision':'owlv2-base-patch16-ensemble',mode,target:p.target||'',threshold:p.confidence??.3,padding:p.mask?.padding??.2,feather:p.mask?.feather??8,dilate:p.mask?.expansion??0,repairExpansion:p.repairExpansion||0,strength:p.strength||.45,prompt:p.prompt||'',maskPreview:null,selectedInstances:[],manualCorrections:[],note:p.availability?.startsWith('unavailable')?p.availability:''})});
+  };
+  P.saveDetailerPreset = async function () {
+    const d=this._ws().detailer||{}, name=(d.presetName||'').trim(); if(!name){this.toast('Enter a preset name first','#fbbf24');return;}
+    const id=name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,64)||'custom-target';
+    const preset={id,name,target:d.detector==='apple-vision'?d.mode:d.target,detector:d.detector,confidence:d.threshold,mask:{padding:d.padding,feather:d.feather,expansion:d.dilate},repairExpansion:d.repairExpansion,prompt:d.prompt,strength:d.strength};
+    const r=await fetch(this.state.backendUrl+'/api/detailer/presets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(preset)});const data=await r.json().catch(()=>({}));
+    if(!r.ok){this.toast(data.error||'Preset save failed','#ef4444');return;}
+    this.wsSet({detailer:Object.assign({},d,{presets:[...(d.presets||[]).filter(x=>x.id!==id),data.preset],selectedPreset:id,note:'Preset saved on the local DexDiffusion backend.'})});
+  };
+  P.exportDetailerPreset = async function () {
+    const id=this._ws().detailer?.selectedPreset;if(!id){this.toast('Select a preset to export','#fbbf24');return;}
+    const r=await fetch(this.state.backendUrl+'/api/detailer/presets/'+encodeURIComponent(id)+'/export');if(!r.ok){this.toast('Preset export failed','#ef4444');return;}
+    const blob=await r.blob(), url=URL.createObjectURL(blob), a=document.createElement('a');a.href=url;a.download=id+'.dexdetailer.json';a.click();URL.revokeObjectURL(url);
+  };
+  P.importDetailerPreset = async function (file) {
+    if(!file)return; const r=await fetch(this.state.backendUrl+'/api/detailer/presets/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:await file.text()})});const data=await r.json().catch(()=>({}));
+    if(!r.ok){this.toast(data.error||'Preset import failed','#ef4444');return;}
+    const d=this._ws().detailer||{}, list=await fetch(this.state.backendUrl+'/api/detailer/presets').then(x=>x.json()).catch(()=>({presets:[]}));
+    this.wsSet({detailer:Object.assign({},d,{presets:list.presets||[],selectedPreset:data.preset.id,note:'Preset imported.'})});
+  };
+  P.beginDetailerMaskEdit = function (e) {
+    const r=e.currentTarget.getBoundingClientRect(); if(!r.width||!r.height)return; const x=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y=Math.max(0,Math.min(1,(e.clientY-r.top)/r.height));
+    this._detailerDraw={x,y,operation:this._ws().detailer.maskEditMode||'add'};e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  P.finishDetailerMaskEdit = function (e) {
+    if(!this._detailerDraw)return;const r=e.currentTarget.getBoundingClientRect(),x=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y=Math.max(0,Math.min(1,(e.clientY-r.top)/r.height)),s=this._detailerDraw;this._detailerDraw=null;
+    const box=[Math.min(x,s.x),Math.min(y,s.y),Math.max(x,s.x),Math.max(y,s.y)];if(box[2]-box[0]<.004||box[3]-box[1]<.004)return;
+    const d=this._ws().detailer;this.wsSet({detailer:Object.assign({},d,{manualCorrections:[...(d.manualCorrections||[]),{operation:s.operation,box}],manualCorrectionRedo:[],maskPreview:null,note:'Manual correction recorded. Preview again to apply it.'})});
+  };
+  P.paintDetailerMaskAt = function (e) {
+    const r=e.currentTarget.getBoundingClientRect();if(!r.width||!r.height)return;const d=this._ws().detailer,size=Math.max(.02,Math.min(.3,Number(d.maskBrushSize)||.08)),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;
+    const box=[Math.max(0,x-size/2),Math.max(0,y-size/2),Math.min(1,x+size/2),Math.min(1,y+size/2)];
+    this.wsSet({detailer:Object.assign({},d,{manualCorrections:[...(d.manualCorrections||[]),{operation:d.maskEditMode||'add',box}],manualCorrectionRedo:[],maskPreview:null,note:'Manual correction recorded. Preview again to apply it.'})});
+  };
+
+  P.undoDetailerMaskEdit = function () {
+    const d=this._ws().detailer, edits=d.manualCorrections||[]; if(!edits.length)return;
+    this.wsSet({detailer:Object.assign({},d,{manualCorrections:edits.slice(0,-1),manualCorrectionRedo:[...(d.manualCorrectionRedo||[]),edits.at(-1)],maskPreview:null,note:'Last mask edit undone. Preview again to apply it.'})});
+  };
+  P.redoDetailerMaskEdit = function () {
+    const d=this._ws().detailer, redo=d.manualCorrectionRedo||[]; if(!redo.length)return;
+    this.wsSet({detailer:Object.assign({},d,{manualCorrections:[...(d.manualCorrections||[]),redo.at(-1)],manualCorrectionRedo:redo.slice(0,-1),maskPreview:null,note:'Mask edit restored. Preview again to apply it.'})});
+  };
+  P.resetDetailerMaskEdits = function () {
+    const d=this._ws().detailer;this.wsSet({detailer:Object.assign({},d,{manualCorrections:[],manualCorrectionRedo:[],maskPreview:null,note:'Manual mask edits reset. Preview again to apply the detected mask.'})});
   };
 
   P.closeDetailer = function () {
@@ -1891,6 +1957,7 @@
   P.detailerPayload = function (d) {
     return {
       image_id: d.imageId, mode: d.mode, threshold: d.threshold, padding: d.padding, feather: d.feather,
+      detector:d.detector||'apple-vision', target:d.target||'', selectedInstances:d.selectedInstances||[], manualCorrections:d.manualCorrections||[], repairExpansion:d.repairExpansion||0, edit_model:d.editModel||'',
       targetSelection: d.targetSelection || 'largest', dilate: d.dilate || 0
     };
   };
@@ -1902,7 +1969,7 @@
     const previewToken = this._detailerPreviewToken = {};
     this._detailerDetectController?.abort();
     const controller = this._detailerDetectController = new AbortController();
-    this.wsSet({ detailer: Object.assign({}, d, { loading: true, maskPreview: null, detections: [], note: 'Detecting with Apple Vision…' }) });
+    this.wsSet({ detailer: Object.assign({}, d, { loading: true, maskPreview: null, detections: [], note: 'Detecting with ' + (d.detector==='owlv2-base-patch16-ensemble'?'local OWLv2…':'Apple Vision…') }) });
     try {
       const res = await this._api('/api/detailer/mask-preview', this.detailerPayload(d), undefined, controller.signal);
       if (this._detailerPreviewToken !== previewToken) return;
@@ -1938,7 +2005,7 @@
     const runToken = this._detailerRunToken = {};
     this._detailerDetectController?.abort();
     const controller = this._detailerDetectController = new AbortController();
-    this.wsSet({ detailer: Object.assign({}, d, { loading: true, note: 'Detecting with Apple Vision…' }) });
+    this.wsSet({ detailer: Object.assign({}, d, { loading: true, note: 'Detecting with ' + (d.detector==='owlv2-base-patch16-ensemble'?'local OWLv2…':'Apple Vision…') }) });
     try {
       let maskData = d.maskPreview;
       if (!maskData) {
@@ -1962,6 +2029,7 @@
         mask_data: maskData,
         prompt: promptText,
         strength: d.strength || 0.45,
+        edit_model: d.editModel || '',
         parent_image_id: d.imageId,
         detailed_from: d.imageId,
         operation: 'detailer'
@@ -1992,6 +2060,7 @@
   P.buildDetailerModal = function () {
     const ws = this._ws(), d = ws.detailer || {};
     if (!d || !d.open) return null;
+    const owl=(d.providers||[]).find(p=>p.id==='owlv2-base-patch16-ensemble'), detections=d.detections||[];
     return h('div', {
       role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Native Vision Detailer', 'data-detailer-dialog': '1', tabIndex: -1,
       style: {
@@ -2011,7 +2080,13 @@
           h('div', { style: { fontSize: 15, fontWeight: 800, color: '#f3e8ff', fontFamily: "\'DM Sans\',sans-serif" } }, 'Native Vision Detailer'),
           btn('Close', () => this.closeDetailer(), '#94a3b8')
         ),
-        h('div', { style: css.muted }, 'Targeted inpaint refinement using Apple Vision detection on MacBook Air. Reuses existing inpaint pipeline and preserves source image.'),
+        h('div', { style: css.muted }, 'Detect locally, review an approximate mask, then refine through the existing inpaint pipeline. The source image is preserved.'),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:8}},
+          h('label',{style:css.label},'Inpaint model',h('select',{'aria-label':'Inpaint model',value:d.editModel||'',onChange:e=>{const current=this._ws().detailer||d;this.wsSet({detailer:Object.assign({},current,{editModel:e.target.value,note:''})})},style:css.input},...(d.editModelTargets||[]).map(t=>h('option',{key:t.id,value:t.id},t.label)))),
+          h('label',{style:css.label},'Saved preset',h('select',{value:d.selectedPreset||'',onChange:e=>this.applyDetailerPreset(e.target.value),style:css.input},h('option',{value:''},'Choose a preset'),...(d.presets||[]).map(p=>h('option',{key:p.id,value:p.id},p.name+(p.availability?.startsWith('unavailable')?' · specialist not installed':''))))),
+          h('label',{style:css.label},'Detector',h('select',{value:d.detector||'apple-vision',onChange:e=>this.wsSet({detailer:Object.assign({},d,{detector:e.target.value,maskPreview:null,selectedInstances:[],manualCorrections:[],note:''})}),style:css.input},h('option',{value:'apple-vision'},'Apple Vision · face / hand / person'),h('option',{value:'owlv2-base-patch16-ensemble',disabled:!owl?.available},'OWLv2 · open vocabulary'+(owl?.available?'':' · unavailable'))))
+        ),
+        d.detector==='owlv2-base-patch16-ensemble'?h('div',null,h('div',{style:css.label},'Describe the visible target'),h('input',{type:'text','aria-label':'Describe the visible target',value:d.target||'',maxLength:240,onChange:e=>this.wsSet({detailer:Object.assign({},d,{target:e.target.value,maskPreview:null,selectedInstances:[],note:''})}),placeholder:'e.g. silver necklace',style:css.input}),h('div',{style:css.muted},'OWLv2 returns bounding boxes. Its rectangle mask is approximate; precise segmentation is unavailable.'),!owl?.available?h('div',{role:'status',style:{color:'#fbbf24'}},owl?.reason||'OWLv2 is unavailable on the backend host.'):null):null,
         h('div', { style: css.row },
           btn('Face', () => this.wsSet({ detailer: Object.assign({}, d, { mode: 'face', maskPreview: null, note: '', prompt: 'preserve identity, pose and expression; improve facial anatomy, eyes, mouth and skin detail' }) }), d.mode === 'face' ? '#a855f7' : '#94a3b8'),
           btn('Hand (Derived ROI)', () => this.wsSet({ detailer: Object.assign({}, d, { mode: 'hand', maskPreview: null, note: '', prompt: 'preserve hand pose and interaction; correct hand anatomy and finger structure' }) }), d.mode === 'hand' ? '#a855f7' : '#94a3b8'),
@@ -2047,8 +2122,10 @@
             h('div', { style: css.label }, 'Grow / shrink mask: ' + (d.dilate || 0) + 'px'),
             h('input', { type: 'range', min: '-30', max: '30', step: '1', value: String(d.dilate || 0),
               onChange: e => this.wsSet({ detailer: Object.assign({}, d, { dilate: +e.target.value, maskPreview: null, note: '' }) }), style: { width: '100%' } })
-          )
+          ),
+          d.detector==='owlv2-base-patch16-ensemble'?h('div',null,h('div',{style:css.label},'Repair expansion beyond detected target: '+(d.repairExpansion||0)+' px'),h('input',{type:'range',min:'0',max:'256',step:'4',value:String(d.repairExpansion||0),onChange:e=>{const current=this._ws().detailer||d;this.wsSet({detailer:Object.assign({},current,{repairExpansion:+e.target.value,maskPreview:null})})},style:{width:'100%'}})):null
         ),
+        detections.length ? h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('div',{style:css.label},'Detected instances · choose target regions'),...detections.map(x=>h('label',{key:x.instance_id||x.id,style:{...css.row,fontSize:12}},h('input',{type:'checkbox',checked:(d.selectedInstances||[]).includes(x.instance_id),onChange:e=>{const current=this._ws().detailer||d;const selected=current.selectedInstances||[];this.wsSet({detailer:Object.assign({},current,{selectedInstances:e.target.checked?[...selected,x.instance_id]:selected.filter(id=>id!==x.instance_id),targetSelection:'all',maskPreview:null})})}}),`${x.label||x.mode||'target'} · ${Math.round(Number(x.confidence||0)*100)}% · box ${Array.isArray(x.box_pixels)?x.box_pixels.map(v=>Math.round(v)).join(', '):'coordinates available'}`))):null,
         d.note ? h('div', { role: 'status', 'data-detailer-note': '1', style: { fontSize: 12, color: /failed|No |Error|did not/.test(d.note) ? '#fca5a5' : '#cbd5e1' } }, d.note) : null,
         h('div', null,
           h('div', { style: css.label }, 'Repair prompt override'),
@@ -2060,9 +2137,13 @@
           })
         ),
         d.maskPreview ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
-          h('div', { style: css.label }, 'Mask Preview (White = inpaint region, ' + (d.detections ? d.detections.length : 0) + ' target(s))'),
-          h('img', { src: d.maskPreview, alt: 'Mask preview', 'data-fullscreen': 'only', style: { maxHeight: 180, objectFit: 'contain', borderRadius: 6, border: '1px solid rgba(168,85,247,.4)' } })
+          h('div', { 'data-approximate-mask':d.detector==='owlv2-base-patch16-ensemble'?'true':undefined,style: css.label }, (d.detector==='owlv2-base-patch16-ensemble'?'Approximate Mask':'Mask Preview')+' (White = inpaint region, ' + detections.length + ' target(s))'),
+          h('img', { src: d.maskPreview, alt: 'Mask preview', role:'button',tabIndex:0,'aria-label':'Edit approximate mask',onClick:e=>this.paintDetailerMaskAt(e),onKeyDown:e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();this.paintDetailerMaskAt({currentTarget:e.currentTarget,clientX:e.currentTarget.getBoundingClientRect().left+e.currentTarget.clientWidth/2,clientY:e.currentTarget.getBoundingClientRect().top+e.currentTarget.clientHeight/2});}},draggable:false,style: { maxHeight: 240,maxWidth:'100%',objectFit: 'contain', borderRadius: 6, border: '1px solid rgba(168,85,247,.4)',touchAction:'none',cursor:'crosshair' } }),
+          h('div',{style:css.muted},'Click the mask to add or erase a patch; choose the mode, then preview again.'),
+          h('label',{style:css.label},'Brush size: '+Math.round((d.maskBrushSize||.08)*100)+'%',h('input',{type:'range',min:'.02',max:'.30',step:'.01',value:String(d.maskBrushSize||.08),onChange:e=>this.wsSet({detailer:Object.assign({},d,{maskBrushSize:+e.target.value})}),style:{width:'100%'}})),
+          h('div',{style:css.row},btn(d.maskEditMode==='erase'?'Erase mode':'Add mode',()=>this.wsSet({detailer:Object.assign({},d,{maskEditMode:d.maskEditMode==='erase'?'add':'erase'})}),'#64748b'),btn('Undo',()=>this.undoDetailerMaskEdit(),'#64748b',{disabled:!(d.manualCorrections||[]).length}),btn('Redo',()=>this.redoDetailerMaskEdit(),'#64748b',{disabled:!(d.manualCorrectionRedo||[]).length}),btn('Reset edits',()=>this.resetDetailerMaskEdits(),'#64748b',{disabled:!(d.manualCorrections||[]).length}))
         ) : null,
+        h('div',{style:css.row},h('input',{type:'text',value:d.presetName||'',placeholder:'New preset name',onChange:e=>this.wsSet({detailer:Object.assign({},d,{presetName:e.target.value})}),style:{...css.input,maxWidth:200}}),btn('Save preset',()=>this.saveDetailerPreset(),'#64748b'),btn('Export selected',()=>this.exportDetailerPreset(),'#64748b'),h('label',{style:{...css.row,cursor:'pointer'}},'Import preset',h('input',{type:'file',accept:'application/json,.json',onChange:e=>this.importDetailerPreset(e.target.files?.[0]),style:{maxWidth:160}}))),
         h('div', { style: { borderTop: '1px solid rgba(148,163,184,.14)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
           h('span', { style: { fontSize: 11, color: '#f87171', fontStyle: 'italic' } }, 'Face Swap: UNAVAILABLE (No proven license-safe local model)'),
           h('div', { style: css.row },

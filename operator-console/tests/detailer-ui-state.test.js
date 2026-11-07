@@ -43,3 +43,35 @@ test('Detailer timeout is terminal, preserves selection/options, and late failed
   old({ ok: true, data: { mask_preview: 'STALE', detections: [] } }); await pending;
   assert.equal(a.ws.detailer.maskPreview, 'HEALTHY'); assert.equal(a.ws.detailer.loading, false);
 });
+
+test('open-vocabulary Detailer payload keeps target, selected instance, neighbor expansion and manual mask edits', () => {
+  const a=fixture(); const d=a.ws.detailer; Object.assign(d,{detector:'owlv2-base-patch16-ensemble',target:'silver necklace',selectedInstances:['owlv2-2'],repairExpansion:48,editModel:'sdxl-biglust',manualCorrections:[{operation:'erase',box:[.1,.2,.3,.4]}]});
+  const p=a.detailerPayload(d);
+  assert.equal(p.detector,'owlv2-base-patch16-ensemble');assert.equal(p.target,'silver necklace');assert.deepEqual(p.selectedInstances,['owlv2-2']);assert.equal(p.repairExpansion,48);assert.equal(p.edit_model,'sdxl-biglust');assert.equal(p.manualCorrections[0].operation,'erase');
+});
+
+test('Detailer preset application chooses the right local provider and preserves target/repair settings', () => {
+  const a=fixture();a.ws.detailer.presets=[{id:'underwear-hips',name:'Underwear + hips',target:'male underwear',confidence:.4,mask:{padding:.1,feather:3,expansion:0},repairExpansion:42,prompt:'preserve fabric',strength:.5}];
+  a.applyDetailerPreset('underwear-hips');const d=a.ws.detailer;
+  assert.equal(d.detector,'owlv2-base-patch16-ensemble');assert.equal(d.target,'male underwear');assert.equal(d.repairExpansion,42);assert.equal(d.prompt,'preserve fabric');
+});
+
+test('manual mask drag creates a normalized, operation-tagged correction without losing detection options', () => {
+  const a=fixture();a.ws.detailer.maskEditMode='erase';
+  const target={getBoundingClientRect:()=>({left:10,top:20,width:100,height:200}),setPointerCapture(){}};
+  a.beginDetailerMaskEdit({currentTarget:target,clientX:20,clientY:40,pointerId:1});
+  a.finishDetailerMaskEdit({currentTarget:target,clientX:60,clientY:120});
+  const c=a.ws.detailer.manualCorrections[0];assert.equal(c.operation,'erase');assert.deepEqual(Array.from(c.box),[.1,.1,.5,.5]);assert.equal(a.ws.detailer.imageId,'a.png');
+});
+
+test('manual mask edits support undo, redo and reset without corrupting normalized coordinates', () => {
+  const a=fixture();
+  const target={getBoundingClientRect:()=>({left:20,top:30,width:200,height:100})};
+  a.ws.detailer.maskEditMode='add';
+  a.paintDetailerMaskAt({currentTarget:target,clientX:120,clientY:80});
+  const c=a.ws.detailer.manualCorrections[0];
+  assert.equal(c.operation,'add');assert.deepEqual(Array.from(c.box),[.46,.46,.54,.54]);
+  a.undoDetailerMaskEdit();assert.equal(a.ws.detailer.manualCorrections.length,0);assert.equal(a.ws.detailer.manualCorrectionRedo.length,1);
+  a.redoDetailerMaskEdit();assert.deepEqual(Array.from(a.ws.detailer.manualCorrections[0].box),[.46,.46,.54,.54]);
+  a.resetDetailerMaskEdits();assert.equal(a.ws.detailer.manualCorrections.length,0);assert.equal(a.ws.detailer.manualCorrectionRedo.length,0);
+});

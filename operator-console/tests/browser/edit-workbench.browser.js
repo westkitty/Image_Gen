@@ -456,6 +456,55 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
       await ctx.close();
     });
 
+    await test('Universal Detailer: OWLv2 target, selected box, neighbor expansion, hand-edited approximate mask, and inpaint handoff', async () => {
+      const { page, ctx, posts, errors } = await newPage(browser,srv.base);
+      const PIXEL='data:image/png;base64,'+makePng(800,500).toString('base64'), detectCalls=[];
+      await page.route('**/api/detailer/status',r=>r.fulfill({json:{available:true,providers:[{id:'apple-vision',available:true},{id:'owlv2-base-patch16-ensemble',available:true}],presets:[]}}));
+      await page.route('**/api/detailer/presets',r=>r.fulfill({json:{presets:[{id:'underwear-hips',name:'Underwear + hips',target:'male underwear',detector:'auto',confidence:.3,mask:{padding:.2,feather:8,expansion:0},repairExpansion:64,prompt:'refine clothing and adjacent hips',strength:.45,availability:'unverified: open-vocabulary recognition'}]}}));
+      await page.route('**/api/detailer/mask-preview',async r=>{const b=r.request().postDataJSON();detectCalls.push(b);await r.fulfill({json:{status:'ok',empty:false,mask_preview:PIXEL,detector_id:'owlv2-base-patch16-ensemble',approximate_mask:true,detections_count:1,detections:[{instance_id:'owlv2-1',label:b.target,confidence:.72,box_normalized:[.2,.2,.6,.6],box_pixels:[160,100,480,300],selected:true,repair_pixels:[120,60,520,340]}],mask:{kind:'approximate_rectangle',precise:false,coverage:.25}}});});
+      await page.route('**/api/actions/inpaint',r=>{posts.push({url:'/api/actions/inpaint',body:r.request().postDataJSON()});return r.fulfill({status:500,json:{error:'test stop after request'}});});
+      await page.evaluate(()=>__dex.setScreen('library'));
+      await page.getByRole('button',{name:'Select fx-landscape.png for details',exact:true}).first().click();
+      await openImageActions(page,'fx-landscape.png');await page.getByRole('button',{name:'Detailer',exact:true}).click();
+      const dialog=page.locator('[data-detailer-dialog]');
+      await page.waitForFunction(()=>document.querySelector('[data-detailer-dialog] select[aria-label="Inpaint model"] option[value="sdxl-biglust"]'));
+      const detailerModels=await dialog.getByLabel('Inpaint model').locator('option').evaluateAll(es=>es.map(e=>({value:e.value,label:e.textContent})));
+      assert.ok(detailerModels.some(x=>x.value==='sdxl-biglust'),JSON.stringify({detailerModels,state:await page.evaluate(()=>({editModels:__dex.state.capabilityData?.editModels,targets:__dex.state.modelTargets?.map(t=>[t.id,t.status,t.runtime]),detailer:__dex.ws.detailer.editModelTargets}))}));
+      await dialog.getByLabel('Inpaint model').selectOption('sdxl-biglust');
+      try { await page.waitForFunction(()=>document.querySelector('[data-detailer-dialog] select option[value="underwear-hips"]')); } catch (e) { throw new Error(JSON.stringify({detailer:await page.evaluate(()=>__dex.ws.detailer),errors})); }
+      await dialog.getByLabel('Saved preset').selectOption('underwear-hips');
+      assert.equal(await dialog.getByLabel('Describe the visible target').inputValue(),'male underwear');
+      await dialog.getByLabel('Detector').selectOption('owlv2-base-patch16-ensemble');
+      await dialog.getByLabel('Describe the visible target').fill('silver necklace');
+      await dialog.getByRole('button',{name:'Preview Mask',exact:true}).click();
+      await dialog.locator('img[alt="Mask preview"]').waitFor();
+      assert.equal(detectCalls.at(-1).target,'silver necklace');
+      assert.equal(detectCalls.at(-1).detector,'owlv2-base-patch16-ensemble');
+      await dialog.locator('[data-approximate-mask="true"]').waitFor();
+      const instance=dialog.locator('input[type="checkbox"]').first();await instance.check();await page.waitForFunction(()=>__dex.ws.detailer.selectedInstances?.includes('owlv2-1'));
+      await dialog.locator('input[type="range"]').nth(5).evaluate(el=>{el.value='64';el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));});
+      await dialog.getByRole('button',{name:'Preview Mask',exact:true}).click();await dialog.locator('img[alt="Mask preview"]').waitFor();
+      const box=await dialog.locator('img[alt="Mask preview"]').boundingBox();
+      await dialog.locator('img[alt="Mask preview"]').evaluate((img,xy)=>img.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:img.getBoundingClientRect().left+xy.x,clientY:img.getBoundingClientRect().top+xy.y})),{x:box.width*.7,y:box.height*.3});
+      assert.equal(await page.evaluate(()=>__dex.ws.detailer.manualCorrections.length),1);
+      await dialog.getByRole('button',{name:'Preview Mask',exact:true}).click();await dialog.locator('img[alt="Mask preview"]').waitFor();
+      assert.equal(detectCalls.at(-1).selectedInstances[0],'owlv2-1');assert.equal(detectCalls.at(-1).repairExpansion,64);assert.equal(detectCalls.at(-1).manualCorrections.length,1);
+      await dialog.getByRole('button',{name:'Undo',exact:true}).click();assert.equal(await page.evaluate(()=>__dex.ws.detailer.manualCorrections.length),0);
+      await dialog.getByRole('button',{name:'Preview Mask',exact:true}).click();await dialog.locator('img[alt="Mask preview"]').waitFor();assert.equal(detectCalls.at(-1).manualCorrections.length,0);
+      await dialog.getByRole('button',{name:'Redo',exact:true}).click();assert.equal(await page.evaluate(()=>__dex.ws.detailer.manualCorrections.length),1);
+      await dialog.getByRole('button',{name:'Preview Mask',exact:true}).click();await dialog.locator('img[alt="Mask preview"]').waitFor();assert.equal(detectCalls.at(-1).manualCorrections.length,1);
+      await dialog.getByRole('button',{name:'Reset edits',exact:true}).click();assert.equal(await page.evaluate(()=>__dex.ws.detailer.manualCorrections.length),0);
+      await dialog.getByRole('button',{name:'Preview Mask',exact:true}).click();await dialog.locator('img[alt="Mask preview"]').waitFor();
+      const resetBox=await dialog.locator('img[alt="Mask preview"]').boundingBox();
+      await dialog.locator('img[alt="Mask preview"]').click({position:{x:resetBox.width*.7,y:resetBox.height*.3}});assert.equal(await page.evaluate(()=>__dex.ws.detailer.manualCorrections.length),1);
+      await dialog.getByRole('button',{name:'Preview Mask',exact:true}).click();await dialog.locator('img[alt="Mask preview"]').waitFor();assert.equal(detectCalls.at(-1).manualCorrections.length,1);
+      await dialog.getByRole('button',{name:'Run Detailer',exact:true}).click();
+      await dialog.getByText(/Detailer failed: test stop after request/).waitFor();
+      const inpaint=posts.filter(p=>p.url==='/api/actions/inpaint').at(-1).body;
+      assert.equal(inpaint.mask_data,PIXEL);assert.equal(inpaint.operation,'detailer');assert.equal(inpaint.detailed_from,'fx-landscape.png');assert.equal(inpaint.edit_model,'sdxl-biglust');assert.deepEqual(errors,[]);
+      await ctx.close();
+    });
+
     await test('every V2 screen renders without script errors (incl. Drama/Voice/Edit)', async () => {
       const { page, ctx, errors } = await newPage(browser, srv.base);
       for (const v of [2]) {

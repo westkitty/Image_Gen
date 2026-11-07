@@ -50,6 +50,7 @@ const EditModels = require('./edit-models');
 const { resolveLoraRuntimePolicy, routesFor, registeredStagedSdLora } = require('./lora-runtime-policy');
 const { MODEL_CARDS, getModelCards, getModelCardById, checkModelSwitchWarnings } = require('./model-registry');
 const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt, ATTEMPT_TIMEOUT_MS } = require('./detailer');
+const { ProviderRegistry, PRESETS: DETAILER_PRESETS, createPresetStore, createOwlv2Detector, validateModelManifest } = require('./detailer-providers');
 const ControlNet = require('./controlnet');
 const VisionPose = require('./vision-pose');
 const { createEventBus } = require('./event-bus');
@@ -80,6 +81,17 @@ assertDataRootMount(STORAGE_PATHS);
 const WORKFLOW_ROOT = STORAGE_PATHS.workflowRoot;
 const RUNS_DIR = STORAGE_PATHS.runsDir;
 const STATE_DIR = STORAGE_PATHS.stateDir;
+const detailerPresetStore = createPresetStore(path.join(STATE_DIR, 'detailer-presets.json'));
+const OWLV2_MODEL_DIR = path.join(os.homedir(), 'Library/Caches/DexDiffusion/detailer-owlv2/model');
+const OWLV2_PYTHON = path.join(os.homedir(), 'Library/Caches/DexDiffusion/detailer-owlv2/venv/bin/python');
+const OWLV2_MODEL_MANIFEST = Object.freeze({id:'owlv2-base-patch16-ensemble',format:'safetensors',sha256:'e1e130b9e404cf91a75ad45644c1da9d7fa5284085eecc864266a6923efb99e7',provenance:'Hugging Face google/owlv2-base-patch16-ensemble revision 410d70ced26e95c344915c2f10f4ecf967f2cde4',license:'Apache-2.0',runtime:'PyTorch MPS + Transformers',version:'410d70ced26e95c344915c2f10f4ecf967f2cde4',outputSchema:'dexdiffusion-detections-v1'});
+let registeredOwlv2Model=null;
+try { registeredOwlv2Model=validateModelManifest(OWLV2_MODEL_MANIFEST,path.join(OWLV2_MODEL_DIR,'model.safetensors')); } catch (_) {}
+const OWLV2_AVAILABLE = !!(registeredOwlv2Model && fs.existsSync(OWLV2_PYTHON) && fs.existsSync(path.join(OWLV2_MODEL_DIR,'config.json')));
+const owlv2Detector = createOwlv2Detector({ python:OWLV2_PYTHON, script:path.join(__dirname,'bin/owlv2-detect.py'), model:OWLV2_MODEL_DIR });
+const detailerProviderRegistry = new ProviderRegistry();
+detailerProviderRegistry.register({id:'apple-vision',version:'system',kind:'native',backend:'apple-vision',available:isVisionDetailerAvailable(),reason:isVisionDetailerAvailable()?null:'Native Vision binary is missing.',detect:detectRegions});
+detailerProviderRegistry.register({id:'owlv2-base-patch16-ensemble',version:'google/owlv2-base-patch16-ensemble@410d70ced26e95c344915c2f10f4ecf967f2cde4',kind:'open-vocabulary',backend:'local-mps',available:OWLV2_AVAILABLE,reason:'Local model, SHA-256 manifest validation, or isolated runtime is unavailable.',detect:owlv2Detector});
 const publicationOutbox = createPublicationOutbox(path.join(STATE_DIR, 'publications'));
 const crossHostPublicationEnabled = !!STORAGE_PATHS.dataRoot && !TestIsolation.enabled() && os.hostname().toLowerCase() === 'bigmac';
 const macbookImages = crossHostPublicationEnabled || process.env.DEX_MACBOOK_IMAGES_URL
@@ -929,16 +941,25 @@ function imageSourceMap() {
 // Accept a canonical image id as an edit source (the UI never handles run ids).
 // Rewrites body.run_id/init_image_file for the existing validated handlers and
 // returns the source image id for lineage.
-// Imported (staged) image -> temporary PNG working copy in mask-uploads/ (the
-// edit scripts accept that area). Never enters images_made.
+// Edit scripts require PNG inputs. Preserve the selected source and create a
+// private working copy for imported or canonical JPEG/WebP sources.
+function sourceToWorkingPng(sourcePath) {
+  const out = path.join(MASK_UPLOADS_DIR, `import-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.png`);
+  try {
+    execFileSync('python3', ['-c', 'import sys\nfrom PIL import Image\nim=Image.open(sys.argv[1]); im.load(); im.convert("RGB").save(sys.argv[2])\nprint(im.size[0], im.size[1])', sourcePath, out], { timeout: 30000 });
+  } catch (_) { try { fs.unlinkSync(out); } catch (__) {} return { error: 'reference-invalid: image could not be decoded into a PNG working copy' }; }
+  return { path: out, dims: pngSize(out) };
+}
 function stagedToWorkingPng(stagedId) {
   const st = staging.get(stagedId);
   if (!st || st.kind !== 'image') return { error: 'Imported source not found or expired.' };
-  const out = path.join(MASK_UPLOADS_DIR, `import-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.png`);
-  try {
-    execFileSync('python3', ['-c', 'import sys\nfrom PIL import Image\nim=Image.open(sys.argv[1]); im.load(); im.convert("RGB").save(sys.argv[2])\nprint(im.size[0], im.size[1])', st.path, out], { timeout: 30000 });
-  } catch (_) { try { fs.unlinkSync(out); } catch (__) {} return { error: 'reference-invalid: imported image could not be decoded' }; }
-  return { path: out, dims: pngSize(out) };
+  return sourceToWorkingPng(st.path);
+}
+
+function fillMissingSourceDimensions(body, dims) {
+  if (!dims) return;
+  if (body.width === undefined || body.width === '' || body.width === null) body.width = dims.width;
+  if (body.height === undefined || body.height === '' || body.height === null) body.height = dims.height;
 }
 
 function cleanupRejectedSource(res, source) {
@@ -955,7 +976,7 @@ function resolveImageSource(body) {
     const w = stagedToWorkingPng(body.staged_id);
     if (w.error) return { error: w.error };
     body.__initPath = w.path;
-    if (w.dims && (body.width === undefined || body.width === '' || body.width === null)) { body.width = w.dims.width; body.height = w.dims.height; }
+    fillMissingSourceDimensions(body, w.dims);
     return { imageId: null, staged: true, path: w.path, dims: w.dims, temp: w.path };
   }
   if (typeof body.image_id === 'string' && body.image_id) {
@@ -963,17 +984,31 @@ function resolveImageSource(body) {
     if (!img) return { error: 'Source image not found in the canonical image store.' };
     const src = imageSourceMap().get(body.image_id);
     if (!src) {
+      const dims = pngSize(img.path);
+      if (path.extname(img.path).toLowerCase() !== '.png') {
+        const working = sourceToWorkingPng(img.path);
+        if (working.error) return working;
+        body.run_id = '20000101-000000-import'; body.init_image_file = 'import.png'; body.__initPath = working.path;
+        fillMissingSourceDimensions(body, working.dims);
+        return { imageId: body.image_id, staged: true, path: working.path, dims: working.dims, temp: working.path };
+      }
       body.run_id = '20000101-000000-canonical';
       body.init_image_file = path.basename(img.path);
       body.__initPath = img.path;
-      const dims = pngSize(img.path);
-      if (dims && (body.width === undefined || body.width === '' || body.width === null)) { body.width = dims.width; body.height = dims.height; }
+      fillMissingSourceDimensions(body, dims);
       return { imageId: body.image_id, path: img.path, dims };
+    }
+    const dims = pngSize(img.path);
+    if (path.extname(img.path).toLowerCase() !== '.png') {
+      const working = sourceToWorkingPng(img.path);
+      if (working.error) return working;
+      body.run_id = '20000101-000000-import'; body.init_image_file = 'import.png'; body.__initPath = working.path;
+      fillMissingSourceDimensions(body, working.dims);
+      return { imageId: body.image_id, staged: true, path: working.path, dims: working.dims, temp: working.path };
     }
     body.run_id = src.runId;
     body.init_image_file = path.basename(src.runFile);
-    const dims = pngSize(img.path);
-    if (dims && (body.width === undefined || body.width === '' || body.width === null)) { body.width = dims.width; body.height = dims.height; }
+    fillMissingSourceDimensions(body, dims);
     return { imageId: body.image_id, path: img.path, dims };
   }
   if (typeof body.run_id === 'string' && typeof body.init_image_file === 'string') {
@@ -3269,9 +3304,17 @@ app.get('/api/extra-networks', (req, res) => {
 });
 
 app.get('/api/detailer/status', (req, res) => {
+  const owlAvailable = OWLV2_AVAILABLE;
   res.json({
     available: isVisionDetailerAvailable(),
     backend: 'apple-vision',
+    providers: [
+      ...detailerProviderRegistry.list().map(provider=>provider.id==='owlv2-base-patch16-ensemble'?{...provider,runtime:owlAvailable?OWLV2_PYTHON:null,model:owlAvailable?OWLV2_MODEL_DIR:null,license:'Apache-2.0',source:'google/owlv2-base-patch16-ensemble',precision:'SafeTensors',masks:'approximate rectangle only',supports:['arbitrary text query']}:{...provider,supports:['face','hand','person']}),
+      { id:'specialist', kind:'custom', available:false, reason:'No validated specialist model is registered.' },
+      { id:'segmentation', kind:'mask-refinement', available:false, reason:'No local segmentation provider is registered.' }
+    ],
+    model_registry:[{...OWLV2_MODEL_MANIFEST,available:owlAvailable,mask_output:'bounding boxes only'}],
+    presets: detailerPresetStore.list(),
     supported_modes: ['face', 'hand', 'person'],
     timeout_ms: ATTEMPT_TIMEOUT_MS,
     default_prompts: {
@@ -3282,11 +3325,36 @@ app.get('/api/detailer/status', (req, res) => {
   });
 });
 
+app.get('/api/detailer/presets', (req, res) => res.json({ presets: detailerPresetStore.list(), schema:'dexdiffusion-detailer-preset-v1' }));
+app.post('/api/detailer/presets', (req, res) => {
+  try { return res.status(201).json({ preset:detailerPresetStore.save(req.body) }); }
+  catch (err) { return res.status(400).json({ error:err.message }); }
+});
+app.put('/api/detailer/presets/:id', (req, res) => {
+  try {
+    if (req.params.id !== req.body?.id) return res.status(400).json({ error:'Preset id in path and body must match' });
+    return res.json({ preset:detailerPresetStore.save(req.body) });
+  } catch (err) { return res.status(400).json({ error:err.message }); }
+});
+app.delete('/api/detailer/presets/:id', (req, res) => {
+  try { return detailerPresetStore.remove(req.params.id) ? res.status(204).end() : res.status(404).json({ error:'Custom preset not found' }); }
+  catch (err) { return res.status(400).json({ error:err.message }); }
+});
+app.get('/api/detailer/presets/:id/export', (req, res) => {
+  const data = detailerPresetStore.export(req.params.id);
+  if (!data) return res.status(404).json({ error:'Preset not found' });
+  res.type('application/json').send(data);
+});
+app.post('/api/detailer/presets/import', (req, res) => {
+  try { return res.status(201).json({ preset:detailerPresetStore.import(req.body?.data) }); }
+  catch (err) { return res.status(400).json({ error:err.message }); }
+});
+
 // Detail-target options accepted from the client (all optional; the native detector applies its own defaults).
 function detailerOptionsFrom(body) {
   const o = {};
   const b = body || {};
-  for (const k of ['threshold', 'padding', 'feather', 'maxTargets', 'targetSelection', 'minArea', 'maxArea', 'offsetX', 'offsetY', 'dilate', 'personQuality']) {
+  for (const k of ['threshold', 'padding', 'feather', 'maxTargets', 'targetSelection', 'minArea', 'maxArea', 'offsetX', 'offsetY', 'dilate', 'personQuality', 'repairExpansion']) {
     if (b[k] !== undefined && b[k] !== null && b[k] !== '') o[k] = b[k];
   }
   // snake_case aliases
@@ -3294,6 +3362,15 @@ function detailerOptionsFrom(body) {
   for (const [from, to] of Object.entries(alias)) if (o[to] === undefined && b[from] !== undefined && b[from] !== null && b[from] !== '') o[to] = b[from];
   o.mode = b.mode || 'face';
   return o;
+}
+async function runDetailerDetector(imagePath, body, options) {
+  const detector = body && body.detector;
+  if (!detector || detector === 'apple-vision') return detectRegions(imagePath, { ...options, signal:body?.signal });
+  if (detector !== 'owlv2-base-patch16-ensemble') throw Object.assign(new Error(`Detector is unavailable: ${detector}`), { code:'provider_unavailable', status:503 });
+  if (typeof body.target !== 'string' || !body.target.trim() || body.target.length > 240) throw Object.assign(new Error('Enter a target phrase up to 240 characters.'), { code:'bad_option', status:400 });
+  const result = await detailerProviderRegistry.detect('owlv2-base-patch16-ensemble',imagePath,{ ...options, target:body.target, selectedInstances:body.selectedInstances, manualCorrections:body.manualCorrections, signal:body.signal });
+  result.mode='open-vocabulary'; result.approximate_mask=true;
+  return result;
 }
 function detectorRequestSignal(res) {
   const controller = new AbortController();
@@ -3305,7 +3382,7 @@ function detailerFail(res, err) {
   return res.status(status).json({ error: err.message, code: err.code || 'detailer_failed', stage: err.stage || undefined });
 }
 function detailerSummary(result) {
-  return { backend: result.backend, mode: result.mode, selection: result.selection, candidates: result.candidates, filtered: result.filtered, detections: result.detections, detections_count: result.detections_count, mask: result.mask ? { coverage: result.mask.coverage, width: result.mask.width, height: result.mask.height, format: result.mask.format } : undefined, timings_ms: result.timings_ms, attempts: result.attempts };
+  return { backend: result.backend, detector_id:result.detector_id, detector_version:result.detector_version, approximate_mask:!!result.approximate_mask, mode: result.mode, selection: result.selection, candidates: result.candidates, filtered: result.filtered, detections: result.detections, detections_count: result.detections_count, mask: result.mask ? { coverage: result.mask.coverage, width: result.mask.width, height: result.mask.height, format: result.mask.format, kind:result.mask.kind, precise:result.mask.precise } : undefined, timings_ms: result.timings_ms, attempts: result.attempts };
 }
 function noDetailerTargetsMessage(mode, result) {
   const what = { face: 'face', hand: 'hand', person: 'person' }[mode] || mode;
@@ -3321,7 +3398,7 @@ app.post('/api/detailer/detect', async (req, res) => {
     return res.status(404).json({ error: 'Source image not found' });
   }
   try {
-    const result = await detectRegions(resolved.path, { ...detailerOptionsFrom(req.body), signal: detectorRequestSignal(res) });
+    const result = await runDetailerDetector(resolved.path, { ...req.body, signal:detectorRequestSignal(res) }, detailerOptionsFrom(req.body));
     res.json({ status: 'ok', ...detailerSummary(result), image_width: result.image_width, image_height: result.image_height });
   } catch (err) {
     detailerFail(res, err);
@@ -3338,7 +3415,7 @@ app.post('/api/detailer/mask-preview', async (req, res) => {
   const maskName = `mask-preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
   const maskPath = path.join(RUNS_DIR, maskName);
   try {
-    const result = await detectRegions(resolved.path, { ...detailerOptionsFrom(req.body), outputMask: maskPath, signal: detectorRequestSignal(res) });
+    const result = await runDetailerDetector(resolved.path, { ...req.body, signal:detectorRequestSignal(res) }, { ...detailerOptionsFrom(req.body), outputMask: maskPath });
     const empty = !result.detections || result.detections.length === 0;
     const maskBase64 = !empty && fs.existsSync(maskPath) ? `data:image/png;base64,${fs.readFileSync(maskPath).toString('base64')}` : null;
     res.json({ status: 'ok', mask_preview: maskBase64, empty, message: empty ? noDetailerTargetsMessage(result.mode, result) : undefined, image_width: result.image_width, image_height: result.image_height, ...detailerSummary(result) });
@@ -3365,7 +3442,7 @@ app.post('/api/detailer/run', async (req, res) => {
   if (opts.padding === undefined) opts.padding = 0.25;
   if (opts.feather === undefined) opts.feather = 16;
   try {
-    const result = await detectRegions(resolved.path, { ...opts, outputMask: maskPath, signal: detectorRequestSignal(res) });
+    const result = await runDetailerDetector(resolved.path, { ...body, signal:detectorRequestSignal(res) }, { ...opts, outputMask: maskPath });
     if (!result.detections || result.detections.length === 0) {
       return res.status(422).json({ error: noDetailerTargetsMessage(opts.mode, result), code: 'no_targets', detections: [] });
     }
