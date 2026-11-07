@@ -33,7 +33,8 @@
   // same evidence as a separately proven generation capability in System Info.
   P._workerProofLabel = function (worker) {
     if (worker.proven) return 'proven';
-    if (worker.bridged && worker.enabled) return 'bridge proof pending';
+    const bridgeReady = worker.bridged || /local engine bridge/i.test(worker.state || '');
+    if (bridgeReady && worker.enabled) return 'bridge proof pending';
     return 'not proven';
   };
 

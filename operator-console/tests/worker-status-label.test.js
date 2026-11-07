@@ -15,7 +15,7 @@ test('worker status distinguishes bridge proof from capability proof', () => {
     setTimeout,
   }, { filename: 'media-ui.js' });
 
-  assert.equal(prototype._workerProofLabel({ media_kind: 'image', bridged: true, enabled: true, proven: false }), 'bridge proof pending');
+  assert.equal(prototype._workerProofLabel({ media_kind: 'image', enabled: true, proven: false, runtime_available: true, model_available: true, state: 'READY · local engine bridge' }), 'bridge proof pending');
   assert.equal(prototype._workerProofLabel({ media_kind: 'voice', bridged: true, enabled: true, proven: false }), 'bridge proof pending');
   assert.equal(prototype._workerProofLabel({ media_kind: 'image', bridged: true, enabled: true, proven: true }), 'proven');
   assert.equal(prototype._workerProofLabel({ media_kind: 'video', bridged: false, enabled: false, proven: false }), 'not proven');
