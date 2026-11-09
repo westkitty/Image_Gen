@@ -1784,7 +1784,7 @@
       ) : null,
       h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) },
         h('label', { style: Object.assign({}, css.label, { marginBottom: 0 }) }, 'Quantity'),
-        numInput(ws.quantity, v => this.wsSet({ quantity: v }), { min: '1', max: '100', step: '1', 'aria-label': 'Quantity' }),
+        numInput(ws.quantity, v => this.wsSet({ quantity: v }), { min: '1', max: '100', step: '1', 'aria-label': 'Quantity', onInput: e => this.wsSet({ quantity: e.target.value }) }),
         h('label', { style: Object.assign({}, css.row, { fontSize: 12, color: '#cbd5e1', gap: 4 }), title: 'Run all images in one model load (faster). They appear together at the end instead of one by one. Stable Diffusion models only.' },
           h('input', { type: 'checkbox', 'data-fast-batch': 'true', checked: !!ws.fastBatch, onChange: e => this.wsSet({ fastBatch: e.target.checked }) }), 'Fast batch'),
         btn('Square', () => setDims('square'), '#94a3b8'), btn('Landscape', () => setDims('landscape'), '#94a3b8'), btn('Portrait', () => setDims('portrait'), '#94a3b8'),
