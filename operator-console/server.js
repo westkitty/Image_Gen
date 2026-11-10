@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const { getWorkflowConfig } = require('./workflow-config');
 const os = require('node:os');
+const { createStreamingRedactor } = require('./job-output-redaction');
 const { hostToolPaths } = require('./host-tools');
 const crypto = require('crypto');
 const localEngineRouting = require('./local-engine-routing');
@@ -1665,14 +1666,15 @@ function runActionNow(jobId, scriptPath, args, savePrompts = false) {
   job.childPid = child.pid;
   job.childClosed = new Promise(resolve => child.once('close', resolve));
   const sensitives = jobSensitives[jobId] || [];
+  const stdoutRedactor = createStreamingRedactor(sensitives), stderrRedactor = createStreamingRedactor(sensitives);
   const timeoutTimer = setTimeout(() => markJobTimedOut(job, child, JOB_TIMEOUT_MS, scriptPath), JOB_TIMEOUT_MS);
   timeoutTimer.unref();
 
   child.stdout.on('data', data => {
-    job.stdout += redactSensitiveText(data.toString(), sensitives);
+    job.stdout += stdoutRedactor.push(data.toString());
   });
   child.stderr.on('data', data => {
-    job.stderr += redactSensitiveText(data.toString(), sensitives);
+    job.stderr += stderrRedactor.push(data.toString());
   });
   child.on('error', err => {
     clearTimeout(timeoutTimer);
@@ -1683,6 +1685,8 @@ function runActionNow(jobId, scriptPath, args, savePrompts = false) {
   });
   child.on('close', code => {
     clearTimeout(timeoutTimer);
+    job.stdout += stdoutRedactor.flush();
+    job.stderr += stderrRedactor.flush();
     const out = job.stdout;
     const errOut = job.stderr;
     const combined = out + errOut;
@@ -1874,6 +1878,14 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
     let runStderr = '';
     // Cold checkpoint loading is not included in the warm generation estimate.
     const runTimeoutMs = JOB_TIMEOUT_MS;
+    const stdoutRedactor = createStreamingRedactor(sensitives), stderrRedactor = createStreamingRedactor(sensitives);
+    const appendStdout = text => {
+      if (!text) return;
+      job.stdout += text;
+      runStdout += text;
+      const activeRun = runStdout.match(/SDCPP_RUN_ID:\s*(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/) || runStdout.match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
+      if (activeRun) job.activeRunId = activeRun[1];
+    };
     const timeoutTimer = setTimeout(() => {
       clearInterval(progressTimer);
       markJobTimedOut(job, child, runTimeoutMs, `controlled generation run ${runNumber}`);
@@ -1881,17 +1893,10 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
     }, runTimeoutMs);
     timeoutTimer.unref();
 
-    child.stdout.on('data', data => {
-      const redacted = redactSensitiveText(data.toString(), sensitives);
-      job.stdout += redacted;
-      runStdout += redacted;
-      const activeRun = runStdout.match(/SDCPP_RUN_ID:\s*(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/) || runStdout.match(/runs\/(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/);
-      if (activeRun) job.activeRunId = activeRun[1];
-    });
+    child.stdout.on('data', data => appendStdout(stdoutRedactor.push(data.toString())));
     child.stderr.on('data', data => {
-      const redacted = redactSensitiveText(data.toString(), sensitives);
-      job.stderr += redacted;
-      runStderr += redacted;
+      const redacted = stderrRedactor.push(data.toString());
+      if (redacted) { job.stderr += redacted; runStderr += redacted; }
     });
     child.on('error', err => {
       clearTimeout(timeoutTimer);
@@ -1906,6 +1911,9 @@ function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
     child.on('close', code => {
       clearTimeout(timeoutTimer);
       clearInterval(progressTimer);
+      appendStdout(stdoutRedactor.flush());
+      const finalStderr = stderrRedactor.flush();
+      if (finalStderr) { job.stderr += finalStderr; runStderr += finalStderr; }
       job.activeChildPid = null;
       if (job.cancelInFlight || job.status === 'CANCELLED') {
         job.exitCode = code;

@@ -16,6 +16,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, execFile } = require('node:child_process');
+const { createStreamingRedactor } = require('./job-output-redaction');
 
 const UPSCALERS = { lanczos: 'LANCZOS', nearest: 'NEAREST', bicubic: 'BICUBIC', bilinear: 'BILINEAR' };
 const KEYS = new Set(['prompt', 'negative_prompt', 'target', 'sampler', 'scheduler', 'steps', 'cfg_scale', 'denoise', 'scale', 'width', 'height', 'upscaler', 'seed']);
@@ -100,17 +101,25 @@ function mount(app, D) {
       const child = spawn(path.join(D.WORKFLOW_ROOT, script), args, { cwd: D.WORKFLOW_ROOT, shell: false, env, detached: true });
       job.childPid = child.pid;
       let out = '', err = '';
+      const sensitives = D.jobSensitives[job.id] || [];
+      const stdoutRedactor = createStreamingRedactor(sensitives);
+      const stderrRedactor = createStreamingRedactor(sensitives);
+      const appendStdout = text => {
+        if (!text) return;
+        out += text;
+        for (const m of text.matchAll(/SDCPP_RUN_ID:\s*(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/g)) {
+          job.stdout += 'SDCPP_RUN_ID: ' + m[1] + '  (' + label + ')\n';
+        }
+      };
       const timer = setTimeout(() => { try { process.kill(-child.pid, 'SIGTERM'); } catch (_) {} }, D.JOB_TIMEOUT_MS);
       timer.unref();
-      child.stdout.on('data', d => {
-        const t = D.redactSensitiveText(d.toString(), D.jobSensitives[job.id] || []);
-        out += t;
-        for (const m of t.matchAll(/SDCPP_RUN_ID:\s*(20\d{6}-\d{6}-[a-zA-Z0-9_-]+)/g)) job.stdout += `SDCPP_RUN_ID: ${m[1]}  (${label})\n`;
-      });
-      child.stderr.on('data', d => { err += D.redactSensitiveText(d.toString(), D.jobSensitives[job.id] || []); });
+      child.stdout.on('data', d => appendStdout(stdoutRedactor.push(d.toString())));
+      child.stderr.on('data', d => { err += stderrRedactor.push(d.toString()); });
       child.on('error', e => { clearTimeout(timer); reject(e); });
       child.on('close', code => {
         clearTimeout(timer); job.childPid = null;
+        appendStdout(stdoutRedactor.flush());
+        err += stderrRedactor.flush();
         job.passLog = (job.passLog || '') + `\n--- ${label} (exit ${code}) ---\n` + (out + err).replace(/runs\//g, 'runs:').slice(-4000);
         if (code === 0 && /==== PASS ====/.test(out)) return resolve(out);
         const gate = /First failed gate:\s*(.+)/.exec(out + err);
