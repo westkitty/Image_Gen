@@ -1,5 +1,11 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## 2026-11-12 — CLI storage status aligned with canonical MacBook image ownership (VERIFIED)
+
+- **Correction:** Removed the obsolete durable root (Big Mac): /Volumes/wc2tb/DexDiffusion/images output from bin/dexdiffusion status. It now labels /Users/andrew/images_made as MacBook canonical images and reads Big Mac mode, model/job-state root and working-image path from the actual /api/version.storage response. If the backend is unavailable these dynamic fields say unknown instead of falsely asserting a WC2TB image library.
+- **Proof:** On andrew@MacBook-Air running clean main at baseline 89fc19b before the change, the live status response reported mode=external, models/job state=/Volumes/wc2tb/DexDiffusion, working images=/Users/bigmac/DexDiffusion-PublicationStaging, canonical images=/Users/andrew/images_made. Focused operator-console/tests/status-probe-bounds.test.js passed 9/9, including offline unknown-state and timeout behavior. Shell syntax check and git diff --check passed.
+- **Preservation:** No changes to backend storage, image files, publication, SSH tunnel, macOS app bundle, model weights, jobs or running services. This is display-only; a new commit may make the installed native bundle's source HEAD stamp appear older despite its unchanged Swift code.
+
 ## 2026-11-12 — Verified external recovery and MacBook-only images
 
 - **Authorized trigger proven:** DEX//REACH on Big Mac executed scripts/recover-backend-authorized.sh --restore-external, returning SERVICE_READY for new PID 66012 and source ef5ec3c; --ensure returned SERVICE_ALREADY_LOADED without restarting. Loopback API and Studio HTTP 200. External mode uses /Volumes/wc2tb/DexDiffusion for models/job state, canonicalImages=/Users/andrew/images_made and workingImages=/Users/bigmac/DexDiffusion-PublicationStaging. This is authorized on-demand recovery, not a claim of automatic startup after a host restart.

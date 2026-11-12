@@ -44,6 +44,24 @@ function status(fx, env = {}) {
   return { out: r.stdout, code: r.status, seconds: (Date.now() - started) / 1000, stderr: r.stderr };
 }
 
+test('storage diagnostics describe MacBook canonical images without a fake WC2TB image library', t => {
+  const src = fs.readFileSync(BIN, 'utf8');
+  assert.match(src, /canonical images \(MacBook\): \$IMAGES_ROOT/);
+  assert.match(src, /backend mode: \$storage_mode/);
+  assert.match(src, /models\/job state \(Big Mac\): \$storage_root/);
+  assert.match(src, /working images \(Big Mac\): \$storage_working/);
+  assert.match(src, /json_storage_field\(\)/);
+  assert.doesNotMatch(src, /durable root \(Big Mac\): \/Volumes\/wc2tb\/DexDiffusion\/images/);
+  const fx = fixture(t);
+  fx.script('lsof', 'exit 1');
+  const r = status(fx);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.out, /canonical images \(MacBook\): \/Users\/andrew\/images_made/);
+  assert.match(r.out, /backend mode: unknown/);
+  assert.match(r.out, /models\/job state \(Big Mac\): unknown/);
+  assert.match(r.out, /working images \(Big Mac\): unknown/);
+});
+
 test('a hanging tailscale is bounded, reported unknown (not "not configured"), and its process group is reaped', t => {
   const fx = fixture(t); fx.hang('tailscale');
   const r = status(fx);

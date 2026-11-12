@@ -92,6 +92,8 @@ bounded_recovery() {
 port_pid() { (lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null || true) | head -1; }
 version_json() { curl -fsS --max-time "$API_HEALTH_TIMEOUT" "$BASE/api/version" 2>/dev/null; }
 json_field() { python3 -c 'import json,sys; d=json.load(sys.stdin); v=d.get(sys.argv[1]); print("" if v is None else v)' "$1" 2>/dev/null; }
+# Storage paths come from the live backend; never assume WC2TB stores images.
+json_storage_field() { python3 -c 'import json,sys; s=json.load(sys.stdin).get("storage") or {}; v=s.get(sys.argv[1]); print(v if isinstance(v,str) and v else "unknown")' "$1" 2>/dev/null; }
 
 # Recognize only our exact dedicated SSH forwarding process from its command
 # line, independently of the remote HTTP server. A stopped backend must never
@@ -404,6 +406,7 @@ cmd_stop() {
 
 cmd_status() {
   local up="DOWN" pid="" head=""
+  local storage_mode="unknown" storage_root="unknown" storage_working="unknown"
   local lraw lrc=0 lpid
   lraw="$(bounded "$PROBE_TIMEOUT" lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null)" || lrc=$?
   lpid="$(printf '%s\n' "$lraw" | head -1)"
@@ -412,6 +415,9 @@ cmd_status() {
   elif pid="$(owned_pid "$lpid")" && healthy; then
     local v; v="$(version_json)"
     head="$(printf '%s' "$v" | json_field gitHead)"
+    storage_mode="$(printf '%s' "$v" | json_storage_field mode)"
+    storage_root="$(printf '%s' "$v" | json_storage_field root)"
+    storage_working="$(printf '%s' "$v" | json_storage_field workingImages)"
     local cwd; cwd="$(printf '%s' "$v" | json_field cwd)"
     if [ "$cwd" = "$CONSOLE_DIR" ]; then
       up="UP (local node)"
@@ -548,8 +554,10 @@ Generation
   model:     mlx-community/flux2-klein-4b-4bit — $model
 
 Storage
-  images:    $IMAGES_ROOT${latest:+ (latest: $latest)} (historical MacBook originals preserved)
-  durable root (Big Mac): /Volumes/wc2tb/DexDiffusion/images
+  canonical images (MacBook): $IMAGES_ROOT${latest:+ (latest: $latest)} (historical originals preserved)
+  backend mode: $storage_mode
+  models/job state (Big Mac): $storage_root
+  working images (Big Mac): $storage_working
 
 SDCPP (secondary)
   sd-cli:    ${sdcli:-unknown} (\$HOME/stable-diffusion.cpp/build, rev 7f0e728)
