@@ -20,3 +20,7 @@ Recovery guards include machine and repository identity, clean source, listening
 ## End-to-end definition of done
 
 Big Mac port 31337 reports external or intentionally selected fallback mode, the correct commit, MacBook canonical path, Big Mac internal working path, and working Studio. A real image generates and is copied to /Users/andrew/images_made, SHA-256/bytes verified there, with publication ACK. Any outstanding original is pending rather than canonical. Verify MacBook native app and tunnel when possible. Do not claim those checks passed based on Git or startup success alone.
+
+## Verified live proof
+
+DEX//REACH on-demand external recovery returned SERVICE_READY PID 66012, and a second --ensure returned SERVICE_ALREADY_LOADED. A generated 323036-byte PNG staged on Big Mac internal, not WC2TB, was published to MacBook images_made with matching size/SHA, and acknowledged. WC2TB image directory later contained zero PNGs after the app's verified-publication cleanup. This does not establish unattended startup after a host restart.
