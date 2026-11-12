@@ -1,5 +1,13 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## 2026-11-12 — Guarded DEX//REACH recovery and MacBook-only canonical images (SOURCE CHANGED; runtime cutover pending)
+
+- **Canonical rule:** Only /Users/andrew/images_made on MacBook is the final image library. External-mode new image working copies stage on Big Mac internal /Users/bigmac/DexDiffusion-PublicationStaging through DEX_IMAGES_ROOT_OVERRIDE. WC2TB continues to hold models, jobs and nonimage state. Fallback originals likewise publish through MacBook-pull instead of becoming another final library.
+- **Six legacy files:** Four WC2TB PNGs and two Big Mac internal-fallback PNGs were copied to the MacBook images_made directory, each with exact size and SHA-256 verified. Sources were preserved pending a separate deletion gate.
+- **Access boundary:** A detached node process invoked through MacBook ssh westcat got EPERM on WC2TB, so ordinary SSH is not a reliable substitute for the authorized DEX//REACH process context. A DEX//REACH-spawned detached child under lockf succeeded in opening state/runs/jobs on WC2TB. Never forge TCC permissions or claim unattended startup persistence.
+- **Trigger:** scripts/recover-backend-authorized.sh --restore-external via connected DEX//REACH on bigmac; guarded PID, identity, compute, branch and storage checks; no foreign listener or unrelated services touched. Details: docs/operations/BIGMAC_AUTHORIZED_RECOVERY_AND_MACBOOK_IMAGES.md.
+- **Pending:** End-to-end validation of the new runner, MacBook publication, final checks, Git stage/commit/push and optionally MacBook source sync. Do not mark those as complete without proof.
+
 ## 2026-11-11 — External wc2tb restored via user-authorized Big Mac session (LIVE)
 
 - **Problem:** wc2tb recovered. Big Mac remote shell enumerated the external state/runs/images trees and read jobs.json; launchd-started backend still chose internal fallback. The read-only Node probe in launchd stalled. TCC logs showed denial of Full Disk Access to the probe, but do not prove the exact kernel stall root cause.

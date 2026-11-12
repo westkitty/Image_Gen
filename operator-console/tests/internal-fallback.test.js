@@ -52,28 +52,27 @@ test('fallback is explicit, isolated and never claims the full external model li
   assert.match(server,/IS_INTERNAL_FALLBACK.*FALLBACK_TARGET_IDS\.has/);
   assert.match(server,/IS_INTERNAL_FALLBACK \? cards\.filter\(card => FALLBACK_TARGET_IDS\.has\(card\.id\)\)/);
   assert.match(html,/data-storage-fallback/);
-  assert.match(html,/External jobs and files are not loaded or merged/);
+  assert.match(html,/External job state is not merged/);
 });
 
-test('internal fallback neither advertises MacBook publication nor starts MacBook image sweep', () => {
-  const server = fs.readFileSync(path.join(root, 'operator-console/server.js'), 'utf8');
-  const ui = fs.readFileSync(path.join(root, 'operator-console/public/dexdiffusion/component.js'), 'utf8');
-  assert.match(server, /const crossHostPublicationEnabled = !IS_INTERNAL_FALLBACK &&/);
-  assert.match(server, /const macbookImages = !IS_INTERNAL_FALLBACK && /);
-  assert.match(server, /publication: 'paused-internal-fallback'/);
-  assert.match(server, /canonicalImages: STORAGE_PATHS\.imageRoot/);
-  assert.match(server, /Cross-host publication and automatic deletion are paused/);
-  assert.match(server, /device: 'Big Mac internal'/);
-  assert.match(ui, /si\.storageMode === 'internal-fallback' \? 'PAUSED/);
-  assert.match(ui, /loc\.device === 'Big Mac internal'/);
-});
-
-test('every image publisher suppresses cross-host outbox records in internal fallback', () => {
-  const canonical = fs.readFileSync(path.join(root, 'operator-console/bin/canonicalize-image.js'), 'utf8');
-  const engine = fs.readFileSync(path.join(root, 'operator-console/bin/local-engine-generate.js'), 'utf8');
-  const server = fs.readFileSync(path.join(root, 'operator-console/server.js'), 'utf8');
-  assert.match(canonical, /process\.env\.DEX_STORAGE_MODE !== 'internal-fallback' && !!paths\.dataRoot/);
-  assert.match(engine, /env\.DEX_STORAGE_MODE !== 'internal-fallback' && !!paths\.dataRoot/);
-  assert.match(server, /pending: crossHostPublicationEnabled \? unacknowledged : 0/);
-  assert.match(server, /suspended: crossHostPublicationEnabled \? 0 : unacknowledged/);
+test('both storage modes publish only to MacBook with Big Mac internal image staging', () => {
+  const server = fs.readFileSync(path.join(root,'operator-console/server.js'),'utf8');
+  const cli = fs.readFileSync(path.join(root,'operator-console/bin/canonicalize-image.js'),'utf8');
+  const engine = fs.readFileSync(path.join(root,'operator-console/bin/local-engine-generate.js'),'utf8');
+  const ui = fs.readFileSync(path.join(root,'operator-console/public/dexdiffusion/component.js'),'utf8');
+  const runner = fs.readFileSync(path.join(root,'scripts/run-backend-service.sh'),'utf8');
+  for (const part of [
+    "const crossHostPublicationEnabled = !!STORAGE_PATHS.dataRoot",
+    "const macbookImages = (crossHostPublicationEnabled",
+    "canonicalImages: '/Users/andrew/images_made'",
+    "publication: 'macbook-pull-v1'",
+    "Fallback output waits on Big Mac until checksum-verified publication"
+  ]) assert.ok(server.includes(part), part);
+  assert.ok(ui.includes('MACBOOK CANONICAL'));
+  assert.ok(cli.includes("const crossHostPublication = !!paths.dataRoot"));
+  assert.ok(engine.includes("const crossHostPublication = !!paths.dataRoot"));
+  assert.ok(runner.includes('IMAGE_STAGING="/Users/bigmac/DexDiffusion-PublicationStaging"'));
+  assert.ok(runner.includes('export DEX_IMAGES_ROOT_OVERRIDE="$IMAGE_STAGING"'));
+  assert.ok(runner.includes('publication staging is not on Big Mac internal storage'));
+  assert.ok(!runner.includes('IMAGE_STAGING="/Volumes/'));
 });

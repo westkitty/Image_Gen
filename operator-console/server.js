@@ -83,6 +83,8 @@ const FALLBACK_TARGET_IDS = new Set(['flux2-klein-4b', 'sdxl-photonic', 'flux-fp
 const BACKEND_STORAGE = Object.freeze({
   mode: IS_INTERNAL_FALLBACK ? 'internal-fallback' : 'external',
   root: STORAGE_PATHS.dataRoot,
+  canonicalImages: '/Users/andrew/images_made',
+  workingImages: STORAGE_PATHS.imageRoot,
   externalAvailable: !IS_INTERNAL_FALLBACK,
   reason: IS_INTERNAL_FALLBACK ? 'External drive absent or unreadable; isolated internal storage' : 'External storage selected',
   automaticReturn: false,
@@ -110,8 +112,8 @@ const detailerProviderRegistry = new ProviderRegistry();
 detailerProviderRegistry.register({id:'apple-vision',version:'system',kind:'native',backend:'apple-vision',available:isVisionDetailerAvailable(),reason:isVisionDetailerAvailable()?null:'Native Vision binary is missing.',detect:detectRegions});
 detailerProviderRegistry.register({id:'owlv2-base-patch16-ensemble',version:'google/owlv2-base-patch16-ensemble@410d70ced26e95c344915c2f10f4ecf967f2cde4',kind:'open-vocabulary',backend:'local-mps',available:OWLV2_AVAILABLE,reason:'Local model, SHA-256 manifest validation, or isolated runtime is unavailable.',detect:owlv2Detector});
 const publicationOutbox = createPublicationOutbox(path.join(STATE_DIR, 'publications'));
-const crossHostPublicationEnabled = !IS_INTERNAL_FALLBACK && !!STORAGE_PATHS.dataRoot && !TestIsolation.enabled() && os.hostname().toLowerCase() === 'bigmac';
-const macbookImages = !IS_INTERNAL_FALLBACK && (crossHostPublicationEnabled || !!process.env.DEX_MACBOOK_IMAGES_URL)
+const crossHostPublicationEnabled = !!STORAGE_PATHS.dataRoot && !TestIsolation.enabled() && os.hostname().toLowerCase() === 'bigmac';
+const macbookImages = (crossHostPublicationEnabled || !!process.env.DEX_MACBOOK_IMAGES_URL)
   ? createMacbookImages({ baseUrl: process.env.DEX_MACBOOK_IMAGES_URL || 'http://127.0.0.1:31338', manifestFile: path.join(STATE_DIR, 'macbook-images.json') }) : null;
 const imageStore = createImageStore({ root: STORAGE_PATHS.imageRoot, runsRoot: RUNS_DIR, macbookImages,
   onReplaced: crossHostPublicationEnabled ? (imageId, facts) => {
@@ -6200,16 +6202,16 @@ app.get('/api/system-info', async (req, res) => {
       const roots = STORAGE_PATHS.mediaRoots || {};
       info.storage = {
         ...info.storage,
-        canonicalImages: STORAGE_PATHS.imageRoot,
+        canonicalImages: '/Users/andrew/images_made',
         workingImages: STORAGE_PATHS.imageRoot,
-        publication: 'paused-internal-fallback',
+        publication: 'macbook-pull-v1',
         outputs: [
-          { id: 'images', label: 'Images (internal fallback)', device: 'Big Mac internal', path: STORAGE_PATHS.imageRoot },
+          { id: 'images', label: 'Canonical images', device: 'MacBook', path: '/Users/andrew/images_made' },
           { id: 'audio', label: 'Audio (internal fallback)', device: 'Big Mac internal', path: path.join(STORAGE_PATHS.dataRoot, 'output/audio') },
           { id: 'worlds', label: 'Worlds (internal fallback)', device: 'Big Mac internal', path: roots.world },
           { id: 'video', label: 'Video (internal fallback)', device: 'Big Mac internal', path: roots.video },
         ].filter(item => item.path),
-        rule: 'Fallback originals stay on Big Mac internal storage. Cross-host publication and automatic deletion are paused; no automatic merge or return.',
+        rule: 'MacBook images_made is the only canonical image library. Fallback output waits on Big Mac until checksum-verified publication; no automatic state merge or mode return.',
       };
       info.generation = { ...info.generation, retentionNote: info.storage.rule };
     }

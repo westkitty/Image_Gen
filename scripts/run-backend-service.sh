@@ -25,6 +25,16 @@ if /sbin/mount | /usr/bin/grep -F " on $VOLUME_MOUNT (" >/dev/null &&
    /opt/homebrew/bin/gtimeout -k 1s 3s /bin/ls -a "$DATA_ROOT/state" >/dev/null 2>&1 &&
    /opt/homebrew/bin/gtimeout -k 1s 3s /bin/ls -a "$DATA_ROOT/runs" >/dev/null 2>&1 &&
    /opt/homebrew/bin/gtimeout -k 1s 3s /bin/sh -c '[ ! -e "$1" ] || /usr/bin/head -c 1 "$1" >/dev/null' sh "$DATA_ROOT/state/jobs.json" >/dev/null 2>&1; then
+  # The external SSD supplies models and durable job state, NEVER the final
+  # image library. Generated images are short-lived Big Mac internal staging
+  # files until the checksum-verified MacBook pull acknowledges them.
+  IMAGE_STAGING="/Users/bigmac/DexDiffusion-PublicationStaging"
+  [[ ! -L "$IMAGE_STAGING" ]] || { echo "FATAL: publication staging is a symlink" >&2; exit 8; }
+  /bin/mkdir -p "$IMAGE_STAGING"
+  [[ "$(/usr/bin/stat -f %d "$IMAGE_STAGING")" == "$(/usr/bin/stat -f %d /Users/bigmac)" ]] ||
+    { echo "FATAL: publication staging is not on Big Mac internal storage" >&2; exit 9; }
+  /bin/chmod 700 "$IMAGE_STAGING"
+  export DEX_IMAGES_ROOT_OVERRIDE="$IMAGE_STAGING"
   export DEX_DATA_ROOT="$DATA_ROOT"
   export DEX_DATA_ROOT_MOUNT="$VOLUME_MOUNT"
   export DEX_STORAGE_MODE=external

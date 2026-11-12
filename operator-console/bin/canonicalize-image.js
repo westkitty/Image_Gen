@@ -22,7 +22,7 @@ if (!dirs.length && !sourceMode) {
 }
 const override = process.env.DEX_IMAGES_ROOT_OVERRIDE;
 const paths = resolveStoragePaths(process.env);
-const crossHostPublication = process.env.DEX_STORAGE_MODE !== 'internal-fallback' && !!paths.dataRoot && os.hostname().toLowerCase() === 'bigmac';
+const crossHostPublication = !!paths.dataRoot && os.hostname().toLowerCase() === 'bigmac';
 if (crossHostPublication) assertDataRootMount(paths);
 const outbox = crossHostPublication ? createPublicationOutbox(path.join(paths.stateDir, 'publications')) : null;
 const storeOptions = paths.dataRoot

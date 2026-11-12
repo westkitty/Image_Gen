@@ -4074,7 +4074,7 @@ class Component extends DCLogic {
           siRow('Return policy', si.storageMode === 'internal-fallback' ? 'Controlled backend restart only; no automatic data merge' : 'External canonical state'),
         ]),
         siSection('Canonical publication', [
-          siRow('Status', si.storageMode === 'internal-fallback' ? 'PAUSED · images remain on Big Mac internal storage' :
+          siRow('Status', si.storageMode === 'internal-fallback' ? 'MACBOOK CANONICAL · pending images held on Big Mac until verified' :
             s.publicationStatus == null ? 'UNKNOWN · status endpoint not confirmed' :
             Number(s.publicationStatus.pending || 0) > 0 ? 'PUBLICATION_PENDING · canonical copy still required' : 'CANONICAL_VERIFIED · no pending artifacts'),
           siRow('Retryable', s.publicationStatus && s.publicationStatus.counts ? (s.publicationStatus.counts.PUBLICATION_FAILED_RETRYABLE || 0) : 'unknown'),
