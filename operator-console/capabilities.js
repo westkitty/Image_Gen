@@ -133,6 +133,34 @@ function targetModelMap(controlledScript, remoteModel, stageRoot = '/Volumes/wc2
 // Voice/music/video worker install locations: single source of truth in media.js.
 const DORMANT_PATHS = require('./media').WORKER_PROBE_PATHS;
 
+// Big Mac internal-only probe. Never follow symlinks or inspect /Volumes here.
+function probeInternalFallbackAssets({ targetModels = {}, home = os.homedir(), filesystem = fs } = {}) {
+  const internal = {
+    'flux2-klein-4b': path.join(home, 'Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit/transformer/model.safetensors.index.json'),
+    'sdxl-photonic': path.join(home, 'sdcpp-staging/models/photonic_fusion_sdxl_finale_v1.safetensors'),
+    'flux-fp8': path.join(home, 'sdcpp-staging/models/flux1-schnell-fp8.safetensors'),
+  };
+  const localFile = p => {
+    if (!p || p.startsWith('/Volumes/')) return false;
+    try { const v = filesystem.lstatSync(p); return v.isFile() && v.size > 0; }
+    catch (_) { return false; }
+  };
+  const models = {};
+  for (const [id, value] of Object.entries(targetModels)) {
+    if (typeof value === 'string') models[value] = !!(internal[id] && localFile(internal[id]));
+  }
+  return {
+    reachable: true, identity: 'bigmac@bigmac', storageMode: 'internal-fallback',
+    wc2tb: false, wc2tbReadable: false, localEngineEnabled: false,
+    mfluxRuntime: localFile(path.join(home, 'Library/Caches/DexDiffusion/mflux/venv/bin/mflux-generate-flux2')),
+    mfluxModel: localFile(internal['flux2-klein-4b']),
+    sdCli: localFile(path.join(home, 'stable-diffusion.cpp/build/bin/sd-cli')),
+    photonicModel: localFile(internal['sdxl-photonic']),
+    sd15Model: false, sdxlBaseModel: false, sdxlTurboModel: false, esrganModel: false,
+    models, dormant: {}, secondaryModelState: 'inactive', activeSecondaryModel: null,
+  };
+}
+
 function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 12000 } = {}) {
   const paths = [...new Set(Object.values(targetModels))];
   const checks = [
@@ -217,5 +245,5 @@ function targetVerification(target, assets, targetModels, evidence) {
 
 module.exports = {
   STATUS, CAPABILITIES, NON_RUNTIME_GATES,
-  deriveStatus, capabilityForJob, createEvidenceStore, targetModelMap, probeAssets, targetRuntime, targetVerification,
+  deriveStatus, capabilityForJob, createEvidenceStore, targetModelMap, probeAssets, probeInternalFallbackAssets, targetRuntime, targetVerification,
 };

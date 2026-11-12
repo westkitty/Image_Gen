@@ -13,13 +13,7 @@
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
-	<dict>
-		<key>PathState</key>
-		<dict>
-			<key>/Volumes/wc2tb/DexDiffusion</key>
-			<true/>
-		</dict>
-	</dict>
+	<true/>
 	<key>ThrottleInterval</key>
 	<integer>10</integer>
 	<key>StandardOutPath</key>

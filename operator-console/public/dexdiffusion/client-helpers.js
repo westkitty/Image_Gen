@@ -42,6 +42,7 @@
     if (has(savedId)) return savedId;
     const primary = list.find(t => t && t.primary === true && ['proofed', 'proven'].includes(t.status) && !NOT_READY.has(t.runtime));
     if (primary) return primary.id;
+    if (list.length && !has(currentId)) return (list.find(t => t.primary && has(t.id)) || list.find(t => has(t.id)) || list[0]).id;
     return currentId;
   }
 

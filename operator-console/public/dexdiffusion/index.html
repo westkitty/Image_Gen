@@ -510,6 +510,11 @@
   </div>
   </sc-if>
   {{ v2Drawer }}
+  <sc-if value="{{ storageFallback }}"><div role="status" data-storage-fallback style="padding:10px 16px;background:#34230c;color:#ffdd9d;border-bottom:1px solid #a87830;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:12px;">
+    <strong>BIG MAC · INTERNAL FALLBACK</strong>
+    External drive unavailable. Using isolated Big Mac internal storage and only verified local models. External jobs and files are not loaded or merged. Restart the backend after the drive is healthy to return to external mode.
+    <button type="button" onClick="{{ navSystem }}" style="background:transparent;border:1px solid #a87830;color:inherit;border-radius:5px;padding:4px 8px;cursor:pointer;">Storage details</button>
+  </div></sc-if>
   <sc-if value="{{ offlineWarning }}"><div role="alert" data-studio-offline style="padding:10px 16px;background:#402317;color:#fff1d6;border-bottom:1px solid #edaa64;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">Connection lost. Existing jobs may still be running. <button type="button" onClick="{{ onVerifyBackend }}">Retry connection</button><button type="button" onClick="{{ navSystem }}">Open System details</button><button type="button" data-copy-connection-report onClick="{{ onCopyConnectionReport }}">Copy what's broken</button></div></sc-if>
   <div style="flex:1;min-height:0;overflow:hidden;">
     <sc-if value="{{ isCreate }}" hint-placeholder-val="{{ true }}">

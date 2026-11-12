@@ -39,7 +39,7 @@ const { buildRepairRecord } = require('./import-provenance-repair');
 const { exportAssetPackage } = require('./asset-package');
 const { createSystemInfo } = require('./system-info');
 const { createMacbookImages, sweepImagesHeldOnMacbook } = require('./macbook-images');
-const { createEvidenceStore, targetModelMap, probeAssets, targetRuntime, targetVerification } = require('./capabilities');
+const { createEvidenceStore, targetModelMap, probeAssets, probeInternalFallbackAssets, targetRuntime, targetVerification } = require('./capabilities');
 const { rulesForTarget, validateDimensions } = require('./dimension-policy');
 const { enhancePrompt: runPromptEnhance, extractProtectedLiterals } = require('./prompt-enhancement');
 const { PROFILES, resolvePromptProfile } = require('./prompt-profiles');
@@ -78,7 +78,23 @@ const HOST = '127.0.0.1';
 const APP_VERSION = 'image-gen-console-2026-06-22-render-wrapper';
 
 const STORAGE_PATHS = resolveStoragePaths(process.env, path.resolve(__dirname, '../sdcpp-workflow'));
+const IS_INTERNAL_FALLBACK = process.env.DEX_STORAGE_MODE === 'internal-fallback';
+const FALLBACK_TARGET_IDS = new Set(['flux2-klein-4b', 'sdxl-photonic', 'flux-fp8']);
+const BACKEND_STORAGE = Object.freeze({
+  mode: IS_INTERNAL_FALLBACK ? 'internal-fallback' : 'external',
+  root: STORAGE_PATHS.dataRoot,
+  externalAvailable: !IS_INTERNAL_FALLBACK,
+  reason: IS_INTERNAL_FALLBACK ? 'External drive absent or unreadable; isolated internal storage' : 'External storage selected',
+  automaticReturn: false,
+});
 assertDataRootMount(STORAGE_PATHS);
+// Fail closed on commands that depend on external models while using internal data.
+if (IS_INTERNAL_FALLBACK) app.use('/api/actions', (req, res, next) => {
+  if (req.method === 'POST' && req.path !== '/generate-controlled') {
+    return res.status(503).json({ error: 'Action unavailable in isolated Big Mac internal fallback mode.', gate: 'external-storage-unavailable' });
+  }
+  next();
+});
 const WORKFLOW_ROOT = STORAGE_PATHS.workflowRoot;
 const RUNS_DIR = STORAGE_PATHS.runsDir;
 const STATE_DIR = STORAGE_PATHS.stateDir;
@@ -94,8 +110,8 @@ const detailerProviderRegistry = new ProviderRegistry();
 detailerProviderRegistry.register({id:'apple-vision',version:'system',kind:'native',backend:'apple-vision',available:isVisionDetailerAvailable(),reason:isVisionDetailerAvailable()?null:'Native Vision binary is missing.',detect:detectRegions});
 detailerProviderRegistry.register({id:'owlv2-base-patch16-ensemble',version:'google/owlv2-base-patch16-ensemble@410d70ced26e95c344915c2f10f4ecf967f2cde4',kind:'open-vocabulary',backend:'local-mps',available:OWLV2_AVAILABLE,reason:'Local model, SHA-256 manifest validation, or isolated runtime is unavailable.',detect:owlv2Detector});
 const publicationOutbox = createPublicationOutbox(path.join(STATE_DIR, 'publications'));
-const crossHostPublicationEnabled = !!STORAGE_PATHS.dataRoot && !TestIsolation.enabled() && os.hostname().toLowerCase() === 'bigmac';
-const macbookImages = crossHostPublicationEnabled || process.env.DEX_MACBOOK_IMAGES_URL
+const crossHostPublicationEnabled = !IS_INTERNAL_FALLBACK && !!STORAGE_PATHS.dataRoot && !TestIsolation.enabled() && os.hostname().toLowerCase() === 'bigmac';
+const macbookImages = !IS_INTERNAL_FALLBACK && (crossHostPublicationEnabled || !!process.env.DEX_MACBOOK_IMAGES_URL)
   ? createMacbookImages({ baseUrl: process.env.DEX_MACBOOK_IMAGES_URL || 'http://127.0.0.1:31338', manifestFile: path.join(STATE_DIR, 'macbook-images.json') }) : null;
 const imageStore = createImageStore({ root: STORAGE_PATHS.imageRoot, runsRoot: RUNS_DIR, macbookImages,
   onReplaced: crossHostPublicationEnabled ? (imageId, facts) => {
@@ -219,7 +235,13 @@ app.get('/api/publications/status', (_req, res) => {
   const rows = publicationOutbox.all();
   const counts = {};
   for (const row of rows) counts[row.state] = (counts[row.state] || 0) + 1;
-  res.json({ enabled: crossHostPublicationEnabled, counts, pending: rows.filter(r => r.state !== 'CANONICAL_VERIFIED').length });
+  const unacknowledged = rows.filter(r => r.state !== 'CANONICAL_VERIFIED').length;
+  res.json({
+    enabled: crossHostPublicationEnabled,
+    counts,
+    pending: crossHostPublicationEnabled ? unacknowledged : 0,
+    suspended: crossHostPublicationEnabled ? 0 : unacknowledged,
+  });
 });
 app.get('/api/publications/pending', (req, res) => {
   const limit = Math.max(1, Math.min(8, Number(req.query.limit) || 8));
@@ -687,6 +709,7 @@ function getBuildInfo() {
     cwd: __dirname,
     bind: `http://${HOST}:${PORT}`,
     workflowRoot: WORKFLOW_ROOT,
+    storage: BACKEND_STORAGE,
     startedAt: PROCESS_STARTED_AT
   };
 }
@@ -1187,7 +1210,9 @@ async function refreshAssets() {
   // Isolated test mode never runs the SSH probe; it gets a labelled, fully-available simulation instead.
   const probed = TestIsolation.enabled()
     ? TestIsolation.simulatedAssetProbe({ targetModels, dormantKeys: M.WORKER_PROBE_PATHS.map(([k]) => k), unbridgedWorkerIds: M.createWorkerRegistry().describe({}).filter(w => w.dormant).map(w => w.id) })
-    : await probeAssets({ sshTarget: SSH_TARGET_NAME, targetModels });
+    : IS_INTERNAL_FALLBACK
+      ? probeInternalFallbackAssets({ targetModels })
+      : await probeAssets({ sshTarget: SSH_TARGET_NAME, targetModels });
   if (localEngineRouting.enabled()) {
     probed.localEngineEnabled = true;
     try {
@@ -2916,7 +2941,8 @@ app.get('/api/capabilities', (req, res) => {
 
   const cacheAgeMinutes = assets ? Math.round((Date.now() / 1000 - assets.discovered_at) / 60) : null;
   const discoveredTargets = buildDiscoveredTargets(assets);
-  const modelTargets = [...CONTROLLED_TARGETS, ...discoveredTargets].map(target => ({
+  const modelTargets = [...CONTROLLED_TARGETS, ...discoveredTargets]
+    .filter(target => !IS_INTERNAL_FALLBACK || FALLBACK_TARGET_IDS.has(target.id)).map(target => ({
     id: target.id,
     label: target.label,
     backend: target.backend || 'sdcpp',
@@ -2948,6 +2974,7 @@ app.get('/api/capabilities', (req, res) => {
   }));
 
   res.json({
+    storage: BACKEND_STORAGE,
     configuration: { degraded: configWarnings.length > 0, warnings: configWarnings },
     editWorkerTarget: editWorkerTarget(),   // model routing proof remains independently derived from the engine
     // Models the edit workers can load per request (body.edit_model → server-resolved --model-path).
@@ -3169,10 +3196,14 @@ app.post('/api/wildcards/expand', (req, res) => {
 
 app.get('/api/models', (req, res) => {
   const targets = liveModelTargets();
-  res.json({ models: getModelCards(req.query, targets) });
+  const cards = getModelCards(req.query, targets);
+  res.json({ models: IS_INTERNAL_FALLBACK ? cards.filter(card => FALLBACK_TARGET_IDS.has(card.id)) : cards });
 });
 
 app.get('/api/models/:id', (req, res) => {
+  if (IS_INTERNAL_FALLBACK && !FALLBACK_TARGET_IDS.has(req.params.id)) {
+    return res.status(404).json({ error: 'Model unavailable while external storage is offline' });
+  }
   const targets = liveModelTargets();
   const card = getModelCardById(req.params.id, targets);
   if (!card) return res.status(404).json({ error: 'Model not found' });
@@ -3589,6 +3620,7 @@ function liveModelTargets() {
 }
 
 function allControlledTargets() {
+  if (IS_INTERNAL_FALLBACK) return Object.fromEntries(Object.entries(CONTROLLED_TARGET_BY_ID).filter(([id]) => FALLBACK_TARGET_IDS.has(id)));
   const discoveredTargets = buildDiscoveredTargets(readJsonCache(ASSETS_CACHE));
   return discoveredTargets.length
     ? { ...CONTROLLED_TARGET_BY_ID, ...Object.fromEntries(discoveredTargets.map(t => [t.id, t])) }
@@ -3655,6 +3687,11 @@ app.post('/api/actions/generate-controlled', (req, res) => {
   }
   const err = validateControlledGenerationParams(params, allTargetById, { loraShapeChecked: true });
   if (err) return res.status(400).json({ error: err });
+  if (IS_INTERNAL_FALLBACK && (
+    rawControl || (Array.isArray(params.loras) && params.loras.length > 0) ||
+    /<lora:/i.test(params.prompt) ||
+    (params.vae && !['auto', 'none', 'default'].includes(String(params.vae).toLowerCase()))
+  )) return res.status(409).json({ error: 'External LoRAs, VAEs, and ControlNet are unavailable in internal fallback mode.', gate: 'external-storage-unavailable' });
   const cn = resolveControlnetRequest(rawControl, allTargetById[params.target], params);
   if (cn.error) return res.status(cn.status).json({ error: cn.error, gate: 'controlnet' });
   if (cn.control) params.__control = cn.control;
@@ -6158,7 +6195,25 @@ const getSystemInfo = createSystemInfo({
 app.get('/api/system-info', async (req, res) => {
   try {
     if (req.query.refresh === '1') await refreshAssets();
-    res.json(await getSystemInfo({ targets: liveModelTargets(), build: { ...getBuildInfo(), sshTarget: SSH_TARGET_NAME } }));
+    const info = await getSystemInfo({ targets: liveModelTargets(), build: { ...getBuildInfo(), sshTarget: SSH_TARGET_NAME } });
+    if (IS_INTERNAL_FALLBACK) {
+      const roots = STORAGE_PATHS.mediaRoots || {};
+      info.storage = {
+        ...info.storage,
+        canonicalImages: STORAGE_PATHS.imageRoot,
+        workingImages: STORAGE_PATHS.imageRoot,
+        publication: 'paused-internal-fallback',
+        outputs: [
+          { id: 'images', label: 'Images (internal fallback)', device: 'Big Mac internal', path: STORAGE_PATHS.imageRoot },
+          { id: 'audio', label: 'Audio (internal fallback)', device: 'Big Mac internal', path: path.join(STORAGE_PATHS.dataRoot, 'output/audio') },
+          { id: 'worlds', label: 'Worlds (internal fallback)', device: 'Big Mac internal', path: roots.world },
+          { id: 'video', label: 'Video (internal fallback)', device: 'Big Mac internal', path: roots.video },
+        ].filter(item => item.path),
+        rule: 'Fallback originals stay on Big Mac internal storage. Cross-host publication and automatic deletion are paused; no automatic merge or return.',
+      };
+      info.generation = { ...info.generation, retentionNote: info.storage.rule };
+    }
+    res.json({ ...info, storageMode: BACKEND_STORAGE.mode, storageRoot: BACKEND_STORAGE.root });
   } catch (err) {
     res.status(500).json({ error: 'system-info unavailable' });
   }

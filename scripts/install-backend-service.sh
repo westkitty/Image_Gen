@@ -37,12 +37,8 @@ if [[ "$USER_SESSION" == 1 ]]; then
     echo "ERROR: --user-session must run as bigmac without sudo." >&2; exit 2;
   }
   [[ "$(/bin/hostname -s)" == bigmac ]] || { echo "ERROR: installation must run on Big Mac." >&2; exit 2; }
-  [[ -d /Volumes/wc2tb && -d /Volumes/wc2tb/DexDiffusion ]] || {
-    echo "ERROR: durable storage unavailable at /Volumes/wc2tb/DexDiffusion; refusing install." >&2; exit 3;
-  }
-  /sbin/mount | /usr/bin/grep -F ' on /Volumes/wc2tb (' >/dev/null || {
-    echo "ERROR: /Volumes/wc2tb is not mounted as a filesystem." >&2; exit 3;
-  }
+  # Backend runner selects an isolated internal mode when wc2tb is unreadable.
+  # Do not make external mount state a prerequisite for service registration.
   /usr/bin/plutil -lint "$AGENT_SOURCE" >/dev/null
   SESSION="$(/bin/launchctl print "gui/$USER_UID" 2>&1 || true)"
   /usr/bin/grep -F 'session = Aqua' <<<"$SESSION" >/dev/null || {
@@ -128,12 +124,8 @@ fi
 [[ "$EUID" -eq 0 ]] || { echo "ERROR: run via sudo to install the system service." >&2; exit 2; }
 [[ "$(/bin/hostname -s)" == bigmac ]] || { echo "ERROR: installation must run on Big Mac." >&2; exit 2; }
 [[ "${SUDO_USER:-}" == bigmac ]] || { echo "ERROR: expected sudo caller bigmac; preserving service state." >&2; exit 2; }
-[[ -d /Volumes/wc2tb && -d /Volumes/wc2tb/DexDiffusion ]] || {
-  echo "ERROR: durable storage unavailable at /Volumes/wc2tb/DexDiffusion; refusing install." >&2; exit 3;
-}
-/sbin/mount | /usr/bin/grep -F ' on /Volumes/wc2tb (' >/dev/null || {
-  echo "ERROR: /Volumes/wc2tb is not mounted as a filesystem." >&2; exit 3;
-}
+# External readiness is checked via bounded read by the runner.
+# Service installation must also work when wc2tb is absent.
 /usr/bin/plutil -lint "$SOURCE" >/dev/null
 
 agent_loaded() {

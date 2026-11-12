@@ -120,12 +120,17 @@ test('SSH unavailability and timed out probes remain distinct from confirmed bac
   assert.match(launcher, /Big Mac service recovery was not confirmed/);
 });
 
-test('external-volume loss fails closed and never selects a local fallback', () => {
-  assert.match(runner, /mount \/dev\/filesystem|mount \| grep/);
-  assert.match(runner, /refusing local-disk fallback/);
-  assert.match(runner, /FATAL: DexDiffusion durable data root/);
-  assert.match(plist, /<key>PathState<\/key>/);
-  assert.match(plist, /<key>\/Volumes\/wc2tb\/DexDiffusion<\/key>/);
+test('unavailable wc2tb selects bounded isolated internal fallback without erasing external data', () => {
+  assert.match(runner, /gtimeout -k 1s 3s/);
+  assert.match(runner, /head -c 1/);
+  assert.match(runner, /InternalFallback/);
+  assert.match(runner, /DEX_STORAGE_MODE=internal-fallback/);
+  assert.match(runner, /DEX_LOCAL_ENGINE_BRIDGE=0/);
+  assert.match(runner, /unset DEX_DATA_ROOT_MOUNT/);
+  assert.match(runner, /candidate.*FALLBACK_ROOT/);
+  assert.match(runner, /-L "\$candidate"/);
+  assert.match(plist, /<key>KeepAlive<\/key>\s*<true\/>/);
+  assert.doesNotMatch(plist, /<key>PathState<\/key>/);
 });
 
 test('slow navigation gets a bounded startup window and transient connection errors trigger bounded recovery', () => {

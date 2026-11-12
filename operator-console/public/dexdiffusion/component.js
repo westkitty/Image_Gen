@@ -2585,7 +2585,9 @@ class Component extends DCLogic {
         h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
           actionButton('Copy path', () => this.copyText(loc.label + ' path', loc.path), '#94a3b8'),
           loc.share ? actionButton('Copy network link', () => this.copyText(loc.label + ' network link', loc.share), '#94a3b8') : null,
-          actionButton('Open in Finder', () => this.openOutputFolder(loc), '#38bdf8')))));
+          loc.device === 'Big Mac internal'
+            ? h('span', { style: { fontSize: 11, color: '#94a3b8' } }, 'This folder is on Big Mac. Copy its path to open it there.')
+            : actionButton('Open in Finder', () => this.openOutputFolder(loc), '#38bdf8')))));
   }
 
   // The app opens the folder itself. A browser can only hand a network link to the system, and cannot reach a folder on the MacBook.
@@ -4066,8 +4068,14 @@ class Component extends DCLogic {
         actionButton('Refresh', () => this.loadSystemInfo(), '#94a3b8')),
       !si ? h('div', { style: { color: '#94a3b8', fontSize: 12, marginTop: 8 } }, 'System info not loaded yet (GET /api/system-info).') : h('div', null,
         this.buildOutputLocations(si, actionButton),
+        siSection('Storage mode', [
+          siRow('Active mode', si.storageMode || 'external'),
+          siRow('Active storage root', si.storageRoot || 'unknown', true),
+          siRow('Return policy', si.storageMode === 'internal-fallback' ? 'Controlled backend restart only; no automatic data merge' : 'External canonical state'),
+        ]),
         siSection('Canonical publication', [
-          siRow('Status', s.publicationStatus == null ? 'UNKNOWN · status endpoint not confirmed' :
+          siRow('Status', si.storageMode === 'internal-fallback' ? 'PAUSED · images remain on Big Mac internal storage' :
+            s.publicationStatus == null ? 'UNKNOWN · status endpoint not confirmed' :
             Number(s.publicationStatus.pending || 0) > 0 ? 'PUBLICATION_PENDING · canonical copy still required' : 'CANONICAL_VERIFIED · no pending artifacts'),
           siRow('Retryable', s.publicationStatus && s.publicationStatus.counts ? (s.publicationStatus.counts.PUBLICATION_FAILED_RETRYABLE || 0) : 'unknown'),
           siRow('Blocked', s.publicationStatus && s.publicationStatus.counts ? (s.publicationStatus.counts.PUBLICATION_BLOCKED || 0) : 'unknown'),
@@ -4246,6 +4254,7 @@ class Component extends DCLogic {
       onOpenPalette: ()=>{ const center=window.__DEX_V12; if(center && typeof center.toggleCommandPalette==='function') center.toggleCommandPalette(); else this.toast('Command palette is initializing. Try again in a moment.', '#fbbf24'); },
       onOpenJobCenter: ()=>{ const center=window.__DEX_V12; if(center && typeof center.toggleJobCenter==='function') center.toggleJobCenter(); else this.toast('Job Center is initializing. Try again in a moment.', '#fbbf24'); },
       activeJobCount: (() => { const c=window.__DEX_V12; return c ? ((c.activeJobCount || 0)+(c.queuedJobCount || 0)) : 0; })(),
+      storageFallback: !!(s.capabilityData && s.capabilityData.storage && s.capabilityData.storage.mode === 'internal-fallback'),
       offlineWarning: backendOnline === false,
       // sc-if treats any non-empty string as true, so this must stay a real boolean.
       showCancel: (() => { const ws = this._createWs(); return jobStatus === 'generating' && !!ws.activeJobId; })(),
