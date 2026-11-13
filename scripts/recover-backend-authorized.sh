@@ -111,6 +111,7 @@ log="$(/usr/bin/mktemp "$logdir/authorized-recovery-XXXXXXXX")"
 nohup /usr/bin/env DEX_DATA_ROOT=/Volumes/wc2tb/DexDiffusion \
   DEX_DATA_ROOT_MOUNT=/Volumes/wc2tb DEX_LOCAL_ENGINE_BRIDGE=1 \
   OPERATOR_CONSOLE_PORT=31337 \
+  DEX_AUTHORIZED_TAILSCALE_USERS=westkitty,bcroc \
   DEX_IMAGE_VALIDATION_PYTHON=/Users/bigmac/Library/Caches/DexDiffusion/mflux/venv/bin/python \
   PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin \
   /bin/bash "$RUNNER" >"$log" 2>&1 </dev/null &

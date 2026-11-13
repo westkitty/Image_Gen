@@ -22,6 +22,8 @@
 	<string>/Users/bigmac/Image_Gen/operator-console/server-error.log</string>
 	<key>EnvironmentVariables</key>
 	<dict>
+		<key>DEX_AUTHORIZED_TAILSCALE_USERS</key>
+		<string>westkitty,bcroc</string>
 		<key>DEX_DATA_ROOT</key>
 		<string>/Volumes/wc2tb/DexDiffusion</string>
 		<key>DEX_DATA_ROOT_MOUNT</key>
