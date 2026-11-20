@@ -28,6 +28,25 @@ INTERPRETER_CHECK_INTERVAL = 20
 MAX_INIT_IMAGE_BYTES = 16 * 1024 * 1024
 MAX_REQUEST_BYTES = 24 * 1024 * 1024
 PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
+# Retention contract (Gate C): a completed, unacknowledged result is the only
+# recoverable copy until its owner durably journals it and acknowledges it. It is
+# never deleted by time. Capacity is bounded by refusing new work instead.
+RESULT_EXPIRY_SECONDS = 3600
+RETENTION_MAX_JOBS = 32
+RETENTION_MAX_BYTES = 8 * 1024 ** 3
+MIN_FREE_BYTES = 1 * 1024 ** 3
+
+
+def fsync_path(path):
+    fd = os.open(str(path), os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def disk_free(path):
+    return shutil.disk_usage(str(path)).free
 
 
 def interpreter_snapshot(executable=None, script=None, realpath=os.path.realpath):
@@ -248,8 +267,13 @@ def evidence_lines(lines, req, engine_prompt):
 
 
 class Worker:
-    def __init__(self, root=ROOT, external_probe=None, interpreter=None, interpreter_check=None):
+    def __init__(self, root=ROOT, external_probe=None, interpreter=None, interpreter_check=None,
+                 retention=None, free_space=None, clock=time.time):
         self.root = Path(root)
+        self.retention = {'max_jobs': RETENTION_MAX_JOBS, 'max_bytes': RETENTION_MAX_BYTES,
+                          'min_free_bytes': MIN_FREE_BYTES, **(retention or {})}
+        self.free_space = free_space or disk_free
+        self.clock = clock
         self.interpreter = interpreter or STARTUP_INTERPRETER
         self.interpreter_check = interpreter_check or (lambda: interpreter_problem(self.interpreter))
         self.external_probe = external_probe or (lambda: subprocess.run(['/bin/ps','-axo','comm='],capture_output=True,text=True).stdout)
@@ -293,26 +317,59 @@ class Worker:
                 else:
                     self.recovery_uncertain.append(job['run_id'])
                 job.update(status='failed', error='worker restarted during job', cleanup=clean)
-                receipt.write_text(json.dumps(job))
+                self.save(job)
             self.jobs[job['run_id']] = job
+
+    def unacknowledged(self):
+        """Completed results still owed to their owner (never expired by time)."""
+        return [j for j in self.jobs.values() if j['status'] == 'complete' and not j.get('acknowledged')]
+
+    def retention_summary(self):
+        held = self.unacknowledged()
+        return {'jobs': len(held), 'bytes': sum(sum(i.get('bytes', 0) for i in j.get('images', [j])) for j in held),
+                'max_jobs': self.retention['max_jobs'], 'max_bytes': self.retention['max_bytes'],
+                'unacknowledged': sorted(j['run_id'] for j in held)}
+
+    def admission_problem(self):
+        summary = self.retention_summary()
+        if summary['jobs'] >= self.retention['max_jobs'] or summary['bytes'] >= self.retention['max_bytes']:
+            return 'unacknowledged results exceed the retention bound; reconcile them before generating'
+        try:
+            free = self.free_space(self.root)
+        except OSError as e:
+            return 'worker storage is unreadable: %s' % e.strerror
+        if free < self.retention['min_free_bytes']:
+            return 'insufficient worker disk for durable output'
+        return None
+
+    def expire_once(self, now=None):
+        now = self.clock() if now is None else now
+        with self.lock:
+            for job in self.jobs.values():
+                if job['status'] not in TERMINAL or now - job.get('finished', job['started']) <= RESULT_EXPIRY_SECONDS:
+                    continue
+                if job['status'] == 'complete' and not job.get('acknowledged'):
+                    continue  # the only recoverable copy: retained until its owner acknowledges it
+                for output in (self.root / 'jobs' / job['run_id']).glob('output*.png'):
+                    output.unlink(missing_ok=True)
+                if not job.get('expired'):
+                    job['expired'] = True
+                    self.save(job)
 
     def expire_results(self):
         while not self.stopping:
-            with self.lock:
-                for job in self.jobs.values():
-                    if job['status'] in TERMINAL and time.time() - job.get('finished', job['started']) > 3600:
-                        for output in (self.root / 'jobs' / job['run_id']).glob('output*.png'):
-                            output.unlink(missing_ok=True)
-                        if not job.get('expired'):
-                            job['expired'] = True
-                            self.save(job)
+            self.expire_once()
             time.sleep(10)
 
     def save(self, job):
         p = self.root / 'jobs' / job['run_id'] / 'result.json'
         tmp = p.with_suffix('.tmp')
-        tmp.write_text(json.dumps(job, indent=2))
+        with open(tmp, 'w') as f:
+            f.write(json.dumps(job, indent=2))
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, p)
+        fsync_path(p.parent)
 
     def public(self, job):
         return {k: v for k, v in job.items() if k not in {'token_hash'}}
@@ -350,7 +407,7 @@ class Worker:
                     secondary = json.loads((Path.home() / 'Library/Caches/DexDiffusion/secondary-model/current/state.json').read_text())
                 except (OSError,ValueError):
                     secondary = {}
-                return {'ok': True, 'models': model_access, 'controlnets': control_access, 'secondary': secondary, 'pid': os.getpid(), 'uid': os.getuid(), 'active': self.active, 'access': access, 'recovery_uncertain': self.recovery_uncertain,
+                return {'ok': True, 'models': model_access, 'controlnets': control_access, 'secondary': secondary, 'pid': os.getpid(), 'uid': os.getuid(), 'active': self.active, 'access': access, 'recovery_uncertain': self.recovery_uncertain, 'retention': self.retention_summary(),
                         'interpreter_ok': self.interpreter_check() is None, 'interpreter_path': self.interpreter['executable']}
             run_id = req['run_id']
             digest = hashlib.sha256(req['token'].encode()).hexdigest()
@@ -369,6 +426,9 @@ class Worker:
             if req['op'] == 'generate' and not job:
                 if self.stopping or self.active or self.recovery_uncertain:
                     raise ValueError('worker busy; one heavy job is allowed')
+                problem = self.admission_problem()
+                if problem:
+                    raise ValueError(problem)
                 # Also refuse unrelated heavy image workers; console owns the wider resource lease.
                 commands = self.external_probe()
                 if any(Path(c.strip()).name in {'sd-cli', 'sd-server', 'mflux-generate-flux2'} for c in commands.splitlines()):
@@ -404,10 +464,13 @@ class Worker:
             if req['op'] == 'ack':
                 if job['status'] not in TERMINAL:
                     raise ValueError('job is still active')
+                # Idempotent: the receipt is durable before the outputs are released.
+                if not job.get('acknowledged'):
+                    job['acknowledged'] = True
+                    job['acknowledged_at'] = self.clock()
+                    self.save(job)
                 for output in (self.root / 'jobs' / run_id).glob('output*.png'):
                     output.unlink(missing_ok=True)
-                job['acknowledged'] = True
-                self.save(job)
             return {'ok': True, **self.public(job)}
 
     def execute(self, args, tmp, job, env, log_name):
@@ -575,6 +638,8 @@ class Worker:
                     images.append(dict(sha256=hashlib.sha256(data).hexdigest(),bytes=len(data),dimensions=dimensions))
                     destination=directory / ('output.png' if count==1 else 'output-'+str(index)+'.png')
                     os.replace(source,destination)
+                    fsync_path(destination)
+                fsync_path(directory)
                 job.update(images=images,**images[0])
                 final_status='complete'
         except Exception as e:

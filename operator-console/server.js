@@ -68,6 +68,7 @@ const { createCancellationManager } = require('./cancellation');
 const { dramaCancelCapability, requestDramaStop } = require('./drama-cancel-policy');
 const { createLibraryIndex } = require('./library-index');
 const { reconcileInterruptedPublications, historicalMissingJournal } = require('./publication-recovery');
+const EngineTransfer = require('./engine-transfer-journal');
 const { resolveStoragePaths, assertDataRootMount, childStorageEnvironment } = require('./storage-paths');
 const { createTailscaleAuthGate } = require('./tailscale-auth');
 
@@ -144,6 +145,7 @@ if (macbookImages) {
   });
   macbookImages.start();
 }
+let outboxReconciliationError = null;
 if (crossHostPublicationEnabled) {
   // Rebuild only explicitly marked new outbox entries after a crash between
   // run-index commit and outbox commit. Historical indexes remain untouched.
@@ -153,7 +155,7 @@ if (crossHostPublicationEnabled) {
         if (!publicationOutbox.read(entry.image_id)) publicationOutbox.create(entry, path.join(STORAGE_PATHS.imageRoot, entry.image_id));
       }
     }
-  } catch (error) { console.error('Cross-host publication outbox reconciliation failed:', error.message); }
+  } catch (error) { outboxReconciliationError = error.code || error.message; console.error('Cross-host publication outbox reconciliation failed:', error.message); }
 }
 const CONFIG_DIR = path.join(WORKFLOW_ROOT, 'config');
 // DEX_STATE_DIR remains an explicit override; DEX_DATA_ROOT supplies a durable, relocatable default.
@@ -163,7 +165,10 @@ const imageMeta = W.createImageMetaStore(path.join(STATE_DIR, 'image-meta.json')
 // Media-neutral core (media.js): durable generic jobs, heavy-compute lease,
 // worker registry, non-image media store and secure temporary staging.
 const jobStore = M.createJobStore(path.join(STATE_DIR, 'jobs.json'), { onChange: (kind, job) => genericJobEvent(kind, job) });
-const publicationRecoveryState = { blocked: false, journal: { inspected: 0, repaired: 0, unresolved: [] }, jobs: { inspected: 0, recovered: 0, unresolved: [] } };
+const publicationRecoveryState = { blocked: false, journal: { inspected: 0, repaired: 0, unresolved: [] }, jobs: { inspected: 0, recovered: 0, unresolved: [] },
+  transfers: { inspected: 0, completed: [], discarded: [], no_output: [], pending: [], blocked: [] }, outbox: outboxReconciliationError ? { error: outboxReconciliationError } : { error: null } };
+// An unreadable outbox reconciliation is a failed external read: blocked, never CLEAR.
+if (outboxReconciliationError) publicationRecoveryState.blocked = true;
 try {
   publicationRecoveryState.journal = imageStore.recoverPendingPublications();
   if (publicationRecoveryState.journal.repaired || publicationRecoveryState.journal.unresolved.length) console.log('Canonical publication recovery:', JSON.stringify(publicationRecoveryState.journal));
@@ -191,6 +196,7 @@ const libraryIndex = createLibraryIndex({ indexPath: path.join(STATE_DIR, 'libra
 try {
   publicationRecoveryState.jobs = reconcileInterruptedPublications({ jobStore, runsRoot: RUNS_DIR, imageStore, validateImage });
   if (publicationRecoveryState.jobs.unresolved.some(x => x.reason !== 'no-exact-owned-published-artifact')) publicationRecoveryState.blocked = true;
+  if (publicationRecoveryState.jobs.blocked) publicationRecoveryState.blocked = true;
   if (publicationRecoveryState.jobs.recovered || publicationRecoveryState.jobs.unresolved.length) console.log('Interrupted publication reconciliation:', JSON.stringify(publicationRecoveryState.jobs));
 } catch (err) { publicationRecoveryState.blocked = true; publicationRecoveryState.jobs.unresolved.push({ reason: err.message }); console.error('Interrupted publication reconciliation failed:', err.message); }
 const HEAVY_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test', 'sd-upscale', 'loopback', 'outpaint-poor', 'outpaint-mk2', 'hires-2pass']);
@@ -1308,6 +1314,49 @@ for (const item of publicationRecoveryState.journal.unresolved) {
   })) publicationRecoveryState.journal.historical.push(item.journal);
   else publicationRecoveryState.blocked = true;
 }
+// Durable engine transfers (Gate C). Any entry left by a bridge that did not
+// finish blocks heavy compute until it is published, discarded on an explicit
+// cancel, or proven to have no output. Never time-based, never silent.
+publicationRecoveryState.baseBlocked = publicationRecoveryState.blocked;
+const engineTransferJournal = TestIsolation.enabled() ? null : EngineTransfer.createTransferJournal({ dataRoot: STORAGE_PATHS.dataRoot });
+function refreshPublicationBlocked() {
+  const t = publicationRecoveryState.transfers;
+  publicationRecoveryState.blocked = publicationRecoveryState.baseBlocked || !!publicationRecoveryState.jobs.blocked || t.pending.length > 0 || t.blocked.length > 0;
+}
+let transferReconciliationRunning = false;
+async function reconcileEngineTransfers() {
+  if (!engineTransferJournal || transferReconciliationRunning) return;
+  transferReconciliationRunning = true;
+  try {
+    const client = require('./local-engine-client');
+    const result = await EngineTransfer.reconcileTransfers({ journal: engineTransferJournal, store: imageStore, runsRoot: RUNS_DIR, validateImage,
+      outbox: crossHostPublicationEnabled ? publicationOutbox : null, imageRoot: STORAGE_PATHS.imageRoot,
+      ownedFor: runId => EngineTransfer.ownerBackedRequest(runId, client) });
+    publicationRecoveryState.transfers = result;
+    if (result.completed.length) {
+      const jobsResult = reconcileInterruptedPublications({ jobStore, runsRoot: RUNS_DIR, imageStore, validateImage });
+      publicationRecoveryState.jobs = jobsResult;
+    }
+    if (result.inspected) console.log('Engine transfer reconciliation:', JSON.stringify(result));
+  } catch (err) {
+    publicationRecoveryState.transfers.blocked = [{ reason: 'transfer-reconciliation-failed', detail: String(err.message).slice(0, 200) }];
+    console.error('Engine transfer reconciliation failed:', err.message);
+  } finally { transferReconciliationRunning = false; refreshPublicationBlocked(); }
+}
+if (engineTransferJournal) {
+  try {
+    const pendingTransfers = engineTransferJournal.list();
+    publicationRecoveryState.transfers.inspected = pendingTransfers.length;
+    publicationRecoveryState.transfers.pending = pendingTransfers.map(run_id => ({ run_id, reason: 'awaiting-startup-reconciliation' }));
+  } catch (err) { publicationRecoveryState.transfers.blocked = [{ reason: err.reason || 'journal-unreadable', detail: err.message }]; }
+  refreshPublicationBlocked();
+  setImmediate(reconcileEngineTransfers);
+  const retry = setInterval(() => {
+    const t = publicationRecoveryState.transfers;
+    if (t.pending.length || t.blocked.length) reconcileEngineTransfers();
+  }, 60 * 1000);
+  if (retry.unref) retry.unref();
+}
 const arbiter = M.createResourceArbiter({
   quarantineCheck: () => publicationRecoveryState.blocked ? 'canonical publication recovery unresolved' : remoteWorkers.quarantineReason(),
   externalProbe: () => new Promise(resolve => {
@@ -1419,6 +1468,10 @@ function syncGenericTerminal(job) {
   const map = { PASS: 'COMPLETE', PARTIAL: 'COMPLETE', FAIL: 'FAILED', CANCELLED: 'CANCELLED' };
   let st = map[job.status];
   if (!st) return;
+  // A retained engine result is neither published nor failed: INTERRUPTED lets
+  // transfer reconciliation complete it with exact publication evidence later.
+  // (Same marker as engine-transfer-journal.transferPendingRunId; kept inline so this function stays self-contained.)
+  if (st === 'FAILED' && /ENGINE_TRANSFER_PENDING:\s*20\d{6}-\d{6}-[A-Za-z0-9_-]{1,80}/.test(String(job.stdout || ''))) st = 'INTERRUPTED';
   const g = jobStore.get(job.id);
   if (!g || TERMINAL.has(g.status)) { if (!holdsLease(job)) arbiter.release(job.id); return; }
   const fromResults = (job.results || []).filter(r => r.imageId).map(r => r.imageId);
@@ -1449,7 +1502,8 @@ function syncGenericTerminal(job) {
   if (g.status === 'QUEUED') jobStore.transition(job.id, 'RUNNING');
   const result = jobStore.transition(job.id, st, {
     artifacts: st === 'COMPLETE' || st === 'CANCELLED' ? ids : [], artifact_validation: receipt,
-    first_failed_gate: job.firstFailedGate || null, error: st === 'FAILED' ? `failed at gate ${job.firstFailedGate || 'unknown'}${job.failureReason ? ': ' + job.failureReason : ''}` : null,
+    first_failed_gate: job.firstFailedGate || null, error: st === 'FAILED' ? `failed at gate ${job.firstFailedGate || 'unknown'}${job.failureReason ? ': ' + job.failureReason : ''}`
+      : st === 'INTERRUPTED' ? 'engine result retained in the durable transfer journal; publication pending reconciliation' : null,
   });
   if (result && result.error && !TERMINAL.has(result.status)) {
     job.status = 'FAIL'; job.firstFailedGate = job.firstFailedGate || 'job-contract-rejected';
@@ -6183,7 +6237,9 @@ app.get('/api/version', (req, res) => {
   res.json(TestIsolation.enabled() ? { ...getBuildInfo(), testIsolation: true } : getBuildInfo());
 });
 app.get('/api/publication-recovery', (req, res) => {
-  res.json({ status: publicationRecoveryState.blocked ? 'BLOCKED' : 'CLEAR', ...publicationRecoveryState });
+  // CLEAR only when nothing is unresolved; historical no-output interruptions are UNRESOLVED, not CLEAR.
+  const unresolved = publicationRecoveryState.jobs.unresolved.length || publicationRecoveryState.journal.unresolved.length;
+  res.json({ status: publicationRecoveryState.blocked ? 'BLOCKED' : unresolved ? 'UNRESOLVED' : 'CLEAR', ...publicationRecoveryState });
 });
 
 // Read-only operational metadata (access URLs, primary engine, storage,
