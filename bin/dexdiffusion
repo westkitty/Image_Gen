@@ -156,7 +156,10 @@ healthy() {
   cwd="$(printf '%s' "$version" | json_field cwd)" || return 1
   pid="$(printf '%s' "$version" | json_field pid)" || return 1
   if [ "$(hostname -s)" = bigmac ]; then expected_cwd="$CONSOLE_DIR"; else expected_cwd="/Users/bigmac/Image_Gen/operator-console"; fi
-  [ "$cwd" = "$expected_cwd" ] && [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  if [ "$cwd" != "$expected_cwd" ]; then
+    [ "$(hostname -s)" != bigmac ] && [ "$cwd" = "/Users/bigmac/Image_Gen-wc2tb-20261120/operator-console" ] || return 1
+  fi
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
   # A slow or truncated HTML response is not evidence that the backend needs a
   # restart. Allow the documented bounded 15-second full document transfer.
   curl -fsS --connect-timeout 4 --max-time "$STUDIO_HEALTH_TIMEOUT" -o /dev/null "$LOCAL_URL" 2>/dev/null
@@ -180,6 +183,10 @@ sys.exit(1)' 2>/dev/null
 }
 
 cmd_start_unlocked() {
+  if [[ "$(hostname -s)" == bigmac && ( -e "$HOME/.dexdiffusion-engine/backend-supervisor-mode" || -L "$HOME/.dexdiffusion-engine/backend-supervisor-mode" ) ]]; then
+    /bin/bash "$ROOT/scripts/request-worker-backend.sh" --ensure
+    return
+  fi
   export DEX_RECOVERY_DEADLINE="${DEX_RECOVERY_DEADLINE:-$(( $(date +%s) + ${DEX_RECOVERY_BUDGET:-105} ))}"
   local reused_tunnel=0
   if pid="$(owned_pid)" && healthy; then
@@ -211,7 +218,7 @@ cmd_start_unlocked() {
         fi
         remote_rc=0
         service_output="$(bounded_recovery $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
-          "DEX_RECOVERY_DEADLINE=$DEX_RECOVERY_DEADLINE bash /Users/bigmac/Image_Gen/scripts/install-backend-service.sh --user-session" 2>&1)" || remote_rc=$?
+          "DEX_RECOVERY_DEADLINE=$DEX_RECOVERY_DEADLINE bash /Users/bigmac/Image_Gen-wc2tb-20261120/scripts/request-worker-backend.sh --ensure" 2>&1)" || remote_rc=$?
         if [ "$remote_rc" -eq 124 ] || [ "$remote_rc" -eq 125 ]; then
           echo "ERROR: Big Mac service state unknown (SSH/service probe timed out); preserving tunnel $listener." >&2
           exit 1
@@ -227,7 +234,7 @@ cmd_start_unlocked() {
         for _ in 1 2 3 4 5 6 7 8 9 10; do
           local marker="" probe_rc=0
           marker="$(bounded_recovery $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
-            "python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(\"http://127.0.0.1:31337/api/version\", timeout=3)); assert d.get(\"name\")==\"Image_Gen Operator Console\" and d.get(\"cwd\")==\"/Users/bigmac/Image_Gen/operator-console\" and str(d.get(\"pid\",\"\")).isdigit()' && curl -fsS --max-time 3 http://127.0.0.1:31337/dexdiffusion/ >/dev/null && printf DEX_BACKEND_READY")" || probe_rc=$?
+            "python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(\"http://127.0.0.1:31337/api/version\", timeout=3)); assert d.get(\"name\")==\"Image_Gen Operator Console\" and d.get(\"cwd\") in (\"/Users/bigmac/Image_Gen/operator-console\",\"/Users/bigmac/Image_Gen-wc2tb-20261120/operator-console\") and str(d.get(\"pid\",\"\")).isdigit()' && curl -fsS --max-time 3 http://127.0.0.1:31337/dexdiffusion/ >/dev/null && printf DEX_BACKEND_READY")" || probe_rc=$?
           if [ "$probe_rc" -eq 0 ] && [ "$marker" = DEX_BACKEND_READY ]; then ready=1; break; fi
           sleep 2
         done
@@ -282,7 +289,7 @@ cmd_start_unlocked() {
         echo "Connecting to Big Mac DexDiffusion backend ($SSH_TARGET)..."
         local backend_marker="" backend_rc=0
         backend_marker="$(bounded_recovery $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
-          "python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(\"http://127.0.0.1:31337/api/version\", timeout=3)); assert d.get(\"name\")==\"Image_Gen Operator Console\" and d.get(\"cwd\")==\"/Users/bigmac/Image_Gen/operator-console\" and str(d.get(\"pid\",\"\")).isdigit()' && curl -fsS --max-time 3 http://127.0.0.1:31337/dexdiffusion/ >/dev/null && printf DEX_BACKEND_READY")" || backend_rc=$?
+          "python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(\"http://127.0.0.1:31337/api/version\", timeout=3)); assert d.get(\"name\")==\"Image_Gen Operator Console\" and d.get(\"cwd\") in (\"/Users/bigmac/Image_Gen/operator-console\",\"/Users/bigmac/Image_Gen-wc2tb-20261120/operator-console\") and str(d.get(\"pid\",\"\")).isdigit()' && curl -fsS --max-time 3 http://127.0.0.1:31337/dexdiffusion/ >/dev/null && printf DEX_BACKEND_READY")" || backend_rc=$?
         if [ "$backend_rc" -ne 0 ] || [ "$backend_marker" != DEX_BACKEND_READY ]; then
           echo "Big Mac API unavailable; checking SSH reachability and repairing the owned user-session service." >&2
           local ssh_marker="" ssh_rc=0
@@ -294,7 +301,7 @@ cmd_start_unlocked() {
           fi
           local recover_rc=0 service_output=""
           service_output="$(bounded_recovery $((PROBE_TIMEOUT * 3)) ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH_TARGET" \
-            "DEX_RECOVERY_DEADLINE=$DEX_RECOVERY_DEADLINE bash /Users/bigmac/Image_Gen/scripts/install-backend-service.sh --user-session" 2>&1)" || recover_rc=$?
+            "DEX_RECOVERY_DEADLINE=$DEX_RECOVERY_DEADLINE bash /Users/bigmac/Image_Gen-wc2tb-20261120/scripts/request-worker-backend.sh --ensure" 2>&1)" || recover_rc=$?
           if [ "$recover_rc" -ne 0 ] || ! printf '%s\n' "$service_output" | grep -Eq '^(SERVICE_READY|SERVICE_ALREADY_LOADED)( |$)'; then
             echo "ERROR: Big Mac service recovery was not confirmed (ssh exit $recover_rc). Remote current diagnostics:" >&2
             printf '%s\n' "$service_output" >&2
@@ -364,6 +371,10 @@ cmd_start() {
 }
 
 cmd_stop() {
+  if [[ "$(hostname -s)" == bigmac && ( -e "$HOME/.dexdiffusion-engine/backend-supervisor-mode" || -L "$HOME/.dexdiffusion-engine/backend-supervisor-mode" ) ]]; then
+    echo "Backend lifecycle belongs to the EngineHost worker." >&2
+    return 78
+  fi
   local pid is_tunnel
   if ! pid="$(owned_pid)"; then
     if [ -n "$(port_pid)" ]; then

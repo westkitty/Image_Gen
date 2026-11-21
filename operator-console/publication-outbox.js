@@ -68,8 +68,23 @@ function createPublicationOutbox(root) {
     let names = []; try { names = fs.readdirSync(dir).filter(n => /^[a-f0-9]{64}\.json$/.test(n)); } catch (_) { return []; }
     return names.map(n => { try { return JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')); } catch (_) { return null; } }).filter(Boolean).sort((a,b) => a.created_at.localeCompare(b.created_at));
   }
+  function pendingStrict() {
+    let names;
+    try { names = fs.readdirSync(dir); }
+    catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+    return names.some(name => {
+      if (!/^[a-f0-9]{64}\.json$/.test(name)) throw new Error('unexpected publication evidence');
+      const source = path.join(dir, name);
+      if (!fs.lstatSync(source).isFile()) throw new Error('invalid publication evidence');
+      const row = JSON.parse(fs.readFileSync(source, 'utf8'));
+      if (row.schema !== 'dexdiffusion.publication_outbox.v1' || file(row.image_id) !== source) {
+        throw new Error('invalid publication receipt identity');
+      }
+      return row.state !== 'CANONICAL_VERIFIED';
+    });
+  }
   function update(id, patch) { const old = read(id); if (!old) return null; const next = { ...old, ...patch, updated_at: new Date().toISOString() }; atomicWrite(file(id), next); return next; }
-  return { create, read, all, update, artifactPath: (imageRoot, id) => path.join(path.resolve(imageRoot), path.basename(id)) };
+  return { create, read, all, pendingStrict, update, artifactPath: (imageRoot, id) => path.join(path.resolve(imageRoot), path.basename(id)) };
 }
 
 module.exports = { createPublicationOutbox };

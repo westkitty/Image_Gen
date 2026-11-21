@@ -182,6 +182,18 @@ class RetentionTests(unittest.TestCase):
             self.worker.request(self.req())
         self.assertNotIn('20261120-120000-retention', self.worker.jobs)
 
+    def test_supervised_admission_preserves_held_output_when_copy_budget_is_short(self):
+        held = self.complete()
+        old = self.owned('result')
+        self.worker.supervisor = object()
+        self.worker.free_space = lambda _p: 1024 ** 3 + 512 * 1024 ** 2 - 1
+        next_run = '20261120-120001-no-room'
+        with self.assertRaisesRegex(ValueError, 'shared disk cannot hold'):
+            self.worker.request(self.req(next_run))
+        self.assertNotIn(next_run, self.worker.jobs)
+        self.assertEqual(self.owned('result')['sha256'], old['sha256'])
+        self.assertIn(held['run_id'], self.worker.retention_summary()['unacknowledged'])
+
     def test_health_reports_retention_without_secrets(self):
         self.complete()
         health = self.worker.request({'op': 'health'})

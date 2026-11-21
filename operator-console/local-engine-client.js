@@ -5,8 +5,10 @@ const os = require('node:os');
 const path = require('node:path');
 const OWNER_ROOT = path.join(os.homedir(), '.dexdiffusion-engine-client');
 const ID = /^20\d{6}-\d{6}-[A-Za-z0-9_-]{1,80}$/;
-const LOCAL_SOCKET = path.join(os.homedir(), '.dexdiffusion-engine', 'engine.sock');
-const LOCAL_WORKER = path.join(os.homedir(), '.dexdiffusion-engine', 'engine-worker.py');
+const workerHome = process.env.DEX_OPTION_A_TEST === '1' && os.hostname() === 'bigmac'
+  && os.homedir() === '/Users/bigmac/DexDiffusion-OptionA-Test-internal' ? '/Users/bigmac' : os.homedir();
+const LOCAL_SOCKET = path.join(workerHome, '.dexdiffusion-engine', 'engine.sock');
+const LOCAL_WORKER = path.join(workerHome, '.dexdiffusion-engine', 'engine-worker.py');
 const LOCAL_PYTHON = '/opt/homebrew/bin/python3';
 
 function isLocalEngine() {
@@ -31,7 +33,7 @@ function readOwner(id) { try { return JSON.parse(fs.readFileSync(ownerPath(id)))
 function request(payload, { timeout = 30000 } = {}) {
   return new Promise((resolve, reject) => {
     const child = isLocalEngine()
-      ? spawn(LOCAL_PYTHON, [LOCAL_WORKER, 'client'], { stdio: ['pipe', 'pipe', 'pipe'] })
+      ? spawn(LOCAL_PYTHON, [LOCAL_WORKER, 'client'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, HOME: workerHome } })
       : spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', 'westcat',
           '/opt/homebrew/bin/python3 /Users/bigmac/.dexdiffusion-engine/engine-worker.py client'], { stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '', err = '', settled = false;

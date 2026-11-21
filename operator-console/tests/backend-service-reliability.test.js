@@ -10,6 +10,7 @@ const ROOT = path.resolve(__dirname, '../..');
 const read = p => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const launcher = read('bin/dexdiffusion');
 const installer = read('scripts/install-backend-service.sh');
+const workerRequest = read('scripts/request-worker-backend.sh');
 const runner = read('scripts/run-backend-service.sh');
 const plist = read('scripts/local.dexdiffusion.server.plist');
 const native = read('native/macos/Image_Gen/ImageGenApp.swift');
@@ -17,14 +18,13 @@ const native = read('native/macos/Image_Gen/ImageGenApp.swift');
 test('healthy backend and tunnel are reused without service or tunnel restart', () => {
   const block = launcher.slice(launcher.indexOf('cmd_start_unlocked() {'), launcher.indexOf('\n# All callers (CLI, Dock app, and Retry)'));
   assert.match(block, /if pid="\$\(owned_pid\)" && healthy/);
-  const reuse = block.slice(0, block.indexOf('  else'));
-  assert.doesNotMatch(reuse, /install-backend-service|kill -TERM|ssh -f -N/);
+  const reuse = block.slice(block.indexOf('if pid="$(owned_pid)" && healthy'), block.indexOf('\n  else'));
+  assert.doesNotMatch(reuse, /request-worker-backend|kill -TERM|ssh -f -N/);
 });
 
 test('backend stopped behind a listening owned tunnel repairs remote service and preserves tunnel', () => {
   const branch = launcher.slice(launcher.indexOf('if [ "$(hostname -s)" != "bigmac" ] && owned_ssh_tunnel_pid'), launcher.indexOf('\n      else\n        echo "ERROR: port'));
-  assert.match(branch, /install-backend-service\.sh/);
-  assert.match(branch, /--user-session/);
+  assert.match(branch, /request-worker-backend\.sh --ensure/);
   assert.match(branch, /SERVICE_READY\|SERVICE_ALREADY_LOADED/);
   assert.match(branch, /\( \|\$\)/);
   assert.match(branch, /preserving tunnel/);
@@ -150,7 +150,9 @@ test('a second normal startup does not create duplicate services or tunnels', ()
 });
 
 test('MacBook recovery targets the TCC-compatible Big Mac user session and reports that domain', () => {
-  assert.match(launcher, /install-backend-service\.sh --user-session/);
+  assert.match(launcher, /request-worker-backend\.sh --ensure/);
+  assert.match(workerRequest, /install-backend-service\.sh --user-session/);
+  assert.match(workerRequest, /request\('backend-restart'\)/);
   assert.match(launcher, /launchctl print gui\/\\\$\(id -u\)\/local\.dexdiffusion\.server/);
   assert.doesNotMatch(launcher, /sudo -n bash \/Users\/bigmac\/Image_Gen\/scripts\/install-backend-service\.sh/);
 });

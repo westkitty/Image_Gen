@@ -76,11 +76,21 @@ const app = express();
 if (TestIsolation.enabled()) app.use(TestIsolation.middleware);
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
 const HOST = '127.0.0.1';
+const supervisorControl = process.env.DEX_BACKEND_CONTROL;
+const quiescence = supervisorControl ? require('./backend-quiescence').backendQuiescence(supervisorControl, isBackendIdle) : null;
+if (quiescence) app.use(quiescence.middleware);
 const APP_VERSION = 'image-gen-console-2026-06-22-render-wrapper';
 
 const STORAGE_PATHS = resolveStoragePaths(process.env, path.resolve(__dirname, '../sdcpp-workflow'));
 const IS_INTERNAL_FALLBACK = process.env.DEX_STORAGE_MODE === 'internal-fallback';
 const FALLBACK_TARGET_IDS = new Set(['flux2-klein-4b', 'sdxl-photonic', 'flux-fp8']);
+const gateE = process.env.DEX_OPTION_A_TEST === '1';
+if (gateE && (os.hostname() !== 'bigmac' || PORT !== 31347
+  || os.homedir() !== '/Users/bigmac/DexDiffusion-OptionA-Test-internal'
+  || STORAGE_PATHS.dataRoot !== '/Volumes/wc2tb/DexDiffusion-OptionA-Test'
+  || process.env.DEX_MACBOOK_IMAGES_URL !== 'http://127.0.0.1:31348')) {
+  throw new Error('Invalid Gate E backend isolation');
+}
 const BACKEND_STORAGE = Object.freeze({
   mode: IS_INTERNAL_FALLBACK ? 'internal-fallback' : 'external',
   root: STORAGE_PATHS.dataRoot,
@@ -164,7 +174,14 @@ const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
 const imageMeta = W.createImageMetaStore(path.join(STATE_DIR, 'image-meta.json'));
 // Media-neutral core (media.js): durable generic jobs, heavy-compute lease,
 // worker registry, non-image media store and secure temporary staging.
-const jobStore = M.createJobStore(path.join(STATE_DIR, 'jobs.json'), { onChange: (kind, job) => genericJobEvent(kind, job) });
+const jobLedger = path.join(STATE_DIR, 'jobs.json');
+if (quiescence) {
+  const { requireLedgerShape } = require('./backend-quiescence');
+  requireLedgerShape(jobLedger, row => row.schema === 'dexdiffusion.jobs.v1' && Array.isArray(row.jobs));
+  requireLedgerShape(path.join(STATE_DIR, 'remote-workers.json'),
+    row => row.schema === 'dexdiffusion.remote-workers.v1' && row.records && typeof row.records === 'object' && !Array.isArray(row.records));
+}
+const jobStore = M.createJobStore(jobLedger, { onChange: (kind, job) => genericJobEvent(kind, job) });
 const publicationRecoveryState = { blocked: false, journal: { inspected: 0, repaired: 0, unresolved: [] }, jobs: { inspected: 0, recovered: 0, unresolved: [] },
   transfers: { inspected: 0, completed: [], discarded: [], no_output: [], pending: [], blocked: [] }, outbox: outboxReconciliationError ? { error: outboxReconciliationError } : { error: null } };
 // An unreadable outbox reconciliation is a failed external read: blocked, never CLEAR.
@@ -272,7 +289,7 @@ app.get('/api/publications/:id/content', (req, res) => {
 app.post('/api/publications/:id/ack', (req, res) => {
   if (!crossHostPublicationEnabled) return res.sendStatus(404);
   const record = publicationOutbox.read(req.params.id), receipt = req.body || {};
-  const expectedDestination = path.join('/Users/andrew/images_made', req.params.id);
+  const expectedDestination = path.join(gateE ? path.join(os.homedir(), 'fake-macbook') : '/Users/andrew/images_made', req.params.id);
   if (!record) return res.sendStatus(404);
   if (receipt.schema !== 'dexdiffusion.canonical_receipt.v1' || receipt.image_id !== record.image_id || receipt.destination !== expectedDestination || receipt.bytes !== record.expected_bytes || receipt.sha256 !== record.sha256 || !Number.isFinite(Date.parse(receipt.verified_at))) return res.status(400).json({ error: 'receipt does not match pending artifact' });
   if (record.state === 'CANONICAL_VERIFIED') return res.json({ state: record.state, image_id: record.image_id, idempotent: true });
@@ -1260,6 +1277,16 @@ function recordJobEvidence(job) {
 }
 
 function createJob(action, summary, requestParams = {}) {
+  if (quiescence && (HEAVY_ACTIONS.has(action) || action === 'upscale')) {
+    const home = fs.statSync(os.homedir());
+    const staging = fs.statSync(STORAGE_PATHS.imageRoot);
+    // The worker, journal and publication staging consume the same internal
+    // device. Reserve a 16-image batch, four copies and 256 MiB scratch.
+    const free = fs.statfsSync(STORAGE_PATHS.imageRoot);
+    if (home.dev !== staging.dev || free.bavail * free.bsize < (5 * 1024 + 256) * 1024 ** 2) {
+      throw Object.assign(new Error('Insufficient shared disk for durable generation and publication'), { status: 503 });
+    }
+  }
   const id = crypto.randomUUID();
   jobs[id] = {
     id,
@@ -6644,8 +6671,23 @@ app.get('/api/images/:id', (req, res) => {
   res.sendFile(img.path);
 });
 
+function isBackendIdle() {
+  const resources = arbiter.state();
+  const held = imageStore.journalHeldIds();
+  return held && held.size === 0 && !resources.owner && resources.waiting.length === 0 && resources.external.occupied === false
+    && Date.now() - resources.external.checkedAt < 90000 && !resources.quarantine
+    && !transferReconciliationRunning && !publicationRecoveryState.blocked
+    && !Object.values(jobs).some(job => ['queued', 'running', 'pending', 'starting', 'cancelling'].includes(job.status))
+    && jobStore.list({ limit: Infinity }).every(job => TERMINAL.has(job.status)
+      && !job.resource_lease && (job.owned_resources || []).every(resource => resource.state === 'succeeded'))
+    && remoteWorkers.list().every(worker => ['completed', 'cancelled_verified', 'failed'].includes(worker.state))
+    && engineTransferJournal && engineTransferJournal.list().length === 0
+    && !publicationOutbox.pendingStrict();
+}
+
 if (require.main === module) {
   app.listen(PORT, HOST, () => {
+    if (quiescence) setInterval(quiescence.checkpoint, 500).unref();
     const build = getBuildInfo();
     console.log(`SDCPP Workbench listening on ${build.bind} (${build.version}, HEAD ${build.gitHead}, pid ${build.pid})`);
   });

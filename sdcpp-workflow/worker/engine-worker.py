@@ -3,6 +3,7 @@
 import base64
 import fcntl
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -281,6 +282,7 @@ class Worker:
         self.lock = threading.RLock()
         self.jobs = {}
         self.active = None
+        self.supervisor = None
         self.stopping = False
         self.recovery_uncertain = []
         # A restart cannot inherit an untracked child: stop only recorded process groups.
@@ -385,6 +387,19 @@ class Worker:
         return {k: v for k, v in job.items() if k not in {'token_hash'}}
 
     def request(self, req):
+        if req.get('op') in ('backend-status', 'backend-restart', 'backend-pause'):
+            if set(req) != {'op'}:
+                raise ValueError('backend operation takes no arguments')
+            with self.lock:
+                if self.supervisor is None:
+                    return {'ok': True, 'state': 'DISABLED', 'port': None}
+                if req['op'] == 'backend-restart' and not self.supervisor.request_restart():
+                    raise ValueError('backend restart blocked by recovery evidence')
+                if req['op'] == 'backend-pause':
+                    if self.supervisor.mode != 'rehearsal':
+                        raise ValueError('pause is only available for the rehearsal backend')
+                    self.supervisor.paused = True
+                return {'ok': True, **self.supervisor.status()}
         validate(req, self.registry)
         with self.lock:
             if req['op'] == 'health':
@@ -437,6 +452,14 @@ class Worker:
                 if self.stopping or self.active or self.recovery_uncertain:
                     raise ValueError('worker busy; one heavy job is allowed')
                 problem = self.admission_problem()
+                if not problem and self.supervisor:
+                    # statvfs accounts for all existing consumers on this
+                    # volume. Reserve four image copies plus codec/input scratch.
+                    image_budget = req.get('batch_count', 1) * 64 * 1024 ** 2
+                    free = self.free_space(self.root)
+                    if (free < MIN_FREE_BYTES + 4 * image_budget + 256 * 1024 ** 2
+                            or self.retention_summary()['bytes'] + image_budget > self.retention['max_bytes']):
+                        problem = 'shared disk cannot hold a durable worker result and publication copies'
                 if problem:
                     raise ValueError(problem)
                 # Also refuse unrelated heavy image workers; console owns the wider resource lease.
@@ -456,11 +479,8 @@ class Worker:
             if req['op'] == 'cancel' and job['status'] not in TERMINAL:
                 job['cancel_requested'] = True
                 self.save(job)
-                if job.get('pgid'):
-                    try:
-                        os.killpg(job['pgid'], signal.SIGTERM)
-                    except ProcessLookupError:
-                        pass
+                # The executor observes this flag and signals its live Popen
+                # group. A persisted PGID may already have been recycled.
             if req['op'] == 'result':
                 if job['status'] != 'complete' or job.get('acknowledged'):
                     raise ValueError('no pending result')
@@ -515,7 +535,7 @@ class Worker:
                     time.sleep(.2)
                 return proc.returncode
         finally:
-            if proc is not None:
+            if proc is not None and proc.poll() is None:
                 try:
                     os.killpg(proc.pid, signal.SIGKILL)
                 except ProcessLookupError:
@@ -714,6 +734,27 @@ def serve():
     (ROOT / 'jobs').mkdir(mode=0o700, exist_ok=True)
     SOCKET.unlink(missing_ok=True)
     worker = Worker(ROOT)
+    if (ROOT / 'backend-supervisor-mode').exists() or (ROOT / 'backend-supervisor-mode').is_symlink():
+        module_file = ROOT.parent / 'Image_Gen-wc2tb-20261120/sdcpp-workflow/worker/backend-supervisor.py'
+        spec = importlib.util.spec_from_file_location('dex_backend_supervisor', module_file)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        worker.supervisor = module.configured_supervisor(worker, lockfile.fileno())
+    shutdown_request = threading.Event()
+    def supervise():
+        while not worker.stopping:
+            with worker.lock:
+                if shutdown_request.is_set():
+                    worker.supervisor.paused = True
+                try:
+                    worker.supervisor.tick()
+                except Exception as error:
+                    worker.supervisor.state = 'RECOVERY_BLOCKED'
+                    print(f'Backend supervisor blocked: {error}', file=sys.stderr, flush=True)
+                if shutdown_request.is_set() and not worker.supervisor.child and worker.supervisor.worker_idle():
+                    worker.stopping = True
+                    threading.Thread(target=server.shutdown, daemon=True).start()
+            time.sleep(.25)
     threading.Thread(target=worker.expire_results, daemon=True).start()
     class Server(socketserver.ThreadingUnixStreamServer):
         daemon_threads = True
@@ -721,6 +762,9 @@ def serve():
         server.worker = worker
         os.chmod(SOCKET, 0o600)
         def stop(signum, frame):
+            if worker.supervisor:
+                shutdown_request.set()
+                return
             worker.stopping = True
             for job in worker.jobs.values():
                 if job['status'] not in TERMINAL:
@@ -734,12 +778,18 @@ def serve():
             with worker.lock:
                 if worker.active:
                     return False
+                if worker.supervisor:
+                    worker.supervisor.paused = True
+                    if worker.supervisor.child or not worker.supervisor.worker_idle():
+                        return False
                 worker.stopping = True
                 restart.append(code)
             threading.Thread(target=server.shutdown, daemon=True).start()
             return True
         threading.Thread(target=watch_interpreter, args=(worker.interpreter, lambda: worker.active is not None, restart_when_idle),
                          kwargs={'interval': INTERPRETER_CHECK_INTERVAL, 'stopping': lambda: worker.stopping}, daemon=True).start()
+        if worker.supervisor:
+            threading.Thread(target=supervise, daemon=True).start()
         server.serve_forever(poll_interval=0.2)
         deadline = time.time() + 10
         while worker.active and time.time() < deadline:

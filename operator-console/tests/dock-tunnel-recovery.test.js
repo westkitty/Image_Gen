@@ -21,7 +21,7 @@ json_field(){ python3 -c 'import json,sys;print(json.load(sys.stdin).get(sys.arg
 healthy(){ local probes; probes="$(cat "$READY_FILE")"; [ "$STATE" = new ] || [ "$STATE" = healthy ] || { [ "$STATE" = stale ] && [ "$BACKEND" = yes ] && [ "$probes" -ge "$READY_AFTER" ]; }; }
 recovery_remaining(){ echo 8; }
 bounded_recovery(){ local t="$1"; shift; bounded "$t" "$@"; }
-bounded(){ case "$*" in *DEX_SSH_REACHABLE*) [ -n "$SSH_MARKER" ] && echo "$SSH_MARKER"; return 0 ;; *install-backend-service.sh*) if [ "$REGISTERED_UNHEALTHY" = yes ]; then echo 'ERROR: service is registered but not API-ready; leaving the existing service untouched.'; return 8; fi; [ "$BACKEND" = yes ] && { echo SERVICE_READY; return 0; } ;; *DEX_BACKEND_READY*) local probes; probes="$(cat "$READY_FILE")"; probes=$((probes+1)); echo "$probes" > "$READY_FILE"; if [ "$BACKEND" = yes ] && [ "$probes" -ge "$READY_AFTER" ]; then echo DEX_BACKEND_READY; return 0; fi; return 1 ;; *) [ "$BACKEND" = yes ] ;; esac; }
+bounded(){ case "$*" in *DEX_SSH_REACHABLE*) [ -n "$SSH_MARKER" ] && echo "$SSH_MARKER"; return 0 ;; *request-worker-backend.sh*) if [ "$REGISTERED_UNHEALTHY" = yes ]; then echo 'ERROR: service is registered but not API-ready; leaving the existing service untouched.'; return 8; fi; [ "$BACKEND" = yes ] && { echo SERVICE_READY; return 0; } ;; *DEX_BACKEND_READY*) local probes; probes="$(cat "$READY_FILE")"; probes=$((probes+1)); echo "$probes" > "$READY_FILE"; if [ "$BACKEND" = yes ] && [ "$probes" -ge "$READY_AFTER" ]; then echo DEX_BACKEND_READY; return 0; fi; return 1 ;; *) [ "$BACKEND" = yes ] ;; esac; }
 kill(){ echo "SIGNAL:$1:$2"; [ "$OWNER" = ssh ] && [ "$2" = 1111 ] && [ "$1" = -TERM ]; STATE=none; }
 ssh(){ echo "NEW_TUNNEL"; STATE=new; }
 sleep(){ :; }
