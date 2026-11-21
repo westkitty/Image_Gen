@@ -169,7 +169,9 @@ if (crossHostPublicationEnabled) {
 }
 const CONFIG_DIR = path.join(WORKFLOW_ROOT, 'config');
 // DEX_STATE_DIR remains an explicit override; DEX_DATA_ROOT supplies a durable, relocatable default.
-const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
+// Gate E inherits the native registry's LoRA entry via a test-owned,
+// preflighted asset cache. Real storage modes use the existing discovery cache.
+const ASSETS_CACHE = path.join(gateE ? os.homedir() : STATE_DIR, 'assets-cache.json');
 // Lineage + Keepers, keyed by canonical image id (metadata only, never prompts).
 const imageMeta = W.createImageMetaStore(path.join(STATE_DIR, 'image-meta.json'));
 // Media-neutral core (media.js): durable generic jobs, heavy-compute lease,
