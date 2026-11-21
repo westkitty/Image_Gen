@@ -1,5 +1,39 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## 2026-11-21 — WC2TB production cutover, preservation and prevention (PRODUCTION VERIFIED at 352e508; prevention NOT deployed)
+
+**Production cutover (completed 2026-11-21, one maintenance window):**
+- Big Mac now runs `352e508ceebe950bac6b2115be6782564e7b2370` from `/Users/bigmac/Image_Gen-wc2tb-20261120`.
+- Process chain: launchd → signed EngineHost (SHA-256 `79faeb90…`) → `~/.dexdiffusion-engine/engine-worker.py` (SHA-256 `66b74780…`) in supervision mode `production` → pinned Node v26.13.1 (`266dec4d…`).
+- There is a single 31337 listener. The legacy `local.dexdiffusion.server` agent is disabled and not loaded.
+- The cutover first went live at `bc288c5`, the internal-fallback publication isolation. A real job was then refused with "Insufficient shared disk": 5,317.8 MiB was free against a flat 5,376 MiB reserve.
+- One bounded correction, `352e508`, sized the reserve to the requested batch: 1280 + 256 × images MiB, keeping 16 images for unknown or large work. It was activated through the owner restart.
+- Proven live with real inference:
+  - SD1.5 job `5c24d7d4-db9e-4311-8a2b-76fbc099a3c4`;
+  - LoRA job `6ac09c34-1a9c-4704-a5e8-4980b13607a8` (834/834 LoRA tensors applied);
+  - both images delivered to the MacBook library with matching SHA-256 and acknowledged;
+  - an idle owner-restart test.
+- Afterwards: 453 publications `CANONICAL_VERIFIED`, 0 pending. The 18 historical interrupted jobs are preserved and unmodified.
+- Evidence is kept outside the repository: Big Mac `~/wc2tb-cutover-20261121/` (script, log, pre-state hashes) and MacBook `~/Library/Application Support/DexDiffusion/cutover-20261121/macbook-pre/`.
+
+**Preservation (GitHub, non-forced pushes):**
+- `origin/codex/wc2tb-recovery-20261120` = `352e508`, the exact deployed source. It must not advance.
+- `origin/rollback/wc2tb-fallback-safe-v1-20261120` = `227d8ce`, rollback source `c7708e4` plus the package and the proven starter (SHA-256 `03bb7a28…`).
+- MacBook `~/Image_Gen` (main `39534f2`) still has its three controller files uncommitted: `bin/dexdiffusion`, `scripts/dexdiffusion-recovery-controller.py` and `operator-console/bin/canonical-publication-worker.js`. They are byte-identical to the published `352e508` blobs and classified IDENTICAL_AND_PUBLISHED. They are deliberately left uncommitted on main, which was not advanced.
+
+**Prevention (branch `codex/wc2tb-prevention-20261121`; source only, NOT deployed):**
+- Read-only release doctor, plus a fail-closed release gate in front of owner `--restart`.
+- Regression tests A–P, the DD-04 test fix, the installer argument-order fix, and a portable CI workflow.
+- See `docs/WC2TB_PREVENTION.md` and `docs/WC2TB_RECOVERY_RUNBOOK.md`.
+- A read-only run of the doctor against production in release-readiness mode for `352e508` returned PASS. At that moment 4,790 MiB was free, so batch capacity was 13 images: below the full 16-image reserve.
+
+**Limitations (open):**
+- Big Mac internal disk is the binding constraint; free space has fallen across the day.
+- There is no owner-sanctioned production pause, so a production rollback onto 31337 needs its own authorized plan.
+- The rollback has been proven only on a disposable port and root.
+- `main` has no branch protection.
+- CI cannot prove TCC, WC2TB, launchd, ancestry or MacBook facts.
+
 ## 2026-11-20 — Gate E WC2TB source-only release readiness (PRODUCTION NOT VERIFIED)
 
 - **Candidate:** Big Mac worktree `/Users/bigmac/Image_Gen-wc2tb-20261120`, branch `codex/wc2tb-recovery-20261120`, received local source-only commit `d92ea651531a1117bc208870bcc6bb12cd54f159` above Gate E `c92bff7`. The sole new code change preserves the protected 38-line PNG-to-canonical-Library Edit import patch. Candidate `edit-ui.js` SHA-256 `44e7e73974642c1c71b57592c61a078b40415f0a931ab90bce1c0798030577e8` exactly matches dirty production; production checkout was not edited. MacBook isolated preparation worktree was fetched to the same commit, clean.

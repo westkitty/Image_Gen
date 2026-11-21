@@ -66,7 +66,10 @@ owned_ssh_tunnel_pid(){ return 1; }
 kill(){ echo "SIGNAL:$*"; }
 ${stop}
 cmd_stop`;
- const out=cp.spawnSync('/bin/bash',['-c',script],{encoding:'utf8',timeout:3000});
+ // An isolated HOME keeps a live Big Mac supervision-mode file from answering first (exit 78).
+ const home=fs.mkdtempSync(path.join(os.tmpdir(),'dex-dd04-'));
+ const out=cp.spawnSync('/bin/bash',['-c',script],{encoding:'utf8',timeout:3000,env:{...process.env,HOME:home}});
+ fs.rmSync(home,{recursive:true,force:true});
  assert.equal(out.status,1,out.stderr);assert.match(out.stderr,/owner changed|ownership is no longer verifiable/);assert.doesNotMatch(out.stdout,/SIGNAL/);
 });
 

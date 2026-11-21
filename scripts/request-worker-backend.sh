@@ -11,7 +11,17 @@ fi
   echo 'SERVICE_BLOCKED: worker supervision mode is not production' >&2
   exit 78
 }
-exec /opt/homebrew/bin/python3 - "${1:---ensure}" <<'PY'
+action="${1:---ensure}"
+if [[ "$action" == --restart ]]; then
+  # A restart stops a working backend: the release doctor must pass first.
+  # No environment variable can skip this; see docs/WC2TB_RECOVERY_RUNBOOK.md.
+  shift
+  [[ -z "${DEX_RELEASE_GATE_FIXTURE_FACTS:-}" ]] || { echo 'SERVICE_BLOCKED: fixture facts cannot authorize a restart' >&2; exit 78; }
+  /bin/bash "$(dirname "${BASH_SOURCE[0]}")/release-gate.sh" "$@" || { echo 'SERVICE_BLOCKED: release gate refused restart; backend left running' >&2; exit 78; }
+elif [[ $# -gt 1 ]]; then
+  echo 'SERVICE_BLOCKED: --ensure takes no further arguments' >&2; exit 2
+fi
+exec /opt/homebrew/bin/python3 - "$action" <<'PY'
 import json, socket, sys, time, urllib.request
 action = sys.argv[1]
 if action not in ('--ensure', '--restart'):

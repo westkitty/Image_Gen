@@ -8,6 +8,9 @@
 #   bin/dexdiffusion status    read-only health report (never repairs anything)
 #   bin/dexdiffusion open      start if needed, then activate the native app
 #   bin/dexdiffusion doctor    read-only PASS/WARN/FAIL health check (via /api/doctor; never generates)
+#   bin/dexdiffusion release-doctor      Big Mac WC2TB read-only PASS/BLOCKED/UNVERIFIED JSON
+#   bin/dexdiffusion release-readiness --expect-revision SHA [--target-worktree DIR]
+#                                         fail-closed cutover preflight (exit 0 only on PASS)
 #
 # Ownership rule: a listener on 31337 is "ours" only if its /api/version
 # reports cwd == <this repo>/operator-console and its pid matches the port
@@ -624,6 +627,8 @@ case "${1:-status}" in
     echo "Activated native DexDiffusion app: $APP_PATH"
     ;;
   doctor) cmd_doctor ;;
+  release-doctor) shift; exec python3 "$ROOT/scripts/wc2tb-release-doctor.py" "$@" ;;
+  release-readiness) shift; exec python3 "$ROOT/scripts/wc2tb-release-doctor.py" --release-readiness "$@" ;;
   recovery-status) cmd_recovery --status ;;
   recovery-tick) cmd_recovery ;;
   recovery-retry) cmd_recovery --manual ;;
@@ -635,6 +640,6 @@ case "${1:-status}" in
     command -v node >/dev/null 2>&1 || { echo "ERROR: Node.js is unavailable; publication worker not started" >&2; exit 1; }
     lockf -t 0 "$HOME/Library/Caches/DexDiffusion/canonical-publication.lock" node "$CONSOLE_DIR/bin/canonical-publication-worker.js"
     ;;
-  -h|--help|help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) echo "usage: bin/dexdiffusion {start|stop|restart|status|open|doctor|recovery-status|recovery-tick|recovery-retry|publication-sync}" >&2; exit 2 ;;
+  -h|--help|help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "usage: bin/dexdiffusion {start|stop|restart|status|open|doctor|release-doctor|release-readiness|recovery-status|recovery-tick|recovery-retry|publication-sync}" >&2; exit 2 ;;
 esac
