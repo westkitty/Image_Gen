@@ -1,0 +1,7 @@
+M	operator-console/bin/canonicalize-image.js
+M	operator-console/bin/local-engine-generate.js
+M	operator-console/public/dexdiffusion/edit-ui.js
+M	operator-console/server.js
+M	operator-console/tests/authorized-recovery.test.js
+A	operator-console/tests/fallback-publication-runtime.test.js
+M	operator-console/tests/internal-fallback.test.js
