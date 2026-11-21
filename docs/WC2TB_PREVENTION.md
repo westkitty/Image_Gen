@@ -34,9 +34,26 @@ bin/dexdiffusion release-readiness --expect-revision <full sha> [--target-worktr
 | disk_reserve | free bytes on publication staging, same device as home | below the one-image reserve (1536 MiB) |
 | publication_state | `/api/jobs`, `/api/resources` | release mode: active job, lease or quarantine |
 | macbook_ack | `/api/publications/status` | publication disabled; release mode: pending > 0 |
-| rollback | v1 package `SOURCE_COMMIT` c7708e4, starter SHA-256 `03bb7a28…`, deps | missing or altered |
+| rollback | v1 package `SOURCE_COMMIT` c7708e4, starter SHA-256 `03bb7a28…`, deps | missing or altered (PASS means package integrity **only**) |
+| handoff_capability | installed worker and deployed supervisor contain the owner handoff; journal `~/.dexdiffusion-engine/backend-handoff.json` | handoff absent, or journal in a failed or in-progress state |
+| rollback_activation_proof | production-mode `RUNNING_FALLBACK` later followed by `RUNNING_EXTERNAL` in that journal | (UNVERIFIED until a live round trip is recorded; isolated tests never count) |
+| return_to_external | handoff capability plus recorded production return | BLOCKED without capability; UNVERIFIED if unproven |
+| recovery_plan (release mode) | capability plus proof | BLOCKED if no owner handoff exists anywhere; UNVERIFIED if it is only in source or unproven |
 | image_validation_python | venv imports Pillow | `PREREQUISITE MISSING: Pillow` |
 | release_target (release mode) | `--expect-revision`, target HEAD, clean | not the expected revision, or dirty |
+
+**Sections (schema 2).** The output reports five separate sections:
+
+- `production_health`;
+- `fallback_package_integrity`;
+- `handoff_capability`;
+- `rollback_activation_proof`;
+- `return_to_external_capability`.
+
+The verdict is the worst status across all checks, so a healthy production with
+an unproven rollback is never an overall PASS. On 2026-11-21 the live read-only
+run gave: production health PASS, package PASS, handoff BLOCKED, proof
+UNVERIFIED, return BLOCKED.
 
 **WC2TB access rule.** A mount is never treated as permission. SSH shells get
 EPERM from TCC. Only the EngineHost-descended backend can read WC2TB, so the

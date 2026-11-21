@@ -49,6 +49,17 @@ PINS = {
     'required_deps': ['express', 'three', '@sparkjsdev/spark'],
 }
 STATUSES = ('PASS', 'BLOCKED', 'UNVERIFIED')
+HANDOFF_SUPERVISOR_MARK = 'class HandoffController'
+HANDOFF_WORKER_MARK = "req.get('op') == 'backend-handoff'"
+SECTIONS = {
+    'production_health': ('platform', 'node', 'dependencies', 'backend_revision', 'enginehost_worker', 'process_ancestry',
+                          'restart_authority', 'legacy_agent', 'wc2tb_access', 'disk_reserve', 'publication_state',
+                          'macbook_ack', 'image_validation_python'),
+    'fallback_package_integrity': ('rollback',),
+    'handoff_capability': ('handoff_capability',),
+    'rollback_activation_proof': ('rollback_activation_proof',),
+    'return_to_external_capability': ('return_to_external',),
+}
 
 
 def disk_reserve_bytes(images):
@@ -229,7 +240,55 @@ def collect(target_worktree=None):
     py = PINS['validation_python']
     rc, _ = run([py, '-c', 'import PIL'], timeout=10) if os.access(py, os.X_OK) else (None, '')
     facts['validation_python'] = {'path': py, 'pillow': (rc == 0) if rc is not None else False}
+    facts['handoff'] = handoff_facts(DEPLOYED, ENGINE + '/engine-worker.py', ENGINE + '/backend-handoff.json', target_worktree)
     return facts
+
+
+def read_text(path, limit=1 << 20):
+    try:
+        with open(path, encoding='utf-8') as handle:
+            return handle.read(limit)
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def supports_handoff(supervisor_source, worker_source):
+    if supervisor_source is None or worker_source is None:
+        return None
+    return HANDOFF_SUPERVISOR_MARK in supervisor_source and HANDOFF_WORKER_MARK in worker_source
+
+
+def handoff_facts(deployed, installed_worker, journal_path, target_worktree=None):
+    facts = {'installed_supports': supports_handoff(
+        read_text(deployed + '/sdcpp-workflow/worker/backend-supervisor.py'), read_text(installed_worker))}
+    if target_worktree:
+        facts['target_supports'] = supports_handoff(
+            read_text(os.path.join(target_worktree, 'sdcpp-workflow/worker/backend-supervisor.py')),
+            read_text(os.path.join(target_worktree, 'sdcpp-workflow/worker/engine-worker.py')))
+    raw = read_text(journal_path)
+    if raw is None:
+        facts['journal'] = None if os.path.exists(journal_path) else {'state': 'ABSENT', 'history': []}
+    else:
+        try:
+            journal = json.loads(raw)
+            facts['journal'] = {'state': journal.get('state'), 'failure': journal.get('failure'),
+                                'history': [{'state': h.get('state'), 'mode': h.get('mode')} for h in journal.get('history') or []]}
+        except ValueError:
+            facts['journal'] = {'state': 'CORRUPT', 'history': []}
+    return facts
+
+
+def production_round_trip_proven(journal):
+    """PASS evidence only: a production-mode RUNNING_FALLBACK later followed by RUNNING_EXTERNAL."""
+    seen_fallback = False
+    for entry in (journal or {}).get('history') or []:
+        if entry.get('mode') != 'production':
+            continue
+        if entry.get('state') == 'RUNNING_FALLBACK':
+            seen_fallback = True
+        elif entry.get('state') == 'RUNNING_EXTERNAL' and seen_fallback:
+            return True
+    return False
 
 
 # ----------------------------------------------------------------- evaluation
@@ -393,7 +452,33 @@ def evaluate(facts, release=False, expect_revision=None):
         checks.append(check('rollback', 'BLOCKED', 'versioned rollback v1 package missing or altered'))
     else:
         dep = eval_deps('rollback', rb.get('deps'))
-        checks.append(check('rollback', dep['status'], 'rollback v1 c7708e4 available; ' + dep['detail']))
+        checks.append(check('rollback', dep['status'], 'rollback v1 c7708e4 package intact; ' + dep['detail']
+                            + ' (package integrity only: not proof that a production rollback works)'))
+
+    h = facts.get('handoff')
+    journal = (h or {}).get('journal')
+    proven = production_round_trip_proven(journal)
+    if not h or h.get('installed_supports') is None or journal is None:
+        capability = check('handoff_capability', 'UNVERIFIED', 'installed worker, deployed supervisor or handoff journal unreadable')
+    elif not h['installed_supports']:
+        capability = check('handoff_capability', 'BLOCKED', 'deployed EngineHost worker has no owner-authorized handoff '
+                           '(backend-pause is rehearsal-only): the v1 package cannot take over port 31337')
+    elif journal.get('state') not in ('ABSENT', 'RUNNING_EXTERNAL'):
+        capability = check('handoff_capability', 'BLOCKED', 'handoff journal is %s (%s)' % (journal.get('state'), journal.get('failure')))
+    else:
+        capability = check('handoff_capability', 'PASS', 'owner-authorized handoff installed; journal %s' % journal.get('state'))
+    checks.append(capability)
+    if proven:
+        checks.append(check('rollback_activation_proof', 'PASS', 'production fallback and return recorded in the owner journal'))
+    else:
+        checks.append(check('rollback_activation_proof', 'UNVERIFIED', 'no production-to-fallback-to-production transition has '
+                            'been demonstrated on this hardware; source tests are not proof'))
+    if capability['status'] != 'PASS':
+        checks.append(check('return_to_external', capability['status'], 'return path depends on the owner handoff: ' + capability['detail']))
+    elif proven:
+        checks.append(check('return_to_external', 'PASS', 'owner return to external supervision recorded in production'))
+    else:
+        checks.append(check('return_to_external', 'UNVERIFIED', 'owner return implemented but never demonstrated in production'))
 
     v = facts.get('validation_python')
     if not v:
@@ -417,11 +502,24 @@ def evaluate(facts, release=False, expect_revision=None):
             checks.append(check('release_target', 'PASS', 'target worktree at %s and clean' % expect_revision[:12]))
         if facts.get('target'):
             checks.append(eval_deps('release_target_dependencies', facts['target'].get('deps')))
+        if capability['status'] == 'PASS' and proven:
+            checks.append(check('recovery_plan', 'PASS', 'owner handoff installed and production round trip demonstrated'))
+        elif capability['status'] in ('PASS', 'UNVERIFIED') or (h or {}).get('target_supports'):
+            checks.append(check('recovery_plan', 'UNVERIFIED', 'owner handoff is unproven (not installed, unverifiable, or never '
+                                'demonstrated live): not yet a proven recovery plan'))
+        else:
+            checks.append(check('recovery_plan', 'BLOCKED', 'no owner-authorized production rollback path: a package checksum '
+                                'is not a recovery plan'))
 
     statuses = {c['status'] for c in checks}
     verdict = 'BLOCKED' if 'BLOCKED' in statuses else 'UNVERIFIED' if 'UNVERIFIED' in statuses else 'PASS'
-    return {'tool': 'wc2tb-release-doctor', 'schema': 1,
-            'mode': 'release-readiness' if release else 'inspect', 'verdict': verdict, 'checks': checks}
+    by_id = {c['id']: c['status'] for c in checks}
+    sections = {}
+    for name, members in SECTIONS.items():
+        found = {by_id[m] for m in members if m in by_id}
+        sections[name] = 'BLOCKED' if 'BLOCKED' in found else 'UNVERIFIED' if 'UNVERIFIED' in found or not found else 'PASS'
+    return {'tool': 'wc2tb-release-doctor', 'schema': 2, 'mode': 'release-readiness' if release else 'inspect',
+            'verdict': verdict, 'sections': sections, 'checks': checks}
 
 
 def main(argv=None):

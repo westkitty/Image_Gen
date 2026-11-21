@@ -46,7 +46,12 @@ def good_facts():
                         'enabled': True, 'pending': 0, 'suspended': 0},
         'rollback': {'source_commit': P['rollback_source_commit'], 'starter_sha256': P['rollback_starter_sha256'], 'deps': dict(deps)},
         'validation_python': {'path': P['validation_python'], 'pillow': True},
+        'handoff': {'installed_supports': True, 'journal': {'state': 'RUNNING_EXTERNAL', 'history': PROVEN}},
     }
+
+
+PROVEN = [{'state': s, 'mode': 'production'} for s in ('QUIESCING', 'BACKEND_RELEASED', 'STARTING_FALLBACK', 'RUNNING_FALLBACK',
+                                                       'QUIESCING_FALLBACK', 'FALLBACK_RELEASED', 'STARTING_EXTERNAL', 'RUNNING_EXTERNAL')]
 
 
 def status(report, cid):
@@ -169,6 +174,54 @@ class ReleaseDoctor(unittest.TestCase):
         for section, field, value in corruptions:
             facts = copy.deepcopy(good_facts()); facts[section][field] = value
             self.assertNotEqual(doctor.evaluate(facts, release=True, expect_revision=REV)['verdict'], 'PASS', (section, field))
+
+    def test_Q_production_health_pass_does_not_imply_rollback_proof(self):
+        facts = good_facts()
+        facts['handoff']['journal'] = {'state': 'ABSENT', 'history': []}
+        report = doctor.evaluate(facts)
+        self.assertEqual(report['sections']['production_health'], 'PASS')
+        self.assertEqual(report['sections']['fallback_package_integrity'], 'PASS')
+        self.assertEqual(report['sections']['rollback_activation_proof'], 'UNVERIFIED')
+        self.assertEqual(report['sections']['return_to_external_capability'], 'UNVERIFIED')
+        self.assertNotEqual(report['verdict'], 'PASS')
+        # Isolated (non-production) round trips are never proof.
+        facts['handoff']['journal'] = {'state': 'RUNNING_EXTERNAL', 'history': [dict(h, mode='isolated-test') for h in PROVEN]}
+        self.assertEqual(status(doctor.evaluate(facts), 'rollback_activation_proof'), 'UNVERIFIED')
+        # A fallback without a return is not a proven round trip.
+        facts['handoff']['journal'] = {'state': 'RUNNING_EXTERNAL', 'history': PROVEN[:4]}
+        self.assertEqual(status(doctor.evaluate(facts), 'rollback_activation_proof'), 'UNVERIFIED')
+
+    def test_R_missing_or_unproven_handoff_is_not_a_recovery_plan(self):
+        facts = good_facts()
+        facts['handoff'] = {'installed_supports': False, 'journal': {'state': 'ABSENT', 'history': []}}
+        report = doctor.evaluate(facts, release=True, expect_revision=REV)
+        self.assertEqual(status(report, 'handoff_capability'), 'BLOCKED')
+        self.assertEqual(status(report, 'return_to_external'), 'BLOCKED')
+        self.assertEqual(status(report, 'recovery_plan'), 'BLOCKED')
+        self.assertEqual(status(report, 'rollback'), 'PASS')  # a good checksum alone...
+        self.assertEqual(report['verdict'], 'BLOCKED')        # ...is not a recovery plan
+        facts['handoff'] = {'installed_supports': False, 'target_supports': True, 'journal': {'state': 'ABSENT', 'history': []}}
+        self.assertEqual(status(doctor.evaluate(facts, release=True, expect_revision=REV), 'recovery_plan'), 'UNVERIFIED')
+        facts['handoff'] = {'installed_supports': True, 'journal': {'state': 'ABSENT', 'history': []}}
+        report = doctor.evaluate(facts, release=True, expect_revision=REV)
+        self.assertEqual((status(report, 'handoff_capability'), status(report, 'recovery_plan'), report['verdict']),
+                         ('PASS', 'UNVERIFIED', 'UNVERIFIED'))
+        for state in ('HANDOFF_FAILED', 'RUNNING_FALLBACK', 'QUIESCING', 'CORRUPT'):
+            facts['handoff'] = {'installed_supports': True, 'journal': {'state': state, 'history': PROVEN}}
+            self.assertEqual(status(doctor.evaluate(facts), 'handoff_capability'), 'BLOCKED', state)
+        facts['handoff'] = {'installed_supports': True, 'journal': None}
+        self.assertEqual(status(doctor.evaluate(facts), 'handoff_capability'), 'UNVERIFIED')
+
+    def test_handoff_facts_detect_real_source_markers(self):
+        repo = os.path.join(HERE, '..', '..')
+        with tempfile.TemporaryDirectory() as root:
+            journal = os.path.join(root, 'backend-handoff.json')
+            facts = doctor.handoff_facts(repo, os.path.join(repo, 'sdcpp-workflow/worker/engine-worker.py'), journal, repo)
+            self.assertEqual((facts['installed_supports'], facts['target_supports'], facts['journal']['state']), (True, True, 'ABSENT'))
+            with open(os.path.join(root, 'old-worker.py'), 'w') as handle:
+                handle.write("if req['op'] == 'backend-pause': raise ValueError('pause is only available for the rehearsal backend')\n")
+            facts = doctor.handoff_facts(repo, os.path.join(root, 'old-worker.py'), journal)
+            self.assertFalse(facts['installed_supports'])
 
     def test_P_doctor_source_is_read_only(self):
         with open(DOCTOR, encoding='utf-8') as handle:

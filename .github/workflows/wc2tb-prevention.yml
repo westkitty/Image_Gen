@@ -6,7 +6,7 @@ name: WC2TB prevention (portable checks)
 # read-only check on Big Mac with: bin/dexdiffusion release-doctor
 on:
   push:
-    branches: ['codex/wc2tb-prevention-*']
+    branches: ['codex/wc2tb-prevention-*', 'codex/wc2tb-rollback-closure-*']
   pull_request:
     branches: [main]
     paths:
@@ -16,6 +16,7 @@ on:
       - 'operator-console/backend-quiescence.js'
       - 'operator-console/server.js'
       - 'operator-console/tests/wc2tb-prevention.test.js'
+      - 'sdcpp-workflow/worker/**'
   workflow_dispatch:
 
 permissions:
@@ -56,6 +57,9 @@ jobs:
           node --check operator-console/backend-quiescence.js
       - name: Release doctor fixtures, disk boundary and negative controls
         run: python -m unittest discover -s scripts/test -p 'test_*.py' -v
+      - name: Owner handoff state machine and supervisor (isolated ports, fake processes)
+        working-directory: sdcpp-workflow/worker
+        run: python -m unittest -v test_backend_handoff test_backend_supervisor
       - name: Install console dependencies from the lockfile
         working-directory: operator-console
         run: npm ci --ignore-scripts --no-audit --no-fund

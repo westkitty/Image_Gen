@@ -1,5 +1,20 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## 2026-11-21 (later) — Owner-authorized fallback handoff (SOURCE ONLY; live drill pending)
+
+- **Gap closed in source:** the EngineHost worker's `backend-pause` is rehearsal-only, so the corrected v1 internal-fallback package (`c7708e4`) could not take over 31337.
+- **Fix:** branch `codex/wc2tb-rollback-closure-20261121`, built on the prevention branch `603c382`, adds a journaled handoff to the existing Supervisor.
+  - The Supervisor stays the only backend owner.
+  - Interface: `request-worker-backend.sh --handoff-fallback` and `--return-external`, with a strict `backend-handoff` worker operation.
+  - State machine, refusal codes and failure handling are in `docs/WC2TB_RECOVERY_RUNBOOK.md` §H.
+  - `backend-pause` stays rehearsal-only.
+- **Doctor (schema 2):** reports production health, package integrity, handoff capability, activation proof and return capability separately.
+  - A live read-only run against production (352e508) gave: production health PASS, package PASS, `handoff_capability` BLOCKED (not installed), `rollback_activation_proof` UNVERIFIED, `recovery_plan` BLOCKED.
+  - A package checksum is no longer presented as a recovery plan.
+- **Validation:** isolated tests only, on fake processes, test ports and private roots. They prove source behaviour, not production.
+- **Production was not modified:** still `352e508`, same backend pid and start time.
+- **Next:** the approval-ready window in runbook §I installs the handoff and runs the live round trip. Only that window can turn the proof to PASS.
+
 ## 2026-11-21 — WC2TB production cutover, preservation and prevention (PRODUCTION VERIFIED at 352e508; prevention NOT deployed)
 
 **Production cutover (completed 2026-11-21, one maintenance window):**

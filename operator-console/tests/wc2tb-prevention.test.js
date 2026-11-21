@@ -139,3 +139,11 @@ test('P: every test child exited and no production path was written', () => {
   const gateSrc = fs.readFileSync(GATE, 'utf8');
   assert.doesNotMatch(gateSrc, /\bkill\b|launchctl|backend-restart|rm -/, 'the gate itself never stops, restarts or deletes');
 });
+
+test('O: the handoff interface refuses fixture facts and sends only the strict owner request', () => {
+  const src = fs.readFileSync(path.join(REPO, 'scripts/request-worker-backend.sh'), 'utf8');
+  const block = src.slice(src.indexOf('--handoff-fallback || "$action" == --return-external'), src.indexOf("elif [[ $# -gt 1 ]]"));
+  assert.match(block, /DEX_RELEASE_GATE_FIXTURE_FACTS[^\n]*fixture facts cannot authorize a handoff/);
+  assert.match(block, /\{'op': 'backend-handoff', 'target': target, 'expect_revision': expect, 'reason': reason\}/);
+  assert.doesNotMatch(block, /\bkill\b|launchctl|lsof .*-t.*\| *xargs/);
+});

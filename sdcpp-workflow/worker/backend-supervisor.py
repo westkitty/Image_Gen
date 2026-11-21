@@ -1,6 +1,10 @@
 """Opt-in, single-owner backend lifecycle beneath EngineHost."""
+import fcntl
+import hashlib
 import importlib.util
+import json
 import os
+import re
 from pathlib import Path
 import signal
 import stat
@@ -8,6 +12,7 @@ import socket
 import subprocess
 import tempfile
 import time
+import urllib.request
 
 
 def executable_identity(path):
@@ -57,14 +62,23 @@ class Supervisor:
         self.retry_at = 0
         self.drain_since = None
         self.owner = self.root / 'backend-instance'
+        self.cwd = None
+        self.log_path = None
+        self.profile = 'external'
+        self.handoff = None
 
     def status(self):
-        return {'state': self.state, 'pid': self.child.pid if self.child else None,
-                'port': self.port, 'restart_requested': self.requested,
-                'recent_crashes': len(self.failures), 'paused': self.paused}
+        status = {'state': self.state, 'pid': self.child.pid if self.child else None,
+                  'port': self.port, 'restart_requested': self.requested,
+                  'recent_crashes': len(self.failures), 'paused': self.paused, 'profile': self.profile}
+        if self.handoff:
+            status['handoff'] = self.handoff.summary()
+        return status
 
     def request_restart(self):
         if self.state in ('CIRCUIT_OPEN', 'RECOVERY_BLOCKED'):
+            return False
+        if self.profile != 'external' or (self.handoff and self.handoff.busy()):
             return False
         self.requested = True
         return True
@@ -96,8 +110,14 @@ class Supervisor:
                 os.fsync(fd)
             finally:
                 os.close(fd)
-            self.child = subprocess.Popen(self.command, env={**self.env, 'DEX_BACKEND_CONTROL': str(self.instance)},
-                                          stdin=subprocess.DEVNULL, start_new_session=True, pass_fds=(self.lock_fd,))
+            log = open(self.log_path, 'ab') if self.log_path else None
+            try:
+                self.child = subprocess.Popen(self.command, env={**self.env, 'DEX_BACKEND_CONTROL': str(self.instance)},
+                                              cwd=self.cwd, stdin=subprocess.DEVNULL, start_new_session=True,
+                                              pass_fds=(self.lock_fd,), stdout=log, stderr=log)
+            finally:
+                if log:
+                    log.close()
         except OSError:
             self.state = 'RECOVERY_BLOCKED'
             return
@@ -129,6 +149,8 @@ class Supervisor:
         self.retry_at = now + min(300, 10 * 2 ** (len(self.failures) - 1))
 
     def tick(self):
+        if self.handoff and self.handoff.tick():
+            return
         if self.state in ('CIRCUIT_OPEN', 'RECOVERY_BLOCKED'):
             return
         if self.child is None:
@@ -175,8 +197,573 @@ class Supervisor:
             self.state = 'RECOVERY_BLOCKED'
             return
         if self._release():
+            if self.handoff and self.handoff.on_released():
+                return
             self.state = 'WAITING'
             self.retry_at = self.clock() + 1
+
+
+# --------------------------------------------------------------------------
+# Owner-authorized production <-> internal-fallback handoff.
+#
+# The EngineHost-owned Supervisor stays the ONLY backend owner. A handoff is a
+# journaled profile switch performed by that owner: it drains and stops only
+# its own sealed child (the same proven path as an owner restart), then starts
+# the versioned internal-fallback package as its next owned child. Nothing is
+# ever adopted, killed by remembered PID, or freed from a foreign process.
+#
+#   RUNNING_EXTERNAL -> QUIESCING -> BACKEND_RELEASED -> STARTING_FALLBACK -> RUNNING_FALLBACK
+#   RUNNING_FALLBACK -> QUIESCING_FALLBACK -> FALLBACK_RELEASED -> STARTING_EXTERNAL -> RUNNING_EXTERNAL
+#   any transition failure, or a worker restart mid-transition -> HANDOFF_FAILED (terminal: paused,
+#   nothing is spawned until an explicit, re-checked return-to-external request)
+#   QUIESCING that cannot drain in time -> RUNNING_EXTERNAL (aborted; backend untouched)
+# --------------------------------------------------------------------------
+HANDOFF_TRANSITIONAL = ('QUIESCING', 'BACKEND_RELEASED', 'STARTING_FALLBACK',
+                        'QUIESCING_FALLBACK', 'FALLBACK_RELEASED', 'STARTING_EXTERNAL')
+HANDOFF_STATES = ('RUNNING_EXTERNAL', 'RUNNING_FALLBACK', 'HANDOFF_FAILED') + HANDOFF_TRANSITIONAL
+HANDOFF_KEYS = {'op', 'target', 'expect_revision', 'reason'}
+FALLBACK_MODELS = ['flux-fp8', 'flux2-klein-4b', 'sdxl-photonic']
+
+
+def sha256_file(path):
+    try:
+        digest = hashlib.sha256()
+        with open(path, 'rb') as handle:
+            for block in iter(lambda: handle.read(1 << 20), b''):
+                digest.update(block)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
+def http_json(base, path, timeout=2):
+    try:
+        with urllib.request.urlopen(base + path, timeout=timeout) as response:
+            return response.status, json.load(response)
+    except (OSError, ValueError):
+        return None, None
+
+
+def http_status(base, path, timeout=2):
+    try:
+        with urllib.request.urlopen(base + path, timeout=timeout) as response:
+            response.read(64)
+            return response.status
+    except OSError:
+        return None
+
+
+def lsof_listeners(port):
+    try:
+        out = subprocess.run(['/usr/sbin/lsof' if os.path.exists('/usr/sbin/lsof') else 'lsof', '-nP',
+                              f'-iTCP:{port}', '-sTCP:LISTEN', '-t'], capture_output=True, text=True, timeout=4)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if out.returncode not in (0, 1):
+        return None
+    return sorted({int(x) for x in out.stdout.split()})
+
+
+def git_identity(project):
+    try:
+        head = subprocess.run(['git', '-C', str(project), 'rev-parse', 'HEAD'], capture_output=True, text=True, timeout=5)
+        dirty = subprocess.run(['git', '-C', str(project), 'status', '--porcelain', '--untracked-files=no'],
+                               capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None, None
+    if head.returncode or dirty.returncode:
+        return None, None
+    return head.stdout.strip(), dirty.stdout.strip() == ''
+
+
+def prepare_fallback_root(root, home):
+    """Mirror of the v1 starter: isolated, non-symlinked, internal-device data root."""
+    root = Path(root)
+    if root.is_symlink():
+        raise OSError('fallback root is a symlink')
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if root.stat().st_dev != Path(home).stat().st_dev:
+        raise OSError('fallback root is not on the internal device')
+    for folder in ('state', 'runs', 'images', 'scratch', 'logs', 'video', 'output/audio/voice',
+                   'output/audio/music', 'output/worlds'):
+        candidate = root / folder
+        if candidate.is_symlink():
+            raise OSError('fallback subdirectory is a symlink: ' + folder)
+        candidate.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(root, 0o700)
+
+
+class HandoffChecks:
+    """Facts the owner verifies itself. `config` is built once, from constants, by
+    production_handoff_config(); tests build their own for isolated ports and roots."""
+
+    def __init__(self, config):
+        self.c = config
+
+    def _package(self):
+        c, bad = self.c, []
+        try:
+            commit = (Path(c['package']) / 'SOURCE_COMMIT').read_text().strip()
+        except OSError:
+            commit = None
+        if commit != c['package_commit']:
+            bad.append('FALLBACK_PACKAGE: SOURCE_COMMIT is %r, expected %s' % (commit, c['package_commit']))
+        if sha256_file(Path(c['package']) / 'start-fallback-rollback.sh') != c['starter_sha256']:
+            bad.append('FALLBACK_PACKAGE: starter missing or altered')
+        if sha256_file(Path(c['fallback_cwd']) / 'public/dexdiffusion/edit-ui.js') != c['ui_sha256']:
+            bad.append('FALLBACK_PACKAGE: edit-ui.js missing or altered')
+        if not (Path(c['fallback_cwd']) / 'server.js').is_file():
+            bad.append('FALLBACK_PACKAGE: server.js missing')
+        for dep in c['required_deps']:
+            if not (Path(c['fallback_cwd']) / 'node_modules' / dep / 'package.json').is_file():
+                bad.append('FALLBACK_PACKAGE: dependency %s missing or node_modules unresolved' % dep)
+        return bad
+
+    def _no_macbook_contact(self):
+        env = self.c['fallback_env']
+        bad = []
+        if env.get('DEX_STORAGE_MODE') != 'internal-fallback' or any('MACBOOK' in key for key in env):
+            bad.append('MACBOOK_CONTACT: fallback environment could reach a MacBook destination')
+        if self.c['package_commit'] not in self.c['publication_isolated_commits']:
+            bad.append('MACBOOK_CONTACT: package commit is not a publication-isolated revision')
+        return bad
+
+    def _node(self):
+        return [] if sha256_file(self.c['node_path']) == self.c['node_sha256'] else ['NODE_HASH: pinned Node missing or hash mismatch']
+
+    def _identity(self):
+        c, bad = self.c, []
+        if c['parent_command']() != c['enginehost_path'] or sha256_file(c['enginehost_path']) != c['enginehost_sha256']:
+            bad.append('IDENTITY_ENGINEHOST: worker parent is not the pinned signed EngineHost')
+        expected = c['worker_expected_sha256']()
+        if not expected or sha256_file(c['worker_file']) != expected:
+            bad.append('IDENTITY_WORKER: running worker differs from the deployed revision')
+        return bad
+
+    def _source(self, expect):
+        head, clean = git_identity(self.c['project'])
+        if head != expect or clean is not True:
+            return ['SOURCE_REVISION: deployed worktree %s (clean=%s) is not the expected %s' % (head, clean, expect)]
+        if not os.access(Path(self.c['project']) / self.c['external_script'], os.R_OK):
+            return ['RETURN_PATH: external launcher missing']
+        return []
+
+    def _locks(self):
+        bad = []
+        for path in self.c['recovery_locks']:
+            try:
+                with open(path, 'a') as handle:
+                    try:
+                        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        fcntl.flock(handle, fcntl.LOCK_UN)
+                    except OSError:
+                        bad.append('CONCURRENT: recovery operation in progress (%s locked)' % Path(path).name)
+            except OSError:
+                bad.append('CONCURRENT: recovery lock %s unavailable' % Path(path).name)
+        return bad
+
+    def _idle(self, base, pid, expected_cwd, expected_mode, check_publication):
+        bad = []
+        code, version = http_json(base, '/api/version')
+        if not version or version.get('pid') != pid or version.get('cwd') != expected_cwd:
+            return ['BACKEND_IDENTITY: /api/version does not identify the owned child pid %s' % pid]
+        if (version.get('storage') or {}).get('mode') != expected_mode:
+            bad.append('BACKEND_IDENTITY: storage mode %r, expected %s' % ((version.get('storage') or {}).get('mode'), expected_mode))
+        _, jobs = http_json(base, '/api/jobs')
+        if jobs is None or jobs.get('jobs'):
+            bad.append('ACTIVE_JOB: jobs present or unreadable')
+        _, lease = http_json(base, '/api/resources')
+        if lease is None or lease.get('owner') or lease.get('waiting') or lease.get('quarantine'):
+            bad.append('LEASE: compute lease, waiter or quarantine present or unreadable')
+        if check_publication:
+            _, pub = http_json(base, '/api/publications/status')
+            if pub is None or pub.get('pending'):
+                bad.append('PUBLICATION_PENDING: publications awaiting MacBook acknowledgment or unreadable')
+            _, rec = http_json(base, '/api/publication-recovery')
+            transfers = (rec or {}).get('transfers') or {}
+            if rec is None or rec.get('blocked') or transfers.get('pending') or transfers.get('blocked'):
+                bad.append('RECOVERY_UNSAFE: publication recovery blocked or transfers in flight')
+        return bad
+
+    def _listener(self, pid):
+        listeners = self.c['listeners'](self.c['port'])
+        if listeners is None:
+            return ['FOREIGN_LISTENER: listener identity unverifiable']
+        if listeners != ([pid] if pid else []):
+            return ['FOREIGN_LISTENER: port %s listeners %s, expected %s' % (self.c['port'], listeners, [pid] if pid else [])]
+        return []
+
+    def preflight_fallback(self, supervisor, expect):
+        child = supervisor.child
+        if child is None or child.poll() is not None:
+            return ['BACKEND_IDENTITY: no running owned external child']
+        bad = self._identity() + self._source(expect) + self._node() + self._package() + self._no_macbook_contact()
+        if not supervisor.worker_idle():
+            bad.append('ACTIVE_JOB: worker has an active, uncertain or unacknowledged job')
+        bad += self._idle(self.c['base'], child.pid, self.c['external_cwd'], 'external', True)
+        bad += self._listener(child.pid) + self._locks()
+        return bad
+
+    def preflight_return(self, supervisor, expect):
+        bad = self._identity() + self._source(expect) + self._node() + self._locks()
+        child = supervisor.child
+        if child is not None and child.poll() is None:
+            bad += self._idle(self.c['base'], child.pid, self.c['fallback_cwd'], 'internal-fallback', False)
+            bad += self._listener(child.pid)
+        else:
+            if supervisor.owner.exists() or supervisor.owner.is_symlink():
+                bad.append('OWNER_PRESENT: an unreleased backend owner record exists; survivors are never adopted')
+            bad += self._listener(None)
+        return bad
+
+    def verify_fallback(self, pid):
+        base, bad = self.c['base'], []
+        _, version = http_json(base, '/api/version')
+        if not version or version.get('pid') != pid or version.get('cwd') != self.c['fallback_cwd']:
+            return ['FALLBACK_IDENTITY: owned fallback child not answering as itself']
+        if (version.get('storage') or {}).get('mode') != 'internal-fallback':
+            bad.append('FALLBACK_STORAGE: not in internal-fallback mode')
+        _, pub = http_json(base, '/api/publications/status')
+        if pub is None or pub.get('enabled') is not False:
+            bad.append('FALLBACK_PUBLICATION: MacBook publication is not disabled')
+        _, caps = http_json(base, '/api/capabilities')
+        ids = sorted(x.get('id') for x in (caps or {}).get('modelTargets', []))
+        if ids != FALLBACK_MODELS:
+            bad.append('FALLBACK_MODELS: inventory %s, expected %s' % (ids, FALLBACK_MODELS))
+        if http_status(base, '/dexdiffusion/') != 200:
+            bad.append('FALLBACK_STUDIO: Studio not serving')
+        if self._listener(pid):
+            bad.append('FALLBACK_LISTENER: owned fallback is not the sole listener')
+        return bad
+
+
+class HandoffController:
+    def __init__(self, supervisor, journal_path, checks, external, fallback, mode, clock=time.monotonic,
+                 quiesce_timeout=30, boot_timeout=90, stop_timeout=15):
+        self.sup = supervisor
+        self.path = Path(journal_path)
+        self.checks = checks
+        self.profiles = {'external': external, 'fallback': fallback}
+        self.mode = mode
+        self.clock = clock
+        self.quiesce_timeout, self.boot_timeout, self.stop_timeout = quiesce_timeout, boot_timeout, stop_timeout
+        self.deadline = None
+        self.lock_handles = []
+        self.journal = self._load()
+        state = self.journal['state']
+        if state in HANDOFF_TRANSITIONAL or state == 'RUNNING_FALLBACK':
+            # A worker restart lost the child handle: never adopt, never respawn.
+            self._set('HANDOFF_FAILED', 'worker restarted during %s; any survivor is not adopted' % state)
+        if self.journal['state'] == 'HANDOFF_FAILED':
+            self.sup.paused = True
+
+    # ---- journal
+    def _load(self):
+        try:
+            data = json.loads(self.path.read_text())
+            if data.get('state') in HANDOFF_STATES:
+                return data
+            return {'state': 'HANDOFF_FAILED', 'history': [], 'failure': 'unreadable journal state'}
+        except FileNotFoundError:
+            return {'state': 'RUNNING_EXTERNAL', 'history': []}
+        except (OSError, ValueError):
+            return {'state': 'HANDOFF_FAILED', 'history': [], 'failure': 'corrupt handoff journal'}
+
+    def _set(self, state, detail='', **extra):
+        self.journal.update(extra)
+        self.journal['state'] = state
+        if state == 'HANDOFF_FAILED':
+            self.journal['failure'] = detail
+        entry = {'state': state, 'at': time.time(), 'mode': self.mode, 'detail': detail,
+                 'pid': self.sup.child.pid if self.sup.child else None}
+        self.journal['history'] = (self.journal.get('history') or [])[-63:] + [entry]
+        tmp = self.path.with_name(self.path.name + '.new')
+        with open(tmp, 'w') as handle:
+            handle.write(json.dumps(self.journal, indent=2, sort_keys=True))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, self.path)
+        fd = os.open(self.path.parent, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        if state in ('RUNNING_EXTERNAL', 'RUNNING_FALLBACK', 'HANDOFF_FAILED'):
+            self._unlock()
+            self.deadline = None
+
+    def _lock(self):
+        for path in self.checks.c['recovery_locks']:
+            handle = open(path, 'a')
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                handle.close()
+                self._unlock()
+                return False
+            self.lock_handles.append(handle)
+        return True
+
+    def _unlock(self):
+        for handle in self.lock_handles:
+            handle.close()
+        self.lock_handles = []
+
+    def summary(self):
+        return {'state': self.journal['state'], 'failure': self.journal.get('failure'),
+                'last_refusal': self.journal.get('last_refusal'), 'mode': self.mode}
+
+    def busy(self):
+        return self.journal['state'] != 'RUNNING_EXTERNAL'
+
+    def _apply(self, name):
+        profile = self.profiles[name]
+        sup = self.sup
+        sup.profile = name
+        sup.executable, sup.command, sup.env = profile['executable'], list(profile['command']), dict(profile['env'])
+        sup.cwd, sup.log_path = profile.get('cwd'), profile.get('log_path')
+
+    def _fail(self, detail):
+        self.sup.paused = True
+        self.sup.requested = False
+        self._set('HANDOFF_FAILED', detail)
+        self.sup.state = 'HANDOFF_FAILED' if self.sup.child is None else self.sup.state
+
+    # ---- operator request (worker socket, under the worker lock)
+    def request(self, req):
+        def refuse(*codes):
+            self.journal['last_refusal'] = {'at': time.time(), 'target': req.get('target'), 'codes': list(codes)}
+            return {'ok': False, 'refused': list(codes), **self.sup.status()}
+        if set(req) != HANDOFF_KEYS or req.get('target') not in ('fallback', 'external'):
+            return refuse('REQUEST_INVALID: requires exactly op, target (fallback|external), expect_revision, reason')
+        if not isinstance(req['expect_revision'], str) or not re.fullmatch(r'[0-9a-f]{40}', req['expect_revision']):
+            return refuse('REQUEST_INVALID: expect_revision must be a full lowercase commit id')
+        if not isinstance(req['reason'], str) or not 20 <= len(req['reason']) <= 500:
+            return refuse('REQUEST_INVALID: reason must be 20-500 characters')
+        state = self.journal['state']
+        if req['target'] == 'fallback':
+            if state != 'RUNNING_EXTERNAL' or self.sup.profile != 'external' or self.sup.state != 'IDLE':
+                return refuse('STATE: handoff needs RUNNING_EXTERNAL with a sealed-idle backend (now %s/%s)' % (state, self.sup.state))
+            refusals = self.checks.preflight_fallback(self.sup, req['expect_revision'])
+            if refusals:
+                return refuse(*refusals)
+            if not self._lock():
+                return refuse('CONCURRENT: recovery lock taken')
+            self.deadline = self.clock() + self.quiesce_timeout
+            self.sup.requested = True
+            self._set('QUIESCING', 'owner drain of the external backend', request={
+                'target': 'fallback', 'expect_revision': req['expect_revision'], 'reason': req['reason'], 'at': time.time()})
+            return {'ok': True, 'accepted': 'fallback', **self.sup.status()}
+        if state not in ('RUNNING_FALLBACK', 'HANDOFF_FAILED'):
+            return refuse('STATE: return needs RUNNING_FALLBACK or HANDOFF_FAILED (now %s)' % state)
+        refusals = self.checks.preflight_return(self.sup, req['expect_revision'])
+        if refusals:
+            return refuse(*refusals)
+        if not self._lock():
+            return refuse('CONCURRENT: recovery lock taken')
+        self.journal['request'] = {'target': 'external', 'expect_revision': req['expect_revision'],
+                                   'reason': req['reason'], 'at': time.time()}
+        if self.sup.child is not None:
+            self.deadline = self.clock() + self.stop_timeout
+            self._set('QUIESCING_FALLBACK', 'owner stop of the verified-idle fallback')
+        else:
+            self._start_external()
+        return {'ok': True, 'accepted': 'external', **self.sup.status()}
+
+    # ---- transitions (supervisor tick, under the worker lock)
+    def _start_external(self):
+        self._apply('external')
+        if self.checks.c['listeners'](self.checks.c['port']) != []:
+            return self._fail('FOREIGN_LISTENER before external start')
+        self.sup.paused = False
+        self.sup.failures = []
+        self.sup.retry_at = 0
+        self.sup.state = 'WAITING'
+        self.deadline = self.clock() + self.boot_timeout
+        self._set('STARTING_EXTERNAL', 'owner start of the deployed external backend')
+
+    def on_released(self):
+        """Called after the owner stopped and released its sealed external child."""
+        if self.journal['state'] != 'QUIESCING':
+            return False
+        self._set('BACKEND_RELEASED', 'external child stopped by its owner; owner record released')
+        if self.checks.c['listeners'](self.sup.port) != [] or not port_available(self.sup.port):
+            self._fail('FOREIGN_LISTENER: port not free after release')
+            return True
+        try:
+            prepare_fallback_root(self.checks.c['fallback_root'], self.checks.c['home'])
+        except OSError as error:
+            self._fail('FALLBACK_PREPARE: %s' % error)
+            return True
+        self._apply('fallback')
+        self._set('STARTING_FALLBACK', 'owner start of fallback package %s' % self.checks.c['package_commit'][:12])
+        self.sup._spawn()
+        if self.sup.state != 'STARTING' or self.sup.child is None:
+            self._fail('FALLBACK_SPAWN: %s' % self.sup.state)
+            return True
+        self.deadline = self.clock() + self.boot_timeout
+        return True
+
+    def _child_exited(self):
+        child = self.sup.child
+        code = child.poll()
+        if group_exists(child.pid):
+            self.sup.state = 'RECOVERY_BLOCKED'
+            self._fail('FALLBACK_EXITED rc=%s but its process group survives; owner record kept' % code)
+            return
+        self.sup._release()
+        self._fail('FALLBACK_EXITED rc=%s; evidence kept in %s' % (code, self.sup.log_path))
+
+    def _stop_owned(self):
+        child = self.sup.child
+        try:
+            if os.getpgid(child.pid) != child.pid or os.getsid(child.pid) != child.pid:
+                raise OSError('owned child no longer leads its session')
+            os.killpg(child.pid, signal.SIGTERM)
+            child.wait(timeout=10)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            self.sup.state = 'RECOVERY_BLOCKED'
+            self._fail('FALLBACK_STOP: %s; owner record kept' % error)
+            return False
+        if not self.sup._release():
+            self._fail('FALLBACK_STOP: process group survived; owner record kept')
+            return False
+        return True
+
+    def tick(self):
+        state = self.journal['state']
+        sup = self.sup
+        if state == 'RUNNING_EXTERNAL':
+            return False
+        if state == 'HANDOFF_FAILED':
+            sup.paused = True
+            if sup.child is not None and sup.child.poll() is not None:
+                if not group_exists(sup.child.pid):
+                    sup._release()
+            if sup.child is None and sup.state not in ('RECOVERY_BLOCKED',):
+                sup.state = 'HANDOFF_FAILED'
+            return True
+        if state == 'QUIESCING':
+            if sup.state in ('RECOVERY_BLOCKED', 'CIRCUIT_OPEN', 'BACKOFF'):
+                self._fail('QUIESCE: external backend left owner control (%s)' % sup.state)
+                return True
+            if self.deadline is not None and self.clock() > self.deadline and sup.child is not None:
+                sup.requested = False
+                if sup.instance:
+                    (sup.instance / 'drain').unlink(missing_ok=True)
+                sup.drain_since = None
+                self.journal['last_refusal'] = {'at': time.time(), 'target': 'fallback',
+                                                'codes': ['QUIESCE_TIMEOUT: backend did not drain; left running']}
+                self._set('RUNNING_EXTERNAL', 'handoff aborted before release; external backend untouched')
+                return True
+            return False  # the owner's proven drain path runs, then calls on_released()
+        if state == 'STARTING_FALLBACK':
+            if sup.child is None or sup.child.poll() is not None:
+                if sup.child is not None:
+                    self._child_exited()
+                else:
+                    self._fail('FALLBACK_SPAWN: no child')
+                return True
+            failures = self.checks.verify_fallback(sup.child.pid)
+            if not failures:
+                sup.state = 'RUNNING_FALLBACK'
+                self._set('RUNNING_FALLBACK', 'fallback verified: internal-fallback, publication disabled, 3 models')
+            elif self.clock() > self.deadline:
+                detail = '; '.join(failures)
+                if self._stop_owned():
+                    self._fail('FALLBACK_UNVERIFIED: %s; owned fallback stopped, port left free' % detail)
+            else:
+                sup.state = 'STARTING_FALLBACK'
+            return True
+        if state == 'RUNNING_FALLBACK':
+            if sup.child is None or sup.child.poll() is not None:
+                self._child_exited() if sup.child is not None else self._fail('FALLBACK_LOST')
+                return True
+            sup.state = 'RUNNING_FALLBACK'
+            return True
+        if state == 'QUIESCING_FALLBACK':
+            if sup.child is None or sup.child.poll() is not None:
+                if sup.child is not None and not group_exists(sup.child.pid):
+                    sup._release()
+            elif not self._stop_owned():
+                return True
+            self._set('FALLBACK_RELEASED', 'fallback child stopped by its owner; owner record released')
+            self._start_external()
+            return True
+        if state == 'STARTING_EXTERNAL':
+            if sup.state in ('RECOVERY_BLOCKED', 'CIRCUIT_OPEN'):
+                self._fail('RETURN: external backend %s' % sup.state)
+                return True
+            if sup.state == 'IDLE' and sup.child is not None:
+                self._set('RUNNING_EXTERNAL', 'external backend sealed idle under its owner')
+                return False
+            if self.deadline is not None and self.clock() > self.deadline and sup.child is None:
+                self._fail('RETURN: external backend did not start in time')
+                return True
+            return False
+        return False
+
+
+def production_handoff_config(project, runtime, root):
+    """Every value is a constant or derived from the deployed worktree; no environment
+    variable, request field or fixture can change it."""
+    home = root.parent
+    package = home / 'Library/Application Support/DexDiffusion/wc2tb-fallback-rollback-v1'
+    fallback_cwd = package / 'source/operator-console'
+    fallback_env = {'HOME': str(home), 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin',
+                    'DEX_DATA_ROOT': str(home / 'DexDiffusion-InternalFallback'),
+                    'DEX_STORAGE_MODE': 'internal-fallback', 'DEX_STORAGE_REASON': 'owner-handoff-v1',
+                    'DEX_LOCAL_ENGINE_BRIDGE': '0', 'DEX_CHAT_ENABLED': '0', 'OPERATOR_CONSOLE_PORT': '31337',
+                    'DEX_AUTHORIZED_TAILSCALE_USERS': 'westkitty,bcroc',
+                    'DEX_IMAGE_VALIDATION_PYTHON': str(home / 'Library/Caches/DexDiffusion/mflux/venv/bin/python')}
+
+    def worker_expected():
+        try:
+            blob = subprocess.run(['/usr/bin/git', '-C', str(project), 'show', 'HEAD:sdcpp-workflow/worker/engine-worker.py'],
+                                  capture_output=True, timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return hashlib.sha256(blob.stdout).hexdigest() if blob.returncode == 0 else None
+
+    def parent_command():
+        try:
+            out = subprocess.run(['/bin/ps', '-o', 'command=', '-p', str(os.getppid())], capture_output=True, text=True, timeout=4)
+            return out.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+    stamp = time.strftime('%Y%m%dT%H%M%S')
+    return {
+        'base': 'http://127.0.0.1:31337', 'port': 31337, 'home': str(home), 'project': str(project),
+        'external_cwd': str(project / 'operator-console'), 'external_script': 'scripts/run-backend-service.sh',
+        'node_path': str(runtime), 'node_sha256': '266dec4dce3a6cdcf5cdc38722a00cf5ae6a12cc51068d2a227655bbb75751ec',
+        'enginehost_path': str(home / 'Applications/DexDiffusion Engine Worker.app/Contents/MacOS/DexDiffusionEngineHost'),
+        'enginehost_sha256': '79faeb90fa089261f174205e8a887b62c684fffba1b8ece9eaa4daa690eec4d3',
+        'parent_command': parent_command, 'worker_file': str(root / 'engine-worker.py'), 'worker_expected_sha256': worker_expected,
+        'package': str(package), 'package_commit': 'c7708e4a40edff156cbaaccda7f6299088c0f306',
+        'publication_isolated_commits': ('c7708e4a40edff156cbaaccda7f6299088c0f306',),
+        'starter_sha256': '03bb7a28a8849fcf28736ceab2f422853e361559eb09ef7ee5bd1cf60c364ce2',
+        'ui_sha256': '44e7e73974642c1c71b57592c61a078b40415f0a931ab90bce1c0798030577e8',
+        'required_deps': ('express', 'three', '@sparkjsdev/spark'),
+        'fallback_cwd': str(fallback_cwd), 'fallback_env': fallback_env,
+        'fallback_root': str(home / 'DexDiffusion-InternalFallback'),
+        'fallback_log': str(package / 'logs' / ('owner-handoff-%s.log' % stamp)),
+        'listeners': lsof_listeners,
+        'recovery_locks': (str(home / 'Library/Caches/DexDiffusion/authorized-backend-recovery.lock'),
+                           str(root / 'backend-handoff.lock')),
+    }
+
+
+def attach_handoff(supervisor, config, mode, **timeouts):
+    external = {'executable': supervisor.executable, 'command': list(supervisor.command), 'env': dict(supervisor.env),
+                'cwd': supervisor.cwd, 'log_path': supervisor.log_path}
+    fallback = {'executable': config['node_path'], 'command': [config['node_path'], 'server.js'],
+                'env': dict(config['fallback_env']), 'cwd': config['fallback_cwd'], 'log_path': config['fallback_log']}
+    Path(config['fallback_log']).parent.mkdir(parents=True, exist_ok=True)
+    supervisor.handoff = HandoffController(supervisor, supervisor.root / 'backend-handoff.json', HandoffChecks(config),
+                                           external, fallback, mode, clock=supervisor.clock, **timeouts)
+    return supervisor.handoff
 
 
 def configured_supervisor(worker, lock_fd):
@@ -227,4 +814,6 @@ def configured_supervisor(worker, lock_fd):
         supervisor.fixture_bootstrap = module
         supervisor.paused = True
         supervisor.state = 'FIXTURE_REQUIRED'
+    if supervisor.mode == 'production':
+        attach_handoff(supervisor, production_handoff_config(project, runtime, root), 'production')
     return supervisor
