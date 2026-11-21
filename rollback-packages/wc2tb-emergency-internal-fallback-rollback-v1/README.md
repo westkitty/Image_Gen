@@ -133,3 +133,26 @@ store, or the server. The test-owned backend was terminated.
 Real-server external proof: `publication.enabled=true`, `pending>=1`, canary received `GET /manifest`,
 CLI and engine-store entries carry `macbook-pull-v1` with outbox `PUBLICATION_PENDING`, and image
 bytes were kept with no receipt.
+
+## Proven starter script (added 2026-11-21)
+
+`start-fallback-rollback.sh` in this directory is a byte-identical copy of the starter that was
+installed at `~/Library/Application Support/DexDiffusion/wc2tb-fallback-rollback-v1/` on Big Mac
+(SHA-256 `03bb7a28a8849fcf28736ceab2f422853e361559eb09ef7ee5bd1cf60c364ce2`).
+It expects that directory to contain `source/` (a `git archive` of `c7708e4`), a `SOURCE_COMMIT`
+marker, and a `source/operator-console/node_modules` link to the verified dependency tree.
+
+Before it starts anything, it checks the pinned Node hash, the source commit marker, the protected
+`edit-ui.js` hash, the dependencies, a free port and an internal, non-symlink fallback root. It then
+starts `server.js` detached with `env -i` in `internal-fallback` mode, so no `DEX_MACBOOK_IMAGES_URL`
+is inherited.
+
+**Proof (2026-11-21, test port 31357, disposable root):** it reported `ROLLBACK_READY` with
+`storage.mode=internal-fallback`, `publication.enabled=false`, one seeded pending receipt
+`suspended`, exactly three models, and Studio HTTP 200. Outbox records and image bytes were
+byte-identical before and after, and the process terminated cleanly. It has **not** been run
+against production port 31337 or the real fallback root.
+
+Using it during an incident first requires stopping the supervised backend through its owner and
+leaving EngineHost supervision (`~/.dexdiffusion-engine/backend-supervisor-mode`); otherwise the
+supervisor will hold or retake port 31337. The script refuses to start while the port is held.
