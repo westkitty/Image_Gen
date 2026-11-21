@@ -9,7 +9,7 @@ const { enabled } = require('../local-engine-routing');
 const { targetRuntime } = require('../capabilities');
 
 test('worker validates closed requests and owns cancellation/recovery', () => {
-  const result = spawnSync('python3', ['-m','unittest','discover','-s',path.resolve(__dirname,'../../sdcpp-workflow/worker'),'-p','test_*.py','-v'], { encoding:'utf8',timeout:30000 });
+  const result = spawnSync('python3', ['-m','unittest','discover','-s',path.resolve(__dirname,'../../sdcpp-workflow/worker'),'-p','test_*.py','-v'], { encoding:'utf8',timeout:120000 }); // includes the real-process handoff suite
   assert.equal(result.status,0,result.stderr + result.stdout);
   assert.match(result.stderr,/Ran \d+ tests/);
 });
