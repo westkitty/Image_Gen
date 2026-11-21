@@ -387,6 +387,24 @@ class Worker:
         return {k: v for k, v in job.items() if k not in {'token_hash'}}
 
     def request(self, req):
+        if req.get('op') == 'backend-prepare-fixture':
+            with self.lock:
+                supervisor = self.supervisor
+                if (set(req) != {'op', 'token'} or not supervisor or not supervisor.fixture_bootstrap
+                        or supervisor.state != 'FIXTURE_REQUIRED' or not supervisor.worker_idle()):
+                    raise ValueError('Gate E fixture preparation unavailable')
+                fixture = supervisor.fixture_bootstrap
+                fixture.authorize(self.root, req['token'])
+                supervisor.fixture_bootstrap = None
+                try:
+                    receipt = fixture.create_fixture()
+                except (OSError, ValueError, subprocess.SubprocessError) as error:
+                    supervisor.state = 'FIXTURE_BLOCKED'
+                    return {'ok': False, 'state': supervisor.state, 'errno': getattr(error, 'errno', None),
+                            'worker_pid': os.getpid(), 'error': str(error)}
+                supervisor.state = 'WAITING'
+                supervisor.paused = False
+                return {'ok': True, **receipt}
         if req.get('op') in ('backend-status', 'backend-restart', 'backend-pause'):
             if set(req) != {'op'}:
                 raise ValueError('backend operation takes no arguments')

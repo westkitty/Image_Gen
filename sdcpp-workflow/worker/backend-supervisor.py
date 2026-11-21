@@ -1,4 +1,5 @@
 """Opt-in, single-owner backend lifecycle beneath EngineHost."""
+import importlib.util
 import os
 from pathlib import Path
 import signal
@@ -192,7 +193,7 @@ def configured_supervisor(worker, lock_fd):
     mode = config.read_text().strip()
     project = root.parent / 'Image_Gen-wc2tb-20261120'
     runtime = root.parent / 'Library/Application Support/DexDiffusion/wc2tb-recovery-runtime/node/bin/node'
-    if mode == 'rehearsal':
+    if mode in ('rehearsal', 'rehearsal-preparation'):
         script, port = 'scripts/test/run-optionA-probe-backend.sh', 31347
         runtime = root.parent / 'DexDiffusion-OptionA-Test-internal/node/bin/node'
     elif mode == 'production':
@@ -208,7 +209,7 @@ def configured_supervisor(worker, lock_fd):
                 raise RuntimeError('legacy backend launchd ownership unresolved')
         script, port = 'scripts/run-backend-service.sh', 31337
     else:
-        raise RuntimeError('backend supervisor mode must be rehearsal or production')
+        raise RuntimeError('unknown backend supervisor mode')
     env = {'HOME': str(root.parent), 'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
            'OPERATOR_CONSOLE_PORT': str(port), 'DEX_SUPERVISED_NODE': str(runtime),
            'DEX_AUTHORIZED_TAILSCALE_USERS': 'westkitty,bcroc',
@@ -216,5 +217,14 @@ def configured_supervisor(worker, lock_fd):
     supervisor = Supervisor(root, runtime, ['/bin/bash', str(project / script)], env, port,
                             lambda: not worker.active and not worker.recovery_uncertain and not worker.unacknowledged(),
                             lock_fd)
-    supervisor.mode = mode
+    supervisor.mode = 'rehearsal' if mode == 'rehearsal-preparation' else mode
+    supervisor.fixture_bootstrap = None
+    if mode == 'rehearsal-preparation':
+        source = Path(__file__).with_name('gate-e-fixture.py')
+        spec = importlib.util.spec_from_file_location('dex_gate_e_fixture', source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        supervisor.fixture_bootstrap = module
+        supervisor.paused = True
+        supervisor.state = 'FIXTURE_REQUIRED'
     return supervisor
