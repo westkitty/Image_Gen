@@ -15,6 +15,7 @@ from pathlib import Path
 import shutil
 import signal
 import socket
+import socketserver
 import subprocess
 import sys
 import tempfile
@@ -27,7 +28,7 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 EXTERNAL = r'''
-import http.server, json, os, pathlib, sys, threading, time
+import http.server, json, os, pathlib, socketserver, sys, threading, time
 root = pathlib.Path(os.environ['DEX_BACKEND_CONTROL']); fx = pathlib.Path(os.environ['FIXTURE'])
 def body(path):
     if path == '/api/version':
@@ -45,7 +46,11 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         data = json.dumps(body(self.path)).encode()
         self.send_response(200); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
-server = http.server.ThreadingHTTPServer(('127.0.0.1', int(os.environ['PORT'])), H)
+class Server(http.server.ThreadingHTTPServer):
+    def server_bind(self):  # skip getfqdn(): reverse DNS stalls on macOS CI runners
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+server = Server(('127.0.0.1', int(os.environ['PORT'])), H)
 def seal():
     while True:
         state = 'drained' if (root / 'drain').exists() else 'idle'
@@ -56,7 +61,7 @@ server.serve_forever()
 '''
 
 FALLBACK = r'''
-import http.server, json, os, pathlib, sys, urllib.request
+import http.server, json, os, pathlib, socketserver, sys, urllib.request
 fx = pathlib.Path(os.environ['DEX_DATA_ROOT']).parent / 'fixture'
 (fx / 'fallback-env.json').write_text(json.dumps(sorted(os.environ)))
 print('fallback booting pid=%d' % os.getpid(), flush=True)
@@ -76,7 +81,11 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         data = json.dumps(body(self.path)).encode()
         self.send_response(200); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
-http.server.ThreadingHTTPServer(('127.0.0.1', int(os.environ['OPERATOR_CONSOLE_PORT'])), H).serve_forever()
+class Server(http.server.ThreadingHTTPServer):
+    def server_bind(self):  # skip getfqdn(): reverse DNS stalls on macOS CI runners
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+Server(('127.0.0.1', int(os.environ['OPERATOR_CONSOLE_PORT'])), H).serve_forever()
 '''
 
 
@@ -88,6 +97,12 @@ def free_port():
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         return sock.getsockname()[1]
+
+
+class Server(http.server.ThreadingHTTPServer):
+    def server_bind(self):  # skip getfqdn(): reverse DNS stalls on macOS CI runners
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 class Canary(http.server.BaseHTTPRequestHandler):
@@ -227,7 +242,7 @@ class HandoffTests(unittest.TestCase):
     # A, L, M, N -------------------------------------------------------------
     def test_A_L_M_N_full_owner_handoff_and_return(self):
         before = self.snapshot()
-        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Canary)
+        server = Server(('127.0.0.1', 0), Canary)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         canary = f'http://127.0.0.1:{server.server_address[1]}/manifest'
         self.sup.env['DEX_MACBOOK_IMAGES_URL'] = canary
