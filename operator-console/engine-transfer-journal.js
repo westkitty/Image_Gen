@@ -99,6 +99,7 @@ function createTransferJournal({ root = defaultTransferRoot(), home = os.homedir
     assertSafeRoot();
     const entries = list().length;
     if (entries >= maxEntries) throw new TransferBlocked('journal-capacity-exceeded', entries + ' pending transfers');
+    assertCapacity(0);
     const dir = dirFor(runId);
     fs.mkdirSync(dir, { mode: 0o700 });
     fsyncPath(base);
@@ -118,7 +119,17 @@ function createTransferJournal({ root = defaultTransferRoot(), home = os.homedir
   function journalBytes() {
     let total = 0;
     for (const runId of list()) {
-      try { for (const name of fs.readdirSync(dirFor(runId))) if (/^output-\d+\.png$/.test(name)) total += fs.statSync(path.join(dirFor(runId), name)).size; } catch (_) {}
+      try {
+        for (const name of fs.readdirSync(dirFor(runId))) {
+          if (!/^output-\d+\.png$/.test(name)) continue;
+          const image = fs.lstatSync(path.join(dirFor(runId), name));
+          if (!image.isFile()) throw new TransferBlocked('journal-image-unsafe', runId);
+          total += image.size;
+        }
+      } catch (err) {
+        if (err instanceof TransferBlocked) throw err;
+        throw new TransferPending('journal-capacity-unknown', err.code);
+      }
     }
     return total;
   }
@@ -131,7 +142,8 @@ function createTransferJournal({ root = defaultTransferRoot(), home = os.homedir
     catch (err) { throw new TransferPending('journal-capacity-unknown', err.code); }
     const required = Math.max(minFreeBytes, 3 * bytesNeeded);
     if (free < required) throw new TransferBlocked('insufficient-journal-capacity', `${free} bytes free, ${required} required`);
-    if (journalBytes() + bytesNeeded > maxBytes) throw new TransferBlocked('journal-capacity-exceeded', 'byte cap');
+    const used = journalBytes();
+    if (used >= maxBytes || used + bytesNeeded > maxBytes) throw new TransferBlocked('journal-capacity-exceeded', 'byte cap');
   }
   function verifyFile(runId, index, expected) {
     try {
@@ -167,9 +179,14 @@ function createTransferJournal({ root = defaultTransferRoot(), home = os.homedir
   }
   function list() {
     let names;
-    try { names = fs.readdirSync(base, { withFileTypes: true }); }
+    try { fs.lstatSync(base); }
     catch (err) { if (err.code === 'ENOENT') return []; throw new TransferPending('journal-unreadable', err.code); }
-    return names.filter(d => d.isDirectory() && RUN_ID.test(d.name)).map(d => d.name).sort();
+    assertSafeRoot();
+    try { names = fs.readdirSync(base, { withFileTypes: true }); }
+    catch (err) { throw new TransferPending('journal-unreadable', err.code); }
+    const entries = names.filter(d => RUN_ID.test(d.name));
+    if (entries.some(d => !d.isDirectory())) throw new TransferBlocked('journal-entry-unsafe');
+    return entries.map(d => d.name).sort();
   }
   // One owner per run at a time; a lock left by a dead process is reclaimed.
   function lock(runId) {
@@ -246,7 +263,11 @@ async function advanceTransfer(runId, { journal, owned, store, runsRoot = null, 
     let status = null;
     try { status = await call('status'); } catch (err) { if (!isOwnedJob(err)) throw new TransferPending('worker-unavailable', err.message); }
     if (status && !['complete', 'failed', 'cancelled'].includes(status.status)) { await call('cancel').catch(() => {}); return { state: 'pending', reason: 'cancel-awaiting-worker' }; }
-    if (status) { const ack = await call('ack'); if (!ack.acknowledged) throw new TransferPending('remote-cleanup-not-verified'); }
+    if (status) {
+      if (status.cleanup === false) throw new TransferBlocked('worker-cleanup-unverified', runId);
+      const ack = await call('ack');
+      if (!ack.acknowledged || ack.cleanup === false) throw new TransferPending('remote-cleanup-not-verified');
+    }
     journal.remove(runId);
     return { state: 'discarded' };
   }
@@ -263,6 +284,7 @@ async function advanceTransfer(runId, { journal, owned, store, runsRoot = null, 
       throw new TransferPending('worker-unavailable', err.message);
     }
     if (!['complete', 'failed', 'cancelled'].includes(status.status)) return { state: 'pending', reason: 'worker-running', status: status.status };
+    if (status.cleanup === false) throw new TransferBlocked('worker-cleanup-unverified', runId);
     if (status.status !== 'complete') { journal.remove(runId); return { state: 'no-output', reason: 'worker-' + status.status, status }; }
     if (status.acknowledged) {
       // The worker released its copy; only a complete local journal can continue.
@@ -271,7 +293,7 @@ async function advanceTransfer(runId, { journal, owned, store, runsRoot = null, 
       record = journal.update(runId, { state: 'acked' });
     } else {
       const expected = (status.images || [status]).map((image, index) => ({ index, sha256: image.sha256, bytes: image.bytes }));
-      if (expected.length !== record.count || expected.some(e => !/^[a-f0-9]{64}$/.test(e.sha256 || '') || !Number.isInteger(e.bytes))) throw new TransferBlocked('worker-receipt-inconsistent', runId);
+      if (expected.length !== record.count || expected.some(e => !/^[a-f0-9]{64}$/.test(e.sha256 || '') || (!Number.isSafeInteger(e.bytes) || e.bytes <= 0))) throw new TransferBlocked('worker-receipt-inconsistent', runId);
       record = journal.update(runId, { state: 'downloading', expected, generate_confirmed: true });
       const missing = expected.filter(e => !journal.verifyFile(runId, e.index, e));
       if (missing.length) journal.assertCapacity(missing.reduce((n, e) => n + e.bytes, 0));

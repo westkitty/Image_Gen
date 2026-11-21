@@ -98,3 +98,45 @@ test('a bridge exit that retained its result is recognised as pending, not faile
   assert.equal(journalModule.transferPendingRunId('x\nENGINE_TRANSFER_PENDING: ' + RUN + '\nFirst failed gate: engine-transfer-pending'), RUN);
   assert.equal(journalModule.transferPendingRunId('First failed gate: engine-failed'), null);
 });
+
+test('journal admission fails before generation when its disk floor or byte cap is reached', { skip: !journalModule && 'implementation has no transfer journal' }, t => {
+  const home = temp(t);
+  const { createTransferJournal } = journalModule;
+  const run = { runId: RUN, runDir: home, count: 1, runFiles: ['x.png'] };
+  const root = journalModule.defaultTransferRoot(home);
+  const fullDisk = createTransferJournal({ home, root, minFreeBytes: Number.MAX_SAFE_INTEGER });
+  assert.throws(() => fullDisk.begin(run), /insufficient-journal-capacity/);
+  assert.deepEqual(fullDisk.list(), []);
+
+  const journal = createTransferJournal({ home, root, maxBytes: 10 });
+  journal.begin(run);
+  const file = path.join(journal.root, RUN, 'output-0.png');
+  fs.writeFileSync(file, Buffer.alloc(10));
+  const next = { ...run, runId: RUN + '-next' };
+  assert.throws(() => journal.begin(next), /journal-capacity-exceeded/);
+  assert.deepEqual(journal.list(), [RUN]);
+
+  fs.unlinkSync(file);
+  fs.symlinkSync('absent', file);
+  assert.throws(() => journal.begin(next), /journal-image-unsafe/);
+  assert.deepEqual(journal.list(), [RUN]);
+  fs.symlinkSync('absent', path.join(journal.root, next.runId));
+  assert.throws(() => journal.list(), /journal-entry-unsafe/);
+});
+
+test('interrupted worker cleanup keeps the journal and refuses ACK', { skip: !journalModule && 'implementation has no transfer journal' }, async t => {
+  const home = temp(t);
+  const { createTransferJournal, defaultTransferRoot, advanceTransfer } = journalModule;
+  const journal = createTransferJournal({ home, root: defaultTransferRoot(home) });
+  journal.begin({ runId: RUN, runDir: path.join(home, RUN), count: 1, runFiles: ['x.png'] });
+  const requests = [];
+  const owned = async op => {
+    requests.push(op);
+    return { status: 'failed', cleanup: false };
+  };
+  await assert.rejects(advanceTransfer(RUN, { journal, owned, store }), /worker-cleanup-unverified/);
+  journal.requestCancel(RUN);
+  await assert.rejects(advanceTransfer(RUN, { journal, owned, store }), /worker-cleanup-unverified/);
+  assert.deepEqual(requests, ['status', 'status']);
+  assert.deepEqual(journal.list(), [RUN]);
+});

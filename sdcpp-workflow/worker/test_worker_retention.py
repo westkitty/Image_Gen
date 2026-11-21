@@ -106,6 +106,27 @@ class RetentionTests(unittest.TestCase):
         self.assertEqual(restarted.jobs[job['run_id']]['status'], 'complete')
         self.assertEqual(self.owned('result', worker=restarted)['sha256'], job['sha256'])
 
+    def test_restart_before_complete_receipt_preserves_staged_and_promoted_outputs(self):
+        job = self.complete(batch_count=3)
+        directory = self.root / 'jobs' / job['run_id']
+        tmp = directory / 'tmp'
+        tmp.mkdir()
+        moved = directory / 'output-1.png'
+        moved.rename(tmp / 'output-b01.png')
+        staged = tmp / 'output-b01.png'
+        promoted = directory / 'output-0.png'
+        expected = [p.read_bytes() for p in (staged, promoted)]
+        self.worker.save({**job, 'status': 'running', 'cleanup': False, 'pgid': None})
+
+        for _ in range(2):
+            self.worker = self.make_worker()
+            self.assertEqual(self.worker.recovery_uncertain, [job['run_id']])
+            self.assertFalse(self.owned('status')['cleanup'])
+            with self.assertRaisesRegex(ValueError, 'cleanup is unverified'):
+                self.owned('ack')
+            expire(self.worker, job['finished'] + 7200)
+            self.assertEqual([p.read_bytes() for p in (staged, promoted)], expected)
+
     def test_acknowledged_and_failed_outputs_still_expire(self):
         job = self.complete()
         self.owned('ack')
@@ -130,6 +151,15 @@ class RetentionTests(unittest.TestCase):
                                   side_effect=lambda p, missing_ok=False: (order.append('unlink'), real_unlink(p, missing_ok=missing_ok))):
             self.owned('ack')
         self.assertEqual(order[0], 'save', order)
+
+    def test_failed_ack_receipt_write_keeps_the_result_for_retry(self):
+        job = self.complete()
+        with mock.patch.object(self.worker, 'save', side_effect=OSError('simulated disk failure')):
+            with self.assertRaises(OSError):
+                self.owned('ack')
+        self.assertFalse(self.owned('status').get('acknowledged', False))
+        self.assertEqual(self.owned('result')['sha256'], job['sha256'])
+        self.assertTrue(self.owned('ack')['acknowledged'])
 
     def test_receipt_writes_are_fsynced(self):
         job = self.complete()

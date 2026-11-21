@@ -18,7 +18,7 @@ const { spawn, spawnSync } = require('node:child_process');
 
 const IMPL = path.resolve(process.env.DEX_GATEC_IMPL_ROOT || path.join(__dirname, '../..'));
 const FIX = path.join(__dirname, 'fixtures/gatec');
-const PY = '/usr/bin/python3';
+const PY = process.env.DEX_GATEC_PYTHON || '/usr/bin/python3';
 const HAS_JOURNAL = fs.existsSync(path.join(IMPL, 'operator-console/engine-transfer-journal.js'));
 const TARGET = 'sd15';
 const PROMPT = 'gatec private prompt 7f3a';
@@ -34,7 +34,9 @@ for i in range(n): Image.new('RGB', (w, h), ((seed + i * 50) % 256, 40, 90)).sav
 `;
 // /usr/bin/python3 finds PIL in the user site-packages, which follows HOME; the
 // fixture swaps HOME, so pin PIL's location from the real environment once.
-const PIL_PATH = spawnSync(PY, ['-c', 'import os, PIL; print(os.path.dirname(os.path.dirname(PIL.__file__)))'], { encoding: 'utf8' }).stdout.trim();
+const pillowProbe = spawnSync(PY, ['-c', 'import os; from PIL import Image; print(os.path.dirname(os.path.dirname(Image.__file__)))'], { encoding: 'utf8' });
+assert.equal(pillowProbe.status, 0, 'Gate C requires a working Pillow install in ' + PY + '\n' + (pillowProbe.stderr || pillowProbe.error));
+const PIL_PATH = pillowProbe.stdout.trim();
 const bridgeRegistry = JSON.parse(spawnSync(process.execPath, [path.join(IMPL, 'sdcpp-workflow/worker/build-registry.js')], { encoding: 'utf8' }).stdout);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -59,7 +61,7 @@ function fixture(t, { count = 1, engineSleep = 0 } = {}) {
   const env = { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: home, TMPDIR: path.join(home, 'tmp'), DEX_LOCAL_ENGINE_DIRECT: '1',
     DEX_RUNS_DIR: path.join(home, 'runs'), DEX_IMAGES_ROOT_OVERRIDE: path.join(home, 'images'), DEX_STATE_DIR: path.join(home, 'state'),
     DEX_WORKFLOW_ROOT: path.join(IMPL, 'sdcpp-workflow'), DEXDIFFUSION_JOB_ID: jobId, DEX_GATEC_IMPL_ROOT: IMPL, GATEC_COUNT: String(count),
-    GATEC_ENGINE_SLEEP: String(engineSleep), PYTHONPATH: PIL_PATH };
+    GATEC_ENGINE_SLEEP: String(engineSleep), PYTHONPATH: PIL_PATH, DEX_IMAGE_VALIDATION_PYTHON: PY };
   const f = { home, wdir, env, count, jobId, worker: null };
   f.startWorker = async () => {
     f.worker = spawn(PY, [path.join(FIX, 'worker-clock.py'), path.join(wdir, 'engine-worker.py'), 'serve'], { env, stdio: ['ignore', 'ignore', 'pipe'] });

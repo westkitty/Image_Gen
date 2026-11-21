@@ -5,7 +5,7 @@
 //   DEX_GATEC_FAULT       comma list: before-result, after-result:N, during-status, ack-uncertain,
 //                         after-ack, self-cancel-after-result, store:<image-store point>, journal:<journal point>
 //   DEX_GATEC_FAULT_MODE  kill (SIGKILL, default) | throw (ordinary exception)
-//   DEX_GATEC_DISK        eio -> transfer writes fail with EIO;  lowdisk -> statfs reports ~0 free AND writes fail ENOSPC
+//   DEX_GATEC_DISK        eio -> transfer writes fail with EIO;  lowdisk -> after worker completion, statfs reports ~0 free and writes fail ENOSPC
 //   DEX_GATEC_DECISION_ERR EPERM | EIO -> reading any run's publication-decision.json fails with that code
 const fs = require('node:fs');
 const path = require('node:path');
@@ -32,7 +32,7 @@ if (decisionErr) {
 }
 const client = require(path.join(impl, 'local-engine-client'));
 const realRequest = client.request;
-let results = 0, statuses = 0;
+let results = 0, statuses = 0, workerCompleted = false;
 client.request = async function (payload, opts) {
   if (payload.op === 'status' && ++statuses === 1) hit('during-status');
   if (payload.op === 'result') hit('before-result');
@@ -42,6 +42,7 @@ client.request = async function (payload, opts) {
     throw new Error('Local engine transport timed out; owned job remains bounded on Big Mac.');
   }
   const response = await realRequest(payload, opts);
+  if (payload.op === 'status' && response.status === 'complete') workerCompleted = true;
   if (payload.op === 'result') {
     results++;
     hit('after-result:' + results);
@@ -64,7 +65,10 @@ if (disk) {
   const fail = () => Object.assign(new Error((disk === 'eio' ? 'EIO' : 'ENOSPC') + ': injected transfer write failure'), { code: disk === 'eio' ? 'EIO' : 'ENOSPC' });
   const fds = new Map();
   const open = fs.openSync, write = fs.writeSync, writeFile = fs.writeFileSync, statfs = fs.statfsSync;
-  if (disk === 'lowdisk') fs.statfsSync = (p, o) => ({ ...statfs(p, o), bavail: 1, bfree: 1 });
+  if (disk === 'lowdisk') fs.statfsSync = (p, o) => {
+    const usage = statfs(p, o);
+    return workerCompleted ? { ...usage, bavail: 1, bfree: 1 } : usage;
+  };
   fs.openSync = function (file, ...rest) { const fd = open.call(fs, file, ...rest); fds.set(fd, String(file)); return fd; };
   fs.writeSync = function (fd, ...rest) { if (transferFile(fds.get(fd))) throw fail(); return write.call(fs, fd, ...rest); };
   fs.writeFileSync = function (file, ...rest) { if (typeof file !== 'number' && transferFile(file)) throw fail(); return writeFile.call(fs, file, ...rest); };
