@@ -14,7 +14,7 @@ const { canonicalSampler } = require('../controlled-args');
 const workflow = path.resolve(__dirname, '../../sdcpp-workflow');
 function createJobImageStore(env = process.env, host = os.hostname()) {
   const paths = resolveStoragePaths(env);
-  const crossHostPublication = !!paths.dataRoot && host.toLowerCase() === 'bigmac';
+  const crossHostPublication = env.DEX_STORAGE_MODE !== 'internal-fallback' && !!paths.dataRoot && host.toLowerCase() === 'bigmac';
   if (crossHostPublication) assertDataRootMount(paths);
   const opts = { root: paths.imageRoot, runsRoot: paths.runsDir };
   if (crossHostPublication) {

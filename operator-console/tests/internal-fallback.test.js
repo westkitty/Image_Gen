@@ -55,22 +55,22 @@ test('fallback is explicit, isolated and never claims the full external model li
   assert.match(html,/External job state is not merged/);
 });
 
-test('both storage modes publish only to MacBook with Big Mac internal image staging', () => {
+test('external mode publishes to MacBook while internal fallback retains isolated Big Mac images', () => {
   const server = fs.readFileSync(path.join(root,'operator-console/server.js'),'utf8');
   const cli = fs.readFileSync(path.join(root,'operator-console/bin/canonicalize-image.js'),'utf8');
   const engine = fs.readFileSync(path.join(root,'operator-console/bin/local-engine-generate.js'),'utf8');
   const ui = fs.readFileSync(path.join(root,'operator-console/public/dexdiffusion/component.js'),'utf8');
   const runner = fs.readFileSync(path.join(root,'scripts/run-backend-service.sh'),'utf8');
   for (const part of [
-    "const crossHostPublicationEnabled = !!STORAGE_PATHS.dataRoot",
-    "const macbookImages = (crossHostPublicationEnabled",
+    "const crossHostPublicationEnabled = !IS_INTERNAL_FALLBACK && !!STORAGE_PATHS.dataRoot",
+    "const macbookImages = !IS_INTERNAL_FALLBACK && (crossHostPublicationEnabled",
     "canonicalImages: '/Users/andrew/images_made'",
-    "publication: 'macbook-pull-v1'",
-    "Fallback output waits on Big Mac until checksum-verified publication"
+    "publication: 'suspended-internal-fallback'",
+    "Internal fallback retains images on Big Mac without MacBook contact, publication, or verified-image cleanup"
   ]) assert.ok(server.includes(part), part);
   assert.ok(ui.includes('MACBOOK CANONICAL'));
-  assert.ok(cli.includes("const crossHostPublication = !!paths.dataRoot"));
-  assert.ok(engine.includes("const crossHostPublication = !!paths.dataRoot"));
+  assert.ok(cli.includes("const crossHostPublication = process.env.DEX_STORAGE_MODE !== 'internal-fallback' && !!paths.dataRoot"));
+  assert.ok(engine.includes("const crossHostPublication = env.DEX_STORAGE_MODE !== 'internal-fallback' && !!paths.dataRoot"));
   assert.ok(runner.includes('IMAGE_STAGING="/Users/bigmac/DexDiffusion-PublicationStaging"'));
   assert.ok(runner.includes('export DEX_IMAGES_ROOT_OVERRIDE="$IMAGE_STAGING"'));
   assert.ok(runner.includes('publication staging is not on Big Mac internal storage'));
