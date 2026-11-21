@@ -76,4 +76,13 @@ function requireLedgerShape(file, valid) {
   }
 }
 
-module.exports = { backendQuiescence, requireLedgerShape };
+// Mirrors the worker's own admission (sdcpp-workflow/worker/engine-worker.py):
+// a 1 GiB floor, four copies of each in-flight 64 MiB image budget and 256 MiB
+// scratch. Controlled generation holds at most min(quantity, 16) images at once
+// (one native batch); every other heavy action keeps the full 16-image reserve.
+function sharedDiskReserveBytes(action, requestParams = {}) {
+  const quantity = requestParams && requestParams.quantity;
+  const images = action === 'controlled-generate' && Number.isInteger(quantity) && quantity >= 1 ? Math.min(16, quantity) : 16;
+  return (1024 + 4 * images * 64 + 256) * 1024 ** 2;
+}
+module.exports = { backendQuiescence, requireLedgerShape, sharedDiskReserveBytes };

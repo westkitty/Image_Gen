@@ -1283,9 +1283,9 @@ function createJob(action, summary, requestParams = {}) {
     const home = fs.statSync(os.homedir());
     const staging = fs.statSync(STORAGE_PATHS.imageRoot);
     // The worker, journal and publication staging consume the same internal
-    // device. Reserve a 16-image batch, four copies and 256 MiB scratch.
+    // device. Reserve the worker's own admission for this job's largest batch.
     const free = fs.statfsSync(STORAGE_PATHS.imageRoot);
-    if (home.dev !== staging.dev || free.bavail * free.bsize < (5 * 1024 + 256) * 1024 ** 2) {
+    if (home.dev !== staging.dev || free.bavail * free.bsize < require('./backend-quiescence').sharedDiskReserveBytes(action, requestParams)) {
       throw Object.assign(new Error('Insufficient shared disk for durable generation and publication'), { status: 503 });
     }
   }
