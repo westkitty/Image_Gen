@@ -88,7 +88,9 @@ ssh westcat 'bash ~/Image_Gen-wc2tb-20261120/scripts/request-worker-backend.sh -
   - `UNVERIFIED` can be overridden only with `--override-unverified "<20+ character reason>"`, after you verify the failing fact by hand. The override is logged.
 - **Emergency rollback:** use the owner handoff in section H. The v1 starter script is for disposable-root proofs only. It refuses whenever 31337 has a listener, and it must never be used to "free" the port.
 
-## H. Owner-authorized fallback handoff (implemented in source; NOT installed in production)
+## H. Owner-authorized fallback handoff (INSTALLED 2026-11-22 at `774815d`; live round trip passed)
+
+> **Installed:** `<installed sha>` below is now `774815d26df06d0e42d84187d31d6aed2f51f997`. The 2026-11-22 window ran §I end to end. The first drill (`93f6617`) found that the fallback could not admit image jobs: its `ollama ps` probe was not on the owner-supplied PATH. That was fixed in `774815d`, and the second drill passed, including a real fallback image. `352e508` stays frozen as the restore point.
 
 **Revisions, kept apart.**
 - **Frozen production: `352e508`**, branch `codex/wc2tb-recovery-20261120`. It has no handoff, and it is never moved.

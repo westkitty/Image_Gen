@@ -1,9 +1,11 @@
-# WC2TB prevention safeguards (source only; NOT deployed)
+# WC2TB prevention safeguards (DEPLOYED 2026-11-22 at 774815d)
 
-Branch `codex/wc2tb-prevention-20261121`, cut from the deployed revision
-`352e508ceebe950bac6b2115be6782564e7b2370`. Nothing here is installed on Big Mac
-or the MacBook. Production still runs 352e508 from
-`/Users/bigmac/Image_Gen-wc2tb-20261120`.
+Branch `codex/wc2tb-prevention-20261121`, cut from `352e508` and integrated into
+`main` (PR #29 `93f6617`, PR #30 `774815d`). Big Mac production runs
+`774815d26df06d0e42d84187d31d6aed2f51f997` from
+`/Users/bigmac/Image_Gen-wc2tb-20261120` (branch `release/wc2tb-20261121`).
+The live owner round trip (drill `55e0c78a…`) passed, and the release doctor
+returned PASS in every section; see `OPERATIONAL_STATE.md`.
 
 ## 1. Read-only release doctor
 

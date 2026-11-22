@@ -1,5 +1,82 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## 2026-11-21/22 — WC2TB release installed, live rollback drill passed (PRODUCTION VERIFIED at 774815d)
+
+One authorized maintenance window, Big Mac `bigmac`, 2026-11-22 01:38–02:25 UTC. Private evidence is kept outside the repository: Big Mac `~/wc2tb-drill-20261121/` (checkpoint, restore copies, activation and drill logs, Doctor JSON, journal copies, run manifests) and MacBook `~/wc2tb-drill-20261121/` (`images_made` manifests before and after).
+
+**Source integration (normal merges, nothing forced, no branch deleted):**
+- PR #28 (head `3682141`, CI green) was merged into `codex/wc2tb-prevention-20261121` as `359db34`.
+- PR #29 (prevention → `main`) was merged as `93f6617`.
+- The live drill found one defect (below). PR #30 (`f82e4b4`) fixed it and was merged as **`774815d26df06d0e42d84187d31d6aed2f51f997` = RELEASE_SHA, the installed revision.**
+- CI (Ubuntu and macOS) passed on:
+  - `3682141`: runs 44967908042 and 44967910401;
+  - the PR #29 head;
+  - `93f6617`: dispatch run 44972577466;
+  - `f82e4b4`: run 44974157296;
+  - `774815d`: dispatch run 44974488188.
+- Big Mac suites at the released tree: related 171/171, worker 89/89, Doctor 21/21, prevention/quiescence/fallback/dock 27 + 1 skip.
+- Preserved branches:
+  - `codex/wc2tb-recovery-20261120` is still at `352e508` (frozen);
+  - `codex/wc2tb-rollback-closure-20261121` = `3682141`;
+  - `rollback/wc2tb-fallback-drain-v2-20261121` = `3f0abf5`;
+  - `rollback/wc2tb-fallback-safe-v1-20261120` = `227d8ce`.
+- This documentation commit is newer than RELEASE_SHA. No executable code changed after `774815d`.
+
+**v2 fallback package (built 2026-11-22, v1 unchanged):**
+- Built at `~/Library/Application Support/DexDiffusion/wc2tb-fallback-rollback-v2/`:
+  - `source/` = `git archive 3f0abf5`;
+  - `SOURCE_COMMIT` `3f0abf5…`;
+  - v1 starter (SHA-256 `03bb7a28…`);
+  - `logs/` (0700);
+  - `node_modules` → baseline modules (lockfile `414c3923…` identical).
+- All 244 manifest entries verified, and the manifest digest `de9f5719…` matches the supervisor pin.
+- The supervisor's own `fallback_ready(create=False)` returned no problems.
+- On a temporary copy (isolated ports and roots): drain protocol + v1 isolation regressions 7/7.
+
+**Installation (runbook §I):**
+- **Checkpoint** before any change: identity, process tree, hashes, API snapshots and restore copies (`engine-worker.py` == the `352e508` blob).
+- **Pre-install gate:** release-readiness returned only the documented not-installed results (handoff BLOCKED, proof UNVERIFIED); every other check passed.
+- **Deployed worktree** `/Users/bigmac/Image_Gen-wc2tb-20261120`: moved to the new local branch `release/wc2tb-20261121`, then fast-forwarded to `774815d`. It is clean.
+- **Installed worker** `~/.dexdiffusion-engine/engine-worker.py`: SHA-256 `ad6d7f32…` (= commit blob).
+- **Running supervisor:** SHA-256 `7d0eb9ac…` (= deployed file).
+- **Activation:** `launchctl kickstart -k gui/503/local.dexdiffusion.engine-worker`, run once per release, about 3 s each.
+- **EngineHost:** not rebuilt or re-signed (SHA-256 `79faeb90…`). No new agent was added, and TCC is unchanged.
+- **Final chain:** launchd → EngineHost pid 47615 → worker pid 47618 → backend pid 55757. There is one 31337 listener, external storage `/Volumes/wc2tb/DexDiffusion` (volume `888EF24D…`), and the worker reports handoff protocol 2.
+
+**Live drill 1 (release `93f6617`, drill `6aed1f2e…`): round trip passed, fallback could not generate.**
+- The transitions ran under the owner, journal seq 1–8, with drained seals both ways:
+  - `RUNNING_EXTERNAL` → `QUIESCING` → `BACKEND_RELEASED` → `STARTING_FALLBACK` → `RUNNING_FALLBACK`;
+  - → `QUIESCING_FALLBACK` → `FALLBACK_RELEASED` → `STARTING_EXTERNAL` → `RUNNING_EXTERNAL`.
+- The fallback ran from the v2 package with internal-fallback storage, publication disabled, 3 models, and Studio 200.
+- **Defect:** its first image job stayed queued. The arbiter reported "Big Mac Ollama probe did not confirm success" because the owner handoff launched the fallback with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, and `ollama` is in `/opt/homebrew/bin` (exit 127), so admission failed closed.
+- The unstarted test job was cancelled (`not_started`), and the return completed normally.
+- This was the single bounded repair pass: PR #30 gives the fallback the same PATH as `scripts/run-backend-service.sh`, and test O pins that equality (it fails on the old value).
+
+**Live drill 2 (RELEASE_SHA `774815d`, drill `55e0c78a3cdc4c1b9aa758d2e08e3974`): PASSED.**
+- Journal seq 9–16 ran the same full sequence; every event is bound to host `bigmac`, revision `774815d`, worker `ad6d7f32…` and supervisor `7d0eb9ac…`.
+- Each authorized transition has a recorded reason.
+- The fallback (pid 47974) used the service PATH, and its arbiter reported Ollama as unoccupied.
+- **Fallback generation:** job `549af42b-5e6f-4ee0-b471-388ae8b3fabb`, MFLUX flux2-klein-4b, 512², 2 steps, 15 s. The PNG `c3d68e54…` is in `/Users/bigmac/DexDiffusion-InternalFallback/images` and is kept as evidence. There was no MacBook publication, and `images_made` was unchanged.
+- **Return:** external storage, publication enabled, 22 models, Studio 200, one listener, no fallback process left.
+- **Release Doctor** (release-readiness for `774815d`): verdict **PASS**. Every section PASS: production health, fallback package integrity, handoff capability, rollback activation proof, return to external, recovery plan.
+
+**Production generation after the return (Apple Metal `MTL0`):**
+- SD1.5 job `5611cf9d-602a-4aac-a722-d14101242ebb`: 512², 20 steps, euler_a, 228 s. SHA-256 `5cead8ce0282b520182deebb6642be9d7b563f50525388fdc0174b710ac250a6`.
+- LoRA job `ff255d66-8bea-44fa-a3cb-2ea0b3a880d2`: `lcm_sd15` 0.6, 4 steps LCM, 18 s, 834/834 LoRA tensors loaded from WC2TB by the worker lineage. SHA-256 `4a89f1bba5d540629d9bac5111775876de4177db7d516320d27cc67bdc39bab1`.
+- Both images are in MacBook `/Users/andrew/images_made` with identical SHA-256 (engine, API bytes, MacBook file), and both are listed in the Studio library.
+- Publications: 455 `CANONICAL_VERIFIED` (453 + 2), 0 pending, 0 suspended. No jobs, leases or waiters remain.
+
+**Data safety:**
+- MacBook `images_made`: 312 files before and 314 after. All 312 are byte-identical, and only the 2 new images were added.
+- The earlier production images `7f9d29e7…` (SD1.5) and `c89865ec…` (LoRA) are intact.
+- The 18 historical interrupted job records: the same 18 IDs, not blocked.
+- The operator library catalog total stayed 2417. It is a mixed-media view and is not the canonical image count.
+- Restore copies remain in `~/wc2tb-drill-20261121/restore/`. The frozen branch `352e508` is checked out by no worktree.
+
+**Remaining limitations:**
+- Big Mac internal disk is the binding constraint: about 8.8 GiB free.
+- The MacBook `~/Image_Gen` main checkout still has its uncommitted controller files and is behind `origin/main`. It was not touched.
+
 ## 2026-11-21 (review correction) — PR #28 handoff hardened (SOURCE ONLY; not deployed; live drill pending)
 
 A read-only review of PR #28 found five release blockers. All five are corrected on `codex/wc2tb-rollback-closure-20261121`. The full contract is in `docs/WC2TB_RECOVERY_RUNBOOK.md` §H.
