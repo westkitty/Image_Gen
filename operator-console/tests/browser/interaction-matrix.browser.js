@@ -5,6 +5,7 @@ const path = require('node:path');
 const { chromium } = require('playwright-core');
 const { startServer, launchBrowser, installImageFixtures, runCleanups, installStudioProfile, installDeveloperShellProfile } = require('./helpers');
 const spec = require('./interaction-matrix.spec.json');
+const { matrixContractLine } = require('../audit/release-diagnostics');
 const { resolveOutputDir, createOwnedWriter } = require('./safe-output');
 // Never defaults into a historical report directory: either the explicit directory (existing files are never replaced) or a fresh unique one.
 const out = resolveOutputDir(process.env.DEX_MATRIX_OUTPUT_DIR, { label: 'matrix' }), writer = createOwnedWriter(out);
@@ -278,12 +279,26 @@ async function modelDisabledContract(page){
 }
 
 async function navigationLabelContract(page){
-  const sample=()=>page.locator('[data-v="2"] header nav [data-tab]').evaluateAll(nodes=>nodes.map(n=>({label:n.textContent.trim(),width:n.getBoundingClientRect().width,content:n.clientWidth,text:n.scrollWidth,clipped:n.scrollWidth>n.clientWidth+1.5})));
-  const oldRule=await page.addStyleTag({content:'[data-v="2"] header nav [data-tab]{flex:0 1 auto!important;white-space:normal!important}'});
-  const before=await sample();await oldRule.evaluate(n=>n.remove());const after=await sample();
+  const selectors=['header nav [data-tab]', '[data-master-bar] [data-master-tab]', '[data-studio-subnav] [data-subnav-leaf]',
+    '[data-studio-mobile-nav] summary', '[data-studio-mobile-nav][open] [data-mobile-master]', '[data-studio-mobile-nav][open] [data-mobile-subroute]'];
+  const controls=page.locator(selectors.map(s=>`[data-v="2"] ${s}:visible`).join(', '));
+  const after=await controls.evaluateAll(nodes=>nodes.map(n=>({label:n.textContent.trim(),width:n.getBoundingClientRect().width,content:n.clientWidth,text:n.scrollWidth,clipped:n.scrollWidth>n.clientWidth+1.5})));
   const failures=after.filter(n=>n.clipped).map(n=>'Navigation label clipped '+n.label);
-  if(page.viewportSize().width<=600&&!before.some(n=>n.clipped))failures.push('Pre-repair mobile clipping reproduction did not trigger');
-  return{failures,measures:{before,after}};
+  if(!after.some(n=>n.label))failures.push('No visible Studio navigation labels to measure');
+  let positiveControl=null;
+  if(page.viewportSize().width<=600&&after.length){
+    // Prove that the clipping detector responds without recreating an old flat-shell
+    // style on a different shell. Clip one live label, then restore its exact style.
+    positiveControl=await controls.first().evaluate(n=>{
+      const style=n.getAttribute('style');
+      try{
+        for(const [key,value] of Object.entries({display:'block',width:'1px','min-width':'0','max-width':'1px',padding:'0',border:'0',flex:'0 0 1px',overflow:'hidden','white-space':'nowrap'}))n.style.setProperty(key,value,'important');
+        return n.scrollWidth>n.clientWidth+1.5;
+      }finally{if(style===null)n.removeAttribute('style');else n.setAttribute('style',style);}
+    });
+    if(!positiveControl)failures.push('Navigation clipping positive control did not trigger');
+  }
+  return{failures,measures:{after,positiveControl}};
 }
 
 async function studioGeometryContract(page){
@@ -323,7 +338,10 @@ async function studioGeometryContract(page){
         if(errors.length)check(checks,'runtime',true,errors,{});
       }catch(e){checks.push({contract:'execution',status:'BLOCKED',failures:[e.message.split('\n')[0], ...(process.env.DEX_MATRIX_DEBUG === '1' ? [String(e.stack || '').split('\n').slice(1,5).join(' | ')] : [])]});}
       const status=checks.some(c=>c.status==='BLOCKED')?'BLOCKED':checks.some(c=>c.status==='FAIL')?'FAIL':'PASS';cells.push({id,screen,shell,viewport:[width,height],status,checks});
-      console.log(id+' '+status+' '+checks.filter(c=>c.status==='FAIL'||c.status==='BLOCKED').map(c=>c.contract+': '+c.failures.slice(0,3).join('; ')).join(' | '));
+      const nonPassingChecks=checks.filter(c=>c.status==='FAIL'||c.status==='BLOCKED');
+      console.log(id+' '+status+' '+nonPassingChecks.map(c=>c.contract+': '+c.failures.slice(0,3).join('; ')).join(' | '));
+      const contractLine=matrixContractLine(id,nonPassingChecks.map(c=>c.contract));
+      if(contractLine)console.log(contractLine);
       writer.write('interaction-matrix.json',JSON.stringify({specVersion:spec.version,started,requiredBaseCells,partial:!!select.length,cells},null,2)+'\n');
       }
       await ctx.close();

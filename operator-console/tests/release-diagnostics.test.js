@@ -74,3 +74,28 @@ test('matrix tally is per registered cell and cannot lose failure to an echoed P
     nonPassing: [{ id: 'V2/360x780/Models', status: 'FAIL' }],
   });
 });
+
+test('matrix tally emits only structured allowlisted contract keys for known non-passing cells', () => {
+  const { matrixContractLine, tallyMatrixCells } = require('./audit/release-diagnostics');
+  assert.equal(matrixContractLine('V2/375x812/Enhance', ['typography', 'PRIVATE_CATEGORY', 'keyboard', 'keyboard']),
+    'DEX_MATRIX_CONTRACTS\tV2/375x812/Enhance\tkeyboard,typography');
+  assert.equal(matrixContractLine('V2/375x812/PRIVATE_SCREEN', ['layout']), '');
+  assert.equal(matrixContractLine('V2/375x812/Enhance', []), '');
+  const log = [
+    'V2/375x812/Enhance FAIL typography: PRIVATE_RAW_DETAIL',
+    'DEX_MATRIX_CONTRACTS\tV2/375x812/Enhance\ttypography,keyboard,PRIVATE_CATEGORY,/private/path',
+    'DEX_MATRIX_CONTRACTS\tV2/375x812/Enhance\tkeyboard,runtime',
+    'V2/390x844/Enhance PASS',
+    'DEX_MATRIX_CONTRACTS\tV2/390x844/Enhance\tforms',
+    'DEX_MATRIX_CONTRACTS\tV2/375x812/PRIVATE_SCREEN\tlayout',
+    'DEX_MATRIX_CONTRACTS\tV2/375x812/Enhance\tdialogs\tPRIVATE_METADATA',
+    'V2/360x780/Create BLOCKED execution: PRIVATE_EXECUTION_DETAIL',
+    'DEX_MATRIX_CONTRACTS\tV2/360x780/Create\texecution,navigation-label-regression',
+  ].join('\n');
+  const tally = tallyMatrixCells(log);
+  assert.deepEqual(tally.nonPassing, [
+    { id: 'V2/375x812/Enhance', status: 'FAIL', contracts: ['keyboard', 'runtime', 'typography'] },
+    { id: 'V2/360x780/Create', status: 'BLOCKED', contracts: ['execution', 'navigation-label-regression'] },
+  ]);
+  assert.doesNotMatch(JSON.stringify(tally), /PRIVATE|\/private\/|dialogs/);
+});

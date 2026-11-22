@@ -46,7 +46,9 @@ function run(name, cmd, args, env = {}) {
   console.log(`${step.status.padEnd(4)} ${name}  (${step.seconds}s${step.tests != null ? `, ${step.passed}/${step.tests}` : `, pass ${step.passed} fail ${step.failed}`})`);
   if (matrix) {
     console.log(`  matrix cells: ${matrix.measured} measured; ${matrix.passed} passed, ${matrix.failed - matrix.blocked} failed, ${matrix.blocked} blocked`);
-    for (const cell of matrix.nonPassing) console.log(`  ${cell.status} ${cell.id}`);
+    for (const cell of matrix.nonPassing) {
+      console.log(`  ${cell.status} ${cell.id}${cell.contracts ? ` [${cell.contracts.join(', ')}]` : ''}`);
+    }
   }
   return step;
 }
@@ -73,7 +75,7 @@ const receiptPath = writer.write('release-gate.json', JSON.stringify(receipt, nu
 // Publish only allowlisted failure signatures. Raw fixture logs remain in the isolated runner directory.
 writer.write('release-gate-diagnostics.json', JSON.stringify({
   schema: 'dexdiffusion.release-diagnostics.v1', gitHead,
-  scope: 'approved fixture cell identifiers, test indexes, error classes/codes and repository test locations; no raw logs or assertion values',
+  scope: 'approved fixture cell identifiers and contract categories, test indexes, error classes/codes and repository test locations; no raw logs or assertion values',
   verdict: receipt.verdict, failures: failureDiagnostics,
 }, null, 2) + '\n');
 console.log(`\nRELEASE GATE ${receipt.verdict} — ${steps.filter(s => s.status === 'PASS').length}/${steps.length} steps. Receipt: ${receiptPath}`);
