@@ -12,6 +12,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import socket
@@ -854,6 +855,12 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(config['fallback_env']['DEX_DATA_ROOT'], '/Users/bigmac/DexDiffusion-InternalFallback')
         self.assertFalse([k for k in config['fallback_env'] if 'MACBOOK' in k])
         self.assertEqual(config['package_commit'], '3f0abf5d0bd9c1d3777a9abbf46181ce2e040350')
+        # The fallback must find the tools its admission probe runs (`ollama ps`), exactly as
+        # the external service does; a bare system PATH left the live fallback unable to admit jobs.
+        service = (Path(__file__).resolve().parents[2] / 'scripts/run-backend-service.sh').read_text()
+        service_path = re.search(r'^export PATH="([^"$]+):\$\{PATH:-\}"$', service, re.M).group(1)
+        self.assertEqual(config['fallback_env']['PATH'], service_path)
+        self.assertIn('/opt/homebrew/bin', config['fallback_env']['PATH'].split(':'))
         manifest = Path(__file__).resolve().parents[2] / 'rollback-packages/wc2tb-emergency-internal-fallback-rollback-v2/SOURCE-SHA256SUMS'
         self.assertEqual(sha(manifest), config['source_manifest_sha256'], 'pinned digest matches the versioned manifest')
         self.assertTrue(config['source_manifest'].endswith('rollback-packages/wc2tb-emergency-internal-fallback-rollback-v2/SOURCE-SHA256SUMS'))
