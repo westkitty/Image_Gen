@@ -315,3 +315,38 @@ jobs:
             ' tests=' + tests + ' passed=' + passed + ' failed=' + failed + ' skipped=' + skipped);
           process.exitCode = ok ? 0 : 1;
           NODE
+  recipes-recover-002:
+    name: RECOVER-002 Recipes fail-closed recovery (isolated, strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify RECOVER-002 without exposing private data
+        working-directory: operator-console
+        run: |
+          node <<'NODE'
+          'use strict';
+          const { spawnSync } = require('node:child_process');
+          const child = spawnSync(process.execPath, [
+            '--test', '--test-reporter=tap', 'tests/recipes-recover-002.test.js'
+          ], { encoding: 'utf8', timeout: 60000, maxBuffer: 4 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'] });
+          // Suppress raw fixture output; this strict job reports only counts.
+          const output = (child.stdout || '') + '\n' + (child.stderr || '');
+          const count = key => {
+            const m = new RegExp('^# ' + key + ' (\\d+)\\r?$', 'm').exec(output);
+            return m ? Number(m[1]) : null;
+          };
+          const tests = count('tests'), passed = count('pass');
+          const failed = count('fail'), skipped = count('skipped');
+          const ok = child.status === 0 && !child.error && !child.signal &&
+            tests === 6 && passed === 6 && failed === 0 && skipped === 0;
+          console.log('RECOVER_002 ' + (ok ? 'PASS' : 'FAIL') +
+            ' tests=' + tests + ' passed=' + passed + ' failed=' + failed + ' skipped=' + skipped);
+          process.exitCode = ok ? 0 : 1;
+          NODE
