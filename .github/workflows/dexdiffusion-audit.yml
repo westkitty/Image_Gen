@@ -51,7 +51,51 @@ jobs:
       - name: Install reproducible Node dependencies
         working-directory: operator-console
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Targeted prompt-intelligence browser proof (private output)
+        id: prompt_intelligence_browser
+        working-directory: operator-console
+        run: |
+          node <<'NODE'
+          'use strict';
+          const { spawnSync } = require('node:child_process');
+          const fs = require('node:fs');
+          const title = 'browser: successful enhancement is reviewed before Apply, with Cancel and Undo';
+          let chromeReady = false;
+          try { fs.accessSync(process.env.DEX_BROWSER_PATH, fs.constants.X_OK); chromeReady = true; } catch (_) {}
+          const child = chromeReady ? spawnSync(process.execPath, [
+            '--test', '--test-reporter=tap', '--test-concurrency=1',
+            '--test-name-pattern=^' + title + '$', 'tests/prompt-intelligence.test.js'
+          ], {
+            encoding: 'utf8', timeout: 180000, maxBuffer: 16 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe']
+          }) : null;
+          // Raw TAP stays only in memory: do not echo, upload or persist it.
+          const output = child ? (child.stdout || '') + '\n' + (child.stderr || '') : '';
+          const metric = label => {
+            const match = new RegExp('^# ' + label + ' (\\d+)\\r?$', 'm').exec(output);
+            return match ? Number(match[1]) : null;
+          };
+          const total = metric('tests'), passed = metric('pass');
+          const failed = metric('fail'), skipped = metric('skipped');
+          const selected = output.split(/\r?\n/).some(line => line.trim() === '# Subtest: ' + title);
+          const ok = chromeReady && child && child.status === 0 && !child.error && !child.signal &&
+            selected && total > 0 && passed === 1 && failed === 0 && skipped === total - 1;
+          const verdict = ok ? 'PASS' : 'FAIL';
+          const status = 'PROMPT_INTELLIGENCE_BROWSER ' + verdict +
+            ' selected=' + Number(selected) + ' passed=' + String(passed) +
+            ' failed=' + String(failed) + ' skipped=' + String(skipped);
+          console.log(status);
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+              '### Isolated prompt-intelligence browser check\n\n' +
+              '**' + verdict + '** — one exact test, private output suppressed.\n\n' +
+              'Counts: selected=' + Number(selected) + ', passed=' + String(passed) +
+              ', failed=' + String(failed) + ', skipped=' + String(skipped) + '.\n');
+          }
+          process.exitCode = ok ? 0 : 1;
+          NODE
       - name: Run full portable release gate
+        if: ${{ !cancelled() && (success() || steps.prompt_intelligence_browser.outcome == 'failure') }}
         working-directory: operator-console
         run: npm run test:release
       - name: Attach release-gate receipt and redacted failure signatures
