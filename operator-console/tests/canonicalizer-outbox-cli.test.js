@@ -31,7 +31,11 @@ function fixture(t, dataRoot) {
 
 test('Big Mac worker CLI durably records MacBook-pull intent with canonical bytes', t => {
   const f = fixture(t, true);
-  const r = spawnSync(process.execPath, [CLI, f.run], { env: f.env, encoding: 'utf8', timeout: 10000 });
+  // Only this test's CLI children see the Big Mac hostname; production checks stay intact.
+  const preload = path.join(f.root, 'bigmac-hostname-preload.cjs');
+  fs.writeFileSync(preload, "require('node:os').hostname = () => 'bigmac';\n", { mode: 0o600 });
+  const command = ['--require', preload, CLI, f.run];
+  const r = spawnSync(process.execPath, command, { env: f.env, encoding: 'utf8', timeout: 10000 });
   assert.equal(r.status, 0, r.stderr);
   const index = JSON.parse(fs.readFileSync(path.join(f.run, 'canonical-images.json'), 'utf8'));
   assert.equal(index.images.length, 1);
@@ -43,7 +47,7 @@ test('Big Mac worker CLI durably records MacBook-pull intent with canonical byte
   assert.equal(outbox[0].image_id, image.image_id);
   assert.equal(outbox[0].sha256, image.sha256);
   assert.deepEqual(fs.readFileSync(path.join(f.images, image.image_id)), PNG);
-  const again = spawnSync(process.execPath, [CLI, f.run], { env: f.env, encoding: 'utf8', timeout: 10000 });
+  const again = spawnSync(process.execPath, command, { env: f.env, encoding: 'utf8', timeout: 10000 });
   assert.equal(again.status, 0, again.stderr);
   assert.equal(createPublicationOutbox(path.join(f.state, 'publications')).all().length, 1);
 });

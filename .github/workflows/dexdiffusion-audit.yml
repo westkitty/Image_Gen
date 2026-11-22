@@ -51,6 +51,44 @@ jobs:
       - name: Install reproducible Node dependencies
         working-directory: operator-console
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Targeted canonicalizer outbox CLI proof (synthetic, private output)
+        id: canonical_outbox_cli
+        working-directory: operator-console
+        continue-on-error: true
+        run: |
+          node <<'NODE'
+          'use strict';
+          const { spawnSync } = require('node:child_process');
+          const fs = require('node:fs');
+          const child = spawnSync(process.execPath, [
+            '--test', '--test-reporter=tap', '--test-concurrency=1',
+            'tests/canonicalizer-outbox-cli.test.js'
+          ], {
+            encoding: 'utf8', timeout: 60000, maxBuffer: 4 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe']
+          });
+          // Do not echo or upload raw fixture output; report counts only.
+          const output = (child.stdout || '') + '\n' + (child.stderr || '');
+          const count = key => {
+            const match = new RegExp('^# ' + key + ' (\\d+)\\r?$', 'm').exec(output);
+            return match ? Number(match[1]) : null;
+          };
+          const tests = count('tests'), passed = count('pass');
+          const failed = count('fail'), skipped = count('skipped');
+          const ok = !child.error && !child.signal && child.status === 0 &&
+            tests === 2 && passed === 2 && failed === 0 && skipped === 0;
+          const verdict = ok ? 'PASS' : 'FAIL';
+          console.log('CANONICALIZER_OUTBOX_CLI ' + verdict +
+            ' tests=' + tests + ' passed=' + passed + ' failed=' + failed + ' skipped=' + skipped);
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+              '### Isolated canonicalizer outbox CLI fixtures\n\n' +
+              '**' + verdict + '** — two synthetic fixtures; private output suppressed.\n\n' +
+              'Counts: tests=' + tests + ', passed=' + passed +
+              ', failed=' + failed + ', skipped=' + skipped + '.\n');
+          }
+          process.exitCode = ok ? 0 : 1;
+          NODE
       - name: Targeted prompt-intelligence browser proof (private output)
         id: prompt_intelligence_browser
         working-directory: operator-console
