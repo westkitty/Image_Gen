@@ -75,6 +75,10 @@ const app = express();
 if (TestIsolation.enabled()) app.use(TestIsolation.middleware);
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
 const HOST = '127.0.0.1';
+// Owner drain handshake (same protocol and module as the external backend). No HTTP route can request a drain.
+const supervisorControl = process.env.DEX_BACKEND_CONTROL;
+const quiescence = supervisorControl ? require('./backend-quiescence').backendQuiescence(supervisorControl, isFallbackIdle) : null;
+if (quiescence) app.use(quiescence.middleware);
 const APP_VERSION = 'image-gen-console-2026-06-22-render-wrapper';
 
 const STORAGE_PATHS = resolveStoragePaths(process.env, path.resolve(__dirname, '../sdcpp-workflow'));
@@ -6588,8 +6592,22 @@ app.get('/api/images/:id', (req, res) => {
   res.sendFile(img.path);
 });
 
+// The EngineHost owner may stop this backend only after it seals "drained": no request in
+// flight, no active or non-terminal job, no lease, waiter, quarantine, held image journal,
+// unfinished remote worker or unresolved publication recovery.
+function isFallbackIdle() {
+  const resources = arbiter.state();
+  const held = imageStore.journalHeldIds();
+  return !!held && held.size === 0 && !resources.owner && resources.waiting.length === 0 && !resources.quarantine
+    && !publicationRecoveryState.blocked
+    && !Object.values(jobs).some(job => ['queued', 'running', 'pending', 'starting', 'cancelling'].includes(job.status))
+    && jobStore.list({ limit: Infinity }).every(job => TERMINAL.has(job.status) && !job.resource_lease)
+    && remoteWorkers.list().every(worker => ['completed', 'cancelled_verified', 'failed'].includes(worker.state));
+}
+
 if (require.main === module) {
   app.listen(PORT, HOST, () => {
+    if (quiescence) setInterval(quiescence.checkpoint, 500).unref();
     const build = getBuildInfo();
     console.log(`SDCPP Workbench listening on ${build.bind} (${build.version}, HEAD ${build.gitHead}, pid ${build.pid})`);
   });
