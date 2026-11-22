@@ -5963,6 +5963,7 @@ app.post('/api/recipes', (req, res) => {
     const r = recipeStore.create(req.body || {});
     res.json({ ok: true, recipe: r });
   } catch (err) {
+    if (err.recipeSaveFailed) return res.status(500).json({ error: 'Recipe could not be saved' });
     res.status(400).json({ error: err.message });
   }
 });

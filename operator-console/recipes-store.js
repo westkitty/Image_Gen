@@ -37,7 +37,7 @@ function createRecipeStore(filePath) {
     }
   }
 
-  function save() {
+  function save(nextRecipes = recipes, failOnError = false) {
     if (!filePath) return;
     try {
       const dir = path.dirname(filePath);
@@ -46,12 +46,16 @@ function createRecipeStore(filePath) {
       const payload = {
         version: SCHEMA_VERSION,
         updatedAt: Date.now(),
-        recipes: Array.from(recipes.values())
+        recipes: Array.from(nextRecipes.values())
       };
       fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), 'utf8');
       fs.renameSync(tmp, filePath);
     } catch (err) {
       console.error('Failed to save recipes:', err.message);
+      if (failOnError) {
+        err.recipeSaveFailed = true;
+        throw err;
+      }
     }
   }
 
@@ -117,8 +121,10 @@ function createRecipeStore(filePath) {
       updatedAt: now
     };
 
-    recipes.set(id, recipe);
-    save();
+    const nextRecipes = new Map(recipes);
+    nextRecipes.set(id, recipe);
+    save(nextRecipes, true);
+    recipes = nextRecipes;
     return recipe;
   }
 
