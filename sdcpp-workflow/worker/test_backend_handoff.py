@@ -382,6 +382,7 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(self.states()[-4:], ['QUIESCING_FALLBACK', 'FALLBACK_RELEASED', 'STARTING_EXTERNAL', 'RUNNING_EXTERNAL'])
         self.assertTrue(self.sup.request_restart())
         server.shutdown()
+        server.server_close()
         self.assertEqual(Canary.hits, [])
         self.assertEqual(self.snapshot(), before)  # M
         self.assertTrue(Path(self.config['fallback_log']).read_text().startswith('fallback booting'))
@@ -602,12 +603,21 @@ class HandoffTests(unittest.TestCase):
     def test_C1_E_missing_stale_forged_or_unrequested_seal_never_authorizes(self):
         fallback = self.enter_fallback()
         self.handoff.stop_timeout = 1.5
+        seal = self.sup.instance / 'idle'
         for switch in ('fb-noseal', 'fb-stale', 'fb-forge', 'fb-predrained'):
             (self.fx / switch).touch()
+            time.sleep(.3)  # the backend's 40 ms seal loop has observed the switch
             if switch == 'fb-stale':
-                (self.sup.instance / 'idle').write_text(f'{fallback.pid} idle\n')
+                seal.write_text(f'{fallback.pid} idle\n')
                 old = time.time() - 30
-                os.utime(self.sup.instance / 'idle', (old, old))
+                os.utime(seal, (old, old))
+            elif switch in ('fb-noseal', 'fb-forge'):
+                seal.unlink(missing_ok=True)  # no earlier healthy seal survives into this case
+                time.sleep(.3)
+            # Establish the faulty seal state before the request, so no healthy seal can race in.
+            if switch == 'fb-predrained':
+                self.assertEqual(seal.read_text(), f'{fallback.pid} drained\n')  # drained, but never requested
+            self.assertFalse(self.sup._seal('idle'), switch)
             self.assertTrue(self.ask('external')['ok'], switch)
             self.until(lambda: self.handoff.journal['state'] == 'RUNNING_FALLBACK', seconds=10)
             self.assertIn('QUIESCE_TIMEOUT', self.handoff.journal['last_refusal']['codes'][0], switch)
