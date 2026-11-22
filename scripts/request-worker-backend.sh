@@ -78,7 +78,7 @@ def request(op):
         sock.settimeout(2)
         sock.connect('/Users/bigmac/.dexdiffusion-engine/engine.sock')
         sock.sendall((json.dumps({'op': op}) + '\n').encode())
-        return json.loads(sock.makefile().readline(4096))
+        return json.loads(sock.makefile().readline(1 << 20))
 try:
     original = request('backend-status')
     if action == '--restart':

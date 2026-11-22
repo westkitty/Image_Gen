@@ -7,8 +7,11 @@ name: WC2TB prevention (portable checks)
 on:
   push:
     branches: ['codex/wc2tb-prevention-*', 'codex/wc2tb-rollback-closure-*']
+  # PRs into main AND into the prevention integration branch (PR #28 targets it).
+  # Push runs test the branch head; PR runs test the merge with the base. The
+  # concurrency group below cancels superseded runs of the same ref.
   pull_request:
-    branches: [main]
+    branches: [main, 'codex/wc2tb-prevention-*']
     paths:
       - '.github/workflows/wc2tb-prevention.yml'
       - 'bin/dexdiffusion'
@@ -17,6 +20,7 @@ on:
       - 'operator-console/server.js'
       - 'operator-console/tests/wc2tb-prevention.test.js'
       - 'sdcpp-workflow/worker/**'
+      - 'rollback-packages/**'
   workflow_dispatch:
 
 permissions:
