@@ -48,10 +48,10 @@ const { results, test, phase, exitCode } = runner('voice-drama');
       await page.screenshot({ path: outPath('voice-profiles.png') }); await ctx.close();
     });
 
-    await test('Cloned voice: invalid until a sample WITH transcript is approved; multiple samples; active sample; remove', async () => {
+    await test('Cloned voice: invalid until a sample WITH transcript is approved for Qwen3 Base; multiple samples; active sample; remove', async () => {
       const { ctx, page } = await open();
       await page.evaluate(() => { __dex.setScreen('voice'); });
-      await page.waitForSelector('[data-voice-profiles]'); await page.click('[data-new-voice-button]'); await page.click('[data-new-type="cloned"]'); await page.waitForFunction(() => __dex.vp.newForm.type === 'cloned'); await page.waitForSelector('[data-new-voice] textarea, [data-new-voice] select', { state: 'detached' }); await page.fill('[data-new-name]', 'ZZ-UI-Clone'); await page.waitForFunction(() => __dex.vp.newForm.name === 'ZZ-UI-Clone'); await page.click('[data-create-voice]');
+      await page.waitForSelector('[data-voice-profiles]'); await page.click('[data-new-voice-button]'); await page.click('[data-new-type="cloned"]'); await page.waitForFunction(() => __dex.vp.newForm.type === 'cloned'); await page.fill('[data-new-name]', 'ZZ-UI-Clone'); await page.waitForFunction(() => __dex.vp.newForm.name === 'ZZ-UI-Clone'); await page.click('[data-create-voice]');
       await page.waitForSelector('[data-profile-editor]:has-text("ZZ-UI-Clone")');
       const pid = (await api('GET', '/api/voice/profiles')).profiles.find(p => !existingProfiles.has(p.id) && p.name === 'ZZ-UI-Clone').id; made.profiles.push(pid);
       assert.match(await page.innerText('[data-profile-validation]'), /add at least one reference sample/);
@@ -144,6 +144,49 @@ const { results, test, phase, exitCode } = runner('voice-drama');
       await page.click('[data-profile="' + (await api('GET', '/api/voice/profiles')).profiles.find(x => x.name === 'ZZ-UI-Own-B').id + '"]');
       await page.waitForSelector('[data-render-result]'); // owner still shows it
       assert.deepEqual(errors, []); await ctx.close();
+    });
+
+    await test('One-step Create Voice modal: no consent box, uploads sample, works with VoxCPM2 without transcript, ready for Voice, OpenVoice & Drama', async () => {
+      const { ctx, page, errors } = await open();
+      await page.evaluate(() => __dex.setScreen('voice'));
+      await page.waitForSelector('[data-voice-profiles]');
+      await page.click('[data-new-voice-button]');
+      await page.waitForSelector('[data-new-voice]');
+      const modalText = await page.innerText('[data-new-voice]');
+      assert.equal(/consent|permission note|fictional/i.test(modalText), false, 'no consent UI in Create Voice modal');
+      await page.setInputFiles('[data-create-sample-input="1"]', { name: 'sample_onestep.wav', mimeType: 'audio/wav', buffer: makeWav(5, 240) });
+      await page.waitForSelector('[data-create-sample-card="1"]');
+      assert.match(await page.innerText('[data-create-sample-card="1"]'), /sample_onestep\.wav/);
+      assert.ok(await page.$('[data-create-transcribe="1"]'));
+      assert.ok(await page.$('[data-create-remove="1"]'));
+      await page.screenshot({ path: outPath('create-voice-modal.png') });
+      await page.selectOption('[data-create-engine="1"]', 'voxcpm2');
+      await page.fill('[data-new-name]', 'ZZ-UI-OneStep-Vox');
+      await page.waitForFunction(() => __dex.vp.newForm.name === 'ZZ-UI-OneStep-Vox' && __dex.vp.newForm.preferred_engine === 'voxcpm2');
+      await page.click('[data-create-voice]');
+      await page.waitForSelector('[data-profile-editor]:has-text("ZZ-UI-OneStep-Vox")');
+      const created = (await api('GET', '/api/voice/profiles')).profiles.find(p => p.name === 'ZZ-UI-OneStep-Vox');
+      assert.ok(created, 'profile created and persisted');
+      made.profiles.push(created.id);
+      assert.equal(created.samples.length, 1);
+      assert.equal(created.preferred_engine, 'voxcpm2');
+      assert.equal(created.validation.state, 'valid');
+      assert.equal(created.readiness.ready, true, 'immediately ready without any consent or approval step');
+      assert.equal(await page.isEnabled('[data-render-speech]'), true, 'Render speech enabled immediately');
+      await page.click('[data-open-voice-conversion="1"] button');
+      await page.waitForSelector('[data-openvoice-conversion]');
+      assert.ok(await page.$(`[data-openvoice-conversion] option[value="${created.id}"]`), 'immediately selectable in OpenVoice V2');
+      await page.keyboard.press('Escape');
+      const dproj = (await api('POST', '/api/drama/projects', { title: 'ZZ-OneStep-Cast', script: 'TIGER: One line for the cloned voice.' })).project;
+      made.projects.push(dproj.id);
+      await page.evaluate(id => { __dex._dm(); __dex.dm.currentId = id; __dex.setScreen('drama'); __dex.dmStage('cast'); }, dproj.id);
+      await page.waitForSelector('[data-actor="TIGER"] select');
+      await page.selectOption('[data-actor="TIGER"] select', created.id);
+      await page.waitForFunction(() => !document.querySelector('[data-drama-unresolved]'));
+      assert.equal(/not production-ready|consent/i.test(await page.innerText('[data-actor="TIGER"]')), false, 'no consent or readiness warning in Drama Cast');
+      assert.equal((await api('GET', `/api/drama/projects/${dproj.id}/plan`)).plan.ready, true, 'Drama plan is immediately ready');
+      assert.deepEqual(errors, []);
+      await ctx.close();
     });
 
     await test('Drama: paste → parse → review/edit → cast → privacy banner → save/unsave → blocked render → assemble refuses without takes', async () => {

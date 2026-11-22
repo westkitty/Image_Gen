@@ -320,6 +320,17 @@
       h('div', { style: css.muted }, 'Kokoro is deterministic (no seed). Language follows the voice (a = US English, b = UK English).'))
       : m.voiceMode === 'clone' ? h('div', { style: { display: 'grid', gap: 10 } },
         this.buildReferenceStager('voiceRef', 'Reference voice audio (required)'),
+        m.refs.voiceRef && this.openCreateVoiceModal ? h('div', { style: css.row },
+          btn('Save as reusable voice profile', () => {
+            this.vpSet({ tab: 'profiles' });
+            this.openCreateVoiceModal({
+              type: 'cloned',
+              staged: Object.assign({}, m.refs.voiceRef, { shared: true }),
+              transcript: this._mtext.voiceTranscript || '',
+              name: (m.refs.voiceRef.filename || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim(),
+            });
+          }, '#eab308', { 'data-quick-save-profile': '1' }),
+          h('span', { style: css.muted }, 'Keep this reference clip as a permanent voice for Voice & Drama.')) : null,
         field('Reference transcript (optional, improves cloning)', this._text('voiceTranscript', 'Exact words spoken in the reference', 2)),
         field('Text to speak', this._text('voiceText', 'What the cloned voice should say…', 3)),
         h('div', { style: css.grid2 }, field('Language', langSelect(m, p => this.mSet(p))), field('Seed', this._input('vSeed', { numeric: true, min: '0', placeholder: 'random' }))))

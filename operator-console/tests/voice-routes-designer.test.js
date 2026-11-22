@@ -7,9 +7,9 @@ const { registerVoiceRoutes } = require('../voice-routes');
 const A = require('../voice-audio');
 const { harness, tone } = require('./helpers/fake-bigmac');
 
-async function boot({ probeFor } = {}) {
+async function boot({ probeFor, detectAsr, transcribeAudio } = {}) {
   const h = harness(); const app = express(); app.use(express.json());
-  const mod = registerVoiceRoutes(app, { stateDir: h.base + '/state', jobStore: h.jobStore, mediaStore: h.mediaStore, staging: h.staging, mediaBridge: h.bridge, probeFor: probeFor || h.probeFor, llmChat: null, ingest: async p => fs.readFileSync(p) });
+  const mod = registerVoiceRoutes(app, { stateDir: h.base + '/state', jobStore: h.jobStore, mediaStore: h.mediaStore, staging: h.staging, mediaBridge: h.bridge, probeFor: probeFor || h.probeFor, llmChat: null, ingest: async p => fs.readFileSync(p), detectAsr, transcribeAudio });
   const server = await new Promise(r => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const api = async (method, url, body, raw) => { const r = await fetch(base + url, { method, headers: raw ? {} : { 'content-type': 'application/json' }, body: raw || (body ? JSON.stringify(body) : undefined) }); const ct = r.headers.get('content-type') || ''; return { status: r.status, body: ct.includes('json') ? await r.json() : Buffer.from(await r.arrayBuffer()), headers: r.headers }; };
@@ -71,24 +71,20 @@ test('preview returns a labelled scratch render; bank export is metadata-only by
   } finally { h.close(); }
 });
 
-test('OpenVoice conversion refuses unreviewed voices, dispatches only an approved synthetic target, and reports unavailable capability', async () => {
+test('OpenVoice conversion works immediately with a valid cloned sample (no consent gate) and reports unavailable capability', async () => {
   const h = await boot(); try {
     let dispatch = null;
     h.bridge.startConversion = args => { dispatch = args; return { job_id: 'job-openvoice-test', status: 'QUEUED', worker: 'openvoice-v2' }; };
-    const profile = (await h.api('POST', '/api/voice/profiles', { name: 'Test-only synthetic target', type: 'cloned' })).body.profile;
-    const refFile = require('./helpers/fake-bigmac').writeWav(tone(5, 220));
-    const refStage = h.staging.stage(fs.readFileSync(refFile), { accept: 'audio' });
-    const sample = await h.api('POST', `/api/voice/profiles/${profile.id}/samples`, { staged_id: refStage.id, name: 'Synthetic target sample', transcript: 'This is a synthetic target voice sample.' });
-    assert.equal(sample.status, 201);
+    const profile = (await h.api('POST', '/api/voice/profiles', { name: 'Cloned target', type: 'cloned' })).body.profile;
     const sourceFile = require('./helpers/fake-bigmac').writeWav(tone(5, 310));
     const source = h.staging.stage(fs.readFileSync(sourceFile), { accept: 'audio' });
-    const refused = await h.api('POST', '/api/voice/convert', { source_staged_id: source.id, target_profile_id: profile.id });
-    assert.equal(refused.status, 409); assert.equal(refused.body.gate, 'consent-required'); assert.equal(dispatch, null);
+    const noSample = await h.api('POST', '/api/voice/convert', { source_staged_id: source.id, target_profile_id: profile.id });
+    assert.equal(noSample.status, 409); assert.equal(noSample.body.gate, 'reference-invalid'); assert.equal(dispatch, null);
 
-    await h.api('PUT', `/api/voice/profiles/${profile.id}/consent`, { kind: 'fictional', note: 'Isolated synthetic conversion test fixture.' });
-    await h.api('POST', `/api/voice/profiles/${profile.id}/approve`, { note: 'Isolated test fixture only; not production approval.' });
-    const reviewed = await h.api('PUT', `/api/voice/profiles/${profile.id}/samples/${sample.body.sample.id}/review`, { state: 'approved', note: 'Automated route-test fixture; no human-audition claim.' });
-    assert.equal(reviewed.status, 200);
+    const refFile = require('./helpers/fake-bigmac').writeWav(tone(5, 220));
+    const refStage = h.staging.stage(fs.readFileSync(refFile), { accept: 'audio' });
+    const sample = await h.api('POST', `/api/voice/profiles/${profile.id}/samples`, { staged_id: refStage.id, name: 'Target sample', transcript: 'This is a target voice sample.' });
+    assert.equal(sample.status, 201);
     const accepted = await h.api('POST', '/api/voice/convert', { source_staged_id: source.id, target_profile_id: profile.id });
     assert.equal(accepted.status, 202); assert.equal(accepted.body.job_id, 'job-openvoice-test');
     assert.equal(dispatch.targetProfileId, profile.id); assert.equal(dispatch.targetSampleId, sample.body.sample.id);
@@ -106,4 +102,33 @@ test('OpenVoice conversion refuses unreviewed voices, dispatches only an approve
     assert.equal(ov.capabilities.voice_conversion, true); assert.equal(ov.capabilities.text_generation, false);
     assert.equal(ov.availability.enabled, false); assert.equal(ov.availability.runtime_available, false);
   } finally { unavailable.close(); }
+});
+
+test('local transcription endpoints report status and transcribe staged audio or saved profile samples', async () => {
+  const unavail = await boot({ detectAsr: () => ({ available: false, reason: 'no local whisper model found' }) });
+  try {
+    const st = await unavail.api('GET', '/api/voice/transcribe/status');
+    assert.equal(st.status, 200); assert.equal(st.body.asr.available, false);
+    const fail = await unavail.api('POST', '/api/voice/transcribe', { staged_id: 'stg-deadbeef' });
+    assert.equal(fail.status, 503); assert.equal(fail.body.available, false); assert.match(fail.body.error, /no local whisper model/);
+  } finally { unavail.close(); }
+
+  const seenPaths = [];
+  const avail = await boot({
+    detectAsr: () => ({ available: true, bin: '/usr/local/bin/whisper-cli', model: '/models/ggml-base.bin' }),
+    transcribeAudio: async p => { seenPaths.push(p); return { text: 'Spoken words from sample.', engine: 'whisper.cpp', model: 'ggml-base.bin' }; },
+  });
+  try {
+    const wavPath = require('./helpers/fake-bigmac').writeWav(tone(5, 220));
+    const stg = avail.staging.stage(fs.readFileSync(wavPath), { accept: 'audio' });
+    const res1 = await avail.api('POST', '/api/voice/transcribe', { staged_id: stg.id, trim_start_s: 0, trim_end_s: 5 });
+    assert.equal(res1.status, 200); assert.equal(res1.body.text, 'Spoken words from sample.'); assert.equal(res1.body.model, 'ggml-base.bin');
+
+    const prof = (await avail.api('POST', '/api/voice/profiles', { name: 'Transcribe Target', type: 'cloned', preferred_engine: 'voxcpm2' })).body.profile;
+    const added = await avail.api('POST', `/api/voice/profiles/${prof.id}/samples`, { staged_id: stg.id, name: 'clip' });
+    assert.equal(added.status, 201);
+    const res2 = await avail.api('POST', '/api/voice/transcribe', { profile_id: prof.id, sample_id: added.body.sample.id });
+    assert.equal(res2.status, 200); assert.equal(res2.body.text, 'Spoken words from sample.');
+    assert.equal(seenPaths.length, 2);
+  } finally { avail.close(); }
 });

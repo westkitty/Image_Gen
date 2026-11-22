@@ -46,7 +46,9 @@ function createDramaService({ store, voice, profiles, mediaStore, llmChat = null
       const actor = D.actorFor(p, line.speaker_key);
       const id = line.profile_override || (actor && actor.voice_profile_id);
       const profile = id && profiles.get(id);
-      if (!profile || (profile.validation && profile.validation.state === 'invalid')) {
+      const engineId = profile ? (line.engine_override || profile.preferred_engine || E.compatibleEngines(profile)[0]) : null;
+      const valid = !!(profile && engineId && E.validateProfileForEngine(profile, engineId).ok);
+      if (!profile || !valid) {
         const item = out.get(line.speaker_key) || { speaker: line.speaker, key: line.speaker_key, lines: 0,
           reason: !id ? 'unassigned' : !profile ? 'profile-missing' : 'profile-invalid' };
         item.lines++; out.set(line.speaker_key, item);
@@ -265,7 +267,8 @@ function createDramaService({ store, voice, profiles, mediaStore, llmChat = null
     const actor = D.actorFor(p, found.line.speaker_key), assigned = found.line.profile_override || (actor && actor.voice_profile_id);
     if (!assigned || assigned !== targetProfileId) throw Object.assign(new Error('the Drama line must be assigned to the selected target voice profile'), { status: 409, gate: 'target-profile-mismatch' });
     const profile = profiles.get(targetProfileId);
-    if (!profile || profile.type !== 'cloned' || !profile.readiness || !profile.readiness.ready) throw Object.assign(new Error('target voice approval, sample review and consent are required'), { status: 409, gate: 'consent-required' });
+    const activeSample = profile && ((profile.samples || []).find(s => s.active) || (profile.samples || [])[0]);
+    if (!profile || profile.type !== 'cloned' || !activeSample || (activeSample.validation && activeSample.validation.ok === false)) throw Object.assign(new Error('target voice requires a cloned profile with a valid active sample'), { status: 409, gate: 'reference-invalid' });
     const art = mediaStore.resolve(artifactId);
     if (!art || art.kind !== 'voice' || art.job_id !== jobId || !art.meta || !art.meta.conversion || art.meta.conversion.converter !== 'myshell-ai/OpenVoiceV2' || art.meta.conversion.target_profile_id !== targetProfileId) throw Object.assign(new Error('converted artifact is missing verified OpenVoice lineage'), { status: 409, gate: 'conversion-artifact-invalid' });
     const info = P.lineFingerprint(p, found.line, planContext());

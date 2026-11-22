@@ -26,6 +26,7 @@ const E = require('./voice-engines');
 const { KOKORO_VOICES } = require('./media-bridge');
 const PerformanceScore = require('./performance-score');
 const { createDirectorPreferences } = require('./director-preferences');
+const Asr = require('./asr-adapter');
 
 // Normalise any ffmpeg-readable audio to a PCM16 mono 24 kHz WAV buffer (null on failure).
 function ingestToWav(src, selection = null) {
@@ -41,7 +42,7 @@ function ingestToWav(src, selection = null) {
   });
 }
 
-function registerVoiceRoutes(app, { stateDir, jobStore, mediaStore, staging, mediaBridge, probeFor, llmChat, ingest = ingestToWav, log = () => {}, cancelJob = null, onJobStart = null, onJobEnd = null }) {
+function registerVoiceRoutes(app, { stateDir, jobStore, mediaStore, staging, mediaBridge, probeFor, llmChat, ingest = ingestToWav, detectAsr = Asr.detect, transcribeAudio = Asr.transcribe, log = () => {}, cancelJob = null, onJobStart = null, onJobEnd = null }) {
   const profiles = createProfileStore({ root: path.join(stateDir, 'voice-profiles'), ingest });
   const voice = createVoiceService({ bridge: mediaBridge, jobStore, mediaStore, profiles, probeFor, log });
   const dramaStore = createDramaStore({ root: path.join(stateDir, 'drama') });
@@ -102,9 +103,9 @@ function registerVoiceRoutes(app, { stateDir, jobStore, mediaStore, staging, med
     if (!source || source.kind !== 'audio') return json(res, 400, { error: 'stage a source audio performance first', gate: 'reference-invalid' });
     const profile = profiles.get(String(b.target_profile_id || ''));
     if (!profile) return nf(res, 'target voice profile');
-    if (profile.type !== 'cloned' || !profile.readiness || !profile.readiness.ready) return json(res, 409, { error: 'target voice requires an approved cloned profile, reviewed active sample and recorded consent', gate: 'consent-required', readiness: profile.readiness || null });
+    if (profile.type !== 'cloned') return json(res, 409, { error: 'target voice must be a cloned profile with a reference sample', gate: 'reference-invalid' });
     const active = profiles.activeSample(profile.id);
-    if (!active || !active.path || !active.sample.review || active.sample.review.state !== 'approved') return json(res, 409, { error: 'target voice has no approved active reference sample', gate: 'reference-invalid' });
+    if (!active || !active.path || (active.sample.validation && active.sample.validation.ok === false)) return json(res, 409, { error: 'target voice has no valid active reference sample', gate: 'reference-invalid' });
     const digest = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
     const sourceSha = digest(source.path), targetSha = active.sample.sha256 || digest(active.path);
     if (sourceSha === targetSha) return json(res, 400, { error: 'source performance and target reference must be different recordings', gate: 'identity-separation' });
@@ -114,6 +115,42 @@ function registerVoiceRoutes(app, { stateDir, jobStore, mediaStore, staging, med
       probe: probeFor('openvoice-v2') });
     if (result.error) return json(res, result.status || 409, result);
     noStore(res); res.status(202).json(result);
+  }));
+  app.get('/api/voice/transcribe/status', (req, res) => { noStore(res); res.json({ asr: detectAsr() }); });
+  app.post('/api/voice/transcribe', h(async (req, res) => {
+    const b = req.body || {}, det = detectAsr();
+    if (!det || !det.available) return json(res, 503, { error: (det && det.reason) || 'local transcription is unavailable', available: false });
+    let audioPath = null, tmpDir = null;
+    try {
+      if (b.profile_id && b.sample_id) {
+        audioPath = profiles.samplePath(String(b.profile_id), String(b.sample_id));
+        if (!audioPath) return nf(res, 'sample');
+      } else if (b.staged_id) {
+        const st = staging.get(String(b.staged_id));
+        if (!st || st.kind !== 'audio') return json(res, 400, { error: 'staged audio not found or expired; upload the clip again', gate: 'reference-invalid' });
+        const trimming = b.trim_start_s !== undefined || b.trim_end_s !== undefined;
+        if (trimming) {
+          const start = Number(b.trim_start_s), end = Number(b.trim_end_s);
+          if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end - start < 0.5 || end - start > 30.001) {
+            return json(res, 400, { error: 'select a valid 0.5–30 second excerpt before transcribing', gate: 'reference-invalid' });
+          }
+          const buf = await ingest(st.path, { start, end });
+          if (!buf || buf.length < 44) return json(res, 400, { error: 'could not decode selected audio excerpt', gate: 'reference-invalid' });
+          tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dextr-'));
+          audioPath = path.join(tmpDir, 'excerpt.wav');
+          fs.writeFileSync(audioPath, buf, { mode: 0o600 });
+        } else {
+          audioPath = st.path;
+        }
+      } else {
+        return json(res, 400, { error: 'provide staged_id or profile_id + sample_id', gate: 'reference-invalid' });
+      }
+      const out = await transcribeAudio(audioPath, det);
+      noStore(res);
+      res.json({ ok: true, text: out.text || '', engine: out.engine || 'whisper.cpp', model: out.model || null });
+    } finally {
+      if (tmpDir) try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+    }
   }));
   app.get('/api/voice/profiles', h((req, res) => { noStore(res); res.json({ profiles: profiles.list() }); }));
   app.post('/api/voice/profiles', h((req, res) => res.status(201).json({ profile: profiles.create(req.body || {}) })));

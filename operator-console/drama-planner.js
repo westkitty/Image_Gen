@@ -24,7 +24,7 @@ function lineFingerprint(project, line, ctx) {
   const engineId = line.engine_override || profile.preferred_engine || E.compatibleEngines(profile)[0];
   out.engineId = engineId;
   const v = engineId ? E.validateProfileForEngine(profile, engineId) : { ok: false, errors: ['no compatible engine'] };
-  if ((profile.validation && profile.validation.state === 'invalid') || !v.ok) { out.problem = { reason: 'profile-invalid', errors: v.errors || [] }; return out; }
+  if (!v.ok) { out.problem = { reason: 'profile-invalid', errors: v.errors || [] }; return out; }
   if (ctx.engineAvailable) { const a = ctx.engineAvailable(engineId); if (a && a.ok === false) { out.problem = { reason: 'engine-unavailable', errors: [a.reason || 'engine unavailable'] }; return out; } }
   out.language = (actor && actor.language) || (project.settings && project.settings.default_language) || profile.language || 'en';
   out.direction = line.direction || (actor && actor.default_direction) || '';

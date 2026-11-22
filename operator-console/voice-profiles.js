@@ -89,18 +89,19 @@ function cleanOrigin(o, fallback) {
 function readiness(p) {
   const checks = [];
   const add = (id, ok, message) => checks.push({ id, ok: !!ok, message });
-  const eng = p.compatible_engines && p.compatible_engines[0];
+  const eng = p.preferred_engine || (p.compatible_engines && p.compatible_engines[0]) || null;
   add('valid', p.validation && p.validation.state !== 'invalid', 'passes engine validation');
-  if (p.type === 'preset') return { ready: checks.every(c => c.ok), checks };
+  if (p.type === 'preset') return { ready: checks.every(c => c.ok), checks, engine: eng };
+  if (p.type === 'cloned' && !(p.origin && p.origin.kind === 'promoted')) {
+    return { ready: checks.every(c => c.ok), checks, engine: eng };
+  }
   add('approved', p.approval && p.approval.state === 'approved', 'a human approved this voice');
   if (p.type === 'cloned') {
     const act = (p.samples || []).find(x => x.active);
     add('sample-reviewed', act && act.review && act.review.state === 'approved', 'the active reference sample was reviewed by ear');
-    add('consent', p.consent && p.consent.kind !== 'unspecified', 'consent/permission category is recorded');
-    if (p.origin && p.origin.kind === 'promoted') add('trial', p.trial && p.trial.passed, 'the clone was trialled across several dialogue lines and accepted');
-    else add('trial', true, 'not a promoted clone');
+    add('trial', p.trial && p.trial.passed, 'the clone was trialled across several dialogue lines and accepted');
   }
-  return { ready: checks.every(c => c.ok), checks, engine: eng || null };
+  return { ready: checks.every(c => c.ok), checks, engine: eng };
 }
 
 
@@ -120,13 +121,12 @@ function createProfileStore({ root, ingest, now = () => Date.now() }) {
     const engines = E.compatibleEngines(p);
     p.compatible_engines = engines;
     p.validation = { engines: {} };
-    let state = 'valid';
     for (const eng of engines) {
-      const r = E.validateProfileForEngine(p, eng);
-      p.validation.engines[eng] = r;
-      if (!r.ok) state = 'invalid'; else if (r.warnings.length && state === 'valid') state = 'warnings';
+      p.validation.engines[eng] = E.validateProfileForEngine(p, eng);
     }
-    p.validation.state = engines.length ? state : 'invalid';
+    const activeEng = engines.includes(p.preferred_engine) ? p.preferred_engine : engines[0];
+    const activeRes = activeEng ? p.validation.engines[activeEng] : null;
+    p.validation.state = !activeRes || !activeRes.ok ? 'invalid' : activeRes.warnings.length ? 'warnings' : 'valid';
     p.fingerprint = fingerprint(p);
     return p;
   }

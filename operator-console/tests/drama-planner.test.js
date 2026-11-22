@@ -197,3 +197,14 @@ test('a voice that is not production-ready is a review item, never a silent pass
   const r = plan.review_items.filter(x => x.code === 'voice-not-production-ready');
   assert.equal(r.length, 1); assert.equal(r[0].profile_id, store.tiger.id); assert.deepEqual(r[0].failing, ['trial']);
 });
+
+test('VoxCPM2 cloned voice with a valid sample and empty transcript plans as ready even if Qwen3 validation fails', () => {
+  const { p, ctx, store } = setup();
+  store.tiger.preferred_engine = 'voxcpm2';
+  store.tiger.compatible_engines = ['qwen3-tts-base', 'voxcpm2'];
+  store.tiger.samples = [{ id: 'sm-vox', name: 'vox', active: true, transcript: '', validation: { ok: true, errors: [], warnings: [] } }];
+  store.tiger.validation = { state: 'valid', engines: { 'qwen3-tts-base': { ok: false, errors: ['missing transcript'] }, voxcpm2: { ok: true, errors: [], warnings: [] } } };
+  const plan = P.planProduction(p, ctx);
+  assert.equal(plan.ready, true);
+  assert.equal(plan.cast_problems.length, 0);
+});

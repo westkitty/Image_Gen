@@ -71,18 +71,20 @@ test('samples carry full diagnostics: waveform, SNR estimate, clipping, plus a h
   assert.match(s.get(c.id).samples[0].diagnostics_disclaimer, /not a measure of clone fidelity/);
 });
 
-test('consent: real-person references need a recorded permission note; fictional needs nothing; unset never blocks', async () => {
-  const s = mk(); const c = s.create({ name: 'C', type: 'cloned' });
-  await s.addSample(c.id, { srcPath: wavFile(tone(6)), transcript: 'Hello there.' });
-  assert.equal(s.get(c.id).consent.kind, 'unspecified');
-  assert.equal(s.get(c.id).validation.engines['qwen3-tts-base'].ok, true, 'unset consent does not block fictional work');
-  assert.equal(s.get(c.id).readiness.checks.find(x => x.id === 'consent').ok, false, 'but production readiness asks for it');
-  assert.throws(() => s.setConsent(c.id, { kind: 'real-person' }), /permission note/);
-  const p = s.setConsent(c.id, { kind: 'real-person', note: 'Written permission from the speaker, 2026-09-30', confirm: true });
-  assert.equal(p.consent.kind, 'real-person'); assert.ok(p.consent.confirmed_at);
-  assert.equal(p.readiness.checks.find(x => x.id === 'consent').ok, true);
-  assert.equal(s.setConsent(c.id, { kind: 'fictional' }).consent.kind, 'fictional');
-  assert.throws(() => s.setConsent(c.id, { kind: 'nonsense' }), /kind/);
+test('no consent gate: cloned profiles are ready as soon as a valid sample is attached; VoxCPM2 does not require a transcript', async () => {
+  const s = mk(); const vox = s.create({ name: 'Vox', type: 'cloned', preferred_engine: 'voxcpm2' });
+  await s.addSample(vox.id, { srcPath: wavFile(tone(6)) });
+  const loaded = s.get(vox.id);
+  assert.equal(loaded.preferred_engine, 'voxcpm2');
+  assert.equal(loaded.validation.engines.voxcpm2.ok, true, 'VoxCPM2 is valid without a transcript');
+  assert.equal(loaded.validation.engines['qwen3-tts-base'].ok, false, 'Qwen3 Base still notes missing transcript');
+  assert.equal(loaded.validation.state, 'valid', 'overall validation follows preferred_engine');
+  assert.equal(loaded.readiness.ready, true, 'manual cloned voice with valid sample is ready with no consent or approval hurdle');
+  assert.equal(loaded.readiness.checks.some(x => x.id === 'consent'), false, 'never asks for consent');
+
+  const qwen = s.update(vox.id, { preferred_engine: 'qwen3-tts-base' });
+  assert.equal(qwen.validation.state, 'invalid', 'switching to Qwen3 Base without transcript surfaces the transcript requirement');
+  assert.equal(qwen.readiness.ready, false);
 });
 
 test('every existing field of a legacy profile loads unchanged under the v2 reader', () => {
@@ -95,11 +97,11 @@ test('every existing field of a legacy profile loads unchanged under the v2 read
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, id, 'profile.json'), 'utf8')).schema, 'dexdiffusion.voice_profile.v1', 'reading never rewrites the file');
 });
 
-test('production readiness for a cloned voice lists each unmet check', async () => {
+test('production readiness for manual vs promoted clones', async () => {
   const s = mk(); const c = s.create({ name: 'C', type: 'cloned' });
   await s.addSample(c.id, { srcPath: wavFile(tone(6)), transcript: 'Hello there.' });
-  const r0 = VP.readiness(s.get(c.id)); assert.equal(r0.ready, false);
-  assert.deepEqual(r0.checks.filter(x => !x.ok).map(x => x.id).sort(), ['approved', 'consent', 'sample-reviewed']);
+  const r0 = VP.readiness(s.get(c.id)); assert.equal(r0.ready, true);
+  assert.deepEqual(r0.checks.map(x => x.id), ['valid']);
   const promoted = s.setOrigin(c.id, { kind: 'promoted', design_profile_id: 'vp-1111111111' });
   assert.ok(VP.readiness(promoted).checks.some(x => x.id === 'trial' && !x.ok), 'a promoted clone additionally needs its multi-line trial');
 });

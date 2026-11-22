@@ -124,8 +124,6 @@ function validateProfileForEngine(profile, engineId) {
       if (!act.validation || act.validation.ok === false) errors.push(`the active sample "${act.name}" failed validation: ${((act.validation && act.validation.errors) || []).join('; ') || 'unreadable'}`);
       else for (const m of act.validation.warnings || []) warnings.push(`sample "${act.name}": ${m}`);
     }
-    const consent = profile.consent || { kind: 'unspecified' };
-    if (consent.kind === 'real-person' && String(consent.note || '').trim().length < 10) errors.push('a real-person reference voice needs a recorded permission note');
     if ((profile.samples || []).length > 1) warnings.push(`${e.label} uses one reference per render (the active sample); other samples are kept for selection`);
   } else if (profile.type === 'designed') {
     if (String(profile.description || '').trim().length < 10) errors.push('describe the voice (at least a short sentence)');

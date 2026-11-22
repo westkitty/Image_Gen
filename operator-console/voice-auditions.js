@@ -172,7 +172,7 @@ function createAuditionService({ dir, profiles, voice, mediaStore, jobStore, now
   }
   function startEvaluation(profileId, { scripts, directions } = {}) {
     const profile = needProfile(profileId);
-    if (profile.type !== 'cloned' || !profile.consent || profile.consent.kind !== 'fictional') throw gate('the 18-take evaluation is restricted to an explicitly fictional synthetic clone profile', 'synthetic-only');
+    if (profile.type !== 'cloned') throw gate('clone evaluation applies to cloned voice profiles', 'invalid', 400);
     const texts = (Array.isArray(scripts) ? scripts : []).map(t => F.normalizeSpokenText(t));
     const styles = (Array.isArray(directions) ? directions : []).map(d => String(d).slice(0, 240));
     if (texts.length !== 3 || texts.some(t => !t || t.length > 900) || styles.length !== 3 || styles.some(x => !x.trim())) throw gate('provide exactly 3 short scripts and 3 acting directions', 'invalid', 400);

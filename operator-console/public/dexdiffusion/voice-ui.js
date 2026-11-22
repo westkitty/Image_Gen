@@ -21,7 +21,7 @@
   const stateTone = s => ({ valid: tone.ok, warnings: tone.warn, invalid: tone.bad }[s] || tone.off);
 
   P._vp = function () {
-    if (!this.vp) this.vp = { tab: 'profiles', profiles: null, engines: null, selected: null, creating: false, newForm: { type: 'cloned', name: '', language: 'en', description: '', preset_voice: 'af_heart' }, pending: null, render: null, busy: false, text: '', direction: '', seed: '', speed: '', conversionSource: null, conversionBusy: false, conversionJob: null, conversionArtifact: null, conversionProject: null, conversionProjects: null, conversionTargetProfileId: '', conversionProjectId: '', conversionLineId: '' };
+    if (!this.vp) this.vp = { tab: 'profiles', profiles: null, engines: null, selected: null, creating: false, newForm: { type: 'cloned', name: '', language: 'en', preferred_engine: 'qwen3-tts-base', description: '', default_direction: '', notes: '', preset_voice: 'af_heart' }, createPending: null, createTrim: null, createTrimOpen: false, createSampleError: null, createBusy: false, transcribing: false, transcribeError: null, asrStatus: null, pending: null, render: null, busy: false, text: '', direction: '', seed: '', speed: '', conversionSource: null, conversionBusy: false, conversionJob: null, conversionArtifact: null, conversionProject: null, conversionProjects: null, conversionTargetProfileId: '', conversionProjectId: '', conversionLineId: '' };
     return this.vp;
   };
   // Background updates (loads, polls) pass skipIfTyping so a rebuild never steals focus from a field the user is typing in.
@@ -79,9 +79,9 @@
     this.loadConversionProject(vp.conversionProjectId);
   };
   P.loadVoiceProfiles = async function () {
-    const [p, e, pref, converters, projects] = await Promise.all([this._vpApi('/api/voice/profiles'), this.vp && this.vp.engines ? { ok: true, data: { engines: this.vp.engines, kokoro_voices: this.vp.kokoroVoices } } : this._vpApi('/api/voice/engines'), this._vpApi('/api/voice/director-preferences'), this._vpApi('/api/voice/converters'), this._vpApi('/api/drama/projects')]);
+    const [p, e, pref, converters, projects, asr] = await Promise.all([this._vpApi('/api/voice/profiles'), this.vp && this.vp.engines ? { ok: true, data: { engines: this.vp.engines, kokoro_voices: this.vp.kokoroVoices } } : this._vpApi('/api/voice/engines'), this._vpApi('/api/voice/director-preferences'), this._vpApi('/api/voice/converters'), this._vpApi('/api/drama/projects'), this._vpApi('/api/voice/transcribe/status')]);
     if (p.ok) this.vpSet({ profiles: p.data.profiles, engines: e.ok ? e.data.engines : null, kokoroVoices: e.ok ? e.data.kokoro_voices : [], directorPreferences: pref.ok ? pref.data.preferences : null,
-      converters: converters.ok ? converters.data.converters : [], conversionProjects: projects.ok ? projects.data.projects : [] }, { skipIfTyping: true });
+      converters: converters.ok ? converters.data.converters : [], conversionProjects: projects.ok ? projects.data.projects : [], asrStatus: asr.ok ? asr.data.asr : this._vp().asrStatus }, { skipIfTyping: true });
   };
   P.saveDirectorPreferences = async function (patch) {
     const r = await this._vpApi('/api/voice/director-preferences', patch, 'PUT');
@@ -133,21 +133,174 @@
       return h('details', { key: ev.id, open: ev.status === 'rendering' }, h('summary', { style: { cursor: 'pointer', minHeight: 30 } }, `${ev.status} · ${ev.engine || ''} · ${ev.clips.length}/18 · ${ev.id}`), ev.status === 'complete' ? btn('Run local word-integrity QA', () => this.checkCloneEvaluationWords(p.id, ev.id), '#38bdf8', { 'data-word-integrity': ev.id }) : null, ev.word_integrity ? h('div', { style: css.muted, 'data-word-integrity-status': ev.word_integrity.status }, `ASR ${ev.word_integrity.status} · ${ev.word_integrity.clips_measured || 0}/18 measured · ${ev.word_integrity.model || ''} · human review remains separate`) : null, h('div', { style: { display: 'grid', gap: 5 } }, ...clips));
     });
     return h('div', { 'data-clone-evaluation': p.id, style: { borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 8, display: 'grid', gap: 6 } },
-      h('div', { style: css.row }, h('b', { style: { fontSize: 12 } }, 'Synthetic clone evaluation · 18 takes'), h('div', { style: { flex: 1 } }), btn('Create & run 18-take set', () => this.startCloneEvaluation(p), '#a78bfa', { disabled: !p.consent || p.consent.kind !== 'fictional' || vp.cloneEvaluationCurrent && vp.cloneEvaluationCurrent.status === 'rendering', title: 'Restricted to profiles explicitly marked fictional' })),
-      h('div', { style: css.muted }, p.consent && p.consent.kind === 'fictional' ? '3 scripts × 3 directions × 2 takes; non-seeded settings are recorded. Optional word-integrity checks use local whisper.cpp; listening review remains a separate human step.' : 'Execution is disabled until this profile is explicitly recorded as fictional. This does not grant consent or approve a real person.'),
+      h('div', { style: css.row }, h('b', { style: { fontSize: 12 } }, 'Clone evaluation · 18 takes'), h('div', { style: { flex: 1 } }), btn('Create & run 18-take set', () => this.startCloneEvaluation(p), '#a78bfa', { disabled: p.validation.state === 'invalid' || (vp.cloneEvaluationCurrent && vp.cloneEvaluationCurrent.status === 'rendering') })),
+      h('div', { style: css.muted }, '3 scripts × 3 directions × 2 takes; non-seeded settings are recorded. Optional word-integrity checks use local whisper.cpp; listening review remains a separate human step.'),
       ...rows);
   };
   P._profile = function (id) { return ((this._vp().profiles) || []).find(p => p.id === id) || null; };
   P._engine = function (id) { return ((this._vp().engines) || []).find(e => e.id === id) || null; };
 
+  P._defaultCreateForm = function (type = 'cloned') {
+    const defEngine = type === 'designed' ? 'qwen3-tts-voice-design' : type === 'preset' ? 'kokoro' : 'qwen3-tts-base';
+    return { type, name: '', language: 'en', preferred_engine: defEngine, description: '', default_direction: '', notes: '', preset_voice: 'af_heart' };
+  };
+  P.openCreateVoiceModal = function (prefill = null) {
+    const vp = this._vp(), pre = prefill || {};
+    const type = ['cloned', 'designed', 'preset'].includes(pre.type) ? pre.type : 'cloned';
+    const baseForm = this._defaultCreateForm(type);
+    if (pre.name) baseForm.name = String(pre.name).slice(0, 60);
+    if (pre.preferred_engine) baseForm.preferred_engine = pre.preferred_engine;
+    if (pre.language) baseForm.language = pre.language;
+    this._vptext = this._vptext || {};
+    this._vptext.createTranscript = pre.transcript ? String(pre.transcript) : '';
+    let createPending = null, createTrim = null, createTrimOpen = false;
+    if (pre.staged && pre.staged.id) {
+      const dur = Number(pre.staged.duration);
+      createPending = Object.assign({}, pre.staged);
+      createTrim = Number.isFinite(dur) && dur >= 0.5 ? { start: 0, end: +Math.min(dur, 30).toFixed(3) } : null;
+      createTrimOpen = Number.isFinite(dur) && dur > 30;
+    }
+    this.vpSet({ creating: true, newForm: baseForm, createPending, createTrim, createTrimOpen, createSampleError: null, transcribeError: null, transcribing: false, createBusy: false });
+    if (!vp.asrStatus) this._vpApi('/api/voice/transcribe/status').then(r => { if (r.ok) this.vpSet({ asrStatus: r.data.asr }, { skipIfTyping: true }); });
+  };
+  P.closeCreateVoiceModal = function (discardStaged = true) {
+    const vp = this._vp();
+    if (discardStaged && vp.createPending && vp.createPending.id && !vp.createPending.shared) {
+      fetch(this.state.backendUrl + '/api/staging/' + encodeURIComponent(vp.createPending.id), { method: 'DELETE' }).catch(() => {});
+    }
+    if (this._vptext) this._vptext.createTranscript = '';
+    this.vpSet({ creating: false, createPending: null, createTrim: null, createTrimOpen: false, createSampleError: null, transcribeError: null, transcribing: false, createBusy: false });
+  };
+  P.clearCreatePendingSample = function () {
+    const vp = this._vp();
+    if (vp.createPending && vp.createPending.id && !vp.createPending.shared) {
+      fetch(this.state.backendUrl + '/api/staging/' + encodeURIComponent(vp.createPending.id), { method: 'DELETE' }).catch(() => {});
+    }
+    this.vpSet({ createPending: null, createTrim: null, createTrimOpen: false, createSampleError: null, transcribeError: null });
+  };
+  P.stageCreateSample = async function (file) {
+    if (!file) return;
+    if (file.size > 40 * 1024 * 1024) { const msg = 'Audio too large (40 MB max)'; this.toast(msg, '#ef4444'); this.vpSet({ createSampleError: msg }); return; }
+    try {
+      const r = await fetch(this.state.backendUrl + '/api/staging?accept=audio', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+      const d = await r.json().catch(() => ({ error: r.statusText }));
+      if (!r.ok) { const msg = d.error || 'Sample rejected'; this.toast(msg, '#ef4444'); this.vpSet({ createSampleError: msg }); return; }
+      const vp = this._vp();
+      if (vp.createPending && vp.createPending.id && !vp.createPending.shared) {
+        fetch(this.state.backendUrl + '/api/staging/' + encodeURIComponent(vp.createPending.id), { method: 'DELETE' }).catch(() => {});
+      }
+      const duration = Number(d.duration);
+      const trim = Number.isFinite(duration) && duration >= 0.5 ? { start: 0, end: +Math.min(duration, 30).toFixed(3) } : null;
+      if (!String(vp.newForm.name || '').trim()) {
+        vp.newForm.name = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim().slice(0, 60);
+      }
+      this.vpSet({
+        createPending: Object.assign({}, d, { filename: file.name, name: file.name }),
+        createTrim: trim,
+        createTrimOpen: Number.isFinite(duration) && duration > 30,
+        createSampleError: trim ? null : (Number.isFinite(duration) && duration < 0.5 ? 'Audio reference is shorter than 0.5 seconds' : 'Could not determine audio duration; try a WAV/MP3/M4A/FLAC file'),
+        transcribeError: null,
+      });
+    } catch (e) {
+      const msg = (e && e.message) ? e.message : 'Upload failed';
+      this.toast(msg, '#ef4444'); this.vpSet({ createSampleError: msg });
+    }
+  };
+  P.setCreateTrim = function (which, value) {
+    const vp = this._vp(), old = vp.createTrim, d = Number(vp.createPending && vp.createPending.duration);
+    if (!old || !Number.isFinite(d)) return;
+    const next = this._normalizeSampleTrim(which === 'start' ? value : old.start, which === 'end' ? value : old.end, d, which);
+    if (next) this.vpSet({ createTrim: next });
+  };
+  P.playCreateSampleSelection = function () {
+    const vp = this._vp(), clip = vp.createTrim;
+    const audio = document.querySelector('[data-create-sample-card] audio[data-create-audio-player]');
+    if (!audio) return;
+    audio.pause();
+    if (clip) audio.currentTime = clip.start;
+    const p = audio.play();
+    if (p && typeof p.catch === 'function') p.catch(() => { this.toast('Playback unavailable; use the audio controls', '#fbbf24'); });
+  };
+  P.transcribeCreateSample = async function () {
+    const vp = this._vp();
+    if (!vp.createPending || vp.transcribing) return;
+    this.vpSet({ transcribing: true, transcribeError: null });
+    const body = { staged_id: vp.createPending.id };
+    if (vp.createTrim) { body.trim_start_s = vp.createTrim.start; body.trim_end_s = vp.createTrim.end; }
+    const r = await this._vpApi('/api/voice/transcribe', body);
+    if (!r.ok) {
+      const msg = r.data.error || 'Local transcription unavailable';
+      this.vpSet({ transcribing: false, transcribeError: msg });
+      this.toast(msg, '#fbbf24');
+      return;
+    }
+    this._vptext = this._vptext || {};
+    this._vptext.createTranscript = r.data.text || '';
+    this.vpSet({ transcribing: false, transcribeError: null, createSampleError: null });
+    this.toast(r.data.text ? 'Transcribed locally' : 'No speech detected in sample', r.data.text ? '#65d66e' : '#fbbf24');
+  };
+  P.transcribeExistingSample = async function (profileId, sampleId) {
+    this.vpSet({ transcribingSampleId: sampleId });
+    const r = await this._vpApi('/api/voice/transcribe', { profile_id: profileId, sample_id: sampleId });
+    this.vpSet({ transcribingSampleId: null });
+    if (!r.ok) { this.toast(r.data.error || 'Local transcription unavailable', '#fbbf24'); return; }
+    await this.updateProfileSample(profileId, sampleId, { transcript: r.data.text || '' });
+    this.toast(r.data.text ? 'Transcript filled locally' : 'No speech detected in sample', r.data.text ? '#65d66e' : '#fbbf24');
+  };
   P.createVoiceProfile = async function () {
-    const f = this._vp().newForm;
-    if (!String(f.name || '').trim()) { this.toast('Give the voice a name', '#fbbf24'); return; }
-    const r = await this._vpApi('/api/voice/profiles', f);
-    if (!r.ok) { this.toast(r.data.error || 'Could not create the profile', '#ef4444'); return; }
+    const vp = this._vp(), f = vp.newForm, t = this._vptext || {};
+    if (vp.createBusy) return;
+    const fallbackName = vp.createPending ? (vp.createPending.filename || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim().slice(0, 60) : '';
+    const name = String(f.name || '').trim() || fallbackName;
+    if (!name) { this.toast('Give the voice a name', '#fbbf24'); return; }
+    const transcript = String(t.createTranscript || '').trim();
+    if (f.type === 'cloned' && vp.createPending) {
+      const sel = vp.createTrim;
+      if (!sel || sel.end - sel.start < 0.5 || sel.end - sel.start > 30.001) {
+        this.vpSet({ createSampleError: 'Select a 0.5–30 second reference excerpt' }); return;
+      }
+      const engineId = f.preferred_engine || 'qwen3-tts-base';
+      if (engineId === 'qwen3-tts-base' && !transcript) {
+        this.vpSet({ createSampleError: 'Reference text is required for Qwen3-TTS Base (transcribe/type what is spoken, or switch Default Engine to VoxCPM2)' });
+        return;
+      }
+    }
+    this.vpSet({ createBusy: true, createSampleError: null });
+    const payload = {
+      name,
+      type: f.type,
+      language: f.language || 'en',
+      preferred_engine: f.preferred_engine || undefined,
+      description: f.type === 'designed' ? f.description : undefined,
+      preset_voice: f.type === 'preset' ? f.preset_voice : undefined,
+      default_direction: f.default_direction || '',
+      notes: f.notes || '',
+    };
+    const r = await this._vpApi('/api/voice/profiles', payload);
+    if (!r.ok) { this.vpSet({ createBusy: false }); this.toast(r.data.error || 'Could not create the profile', '#ef4444'); return; }
+    const created = r.data.profile;
+    if (f.type === 'cloned' && vp.createPending) {
+      const sel = vp.createTrim;
+      const sampleName = (vp.createPending.filename || name).replace(/\.[^.]+$/, '').slice(0, 60);
+      const sr = await this._vpApi(`/api/voice/profiles/${created.id}/samples`, {
+        staged_id: vp.createPending.id,
+        name: sampleName,
+        transcript,
+        trim_start_s: sel.start,
+        trim_end_s: sel.end,
+      });
+      if (!sr.ok) {
+        await this._vpApi('/api/voice/profiles/' + created.id, undefined, 'DELETE').catch(() => {});
+        const msg = (sr.data.error || 'Sample rejected') + (sr.data.gate ? ' · ' + sr.data.gate : '');
+        this.vpSet({ createBusy: false, createSampleError: msg });
+        this.toast(msg, '#ef4444');
+        return;
+      }
+    }
+    if (this._vptext) this._vptext.createTranscript = '';
     await this.loadVoiceProfiles();
-    this.vpSet({ creating: false, selected: r.data.profile.id, newForm: { type: f.type, name: '', language: 'en', description: '', preset_voice: 'af_heart' } });
-    this.toast('Created voice "' + r.data.profile.name + '"', '#65d66e');
+    this.vpSet({ creating: false, createBusy: false, createPending: null, createTrim: null, createTrimOpen: false, createSampleError: null, transcribeError: null, selected: created.id, newForm: this._defaultCreateForm(f.type) });
+    this.toast('Created voice "' + created.name + '"', '#65d66e');
   };
   P.saveVoiceProfile = async function (id, patch) {
     const r = await this._vpApi('/api/voice/profiles/' + id, patch, 'PUT');
@@ -297,18 +450,17 @@
         ...Object.entries(e.evidence || {}).filter(([k]) => ['delivery_instructions', 'prompt_caching', 'multi_sample_reference'].includes(k)).map(([k, v]) => h('div', { key: k, style: css.muted }, '• ' + k.replace(/_/g, ' ') + ': ' + v))));
   };
   P._sampleCard = function (p, s) {
-    const base = this.state.backendUrl;
+    const base = this.state.backendUrl, vp = this._vp();
     const dg = s.diagnostics || {};
-    const tr = h('textarea', { rows: 2, value: s.transcript || '', placeholder: 'Exact words spoken in this clip (required for Qwen cloning)', style: Object.assign({}, css.input, { resize: 'vertical' }), onChange: e => this.updateProfileSample(p.id, s.id, { transcript: e.target.value }) });
+    const transcribingThis = vp.transcribingSampleId === s.id;
+    const tr = h('textarea', { rows: 2, value: s.transcript || '', placeholder: 'Exact words spoken in this clip (required for Qwen3-TTS Base; optional for VoxCPM2)', style: Object.assign({}, css.input, { resize: 'vertical' }), onChange: e => this.updateProfileSample(p.id, s.id, { transcript: e.target.value }) });
     return h('div', { key: s.id, 'data-sample': s.id, style: { border: '1px solid ' + (s.active ? 'rgba(101,214,110,.45)' : 'rgba(148,163,184,.18)'), borderRadius: 9, padding: 9, display: 'grid', gap: 6, minWidth: 0 } },
-      h('div', { style: css.row }, h('b', { style: { color: '#e2e8f0', fontSize: 13 } }, s.name), s.active ? chip('active', tone.ok) : btn('Use this sample', () => this.updateProfileSample(p.id, s.id, { active: true }), '#94a3b8'), h('div', { style: { flex: 1 } }), btn('Remove', () => this.removeProfileSample(p.id, s.id), '#f87171')),
+      h('div', { style: css.row }, h('b', { style: { color: '#e2e8f0', fontSize: 13 } }, s.name), s.active ? chip('active', tone.ok) : btn('Use this sample', () => this.updateProfileSample(p.id, s.id, { active: true }), '#94a3b8'), h('div', { style: { flex: 1 } }), btn(transcribingThis ? 'Transcribing…' : 'Transcribe', () => this.transcribeExistingSample(p.id, s.id), '#38bdf8', { disabled: !!transcribingThis }), btn('Remove', () => this.removeProfileSample(p.id, s.id), '#f87171')),
       this._mediaEl(base + s.audio_url, 'audio', 'sample-' + s.id),
       dg.waveform && window.DexStudio ? window.DexStudio.waveform(this, 'sample-' + s.id, dg.waveform, 420, 44, '#a78bfa') : null,
       h('div', { style: css.row }, chip(fmtT(dg.duration), '#94a3b8'), chip('RMS ' + dg.rms_db + ' dB', '#94a3b8'), chip('peak ' + dg.peak_db + ' dB', '#94a3b8'), chip('clipping ' + (dg.clip_percent != null ? dg.clip_percent : (dg.clip_ratio || 0) * 100).toString().slice(0, 5) + '%', dg.clip_percent > 0.5 ? tone.warn : '#94a3b8'), chip('silence ' + Math.round(dg.silence_percent != null ? dg.silence_percent : (dg.silence_ratio || 0) * 100) + '%', '#94a3b8'),
         dg.snr ? chip(dg.snr.db != null ? 'SNR ≈ ' + dg.snr.db + ' dB (estimate)' : 'SNR: not estimable', '#94a3b8') : null, ...(s.validation.warnings || []).map(w => chip('⚠ ' + w, tone.warn)), ...(s.validation.errors || []).map(w => chip('✗ ' + w, tone.bad))),
       h('div', { style: css.muted }, (s.diagnostics_disclaimer || '') + (dg.snr && dg.snr.note ? ' ' + dg.snr.note + '.' : '')),
-      h('div', { 'data-sample-review': s.id, style: css.row }, h('b', { style: { fontSize: 11, color: '#cbd5e1' } }, 'Listening review:'), chip((s.review && s.review.state) || 'unreviewed', s.review && s.review.state === 'approved' ? tone.ok : s.review && s.review.state === 'rejected' ? tone.bad : '#94a3b8'),
-        btn('Heard — good reference', () => this._vpApi(`/api/voice/profiles/${p.id}/samples/${s.id}/review`, { state: 'approved' }, 'PUT').then(() => this.loadVoiceProfiles()), tone.ok), btn('Reject', () => this._vpApi(`/api/voice/profiles/${p.id}/samples/${s.id}/review`, { state: 'rejected' }, 'PUT').then(() => this.loadVoiceProfiles()), '#f87171')),
       tr);
   };
   P._profileEditor = function (p) {
@@ -474,19 +626,163 @@
         art.meta && art.meta.long_form ? h('details', null, h('summary', { style: Object.assign({}, css.muted, { cursor: 'pointer' }) }, '▸ Chunk lineage'), h('div', { style: css.mono }, art.meta.long_form.lineage.map(c => `#${c.index + 1} ${c.chars} chars · ${c.duration}s · ${c.boundary || 'end'} · ${c.sha256.slice(0, 10)}`).join('\n'))) : null,
         h('div', { style: css.row }, h('a', { href: base + art.download_url, style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 4px' } }, 'Download WAV'))) : null);
   };
+  P._buildCreateVoiceBody = function () {
+    const vp = this._vp(), nf = vp.newForm, t = this._vptext = this._vptext || {}, pend = vp.createPending, trim = vp.createTrim;
+    const duration = Number(pend && pend.duration);
+    const validSel = !!(trim && Number.isFinite(duration) && trim.end - trim.start >= 0.5 && trim.end - trim.start <= 30.001);
+    const selDur = validSel ? trim.end - trim.start : 0;
+    const engines = (vp.engines || []).filter(e => Array.isArray(e.voice_types) && e.voice_types.includes(nf.type));
+    const engineChoice = engines.some(e => e.id === nf.preferred_engine) ? nf.preferred_engine : ((engines[0] && engines[0].id) || (nf.type === 'designed' ? 'qwen3-tts-voice-design' : nf.type === 'preset' ? 'kokoro' : 'qwen3-tts-base'));
+    const langs = [['en', 'English'], ['zh', 'Chinese'], ['ja', 'Japanese'], ['ko', 'Korean'], ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'], ['it', 'Italian'], ['pt', 'Portuguese'], ['ru', 'Russian']];
+    const switchType = k => {
+      nf.type = k;
+      const compat = (vp.engines || []).filter(e => Array.isArray(e.voice_types) && e.voice_types.includes(k));
+      if (compat.length && !compat.some(e => e.id === nf.preferred_engine)) nf.preferred_engine = compat[0].id;
+      else if (!compat.length) nf.preferred_engine = k === 'designed' ? 'qwen3-tts-voice-design' : k === 'preset' ? 'kokoro' : 'qwen3-tts-base';
+      this.vpSet({ createSampleError: null, transcribeError: null });
+    };
+    const createInputId = 'create-voice-sample-input';
+    const triggerPick = e => {
+      if (e && e.preventDefault) { e.preventDefault(); e.stopPropagation(); }
+      const inp = document.getElementById(createInputId) || document.querySelector('[data-create-sample-input="1"]');
+      if (inp) inp.click();
+    };
+    const fileInput = h('input', {
+      id: createInputId,
+      'data-create-sample-input': '1',
+      type: 'file',
+      accept: 'audio/*,.wav,.mp3,.m4a,.flac',
+      style: { position: 'absolute', opacity: 0, width: 1, height: 1, pointerEvents: 'none' },
+      onChange: e => {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (file) this.stageCreateSample(file);
+      },
+    });
+    const modeTabs = h('div', { style: Object.assign({}, css.row, { gap: 6 }) },
+      ...[['cloned', 'Clone from audio'], ['designed', 'Designed voice'], ['preset', 'Built-in voice']].map(([k, l]) =>
+        h('button', {
+          key: k, type: 'button', 'data-new-type': k,
+          onClick: () => switchType(k),
+          style: {
+            border: '1px solid ' + (nf.type === k ? '#eab308' : 'rgba(148,163,184,.28)'),
+            background: nf.type === k ? 'linear-gradient(90deg,#ca8a04,#eab308)' : 'rgba(15,23,42,.7)',
+            color: nf.type === k ? '#090d16' : '#cbd5e1',
+            borderRadius: 8, padding: '8px 14px', minHeight: 36, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+          },
+        }, l)));
+    const clonedLeft = h('div', { style: { display: 'grid', gap: 10, minWidth: 0 } },
+      pend ? h('div', { 'data-create-sample-card': '1', style: { border: '1px solid rgba(148,163,184,.28)', background: 'rgba(9,14,24,.9)', borderRadius: 10, padding: 14, display: 'grid', gap: 10, textAlign: 'center' } },
+        h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' } },
+          h('b', { style: { color: '#f8fafc', fontSize: 14 } }, 'File uploaded'),
+          chip(fmtT(pend.duration), '#94a3b8')),
+        h('div', { style: { color: '#94a3b8', fontSize: 12, overflowWrap: 'anywhere' } }, 'File: ' + (pend.filename || pend.name || 'sample')),
+        h('audio', {
+          src: this.state.backendUrl + pend.url,
+          controls: true,
+          preload: 'metadata',
+          'data-create-audio-player': '1',
+          style: { width: '100%', minHeight: 36 },
+          onTimeUpdate: e => { if (this._vp().createTrim && e.currentTarget.currentTime >= this._vp().createTrim.end) e.currentTarget.pause(); },
+        }),
+        h('div', { style: Object.assign({}, css.row, { justifyContent: 'center', gap: 8 }) },
+          btn('▶ Play', () => this.playCreateSampleSelection(), '#cbd5e1', { disabled: !validSel }),
+          btn(vp.transcribing ? 'Transcribing…' : 'Transcribe', () => this.transcribeCreateSample(), '#cbd5e1', {
+            'data-create-transcribe': '1',
+            disabled: !!vp.transcribing,
+            title: vp.asrStatus && !vp.asrStatus.available ? vp.asrStatus.reason : 'Transcribe audio locally with whisper.cpp',
+          }),
+          btn(vp.createTrimOpen ? 'Hide trim' : 'Trim excerpt', () => this.vpSet({ createTrimOpen: !vp.createTrimOpen }), '#a78bfa', { 'data-create-trim-toggle': '1' }),
+          btn('Remove', () => this.clearCreatePendingSample(), '#f87171', { 'data-create-remove': '1' })),
+        vp.createTrimOpen && Number.isFinite(duration) ? h('div', { style: { textAlign: 'left', display: 'grid', gap: 6, paddingTop: 8, borderTop: '1px solid rgba(148,163,184,.16)' } },
+          h('div', { style: css.row }, h('span', { style: css.muted }, 'Start'),
+            h('input', { type: 'range', min: 0, max: duration || 30, step: 0.05, value: trim?.start || 0, style: { flex: 1, accentColor: '#eab308' }, onInput: e => this.setCreateTrim('start', e.target.value) }),
+            h('input', { type: 'number', min: 0, max: duration || 30, step: 0.05, value: trim?.start || 0, style: Object.assign({}, css.input, { width: 76 }), onChange: e => this.setCreateTrim('start', e.target.value) })),
+          h('div', { style: css.row }, h('span', { style: css.muted }, 'End'),
+            h('input', { type: 'range', min: 0.5, max: duration || 30, step: 0.05, value: trim?.end || 0.5, style: { flex: 1, accentColor: '#eab308' }, onInput: e => this.setCreateTrim('end', e.target.value) }),
+            h('input', { type: 'number', min: 0.5, max: duration || 30, step: 0.05, value: trim?.end || 0.5, style: Object.assign({}, css.input, { width: 76 }), onChange: e => this.setCreateTrim('end', e.target.value) })),
+          h('div', { style: { color: validSel ? '#65d66e' : '#f87171', fontSize: 12, fontWeight: 700 } },
+            validSel ? `${trim.start.toFixed(2)}–${trim.end.toFixed(2)}s · ${selDur.toFixed(2)}s selected (max 30s)` : 'Select a 0.5–30 second excerpt')) : null)
+        : h('label', {
+          htmlFor: createInputId,
+          'data-create-dropzone': '1',
+          style: { border: '1px dashed rgba(234,179,8,.55)', background: 'rgba(15,23,42,.55)', color: '#fde68a', borderRadius: 10, padding: '22px 14px', cursor: 'pointer', display: 'grid', gap: 8, justifyItems: 'center', textAlign: 'center' },
+          onDragEnter: e => { e.preventDefault(); e.stopPropagation(); },
+          onDragOver: e => { e.preventDefault(); e.stopPropagation(); },
+          onDragLeave: e => { e.preventDefault(); e.stopPropagation(); },
+          onDrop: e => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) this.stageCreateSample(e.dataTransfer.files[0]); },
+        },
+          h('b', { style: { fontSize: 13, color: '#f8fafc' } }, 'Drop a voice sample or click to upload'),
+          h('span', { style: css.muted }, 'WAV, MP3, M4A, or FLAC · 5–20 s recommended (max 30 s excerpt)'),
+          h('button', { type: 'button', 'data-create-upload': '1', onClick: triggerPick, style: { border: '1px solid rgba(234,179,8,.6)', background: 'rgba(234,179,8,.16)', color: '#fde047', borderRadius: 8, padding: '8px 14px', minHeight: 36, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" } }, 'Upload audio'),
+          fileInput),
+      field('Reference Text', h('textarea', {
+        rows: 4,
+        'data-create-transcript': '1',
+        value: t.createTranscript || '',
+        placeholder: 'Exact words spoken in the audio sample…',
+        style: Object.assign({}, css.input, { resize: 'vertical' }),
+        onInput: e => { t.createTranscript = e.target.value; if (vp.createSampleError) this.vpSet({ createSampleError: null }); },
+      })),
+      h('div', { style: { fontSize: 11, color: engineChoice === 'qwen3-tts-base' && pend && !String(t.createTranscript || '').trim() ? '#f87171' : '#94a3b8' } },
+        engineChoice === 'qwen3-tts-base'
+          ? 'Required for Qwen3-TTS Base when adding a sample. Switch Default Engine to VoxCPM2 if you want to skip Reference Text.'
+          : 'Optional for VoxCPM2 (useful to keep if you ever switch this voice to Qwen3-TTS Base).'),
+      vp.transcribeError ? h('div', { role: 'alert', style: { color: tone.warn, fontSize: 12, border: '1px solid rgba(251,191,36,.4)', borderRadius: 8, padding: 8, background: 'rgba(251,191,36,.08)', overflowWrap: 'anywhere' } }, '⚠ ' + vp.transcribeError) : null,
+      vp.createSampleError ? h('div', { role: 'alert', 'data-create-sample-error': '1', style: { color: tone.bad, fontSize: 12, border: '1px solid rgba(248,113,113,.4)', borderRadius: 8, padding: 8, background: 'rgba(239,68,68,.08)', overflowWrap: 'anywhere' } }, '✗ ' + vp.createSampleError) : null);
+    const designedLeft = h('div', { style: { display: 'grid', gap: 10, minWidth: 0 } },
+      field('Voice Description', h('textarea', {
+        rows: 5,
+        value: nf.description || '',
+        placeholder: 'Describe this voice (age, timbre, accent, texture, e.g. middle-aged, gravelly, British, measured pace)…',
+        style: Object.assign({}, css.input, { resize: 'vertical' }),
+        onInput: e => { nf.description = e.target.value; },
+      })),
+      h('div', { style: css.muted }, 'Used directly by Qwen3-TTS VoiceDesign or VoxCPM2 to synthesize this voice from text.'));
+    const presetLeft = h('div', { style: { display: 'grid', gap: 10, minWidth: 0 } },
+      field('Built-in Kokoro Voice', kokoroChoice(vp.kokoroVoices, nf.preset_voice, v => { nf.preset_voice = v; this.vpSet({}); }, 'Kokoro voice for the new profile')),
+      field('Default Speed', h('input', numText({ min: '0.5', max: '2', step: '0.05', value: String(nf.default_speed || 1), style: css.input, onInput: e => { nf.default_speed = e.target.value; } }))),
+      h('div', { style: css.muted }, 'Instant deterministic speech using Kokoro 82M.'));
+    const rightCol = h('div', { style: { display: 'grid', gap: 10, minWidth: 0 } },
+      field('Name', h('input', { value: nf.name || '', placeholder: 'e.g. Tiger or Mid-Century Narrator', 'data-new-name': '1', style: css.input, onInput: e => { nf.name = e.target.value; } })),
+      field('Default Delivery / Personality (Optional)', h('input', { value: nf.default_direction || '', placeholder: 'e.g. calm, dry, measured', style: css.input, onInput: e => { nf.default_direction = e.target.value; } })),
+      field('Notes (Optional)', h('input', { value: nf.notes || '', placeholder: 'Optional notes about this voice…', style: css.input, onInput: e => { nf.notes = e.target.value; } })),
+      field('Language', h('select', { value: nf.language || 'en', disabled: nf.type === 'preset', style: Object.assign({}, css.input, nf.type === 'preset' ? { opacity: 0.6 } : {}), onChange: e => { nf.language = e.target.value; this.vpSet({}); } },
+        ...langs.map(([code, label]) => h('option', { key: code, value: code }, label)))),
+      field('Default Engine', h('select', { 'data-create-engine': '1', value: engineChoice, style: css.input, onChange: e => { nf.preferred_engine = e.target.value; this.vpSet({ createSampleError: null }); } },
+        ...(engines.length ? engines.map(e => h('option', { key: e.id, value: e.id },
+          e.id === 'qwen3-tts-base' ? 'Qwen3-TTS Base (voice clone · seeded, needs reference text)' :
+          e.id === 'voxcpm2' && nf.type === 'cloned' ? 'VoxCPM2 (controllable clone · acting directions, transcript optional)' :
+          e.label)) : [h('option', { key: engineChoice, value: engineChoice }, engineChoice)]))));
+    const footer = h('div', { style: Object.assign({}, css.row, { justifyContent: 'flex-end', gap: 8, paddingTop: 10, borderTop: '1px solid rgba(148,163,184,.16)' }) },
+      btn('Cancel', () => this.closeCreateVoiceModal(true), '#94a3b8'),
+      h('button', {
+        type: 'button',
+        'data-create-voice': '1',
+        disabled: !!vp.createBusy,
+        onClick: () => this.createVoiceProfile(),
+        style: {
+          border: 0,
+          background: vp.createBusy ? 'rgba(148,163,184,.25)' : 'linear-gradient(90deg,#ca8a04,#eab308)',
+          color: vp.createBusy ? '#94a3b8' : '#090d16',
+          borderRadius: 8, padding: '9px 18px', minHeight: 38, fontSize: 13, fontWeight: 800, cursor: vp.createBusy ? 'progress' : 'pointer', fontFamily: "'DM Sans',sans-serif",
+        },
+      }, vp.createBusy ? 'Creating…' : 'Create Profile'));
+    return h('div', { 'data-new-voice': '1', style: { display: 'grid', gap: 14, minWidth: 0 } },
+      modeTabs,
+      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,290px),1fr))', gap: 16, alignItems: 'start' } },
+        nf.type === 'designed' ? designedLeft : nf.type === 'preset' ? presetLeft : clonedLeft,
+        rightCol),
+      footer);
+  };
   P.buildVoiceProfilesPanel = function () {
     const vp = this._vp();
     if (!vp.loadedOnce) { vp.loadedOnce = true; setTimeout(() => this.loadVoiceProfiles(), 0); }
     const list = vp.profiles || [];
     const sel = vp.selected && this._profile(vp.selected);
-    const nf = vp.newForm;
-    const form = vp.creating ? h('div', { 'data-new-voice': '1', style: Object.assign({}, css.panel, { display: 'grid', gap: 8, borderColor: 'rgba(167,139,250,.4)' }) },
-      h('div', { style: css.title }, 'New voice'),
-      h('div', { style: css.row }, ...[['cloned', 'Cloned (reference samples · Qwen Base)'], ['designed', 'Designed (description · Qwen VoiceDesign)'], ['preset', 'Preset (Kokoro voice)']].map(([k, l]) => btn(l, () => { nf.type = k; this.vpSet({}); }, nf.type === k ? '#a78bfa' : '#94a3b8', { 'data-new-type': k }))),
-      field('Name', h('input', { value: nf.name, placeholder: 'e.g. Tiger', 'data-new-name': '1', style: css.input, onInput: e => { nf.name = e.target.value; } })),
-      nf.type === 'designed' ? field('Voice description', h('textarea', { rows: 3, value: nf.description, placeholder: 'e.g. middle-aged, gravelly, British, measured pace', style: Object.assign({}, css.input, { resize: 'vertical' }), onInput: e => { nf.description = e.target.value; } })) : null,
-      nf.type === 'preset' ? field('Kokoro voice', kokoroChoice(vp.kokoroVoices, nf.preset_voice, v => { nf.preset_voice = v; this.vpSet({}); }, 'Kokoro voice for the new profile')) : null,
-      h('div', { style: css.row }, btn('Create voice', () => this.createVoiceProfile(), '#65d66e', { 'data-create-voice': '1' }), btn('Cancel', () => this.vpSet({ creating: false }), '#94a3b8'))) : null;
+    const M = window.DexModal;
+    const form = vp.creating ? (M ? M.frame(h, { id: 'create-voice', title: 'Create Voice', subtitle: 'Create a new voice profile from an audio sample, description, or built-in voice.', size: 'lg', onClose: () => this.closeCreateVoiceModal(true) }, this._buildCreateVoiceBody())
+      : h('div', { style: Object.assign({}, css.panel, { borderColor: 'rgba(234,179,8,.45)' }) }, this._buildCreateVoiceBody())) : null;
     const prefs = vp.directorPreferences || {};
     const presetIds = ['neutral', 'formal_dry', 'restrained_irritation', 'contempt'];
     const saveActingStyle = () => {
@@ -503,7 +799,7 @@
       h('div', { style: css.row }, h('b', { style: { fontSize: 11 } }, 'Reusable acting styles'), btn('＋ Save current style', saveActingStyle, '#a78bfa'), ...(prefs.acting_styles || []).map(style => h('span', { key: style.id, style: css.row }, chip(style.name, '#94a3b8'), btn('Use on selected voice', () => { if (vp.selected) this.saveVoiceProfile(vp.selected, { default_direction: style.direction, ...(style.speed ? { default_speed: style.speed } : {}) }); }, '#38bdf8'), btn('×', () => this.saveDirectorPreferences({ acting_styles: prefs.acting_styles.filter(x => x.id !== style.id) }), '#f87171')))),
       h('div', { style: css.muted }, 'Each voice profile keeps its own preferred engine above. Preferences do not approve a voice, authorize a reference, or replace a selected take.'));
     const converter = (vp.converters || []).find(x => x.id === 'openvoice-v2'), converterAvailable = !!(converter && converter.availability && converter.availability.enabled);
-    const targets = list.filter(p => p.type === 'cloned' && p.readiness && p.readiness.ready);
+    const targets = list.filter(p => p.type === 'cloned' && Array.isArray(p.samples) && p.samples.some(s => !s.validation || s.validation.ok !== false));
     const conversionProject = vp.conversionProject, conversionTarget = targets.find(p => p.id === vp.conversionTargetProfileId);
     const conversionLines = conversionProject ? conversionProject.scenes.flatMap(sc => sc.lines).filter(line => {
       const actor = (conversionProject.actors || []).find(a => a.speaker_key === line.speaker_key);
@@ -511,14 +807,14 @@
     }) : [];
     const conversionPanel = h('div', { 'data-openvoice-conversion': '1', style: Object.assign({}, css.panel, { display: 'grid', gap: 9 }) },
       h('div', { style: css.row }, h('div', { style: css.title }, 'Voice conversion · OpenVoice V2'), chip(converterAvailable ? 'CPU READY' : (converter && converter.availability ? converter.availability.state : 'CHECKING'), converterAvailable ? tone.ok : tone.warn)),
-      h('div', { style: css.muted }, converterAvailable ? 'Recorded source speech → approved target reference. OpenVoice default watermark remains enabled. Big Mac copies are job-private and removed after transfer.' : 'Unavailable until the OpenVoice V2 runtime, converter and watermark assets are verified on Big Mac.'),
+      h('div', { style: css.muted }, converterAvailable ? 'Recorded source speech → cloned target voice. OpenVoice default watermark remains enabled. Big Mac copies are job-private and removed after transfer.' : 'Unavailable until the OpenVoice V2 runtime, converter and watermark assets are verified on Big Mac.'),
       field('Source performance (WAV / MP3 / M4A / FLAC)', h('input', { type: 'file', accept: 'audio/*', disabled: !converterAvailable || vp.conversionBusy,
         onChange: e => this.stageConversionSource(e.target.files && e.target.files[0]) })),
       vp.conversionSource ? h('div', { style: css.row }, h('span', { style: css.muted }, 'Staged: ' + vp.conversionSource.name), h('audio', { controls: true, preload: 'none', src: vp.conversionSource.url, style: { maxWidth: 'min(100%,340px)' } }),
         btn('Remove source', async () => { await this._vpApi('/api/staging/' + encodeURIComponent(vp.conversionSource.id), undefined, 'DELETE'); this.vpSet({ conversionSource: null }); }, '#94a3b8')) : null,
-      field('Approved target voice', h('select', { value: vp.conversionTargetProfileId || '', disabled: vp.conversionBusy, style: css.input,
+      field('Target voice', h('select', { value: vp.conversionTargetProfileId || '', disabled: vp.conversionBusy, style: css.input,
         onChange: e => this.vpSet({ conversionTargetProfileId: e.target.value, conversionArtifact: null, conversionProject: null, conversionLineId: '' }) },
-        h('option', { value: '' }, 'Select an approved cloned voice'), ...targets.map(p => h('option', { key: p.id, value: p.id }, `${p.name} · approved · ${p.consent.kind}`)))),
+        h('option', { value: '' }, 'Select a cloned voice'), ...targets.map(p => h('option', { key: p.id, value: p.id }, `${p.name} · ${p.samples.length} sample${p.samples.length === 1 ? '' : 's'}`)))),
       h('div', { style: css.row }, btn(vp.conversionBusy ? 'Conversion running…' : 'Convert source performance', () => this.startOpenVoiceConversion(), converterAvailable && vp.conversionSource && conversionTarget ? tone.ok : tone.off,
         { disabled: !converterAvailable || !vp.conversionSource || !conversionTarget || vp.conversionBusy, 'data-openvoice-start': '1' }),
         vp.conversionJob ? chip(`${vp.conversionJob.status}${vp.conversionJob.progress && vp.conversionJob.progress.label ? ' · ' + vp.conversionJob.progress.label : ''}`, vp.conversionJob.status === 'COMPLETE' ? tone.ok : vp.conversionJob.status === 'FAILED' ? tone.bad : tone.warn) : null),
@@ -531,19 +827,18 @@
           h('option', { value: '' }, 'Select a dialogue line'), ...conversionLines.map(line => h('option', { key: line.id, value: line.id }, `${line.speaker}: ${line.text.slice(0, 100)}`)))) : null,
         btn('Add as a Drama take', () => this.attachConvertedTake(), vp.conversionLineId ? '#38bdf8' : tone.off, { disabled: !vp.conversionLineId, 'data-openvoice-attach': '1' })) : null);
     // Director preferences and Voice conversion open in their own modals; the page shows one line each.
-    const M = window.DexModal;
     const panelModal = vp.panelModal || null;
     const closePanel = () => this.vpSet({ panelModal: null });
     const launchers = M ? h('div', { style: { display: 'grid', gap: 8 } },
       M.launcher(h, { title: 'Director preferences', summary: (prefs.default_direction ? 'Default direction: ' + prefs.default_direction : 'No default direction') + ' · speed ' + (prefs.speed || 1) + ' · ' + (prefs.acting_styles || []).length + ' acting styles',
         label: 'Edit preferences', onOpen: () => this.vpSet({ panelModal: 'prefs' }), attrs: { 'data-open-director-preferences': '1' } }),
-      M.launcher(h, { title: 'Voice conversion · OpenVoice V2', summary: (converterAvailable ? 'CPU ready' : 'Unavailable until verified on Big Mac') + ' · ' + targets.length + ' approved target voice' + (targets.length === 1 ? '' : 's') + (vp.conversionBusy ? ' · conversion running' : ''),
+      M.launcher(h, { title: 'Voice conversion · OpenVoice V2', summary: (converterAvailable ? 'CPU ready' : 'Unavailable until verified on Big Mac') + ' · ' + targets.length + ' target voice' + (targets.length === 1 ? '' : 's') + (vp.conversionBusy ? ' · conversion running' : ''),
         label: 'Open conversion', onOpen: () => this.vpSet({ panelModal: 'conversion' }), attrs: { 'data-open-voice-conversion': '1' } })) : null;
     const panelFrame = M && panelModal === 'prefs' ? M.frame(h, { id: 'director-preferences', title: 'Director preferences', subtitle: 'Saved on this Mac.', size: 'md', onClose: closePanel }, preferencePanel)
       : M && panelModal === 'conversion' ? M.frame(h, { id: 'voice-conversion', title: 'Voice conversion · OpenVoice V2', size: 'md', onClose: closePanel }, conversionPanel) : null;
     return h('div', { 'data-voice-profiles': '1', style: { display: 'grid', gap: 12, minWidth: 0 } }, ...(M ? [launchers, panelFrame] : [preferencePanel, conversionPanel]),
       h('div', { style: css.panel },
-        h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Voice profiles'), h('span', { style: css.muted }, list.length + ' saved'), h('div', { style: { flex: 1 } }), btn('＋ New voice', () => this.vpSet({ creating: true }), '#a78bfa', { 'data-new-voice-button': '1' })),
+        h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Voice profiles'), h('span', { style: css.muted }, list.length + ' saved'), h('div', { style: { flex: 1 } }), btn('＋ Create Voice', () => this.openCreateVoiceModal(), '#eab308', { 'data-new-voice-button': '1' })),
         list.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,210px),1fr))', gap: 8 } }, ...list.map(p => h('button', { key: p.id, type: 'button', 'data-profile': p.id, onClick: () => { this.vpSet({ selected: p.id, pending: null }); this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'voice-profile', id: p.id }); if (p.type === 'cloned') this.loadCloneEvaluations(p.id); },
           style: { textAlign: 'left', border: '1px solid ' + (vp.selected === p.id ? '#a78bfa' : 'rgba(148,163,184,.2)'), background: vp.selected === p.id ? 'rgba(167,139,250,.12)' : 'rgba(8,14,24,.7)', color: '#e2e8f0', borderRadius: 9, padding: 10, cursor: 'pointer', display: 'grid', gap: 4, minHeight: 64 } },
           h('b', { style: { fontSize: 13 } }, p.name), h('div', { style: css.row }, chip(p.type, '#a78bfa'), chip(p.validation.state, stateTone(p.validation.state)), p.type === 'cloned' ? chip(p.samples.length + ' sample' + (p.samples.length === 1 ? '' : 's'), '#94a3b8') : null))))

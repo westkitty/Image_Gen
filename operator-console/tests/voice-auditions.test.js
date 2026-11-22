@@ -9,26 +9,26 @@ const { createAuditionService } = require('../voice-auditions');
 const Asr = require('../asr-adapter');
 const F = require('../drama-fingerprint');
 
-test('clone evaluation is bounded to 18 synthetic-only non-seeded takes and records blinded labels', async () => {
+test('clone evaluation is bounded to 18 non-seeded takes and records blinded labels without a consent gate', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-evaluation-'));
-  const fictional = { id: 'vp-1234567890', type: 'cloned', consent: { kind: 'fictional' }, fingerprint: 'fp' };
-  const real = { id: 'vp-1234567891', type: 'cloned', consent: { kind: 'real-person' }, fingerprint: 'fp' };
-  const profiles = { get: id => id === fictional.id ? fictional : id === real.id ? real : null };
+  const cloned = { id: 'vp-1234567890', type: 'cloned', fingerprint: 'fp' };
+  const designed = { id: 'vp-1234567891', type: 'designed', fingerprint: 'fp' };
+  const profiles = { get: id => id === cloned.id ? cloned : id === designed.id ? designed : null };
   let request;
   const voice = { renderItems: opts => { request = opts; return { job_id: 'job-1', engine: 'voxcpm2', revision: '2.0.3', seeds: Array(18).fill(null), delivery: { applied: true }, warnings: [] }; }, waitJob: async () => ({ error: 'fixture did not render' }) };
   const mediaStore = { resolve: () => null };
   const svc = createAuditionService({ dir, profiles, voice, mediaStore, jobStore: {} });
   const scripts = ['One short line.', 'A second short line.', 'A third short line.'];
   const directions = ['neutral', 'quiet anger', 'warm reassurance'];
-  assert.throws(() => svc.startEvaluation(real.id, { scripts, directions }), e => e.gate === 'synthetic-only');
-  const result = svc.startEvaluation(fictional.id, { scripts, directions });
+  assert.throws(() => svc.startEvaluation(designed.id, { scripts, directions }), e => e.gate === 'invalid');
+  const result = svc.startEvaluation(cloned.id, { scripts, directions });
   assert.equal(result.take_count, 18);
   assert.equal(request.items.length, 18);
   assert.ok(request.items.every(x => x.seed === undefined));
   assert.deepEqual([...new Set(request.items.map(x => x.direction))], directions);
   assert.equal(result.exact_settings.seed_supported, false);
   assert.equal(result.exact_settings.seed, null);
-  const stored = svc.getEvaluation(fictional.id, result.id);
+  const stored = svc.getEvaluation(cloned.id, result.id);
   assert.equal(stored.clips.length, 0);
   await new Promise(resolve => setImmediate(resolve));
   fs.rmSync(dir, { recursive: true, force: true });
