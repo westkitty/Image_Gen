@@ -1,0 +1,125 @@
+name: DexDiffusion portable audit
+
+# No secrets, production hosts, models, Mac mounts, or deployment permissions.
+# Full release gate stays strict; known-bug diagnostic probes are advisory until fixed.
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'rollback-packages/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dex-audit-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-gate:
+    name: Existing release gate (isolated, strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CI: 'true'
+      DEX_GATEC_PYTHON: python
+      DEX_IMAGE_VALIDATION_PYTHON: python
+      DEX_RELEASE_OUTPUT_DIR: ${{ runner.temp }}/dex-release-gate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: operator-console/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated Python test dependency
+        run: python -m pip install --disable-pip-version-check pillow
+      - name: Verify browser prerequisite
+        run: |
+          command -v google-chrome
+          google-chrome --version
+      - name: Install reproducible Node dependencies
+        working-directory: operator-console
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run full portable release gate
+        working-directory: operator-console
+        run: npm run test:release
+      - name: Attach release-gate receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dex-release-gate-receipt
+          path: ${{ runner.temp }}/dex-release-gate/release-gate.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  discovery:
+    name: Static candidates + synthetic failure contracts (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      DEX_AUDIT_REPORT: ${{ runner.temp }}/dex-fault-matrix.json
+      DEX_AUDIT_STATIC_REPORT: ${{ runner.temp }}/dex-static-sweep.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Inventory code-pattern review candidates
+        working-directory: operator-console
+        run: node tests/audit/static-sweep.js
+      - name: Execute isolated fault-injection contracts
+        id: contracts
+        working-directory: operator-console
+        continue-on-error: true
+        run: node tests/audit/fault-matrix.js
+      - name: Refuse a missing or broken diagnostic harness
+        shell: bash
+        run: |
+          test -s "$DEX_AUDIT_REPORT"
+          test -s "$DEX_AUDIT_STATIC_REPORT"
+          node -e 'const r=require(process.env.DEX_AUDIT_REPORT);if(r.schema!=="dexdiffusion.audit.fault-matrix.v1"||!Array.isArray(r.results)||r.results.length===0||r.results.length!==r.total)process.exit(2)'
+      - name: Summarize audit findings
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const matrix = require(process.env.DEX_AUDIT_REPORT);
+          const staticScan = require(process.env.DEX_AUDIT_STATIC_REPORT);
+          const summary = [
+            '## DexDiffusion portable audit',
+            '',
+            `Static scan: ${staticScan.scanned_files} files, ${staticScan.candidate_count} **review candidates** (not confirmed defects).`,
+            `Synthetic fault contracts: ${matrix.passed}/${matrix.total} passed; ${matrix.contract_failures} failed.`,
+            '',
+            '| Probe | Root-cause family | Result | Linked historic IDs |',
+            '|---|---|---|---|',
+            ...matrix.results.map(r => `| ${r.id} | ${r.family} | ${r.status} | ${r.bugs.join(', ')} |`),
+            '',
+            'The fault matrix is **advisory** while historic failures remain. It never changes production data.',
+            'The independent full release gate is **strict**. Neither suite proves live Big Mac inference or physical Android behavior.',
+            '',
+          ].join('\n');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+          if (matrix.contract_failures) process.stdout.write(`::warning::${matrix.contract_failures} synthetic contract violations reproduced; see diagnostic artifact.\n`);
+          NODE
+      - name: Attach audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dex-discovery-reports
+          path: |
+            ${{ runner.temp }}/dex-fault-matrix.json
+            ${{ runner.temp }}/dex-static-sweep.json
+          if-no-files-found: warn
+          retention-days: 7
