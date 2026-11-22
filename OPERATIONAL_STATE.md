@@ -1,5 +1,13 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## 2026-11-21 (EST) - MacBook checkout reconciliation after WC2TB release
+
+- MacBook MacBook-Air.local, user andrew, repository /Users/andrew/Image_Gen: local main was fast-forwarded from 39534f2 to the published af6fcc239ccb60d9c7c6d48e7a5498d2b473857c (PR #31 documentation merge). Git status was clean and matched origin/main immediately after synchronization.
+- The three previous tracked local edits and four previously untracked WC2TB review documents were preserved as an independent historical snapshot: archive/macbook-wc2tb-review-20261122, commit 67ee1c61a8c54118ac159e28cef48d1983d87827. This archive branch was pushed and its remote ref independently verified. It must NOT be merged into main: the archived launcher predates the published release-Doctor commands, and the two other local tracked modifications were already byte-identical to main.
+- The earlier statement in this document describing MacBook main as dirty and behind applied to that earlier checkpoint and is superseded for this checkout by the above readback.
+- Big Mac inspected read-only over westcat: host bigmac, user bigmac, deployed worktree /Users/bigmac/Image_Gen-wc2tb-20261120 clean on release/wc2tb-20261121 at 774815d26df06d0e42d84187d31d6aed2f51f997; one listener on port 31337 (PID 55757). No service restart or deployment occurred during cleanup.
+- Other old V2 and agent worktrees with independent dirty or untracked files were preserved without staging, merging, deleting, or claiming that they belong to the WC2TB production release. No storage cleanup was performed.
+
 ## 2026-11-21/22 — WC2TB release installed, live rollback drill passed (PRODUCTION VERIFIED at 774815d)
 
 One authorized maintenance window, Big Mac `bigmac`, 2026-11-22 01:38–02:25 UTC. Private evidence is kept outside the repository: Big Mac `~/wc2tb-drill-20261121/` (checkpoint, restore copies, activation and drill logs, Doctor JSON, journal copies, run manifests) and MacBook `~/wc2tb-drill-20261121/` (`images_made` manifests before and after).
