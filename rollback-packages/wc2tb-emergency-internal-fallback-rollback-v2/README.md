@@ -1,4 +1,4 @@
-# wc2tb-emergency-internal-fallback-rollback-v2 (source only; NOT built or installed)
+# wc2tb-emergency-internal-fallback-rollback-v2 (BUILT and INSTALLED on Big Mac 2026-11-22)
 
 The package the owner-authorized handoff starts. v2 is the v1 fallback
 (`c7708e4`, package manifest `3ead15d`) plus the owner drain protocol, so the
@@ -27,9 +27,10 @@ pinned Node v26.13.1:
 
 ## Not done here
 
-- **Build and install.** The package is built and installed only in a
-  separately approved maintenance window (docs/WC2TB_RECOVERY_RUNBOOK.md §I).
-  Until then, the release doctor reports `handoff_capability` BLOCKED.
+- **Build and install: done 2026-11-22.** Built per runbook §I step 3 at the
+  expected install path. All 244 manifest entries verified, the lockfile is identical
+  to the baseline, and v1 is unchanged. It served the live owner drill on 31337,
+  including a real fallback image job (see `OPERATIONAL_STATE.md`).
 - **Idle predicate scope.** `isFallbackIdle()` does not include the external
   Ollama occupancy probe. That probe gates admission in production, but it
   does not describe work owned by this backend.
