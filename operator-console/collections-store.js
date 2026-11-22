@@ -13,36 +13,55 @@ const SCHEMA_VERSION = 'dexdiffusion.collections.v1';
 
 function createCollectionStore(filePath) {
   let collections = new Map(); // id -> collection
+  let recoveryBlocked = false;
+
+  function assertRecoveryReady() {
+    if (!recoveryBlocked) return;
+    const err = new Error('Collections ledger requires recovery');
+    // Preserve the POST route's existing generic 500 storage-error response.
+    err.collectionSaveFailed = true;
+    throw err;
+  }
 
   function load() {
     if (!filePath) return;
     try {
-      if (fs.existsSync(filePath)) {
-        const raw = fs.readFileSync(filePath, 'utf8');
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.version === SCHEMA_VERSION && Array.isArray(parsed.collections)) {
-          collections.clear();
-          for (const c of parsed.collections) {
-            if (c && c.id) {
-              collections.set(c.id, {
-                id: c.id,
-                name: c.name || 'Untitled Collection',
-                description: c.description || '',
-                tags: Array.isArray(c.tags) ? c.tags : [],
-                artifactIds: Array.isArray(c.artifactIds) ? c.artifactIds : [],
-                createdAt: c.createdAt || Date.now(),
-                updatedAt: c.updatedAt || Date.now()
-              });
-            }
-          }
-        }
+      // An inaccessible or dangling existing ledger is NOT an empty new store.
+      // lstat detects dangling symlinks and separates ENOENT from EACCES.
+      try {
+        fs.lstatSync(filePath);
+      } catch (err) {
+        if (err.code === 'ENOENT') return;
+        throw err;
       }
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      if (!parsed || parsed.version !== SCHEMA_VERSION || !Array.isArray(parsed.collections)) {
+        throw new Error('Unsupported Collections ledger');
+      }
+      const loaded = new Map();
+      for (const c of parsed.collections) {
+        // Never silently discard an invalid or duplicate persisted record.
+        if (!c || !c.id || loaded.has(c.id)) throw new Error('Invalid Collections entry');
+        loaded.set(c.id, {
+          id: c.id,
+          name: c.name || 'Untitled Collection',
+          description: c.description || '',
+          tags: Array.isArray(c.tags) ? c.tags : [],
+          artifactIds: Array.isArray(c.artifactIds) ? c.artifactIds : [],
+          createdAt: c.createdAt || Date.now(),
+          updatedAt: c.updatedAt || Date.now()
+        });
+      }
+      collections = loaded;
     } catch (_) {
+      recoveryBlocked = true;
       collections = new Map();
+      console.error('Collections ledger recovery required; writes disabled');
     }
   }
 
   function save(nextCollections = collections, failOnError = false) {
+    assertRecoveryReady();
     if (!filePath) return;
     try {
       const dir = path.dirname(filePath);
@@ -75,6 +94,7 @@ function createCollectionStore(filePath) {
   }
 
   function create({ name, description = '', tags = [], artifactIds = [] }) {
+    assertRecoveryReady();
     if (!name || typeof name !== 'string' || !name.trim()) {
       throw new Error('Collection name is required');
     }
@@ -97,6 +117,7 @@ function createCollectionStore(filePath) {
   }
 
   function update(id, { name, description, tags, artifactIds }) {
+    assertRecoveryReady();
     const col = collections.get(id);
     if (!col) return null;
     if (name !== undefined) {
@@ -112,6 +133,7 @@ function createCollectionStore(filePath) {
   }
 
   function addArtifacts(id, newIds = []) {
+    assertRecoveryReady();
     const col = collections.get(id);
     if (!col) return null;
     const set = new Set(col.artifactIds);
@@ -125,6 +147,7 @@ function createCollectionStore(filePath) {
   }
 
   function removeArtifacts(id, targetIds = []) {
+    assertRecoveryReady();
     const col = collections.get(id);
     if (!col) return null;
     const removeSet = new Set(targetIds.map(String));
@@ -135,6 +158,7 @@ function createCollectionStore(filePath) {
   }
 
   function remove(id) {
+    assertRecoveryReady();
     if (collections.delete(id)) {
       save();
       return true;
