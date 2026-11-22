@@ -14,6 +14,8 @@ on:
     branches: [main, 'codex/wc2tb-prevention-*']
     paths:
       - '.github/workflows/wc2tb-prevention.yml'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
       - 'bin/dexdiffusion'
       - 'scripts/**'
       - 'operator-console/backend-quiescence.js'
