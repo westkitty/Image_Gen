@@ -11,7 +11,17 @@ function reconcileInterruptedPublications({ jobStore, runsRoot, imageStore, vali
   const root = path.resolve(runsRoot);
   const jobs = jobStore.list({ limit: 100000 }).filter(j => j.status === 'INTERRUPTED' && j.media_kind === 'image');
   let dirs = [];
-  try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter(d => d.isDirectory()); } catch (_) {}
+  // A failed external read is never "no artifact": it blocks with its cause.
+  try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter(d => d.isDirectory()); }
+  catch (err) {
+    if (err.code !== 'ENOENT') {
+      result.blocked = true;
+      for (const job of jobs) result.unresolved.push({ job_id: job.job_id, reason: 'runs-root-unreadable', code: err.code });
+      result.inspected = jobs.length;
+      return result;
+    }
+  }
+  const unreadable = [];
   for (const job of jobs) {
     result.inspected++;
     const entries = [];
@@ -21,7 +31,10 @@ function reconcileInterruptedPublications({ jobStore, runsRoot, imageStore, vali
       try {
         owner = JSON.parse(fs.readFileSync(path.join(runDir, 'job-owner.json'), 'utf8'));
         manifest = JSON.parse(fs.readFileSync(path.join(runDir, 'controlled-manifest.json'), 'utf8'));
-      } catch (_) { continue; }
+      } catch (err) {
+        if (err.code && !['ENOENT', 'ENOTDIR'].includes(err.code) && !unreadable.includes(runId)) unreadable.push(runId);
+        continue;
+      }
       if (owner.schema !== 'dexdiffusion.run_owner.v1' || owner.job_id !== job.job_id || owner.run_id !== runId
         || manifest.status !== 'PASS' || manifest.run_id !== runId) continue;
       for (const indexed of imageStore.readRunIndex(runDir)) {
@@ -36,7 +49,11 @@ function reconcileInterruptedPublications({ jobStore, runsRoot, imageStore, vali
       }
     }
     const unique = [...new Map(entries.map(e => [e.artifact_id, e])).values()];
-    if (!unique.length) { result.unresolved.push({ job_id: job.job_id, reason: 'no-exact-owned-published-artifact' }); continue; }
+    if (!unique.length) {
+      if (unreadable.length) { result.blocked = true; result.unresolved.push({ job_id: job.job_id, reason: 'run-evidence-unreadable', runs: unreadable.length }); }
+      else result.unresolved.push({ job_id: job.job_id, reason: 'no-exact-owned-published-artifact' });
+      continue;
+    }
     const ids = unique.map(e => e.artifact_id);
     const receipt = artifactReceipt(unique);
     const expected = Math.max(1, Number(job.params && job.params.quantity) || 1);

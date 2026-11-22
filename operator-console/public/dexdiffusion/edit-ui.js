@@ -129,7 +129,10 @@
     const ed = this._ed();
     const op = OPS.some(x => x[0] === mode) ? mode : (ed.op || 'img2img');
     const replacing = !!(ed.source && (ed.source.imageId || ed.source.key) !== imageId);
-    if (replacing && !this._confirmEditDraftDiscard('open ' + imageId)) return false;
+    if (replacing && !(
+      o.confirmedImportSource === (ed.source.imageId || ed.source.key) &&
+      o.confirmedImportSnapshot === this._editDraftSnapshot()
+    ) && !this._confirmEditDraftDiscard('open ' + imageId)) return false;
     const acceptedDraft = replacing ? this._editDraftSnapshot() : null;
     const requestId = this._editOpenRequestId = (this._editOpenRequestId || 0) + 1;
     const r = await this._api('/api/images/' + encodeURIComponent(imageId) + '/meta');
@@ -184,11 +187,42 @@
       this.wsSet(m ? { enhSource: m } : { enhSourceId: null, enhSource: null });
     }
   };
-  // Staged (imported) sources have no generation record: neutral defaults, said plainly.
+  // PNGs use the permanent canonical Library, because the old /api/staging
+  // route cannot write to Big Mac's protected external job-state directory.
+  // Other image formats retain their existing temporary Edit staging behavior.
   P.importEditSource = async function (file) {
     if (!file) return;
     if (file.size > 25 * 1024 * 1024) { this.toast('Image too large (25 MB max)', '#ef4444'); return; }
     if (!this._confirmEditDraftDiscard('import this image')) return false;
+    // The canonical PNG receiver is available on the same tailnet-only origin.
+    // Preserve the existing JPEG/WebP temporary upload contract unchanged.
+    if (file.type === 'image/png' || ((!file.type || file.type === 'application/octet-stream') && /\.png$/i.test(file.name || ''))) {
+      if (this._editImportInProgress) return false;
+      this._editImportInProgress = true;
+      const previous = this._ed().source;
+      const confirmedSource = previous ? (previous.imageId || previous.key) : null;
+      const confirmedSnapshot = this._editDraftSnapshot();
+      try {
+        const url = this.state.backendUrl + '/api/library/images/import?name=' + encodeURIComponent(file.name || 'image.png');
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': file.type || 'image/png' },
+          body: file, signal: AbortSignal.timeout(120000) });
+        const d = await r.json().catch(() => ({}));
+        const SA = window.DexSourceAsset;
+        if (!r.ok || !d.id || !SA || !SA.isImageId(d.id)) throw new Error(d.error || 'PNG import failed.');
+        // The file is durable even if the Edit panel cannot load the view.
+        const opened = await this.openImageInEdit(d.id, this._ed().op,
+          { confirmedImportSource: confirmedSource, confirmedImportSnapshot: confirmedSnapshot });
+        if (!opened) {
+          this.toast('PNG saved to Library, but Edit could not open it. Select the image from Library to retry.', '#fbbf24');
+          return false;
+        }
+        this.toast('PNG saved to Library and opened in Edit.', '#65d66e');
+        return true;
+      } catch (err) {
+        this.toast('PNG import failed: ' + (err && err.message ? err.message : 'Unknown error'), '#ef4444');
+        return false;
+      } finally { this._editImportInProgress = false; }
+    }
     const r = await fetch(this.state.backendUrl + '/api/staging?accept=image', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
     const d = await r.json().catch(() => ({ error: r.statusText }));
     if (!r.ok) { this.toast(d.error || 'Import rejected', '#ef4444'); return; }

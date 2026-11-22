@@ -77,4 +77,4 @@ if [[ -z "${DEX_CHAT_HISTORY_ACCOUNTS:-}" && "$DEX_STORAGE_MODE" == external ]];
   if [[ -f "$ACCOUNTS_FILE" ]]; then export DEX_CHAT_HISTORY_ACCOUNTS="$(/bin/cat "$ACCOUNTS_FILE")"; fi
 fi
 cd "$CONSOLE_DIR"
-exec /opt/homebrew/bin/node server.js
+exec "${DEX_SUPERVISED_NODE:-/opt/homebrew/bin/node}" server.js

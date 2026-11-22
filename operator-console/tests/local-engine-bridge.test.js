@@ -9,7 +9,7 @@ const { enabled } = require('../local-engine-routing');
 const { targetRuntime } = require('../capabilities');
 
 test('worker validates closed requests and owns cancellation/recovery', () => {
-  const result = spawnSync('python3', ['-m','unittest','discover','-s',path.resolve(__dirname,'../../sdcpp-workflow/worker'),'-p','test_*.py','-v'], { encoding:'utf8',timeout:30000 });
+  const result = spawnSync('python3', ['-m','unittest','discover','-s',path.resolve(__dirname,'../../sdcpp-workflow/worker'),'-p','test_*.py','-v'], { encoding:'utf8',timeout:120000 }); // includes the real-process handoff suite
   assert.equal(result.status,0,result.stderr + result.stdout);
   assert.match(result.stderr,/Ran \d+ tests/);
 });
@@ -26,18 +26,18 @@ test('isolated fixture servers do not enable the live bridge implicitly', () => 
   assert.equal(enabled({ DEX_STATE_DIR:'/tmp/isolated' }),false);
   assert.equal(enabled({ DEX_LOCAL_ENGINE_BRIDGE:'0' }),false);
 });
-test('engine routing selects configured, missing and legacy state deterministically', t => {
+test('the service flag selects the bridge independently of external state', t => {
   const fs = require('node:fs'), os = require('node:os');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-engine-routing-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const stateDir = path.join(root, 'state'); fs.mkdirSync(stateDir);
-  assert.equal(enabled({ DEX_STATE_DIR: stateDir, DEX_LOCAL_ENGINE_BRIDGE: '1' }, { legacyPath: path.join(root, 'absent-legacy.json') }), false, 'missing configuration stays disabled');
-  fs.writeFileSync(path.join(stateDir, 'local-engine-bridge.json'), JSON.stringify({ enabled: true }));
-  assert.equal(enabled({ DEX_STATE_DIR: stateDir, DEX_LOCAL_ENGINE_BRIDGE: '1' }), true, 'configured state selects worker');
-  assert.equal(enabled({ DEX_STATE_DIR: stateDir, DEX_LOCAL_ENGINE_BRIDGE: '0' }), false, 'explicit disable wins');
-  fs.rmSync(path.join(stateDir, 'local-engine-bridge.json'));
-  const legacy = path.join(root, 'legacy.json'); fs.writeFileSync(legacy, JSON.stringify({ enabled: true }));
-  assert.equal(enabled({}, { legacyPath: legacy }), true, 'legacy source is consulted only without relocated state');
+  const legacyPath = path.join(root, 'legacy.json');
+  fs.writeFileSync(legacyPath, JSON.stringify({ enabled: true }));
+  assert.equal(enabled({ DEX_STATE_DIR: stateDir, DEX_LOCAL_ENGINE_BRIDGE: '1' }, { legacyPath }), true);
+  assert.equal(enabled({ DEX_STATE_DIR: stateDir, DEX_LOCAL_ENGINE_BRIDGE: '0' }, { legacyPath }), false);
+  assert.equal(enabled({ DEX_STATE_DIR: stateDir }, { legacyPath }), false);
+  assert.equal(enabled({ DEX_DATA_ROOT: root }, { legacyPath }), false);
+  assert.equal(enabled({}, { legacyPath }), true, 'default source checkout still honors its legacy setting');
 });
 test('model availability follows worker reads and reports unavailable worker', () => {
   assert.equal(targetRuntime({id:'sd15'}, {localEngineEnabled:true,localEngineModels:{sd15:true}}, {}),'available');

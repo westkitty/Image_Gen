@@ -11,10 +11,10 @@ const DEST = '/Users/andrew/images_made';
 const RECEIPTS = path.join(os.homedir(), 'Library/Application Support/DexDiffusion/publication-receipts');
 const MAX_BYTES = 256 * 1024 * 1024;
 
-function request(method, pathname, body) {
+function request(base, method, pathname, body) {
   return new Promise((resolve, reject) => {
     const data = body ? Buffer.from(JSON.stringify(body)) : null;
-    const req = http.request(BASE + pathname, { method, timeout: 15000, headers: data ? { 'content-type': 'application/json', 'content-length': data.length } : {} }, res => {
+    const req = http.request(base + pathname, { method, timeout: 15000, headers: data ? { 'content-type': 'application/json', 'content-length': data.length } : {} }, res => {
       const chunks = []; let size = 0;
       res.on('data', chunk => { size += chunk.length; if (size > MAX_BYTES + 1024 * 1024) { req.destroy(new Error('response exceeds size limit')); return; } chunks.push(chunk); });
       res.on('end', () => { const bytes = Buffer.concat(chunks); if (res.statusCode < 200 || res.statusCode >= 300) return reject(new Error(`backend returned HTTP ${res.statusCode}`)); resolve({ bytes, headers: res.headers }); });
@@ -30,7 +30,7 @@ function durableJson(file, value) {
 }
 function writeAll(fd, bytes) { let offset = 0; while (offset < bytes.length) offset += fs.writeSync(fd, bytes, offset, bytes.length - offset); }
 function safeId(id) { return typeof id === 'string' && id.length <= 255 && !id.startsWith('.') && !/[\\/\0-\x1f\x7f]/.test(id) && /\.(png|jpe?g|webp|gif)$/i.test(id); }
-async function run({ base = BASE, destination = DEST, receipts = RECEIPTS, transport = request } = {}) {
+async function run({ base = BASE, destination = DEST, receipts = RECEIPTS, transport = (method, pathname, body) => request(base, method, pathname, body) } = {}) {
   // CLI entry point uses fixed production constants; injected paths exist only
   // for isolated fixtures and are never read from command-line input.
   fs.mkdirSync(destination, { recursive: true }); fs.mkdirSync(receipts, { recursive: true, mode: 0o700 });

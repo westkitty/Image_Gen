@@ -68,6 +68,7 @@ const { createCancellationManager } = require('./cancellation');
 const { dramaCancelCapability, requestDramaStop } = require('./drama-cancel-policy');
 const { createLibraryIndex } = require('./library-index');
 const { reconcileInterruptedPublications, historicalMissingJournal } = require('./publication-recovery');
+const EngineTransfer = require('./engine-transfer-journal');
 const { resolveStoragePaths, assertDataRootMount, childStorageEnvironment } = require('./storage-paths');
 const { createTailscaleAuthGate } = require('./tailscale-auth');
 
@@ -75,11 +76,21 @@ const app = express();
 if (TestIsolation.enabled()) app.use(TestIsolation.middleware);
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
 const HOST = '127.0.0.1';
+const supervisorControl = process.env.DEX_BACKEND_CONTROL;
+const quiescence = supervisorControl ? require('./backend-quiescence').backendQuiescence(supervisorControl, isBackendIdle) : null;
+if (quiescence) app.use(quiescence.middleware);
 const APP_VERSION = 'image-gen-console-2026-06-22-render-wrapper';
 
 const STORAGE_PATHS = resolveStoragePaths(process.env, path.resolve(__dirname, '../sdcpp-workflow'));
 const IS_INTERNAL_FALLBACK = process.env.DEX_STORAGE_MODE === 'internal-fallback';
 const FALLBACK_TARGET_IDS = new Set(['flux2-klein-4b', 'sdxl-photonic', 'flux-fp8']);
+const gateE = process.env.DEX_OPTION_A_TEST === '1';
+if (gateE && (os.hostname() !== 'bigmac' || PORT !== 31347
+  || os.homedir() !== '/Users/bigmac/DexDiffusion-OptionA-Test-internal'
+  || STORAGE_PATHS.dataRoot !== '/Volumes/wc2tb/DexDiffusion-OptionA-Test'
+  || process.env.DEX_MACBOOK_IMAGES_URL !== 'http://127.0.0.1:31348')) {
+  throw new Error('Invalid Gate E backend isolation');
+}
 const BACKEND_STORAGE = Object.freeze({
   mode: IS_INTERNAL_FALLBACK ? 'internal-fallback' : 'external',
   root: STORAGE_PATHS.dataRoot,
@@ -112,8 +123,8 @@ const detailerProviderRegistry = new ProviderRegistry();
 detailerProviderRegistry.register({id:'apple-vision',version:'system',kind:'native',backend:'apple-vision',available:isVisionDetailerAvailable(),reason:isVisionDetailerAvailable()?null:'Native Vision binary is missing.',detect:detectRegions});
 detailerProviderRegistry.register({id:'owlv2-base-patch16-ensemble',version:'google/owlv2-base-patch16-ensemble@410d70ced26e95c344915c2f10f4ecf967f2cde4',kind:'open-vocabulary',backend:'local-mps',available:OWLV2_AVAILABLE,reason:'Local model, SHA-256 manifest validation, or isolated runtime is unavailable.',detect:owlv2Detector});
 const publicationOutbox = createPublicationOutbox(path.join(STATE_DIR, 'publications'));
-const crossHostPublicationEnabled = !!STORAGE_PATHS.dataRoot && !TestIsolation.enabled() && os.hostname().toLowerCase() === 'bigmac';
-const macbookImages = (crossHostPublicationEnabled || !!process.env.DEX_MACBOOK_IMAGES_URL)
+const crossHostPublicationEnabled = !IS_INTERNAL_FALLBACK && !!STORAGE_PATHS.dataRoot && !TestIsolation.enabled() && os.hostname().toLowerCase() === 'bigmac';
+const macbookImages = !IS_INTERNAL_FALLBACK && (crossHostPublicationEnabled || !!process.env.DEX_MACBOOK_IMAGES_URL)
   ? createMacbookImages({ baseUrl: process.env.DEX_MACBOOK_IMAGES_URL || 'http://127.0.0.1:31338', manifestFile: path.join(STATE_DIR, 'macbook-images.json') }) : null;
 const imageStore = createImageStore({ root: STORAGE_PATHS.imageRoot, runsRoot: RUNS_DIR, macbookImages,
   onReplaced: crossHostPublicationEnabled ? (imageId, facts) => {
@@ -144,6 +155,7 @@ if (macbookImages) {
   });
   macbookImages.start();
 }
+let outboxReconciliationError = null;
 if (crossHostPublicationEnabled) {
   // Rebuild only explicitly marked new outbox entries after a crash between
   // run-index commit and outbox commit. Historical indexes remain untouched.
@@ -153,17 +165,29 @@ if (crossHostPublicationEnabled) {
         if (!publicationOutbox.read(entry.image_id)) publicationOutbox.create(entry, path.join(STORAGE_PATHS.imageRoot, entry.image_id));
       }
     }
-  } catch (error) { console.error('Cross-host publication outbox reconciliation failed:', error.message); }
+  } catch (error) { outboxReconciliationError = error.code || error.message; console.error('Cross-host publication outbox reconciliation failed:', error.message); }
 }
 const CONFIG_DIR = path.join(WORKFLOW_ROOT, 'config');
 // DEX_STATE_DIR remains an explicit override; DEX_DATA_ROOT supplies a durable, relocatable default.
-const ASSETS_CACHE = path.join(STATE_DIR, 'assets-cache.json');
+// Gate E inherits the native registry's LoRA entry via a test-owned,
+// preflighted asset cache. Real storage modes use the existing discovery cache.
+const ASSETS_CACHE = path.join(gateE ? os.homedir() : STATE_DIR, 'assets-cache.json');
 // Lineage + Keepers, keyed by canonical image id (metadata only, never prompts).
 const imageMeta = W.createImageMetaStore(path.join(STATE_DIR, 'image-meta.json'));
 // Media-neutral core (media.js): durable generic jobs, heavy-compute lease,
 // worker registry, non-image media store and secure temporary staging.
-const jobStore = M.createJobStore(path.join(STATE_DIR, 'jobs.json'), { onChange: (kind, job) => genericJobEvent(kind, job) });
-const publicationRecoveryState = { blocked: false, journal: { inspected: 0, repaired: 0, unresolved: [] }, jobs: { inspected: 0, recovered: 0, unresolved: [] } };
+const jobLedger = path.join(STATE_DIR, 'jobs.json');
+if (quiescence) {
+  const { requireLedgerShape } = require('./backend-quiescence');
+  requireLedgerShape(jobLedger, row => row.schema === 'dexdiffusion.jobs.v1' && Array.isArray(row.jobs));
+  requireLedgerShape(path.join(STATE_DIR, 'remote-workers.json'),
+    row => row.schema === 'dexdiffusion.remote-workers.v1' && row.records && typeof row.records === 'object' && !Array.isArray(row.records));
+}
+const jobStore = M.createJobStore(jobLedger, { onChange: (kind, job) => genericJobEvent(kind, job) });
+const publicationRecoveryState = { blocked: false, journal: { inspected: 0, repaired: 0, unresolved: [] }, jobs: { inspected: 0, recovered: 0, unresolved: [] },
+  transfers: { inspected: 0, completed: [], discarded: [], no_output: [], pending: [], blocked: [] }, outbox: outboxReconciliationError ? { error: outboxReconciliationError } : { error: null } };
+// An unreadable outbox reconciliation is a failed external read: blocked, never CLEAR.
+if (outboxReconciliationError) publicationRecoveryState.blocked = true;
 try {
   publicationRecoveryState.journal = imageStore.recoverPendingPublications();
   if (publicationRecoveryState.journal.repaired || publicationRecoveryState.journal.unresolved.length) console.log('Canonical publication recovery:', JSON.stringify(publicationRecoveryState.journal));
@@ -191,6 +215,7 @@ const libraryIndex = createLibraryIndex({ indexPath: path.join(STATE_DIR, 'libra
 try {
   publicationRecoveryState.jobs = reconcileInterruptedPublications({ jobStore, runsRoot: RUNS_DIR, imageStore, validateImage });
   if (publicationRecoveryState.jobs.unresolved.some(x => x.reason !== 'no-exact-owned-published-artifact')) publicationRecoveryState.blocked = true;
+  if (publicationRecoveryState.jobs.blocked) publicationRecoveryState.blocked = true;
   if (publicationRecoveryState.jobs.recovered || publicationRecoveryState.jobs.unresolved.length) console.log('Interrupted publication reconciliation:', JSON.stringify(publicationRecoveryState.jobs));
 } catch (err) { publicationRecoveryState.blocked = true; publicationRecoveryState.jobs.unresolved.push({ reason: err.message }); console.error('Interrupted publication reconciliation failed:', err.message); }
 const HEAVY_ACTIONS = new Set(['controlled-generate', 'flux2-edit', 'img2img', 'inpaint', 'outpaint', 'upscale-esrgan', 'hires-fix', 'xyz-plot', 'batch-generate', 'cli-generate', 'server-generate', 'seed-test', 'sd-upscale', 'loopback', 'outpaint-poor', 'outpaint-mk2', 'hires-2pass']);
@@ -266,7 +291,7 @@ app.get('/api/publications/:id/content', (req, res) => {
 app.post('/api/publications/:id/ack', (req, res) => {
   if (!crossHostPublicationEnabled) return res.sendStatus(404);
   const record = publicationOutbox.read(req.params.id), receipt = req.body || {};
-  const expectedDestination = path.join('/Users/andrew/images_made', req.params.id);
+  const expectedDestination = path.join(gateE ? path.join(os.homedir(), 'fake-macbook') : '/Users/andrew/images_made', req.params.id);
   if (!record) return res.sendStatus(404);
   if (receipt.schema !== 'dexdiffusion.canonical_receipt.v1' || receipt.image_id !== record.image_id || receipt.destination !== expectedDestination || receipt.bytes !== record.expected_bytes || receipt.sha256 !== record.sha256 || !Number.isFinite(Date.parse(receipt.verified_at))) return res.status(400).json({ error: 'receipt does not match pending artifact' });
   if (record.state === 'CANONICAL_VERIFIED') return res.json({ state: record.state, image_id: record.image_id, idempotent: true });
@@ -1254,6 +1279,16 @@ function recordJobEvidence(job) {
 }
 
 function createJob(action, summary, requestParams = {}) {
+  if (quiescence && (HEAVY_ACTIONS.has(action) || action === 'upscale')) {
+    const home = fs.statSync(os.homedir());
+    const staging = fs.statSync(STORAGE_PATHS.imageRoot);
+    // The worker, journal and publication staging consume the same internal
+    // device. Reserve the worker's own admission for this job's largest batch.
+    const free = fs.statfsSync(STORAGE_PATHS.imageRoot);
+    if (home.dev !== staging.dev || free.bavail * free.bsize < require('./backend-quiescence').sharedDiskReserveBytes(action, requestParams)) {
+      throw Object.assign(new Error('Insufficient shared disk for durable generation and publication'), { status: 503 });
+    }
+  }
   const id = crypto.randomUUID();
   jobs[id] = {
     id,
@@ -1307,6 +1342,49 @@ for (const item of publicationRecoveryState.journal.unresolved) {
     journalName: item.journal, imageRoot: imageStore.root, runsRoot: RUNS_DIR, jobStore, remoteWorkers,
   })) publicationRecoveryState.journal.historical.push(item.journal);
   else publicationRecoveryState.blocked = true;
+}
+// Durable engine transfers (Gate C). Any entry left by a bridge that did not
+// finish blocks heavy compute until it is published, discarded on an explicit
+// cancel, or proven to have no output. Never time-based, never silent.
+publicationRecoveryState.baseBlocked = publicationRecoveryState.blocked;
+const engineTransferJournal = TestIsolation.enabled() ? null : EngineTransfer.createTransferJournal({ dataRoot: STORAGE_PATHS.dataRoot });
+function refreshPublicationBlocked() {
+  const t = publicationRecoveryState.transfers;
+  publicationRecoveryState.blocked = publicationRecoveryState.baseBlocked || !!publicationRecoveryState.jobs.blocked || t.pending.length > 0 || t.blocked.length > 0;
+}
+let transferReconciliationRunning = false;
+async function reconcileEngineTransfers() {
+  if (!engineTransferJournal || transferReconciliationRunning) return;
+  transferReconciliationRunning = true;
+  try {
+    const client = require('./local-engine-client');
+    const result = await EngineTransfer.reconcileTransfers({ journal: engineTransferJournal, store: imageStore, runsRoot: RUNS_DIR, validateImage,
+      outbox: crossHostPublicationEnabled ? publicationOutbox : null, imageRoot: STORAGE_PATHS.imageRoot,
+      ownedFor: runId => EngineTransfer.ownerBackedRequest(runId, client) });
+    publicationRecoveryState.transfers = result;
+    if (result.completed.length) {
+      const jobsResult = reconcileInterruptedPublications({ jobStore, runsRoot: RUNS_DIR, imageStore, validateImage });
+      publicationRecoveryState.jobs = jobsResult;
+    }
+    if (result.inspected) console.log('Engine transfer reconciliation:', JSON.stringify(result));
+  } catch (err) {
+    publicationRecoveryState.transfers.blocked = [{ reason: 'transfer-reconciliation-failed', detail: String(err.message).slice(0, 200) }];
+    console.error('Engine transfer reconciliation failed:', err.message);
+  } finally { transferReconciliationRunning = false; refreshPublicationBlocked(); }
+}
+if (engineTransferJournal) {
+  try {
+    const pendingTransfers = engineTransferJournal.list();
+    publicationRecoveryState.transfers.inspected = pendingTransfers.length;
+    publicationRecoveryState.transfers.pending = pendingTransfers.map(run_id => ({ run_id, reason: 'awaiting-startup-reconciliation' }));
+  } catch (err) { publicationRecoveryState.transfers.blocked = [{ reason: err.reason || 'journal-unreadable', detail: err.message }]; }
+  refreshPublicationBlocked();
+  setImmediate(reconcileEngineTransfers);
+  const retry = setInterval(() => {
+    const t = publicationRecoveryState.transfers;
+    if (t.pending.length || t.blocked.length) reconcileEngineTransfers();
+  }, 60 * 1000);
+  if (retry.unref) retry.unref();
 }
 const arbiter = M.createResourceArbiter({
   quarantineCheck: () => publicationRecoveryState.blocked ? 'canonical publication recovery unresolved' : remoteWorkers.quarantineReason(),
@@ -1419,6 +1497,10 @@ function syncGenericTerminal(job) {
   const map = { PASS: 'COMPLETE', PARTIAL: 'COMPLETE', FAIL: 'FAILED', CANCELLED: 'CANCELLED' };
   let st = map[job.status];
   if (!st) return;
+  // A retained engine result is neither published nor failed: INTERRUPTED lets
+  // transfer reconciliation complete it with exact publication evidence later.
+  // (Same marker as engine-transfer-journal.transferPendingRunId; kept inline so this function stays self-contained.)
+  if (st === 'FAILED' && /ENGINE_TRANSFER_PENDING:\s*20\d{6}-\d{6}-[A-Za-z0-9_-]{1,80}/.test(String(job.stdout || ''))) st = 'INTERRUPTED';
   const g = jobStore.get(job.id);
   if (!g || TERMINAL.has(g.status)) { if (!holdsLease(job)) arbiter.release(job.id); return; }
   const fromResults = (job.results || []).filter(r => r.imageId).map(r => r.imageId);
@@ -1449,7 +1531,8 @@ function syncGenericTerminal(job) {
   if (g.status === 'QUEUED') jobStore.transition(job.id, 'RUNNING');
   const result = jobStore.transition(job.id, st, {
     artifacts: st === 'COMPLETE' || st === 'CANCELLED' ? ids : [], artifact_validation: receipt,
-    first_failed_gate: job.firstFailedGate || null, error: st === 'FAILED' ? `failed at gate ${job.firstFailedGate || 'unknown'}${job.failureReason ? ': ' + job.failureReason : ''}` : null,
+    first_failed_gate: job.firstFailedGate || null, error: st === 'FAILED' ? `failed at gate ${job.firstFailedGate || 'unknown'}${job.failureReason ? ': ' + job.failureReason : ''}`
+      : st === 'INTERRUPTED' ? 'engine result retained in the durable transfer journal; publication pending reconciliation' : null,
   });
   if (result && result.error && !TERMINAL.has(result.status)) {
     job.status = 'FAIL'; job.firstFailedGate = job.firstFailedGate || 'job-contract-rejected';
@@ -6183,7 +6266,9 @@ app.get('/api/version', (req, res) => {
   res.json(TestIsolation.enabled() ? { ...getBuildInfo(), testIsolation: true } : getBuildInfo());
 });
 app.get('/api/publication-recovery', (req, res) => {
-  res.json({ status: publicationRecoveryState.blocked ? 'BLOCKED' : 'CLEAR', ...publicationRecoveryState });
+  // CLEAR only when nothing is unresolved; historical no-output interruptions are UNRESOLVED, not CLEAR.
+  const unresolved = publicationRecoveryState.jobs.unresolved.length || publicationRecoveryState.journal.unresolved.length;
+  res.json({ status: publicationRecoveryState.blocked ? 'BLOCKED' : unresolved ? 'UNRESOLVED' : 'CLEAR', ...publicationRecoveryState });
 });
 
 // Read-only operational metadata (access URLs, primary engine, storage,
@@ -6204,14 +6289,14 @@ app.get('/api/system-info', async (req, res) => {
         ...info.storage,
         canonicalImages: '/Users/andrew/images_made',
         workingImages: STORAGE_PATHS.imageRoot,
-        publication: 'macbook-pull-v1',
+        publication: 'suspended-internal-fallback',
         outputs: [
-          { id: 'images', label: 'Canonical images', device: 'MacBook', path: '/Users/andrew/images_made' },
+          { id: 'images', label: 'Fallback images (not published)', device: 'Big Mac internal', path: STORAGE_PATHS.imageRoot },
           { id: 'audio', label: 'Audio (internal fallback)', device: 'Big Mac internal', path: path.join(STORAGE_PATHS.dataRoot, 'output/audio') },
           { id: 'worlds', label: 'Worlds (internal fallback)', device: 'Big Mac internal', path: roots.world },
           { id: 'video', label: 'Video (internal fallback)', device: 'Big Mac internal', path: roots.video },
         ].filter(item => item.path),
-        rule: 'MacBook images_made is the only canonical image library. Fallback output waits on Big Mac until checksum-verified publication; no automatic state merge or mode return.',
+        rule: 'MacBook images_made remains the final canonical library. Internal fallback retains images on Big Mac without MacBook contact, publication, or verified-image cleanup; no automatic state merge or mode return.',
       };
       info.generation = { ...info.generation, retentionNote: info.storage.rule };
     }
@@ -6588,8 +6673,23 @@ app.get('/api/images/:id', (req, res) => {
   res.sendFile(img.path);
 });
 
+function isBackendIdle() {
+  const resources = arbiter.state();
+  const held = imageStore.journalHeldIds();
+  return held && held.size === 0 && !resources.owner && resources.waiting.length === 0 && resources.external.occupied === false
+    && Date.now() - resources.external.checkedAt < 90000 && !resources.quarantine
+    && !transferReconciliationRunning && !publicationRecoveryState.blocked
+    && !Object.values(jobs).some(job => ['queued', 'running', 'pending', 'starting', 'cancelling'].includes(job.status))
+    && jobStore.list({ limit: Infinity }).every(job => TERMINAL.has(job.status)
+      && !job.resource_lease && (job.owned_resources || []).every(resource => resource.state === 'succeeded'))
+    && remoteWorkers.list().every(worker => ['completed', 'cancelled_verified', 'failed'].includes(worker.state))
+    && engineTransferJournal && engineTransferJournal.list().length === 0
+    && !publicationOutbox.pendingStrict();
+}
+
 if (require.main === module) {
   app.listen(PORT, HOST, () => {
+    if (quiescence) setInterval(quiescence.checkpoint, 500).unref();
     const build = getBuildInfo();
     console.log(`SDCPP Workbench listening on ${build.bind} (${build.version}, HEAD ${build.gitHead}, pid ${build.pid})`);
   });

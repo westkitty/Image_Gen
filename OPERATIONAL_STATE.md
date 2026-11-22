@@ -1,5 +1,98 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## 2026-11-21 (review correction) — PR #28 handoff hardened (SOURCE ONLY; not deployed; live drill pending)
+
+A read-only review of PR #28 found five release blockers. All five are corrected on `codex/wc2tb-rollback-closure-20261121`. The full contract is in `docs/WC2TB_RECOVERY_RUNBOOK.md` §H.
+
+1. **Drain-sealed fallback return.**
+   - Every owner stop, external or fallback, now uses the same handshake: drain fence (503), a fresh `<owned pid> drained` seal, an idle worker, session and process-group ownership, and the sole listener re-checked immediately before SIGTERM.
+   - A timeout withdraws the drain and never signals.
+   - The direct-SIGTERM fallback stop is gone.
+   - The v1 fallback (`c7708e4`) cannot seal. The smallest compatible change is **v2**: commit `3f0abf5` on the new branch `rollback/wc2tb-fallback-drain-v2-20261121`, which is v1 plus the production quiescence module, verbatim. The handoff now targets v2 and refuses v1 with `FALLBACK_DRAIN`.
+2. **External startup deadline.**
+   - The deadline is enforced whether or not a child exists.
+   - Readiness requires the owned pid's fresh idle seal, `/api/version` identity and the sole listener.
+   - On timeout: `HANDOFF_FAILED`, the child is kept as evidence, nothing restarts, and nothing is signalled.
+3. **Fallback validated before production stops.**
+   - Checked before release: package, Node, publication isolation, the trusted v2 manifest (244 first-party files; digest pinned in the supervisor), the private fallback root (owner, mode, symlinks, device), the log destination and free disk.
+   - Directories are prepared while external still serves, then re-validated.
+   - Mutable prerequisites are re-checked again immediately before release.
+4. **Revision-bound proof.**
+   - Capability comes from the running worker's own `backend-status`: protocol 2, plus the digest of the supervisor it loaded.
+   - Proof needs one contiguous, owner-authorized, schema-2 production drill, bound to the host, deployed HEAD, installed worker and loaded supervisor.
+5. **CI.** It now also runs for PRs into `codex/wc2tb-prevention-*`.
+
+**Validation (isolated only).**
+- Handoff suite: 34 tests. Supervisor suite: 9. Doctor: 21.
+- v2 fallback drain test against the real backend on Big Mac: 2/2, plus v1 regressions on v2: 7/7.
+- These are source evidence, not production evidence.
+
+**Production.** Unchanged: `352e508`, the same backend pid, the frozen branch untouched. No v2 package is installed.
+
+**Known limitations.**
+- The live round trip remains UNVERIFIED.
+- The v2 package must be built, and the handoff installed, in an approved window (runbook §I).
+
+## 2026-11-21 (later) — Owner-authorized fallback handoff (SOURCE ONLY; live drill pending)
+
+- **Gap closed in source:** the EngineHost worker's `backend-pause` is rehearsal-only, so the corrected v1 internal-fallback package (`c7708e4`) could not take over 31337.
+- **Fix:** branch `codex/wc2tb-rollback-closure-20261121`, built on the prevention branch `603c382`, adds a journaled handoff to the existing Supervisor.
+  - The Supervisor stays the only backend owner.
+  - Interface: `request-worker-backend.sh --handoff-fallback` and `--return-external`, with a strict `backend-handoff` worker operation.
+  - State machine, refusal codes and failure handling are in `docs/WC2TB_RECOVERY_RUNBOOK.md` §H.
+  - `backend-pause` stays rehearsal-only.
+- **Doctor (schema 2):** reports production health, package integrity, handoff capability, activation proof and return capability separately.
+  - A live read-only run against production (352e508) gave: production health PASS, package PASS, `handoff_capability` BLOCKED (not installed), `rollback_activation_proof` UNVERIFIED, `recovery_plan` BLOCKED.
+  - A package checksum is no longer presented as a recovery plan.
+- **Validation:** isolated tests only, on fake processes, test ports and private roots. They prove source behaviour, not production.
+- **Production was not modified:** still `352e508`, same backend pid and start time.
+- **Next:** the approval-ready window in runbook §I installs the handoff and runs the live round trip. Only that window can turn the proof to PASS.
+
+## 2026-11-21 — WC2TB production cutover, preservation and prevention (PRODUCTION VERIFIED at 352e508; prevention NOT deployed)
+
+**Production cutover (completed 2026-11-21, one maintenance window):**
+- Big Mac now runs `352e508ceebe950bac6b2115be6782564e7b2370` from `/Users/bigmac/Image_Gen-wc2tb-20261120`.
+- Process chain: launchd → signed EngineHost (SHA-256 `79faeb90…`) → `~/.dexdiffusion-engine/engine-worker.py` (SHA-256 `66b74780…`) in supervision mode `production` → pinned Node v26.13.1 (`266dec4d…`).
+- There is a single 31337 listener. The legacy `local.dexdiffusion.server` agent is disabled and not loaded.
+- The cutover first went live at `bc288c5`, the internal-fallback publication isolation. A real job was then refused with "Insufficient shared disk": 5,317.8 MiB was free against a flat 5,376 MiB reserve.
+- One bounded correction, `352e508`, sized the reserve to the requested batch: 1280 + 256 × images MiB, keeping 16 images for unknown or large work. It was activated through the owner restart.
+- Proven live with real inference:
+  - SD1.5 job `5c24d7d4-db9e-4311-8a2b-76fbc099a3c4`;
+  - LoRA job `6ac09c34-1a9c-4704-a5e8-4980b13607a8` (834/834 LoRA tensors applied);
+  - both images delivered to the MacBook library with matching SHA-256 and acknowledged;
+  - an idle owner-restart test.
+- Afterwards: 453 publications `CANONICAL_VERIFIED`, 0 pending. The 18 historical interrupted jobs are preserved and unmodified.
+- Evidence is kept outside the repository: Big Mac `~/wc2tb-cutover-20261121/` (script, log, pre-state hashes) and MacBook `~/Library/Application Support/DexDiffusion/cutover-20261121/macbook-pre/`.
+
+**Preservation (GitHub, non-forced pushes):**
+- `origin/codex/wc2tb-recovery-20261120` = `352e508`, the exact deployed source. It must not advance.
+- `origin/rollback/wc2tb-fallback-safe-v1-20261120` = `227d8ce`, rollback source `c7708e4` plus the package and the proven starter (SHA-256 `03bb7a28…`).
+- MacBook `~/Image_Gen` (main `39534f2`) still has its three controller files uncommitted: `bin/dexdiffusion`, `scripts/dexdiffusion-recovery-controller.py` and `operator-console/bin/canonical-publication-worker.js`. They are byte-identical to the published `352e508` blobs and classified IDENTICAL_AND_PUBLISHED. They are deliberately left uncommitted on main, which was not advanced.
+
+**Prevention (branch `codex/wc2tb-prevention-20261121`; source only, NOT deployed):**
+- Read-only release doctor, plus a fail-closed release gate in front of owner `--restart`.
+- Regression tests A–P, the DD-04 test fix, the installer argument-order fix, and a portable CI workflow.
+- See `docs/WC2TB_PREVENTION.md` and `docs/WC2TB_RECOVERY_RUNBOOK.md`.
+- A read-only run of the doctor against production in release-readiness mode for `352e508` returned PASS. At that moment 4,790 MiB was free, so batch capacity was 13 images: below the full 16-image reserve.
+
+**Limitations (open):**
+- Big Mac internal disk is the binding constraint; free space has fallen across the day.
+- There is no owner-sanctioned production pause, so a production rollback onto 31337 needs its own authorized plan.
+- The rollback has been proven only on a disposable port and root.
+- `main` has no branch protection.
+- CI cannot prove TCC, WC2TB, launchd, ancestry or MacBook facts.
+
+## 2026-11-20 — Gate E WC2TB source-only release readiness (PRODUCTION NOT VERIFIED)
+
+- **Candidate:** Big Mac worktree `/Users/bigmac/Image_Gen-wc2tb-20261120`, branch `codex/wc2tb-recovery-20261120`, received local source-only commit `d92ea651531a1117bc208870bcc6bb12cd54f159` above Gate E `c92bff7`. The sole new code change preserves the protected 38-line PNG-to-canonical-Library Edit import patch. Candidate `edit-ui.js` SHA-256 `44e7e73974642c1c71b57592c61a078b40415f0a931ab90bce1c0798030577e8` exactly matches dirty production; production checkout was not edited. MacBook isolated preparation worktree was fetched to the same commit, clean.
+- **Validation this pass:** Big Mac worker/supervisor tests 22/22 with existing MFLUX Python/Pillow; journal/recovery/publication tests 16/16. MacBook isolated browser canonical PNG 3D/World import PASS; dedicated Edit PNG import + open + byte-identical SHA-256 PASS. MacBook recovery/tunnel tests 19/19. Full Edit browser suite and a separate Gate C crash-suite rerun exceeded the remote 60-second execution limit and are NOT current-pass PASS; a positively identified test-only worker orphan was stopped. Previous Gate E crash/inference evidence remains in the recorded handoff and test artifacts, not a claim of a new run.
+- **Historical recovery:** Production still reported `CLEAR` with 18 `no-exact-owned-published-artifact` unresolved interrupted jobs, zero pending outbox, and no active heavy lease. Candidate code reports these as `UNRESOLVED` rather than `CLEAR`, while `INTERRUPTED` is a terminal job status for idle checks if no lease or uncertain ownership remains. Exact behavior against live external data remains untested and must not erase history.
+- **Rollback:** Both manifests in `/Users/bigmac/wc2tb-rollback-materials.JWlZ1U9p` passed SHA-256 validation. Standalone Node v26.13.1 SHA-256 `266dec4dce3a6cdcf5cdc38722a00cf5ae6a12cc51068d2a227655bbb75751ec`; extracted baseline `39534f2` includes preserved production UI bytes and pinned dependencies and passed source syntax checks. **Actual external-mode restart of this baseline under EngineHost TCC authorization has NOT been demonstrated.** The installed original worker has no Gate E supervisor; proving this would require a new controlled worker/service cycle, outside the current no-production-service-change authority.
+- **MacBook controller:** Candidate launcher/controller diff applies cleanly to MacBook main source. The existing LaunchAgent still points to `/Users/andrew/Image_Gen/bin/dexdiffusion recovery-tick`; the less disruptive approved-cutover path is to update those two source files at that existing path, leaving the LaunchAgent plist unchanged. Not installed or exercised live.
+- **Disk guard:** Big Mac internal free measured 7.174 GiB. Worker shared-disk admission for 16 images reserves 5.25 GiB, leaving 1.924 GiB margin at that moment; smaller batches have wider margin. The worker retention cap is 8 GiB, journal cap 2 GiB, with one-GiB floors. Admission is a snapshot, not a guarantee against other disk consumers. Recheck before any live window.
+- **Protected:** Production Big Mac checkout remains at `39534f2` with pre-existing dirty `edit-ui.js`; live backend `31337`, installed EngineHost and worker, models on WC2TB, all 18 historical records, MacBook canonical library, TCC/SMB/Tailscale/mount settings and other dirty worktrees untouched. No push, merge, restart, generation or production cutover authorized.
+- **Next gate:** No production cutover approval unless a production-representative isolated external-mode baseline rollback is demonstrated under the actual authorized EngineHost context, with verified restoration; then freeze source/backup/process hashes and recheck leases, disk and MacBook publication acceptance.
+
 ## 2026-11-12 — CLI storage status aligned with canonical MacBook image ownership (VERIFIED)
 
 - **Correction:** Removed the obsolete durable root (Big Mac): /Volumes/wc2tb/DexDiffusion/images output from bin/dexdiffusion status. It now labels /Users/andrew/images_made as MacBook canonical images and reads Big Mac mode, model/job-state root and working-image path from the actual /api/version.storage response. If the backend is unavailable these dynamic fields say unknown instead of falsely asserting a WC2TB image library.

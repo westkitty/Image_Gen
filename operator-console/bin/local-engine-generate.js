@@ -11,17 +11,22 @@ const { resolveStoragePaths, assertDataRootMount } = require('../storage-paths')
 const { createPublicationOutbox } = require('../publication-outbox');
 const { adapterId, resolveLoraRuntimePolicy } = require('../lora-runtime-policy');
 const { canonicalSampler } = require('../controlled-args');
+const { createTransferJournal, advanceTransfer, TransferPending, TransferBlocked } = require('../engine-transfer-journal');
 const workflow = path.resolve(__dirname, '../../sdcpp-workflow');
-function createJobImageStore(env = process.env, host = os.hostname()) {
+function createJobPublication(env = process.env, host = os.hostname()) {
   const paths = resolveStoragePaths(env);
-  const crossHostPublication = !!paths.dataRoot && host.toLowerCase() === 'bigmac';
+  const crossHostPublication = env.DEX_STORAGE_MODE !== 'internal-fallback' && !!paths.dataRoot && host.toLowerCase() === 'bigmac';
   if (crossHostPublication) assertDataRootMount(paths);
   const opts = { root: paths.imageRoot, runsRoot: paths.runsDir };
+  let outbox = null;
   if (crossHostPublication) {
-    const outbox = createPublicationOutbox(path.join(paths.stateDir, 'publications'));
+    outbox = createPublicationOutbox(path.join(paths.stateDir, 'publications'));
     opts.onPublished = entry => outbox.create(entry, path.join(paths.imageRoot, entry.image_id));
   }
-  return createImageStore(opts);
+  return { store: createImageStore(opts), outbox, imageRoot: paths.imageRoot };
+}
+function createJobImageStore(env = process.env, host = os.hostname()) {
+  return createJobPublication(env, host).store;
 }
 async function publishAfterAcknowledgment({ acknowledge, publish, isStopping }) {
   const cleanup = await acknowledge();
@@ -128,19 +133,40 @@ async function main() {
     settings, save_prompts: args['save-prompts'] === 'true', loras: loras.map(l => ({ id: adapterId(l.name), strength: l.weight })), ...(init || {}), ...(control || {}) };
   const runsRoot = process.env.DEX_RUNS_DIR ? path.resolve(process.env.DEX_RUNS_DIR) : path.join(workflow, 'runs');
   const runDir = path.join(runsRoot, runId);
+  // The durable transfer journal is internal (home volume), independent of DEX_DATA_ROOT,
+  // and validated before any run is announced; a failure here generates nothing.
+  const journal = createTransferJournal({ dataRoot: process.env.DEX_DATA_ROOT });
+  journal.assertSafeRoot();
+  const { store, outbox, imageRoot } = createJobPublication(process.env);
   fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
-  if (/^[a-f0-9-]{36}$/i.test(process.env.DEXDIFFUSION_JOB_ID || '')) {
-    fs.writeFileSync(path.join(runDir, 'job-owner.json'), JSON.stringify({ schema: 'dexdiffusion.run_owner.v1', job_id: process.env.DEXDIFFUSION_JOB_ID, run_id: runId }), { mode: 0o600, flag: 'wx' });
+  const jobId = /^[a-f0-9-]{36}$/i.test(process.env.DEXDIFFUSION_JOB_ID || '') ? process.env.DEXDIFFUSION_JOB_ID : null;
+  if (jobId) {
+    fs.writeFileSync(path.join(runDir, 'job-owner.json'), JSON.stringify({ schema: 'dexdiffusion.run_owner.v1', job_id: jobId, run_id: runId }), { mode: 0o600, flag: 'wx' });
   }
   saveOwner(runId, token);
+  const runFiles = Array.from({ length: count }, (_, i) => 'controlled-' + args.target + (count > 1 ? '-b' + String(i).padStart(2, '0') : '') + '.png');
+  // Journaled before generate: a crash at any later point leaves a recoverable, owned entry.
+  journal.begin({ runId, jobId, runDir, count, runFiles, meta: { target: args.target, backend: spec.backend || 'sdcpp', width: req.width,
+    height: req.height, steps: req.steps, seed, sampler: req.sampler, scheduler: req.scheduler, cfg_scale: req.cfg, loras: req.loras,
+    native_batch_count: count, save_prompts: req.save_prompts, ...(init ? { operation: 'img2img', strength: init.strength } : {}),
+    ...(control ? { controlnet: { model: control.control.id, strength: control.control.strength } } : {}) } });
+  const release = journal.lock(runId);
   console.log('SDCPP_RUN_ID: ' + runId);
   const owned = (op, extra={}) => request({ op, run_id: runId, token, ...extra });
   let stopping = false;
-  const stop = () => { stopping = true; owned('cancel').catch(e => console.error(e.message)); };
+  const stop = () => { stopping = true; journal.requestCancel(runId); owned('cancel').catch(e => console.error(e.message)); };
   for (const sig of ['SIGTERM','SIGINT','SIGHUP']) process.on(sig, stop);
-  let stagingDir;
+  const advance = extras => advanceTransfer(runId, { journal, owned, store, runsRoot, outbox, imageRoot, isStopping: () => stopping, manifestExtras: extras });
   try {
-    let state = await request(req);
+    let state;
+    try { state = await request(req); }
+    catch (e) {
+      // Ask the worker whether the job exists: a definite "unknown" removes the entry, anything else keeps it.
+      const outcome = await advance({}).catch(err => ({ state: 'pending', reason: err.reason }));
+      if (outcome.state === 'no-output') throw e;
+      throw new TransferPending('generate-unconfirmed', e.message);
+    }
+    journal.update(runId, { generate_confirmed: true });
     const deadline = Date.now() + 1850 * 1000;
     while (!['complete','failed','cancelled'].includes(state.status)) {
       if (Date.now() > deadline) { await owned('cancel'); throw new Error('Engine exceeded its bounded deadline'); }
@@ -155,47 +181,28 @@ async function main() {
         reasonPrinted = true;
         console.log('First failed gate: ' + failure.gate + '\nENGINE_FAILURE_REASON: ' + failure.reason);
       }
+      await advance({});
       throw new Error(state.error || state.status);
     }
-    const store = createJobImageStore(process.env);
-    const downloads=[];
-    stagingDir=fs.mkdtempSync(path.join(os.tmpdir(),'dex-engine-transfer-'));
-    const logicalOutputs=[];
-    for (let index=0;index<count;index++) {
-      const result = await owned('result',count>1?{index}:{});
-      const data = Buffer.from(result.png, 'base64');
-      if (crypto.createHash('sha256').update(data).digest('hex') !== result.sha256) throw new Error('Worker image checksum mismatch');
-      if (stopping) throw new Error('cancelled before publication');
-      const temp = path.join(stagingDir, 'output-'+index+'.png');
-      fs.writeFileSync(temp, data, { mode: 0o600, flag: 'wx' });
-      const runFile='controlled-'+args.target+(count>1?'-b'+String(index).padStart(2,'0'):'')+'.png';
-      downloads.push({src:temp,runDir,runId,runFile,seed:seed+index});
-      logicalOutputs.push(path.join(runDir,runFile));
-    }
-    if (stopping) throw new Error('cancelled before publication');
-    // Downloads are already checksum-verified. Finish fallible remote cleanup
-    // before committing canonical images; no network await follows publication.
-    const entries=await publishAfterAcknowledgment({
-      acknowledge: () => owned('ack'),
-      publish: () => store.publishFiles(downloads,runDir),
-      isStopping: () => stopping,
-    });
-    const entry=entries[0];
-    const manifestPath = path.join(runDir, 'controlled-manifest.json');
-    const logicalOutput = logicalOutputs[0];
-    const manifest = { schema: 'dexdiffusion.local-engine.v1', run_id: runId, status: 'PASS', controlledTarget: args.target,
-      backend: spec.backend || 'sdcpp', controlledOutputImage: logicalOutput, image_id: entry.image_id,
-      local_png: logicalOutput, width: req.width, height: req.height, steps: req.steps, seed_label: String(seed),
-      sampler:req.sampler,scheduler:req.scheduler,cfg_scale:req.cfg,loras:req.loras,
-      prompt: req.save_prompts ? prompt : '[REDACTED]', runtime_controlled_proven: true, ...(init ? { operation: 'img2img', strength: init.strength } : {}), ...(control ? { controlnet: { model: control.control.id, strength: control.control.strength } } : {}), worker: state, native_batch_count:count, images:entries };
-    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
-    for (const output of count>1?logicalOutputs:[]) console.log('CONTROLLED_BATCH_IMAGE: '+output);
-    console.log('SDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: ' + args.target + '\nCONTROLLED_OUTPUT_IMAGE: ' + logicalOutput + '\nCONTROLLED_MANIFEST: ' + manifestPath);
+    // Order: durable journal bytes -> ACK -> canonical publication -> manifest -> journal removal.
+    const outcome = await advance({ prompt: req.save_prompts ? prompt : '[REDACTED]', worker: state });
+    if (outcome.state === 'discarded') throw new Error('cancelled before publication');
+    if (outcome.state !== 'complete') throw new TransferPending(outcome.reason || 'transfer-incomplete');
+    for (const output of count>1?outcome.logicalOutputs:[]) console.log('CONTROLLED_BATCH_IMAGE: '+output);
+    console.log('SDCPP_REMOTE_CLEANUP: OK\nCONTROLLED_TARGET: ' + args.target + '\nCONTROLLED_OUTPUT_IMAGE: ' + outcome.logicalOutputs[0] + '\nCONTROLLED_MANIFEST: ' + outcome.manifestPath);
   } catch (e) {
-    try { await owned('cancel'); } catch (_) {}
+    let pending = null;
+    try { pending = journal.read(runId); } catch (_) { pending = { state: 'unreadable' }; }
+    if (!pending || pending.state === 'requested') { try { await owned('cancel'); } catch (_) {} }
+    if (pending) {
+      // Never reported as published and never silently dropped: startup reconciliation owns it now.
+      reasonPrinted = true;
+      const reason = (e instanceof TransferPending || e instanceof TransferBlocked) ? e.reason : 'engine-transfer-pending';
+      console.log('ENGINE_TRANSFER_PENDING: ' + runId + '\nFirst failed gate: engine-transfer-pending\nENGINE_FAILURE_REASON: result retained for recovery (' + reason + ')');
+    }
     throw e;
   } finally {
-    if (stagingDir) fs.rmSync(stagingDir,{recursive:true,force:true});
+    release();
   }
 }
 if (require.main === module) main().catch(e => {
@@ -204,4 +211,4 @@ if (require.main === module) main().catch(e => {
   if (!reasonPrinted) { const failure = classifyEngineError(e); console.log('First failed gate: ' + failure.gate + '\nENGINE_FAILURE_REASON: ' + failure.reason); }
   console.error('Local engine generation failed: ' + e.message); process.exitCode = 1;
 });
-module.exports = { parse, publishAfterAcknowledgment, classifyEngineError, createJobImageStore };
+module.exports = { parse, publishAfterAcknowledgment, classifyEngineError, createJobImageStore, createJobPublication };

@@ -1,0 +1,81 @@
+name: WC2TB prevention (portable checks)
+
+# Portable checks only. CI has no WC2TB, TCC, credentials, models, EngineHost
+# or MacBook, so it cannot prove anything about the live deployment; see
+# docs/WC2TB_PREVENTION.md ("What CI cannot prove") and run the hardware-bound
+# read-only check on Big Mac with: bin/dexdiffusion release-doctor
+on:
+  push:
+    branches: ['codex/wc2tb-prevention-*', 'codex/wc2tb-rollback-closure-*']
+  # PRs into main AND into the prevention integration branch (PR #28 targets it).
+  # Push runs test the branch head; PR runs test the merge with the base. The
+  # concurrency group below cancels superseded runs of the same ref.
+  pull_request:
+    branches: [main, 'codex/wc2tb-prevention-*']
+    paths:
+      - '.github/workflows/wc2tb-prevention.yml'
+      - 'bin/dexdiffusion'
+      - 'scripts/**'
+      - 'operator-console/backend-quiescence.js'
+      - 'operator-console/server.js'
+      - 'operator-console/tests/wc2tb-prevention.test.js'
+      - 'sdcpp-workflow/worker/**'
+      - 'rollback-packages/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wc2tb-prevention-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable:
+    name: portable (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: current
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test-only Python prerequisite (Pillow)
+        run: python -m pip install --disable-pip-version-check pillow
+      - name: Test prerequisites
+        run: python scripts/check-test-prerequisites.py
+      - name: Syntax
+        run: |
+          for f in bin/dexdiffusion scripts/*.sh; do bash -n "$f"; done
+          python -m py_compile scripts/wc2tb-release-doctor.py scripts/check-test-prerequisites.py \
+            scripts/dexdiffusion-recovery-controller.py sdcpp-workflow/worker/backend-supervisor.py \
+            sdcpp-workflow/worker/engine-worker.py
+          node --check operator-console/server.js
+          node --check operator-console/backend-quiescence.js
+      - name: Release doctor fixtures, disk boundary and negative controls
+        run: python -m unittest discover -s scripts/test -p 'test_*.py' -v
+      - name: Owner handoff state machine and supervisor (isolated ports, fake processes)
+        working-directory: sdcpp-workflow/worker
+        run: python -m unittest -v test_backend_handoff test_backend_supervisor
+      - name: Install console dependencies from the lockfile
+        working-directory: operator-console
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Preflight gate, ownership contract and disk admission
+        working-directory: operator-console
+        run: node --test --test-force-exit --test-concurrency=1 tests/wc2tb-prevention.test.js tests/backend-quiescence.test.js
+      - name: Publication isolation and legacy-stop contract (macOS shell semantics)
+        if: runner.os == 'macOS'
+        working-directory: operator-console
+        env:
+          DEX_IMAGE_VALIDATION_PYTHON: python
+          DEX_GATEC_PYTHON: python
+        run: >-
+          node --test --test-force-exit --test-concurrency=1
+          tests/fallback-publication-runtime.test.js tests/internal-fallback.test.js tests/dock-tunnel-recovery.test.js

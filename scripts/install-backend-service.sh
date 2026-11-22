@@ -2,6 +2,18 @@
 # Install/load the TCC-compatible user LaunchAgent, or the explicitly requested system LaunchDaemon.
 set -euo pipefail
 
+# Parse arguments before any account lookup or launchd query: an unsupported
+# argument (for example "status") must exit without touching anything.
+ENABLE_AFTER_TCC=0
+USER_SESSION=0
+case "${1:-}" in
+  "") ;;
+  --enable-after-tcc) ENABLE_AFTER_TCC=1 ;;
+  --user-session) USER_SESSION=1 ;;
+  --user-session-enable-after-tcc) USER_SESSION=1; ENABLE_AFTER_TCC=1 ;;
+  *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
+esac
+
 ROOT=/Users/bigmac/Image_Gen
 LABEL=local.dexdiffusion.server
 SOURCE="$ROOT/scripts/$LABEL.plist"
@@ -11,8 +23,6 @@ USER_UID="$(/usr/bin/id -u bigmac)"
 AGENT_DOMAIN="user/$USER_UID"
 AGENT_DEST="$USER_HOME/Library/LaunchAgents/$LABEL.plist"
 AGENT_SOURCE="$ROOT/scripts/$LABEL.agent-legacy.plist"
-ENABLE_AFTER_TCC=0
-USER_SESSION=0
 
 recovery_remaining() {
   local now="$(/bin/date +%s)"
@@ -24,13 +34,6 @@ recovery_remaining() {
   fi
 }
 
-case "${1:-}" in
-  "") ;;
-  --enable-after-tcc) ENABLE_AFTER_TCC=1 ;;
-  --user-session) USER_SESSION=1 ;;
-  --user-session-enable-after-tcc) USER_SESSION=1; ENABLE_AFTER_TCC=1 ;;
-  *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
-esac
 
 if [[ "$USER_SESSION" == 1 ]]; then
   [[ "$EUID" -ne 0 && "$(/usr/bin/id -un)" == bigmac ]] || {

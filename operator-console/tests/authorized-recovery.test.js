@@ -23,15 +23,15 @@ test('authorized on-demand recovery protects identity, jobs, listener and app da
   assert.ok(!recovery.includes('0.0.0.0:31337'));
 });
 
-test('MacBook images_made is the only canonical image destination in both modes', () => {
+test('MacBook is canonical for external mode, while internal fallback cannot trigger cross-host publication', () => {
   const server = read('operator-console/server.js');
   const native = read('operator-console/bin/canonicalize-image.js');
   const engine = read('operator-console/bin/local-engine-generate.js');
   const runner = read('scripts/run-backend-service.sh');
   assert.ok(server.includes("canonicalImages: '/Users/andrew/images_made'"));
-  assert.ok(server.includes("const crossHostPublicationEnabled = !!STORAGE_PATHS.dataRoot"));
-  assert.ok(native.includes('const crossHostPublication = !!paths.dataRoot'));
-  assert.ok(engine.includes('const crossHostPublication = !!paths.dataRoot'));
+  assert.ok(server.includes("const crossHostPublicationEnabled = !IS_INTERNAL_FALLBACK && !!STORAGE_PATHS.dataRoot"));
+  assert.ok(native.includes("const crossHostPublication = process.env.DEX_STORAGE_MODE !== 'internal-fallback' && !!paths.dataRoot"));
+  assert.ok(engine.includes("const crossHostPublication = env.DEX_STORAGE_MODE !== 'internal-fallback' && !!paths.dataRoot"));
   assert.ok(runner.includes('IMAGE_STAGING="/Users/bigmac/DexDiffusion-PublicationStaging"'));
   assert.ok(runner.includes('export DEX_IMAGES_ROOT_OVERRIDE="$IMAGE_STAGING"'));
   assert.ok(runner.includes('publication staging is not on Big Mac internal storage'));
