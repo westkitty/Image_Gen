@@ -42,7 +42,7 @@ function createCollectionStore(filePath) {
     }
   }
 
-  function save() {
+  function save(nextCollections = collections, failOnError = false) {
     if (!filePath) return;
     try {
       const dir = path.dirname(filePath);
@@ -51,12 +51,16 @@ function createCollectionStore(filePath) {
       const payload = {
         version: SCHEMA_VERSION,
         updatedAt: Date.now(),
-        collections: Array.from(collections.values())
+        collections: Array.from(nextCollections.values())
       };
       fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), 'utf8');
       fs.renameSync(tmp, filePath);
     } catch (err) {
       console.error('Failed to save collections:', err.message);
+      if (failOnError) {
+        err.collectionSaveFailed = true;
+        throw err;
+      }
     }
   }
 
@@ -85,8 +89,10 @@ function createCollectionStore(filePath) {
       createdAt: now,
       updatedAt: now
     };
-    collections.set(id, col);
-    save();
+    const nextCollections = new Map(collections);
+    nextCollections.set(id, col);
+    save(nextCollections, true);
+    collections = nextCollections;
     return col;
   }
 

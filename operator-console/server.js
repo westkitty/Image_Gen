@@ -5911,6 +5911,7 @@ app.post('/api/collections', (req, res) => {
     const col = collectionStore.create(req.body || {});
     res.json({ ok: true, collection: col });
   } catch (err) {
+    if (err.collectionSaveFailed) return res.status(500).json({ error: 'Collection could not be saved' });
     res.status(400).json({ error: err.message });
   }
 });

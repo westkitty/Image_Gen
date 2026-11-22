@@ -209,3 +209,38 @@ jobs:
             /tmp/dex-static-sweep-${{ github.run_id }}.json
           if-no-files-found: warn
           retention-days: 7
+  collections-persist-001:
+    name: PERSIST-001 Collections create durability (isolated, strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify PERSIST-001 and healthy creation (private output)
+        working-directory: operator-console
+        run: |
+          node <<'NODE'
+          'use strict';
+          const { spawnSync } = require('node:child_process');
+          const child = spawnSync(process.execPath, [
+            '--test', '--test-reporter=tap', 'tests/collections-persist-001.test.js'
+          ], { encoding: 'utf8', timeout: 60000, maxBuffer: 4 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'] });
+          // Only synthetic PASS/FAIL counts leave this job; never print raw test output.
+          const output = (child.stdout || '') + '\n' + (child.stderr || '');
+          const count = key => {
+            const m = new RegExp('^# ' + key + ' (\\d+)\\r?$', 'm').exec(output);
+            return m ? Number(m[1]) : null;
+          };
+          const total = count('tests'), passed = count('pass');
+          const failed = count('fail'), skipped = count('skipped');
+          const ok = child.status === 0 && !child.error && !child.signal &&
+            total === 3 && passed === 3 && failed === 0 && skipped === 0;
+          console.log('PERSIST_001 ' + (ok ? 'PASS' : 'FAIL') +
+            ' tests=' + total + ' passed=' + passed + ' failed=' + failed + ' skipped=' + skipped);
+          process.exitCode = ok ? 0 : 1;
+          NODE
