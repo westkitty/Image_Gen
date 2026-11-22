@@ -32,6 +32,8 @@ DEPLOYED = HOME + '/Image_Gen-wc2tb-20261120'
 ENGINE = HOME + '/.dexdiffusion-engine'
 RUNTIME = HOME + '/Library/Application Support/DexDiffusion/wc2tb-recovery-runtime'
 ROLLBACK = HOME + '/Library/Application Support/DexDiffusion/wc2tb-fallback-rollback-v1'
+# Drain-capable fallback the owner handoff starts (source branch rollback/wc2tb-fallback-drain-v2-20261121).
+HANDOFF_PACKAGE = HOME + '/Library/Application Support/DexDiffusion/wc2tb-fallback-rollback-v2'
 BASE = 'http://127.0.0.1:31337'
 PINS = {
     'node_path': RUNTIME + '/node/bin/node',
@@ -47,8 +49,26 @@ PINS = {
     'rollback_starter_sha256': '03bb7a28a8849fcf28736ceab2f422853e361559eb09ef7ee5bd1cf60c364ce2',
     'validation_python': HOME + '/Library/Caches/DexDiffusion/mflux/venv/bin/python',
     'required_deps': ['express', 'three', '@sparkjsdev/spark'],
+    'handoff_package_commit': '3f0abf5d0bd9c1d3777a9abbf46181ce2e040350',
+    'handoff_protocol': 2,
 }
 STATUSES = ('PASS', 'BLOCKED', 'UNVERIFIED')
+HANDOFF_SUPERVISOR_MARK = 'class HandoffController'
+HANDOFF_WORKER_MARK = "req.get('op') == 'backend-handoff'"
+SECTIONS = {
+    'production_health': ('platform', 'node', 'dependencies', 'backend_revision', 'enginehost_worker', 'process_ancestry',
+                          'restart_authority', 'legacy_agent', 'wc2tb_access', 'disk_reserve', 'publication_state',
+                          'macbook_ack', 'image_validation_python'),
+    'fallback_package_integrity': ('rollback',),
+    'handoff_capability': ('handoff_capability',),
+    'rollback_activation_proof': ('rollback_activation_proof',),
+    'return_to_external_capability': ('return_to_external',),
+    'recovery_plan': ('recovery_plan',),
+}
+# The only journal shape that proves a live rollback: one owner drill, in this order.
+PROOF_SEQUENCE = ('QUIESCING', 'BACKEND_RELEASED', 'STARTING_FALLBACK', 'RUNNING_FALLBACK',
+                  'QUIESCING_FALLBACK', 'FALLBACK_RELEASED', 'STARTING_EXTERNAL', 'RUNNING_EXTERNAL')
+PROOF_BINDING = ('host', 'revision', 'worker_sha256', 'supervisor_sha256')
 
 
 def disk_reserve_bytes(images):
@@ -98,7 +118,7 @@ def worker_socket(op):
             sock.settimeout(2)
             sock.connect(ENGINE + '/engine.sock')
             sock.sendall((json.dumps({'op': op}) + '\n').encode())
-            return json.loads(sock.makefile().readline(4096))
+            return json.loads(sock.makefile().readline(1 << 16))
     except (OSError, ValueError):
         return None
 
@@ -229,7 +249,102 @@ def collect(target_worktree=None):
     py = PINS['validation_python']
     rc, _ = run([py, '-c', 'import PIL'], timeout=10) if os.access(py, os.X_OK) else (None, '')
     facts['validation_python'] = {'path': py, 'pillow': (rc == 0) if rc is not None else False}
+    facts['handoff'] = handoff_facts(DEPLOYED, ENGINE + '/engine-worker.py', ENGINE + '/backend-handoff.json', target_worktree,
+                                     live={'available': status is not None, 'handoff': (status or {}).get('handoff')},
+                                     package=HANDOFF_PACKAGE)
     return facts
+
+
+def read_text(path, limit=1 << 20):
+    try:
+        with open(path, encoding='utf-8') as handle:
+            return handle.read(limit)
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def supports_handoff(supervisor_source, worker_source):
+    if supervisor_source is None or worker_source is None:
+        return None
+    return HANDOFF_SUPERVISOR_MARK in supervisor_source and HANDOFF_WORKER_MARK in worker_source
+
+
+def handoff_facts(deployed, installed_worker, journal_path, target_worktree=None, live=None, package=None):
+    """Read-only. Source markers are informational only: capability is judged from the
+    running worker's own backend-status (`live`), which reports the protocol and the
+    digest of the supervisor that process actually loaded."""
+    supervisor = deployed + '/sdcpp-workflow/worker/backend-supervisor.py'
+    facts = {'installed_supports': supports_handoff(read_text(supervisor), read_text(installed_worker)),
+             'deployed_supervisor_sha256': sha256(supervisor), 'live': live}
+    if package:
+        commit = read_text(package + '/SOURCE_COMMIT', 64)
+        facts['package_commit'] = commit.strip() if commit else None
+    if target_worktree:
+        facts['target_supports'] = supports_handoff(
+            read_text(os.path.join(target_worktree, 'sdcpp-workflow/worker/backend-supervisor.py')),
+            read_text(os.path.join(target_worktree, 'sdcpp-workflow/worker/engine-worker.py')))
+    raw = read_text(journal_path)
+    if raw is None:
+        facts['journal'] = None if os.path.exists(journal_path) else {'state': 'ABSENT', 'history': []}
+    else:
+        try:
+            journal = json.loads(raw)
+            if not isinstance(journal, dict):
+                raise ValueError('journal is not an object')
+            keep = ('seq', 'state', 'mode', 'schema', 'drill_id', 'transition_id') + PROOF_BINDING
+            facts['journal'] = {'state': journal.get('state'), 'failure': journal.get('failure'), 'seq': journal.get('seq'),
+                                'history': [dict({k: h.get(k) for k in keep},
+                                                 authorized=(h.get('authorized') or {}).get('target'))
+                                            for h in journal.get('history') or [] if isinstance(h, dict)]}
+        except ValueError:
+            facts['journal'] = {'state': 'CORRUPT', 'history': []}
+    return facts
+
+
+def proof_binding(facts):
+    """The identity a proof must belong to: this host, the deployed revision, the
+    installed worker and the supervisor the running worker loaded."""
+    h = facts.get('handoff') or {}
+    live = (h.get('live') or {}).get('handoff') or {}
+    deployed_supervisor = h.get('deployed_supervisor_sha256')
+    return {'host': (facts.get('platform') or {}).get('host'),
+            'revision': (facts.get('revision') or {}).get('head'),
+            'worker_sha256': (facts.get('enginehost') or {}).get('worker_sha256'),
+            'supervisor_sha256': deployed_supervisor if live.get('supervisor_sha256') == deployed_supervisor else None}
+
+
+def production_round_trip_proven(journal, binding):
+    """(proven, reason). PASS evidence only: the latest complete owner drill whose eight
+    events are contiguous, production-mode, one drill ID with one fallback and one
+    return transition, owner-authorized in both directions, and bound to `binding`."""
+    missing = [k for k in PROOF_BINDING if not binding.get(k)]
+    if missing:
+        return False, 'current identity unverifiable (%s)' % ', '.join(missing)
+    history = (journal or {}).get('history') or []
+    reason = 'no production-to-fallback-to-production transition recorded'
+    for start in range(len(history) - len(PROOF_SEQUENCE), -1, -1):
+        window = history[start:start + len(PROOF_SEQUENCE)]
+        if tuple(e.get('state') for e in window) != PROOF_SEQUENCE:
+            continue
+        seqs = [e.get('seq') for e in window]
+        drills = {e.get('drill_id') for e in window}
+        legs = ({e.get('transition_id') for e in window[:4]}, {e.get('transition_id') for e in window[4:]})
+        if any(e.get('schema') != 2 or e.get('mode') != 'production' for e in window):
+            reason = 'round trip recorded outside production mode or in a pre-binding journal schema'
+        elif not all(isinstance(x, int) for x in seqs) or seqs != list(range(seqs[0], seqs[0] + len(seqs))):
+            reason = 'round trip events are not contiguous (interrupted, reset or merged)'
+        elif len(drills) != 1 or None in drills:
+            reason = 'events belong to different drills'
+        elif any(len(leg) != 1 or None in leg for leg in legs) or legs[0] == legs[1]:
+            reason = 'fallback and return are not two distinct owner transitions'
+        elif window[0].get('authorized') != 'fallback' or window[4].get('authorized') != 'external':
+            reason = 'fallback entry or return was not owner-authorized'
+        else:
+            stale = [k for k in PROOF_BINDING if any(e.get(k) != binding[k] for e in window)]
+            if not stale:
+                return True, 'drill %s on %s at %s' % (window[0]['drill_id'][:12], binding['host'], binding['revision'][:12])
+            reason = 'round trip belongs to a different %s than the running system' % '/'.join(stale)
+    return False, reason
 
 
 # ----------------------------------------------------------------- evaluation
@@ -393,7 +508,46 @@ def evaluate(facts, release=False, expect_revision=None):
         checks.append(check('rollback', 'BLOCKED', 'versioned rollback v1 package missing or altered'))
     else:
         dep = eval_deps('rollback', rb.get('deps'))
-        checks.append(check('rollback', dep['status'], 'rollback v1 c7708e4 available; ' + dep['detail']))
+        checks.append(check('rollback', dep['status'], 'rollback v1 c7708e4 package intact; ' + dep['detail']
+                            + ' (package integrity only: not proof that a production rollback works)'))
+
+    h = facts.get('handoff')
+    journal = (h or {}).get('journal')
+    live = (h or {}).get('live')
+    lh = (live or {}).get('handoff')
+    proven, proof_reason = production_round_trip_proven(journal, proof_binding(facts))
+    if not h or journal is None:
+        capability = check('handoff_capability', 'UNVERIFIED', 'deployed supervisor or handoff journal unreadable')
+    elif not live or not live.get('available'):
+        capability = check('handoff_capability', 'UNVERIFIED', 'running worker backend-status unavailable; '
+                           'source files are not proof that the running worker supports the handoff')
+    elif not isinstance(lh, dict):
+        capability = check('handoff_capability', 'BLOCKED', 'running EngineHost worker reports no owner-authorized handoff '
+                           '(backend-pause is rehearsal-only): no owner path can move port 31337 to the fallback')
+    elif lh.get('protocol') != PINS['handoff_protocol'] or lh.get('mode') != 'production':
+        capability = check('handoff_capability', 'BLOCKED', 'running worker handoff protocol %s mode %s, expected %s production'
+                           % (lh.get('protocol'), lh.get('mode'), PINS['handoff_protocol']))
+    elif not h.get('deployed_supervisor_sha256') or lh.get('supervisor_sha256') != h.get('deployed_supervisor_sha256'):
+        capability = check('handoff_capability', 'BLOCKED', 'running worker loaded a supervisor that differs from the deployed revision')
+    elif h.get('package_commit') != PINS['handoff_package_commit']:
+        capability = check('handoff_capability', 'BLOCKED', 'drain-capable fallback package %s is not installed (found %s)'
+                           % (PINS['handoff_package_commit'][:12], h.get('package_commit')))
+    elif journal.get('state') not in ('ABSENT', 'RUNNING_EXTERNAL'):
+        capability = check('handoff_capability', 'BLOCKED', 'handoff journal is %s (%s)' % (journal.get('state'), journal.get('failure')))
+    else:
+        capability = check('handoff_capability', 'PASS', 'running worker supports owner handoff protocol %s; journal %s'
+                           % (lh.get('protocol'), journal.get('state')))
+    checks.append(capability)
+    if proven:
+        checks.append(check('rollback_activation_proof', 'PASS', 'revision-bound production round trip: ' + proof_reason))
+    else:
+        checks.append(check('rollback_activation_proof', 'UNVERIFIED', proof_reason + '; isolated source tests are not proof'))
+    if capability['status'] != 'PASS':
+        checks.append(check('return_to_external', capability['status'], 'return path depends on the owner handoff: ' + capability['detail']))
+    elif proven:
+        checks.append(check('return_to_external', 'PASS', 'owner return to external supervision recorded for this revision'))
+    else:
+        checks.append(check('return_to_external', 'UNVERIFIED', 'owner return implemented but never demonstrated for this revision'))
 
     v = facts.get('validation_python')
     if not v:
@@ -417,11 +571,24 @@ def evaluate(facts, release=False, expect_revision=None):
             checks.append(check('release_target', 'PASS', 'target worktree at %s and clean' % expect_revision[:12]))
         if facts.get('target'):
             checks.append(eval_deps('release_target_dependencies', facts['target'].get('deps')))
+        if capability['status'] == 'PASS' and proven:
+            checks.append(check('recovery_plan', 'PASS', 'owner handoff installed and production round trip demonstrated'))
+        elif capability['status'] in ('PASS', 'UNVERIFIED') or (h or {}).get('target_supports'):
+            checks.append(check('recovery_plan', 'UNVERIFIED', 'owner handoff is unproven (not installed, unverifiable, or never '
+                                'demonstrated live): not yet a proven recovery plan'))
+        else:
+            checks.append(check('recovery_plan', 'BLOCKED', 'no owner-authorized production rollback path: a package checksum '
+                                'is not a recovery plan'))
 
     statuses = {c['status'] for c in checks}
     verdict = 'BLOCKED' if 'BLOCKED' in statuses else 'UNVERIFIED' if 'UNVERIFIED' in statuses else 'PASS'
-    return {'tool': 'wc2tb-release-doctor', 'schema': 1,
-            'mode': 'release-readiness' if release else 'inspect', 'verdict': verdict, 'checks': checks}
+    by_id = {c['id']: c['status'] for c in checks}
+    sections = {}
+    for name, members in SECTIONS.items():
+        found = {by_id[m] for m in members if m in by_id}
+        sections[name] = 'BLOCKED' if 'BLOCKED' in found else 'UNVERIFIED' if 'UNVERIFIED' in found or not found else 'PASS'
+    return {'tool': 'wc2tb-release-doctor', 'schema': 2, 'mode': 'release-readiness' if release else 'inspect',
+            'verdict': verdict, 'sections': sections, 'checks': checks}
 
 
 def main(argv=None):

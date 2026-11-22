@@ -1,5 +1,53 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## 2026-11-21 (review correction) — PR #28 handoff hardened (SOURCE ONLY; not deployed; live drill pending)
+
+A read-only review of PR #28 found five release blockers. All five are corrected on `codex/wc2tb-rollback-closure-20261121`. The full contract is in `docs/WC2TB_RECOVERY_RUNBOOK.md` §H.
+
+1. **Drain-sealed fallback return.**
+   - Every owner stop, external or fallback, now uses the same handshake: drain fence (503), a fresh `<owned pid> drained` seal, an idle worker, session and process-group ownership, and the sole listener re-checked immediately before SIGTERM.
+   - A timeout withdraws the drain and never signals.
+   - The direct-SIGTERM fallback stop is gone.
+   - The v1 fallback (`c7708e4`) cannot seal. The smallest compatible change is **v2**: commit `3f0abf5` on the new branch `rollback/wc2tb-fallback-drain-v2-20261121`, which is v1 plus the production quiescence module, verbatim. The handoff now targets v2 and refuses v1 with `FALLBACK_DRAIN`.
+2. **External startup deadline.**
+   - The deadline is enforced whether or not a child exists.
+   - Readiness requires the owned pid's fresh idle seal, `/api/version` identity and the sole listener.
+   - On timeout: `HANDOFF_FAILED`, the child is kept as evidence, nothing restarts, and nothing is signalled.
+3. **Fallback validated before production stops.**
+   - Checked before release: package, Node, publication isolation, the trusted v2 manifest (244 first-party files; digest pinned in the supervisor), the private fallback root (owner, mode, symlinks, device), the log destination and free disk.
+   - Directories are prepared while external still serves, then re-validated.
+   - Mutable prerequisites are re-checked again immediately before release.
+4. **Revision-bound proof.**
+   - Capability comes from the running worker's own `backend-status`: protocol 2, plus the digest of the supervisor it loaded.
+   - Proof needs one contiguous, owner-authorized, schema-2 production drill, bound to the host, deployed HEAD, installed worker and loaded supervisor.
+5. **CI.** It now also runs for PRs into `codex/wc2tb-prevention-*`.
+
+**Validation (isolated only).**
+- Handoff suite: 34 tests. Supervisor suite: 9. Doctor: 21.
+- v2 fallback drain test against the real backend on Big Mac: 2/2, plus v1 regressions on v2: 7/7.
+- These are source evidence, not production evidence.
+
+**Production.** Unchanged: `352e508`, the same backend pid, the frozen branch untouched. No v2 package is installed.
+
+**Known limitations.**
+- The live round trip remains UNVERIFIED.
+- The v2 package must be built, and the handoff installed, in an approved window (runbook §I).
+
+## 2026-11-21 (later) — Owner-authorized fallback handoff (SOURCE ONLY; live drill pending)
+
+- **Gap closed in source:** the EngineHost worker's `backend-pause` is rehearsal-only, so the corrected v1 internal-fallback package (`c7708e4`) could not take over 31337.
+- **Fix:** branch `codex/wc2tb-rollback-closure-20261121`, built on the prevention branch `603c382`, adds a journaled handoff to the existing Supervisor.
+  - The Supervisor stays the only backend owner.
+  - Interface: `request-worker-backend.sh --handoff-fallback` and `--return-external`, with a strict `backend-handoff` worker operation.
+  - State machine, refusal codes and failure handling are in `docs/WC2TB_RECOVERY_RUNBOOK.md` §H.
+  - `backend-pause` stays rehearsal-only.
+- **Doctor (schema 2):** reports production health, package integrity, handoff capability, activation proof and return capability separately.
+  - A live read-only run against production (352e508) gave: production health PASS, package PASS, `handoff_capability` BLOCKED (not installed), `rollback_activation_proof` UNVERIFIED, `recovery_plan` BLOCKED.
+  - A package checksum is no longer presented as a recovery plan.
+- **Validation:** isolated tests only, on fake processes, test ports and private roots. They prove source behaviour, not production.
+- **Production was not modified:** still `352e508`, same backend pid and start time.
+- **Next:** the approval-ready window in runbook §I installs the handoff and runs the live round trip. Only that window can turn the proof to PASS.
+
 ## 2026-11-21 — WC2TB production cutover, preservation and prevention (PRODUCTION VERIFIED at 352e508; prevention NOT deployed)
 
 **Production cutover (completed 2026-11-21, one maintenance window):**

@@ -34,9 +34,27 @@ bin/dexdiffusion release-readiness --expect-revision <full sha> [--target-worktr
 | disk_reserve | free bytes on publication staging, same device as home | below the one-image reserve (1536 MiB) |
 | publication_state | `/api/jobs`, `/api/resources` | release mode: active job, lease or quarantine |
 | macbook_ack | `/api/publications/status` | publication disabled; release mode: pending > 0 |
-| rollback | v1 package `SOURCE_COMMIT` c7708e4, starter SHA-256 `03bb7a28…`, deps | missing or altered |
+| rollback | v1 package `SOURCE_COMMIT` c7708e4, starter SHA-256 `03bb7a28…`, deps | missing or altered (PASS means package integrity **only**) |
+| handoff_capability | the **running** worker's `backend-status`: handoff protocol 2, mode `production`, loaded-supervisor SHA-256 equal to the deployed file; v2 package `SOURCE_COMMIT` `3f0abf5`; journal `~/.dexdiffusion-engine/backend-handoff.json`. Source markers alone never pass. | the running worker reports no handoff, wrong protocol or mode, or a different supervisor; v2 package missing; journal failed or in progress (UNVERIFIED if `backend-status` is unavailable) |
+| rollback_activation_proof | the latest complete owner drill in that journal: 8 contiguous schema-2 production events, one `drill_id`, two distinct authorized transitions (fallback, then external), each bound to this host, the deployed HEAD, the installed worker digest and the supervisor digest the running worker reports | (UNVERIFIED otherwise: older revision or worker, mixed, reordered, interrupted or failed drills, legacy or corrupt journals, isolated tests) |
+| return_to_external | handoff capability plus the revision-bound proof | BLOCKED without capability; UNVERIFIED if unproven |
+| recovery_plan (release mode) | capability plus proof | BLOCKED if no owner handoff exists anywhere; UNVERIFIED if it is only in source or unproven |
 | image_validation_python | venv imports Pillow | `PREREQUISITE MISSING: Pillow` |
 | release_target (release mode) | `--expect-revision`, target HEAD, clean | not the expected revision, or dirty |
+
+**Sections (schema 2).** The output reports six separate sections:
+
+- `production_health`;
+- `fallback_package_integrity` (v1 package integrity only);
+- `handoff_capability`;
+- `rollback_activation_proof`;
+- `return_to_external_capability`;
+- `recovery_plan` (UNVERIFIED outside release mode).
+
+The verdict is the worst status across all checks, so a healthy production with
+an unproven rollback is never an overall PASS. On 2026-11-21 the live read-only
+run gave: production health PASS, package PASS, handoff BLOCKED, proof
+UNVERIFIED, return BLOCKED.
 
 **WC2TB access rule.** A mount is never treated as permission. SSH shells get
 EPERM from TCC. Only the EngineHost-descended backend can read WC2TB, so the
@@ -87,7 +105,9 @@ refuses a broken fixture (exit 78).
 
 ## 4. CI
 
-`.github/workflows/wc2tb-prevention.yml` runs on Ubuntu and macOS. It covers:
+`.github/workflows/wc2tb-prevention.yml` runs on Ubuntu and macOS, for pushes to the
+prevention and closure branches and for pull requests into `main` or into
+`codex/wc2tb-prevention-*` (the integration base of PR #28). It covers:
 
 - syntax checks;
 - the prerequisite check;
@@ -95,6 +115,8 @@ refuses a broken fixture (exit 78).
 - disk boundaries;
 - gate negative controls;
 - the ownership contract;
+- the owner handoff and supervisor suites (drain-sealed stops, startup deadline,
+  fallback preparation before release, proof identity), using fake processes on private ports;
 - publication isolation, on macOS only.
 
 **What CI cannot prove:**

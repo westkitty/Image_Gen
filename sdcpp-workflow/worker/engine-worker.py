@@ -405,6 +405,13 @@ class Worker:
                 supervisor.state = 'WAITING'
                 supervisor.paused = False
                 return {'ok': True, **receipt}
+        if req.get('op') == 'backend-handoff':
+            # Owner-authorized production <-> internal-fallback handoff. The
+            # supervisor verifies every fact itself; the request cannot supply evidence.
+            with self.lock:
+                if self.supervisor is None or getattr(self.supervisor, 'handoff', None) is None:
+                    raise ValueError('backend handoff unavailable')
+                return self.supervisor.handoff.request(req)
         if req.get('op') in ('backend-status', 'backend-restart', 'backend-pause'):
             if set(req) != {'op'}:
                 raise ValueError('backend operation takes no arguments')

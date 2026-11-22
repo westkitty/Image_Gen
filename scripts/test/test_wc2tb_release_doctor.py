@@ -46,7 +46,27 @@ def good_facts():
                         'enabled': True, 'pending': 0, 'suspended': 0},
         'rollback': {'source_commit': P['rollback_source_commit'], 'starter_sha256': P['rollback_starter_sha256'], 'deps': dict(deps)},
         'validation_python': {'path': P['validation_python'], 'pillow': True},
+        'handoff': {'installed_supports': True, 'deployed_supervisor_sha256': SUP, 'package_commit': P['handoff_package_commit'],
+                    'live': {'available': True, 'handoff': {'protocol': 2, 'mode': 'production', 'supervisor_sha256': SUP,
+                                                            'state': 'RUNNING_EXTERNAL'}},
+                    'journal': {'state': 'RUNNING_EXTERNAL', 'history': proven()}},
     }
+
+
+SUP = 's' * 64
+
+
+def proven(start=1, drill='d' * 32, **binding):
+    """One owner drill exactly as the supervisor journals it, bound to the good_facts identity."""
+    ident = {'host': 'bigmac', 'revision': REV, 'worker_sha256': 'w' * 64, 'supervisor_sha256': SUP, **binding}
+    out = []
+    for i, state in enumerate(doctor.PROOF_SEQUENCE):
+        out.append({'seq': start + i, 'state': state, 'mode': 'production', 'schema': 2, 'drill_id': drill,
+                    'transition_id': ('f' if i < 4 else 'r') * 32, 'authorized': {0: 'fallback', 4: 'external'}.get(i), **ident})
+    return out
+
+
+PROVEN = proven()
 
 
 def status(report, cid):
@@ -169,6 +189,139 @@ class ReleaseDoctor(unittest.TestCase):
         for section, field, value in corruptions:
             facts = copy.deepcopy(good_facts()); facts[section][field] = value
             self.assertNotEqual(doctor.evaluate(facts, release=True, expect_revision=REV)['verdict'], 'PASS', (section, field))
+
+    def proof(self, history, facts_changes=None):
+        facts = good_facts()
+        facts['handoff']['journal'] = {'state': 'RUNNING_EXTERNAL', 'history': history}
+        for (section, field), value in (facts_changes or {}).items():
+            facts[section][field] = value
+        return status(doctor.evaluate(facts), 'rollback_activation_proof')
+
+    def test_Q_production_health_pass_does_not_imply_rollback_proof(self):  # J
+        facts = good_facts()
+        facts['handoff']['journal'] = {'state': 'ABSENT', 'history': []}
+        report = doctor.evaluate(facts)
+        self.assertEqual(report['sections']['production_health'], 'PASS')
+        self.assertEqual(report['sections']['fallback_package_integrity'], 'PASS')
+        self.assertEqual(report['sections']['handoff_capability'], 'PASS')
+        self.assertEqual(report['sections']['rollback_activation_proof'], 'UNVERIFIED')
+        self.assertEqual(report['sections']['return_to_external_capability'], 'UNVERIFIED')
+        self.assertNotEqual(report['verdict'], 'PASS')
+
+    def test_proof_A_current_revision_bound_round_trip_passes(self):
+        report = doctor.evaluate(good_facts(), release=True, expect_revision=REV)
+        self.assertEqual(status(report, 'rollback_activation_proof'), 'PASS')
+        self.assertEqual(status(report, 'recovery_plan'), 'PASS')
+        self.assertEqual(report['sections']['recovery_plan'], 'PASS')
+        # A proven drill followed by more history (later drills, aborted attempts) still counts.
+        self.assertEqual(self.proof(proven() + [{'seq': 9, 'state': 'QUIESCING', 'mode': 'production', 'schema': 2},
+                                                {'seq': 10, 'state': 'RUNNING_EXTERNAL', 'mode': 'production', 'schema': 2}]), 'PASS')
+
+    def test_proof_B_C_other_revision_worker_supervisor_or_host_do_not_share_proof(self):
+        for field, value in (('revision', 'a' * 40), ('worker_sha256', 'x' * 64), ('supervisor_sha256', 'y' * 64), ('host', 'other')):
+            self.assertEqual(self.proof(proven(**{field: value})), 'UNVERIFIED', field)
+        # The same journal no longer proves anything once a new revision or worker is deployed.
+        self.assertEqual(self.proof(PROVEN, {('revision', 'head'): 'b' * 40}), 'UNVERIFIED')
+        self.assertEqual(self.proof(PROVEN, {('enginehost', 'worker_sha256'): 'z' * 64}), 'UNVERIFIED')
+        facts = good_facts()
+        facts['handoff']['live']['handoff']['supervisor_sha256'] = 'q' * 64  # running worker loaded other code
+        self.assertEqual(status(doctor.evaluate(facts), 'rollback_activation_proof'), 'UNVERIFIED')
+
+    def test_proof_D_E_F_mixed_reordered_or_interrupted_events_do_not_pass(self):
+        mixed = proven()[:4] + proven(start=5, drill='e' * 32)[4:]
+        self.assertEqual(self.proof(mixed), 'UNVERIFIED')                      # D: two drills
+        one_leg = [dict(e, transition_id='t' * 32) for e in proven()]
+        self.assertEqual(self.proof(one_leg), 'UNVERIFIED')                    # D: not two transitions
+        swapped = proven()
+        swapped[1], swapped[2] = swapped[2], swapped[1]
+        self.assertEqual(self.proof(swapped), 'UNVERIFIED')                    # E: order
+        gap = proven()
+        for e in gap[4:]:
+            e['seq'] += 3
+        self.assertEqual(self.proof(gap), 'UNVERIFIED')                        # F: events removed/reset between legs
+        failed = proven()
+        failed.insert(4, dict(failed[3], seq=5, state='HANDOFF_FAILED'))
+        self.assertEqual(self.proof(failed), 'UNVERIFIED')                     # F: failure in between
+        unauthorized = proven()
+        unauthorized[4]['authorized'] = None
+        self.assertEqual(self.proof(unauthorized), 'UNVERIFIED')
+
+    def test_proof_G_corrupt_truncated_or_legacy_journal_does_not_pass(self):
+        legacy = [{'state': e['state'], 'mode': 'production'} for e in PROVEN]  # pre-binding shape
+        self.assertEqual(self.proof(legacy), 'UNVERIFIED')
+        self.assertEqual(self.proof(PROVEN[:6]), 'UNVERIFIED')
+        with tempfile.TemporaryDirectory() as root:
+            journal = os.path.join(root, 'backend-handoff.json')
+            with open(journal, 'w') as handle:
+                handle.write(json.dumps({'state': 'RUNNING_EXTERNAL', 'history': PROVEN})[:-40])
+            facts = good_facts()
+            facts['handoff'] = doctor.handoff_facts(root, journal, journal, live=facts['handoff']['live'])
+            facts['handoff'].update(deployed_supervisor_sha256=SUP, package_commit=P['handoff_package_commit'])
+            report = doctor.evaluate(facts)
+            self.assertEqual(facts['handoff']['journal']['state'], 'CORRUPT')
+            self.assertEqual((status(report, 'handoff_capability'), status(report, 'rollback_activation_proof')),
+                             ('BLOCKED', 'UNVERIFIED'))
+
+    def test_proof_I_isolated_test_mode_never_proves_production(self):
+        self.assertEqual(self.proof([dict(e, mode='isolated-test') for e in PROVEN]), 'UNVERIFIED')
+
+    def test_capability_H_source_markers_without_live_support_do_not_pass(self):
+        facts = good_facts()
+        facts['handoff']['live'] = {'available': True, 'handoff': None}  # installed source has markers; running worker does not
+        report = doctor.evaluate(facts, release=True, expect_revision=REV)
+        self.assertEqual(status(report, 'handoff_capability'), 'BLOCKED')
+        self.assertEqual(status(report, 'return_to_external'), 'BLOCKED')
+        self.assertEqual(status(report, 'recovery_plan'), 'BLOCKED')
+        facts['handoff']['live'] = {'available': False, 'handoff': None}
+        self.assertEqual(status(doctor.evaluate(facts), 'handoff_capability'), 'UNVERIFIED')
+        for change in ({'protocol': 1}, {'mode': 'isolated-test'}, {'supervisor_sha256': 'q' * 64}):
+            facts = good_facts()
+            facts['handoff']['live']['handoff'].update(change)
+            self.assertEqual(status(doctor.evaluate(facts), 'handoff_capability'), 'BLOCKED', change)
+        facts = good_facts()
+        facts['handoff']['package_commit'] = P['rollback_source_commit']  # v1 cannot be drained by its owner
+        self.assertEqual(status(doctor.evaluate(facts), 'handoff_capability'), 'BLOCKED')
+
+    def test_R_missing_or_unproven_handoff_is_not_a_recovery_plan(self):
+        facts = good_facts()
+        facts['handoff']['live']['handoff'] = None
+        facts['handoff']['journal'] = {'state': 'ABSENT', 'history': []}
+        report = doctor.evaluate(facts, release=True, expect_revision=REV)
+        self.assertEqual(status(report, 'recovery_plan'), 'BLOCKED')
+        self.assertEqual(status(report, 'rollback'), 'PASS')  # a good checksum alone...
+        self.assertEqual(report['verdict'], 'BLOCKED')        # ...is not a recovery plan
+        facts['handoff']['target_supports'] = True
+        self.assertEqual(status(doctor.evaluate(facts, release=True, expect_revision=REV), 'recovery_plan'), 'UNVERIFIED')
+        facts = good_facts()
+        facts['handoff']['journal'] = {'state': 'ABSENT', 'history': []}
+        report = doctor.evaluate(facts, release=True, expect_revision=REV)
+        self.assertEqual((status(report, 'handoff_capability'), status(report, 'recovery_plan'), report['verdict']),
+                         ('PASS', 'UNVERIFIED', 'UNVERIFIED'))
+        for state in ('HANDOFF_FAILED', 'RUNNING_FALLBACK', 'QUIESCING', 'CORRUPT'):
+            facts['handoff']['journal'] = {'state': state, 'history': PROVEN}
+            self.assertEqual(status(doctor.evaluate(facts), 'handoff_capability'), 'BLOCKED', state)
+        facts['handoff']['journal'] = None
+        self.assertEqual(status(doctor.evaluate(facts), 'handoff_capability'), 'UNVERIFIED')
+
+    def test_handoff_facts_read_real_sources_and_journals_without_writing(self):  # K
+        repo = os.path.abspath(os.path.join(HERE, '..', '..'))
+        with tempfile.TemporaryDirectory() as root:
+            journal = os.path.join(root, 'backend-handoff.json')
+            facts = doctor.handoff_facts(repo, os.path.join(repo, 'sdcpp-workflow/worker/engine-worker.py'), journal, repo,
+                                         live={'available': True, 'handoff': None}, package=root)
+            self.assertEqual((facts['installed_supports'], facts['target_supports'], facts['journal']['state']), (True, True, 'ABSENT'))
+            self.assertEqual(facts['deployed_supervisor_sha256'],
+                             doctor.sha256(os.path.join(repo, 'sdcpp-workflow/worker/backend-supervisor.py')))
+            self.assertIsNone(facts['package_commit'])
+            with open(journal, 'w') as handle:
+                # On disk the supervisor records who authorized each leg and why.
+                on_disk = [dict(e, authorized={'target': e['authorized'], 'reason': 'maintenance drill'} if e['authorized'] else None)
+                           for e in PROVEN]
+                json.dump({'state': 'RUNNING_EXTERNAL', 'seq': 8, 'history': on_disk}, handle)
+            before = {n: os.stat(os.path.join(root, n)).st_mtime_ns for n in os.listdir(root)}
+            facts = doctor.handoff_facts(repo, os.path.join(repo, 'sdcpp-workflow/worker/engine-worker.py'), journal, live=None)
+            self.assertEqual([h['authorized'] for h in facts['journal']['history']][::4], ['fallback', 'external'])
+            self.assertEqual(before, {n: os.stat(os.path.join(root, n)).st_mtime_ns for n in os.listdir(root)})
 
     def test_P_doctor_source_is_read_only(self):
         with open(DOCTOR, encoding='utf-8') as handle:
