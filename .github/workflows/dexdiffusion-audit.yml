@@ -27,7 +27,7 @@ jobs:
       CI: 'true'
       DEX_GATEC_PYTHON: python
       DEX_IMAGE_VALIDATION_PYTHON: python
-      DEX_RELEASE_OUTPUT_DIR: ${{ runner.temp }}/dex-release-gate
+      DEX_RELEASE_OUTPUT_DIR: /tmp/dex-release-gate-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,7 +57,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dex-release-gate-receipt
-          path: ${{ runner.temp }}/dex-release-gate/release-gate.json
+          path: /tmp/dex-release-gate-${{ github.run_id }}/release-gate.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -66,8 +66,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-      DEX_AUDIT_REPORT: ${{ runner.temp }}/dex-fault-matrix.json
-      DEX_AUDIT_STATIC_REPORT: ${{ runner.temp }}/dex-static-sweep.json
+      DEX_AUDIT_REPORT: /tmp/dex-fault-matrix-${{ github.run_id }}.json
+      DEX_AUDIT_STATIC_REPORT: /tmp/dex-static-sweep-${{ github.run_id }}.json
     steps:
       - uses: actions/checkout@v4
         with:
@@ -119,7 +119,7 @@ jobs:
         with:
           name: dex-discovery-reports
           path: |
-            ${{ runner.temp }}/dex-fault-matrix.json
-            ${{ runner.temp }}/dex-static-sweep.json
+            /tmp/dex-fault-matrix-${{ github.run_id }}.json
+            /tmp/dex-static-sweep-${{ github.run_id }}.json
           if-no-files-found: warn
           retention-days: 7
