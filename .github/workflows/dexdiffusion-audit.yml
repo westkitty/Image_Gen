@@ -1,0 +1,387 @@
+name: DexDiffusion portable audit
+
+# No secrets, production hosts, models, Mac mounts, or deployment permissions.
+# Full release gate stays strict; known-bug diagnostic probes are advisory until fixed.
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'rollback-packages/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dex-audit-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-gate:
+    name: Existing release gate (isolated, strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CI: 'true'
+      DEX_GATEC_PYTHON: python
+      DEX_IMAGE_VALIDATION_PYTHON: python
+      DEX_RELEASE_OUTPUT_DIR: /tmp/dex-release-gate-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: operator-console/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned isolated Python test dependencies
+        run: python -m pip install --disable-pip-version-check -r scripts/omni-test-requirements.txt
+      - name: Verify browser prerequisite
+        run: |
+          CHROME_PATH="$(command -v google-chrome)"
+          test -x "$CHROME_PATH"
+          "$CHROME_PATH" --version
+          printf 'DEX_BROWSER_PATH=%s\n' "$CHROME_PATH" >> "$GITHUB_ENV"
+      - name: Install reproducible Node dependencies
+        working-directory: operator-console
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Targeted canonicalizer outbox CLI proof (synthetic, private output)
+        id: canonical_outbox_cli
+        working-directory: operator-console
+        continue-on-error: true
+        run: |
+          node <<'NODE'
+          'use strict';
+          const { spawnSync } = require('node:child_process');
+          const fs = require('node:fs');
+          const child = spawnSync(process.execPath, [
+            '--test', '--test-reporter=tap', '--test-concurrency=1',
+            'tests/canonicalizer-outbox-cli.test.js'
+          ], {
+            encoding: 'utf8', timeout: 60000, maxBuffer: 4 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe']
+          });
+          // Do not echo or upload raw fixture output; report counts only.
+          const output = (child.stdout || '') + '\n' + (child.stderr || '');
+          const count = key => {
+            const match = new RegExp('^# ' + key + ' (\\d+)\\r?$', 'm').exec(output);
+            return match ? Number(match[1]) : null;
+          };
+          const tests = count('tests'), passed = count('pass');
+          const failed = count('fail'), skipped = count('skipped');
+          const ok = !child.error && !child.signal && child.status === 0 &&
+            tests === 2 && passed === 2 && failed === 0 && skipped === 0;
+          const verdict = ok ? 'PASS' : 'FAIL';
+          console.log('CANONICALIZER_OUTBOX_CLI ' + verdict +
+            ' tests=' + tests + ' passed=' + passed + ' failed=' + failed + ' skipped=' + skipped);
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+              '### Isolated canonicalizer outbox CLI fixtures\n\n' +
+              '**' + verdict + '** — two synthetic fixtures; private output suppressed.\n\n' +
+              'Counts: tests=' + tests + ', passed=' + passed +
+              ', failed=' + failed + ', skipped=' + skipped + '.\n');
+          }
+          process.exitCode = ok ? 0 : 1;
+          NODE
+      - name: Targeted prompt-intelligence browser proof (private output)
+        id: prompt_intelligence_browser
+        working-directory: operator-console
+        run: |
+          node <<'NODE'
+          'use strict';
+          const { spawnSync } = require('node:child_process');
+          const fs = require('node:fs');
+          const title = 'browser: successful enhancement is reviewed before Apply, with Cancel and Undo';
+          let chromeReady = false;
+          try { fs.accessSync(process.env.DEX_BROWSER_PATH, fs.constants.X_OK); chromeReady = true; } catch (_) {}
+          const child = chromeReady ? spawnSync(process.execPath, [
+            '--test', '--test-reporter=tap', '--test-concurrency=1',
+            '--test-name-pattern=^' + title + '$', 'tests/prompt-intelligence.test.js'
+          ], {
+            encoding: 'utf8', timeout: 180000, maxBuffer: 16 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe']
+          }) : null;
+          // Raw TAP stays only in memory: do not echo, upload or persist it.
+          const output = child ? (child.stdout || '') + '\n' + (child.stderr || '') : '';
+          const metric = label => {
+            const match = new RegExp('^# ' + label + ' (\\d+)\\r?$', 'm').exec(output);
+            return match ? Number(match[1]) : null;
+          };
+          const total = metric('tests'), passed = metric('pass');
+          const failed = metric('fail'), skipped = metric('skipped');
+          const selected = output.split(/\r?\n/).some(line => line.trim() === '# Subtest: ' + title);
+          const ok = chromeReady && child && child.status === 0 && !child.error && !child.signal &&
+            selected && total > 0 && passed === 1 && failed === 0 && skipped === total - 1;
+          const verdict = ok ? 'PASS' : 'FAIL';
+          const status = 'PROMPT_INTELLIGENCE_BROWSER ' + verdict +
+            ' selected=' + Number(selected) + ' passed=' + String(passed) +
+            ' failed=' + String(failed) + ' skipped=' + String(skipped);
+          console.log(status);
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+              '### Isolated prompt-intelligence browser check\n\n' +
+              '**' + verdict + '** — one exact test, private output suppressed.\n\n' +
+              'Counts: selected=' + Number(selected) + ', passed=' + String(passed) +
+              ', failed=' + String(failed) + ', skipped=' + String(skipped) + '.\n');
+          }
+          process.exitCode = ok ? 0 : 1;
+          NODE
+      - name: Run full portable release gate
+        if: ${{ !cancelled() && (success() || steps.prompt_intelligence_browser.outcome == 'failure') }}
+        working-directory: operator-console
+        run: npm run test:release
+      - name: Attach release-gate receipt and redacted failure signatures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dex-release-gate-receipt
+          path: |
+            /tmp/dex-release-gate-${{ github.run_id }}/release-gate.json
+            /tmp/dex-release-gate-${{ github.run_id }}/release-gate-diagnostics.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  discovery:
+    name: Static candidates + synthetic failure contracts (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      DEX_AUDIT_REPORT: /tmp/dex-fault-matrix-${{ github.run_id }}.json
+      DEX_AUDIT_STATIC_REPORT: /tmp/dex-static-sweep-${{ github.run_id }}.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Inventory code-pattern review candidates
+        working-directory: operator-console
+        run: node tests/audit/static-sweep.js
+      - name: Execute isolated fault-injection contracts
+        id: contracts
+        working-directory: operator-console
+        continue-on-error: true
+        run: node tests/audit/fault-matrix.js
+      - name: Refuse a missing or broken diagnostic harness
+        shell: bash
+        run: |
+          test -s "$DEX_AUDIT_REPORT"
+          test -s "$DEX_AUDIT_STATIC_REPORT"
+          node -e 'const r=require(process.env.DEX_AUDIT_REPORT);if(r.schema!=="dexdiffusion.audit.fault-matrix.v1"||!Array.isArray(r.results)||r.results.length===0||r.results.length!==r.total)process.exit(2)'
+      - name: Summarize audit findings
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const matrix = require(process.env.DEX_AUDIT_REPORT);
+          const staticScan = require(process.env.DEX_AUDIT_STATIC_REPORT);
+          const summary = [
+            '## DexDiffusion portable audit',
+            '',
+            `Static scan: ${staticScan.scanned_files} files, ${staticScan.candidate_count} **review candidates** (not confirmed defects).`,
+            `Synthetic fault contracts: ${matrix.passed}/${matrix.total} passed; ${matrix.contract_failures} failed.`,
+            '',
+            '| Probe | Root-cause family | Result | Linked historic IDs |',
+            '|---|---|---|---|',
+            ...matrix.results.map(r => `| ${r.id} | ${r.family} | ${r.status} | ${r.bugs.join(', ')} |`),
+            '',
+            'The fault matrix is **advisory** while historic failures remain. It never changes production data.',
+            'The independent full release gate is **strict**. Neither suite proves live Big Mac inference or physical Android behavior.',
+            '',
+          ].join('\n');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+          if (matrix.contract_failures) process.stdout.write(`::warning::${matrix.contract_failures} synthetic contract violations reproduced; see diagnostic artifact.\n`);
+          NODE
+      - name: Attach audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dex-discovery-reports
+          path: |
+            /tmp/dex-fault-matrix-${{ github.run_id }}.json
+            /tmp/dex-static-sweep-${{ github.run_id }}.json
+          if-no-files-found: warn
+          retention-days: 7
+  collections-persist-001:
+    name: PERSIST-001 Collections create durability (isolated, strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify PERSIST-001 and healthy creation (private output)
+        working-directory: operator-console
+        run: |
+          node <<'NODE'
+          'use strict';
+          const { spawnSync } = require('node:child_process');
+          const child = spawnSync(process.execPath, [
+            '--test', '--test-reporter=tap', 'tests/collections-persist-001.test.js'
+          ], { encoding: 'utf8', timeout: 60000, maxBuffer: 4 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'] });
+          // Only synthetic PASS/FAIL counts leave this job; never print raw test output.
+          const output = (child.stdout || '') + '\n' + (child.stderr || '');
+          const count = key => {
+            const m = new RegExp('^# ' + key + ' (\\d+)\\r?$', 'm').exec(output);
+            return m ? Number(m[1]) : null;
+          };
+          const total = count('tests'), passed = count('pass');
+          const failed = count('fail'), skipped = count('skipped');
+          const ok = child.status === 0 && !child.error && !child.signal &&
+            total === 3 && passed === 3 && failed === 0 && skipped === 0;
+          console.log('PERSIST_001 ' + (ok ? 'PASS' : 'FAIL') +
+            ' tests=' + total + ' passed=' + passed + ' failed=' + failed + ' skipped=' + skipped);
+          process.exitCode = ok ? 0 : 1;
+          NODE
+  recipes-persist-002:
+    name: PERSIST-002 Recipes create durability (isolated, strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify PERSIST-002 and prompt retention (private output)
+        working-directory: operator-console
+        run: |
+          node <<'NODE'
+          'use strict';
+          const { spawnSync } = require('node:child_process');
+          const child = spawnSync(process.execPath, [
+            '--test', '--test-reporter=tap', 'tests/recipes-persist-002.test.js'
+          ], { encoding: 'utf8', timeout: 60000, maxBuffer: 4 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'] });
+          // Raw test output stays in memory; no prompt text is logged or uploaded.
+          const output = (child.stdout || '') + '\n' + (child.stderr || '');
+          const count = key => {
+            const m = new RegExp('^# ' + key + ' (\\d+)\\r?$', 'm').exec(output);
+            return m ? Number(m[1]) : null;
+          };
+          const total = count('tests'), passed = count('pass');
+          const failed = count('fail'), skipped = count('skipped');
+          const ok = child.status === 0 && !child.error && !child.signal &&
+            total === 4 && passed === 4 && failed === 0 && skipped === 0;
+          console.log('PERSIST_002 ' + (ok ? 'PASS' : 'FAIL') +
+            ' tests=' + total + ' passed=' + passed + ' failed=' + failed + ' skipped=' + skipped);
+          process.exitCode = ok ? 0 : 1;
+          NODE
+  collections-recover-001:
+    name: RECOVER-001 Collections fail-closed recovery (isolated, strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify RECOVER-001 and PERSIST-001 compatibility (private output)
+        working-directory: operator-console
+        run: |
+          node <<'NODE'
+          'use strict';
+          const { spawnSync } = require('node:child_process');
+          const child = spawnSync(process.execPath, [
+            '--test', '--test-reporter=tap',
+            'tests/collections-recover-001.test.js'
+          ], { encoding: 'utf8', timeout: 60000, maxBuffer: 4 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'] });
+          // Do not expose the synthetic ledger contents or raw test output.
+          const output = (child.stdout || '') + '\n' + (child.stderr || '');
+          const count = key => {
+            const m = new RegExp('^# ' + key + ' (\\d+)\\r?$', 'm').exec(output);
+            return m ? Number(m[1]) : null;
+          };
+          const tests = count('tests'), passed = count('pass');
+          const failed = count('fail'), skipped = count('skipped');
+          const ok = child.status === 0 && !child.error && !child.signal &&
+            tests === 6 && passed === 6 && failed === 0 && skipped === 0;
+          console.log('RECOVER_001 ' + (ok ? 'PASS' : 'FAIL') +
+            ' tests=' + tests + ' passed=' + passed + ' failed=' + failed + ' skipped=' + skipped);
+          process.exitCode = ok ? 0 : 1;
+          NODE
+  recipes-recover-002:
+    name: RECOVER-002 Recipes fail-closed recovery (isolated, strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify RECOVER-002 without exposing private data
+        working-directory: operator-console
+        run: |
+          node <<'NODE'
+          'use strict';
+          const { spawnSync } = require('node:child_process');
+          const child = spawnSync(process.execPath, [
+            '--test', '--test-reporter=tap', 'tests/recipes-recover-002.test.js'
+          ], { encoding: 'utf8', timeout: 60000, maxBuffer: 4 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'] });
+          // Suppress raw fixture output; this strict job reports only counts.
+          const output = (child.stdout || '') + '\n' + (child.stderr || '');
+          const count = key => {
+            const m = new RegExp('^# ' + key + ' (\\d+)\\r?$', 'm').exec(output);
+            return m ? Number(m[1]) : null;
+          };
+          const tests = count('tests'), passed = count('pass');
+          const failed = count('fail'), skipped = count('skipped');
+          const ok = child.status === 0 && !child.error && !child.signal &&
+            tests === 6 && passed === 6 && failed === 0 && skipped === 0;
+          console.log('RECOVER_002 ' + (ok ? 'PASS' : 'FAIL') +
+            ' tests=' + tests + ' passed=' + passed + ' failed=' + failed + ' skipped=' + skipped);
+          process.exitCode = ok ? 0 : 1;
+          NODE
+  macros-persist-003:
+    name: PERSIST-003 Macros create durability (isolated, strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify PERSIST-003 and healthy Macro behavior (private output)
+        working-directory: operator-console
+        run: |
+          node <<'NODE'
+          'use strict';
+          const { spawnSync } = require('node:child_process');
+          const child = spawnSync(process.execPath, [
+            '--test', '--test-reporter=tap', 'tests/macro-persist-003.test.js'
+          ], { encoding: 'utf8', timeout: 60000, maxBuffer: 4 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'] });
+          // Report counts only, never synthetic Macro contents or raw test output.
+          const output = (child.stdout || '') + '\n' + (child.stderr || '');
+          const count = key => {
+            const m = new RegExp('^# ' + key + ' (\\d+)\\r?$', 'm').exec(output);
+            return m ? Number(m[1]) : null;
+          };
+          const tests = count('tests'), passed = count('pass');
+          const failed = count('fail'), skipped = count('skipped');
+          const ok = child.status === 0 && !child.error && !child.signal &&
+            tests === 5 && passed === 5 && failed === 0 && skipped === 0;
+          console.log('PERSIST_003 ' + (ok ? 'PASS' : 'FAIL') +
+            ' tests=' + tests + ' passed=' + passed + ' failed=' + failed + ' skipped=' + skipped);
+          process.exitCode = ok ? 0 : 1;
+          NODE

@@ -16,28 +16,46 @@ const ALLOWED_CATEGORIES = new Set(['generation', 'edit', 'enhance', 'voice', 'm
 
 function createRecipeStore(filePath) {
   let recipes = new Map(); // id -> recipe
+  let recoveryBlocked = false;
+
+  function assertRecoveryReady() {
+    if (!recoveryBlocked) return;
+    const err = new Error('Recipes ledger requires recovery');
+    // Reuse the POST endpoint's existing generic storage-error classification.
+    err.recipeSaveFailed = true;
+    throw err;
+  }
 
   function load() {
     if (!filePath) return;
     try {
-      if (fs.existsSync(filePath)) {
-        const raw = fs.readFileSync(filePath, 'utf8');
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.version === SCHEMA_VERSION && Array.isArray(parsed.recipes)) {
-          recipes.clear();
-          for (const r of parsed.recipes) {
-            if (r && r.id) {
-              recipes.set(r.id, r);
-            }
-          }
-        }
+      // Missing file is a fresh store. Existing, unreadable and dangling
+      // symlink ledgers must never be treated as an empty replacement.
+      try {
+        fs.lstatSync(filePath);
+      } catch (err) {
+        if (err.code === 'ENOENT') return;
+        throw err;
       }
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      if (!parsed || parsed.version !== SCHEMA_VERSION || !Array.isArray(parsed.recipes)) {
+        throw new Error('Unsupported Recipes ledger');
+      }
+      const loaded = new Map();
+      for (const r of parsed.recipes) {
+        if (!r || !r.id || loaded.has(r.id)) throw new Error('Invalid Recipes entry');
+        loaded.set(r.id, r);
+      }
+      recipes = loaded;
     } catch (_) {
+      recoveryBlocked = true;
       recipes = new Map();
+      console.error('Recipes ledger recovery required; writes disabled');
     }
   }
 
-  function save() {
+  function save(nextRecipes = recipes, failOnError = false) {
+    assertRecoveryReady();
     if (!filePath) return;
     try {
       const dir = path.dirname(filePath);
@@ -46,12 +64,16 @@ function createRecipeStore(filePath) {
       const payload = {
         version: SCHEMA_VERSION,
         updatedAt: Date.now(),
-        recipes: Array.from(recipes.values())
+        recipes: Array.from(nextRecipes.values())
       };
       fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), 'utf8');
       fs.renameSync(tmp, filePath);
     } catch (err) {
       console.error('Failed to save recipes:', err.message);
+      if (failOnError) {
+        err.recipeSaveFailed = true;
+        throw err;
+      }
     }
   }
 
@@ -89,6 +111,7 @@ function createRecipeStore(filePath) {
     includePrompt = false,
     prompt = null
   }) {
+    assertRecoveryReady();
     if (!name || typeof name !== 'string' || !name.trim()) {
       throw new Error('Recipe name is required');
     }
@@ -117,12 +140,15 @@ function createRecipeStore(filePath) {
       updatedAt: now
     };
 
-    recipes.set(id, recipe);
-    save();
+    const nextRecipes = new Map(recipes);
+    nextRecipes.set(id, recipe);
+    save(nextRecipes, true);
+    recipes = nextRecipes;
     return recipe;
   }
 
   function update(id, patch = {}) {
+    assertRecoveryReady();
     const r = recipes.get(id);
     if (!r) return null;
     if (patch.name !== undefined) {
@@ -155,6 +181,7 @@ function createRecipeStore(filePath) {
   }
 
   function remove(id) {
+    assertRecoveryReady();
     if (recipes.delete(id)) {
       save();
       return true;
@@ -163,6 +190,7 @@ function createRecipeStore(filePath) {
   }
 
   function duplicate(id, newName = null) {
+    assertRecoveryReady();
     const orig = recipes.get(id);
     if (!orig) return null;
     const name = newName || `${orig.name} (Copy)`;
@@ -180,6 +208,7 @@ function createRecipeStore(filePath) {
   }
 
   function importLegacyStyles(legacyStylesArray = []) {
+    assertRecoveryReady();
     let importedCount = 0;
     if (!Array.isArray(legacyStylesArray)) return { importedCount: 0 };
     for (const item of legacyStylesArray) {

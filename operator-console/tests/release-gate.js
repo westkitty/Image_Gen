@@ -12,6 +12,7 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { resolveOutputDir, createOwnedWriter } = require('./browser/safe-output');
+const { extractFailureMarkers, tallyMatrixCells } = require('./audit/release-diagnostics');
 
 const CONSOLE = path.join(__dirname, '..');
 const BROWSER_DIR = path.join(__dirname, 'browser');
@@ -21,27 +22,40 @@ const suites = fs.readdirSync(BROWSER_DIR).filter(f => f.endsWith('.browser.js')
 const out = resolveOutputDir(process.env.DEX_RELEASE_OUTPUT_DIR, { label: 'release-gate' });
 const writer = createOwnedWriter(out);
 const steps = [];
+const failureDiagnostics = [];
 
 function run(name, cmd, args, env = {}) {
   const t0 = Date.now();
   const r = spawnSync(cmd, args, { cwd: CONSOLE, env: Object.assign({}, process.env, env), encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
   const log = (r.stdout || '') + (r.stderr || '');
   const logPath = writer.write(name.replace(/[^a-z0-9.-]+/gi, '_') + '.log', log);
-  // Browser suites log "[suite +t] PASS|FAIL title"; the interaction matrix logs "<variant>/<size>/<screen> PASS|FAIL|BLOCKED".
-  const pass = (log.match(/^\[[^\]]+\] PASS |^(?!\[)[^\n]*\/[^\n]*\/[^\n]* PASS\s*$/gm) || []).length;
-  const fail = (log.match(/^\[[^\]]+\] FAIL |^(?!\[)[^\n]*\/[^\n]*\/[^\n]* (?:FAIL|BLOCKED)\s*$/gm) || []).length;
+  // Only the matrix uses allowlisted V/<viewport>/<screen> status lines.
+  const matrix = name === 'browser:interaction-matrix' ? tallyMatrixCells(log) : null;
+  const pass = matrix ? matrix.passed : (log.match(/^\[[^\]]+\] PASS |^(?!\[)[^\n]*\/[^\n]*\/[^\n]* PASS\s*$/gm) || []).length;
+  const fail = matrix ? matrix.failed : (log.match(/^\[[^\]]+\] FAIL |^(?!\[)[^\n]*\/[^\n]*\/[^\n]* (?:FAIL|BLOCKED)\s*$/gm) || []).length;
   const step = { name, status: r.status === 0 ? 'PASS' : 'FAIL', exit: r.status, signal: r.signal || null, seconds: Math.round((Date.now() - t0) / 100) / 10, log: logPath };
   const tally = /ℹ tests (\d+)[\s\S]*?ℹ pass (\d+)[\s\S]*?ℹ fail (\d+)/.exec(log);
   if (tally) Object.assign(step, { tests: +tally[1], passed: +tally[2], failed: +tally[3] });
   else Object.assign(step, { passed: pass, failed: fail });
+  if (matrix) Object.assign(step, { passed: pass, failed: fail, blocked: matrix.blocked, matrixCellsMeasured: matrix.measured });
   steps.push(step);
+  if (step.status === 'FAIL') {
+    const { markers, sampled, truncated } = extractFailureMarkers(log);
+    failureDiagnostics.push({ name, exit: step.exit, signal: step.signal, failed: step.failed, markers, sampled, truncated, ...(matrix ? { matrixNonPassing: matrix.nonPassing } : {}) });
+  }
   console.log(`${step.status.padEnd(4)} ${name}  (${step.seconds}s${step.tests != null ? `, ${step.passed}/${step.tests}` : `, pass ${step.passed} fail ${step.failed}`})`);
+  if (matrix) {
+    console.log(`  matrix cells: ${matrix.measured} measured; ${matrix.passed} passed, ${matrix.failed - matrix.blocked} failed, ${matrix.blocked} blocked`);
+    for (const cell of matrix.nonPassing) {
+      console.log(`  ${cell.status} ${cell.id}${cell.contracts ? ` [${cell.contracts.join(', ')}]` : ''}`);
+    }
+  }
   return step;
 }
 
 if (process.env.DEX_RELEASE_SKIP_UNIT !== '1') {
   run('check', process.execPath, ['--check', 'server.js']);
-  run('unit', process.execPath, ['--test', ...fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js')).map(f => path.join('tests', f))]);
+  run('unit', 'npm', ['test']);
 }
 for (const s of suites) {
   const env = { DEX_BROWSER_OUTPUT_DIR: path.join(out, s) };
@@ -58,5 +72,11 @@ const receipt = {
   verdict: steps.every(s => s.status === 'PASS') ? 'PASS' : 'FAIL', steps,
 };
 const receiptPath = writer.write('release-gate.json', JSON.stringify(receipt, null, 2) + '\n');
+// Publish only allowlisted failure signatures. Raw fixture logs remain in the isolated runner directory.
+writer.write('release-gate-diagnostics.json', JSON.stringify({
+  schema: 'dexdiffusion.release-diagnostics.v1', gitHead,
+  scope: 'approved fixture cell identifiers and contract categories, test indexes, error classes/codes and repository test locations; no raw logs or assertion values',
+  verdict: receipt.verdict, failures: failureDiagnostics,
+}, null, 2) + '\n');
 console.log(`\nRELEASE GATE ${receipt.verdict} — ${steps.filter(s => s.status === 'PASS').length}/${steps.length} steps. Receipt: ${receiptPath}`);
 process.exit(receipt.verdict === 'PASS' ? 0 : 1);

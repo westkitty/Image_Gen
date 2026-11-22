@@ -5911,6 +5911,7 @@ app.post('/api/collections', (req, res) => {
     const col = collectionStore.create(req.body || {});
     res.json({ ok: true, collection: col });
   } catch (err) {
+    if (err.collectionSaveFailed) return res.status(500).json({ error: 'Collection could not be saved' });
     res.status(400).json({ error: err.message });
   }
 });
@@ -5962,6 +5963,7 @@ app.post('/api/recipes', (req, res) => {
     const r = recipeStore.create(req.body || {});
     res.json({ ok: true, recipe: r });
   } catch (err) {
+    if (err.recipeSaveFailed) return res.status(500).json({ error: 'Recipe could not be saved' });
     res.status(400).json({ error: err.message });
   }
 });
@@ -6047,6 +6049,7 @@ app.post('/api/macros', (req, res) => {
     const m = macroStore.create(req.body || {});
     res.json({ ok: true, macro: m });
   } catch (err) {
+    if (err.macroSaveFailed) return res.status(500).json({ error: 'Macro could not be saved' });
     res.status(400).json({ error: err.message });
   }
 });
