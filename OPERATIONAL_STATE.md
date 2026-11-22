@@ -1,5 +1,14 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## 2026-11-22 — Portable CI audit introduced on draft PR #33 (SOURCE CHANGES, NOT DEPLOYED)
+
+- Bounded branch: `audit/dexdiffusion-ci-fault-matrix-20261122`; target `main` at `dacf667aaefc8222ce4184cd69a37fc06cb1459d`. Existing release and MacBook production are untouched.
+- New `.github/workflows/dexdiffusion-audit.yml` runs the existing strict `npm run test:release` in isolated Ubuntu CI on pull requests and an independent advisory discovery job. Read-only GitHub permission, no SSH, models, production services or live files.
+- Added `operator-console/tests/audit/static-sweep.js` (review candidates, not confirmed bugs) and `fault-matrix.js` (12 isolated synthetic persistence, recovery, prompt privacy and restart probes). Known contract failures remain explicit `CONTRACT_FAIL`, advisory until repaired. Instructions: `docs/DEXDIFFUSION_AUTOMATED_AUDIT.md`.
+- GitHub run `45001085604`: discovery job verified PASS with evidence artifact uploaded; strict release-gate job was still in progress at this checkpoint. **Do not treat either source presence or the advisory job as proof that release tests, Big Mac inference, or physical Android behavior passed.**
+- Historical conversational inventory reached BUG-119; this count is not a verified count of independent runtime defects. Preserve earlier bug IDs and reconcile by root-cause family before repair.
+- No merge, production deployment, service restart, model download, artifact cleanup or user-data mutation was performed. Remaining: complete release CI, review fault matrix receipts, approve any repair work separately.
+
 ## 2026-11-21 (EST) - MacBook checkout reconciliation after WC2TB release
 
 - MacBook MacBook-Air.local, user andrew, repository /Users/andrew/Image_Gen: local main was fast-forwarded from 39534f2 to the published af6fcc239ccb60d9c7c6d48e7a5498d2b473857c (PR #31 documentation merge). Git status was clean and matched origin/main immediately after synchronization.
