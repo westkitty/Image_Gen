@@ -31,6 +31,7 @@ CLI = ROOT / "bin" / "dexdiffusion"
 BASE = "http://127.0.0.1:31337"
 REMOTE = "westcat"
 EXPECTED_CWD = "/Users/bigmac/Image_Gen/operator-console"
+SUPERVISED_CWD = "/Users/bigmac/Image_Gen-wc2tb-20261120/operator-console"
 SUPPORT = Path.home() / "Library/Application Support/DexDiffusion/recovery"
 STATE = SUPPORT / "state.json"
 LOCK = SUPPORT / "controller.lock"
@@ -115,7 +116,7 @@ def probe(deadline: float | None = None) -> dict:
         _, body, _ = _request("/api/version", bounded_timeout(5), 64 * 1024)
         version = json.loads(body)
         if (version.get("name") != "Image_Gen Operator Console" or
-                version.get("cwd") != EXPECTED_CWD or not str(version.get("pid", "")).isdigit()):
+                version.get("cwd") not in (EXPECTED_CWD, SUPERVISED_CWD) or not str(version.get("pid", "")).isdigit()):
             result["backend"] = "UNEXPECTED_IDENTITY"
             result["classification"] = "AMBIGUOUS_BACKEND_IDENTITY"
             return result
@@ -175,7 +176,7 @@ def _remote_ready(deadline: float | None = None) -> tuple[bool, str]:
     command = ("python3 -c 'import json,urllib.request; "+
                "d=json.load(urllib.request.urlopen(\"http://127.0.0.1:31337/api/version\",timeout=4)); "+
                "assert d.get(\"name\")==\"Image_Gen Operator Console\" and "+
-               "d.get(\"cwd\")==\"/Users/bigmac/Image_Gen/operator-console\" and "+
+               f'd.get("cwd") in ("{EXPECTED_CWD}","{SUPERVISED_CWD}") and '+
                "str(d.get(\"pid\",\"\")).isdigit()' && "+
                "curl -fsS --max-time 15 http://127.0.0.1:31337/dexdiffusion/ -o /dev/null && "+
                "python3 -c 'import json,urllib.request; "+
