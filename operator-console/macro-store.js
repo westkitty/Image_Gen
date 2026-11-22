@@ -60,7 +60,7 @@ function createMacroStore(filePath) {
     }
   }
 
-  function save() {
+  function save(nextMacros = macros, failOnError = false) {
     if (!filePath) return;
     try {
       const dir = path.dirname(filePath);
@@ -69,12 +69,16 @@ function createMacroStore(filePath) {
       const payload = {
         version: SCHEMA_VERSION,
         updatedAt: Date.now(),
-        macros: Array.from(macros.values())
+        macros: Array.from(nextMacros.values())
       };
       fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), 'utf8');
       fs.renameSync(tmp, filePath);
     } catch (err) {
       console.error('Failed to save macros:', err.message);
+      if (failOnError) {
+        err.macroSaveFailed = true;
+        throw err;
+      }
     }
   }
 
@@ -131,8 +135,10 @@ function createMacroStore(filePath) {
       updatedAt: now
     };
 
-    macros.set(id, macro);
-    save();
+    const nextMacros = new Map(macros);
+    nextMacros.set(id, macro);
+    save(nextMacros, true);
+    macros = nextMacros;
     return macro;
   }
 

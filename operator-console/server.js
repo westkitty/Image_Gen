@@ -6049,6 +6049,7 @@ app.post('/api/macros', (req, res) => {
     const m = macroStore.create(req.body || {});
     res.json({ ok: true, macro: m });
   } catch (err) {
+    if (err.macroSaveFailed) return res.status(500).json({ error: 'Macro could not be saved' });
     res.status(400).json({ error: err.message });
   }
 });
