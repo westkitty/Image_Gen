@@ -930,7 +930,10 @@ def production_handoff_config(project, runtime, root):
     # in an approved maintenance window (docs/WC2TB_RECOVERY_RUNBOOK.md, section I).
     package = home / 'Library/Application Support/DexDiffusion/wc2tb-fallback-rollback-v2'
     fallback_cwd = package / 'source/operator-console'
-    fallback_env = {'HOME': str(home), 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin',
+    # PATH matches scripts/run-backend-service.sh: the fallback's heavy-inference arbiter
+    # probes `ollama ps` (in /opt/homebrew/bin) and fails closed when it cannot run it,
+    # which left the 2026-11-21 live drill's fallback unable to admit any image job.
+    fallback_env = {'HOME': str(home), 'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
                     'DEX_DATA_ROOT': str(home / 'DexDiffusion-InternalFallback'),
                     'DEX_STORAGE_MODE': 'internal-fallback', 'DEX_STORAGE_REASON': 'owner-handoff-v2',
                     'DEX_LOCAL_ENGINE_BRIDGE': '0', 'DEX_CHAT_ENABLED': '0', 'OPERATOR_CONSOLE_PORT': '31337',
