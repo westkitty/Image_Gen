@@ -40,8 +40,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install isolated Python test dependency
-        run: python -m pip install --disable-pip-version-check pillow
+      - name: Install pinned isolated Python test dependencies
+        run: python -m pip install --disable-pip-version-check -r scripts/omni-test-requirements.txt
       - name: Verify browser prerequisite
         run: |
           command -v google-chrome
@@ -52,12 +52,14 @@ jobs:
       - name: Run full portable release gate
         working-directory: operator-console
         run: npm run test:release
-      - name: Attach release-gate receipt
+      - name: Attach release-gate receipt and redacted failure signatures
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dex-release-gate-receipt
-          path: /tmp/dex-release-gate-${{ github.run_id }}/release-gate.json
+          path: |
+            /tmp/dex-release-gate-${{ github.run_id }}/release-gate.json
+            /tmp/dex-release-gate-${{ github.run_id }}/release-gate-diagnostics.json
           if-no-files-found: warn
           retention-days: 7
 
