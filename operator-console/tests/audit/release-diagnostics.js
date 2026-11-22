@@ -1,14 +1,48 @@
 'use strict';
-// Never publish test names, assertion messages, fixture values or raw suite logs.
+// Never publish arbitrary test names, assertion messages, fixture values or raw suite logs.
 // This report is intentionally categorical, even if it sacrifices some diagnostic detail.
 const MAX_MARKERS = 18;
 const MAX_LOG_SAMPLE = 512 * 1024;
+
+const matrixSpec = require('../browser/interaction-matrix.spec.json');
+const matrixIds = new Set(matrixSpec.shells.flatMap(shell => matrixSpec.viewports.flatMap(
+  ([width, height]) => matrixSpec.screens.map(screen => `V${shell}/${width}x${height}/${screen}`)
+)));
+const priority = { PASS: 0, FAIL: 1, BLOCKED: 2 };
+
+function parseMatrixCell(line) {
+  const m = /^([^\t\r\n]+?)[ \t]+(PASS|FAIL|BLOCKED)(?:[ \t]|$)/.exec(line);
+  if (!m || !matrixIds.has(m[1])) return null;
+  return { id: m[1], status: m[2] };
+}
+
+function tallyMatrixCells(output) {
+  const outcomes = new Map();
+  for (const line of String(output || '').split(/\r?\n/)) {
+    const row = parseMatrixCell(line);
+    if (!row) continue;
+    if (!outcomes.has(row.id) || priority[row.status] > priority[outcomes.get(row.id)]) outcomes.set(row.id,row.status);
+  }
+  const nonPassing = [];
+  let passed = 0, blocked = 0;
+  for (const [id,status] of outcomes) {
+    if (status === 'PASS') passed++;
+    else {
+      nonPassing.push({ id, status });
+      if (status === 'BLOCKED') blocked++;
+    }
+  }
+  // Keep failed backward-compatible: it counts all non-passing outcomes, including blocked.
+  return { passed, failed: nonPassing.length, blocked, measured: outcomes.size, nonPassing };
+}
+
 
 function signature(line) {
   const tap = /^\s*(?:#\s*)?not ok\s+(\d+)\s+-\s+.+$/i.exec(line);
   if (tap) return { kind: 'failed-test', index: Number(tap[1]) };
   if (/^\s*\[[^\]\r\n]{1,96}\]\s+(?:FAIL|BLOCKED)\s+.+$/i.test(line)) return { kind: 'failed-browser-check' };
-  if (/^\s*[^\r\n]{1,155}\/[\w.-]+\/[\w.-]+\s+(?:FAIL|BLOCKED)\s*$/i.test(line)) return { kind: 'failed-matrix-cell' };
+  const matrix = parseMatrixCell(line);
+  if (matrix && matrix.status !== 'PASS') return { kind: 'failed-matrix-cell', ...matrix };
   const code = /^\s*(?:#\s*)?code:\s*['"]?((?:ERR_|E)[A-Z0-9_]{2,40})\b/.exec(line);
   if (code) return { kind: 'error-code', code: code[1] };
   const problem = /(?:^|\s)(AssertionError|TypeError|ReferenceError|SyntaxError|TimeoutError|RangeError|AggregateError|ModuleNotFoundError|FileNotFoundError|Error)(?:\s*\[([A-Z0-9_]{2,40})\])?\s*:/i.exec(line);
@@ -38,4 +72,4 @@ function extractFailureMarkers(output) {
   return { markers, sampled: raw.length > MAX_LOG_SAMPLE, truncated: markers.length >= MAX_MARKERS };
 }
 
-module.exports = { extractFailureMarkers };
+module.exports = { extractFailureMarkers, tallyMatrixCells };
