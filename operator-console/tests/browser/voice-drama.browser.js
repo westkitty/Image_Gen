@@ -189,6 +189,44 @@ const { results, test, phase, exitCode } = runner('voice-drama');
       await ctx.close();
     });
 
+    await test('Voice Studio layout: rail search/type filters, history panel, docked player bar, strictly locked inside Audio tab', async () => {
+      const { ctx, page, errors } = await open();
+      await page.evaluate(() => __dex.setScreen('voice'));
+      await page.waitForSelector('[data-voice-studio="1"]');
+      await page.waitForSelector('[data-vb-voices-rail="1"]');
+      await page.waitForSelector('[data-vb-stage="1"]');
+      await page.waitForSelector('[data-vb-history="1"]');
+      await page.waitForFunction(() => Array.isArray(__dex.vp.profiles) && __dex.vp.profiles.some(p => p.name === 'ZZ-UI-OneStep-Vox'));
+      // Type filter & search filter
+      await page.click('[data-vb-type-filter="cloned"]');
+      await page.waitForFunction(() => document.body.innerText.includes('ZZ-UI-OneStep-Vox'));
+      await page.fill('[data-vb-voice-search="1"]', 'ZZ-UI-OneStep');
+      await page.waitForFunction(() => {
+        const cards = [...document.querySelectorAll('[data-vb-voices-rail] [data-profile]')];
+        return cards.length >= 1 && cards.every(c => c.innerText.includes('ZZ-UI-OneStep'));
+      });
+      await page.fill('[data-vb-voice-search="1"]', '');
+      await page.click('[data-vb-type-filter="all"]');
+      // Docked player bar renders in Audio tab and disappears completely on Image / Chat tabs
+      await page.evaluate(() => __dex.playInVoiceBar({ id: 'bar-test-1', title: 'Test Clip', subtitle: 'voxcpm2 · 0:03', url: '/api/media/none.wav', downloadUrl: '/api/media/none.wav', duration: 3 }, false));
+      await page.waitForSelector('[data-voice-studio="1"] [data-vb-player="1"]');
+      assert.ok(await page.$('[data-vb-player-clock="1"]'));
+      await page.screenshot({ path: outPath('voice-studio-player.png') });
+      await page.evaluate(() => __dex.setScreen('create'));
+      await page.waitForTimeout(200);
+      assert.equal(await page.$('[data-voice-studio="1"]'), null, 'Voice Studio does not leak onto Image tab');
+      assert.equal(await page.$('[data-vb-player="1"]'), null, 'Voice player bar does not leak onto Image tab');
+      await page.evaluate(() => __dex.setScreen('chat'));
+      await page.waitForTimeout(200);
+      assert.equal(await page.$('[data-voice-studio="1"]'), null, 'Voice Studio does not leak onto Chat tab');
+      await page.evaluate(() => __dex.setScreen('voice'));
+      await page.waitForSelector('[data-vb-player="1"] button[aria-label="Close player bar"]');
+      await page.click('[data-vb-player="1"] button[aria-label="Close player bar"]');
+      await page.waitForSelector('[data-vb-player="1"]', { state: 'detached' });
+      assert.deepEqual(errors, []);
+      await ctx.close();
+    });
+
     await test('Drama: paste → parse → review/edit → cast → privacy banner → save/unsave → blocked render → assemble refuses without takes', async () => {
       const { ctx, page, errors } = await open();
       await page.evaluate(() => __dex.setScreen('drama')); await page.waitForSelector('[data-drama-script-input]');

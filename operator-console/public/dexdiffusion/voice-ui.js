@@ -20,15 +20,59 @@
   const TERMINAL = ['COMPLETE', 'FAILED', 'INTERRUPTED', 'CANCELLED'];
   const stateTone = s => ({ valid: tone.ok, warnings: tone.warn, invalid: tone.bad }[s] || tone.off);
 
+  const fmtClock = s => {
+    if (s == null || !isFinite(s) || s < 0) return '0:00';
+    const sec = Math.floor(s);
+    return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  };
+  const VOICE_STUDIO_CSS = `
+[data-voice-studio="1"]{display:grid;gap:12px;min-width:0;box-sizing:border-box}
+[data-voice-studio="1"] *{box-sizing:border-box}
+[data-voice-studio="1"] .vb-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:8px 12px;border-radius:10px;border:1px solid rgba(148,163,184,.16);background:rgba(9,20,32,.78)}
+[data-voice-studio="1"] .vb-tabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+[data-voice-studio="1"] .vb-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+[data-voice-studio="1"] .vb-shell{display:grid;grid-template-columns:minmax(250px,305px) minmax(0,1fr);gap:12px;align-items:start;min-width:0}
+[data-voice-studio="1"] .vb-rail{border:1px solid rgba(148,163,184,.16);background:rgba(6,10,16,.78);border-radius:11px;padding:11px;display:grid;gap:9px;min-width:0;position:sticky;top:0}
+[data-voice-studio="1"] .vb-voice-list{display:grid;gap:6px;max-height:520px;overflow-y:auto;padding-right:2px;min-width:0}
+[data-voice-studio="1"] .vb-voice-card{width:100%;text-align:left;border:1px solid rgba(148,163,184,.18);background:rgba(9,20,32,.62);color:#e2e8f0;border-radius:9px;padding:9px 10px;cursor:pointer;display:grid;grid-template-columns:34px minmax(0,1fr);gap:9px;align-items:center;min-height:58px;transition:border-color .15s,background .15s;font-family:'DM Sans',sans-serif}
+[data-voice-studio="1"] .vb-voice-card:hover{border-color:rgba(245,158,11,.45);background:rgba(9,20,32,.9)}
+[data-voice-studio="1"] .vb-voice-card.is-active{border-color:rgba(245,158,11,.8);background:rgba(245,158,11,.10);box-shadow:inset 2px 0 0 #f59e0b}
+[data-voice-studio="1"] .vb-avatar{width:34px;height:34px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;letter-spacing:.03em;flex-shrink:0}
+[data-voice-studio="1"] .vb-stage{display:grid;gap:12px;min-width:0}
+[data-voice-studio="1"] .vb-card{border:1px solid rgba(148,163,184,.16);background:rgba(6,10,16,.74);border-radius:11px;padding:12px;display:grid;gap:10px;min-width:0}
+[data-voice-studio="1"] .vb-history-list{display:grid;gap:6px;max-height:320px;overflow-y:auto;min-width:0}
+[data-voice-studio="1"] .vb-history-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:center;padding:8px 10px;border-radius:9px;border:1px solid rgba(148,163,184,.14);background:rgba(9,20,32,.56);min-width:0}
+[data-voice-studio="1"] .vb-play-circle{width:34px;height:34px;border-radius:999px;border:1px solid rgba(245,158,11,.55);background:rgba(245,158,11,.14);color:#fbbf24;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;font-weight:800;flex-shrink:0}
+[data-voice-studio="1"] .vb-play-circle.is-playing{background:#f59e0b;color:#080c12;border-color:#f59e0b}
+[data-voice-studio="1"] .vb-player{position:sticky;bottom:0;z-index:20;display:grid;gap:6px;padding:10px 12px;border-radius:11px;border:1px solid rgba(245,158,11,.5);background:#080e18;box-shadow:0 -8px 26px rgba(0,0,0,.45);min-width:0}
+@media (max-width:860px){[data-voice-studio="1"] .vb-shell{grid-template-columns:minmax(0,1fr)}[data-voice-studio="1"] .vb-rail{position:static}[data-voice-studio="1"] .vb-voice-list{max-height:220px}}
+`;
+  function injectVoiceStudioCss() {
+    if (typeof document === 'undefined' || document.getElementById('dex-voice-studio-css')) return;
+    const s = document.createElement('style');
+    s.id = 'dex-voice-studio-css';
+    s.textContent = VOICE_STUDIO_CSS;
+    document.head.appendChild(s);
+  }
+  const avatarPalette = type => type === 'cloned'
+    ? { bg: 'rgba(245,158,11,.18)', fg: '#fbbf24', bd: 'rgba(245,158,11,.5)' }
+    : type === 'designed'
+      ? { bg: 'rgba(167,139,250,.18)', fg: '#c4b5fd', bd: 'rgba(167,139,250,.5)' }
+      : { bg: 'rgba(34,211,238,.16)', fg: '#67e8f9', bd: 'rgba(34,211,238,.45)' };
+  const initials = name => {
+    const parts = String(name || 'V').trim().split(/\s+/).filter(Boolean);
+    return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : String(parts[0] || 'V').slice(0, 2).toUpperCase();
+  };
+
   P._vp = function () {
-    if (!this.vp) this.vp = { tab: 'profiles', profiles: null, engines: null, selected: null, creating: false, newForm: { type: 'cloned', name: '', language: 'en', preferred_engine: 'qwen3-tts-base', description: '', default_direction: '', notes: '', preset_voice: 'af_heart' }, createPending: null, createTrim: null, createTrimOpen: false, createSampleError: null, createBusy: false, transcribing: false, transcribeError: null, asrStatus: null, pending: null, render: null, busy: false, text: '', direction: '', seed: '', speed: '', conversionSource: null, conversionBusy: false, conversionJob: null, conversionArtifact: null, conversionProject: null, conversionProjects: null, conversionTargetProfileId: '', conversionProjectId: '', conversionLineId: '' };
+    if (!this.vp) this.vp = { tab: 'profiles', profiles: null, engines: null, selected: null, search: '', typeFilter: 'all', historyFilter: 'all', historySearch: '', historyRequested: false, player: null, playerPlaying: false, creating: false, newForm: { type: 'cloned', name: '', language: 'en', preferred_engine: 'qwen3-tts-base', description: '', default_direction: '', notes: '', preset_voice: 'af_heart' }, createPending: null, createTrim: null, createTrimOpen: false, createSampleError: null, createBusy: false, transcribing: false, transcribeError: null, asrStatus: null, pending: null, render: null, busy: false, text: '', direction: '', seed: '', speed: '', conversionSource: null, conversionBusy: false, conversionJob: null, conversionArtifact: null, conversionProject: null, conversionProjects: null, conversionTargetProfileId: '', conversionProjectId: '', conversionLineId: '' };
     return this.vp;
   };
   // Background updates (loads, polls) pass skipIfTyping so a rebuild never steals focus from a field the user is typing in.
   P.vpSet = function (patch, opts) {
     Object.assign(this._vp(), patch);
     const ae = document.activeElement;
-    if (opts && opts.skipIfTyping && ae && ae.closest && ae.closest('[data-voice-profiles]') && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+    if (opts && opts.skipIfTyping && ae && ae.closest && ae.closest('[data-voice-studio],[data-voice-profiles]') && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
     this.setState({ _vpTick: (this.state._vpTick || 0) + 1 });
   };
   P._vpApi = async function (route, body, method) {
@@ -79,9 +123,18 @@
     this.loadConversionProject(vp.conversionProjectId);
   };
   P.loadVoiceProfiles = async function () {
+    const vp = this._vp();
+    if (!vp.historyRequested && this.loadMediaLibrary) {
+      vp.historyRequested = true;
+      this.loadMediaLibrary('voice');
+    }
     const [p, e, pref, converters, projects, asr] = await Promise.all([this._vpApi('/api/voice/profiles'), this.vp && this.vp.engines ? { ok: true, data: { engines: this.vp.engines, kokoro_voices: this.vp.kokoroVoices } } : this._vpApi('/api/voice/engines'), this._vpApi('/api/voice/director-preferences'), this._vpApi('/api/voice/converters'), this._vpApi('/api/drama/projects'), this._vpApi('/api/voice/transcribe/status')]);
-    if (p.ok) this.vpSet({ profiles: p.data.profiles, engines: e.ok ? e.data.engines : null, kokoroVoices: e.ok ? e.data.kokoro_voices : [], directorPreferences: pref.ok ? pref.data.preferences : null,
-      converters: converters.ok ? converters.data.converters : [], conversionProjects: projects.ok ? projects.data.projects : [], asrStatus: asr.ok ? asr.data.asr : this._vp().asrStatus }, { skipIfTyping: true });
+    if (p.ok) {
+      const list = p.data.profiles || [];
+      const nextSel = vp.selected && list.some(x => x.id === vp.selected) ? vp.selected : (!vp.selected && list[0] ? list[0].id : vp.selected);
+      this.vpSet({ profiles: list, selected: nextSel, engines: e.ok ? e.data.engines : null, kokoroVoices: e.ok ? e.data.kokoro_voices : [], directorPreferences: pref.ok ? pref.data.preferences : null,
+        converters: converters.ok ? converters.data.converters : [], conversionProjects: projects.ok ? projects.data.projects : [], asrStatus: asr.ok ? asr.data.asr : this._vp().asrStatus }, { skipIfTyping: true });
+    }
   };
   P.saveDirectorPreferences = async function (patch) {
     const r = await this._vpApi('/api/voice/director-preferences', patch, 'PUT');
@@ -425,6 +478,62 @@
     this.vpSet({ render: { profile_id: vp.selected, status: 'QUEUED', job_id: r.data.job_id, info: r.data, label: 'Queued' } });
     this._followVoiceRender(r.data.job_id, vp.selected);
   };
+  P._ensureVoiceBarAudio = function () {
+    if (this._vbAudio) return this._vbAudio;
+    const audio = new Audio();
+    audio.preload = 'metadata';
+    const syncDom = () => {
+      const dur = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (this._vp().player && this._vp().player.duration) || 0;
+      const cur = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+      const clk = document.querySelector('[data-vb-player-clock="1"]');
+      if (clk) clk.textContent = fmtClock(cur) + ' / ' + fmtClock(dur);
+      const rng = document.querySelector('[data-vb-player-seek="1"]');
+      if (rng && dur > 0 && document.activeElement !== rng) rng.value = String(Math.min(dur, cur));
+    };
+    audio.addEventListener('timeupdate', syncDom);
+    audio.addEventListener('loadedmetadata', () => {
+      const vp = this._vp();
+      if (vp.player && Number.isFinite(audio.duration) && audio.duration > 0) vp.player.duration = audio.duration;
+      syncDom();
+    });
+    audio.addEventListener('play', () => this.vpSet({ playerPlaying: true }, { skipIfTyping: true }));
+    audio.addEventListener('pause', () => this.vpSet({ playerPlaying: false }, { skipIfTyping: true }));
+    audio.addEventListener('ended', () => { syncDom(); this.vpSet({ playerPlaying: false }, { skipIfTyping: true }); });
+    this._vbAudio = audio;
+    return audio;
+  };
+  P.playInVoiceBar = function (track, autoPlay = true) {
+    if (!track || !track.url) return;
+    const vp = this._vp(), audio = this._ensureVoiceBarAudio();
+    const same = vp.player && vp.player.id === track.id && audio.src && audio.src.endsWith(track.url);
+    if (same) {
+      if (autoPlay) { if (audio.paused) audio.play().catch(() => {}); else audio.pause(); }
+      return;
+    }
+    audio.pause();
+    audio.src = track.url;
+    audio.currentTime = 0;
+    this.vpSet({ player: Object.assign({}, track), playerPlaying: false }, { skipIfTyping: true });
+    if (autoPlay) audio.play().catch(() => { this.toast('Playback unavailable in this environment', '#fbbf24'); });
+  };
+  P.toggleVoiceBarPlay = function () {
+    const vp = this._vp();
+    if (!vp.player) return;
+    const audio = this._ensureVoiceBarAudio();
+    if (audio.paused) audio.play().catch(() => {});
+    else audio.pause();
+  };
+  P.seekVoiceBar = function (seconds) {
+    const audio = this._vbAudio;
+    const val = Number(seconds);
+    if (!audio || !Number.isFinite(val)) return;
+    audio.currentTime = Math.max(0, val);
+  };
+  P.closeVoiceBar = function () {
+    if (this._vbAudio) { this._vbAudio.pause(); this._vbAudio.removeAttribute('src'); }
+    this.vpSet({ player: null, playerPlaying: false });
+  };
+
   P._followVoiceRender = function (jobId, profileId) {
     clearInterval(this._vpTimer);
     const tick = async () => {
@@ -432,7 +541,22 @@
       if (!r.ok) { clearInterval(this._vpTimer); this.vpSet({ render: Object.assign({}, this._vp().render, { profile_id: profileId, status: 'FAILED', error: 'Lost track of the job: ' + (r.data.error || r.status) }) }); return; }
       const d = r.data;
       this.vpSet({ render: Object.assign({}, this._vp().render, d, { profile_id: profileId }) }, { skipIfTyping: true });
-      if (TERMINAL.includes(d.status)) { clearInterval(this._vpTimer); this.loadMediaLibrary && this.loadMediaLibrary('voice'); this.toast(d.status === 'COMPLETE' ? 'Speech ready' : 'Render ' + d.status.toLowerCase() + (d.error ? ': ' + d.error : ''), d.status === 'COMPLETE' ? '#65d66e' : '#ef4444'); }
+      if (TERMINAL.includes(d.status)) {
+        clearInterval(this._vpTimer);
+        this.loadMediaLibrary && this.loadMediaLibrary('voice');
+        if (d.status === 'COMPLETE' && d.artifact) {
+          const prof = this._profile(profileId);
+          this.playInVoiceBar({
+            id: d.artifact.artifact_id,
+            title: prof ? prof.name : d.artifact.artifact_id,
+            subtitle: [(prof && prof.preferred_engine) || 'voice', fmtT(d.artifact.duration)].filter(Boolean).join(' · '),
+            url: this.state.backendUrl + d.artifact.url,
+            downloadUrl: this.state.backendUrl + d.artifact.download_url,
+            duration: d.artifact.duration || 0,
+          }, false);
+        }
+        this.toast(d.status === 'COMPLETE' ? 'Speech ready' : 'Render ' + d.status.toLowerCase() + (d.error ? ': ' + d.error : ''), d.status === 'COMPLETE' ? '#65d66e' : '#ef4444');
+      }
     };
     tick(); this._vpTimer = setInterval(tick, 1800);
   };
@@ -517,37 +641,44 @@
         style: { border: '1px solid rgba(167,139,250,.6)', background: 'rgba(167,139,250,.2)', color: '#c4b5fd', borderRadius: 7, padding: '7px 11px', minHeight: 34, fontSize: 12, cursor: 'pointer', fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }
       }, 'Upload sample'),
       sampleInput);
-    return h('div', { 'data-profile-editor': p.id, style: Object.assign({}, css.panel, { display: 'grid', gap: 10 }) },
-      h('div', { style: css.row }, h('div', { style: css.title }, 'Voice · ' + p.name), chip(p.type, '#a78bfa'), chip(p.validation.state, stateTone(p.validation.state)), chip((p.preferred_engine || '—'), '#22d3ee'), h('div', { style: { flex: 1 } }), btn('Delete voice', () => this.deleteVoiceProfile(p.id), '#f87171')),
+    return h('div', { 'data-profile-editor': p.id, className: 'vb-card', style: { display: 'grid', gap: 10 } },
+      h('div', { style: css.row },
+        h('div', { style: css.title }, 'Voice settings · ' + p.name),
+        chip(p.type, '#a78bfa'),
+        chip(p.validation.state, stateTone(p.validation.state)),
+        chip((p.preferred_engine || '—'), '#22d3ee'),
+        h('div', { style: { flex: 1 } }),
+        btn('Delete voice', () => this.deleteVoiceProfile(p.id), '#f87171')),
       h('div', { style: css.grid2 },
         field('Name', h('input', { value: p.name, style: css.input, onChange: e => this.saveVoiceProfile(p.id, { name: e.target.value }) })),
         field('Default delivery direction', h('input', { value: p.default_direction || '', placeholder: 'e.g. calm, measured', style: css.input, onChange: e => this.saveVoiceProfile(p.id, { default_direction: e.target.value }) }))),
-      field('Render engine', window.DexModal ? window.DexModal.choiceButton(h, { id: 'voice-engine', title: 'Render engine for ' + p.name, ariaLabel: 'Render engine for ' + p.name,
-        subtitle: 'Engine status is reported separately from profile approval. Unverified engines may fail their runtime availability check.',
-        value: p.preferred_engine || '', placeholder: 'Choose an engine', attrs: { 'data-voice-engine': p.id },
-        options: (vp.engines || []).filter(e => Array.isArray(e.voice_types) && e.voice_types.includes(p.type)).map(e => ({ value: e.id, label: e.label, badge: e.status || 'IMPLEMENTED / UNVERIFIED', hint: e.description || ('Voice types: ' + e.voice_types.join(', ')) })),
-        onChange: v => this.saveVoiceProfile(p.id, { preferred_engine: v }) })
-        : h('select', { value: p.preferred_engine || '', style: css.input, 'aria-label': 'Render engine for ' + p.name,
-        title: 'Engine status is reported separately from profile approval. Unverified engines may fail their runtime availability check.',
-        onChange: e => this.saveVoiceProfile(p.id, { preferred_engine: e.target.value }) },
-        ...((vp.engines || []).filter(e => Array.isArray(e.voice_types) && e.voice_types.includes(p.type)).map(e => h('option', { key: e.id, value: e.id }, `${e.label} · ${e.status || 'IMPLEMENTED / UNVERIFIED'}`))))),
+      h('div', { style: css.grid2 },
+        field('Render engine', window.DexModal ? window.DexModal.choiceButton(h, { id: 'voice-engine', title: 'Render engine for ' + p.name, ariaLabel: 'Render engine for ' + p.name,
+          subtitle: 'Engine status is reported separately from profile approval. Unverified engines may fail their runtime availability check.',
+          value: p.preferred_engine || '', placeholder: 'Choose an engine', attrs: { 'data-voice-engine': p.id },
+          options: (vp.engines || []).filter(e => Array.isArray(e.voice_types) && e.voice_types.includes(p.type)).map(e => ({ value: e.id, label: e.label, badge: e.status || 'IMPLEMENTED / UNVERIFIED', hint: e.description || ('Voice types: ' + e.voice_types.join(', ')) })),
+          onChange: v => this.saveVoiceProfile(p.id, { preferred_engine: v }) })
+          : h('select', { value: p.preferred_engine || '', style: css.input, 'aria-label': 'Render engine for ' + p.name,
+          title: 'Engine status is reported separately from profile approval. Unverified engines may fail their runtime availability check.',
+          onChange: e => this.saveVoiceProfile(p.id, { preferred_engine: e.target.value }) },
+          ...((vp.engines || []).filter(e => Array.isArray(e.voice_types) && e.voice_types.includes(p.type)).map(e => h('option', { key: e.id, value: e.id }, `${e.label} · ${e.status || 'IMPLEMENTED / UNVERIFIED'}`))))),
+        field('Notes', h('input', {
+          value: p.notes || '',
+          style: css.input,
+          onChange: e => this.saveVoiceProfile(p.id, { notes: e.target.value }),
+          onDragEnter: e => { e.preventDefault(); e.stopPropagation(); },
+          onDragOver: e => { e.preventDefault(); e.stopPropagation(); },
+          onDrop: e => {
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+              e.preventDefault();
+              e.stopPropagation();
+              this.stageProfileSample(e.dataTransfer.files[0]);
+            }
+          }
+        }))),
       p.type === 'designed' ? field('Voice description', h('textarea', { rows: 3, value: p.description || '', style: Object.assign({}, css.input, { resize: 'vertical' }), onChange: e => this.saveVoiceProfile(p.id, { description: e.target.value }) })) : null,
       p.type === 'preset' ? h('div', { style: css.grid2 }, field('Kokoro voice', kokoroChoice(vp.kokoroVoices, p.preset_voice, v => this.saveVoiceProfile(p.id, { preset_voice: v }), 'Kokoro voice for ' + p.name)),
         field('Default speed', h('input', numText({ min: '0.5', max: '2', step: '0.05', value: String(p.default_speed || 1), style: css.input, onChange: e => this.saveVoiceProfile(p.id, { default_speed: e.target.value }) })))) : null,
-      field('Notes', h('input', {
-        value: p.notes || '',
-        style: css.input,
-        onChange: e => this.saveVoiceProfile(p.id, { notes: e.target.value }),
-        onDragEnter: e => { e.preventDefault(); e.stopPropagation(); },
-        onDragOver: e => { e.preventDefault(); e.stopPropagation(); },
-        onDrop: e => {
-          if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-            e.preventDefault();
-            e.stopPropagation();
-            this.stageProfileSample(e.dataTransfer.files[0]);
-          }
-        }
-      })),
       p.type === 'cloned' ? h('div', { style: { display: 'grid', gap: 8 } },
         h('div', { style: css.title }, 'Reference samples (' + p.samples.length + ' of 8)'),
         ...p.samples.map(s => this._sampleCard(p, s)),
@@ -603,28 +734,152 @@
     const est = () => { const n = String(t.profileText || '').length; return n ? n + ' characters' + (eng && n > eng.capabilities.max_chunk_chars ? ' · ≈ ' + Math.ceil(n / (eng.capabilities.max_chunk_chars * 0.8)) + ' chunks (long-form)' : ' · single chunk') : 'no text yet'; };
     const counter = h('span', { style: css.muted }, est());
     const art = r && r.artifact;
-    return h('div', { 'data-profile-render': p.id, style: Object.assign({}, css.panel, { display: 'grid', gap: 8 }) },
-      h('div', { style: css.title }, 'Speak with this voice'),
-      field('Text (long-form: no 2,000-character limit — it is split on paragraph / sentence / clause boundaries and stitched)', h('textarea', { rows: 8, value: t.profileText || '', placeholder: 'Paste anything from one line to a whole chapter…', style: Object.assign({}, css.input, { resize: 'vertical' }), onInput: e => { t.profileText = e.target.value; counter.textContent = est(); } })),
-      counter,
-      h('div', { style: css.grid2 },
-        field('Performance direction' + (canDirect ? '' : ' — not supported by ' + (eng ? eng.label : 'this engine')), h('input', { value: canDirect ? (t.profileDirection || '') : '', disabled: !canDirect, placeholder: canDirect ? 'e.g. whispering, frightened' : 'unavailable for this voice type', title: canDirect ? '' : 'This engine ignores delivery directions, so DexDiffusion will not pretend to apply them', style: Object.assign({}, css.input, canDirect ? {} : { opacity: 0.5 }), onInput: e => { t.profileDirection = e.target.value; } })),
+    const pal = avatarPalette(p.type);
+    const jumpToSettings = () => {
+      const ed = document.querySelector('[data-profile-editor]');
+      if (ed && ed.scrollIntoView) ed.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    return h('div', {
+      'data-profile-render': p.id,
+      className: 'vb-card',
+      style: { borderColor: 'rgba(245,158,11,.28)', background: 'linear-gradient(180deg, rgba(9,20,32,.9), rgba(6,10,16,.84))' },
+    },
+      h('div', { style: Object.assign({}, css.row, { justifyContent: 'space-between', alignItems: 'center' }) },
+        h('div', { style: Object.assign({}, css.row, { gap: 10, minWidth: 0 }) },
+          h('div', { className: 'vb-avatar', style: { background: pal.bg, color: pal.fg, border: '1px solid ' + pal.bd } }, initials(p.name)),
+          h('div', { style: { display: 'grid', gap: 2, minWidth: 0 } },
+            h('div', { style: Object.assign({}, css.title, { fontSize: 15 }) }, 'Generate · ' + p.name),
+            h('div', { style: css.muted }, 'Speak with this voice · ' + (eng ? eng.label : (p.preferred_engine || 'voice')) + (p.default_direction ? ' · ' + p.default_direction : '')))),
+        h('div', { style: css.row },
+          chip(p.type, '#a78bfa'),
+          chip(p.validation.state, stateTone(p.validation.state)),
+          btn('Voice settings', jumpToSettings, '#94a3b8'))),
+      field('Text (long-form: no 2,000-character limit — it is split on paragraph / sentence / clause boundaries and stitched)',
+        h('textarea', { rows: 6, value: t.profileText || '', placeholder: 'Paste anything from one line to a whole chapter…', style: Object.assign({}, css.input, { resize: 'vertical', lineHeight: 1.5 }), onInput: e => { t.profileText = e.target.value; counter.textContent = est(); } })),
+      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,170px),1fr))', gap: 10 } },
+        field('Performance direction' + (canDirect ? '' : ' — not supported by ' + (eng ? eng.label : 'this engine')),
+          h('input', { value: canDirect ? (t.profileDirection || '') : '', disabled: !canDirect, placeholder: canDirect ? 'e.g. whispering, frightened' : 'unavailable for this voice type', title: canDirect ? '' : 'This engine ignores delivery directions, so DexDiffusion will not pretend to apply them', style: Object.assign({}, css.input, canDirect ? {} : { opacity: 0.5 }), onInput: e => { t.profileDirection = e.target.value; } })),
         field('Seed', h('input', numText({ min: '0', value: String(vp.seed || ''), placeholder: 'random', style: css.input, onInput: e => { vp.seed = e.target.value; } }))),
         p.type === 'preset' ? field('Speed', h('input', numText({ min: '0.5', max: '2', step: '0.05', value: String(vp.speed || ''), placeholder: String(p.default_speed || 1), style: css.input, onInput: e => { vp.speed = e.target.value; } }))) : null),
-      h('div', { style: css.row }, h('button', { type: 'button', 'data-render-speech': '1', 'aria-busy': String(!!running), onClick: () => !running && !elsewhere && this.renderProfileSpeech(), disabled: !!running || !!elsewhere || p.validation.state === 'invalid',
-        style: { minHeight: 44, flex: '1 1 220px', borderRadius: 9, border: 0, fontWeight: 800, fontSize: 14, cursor: running ? 'progress' : 'pointer', background: running || p.validation.state === 'invalid' ? 'rgba(148,163,184,.2)' : 'linear-gradient(90deg,#8b5cf6,#22d3ee)', color: running || p.validation.state === 'invalid' ? '#94a3b8' : '#06060a' } },
-        running ? (r.label || 'Rendering…') : elsewhere ? 'Waiting: "' + elsewhere + '" is rendering' : p.validation.state === 'invalid' ? 'Fix the voice first (see validation above)' : 'Render speech'),
-        h('span', { style: css.muted }, this.state.savePrompts ? 'Prompt saving is on: text may be kept with the job record.' : 'Prompt saving is off: text is never stored in job records.')),
+      h('div', { style: Object.assign({}, css.row, { justifyContent: 'space-between', alignItems: 'center' }) },
+        h('div', { style: { display: 'grid', gap: 2 } },
+          counter,
+          h('span', { style: css.muted }, this.state.savePrompts ? 'Prompt saving is on: text may be kept with the job record.' : 'Prompt saving is off: text is never stored in job records.')),
+        h('button', { type: 'button', 'data-render-speech': '1', 'aria-busy': String(!!running), onClick: () => !running && !elsewhere && this.renderProfileSpeech(), disabled: !!running || !!elsewhere || p.validation.state === 'invalid',
+          style: { minHeight: 42, minWidth: 190, borderRadius: 9, border: 0, padding: '0 18px', fontWeight: 800, fontSize: 13.5, cursor: running ? 'progress' : 'pointer', background: running || p.validation.state === 'invalid' ? 'rgba(148,163,184,.2)' : 'linear-gradient(90deg,#ca8a04,#eab308)', color: running || p.validation.state === 'invalid' ? '#94a3b8' : '#080c12', fontFamily: "'DM Sans',sans-serif" } },
+          running ? (r.label || 'Rendering…') : elsewhere ? 'Waiting: "' + elsewhere + '" is rendering' : p.validation.state === 'invalid' ? 'Fix the voice first (see validation above)' : 'Render speech')),
       r && r.info && r.info.delivery && r.info.delivery.note ? h('div', { style: { color: tone.warn, fontSize: 12 } }, 'ℹ ' + r.info.delivery.note) : null,
       r && r.info && r.info.warnings && r.info.warnings.length ? h('div', { style: { color: tone.warn, fontSize: 12 } }, '⚠ ' + r.info.warnings.join('; ')) : null,
-      running ? h('div', { role: 'status', 'data-render-progress': '1', style: { display: 'grid', gap: 4 } }, h('div', { style: { color: tone.info, fontSize: 12 } }, r.label || 'Working…'),
-        h('div', { style: { height: 6, background: 'rgba(255,255,255,.08)', borderRadius: 3, overflow: 'hidden' } }, h('div', { style: { height: '100%', width: (r.progress && r.progress.total && r.progress.chunk ? Math.round((r.progress.chunk - (r.status === 'RUNNING' ? 0.5 : 0)) / r.progress.total * 100) : 5) + '%', background: 'linear-gradient(90deg,#8b5cf6,#22d3ee)', transition: 'width .4s' } })),
+      running ? h('div', { role: 'status', 'data-render-progress': '1', style: { display: 'grid', gap: 4 } }, h('div', { style: { color: '#fbbf24', fontSize: 12, fontWeight: 700 } }, r.label || 'Working…'),
+        h('div', { style: { height: 6, background: 'rgba(255,255,255,.08)', borderRadius: 3, overflow: 'hidden' } }, h('div', { style: { height: '100%', width: (r.progress && r.progress.total && r.progress.chunk ? Math.round((r.progress.chunk - (r.status === 'RUNNING' ? 0.5 : 0)) / r.progress.total * 100) : 5) + '%', background: 'linear-gradient(90deg,#ca8a04,#eab308)', transition: 'width .4s' } })),
         h('div', { style: css.muted }, r.info && r.info.long_form ? 'Long-form: ' + r.info.chunks + ' chunks, one Big Mac job, stitched on the MacBook.' : 'Single chunk.')) : null,
       r && (r.status === 'FAILED' || r.status === 'INTERRUPTED') ? h('div', { role: 'alert', 'data-render-error': '1', style: { color: tone.bad, fontSize: 12, border: '1px solid rgba(248,113,113,.4)', borderRadius: 8, padding: 8, overflowWrap: 'anywhere' } }, '✗ ' + (r.error || r.status) + (r.gate ? ' (gate ' + r.gate + ')' : '')) : null,
-      art ? h('div', { 'data-render-result': '1', style: { display: 'grid', gap: 6 } }, this._mediaEl(base + art.url, 'audio', 'vp-result'),
+      art ? h('div', { 'data-render-result': '1', style: { display: 'grid', gap: 8, padding: 10, borderRadius: 9, border: '1px solid rgba(101,214,110,.3)', background: 'rgba(101,214,110,.06)' } },
+        this._mediaEl(base + art.url, 'audio', 'vp-result'),
         h('div', { style: css.muted }, [art.artifact_id, fmtT(art.duration), art.meta && art.meta.long_form ? art.meta.long_form.chunks + ' chunks stitched' : '1 chunk', art.sha256 ? 'sha256 ' + art.sha256.slice(0, 12) + '…' : null].filter(Boolean).join(' · ')),
         art.meta && art.meta.long_form ? h('details', null, h('summary', { style: Object.assign({}, css.muted, { cursor: 'pointer' }) }, '▸ Chunk lineage'), h('div', { style: css.mono }, art.meta.long_form.lineage.map(c => `#${c.index + 1} ${c.chars} chars · ${c.duration}s · ${c.boundary || 'end'} · ${c.sha256.slice(0, 10)}`).join('\n'))) : null,
-        h('div', { style: css.row }, h('a', { href: base + art.download_url, style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 4px' } }, 'Download WAV'))) : null);
+        h('div', { style: css.row },
+          btn('▶ Play in bar', () => this.playInVoiceBar({
+            id: art.artifact_id,
+            title: p.name + ' · Generated speech',
+            subtitle: [eng ? eng.label : (p.preferred_engine || 'voice'), fmtT(art.duration)].filter(Boolean).join(' · '),
+            url: base + art.url,
+            downloadUrl: base + art.download_url,
+            duration: art.duration || 0,
+          }, true), '#eab308'),
+          h('a', { href: base + art.download_url, download: '', style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '8px 4px', textDecoration: 'none' } }, 'Download WAV'))) : null);
+  };
+  P._buildVoiceHistoryPanel = function () {
+    const vp = this._vp(), base = this.state.backendUrl;
+    const mws = this._mws ? this._mws() : null;
+    const libItems = (mws && mws.lib && Array.isArray(mws.lib.items)) ? mws.lib.items : [];
+    const voiceItems = libItems.filter(i => i && i.kind === 'voice');
+    const q = String(vp.historySearch || '').trim().toLowerCase();
+    const filtered = voiceItems.filter(i => {
+      if (vp.historyFilter === 'keepers' && !i.keeper) return false;
+      if (!q) return true;
+      return [i.artifact_id, i.operation, i.model, i.worker].some(v => String(v || '').toLowerCase().includes(q));
+    }).slice(0, 25);
+    return h('div', { 'data-vb-history': '1', className: 'vb-card' },
+      h('div', { style: Object.assign({}, css.row, { justifyContent: 'space-between', alignItems: 'center' }) },
+        h('div', { style: css.row },
+          h('div', { style: css.title }, 'Generation history'),
+          chip(String(filtered.length) + (voiceItems.length !== filtered.length ? ' / ' + voiceItems.length : '') + ' clips', '#94a3b8')),
+        h('div', { style: css.row },
+          btn('All', () => this.vpSet({ historyFilter: 'all' }), vp.historyFilter === 'all' ? '#eab308' : '#94a3b8'),
+          btn('★ Keepers', () => this.vpSet({ historyFilter: 'keepers' }), vp.historyFilter === 'keepers' ? '#eab308' : '#94a3b8'),
+          btn('↻ Refresh', () => this.loadMediaLibrary && this.loadMediaLibrary('voice'), '#94a3b8'))),
+      h('input', {
+        key: 'vb-history-search',
+        'data-vb-history-search': '1',
+        value: vp.historySearch || '',
+        placeholder: 'Search clips, model, or worker…',
+        style: css.input,
+        onInput: e => this.vpSet({ historySearch: e.target.value }),
+      }),
+      filtered.length
+        ? h('div', { className: 'vb-history-list' }, ...filtered.map(item => {
+          const active = vp.player && vp.player.id === item.artifact_id;
+          const isPlaying = !!(active && vp.playerPlaying);
+          const track = {
+            id: item.artifact_id,
+            title: item.artifact_id,
+            subtitle: [item.operation || item.model || item.worker || 'voice', fmtT(item.duration), item.seed != null ? 'seed ' + item.seed : null].filter(Boolean).join(' · '),
+            url: base + item.url,
+            downloadUrl: base + (item.download_url || item.url),
+            duration: item.duration || 0,
+          };
+          return h('div', { key: item.artifact_id, className: 'vb-history-row' },
+            h('button', {
+              type: 'button',
+              'data-vb-play': item.artifact_id,
+              'aria-label': (isPlaying ? 'Pause ' : 'Play ') + item.artifact_id,
+              className: 'vb-play-circle' + (isPlaying ? ' is-playing' : ''),
+              onClick: () => active ? this.toggleVoiceBarPlay() : this.playInVoiceBar(track, true),
+            }, isPlaying ? '❚❚' : '▶'),
+            h('div', { style: { display: 'grid', gap: 2, minWidth: 0 } },
+              h('div', { style: { color: '#e2e8f0', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, item.artifact_id),
+              h('div', { style: css.muted }, [fmtT(item.duration), item.model || item.worker || 'voice', item.operation, item.created_at ? String(item.created_at).slice(0, 16).replace('T', ' ') : null].filter(Boolean).join(' · '))),
+            h('div', { style: css.row },
+              btn(item.keeper ? '★' : '☆', () => this.toggleMediaKeeper && this.toggleMediaKeeper(item.artifact_id, !item.keeper), item.keeper ? '#eab308' : '#94a3b8', { 'aria-label': item.keeper ? 'Unstar keeper' : 'Mark keeper' }),
+              h('a', { href: base + (item.download_url || item.url), download: '', style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '6px 8px', textDecoration: 'none' } }, 'WAV')));
+        }))
+        : h('div', { style: css.muted }, voiceItems.length ? 'No clips match this filter.' : 'No generated voice clips yet. Render speech above and clips will appear here and in the player bar.'));
+  };
+  P._buildVoicePlayerBar = function () {
+    const vp = this._vp(), tr = vp.player;
+    if (!tr) return null;
+    const a = this._vbAudio;
+    const dur = (a && isFinite(a.duration) && a.duration > 0) ? a.duration : Number(tr.duration || 0);
+    const cur = a ? (a.currentTime || 0) : 0;
+    return h('div', { 'data-vb-player': '1', className: 'vb-player', role: 'region', 'aria-label': 'Audio player bar' },
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 } },
+        h('button', {
+          type: 'button',
+          'data-vb-player-toggle': '1',
+          'aria-label': vp.playerPlaying ? 'Pause' : 'Play',
+          className: 'vb-play-circle' + (vp.playerPlaying ? ' is-playing' : ''),
+          onClick: () => this.toggleVoiceBarPlay(),
+        }, vp.playerPlaying ? '❚❚' : '▶'),
+        h('div', { style: { display: 'grid', gap: 2, minWidth: 0, flex: '1 1 160px' } },
+          h('div', { style: { color: '#f8fafc', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, tr.title || tr.id || 'Audio clip'),
+          tr.subtitle ? h('div', { style: css.muted }, tr.subtitle) : null),
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flex: '2 1 200px', minWidth: 160 } },
+          h('input', {
+            type: 'range',
+            'data-vb-player-seek': '1',
+            'aria-label': 'Seek audio position',
+            min: 0,
+            max: dur || 100,
+            step: 0.05,
+            value: cur,
+            onInput: e => this.seekVoiceBar(e.target.value),
+            style: { flex: 1, minWidth: 80, accentColor: '#f59e0b' },
+          }),
+          h('span', { 'data-vb-player-clock': '1', style: Object.assign({}, css.muted, { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }) }, fmtClock(cur) + ' / ' + fmtClock(dur))),
+        h('div', { style: css.row },
+          tr.downloadUrl ? h('a', { href: tr.downloadUrl, download: '', style: { color: '#7dd3fc', fontSize: 12, fontWeight: 700, padding: '6px 8px', textDecoration: 'none' } }, 'Download WAV') : null,
+          btn('✕', () => this.closeVoiceBar(), '#94a3b8', { 'aria-label': 'Close player bar' }))));
   };
   P._buildCreateVoiceBody = function () {
     const vp = this._vp(), nf = vp.newForm, t = this._vptext = this._vptext || {}, pend = vp.createPending, trim = vp.createTrim;
@@ -775,13 +1030,11 @@
         rightCol),
       footer);
   };
-  P.buildVoiceProfilesPanel = function () {
+  P._buildVoiceModals = function () {
     const vp = this._vp();
-    if (!vp.loadedOnce) { vp.loadedOnce = true; setTimeout(() => this.loadVoiceProfiles(), 0); }
     const list = vp.profiles || [];
-    const sel = vp.selected && this._profile(vp.selected);
     const M = window.DexModal;
-    const form = vp.creating ? (M ? M.frame(h, { id: 'create-voice', title: 'Create Voice', subtitle: 'Create a new voice profile from an audio sample, description, or built-in voice.', size: 'lg', onClose: () => this.closeCreateVoiceModal(true) }, this._buildCreateVoiceBody())
+    const createModal = vp.creating ? (M ? M.frame(h, { id: 'create-voice', title: 'Create Voice', subtitle: 'Create a new voice profile from an audio sample, description, or built-in voice.', size: 'lg', onClose: () => this.closeCreateVoiceModal(true) }, this._buildCreateVoiceBody())
       : h('div', { style: Object.assign({}, css.panel, { borderColor: 'rgba(234,179,8,.45)' }) }, this._buildCreateVoiceBody())) : null;
     const prefs = vp.directorPreferences || {};
     const presetIds = ['neutral', 'formal_dry', 'restrained_irritation', 'contempt'];
@@ -791,7 +1044,7 @@
       const id = 'style-' + Math.random().toString(36).slice(2, 9);
       this.saveDirectorPreferences({ acting_styles: [...(prefs.acting_styles || []), { id, name, direction, speed: null, intensity: prefs.intensity }] });
     };
-    const preferencePanel = h('div', { 'data-director-preferences': '1', style: Object.assign({}, css.panel, { display: 'grid', gap: 8 }) },
+    const preferencePanel = h('div', { 'data-director-preferences': '1', className: 'vb-card' },
       h('div', { style: css.row }, h('div', { style: css.title }, 'Director preferences · saved on this Mac'), h('div', { style: { flex: 1 } }), btn('Reset', () => this.resetDirectorPreferences(), '#94a3b8')),
       field('Default direction', h('input', { value: prefs.default_direction || '', placeholder: 'Measured, warm, restrained…', style: css.input, onChange: e => this.saveDirectorPreferences({ default_direction: e.target.value }) })),
       h('div', { style: css.row }, ...presetIds.map(id => h('label', { key: id, style: { display: 'flex', gap: 5, alignItems: 'center', color: '#cbd5e1', fontSize: 11 } }, h('input', { type: 'checkbox', checked: (prefs.favorite_presets || []).includes(id), onChange: e => this.saveDirectorPreferences({ favorite_presets: e.target.checked ? [...(prefs.favorite_presets || []), id] : (prefs.favorite_presets || []).filter(x => x !== id) }) }), id.replace(/_/g, ' ')))),
@@ -805,7 +1058,7 @@
       const actor = (conversionProject.actors || []).find(a => a.speaker_key === line.speaker_key);
       return line.kind !== 'direction' && line.render !== false && (line.profile_override || (actor && actor.voice_profile_id)) === vp.conversionTargetProfileId;
     }) : [];
-    const conversionPanel = h('div', { 'data-openvoice-conversion': '1', style: Object.assign({}, css.panel, { display: 'grid', gap: 9 }) },
+    const conversionPanel = h('div', { 'data-openvoice-conversion': '1', className: 'vb-card' },
       h('div', { style: css.row }, h('div', { style: css.title }, 'Voice conversion · OpenVoice V2'), chip(converterAvailable ? 'CPU READY' : (converter && converter.availability ? converter.availability.state : 'CHECKING'), converterAvailable ? tone.ok : tone.warn)),
       h('div', { style: css.muted }, converterAvailable ? 'Recorded source speech → cloned target voice. OpenVoice default watermark remains enabled. Big Mac copies are job-private and removed after transfer.' : 'Unavailable until the OpenVoice V2 runtime, converter and watermark assets are verified on Big Mac.'),
       field('Source performance (WAV / MP3 / M4A / FLAC)', h('input', { type: 'file', accept: 'audio/*', disabled: !converterAvailable || vp.conversionBusy,
@@ -826,32 +1079,126 @@
         conversionProject ? field('Dialogue line assigned to this target profile', h('select', { value: vp.conversionLineId || '', style: css.input, onChange: e => this.vpSet({ conversionLineId: e.target.value }) },
           h('option', { value: '' }, 'Select a dialogue line'), ...conversionLines.map(line => h('option', { key: line.id, value: line.id }, `${line.speaker}: ${line.text.slice(0, 100)}`)))) : null,
         btn('Add as a Drama take', () => this.attachConvertedTake(), vp.conversionLineId ? '#38bdf8' : tone.off, { disabled: !vp.conversionLineId, 'data-openvoice-attach': '1' })) : null);
-    // Director preferences and Voice conversion open in their own modals; the page shows one line each.
     const panelModal = vp.panelModal || null;
     const closePanel = () => this.vpSet({ panelModal: null });
-    const launchers = M ? h('div', { style: { display: 'grid', gap: 8 } },
-      M.launcher(h, { title: 'Director preferences', summary: (prefs.default_direction ? 'Default direction: ' + prefs.default_direction : 'No default direction') + ' · speed ' + (prefs.speed || 1) + ' · ' + (prefs.acting_styles || []).length + ' acting styles',
-        label: 'Edit preferences', onOpen: () => this.vpSet({ panelModal: 'prefs' }), attrs: { 'data-open-director-preferences': '1' } }),
-      M.launcher(h, { title: 'Voice conversion · OpenVoice V2', summary: (converterAvailable ? 'CPU ready' : 'Unavailable until verified on Big Mac') + ' · ' + targets.length + ' target voice' + (targets.length === 1 ? '' : 's') + (vp.conversionBusy ? ' · conversion running' : ''),
-        label: 'Open conversion', onOpen: () => this.vpSet({ panelModal: 'conversion' }), attrs: { 'data-open-voice-conversion': '1' } })) : null;
     const panelFrame = M && panelModal === 'prefs' ? M.frame(h, { id: 'director-preferences', title: 'Director preferences', subtitle: 'Saved on this Mac.', size: 'md', onClose: closePanel }, preferencePanel)
       : M && panelModal === 'conversion' ? M.frame(h, { id: 'voice-conversion', title: 'Voice conversion · OpenVoice V2', size: 'md', onClose: closePanel }, conversionPanel) : null;
-    return h('div', { 'data-voice-profiles': '1', style: { display: 'grid', gap: 12, minWidth: 0 } }, ...(M ? [launchers, panelFrame] : [preferencePanel, conversionPanel]),
-      h('div', { style: css.panel },
-        h('div', { style: Object.assign({}, css.row, { marginBottom: 8 }) }, h('div', { style: css.title }, 'Voice profiles'), h('span', { style: css.muted }, list.length + ' saved'), h('div', { style: { flex: 1 } }), btn('＋ Create Voice', () => this.openCreateVoiceModal(), '#eab308', { 'data-new-voice-button': '1' })),
-        list.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,210px),1fr))', gap: 8 } }, ...list.map(p => h('button', { key: p.id, type: 'button', 'data-profile': p.id, onClick: () => { this.vpSet({ selected: p.id, pending: null }); this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'voice-profile', id: p.id }); if (p.type === 'cloned') this.loadCloneEvaluations(p.id); },
-          style: { textAlign: 'left', border: '1px solid ' + (vp.selected === p.id ? '#a78bfa' : 'rgba(148,163,184,.2)'), background: vp.selected === p.id ? 'rgba(167,139,250,.12)' : 'rgba(8,14,24,.7)', color: '#e2e8f0', borderRadius: 9, padding: 10, cursor: 'pointer', display: 'grid', gap: 4, minHeight: 64 } },
-          h('b', { style: { fontSize: 13 } }, p.name), h('div', { style: css.row }, chip(p.type, '#a78bfa'), chip(p.validation.state, stateTone(p.validation.state)), p.type === 'cloned' ? chip(p.samples.length + ' sample' + (p.samples.length === 1 ? '' : 's'), '#94a3b8') : null))))
-          : h('div', { style: css.muted }, vp.profiles ? 'No voices yet. Create one (clone from a sample, design from a description, or pick a Kokoro preset) and reuse it everywhere, including Drama.' : 'Loading…')),
-      form, sel ? this._profileEditor(sel) : null, sel ? this._profileRender(sel) : null);
+    return { M, createModal, panelFrame, preferencePanel, conversionPanel, converterAvailable, targets };
   };
 
-  // Voice screen = Profiles (default) | Quick (the original one-shot Speech / Clone / Design).
+  P.buildVoiceProfilesPanel = function () {
+    const vp = this._vp();
+    if (!vp.loadedOnce) { vp.loadedOnce = true; setTimeout(() => this.loadVoiceProfiles(), 0); }
+    const list = vp.profiles || [];
+    const sel = vp.selected && this._profile(vp.selected);
+    const q = String(vp.search || '').trim().toLowerCase();
+    const tf = vp.typeFilter || 'all';
+    const filtered = list.filter(p => {
+      if (tf !== 'all' && p.type !== tf) return false;
+      if (!q) return true;
+      return [p.name, p.type, p.preferred_engine, p.default_direction, p.notes].some(v => String(v || '').toLowerCase().includes(q));
+    });
+    const rail = h('div', { 'data-vb-voices-rail': '1', className: 'vb-rail' },
+      h('div', { style: Object.assign({}, css.row, { justifyContent: 'space-between', alignItems: 'center' }) },
+        h('div', { style: css.title }, 'Voices'),
+        chip(filtered.length + (filtered.length !== list.length ? ' / ' + list.length : '') + ' saved', '#94a3b8')),
+      h('input', {
+        key: 'vb-voice-search',
+        'data-vb-voice-search': '1',
+        value: vp.search || '',
+        placeholder: 'Filter voices…',
+        style: css.input,
+        onInput: e => this.vpSet({ search: e.target.value }),
+      }),
+      h('div', { style: css.row },
+        ...[['all', 'All'], ['cloned', 'Cloned'], ['designed', 'Designed'], ['preset', 'Built-in']].map(([k, l]) =>
+          btn(l, () => this.vpSet({ typeFilter: k }), tf === k ? '#eab308' : '#94a3b8', { 'data-vb-type-filter': k }))),
+      list.length === 0
+        ? h('div', { style: css.muted }, vp.profiles ? 'No voices yet. Create one to reuse across Generate and Drama.' : 'Loading…')
+        : filtered.length === 0
+          ? h('div', { style: { display: 'grid', gap: 6 } },
+            h('div', { style: css.muted }, 'No voices match "' + (vp.search || tf) + '".'),
+            btn('Clear filter', () => this.vpSet({ search: '', typeFilter: 'all' }), '#94a3b8'))
+          : h('div', { className: 'vb-voice-list' }, ...filtered.map(p => {
+            const pal = avatarPalette(p.type);
+            const active = vp.selected === p.id;
+            return h('button', {
+              key: p.id,
+              type: 'button',
+              'data-profile': p.id,
+              className: 'vb-voice-card' + (active ? ' is-active' : ''),
+              onClick: () => {
+                this.vpSet({ selected: p.id, pending: null });
+                this.setActiveAssetSelection && this.setActiveAssetSelection({ kind: 'voice-profile', id: p.id });
+                if (p.type === 'cloned') this.loadCloneEvaluations(p.id);
+              },
+            },
+              h('div', { className: 'vb-avatar', style: { background: pal.bg, color: pal.fg, border: '1px solid ' + pal.bd } }, initials(p.name)),
+              h('div', { style: { display: 'grid', gap: 4, minWidth: 0 } },
+                h('div', { style: { fontSize: 13, fontWeight: 700, color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, p.name),
+                h('div', { style: css.row },
+                  chip(p.type, '#a78bfa'),
+                  chip(p.validation.state, stateTone(p.validation.state)),
+                  p.type === 'cloned' ? chip(p.samples.length + ' sample' + (p.samples.length === 1 ? '' : 's'), '#94a3b8') : null)));
+          })));
+    const emptyStage = h('div', { className: 'vb-card', style: { gap: 10, padding: 18 } },
+      h('div', { style: Object.assign({}, css.title, { fontSize: 15 }) }, 'Select or create a voice'),
+      h('div', { style: css.muted }, 'Pick a voice on the left to generate speech, audition clips in the bar, or edit reference samples.'),
+      h('div', { style: css.row }, btn('＋ Create Voice', () => this.openCreateVoiceModal(), '#eab308')));
+    const stage = h('div', { 'data-vb-stage': '1', className: 'vb-stage' },
+      sel ? this._profileRender(sel) : emptyStage,
+      this._buildVoiceHistoryPanel(),
+      sel ? this._profileEditor(sel) : null);
+    return h('div', { 'data-voice-profiles': '1', style: { display: 'grid', gap: 12, minWidth: 0 } },
+      h('div', { className: 'vb-shell' }, rail, stage));
+  };
+
+  // Voice screen = Voices & Generate (default) | Designer | Quick (one-shot).
   const _buildVoice = P.buildVoiceWorkspace;
   P.buildVoiceWorkspace = function () {
+    injectVoiceStudioCss();
     const vp = this._vp();
-    const tabs = h('div', { role: 'tablist', style: css.row }, ...[['profiles', 'Voices & long-form'], ['designer', 'Designer'], ['quick', 'Quick (one-shot)']].map(([k, l]) => btn(l, () => this.vpSet({ tab: k }), vp.tab === k ? '#a78bfa' : '#94a3b8', { role: 'tab', 'aria-selected': String(vp.tab === k), 'data-voice-tab': k })));
-    return h('div', { style: { display: 'grid', gap: 12, minWidth: 0 } }, tabs, vp.tab === 'profiles' ? this.buildVoiceProfilesPanel() : vp.tab === 'designer' && this.buildVoiceDesigner ? this.buildVoiceDesigner() : _buildVoice.call(this));
+    if (!vp.loadedOnce) { vp.loadedOnce = true; setTimeout(() => this.loadVoiceProfiles(), 0); }
+    const { M, createModal, panelFrame, preferencePanel, conversionPanel, converterAvailable, targets } = this._buildVoiceModals();
+    const tabs = h('div', { role: 'tablist', className: 'vb-tabs' },
+      ...[['profiles', 'Voices'], ['designer', 'Designer'], ['quick', 'Quick (one-shot)']].map(([k, l]) =>
+        btn(l, () => this.vpSet({ tab: k }), vp.tab === k ? '#eab308' : '#94a3b8', { role: 'tab', 'aria-selected': String(vp.tab === k), 'data-voice-tab': k })));
+    const actions = h('div', { className: 'vb-actions' },
+      h('span', { 'data-open-director-preferences': '1', style: { display: 'inline-flex' } },
+        btn('Director prefs', () => this.vpSet({ panelModal: 'prefs' }), '#94a3b8')),
+      h('span', { 'data-open-voice-conversion': '1', style: { display: 'inline-flex' } },
+        btn('OpenVoice · ' + targets.length, () => this.vpSet({ panelModal: 'conversion' }), converterAvailable ? '#22d3ee' : '#94a3b8')),
+      h('button', {
+        type: 'button',
+        'data-new-voice-button': '1',
+        onClick: () => this.openCreateVoiceModal(),
+        style: {
+          border: 0,
+          background: 'linear-gradient(90deg,#ca8a04,#eab308)',
+          color: '#090d16',
+          borderRadius: 8,
+          padding: '0 14px',
+          minHeight: 34,
+          fontSize: 12.5,
+          fontWeight: 800,
+          cursor: 'pointer',
+          fontFamily: "'DM Sans',sans-serif",
+        },
+      }, '＋ Create Voice'));
+    const headerBar = h('div', { className: 'vb-header' }, tabs, actions);
+    const body = vp.tab === 'profiles'
+      ? this.buildVoiceProfilesPanel()
+      : vp.tab === 'designer' && this.buildVoiceDesigner
+        ? this.buildVoiceDesigner()
+        : _buildVoice.call(this);
+    return h('div', { 'data-voice-studio': '1' },
+      headerBar,
+      createModal,
+      panelFrame,
+      !M && vp.tab === 'profiles' ? preferencePanel : null,
+      !M && vp.tab === 'profiles' ? conversionPanel : null,
+      body,
+      this._buildVoicePlayerBar());
   };
   const _mount = P.componentDidMount;
   P.componentDidMount = function () { _mount.call(this); this._vp(); };
