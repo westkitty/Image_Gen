@@ -1,5 +1,13 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## 2026-11-21 - Release and cleanup completion guard
+
+- Recurrence class: a source/CI milestone was called finished before deployed recovery and cross-Mac Git/worktree cleanup were reconciled. Local MacBook main previously remained dirty/behind after remote release closure.
+- Governing project rule: AGENTS.md section "Release and cleanup closure gate". Claude Code entrypoint CLAUDE.md points to that single authority; do not maintain competing copies.
+- Read-only deterministic Git acceptance: scripts/check_git_closure.py compares branch, local HEAD, staged/unstaged/untracked status and independently fetched remote head. --inventory reports other worktrees as CLEAN, HELD or UNVERIFIED; --scope-worktree makes a selected worktree mandatory. Git PASS is intentionally not runtime, CI or image-publication proof.
+- Regression set: scripts/test/test_git_closure.py covers pushed-clean, staged/unstaged/untracked, ahead/behind, unreachable remote, detached HEAD, and unrelated dirty worktree versus explicitly scoped dirty worktree; workflow triggers on changes to AGENTS.md and CLAUDE.md.
+- Runtime protection: no production deploy, restart, volume operation, canonical image change, or cleanup of unrelated worktrees is part of installing these rules.
+
 ## 2026-11-21 (EST) - MacBook checkout reconciliation after WC2TB release
 
 - MacBook MacBook-Air.local, user andrew, repository /Users/andrew/Image_Gen: local main was fast-forwarded from 39534f2 to the published af6fcc239ccb60d9c7c6d48e7a5498d2b473857c (PR #31 documentation merge). Git status was clean and matched origin/main immediately after synchronization.
