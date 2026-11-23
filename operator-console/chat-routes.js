@@ -5,7 +5,7 @@
 
 const Models = require('./chat-models');
 const { createTemporarySessionStore } = require('./chat-sessions');
-const { createChatStreamRunner, denyAllAdmission, ollamaGetJson } = require('./chat-stream');
+const { createChatStreamRunner, denyAllAdmission, ollamaGetJson, ollamaProbeStorageError } = require('./chat-stream');
 const { createRequestGuard, defaultPolicy } = require('./request-guard');
 const { createHistoryAuthenticator } = require('./chat-history-auth');
 
@@ -92,7 +92,9 @@ function registerChatRoutes(app, {
   app.get('/api/chat/models', gate, guard, async (req, res) => {
     const tags = await installedTags();
     if (tags.error) return send(res, tags.error);
-    res.json({ models: Models.describeAllowlist(tags.json), default: Models.DEFAULT_CHAT_MODEL, base_loopback: true });
+    const hasTags = !!(tags.json && Array.isArray(tags.json.models) && tags.json.models.length > 0);
+    const storage_error = hasTags ? null : await ollamaProbeStorageError(fetchImpl, ollamaBaseUrl, Models.DEFAULT_CHAT_MODEL);
+    res.json({ models: Models.describeAllowlist(tags.json), default: Models.DEFAULT_CHAT_MODEL, base_loopback: true, ...(storage_error ? { storage_error } : {}) });
   });
 
   app.post('/api/chat/sessions', gate, guard, (req, res) => {

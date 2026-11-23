@@ -476,3 +476,34 @@ for (const [suffix, malformed] of [['{BAD\n', true], ['{"unfinished":', true], [
     assert.equal(a.releases[0].outcome, malformed ? 'error' : 'done');
   });
 }
+
+test('GET /api/chat/models surfaces storage_error on EPERM from empty /api/tags and omits it on normal 404', async () => {
+  const errDetail = 'open /Volumes/wc2tb/DexDiffusion/models/ollama/manifests-v2/ollama.com/library/gemma3/4b: operation not permitted';
+  const epermFetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('/api/tags')) return new Response(JSON.stringify({ models: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (u.endsWith('/api/show')) return new Response(JSON.stringify({ error: errDetail }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    return new Response('{}', { status: 404 });
+  };
+  const h1 = await boot({ baseUrl: 'http://127.0.0.1:11434', extra: { fetchImpl: epermFetch } });
+  try {
+    const r1 = await h1.request('GET', '/api/chat/models');
+    assert.equal(r1.status, 200);
+    assert.equal(r1.body.models.every(m => m.installed === false), true);
+    assert.equal(r1.body.storage_error && r1.body.storage_error.code, 'ollama-storage-permission-denied');
+    assert.match(r1.body.storage_error.detail, /operation not permitted/);
+  } finally { await h1.close(); }
+
+  const notFoundFetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('/api/tags')) return new Response(JSON.stringify({ models: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (u.endsWith('/api/show')) return new Response(JSON.stringify({ error: 'model not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+    return new Response('{}', { status: 404 });
+  };
+  const h2 = await boot({ baseUrl: 'http://127.0.0.1:11434', extra: { fetchImpl: notFoundFetch } });
+  try {
+    const r2 = await h2.request('GET', '/api/chat/models');
+    assert.equal(r2.status, 200);
+    assert.equal(r2.body.storage_error, undefined);
+  } finally { await h2.close(); }
+});

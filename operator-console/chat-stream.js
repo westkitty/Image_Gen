@@ -8,7 +8,7 @@ const { createNdjsonParser } = require('./ollama-ndjson');
 
 const SCHEMA = 'dex.chat.v1';
 // The only upstream routes this client may call; pull/push/create/copy/delete/embed are unreachable from here.
-const UPSTREAM_ROUTES = new Set(['/api/tags', '/api/ps', '/api/version', '/api/chat']);
+const UPSTREAM_ROUTES = new Set(['/api/tags', '/api/ps', '/api/version', '/api/chat', '/api/show']);
 const DEFAULT_TIMEOUTS = Object.freeze({ headersMs: 15000, firstTokenLightMs: 120000, firstTokenHeavyMs: 600000, idleMs: 60000, wallMs: 15 * 60 * 1000 });
 // Server-constant context window; the client can never raise it.
 const NUM_CTX = 4096;
@@ -33,6 +33,34 @@ async function ollamaGetJson(fetchImpl, baseUrl, route, timeoutMs = 10000) {
     return { ok: true, status: r.status, json: await r.json() };
   } catch (_) {
     return { ok: false, status: 502 };
+  } finally { clearTimeout(timer); }
+}
+
+// Read-only metadata check when /api/tags is empty: surfaces OS/TCC storage permission denials truthfully.
+async function ollamaProbeStorageError(fetchImpl, baseUrl, modelName, timeoutMs = 2500) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const r = await fetchImpl(upstreamUrl(baseUrl, '/api/show'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: modelName }),
+      signal: ctl.signal,
+    });
+    if (r.ok) { try { await r.arrayBuffer(); } catch (_) {} return null; }
+    let body = null;
+    try { body = await r.json(); } catch (_) {}
+    const errText = body && typeof body.error === 'string' ? body.error : '';
+    if (/operation not permitted|permission denied|eperm|eacces/i.test(errText)) {
+      return {
+        code: 'ollama-storage-permission-denied',
+        message: 'Ollama cannot read its model storage (macOS Removable Volumes permission denied on Big Mac).',
+        detail: errText.slice(0, 260),
+      };
+    }
+    return null;
+  } catch (_) {
+    return null;
   } finally { clearTimeout(timer); }
 }
 
@@ -231,4 +259,4 @@ function createChatStreamRunner({
   };
 }
 
-module.exports = { createChatStreamRunner, denyAllAdmission, ollamaGetJson, UPSTREAM_ROUTES, DEFAULT_TIMEOUTS, NUM_CTX, SCHEMA };
+module.exports = { createChatStreamRunner, denyAllAdmission, ollamaGetJson, ollamaProbeStorageError, UPSTREAM_ROUTES, DEFAULT_TIMEOUTS, NUM_CTX, SCHEMA };

@@ -31,8 +31,8 @@ class Component extends DCLogic {
     // Cross-master handoff origin for the masters layout's Back control: { leaf } or null.
     navReturnTo: null,
     // Chat placeholder readiness, read from the server; never "ready" without the Chat UI (Phase 5).
-    chatAvailability: { phase: 'idle', ollama: 'unknown', feature: 'unknown', checkedAt: null },
-    chatModels: [], chatModel: 'gemma3:4b', chatSessionId: null, chatMessages: [], chatDraft: '',
+    chatAvailability: { phase: 'idle', ollama: 'unknown', feature: 'unknown', storageError: null, checkedAt: null },
+    chatModels: [], chatCatalog: [], chatModel: 'gemma3:4b', chatSessionId: null, chatMessages: [], chatDraft: '',
     chatRunning: false, chatStreamText: '', chatStatus: '', chatError: '', chatJobId: null,
     chatSessionMode: 'temporary', chatSaveNext: false, chatSavedSessions: [], chatSavedSessionsLoaded: false,
     chatHistoryCredential: '', chatHistoryStatus: '', chatExportFormat: 'json', chatSettingsOpen: false,
@@ -1772,7 +1772,12 @@ class Component extends DCLogic {
     if (!route) return false;
     const ok = this.setScreen(route.leaf, { source: 'nav', focusNav: 'leaf', subroute: id });
     if (ok && route.tab && typeof this.vpSet === 'function') this.vpSet({ tab: route.tab });
-    if (ok && id === 'history') setTimeout(() => { const el = document.querySelector('[data-chat-history-credential]'); if (el) el.focus(); }, 0);
+    if (ok && id === 'history') {
+      this.setState({ chatSettingsOpen: true });
+      setTimeout(() => { const el = document.querySelector('[data-chat-history-credential]'); if (el) el.focus(); }, 50);
+    } else if (ok && id === 'conversation' && this.state.chatSettingsOpen) {
+      this.setState({ chatSettingsOpen: false });
+    }
     return ok;
   }
   selectStudioUtility(id) {
@@ -1989,95 +1994,208 @@ class Component extends DCLogic {
       const [status, models] = await Promise.all([get('/api/ollama/status'), get('/api/chat/models')]);
       const ollama = status.status === 200 && status.body && Array.isArray(status.body.models) ? 'available' : 'failed';
       const feature = models.status === 404 && models.body && models.body.error === 'chat-disabled' ? 'not_activated' : models.status === 200 ? 'activated' : 'unknown';
-      const installed = models.status === 200 && models.body && Array.isArray(models.body.models) ? models.body.models.filter(m => m.installed) : [];
-      this.setState({ chatAvailability: { phase: 'done', ollama, feature, checkedAt: Date.now() }, chatModels: installed,
-        chatModel: installed.some(m => m.name === this.state.chatModel) ? this.state.chatModel : (installed[0] && installed[0].name || this.state.chatModel) });
+      const catalog = models.status === 200 && models.body && Array.isArray(models.body.models) ? models.body.models : [];
+      const installed = catalog.filter(m => m.installed);
+      const storageError = (models.status === 200 && models.body && models.body.storage_error && typeof models.body.storage_error === 'object') ? models.body.storage_error : null;
+      this.setState({
+        chatAvailability: { phase: 'done', ollama, feature, storageError, checkedAt: Date.now() },
+        chatCatalog: catalog,
+        chatModels: installed,
+        chatModel: installed.some(m => m.name === this.state.chatModel) ? this.state.chatModel : (installed[0] && installed[0].name || this.state.chatModel)
+      });
       if (feature === 'activated') this.loadSavedChats();
     })().finally(() => { this._chatAvailabilityInFlight = null; });
     return this._chatAvailabilityInFlight;
   }
+
+  _injectChatStudioCss() {
+    if (typeof document === 'undefined' || !document.head || document.getElementById('dex-chat-studio-css')) return;
+    const style = document.createElement('style');
+    style.id = 'dex-chat-studio-css';
+    style.textContent = [
+      '[data-chat-workspace="true"]{width:100%;max-width:1040px;margin:0 auto;display:flex;flex-direction:column;flex:1;min-height:100%;gap:12px;padding:14px 0 0;min-width:0;box-sizing:border-box}',
+      '[data-chat-workspace="true"] *{box-sizing:border-box}',
+      '[data-chat-workspace="true"] .dx-chat-header{border:1px solid rgba(148,163,184,.18);background:linear-gradient(180deg,rgba(9,20,32,.92),rgba(6,10,16,.88));border-radius:12px;padding:12px 14px;display:grid;gap:10px;min-width:0}',
+      '[data-chat-workspace="true"] .dx-chat-top-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}',
+      '[data-chat-workspace="true"] .dx-chat-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-width:0}',
+      '[data-chat-workspace="true"] .dx-chat-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;border-radius:999px;padding:3px 10px;white-space:nowrap}',
+      '[data-chat-workspace="true"] .dx-chat-card{border:1px solid rgba(148,163,184,.16);background:rgba(6,10,16,.78);border-radius:12px;padding:12px 14px;display:grid;gap:9px;min-width:0}',
+      '[data-chat-workspace="true"] .dx-chat-diag-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid rgba(148,163,184,.16);border-radius:9px;padding:8px 12px;background:rgba(9,20,32,.66)}',
+      '[data-chat-workspace="true"] .dx-chat-msg{border:1px solid rgba(148,163,184,.16);background:rgba(9,20,32,.68);border-radius:11px;padding:12px 14px;white-space:pre-wrap;overflow-wrap:anywhere;display:grid;gap:7px;min-width:0}',
+      '[data-chat-workspace="true"] .dx-chat-msg.is-user{border-color:rgba(56,189,248,.28);background:rgba(12,25,40,.78)}',
+      '[data-chat-workspace="true"] .dx-chat-msg.is-assistant{border-color:rgba(245,158,11,.22);background:rgba(6,10,16,.84)}',
+      '[data-chat-workspace="true"] .dx-chat-footer{position:sticky;bottom:0;z-index:15;background:#080c12;border-top:1px solid rgba(148,163,184,.16);padding:10px 0 14px;margin-top:auto;display:grid;gap:8px;min-width:0}',
+      '[data-chat-workspace="true"] .dx-chat-composer-wrap{border:1px solid rgba(148,163,184,.22);background:#091420;border-radius:11px;padding:9px 12px;display:grid;gap:6px;transition:border-color .15s ease}',
+      '[data-chat-workspace="true"] .dx-chat-composer-wrap:focus-within{border-color:rgba(245,158,11,.75)}',
+      '[data-chat-workspace="true"] .dx-chat-starter{border:1px solid rgba(148,163,184,.2);background:rgba(9,20,32,.72);color:#e2e8f0;border-radius:9px;padding:8px 12px;font-size:12px;cursor:pointer;text-align:left;transition:border-color .15s ease,background-color .15s ease}',
+      '[data-chat-workspace="true"] .dx-chat-starter:hover{border-color:rgba(245,158,11,.55);background:rgba(245,158,11,.09)}',
+      '@media (max-width:720px){[data-chat-workspace="true"]{padding:10px 0 0;gap:10px}[data-chat-workspace="true"] .dx-chat-header{padding:10px}[data-chat-workspace="true"] .dx-chat-card{padding:10px}}',
+      '@media (prefers-reduced-motion:reduce){[data-chat-workspace="true"] *{transition-duration:0s!important}}'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+
   buildChatPlaceholder() {
+    this._injectChatStudioCss();
     const h = React.createElement;
     const a = this.state.chatAvailability || {};
     const checking = a.phase !== 'done';
-    const row = (key, label, value, tone) => h('div', { 'data-chat-status': key, style: { display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', border: '1px solid rgba(148,163,184,.2)', borderRadius: 8, padding: '7px 10px', background: 'rgba(148,163,184,.05)' } },
-      h('span', { style: { color: '#cbd5e1', fontWeight: 600, fontSize: 12 } }, label), h('span', { 'data-chat-state': value.state, style: { color: tone, fontWeight: 700, fontSize: 12 } }, value.text));
-    const conn = checking ? { state: 'checking', text: 'Checking…' } : a.ollama === 'available' ? { state: 'available', text: 'Ollama connection available' } : { state: 'failed', text: 'Connection failed: Chat needs the managed Ollama tunnel on 127.0.0.1:11436' };
-    const feat = checking ? { state: 'checking', text: 'Checking…' } : a.feature === 'not_activated' ? { state: 'not_activated', text: 'Chat feature not activated' } : a.feature === 'activated' ? { state: 'activated', text: 'Chat backend switched on' } : { state: 'unknown', text: 'Chat feature state could not be read' };
+    const row = (key, label, value, tone) => h('div', { 'data-chat-status': key, className: 'dx-chat-diag-row' },
+      h('span', { style: { color: '#cbd5e1', fontWeight: 600, fontSize: 12 } }, label),
+      h('span', { 'data-chat-state': value.state, style: { color: tone, fontWeight: 700, fontSize: 12 } }, value.text));
+    const conn = checking
+      ? { state: 'checking', text: 'Checking…' }
+      : a.ollama === 'available'
+        ? { state: 'available', text: 'Ollama connection available' }
+        : { state: 'failed', text: 'Connection failed: Chat could not reach the local Ollama server' };
+    const feat = checking
+      ? { state: 'checking', text: 'Checking…' }
+      : a.feature === 'not_activated'
+        ? { state: 'not_activated', text: 'Chat feature not activated' }
+        : a.feature === 'activated'
+          ? { state: 'activated', text: 'Chat backend switched on' }
+          : { state: 'unknown', text: 'Chat feature state could not be read' };
+    const featureTone = checking ? '#cbd5e1' : a.feature === 'activated' ? '#86efac' : a.feature === 'not_activated' ? '#fca5a5' : '#fcd34d';
+    const storageError = !checking ? (a.storageError || null) : null;
     const ready = a.feature === 'activated' && a.ollama === 'available' && this.state.chatModels.length > 0;
+    const catalog = Array.isArray(this.state.chatCatalog) ? this.state.chatCatalog : [];
     const messages = this.state.chatMessages || [];
     const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant' && m.status === 'complete');
+    const draft = String(this.state.chatDraft || '');
+    const isSavedMode = this.state.chatSessionMode === 'saved' || (!this.state.chatSessionId && this.state.chatSaveNext);
 
-    return h('section', {
-      'data-chat-workspace': 'true',
-      'aria-labelledby': 'dex-chat-title',
-      style: { width: '100%', maxWidth: 880, margin: '0 auto', display: 'flex', flexDirection: 'column', flex: 1, minHeight: '100%', gap: 10, padding: '12px 0 0' }
-    },
-      // Compact top bar: Title + Model select + Quick actions
-      h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
-        (() => {
-          const activeChatModelEntry = this.state.chatModels.find(m => m.name === this.state.chatModel);
-          const activeChatLabel = activeChatModelEntry && activeChatModelEntry.label ? activeChatModelEntry.label : this.state.chatModel;
-          return h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-            h('h2', { id: 'dex-chat-title', style: { margin: 0, fontSize: 18, fontWeight: 750, color: '#f8fafc' } }, 'Chat'),
-            h('span', {
-              'data-chat-status': 'true',
-              style: {
-                display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px',
-                background: ready ? 'rgba(101,214,110,.12)' : 'rgba(251,191,36,.12)',
-                color: ready ? '#86efac' : '#fcd34d', border: '1px solid ' + (ready ? 'rgba(101,214,110,.3)' : 'rgba(251,191,36,.3)')
-              }
-            }, ready ? ('● ' + (activeChatLabel || 'Ready')) : checking ? '● Checking…' : '● Offline')
-          );
-        })(),
-        h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' } },
-          h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#94a3b8', minWidth: 0 } },
+    const activeChatModelEntry = this.state.chatModels.find(m => m.name === this.state.chatModel);
+    const activeChatLabel = activeChatModelEntry && activeChatModelEntry.label ? activeChatModelEntry.label : this.state.chatModel;
+    const pill = ready
+      ? { text: '● ' + (activeChatLabel || 'Ready'), bg: 'rgba(101,214,110,.12)', fg: '#86efac', bd: 'rgba(101,214,110,.32)' }
+      : checking
+        ? { text: '● Checking…', bg: 'rgba(148,163,184,.12)', fg: '#cbd5e1', bd: 'rgba(148,163,184,.3)' }
+        : a.ollama === 'failed'
+          ? { text: '● Offline', bg: 'rgba(239,68,68,.12)', fg: '#fca5a5', bd: 'rgba(239,68,68,.35)' }
+          : a.feature === 'not_activated'
+            ? { text: '● Disabled', bg: 'rgba(251,191,36,.12)', fg: '#fcd34d', bd: 'rgba(251,191,36,.32)' }
+            : storageError
+              ? { text: '● Storage blocked', bg: 'rgba(239,68,68,.12)', fg: '#fca5a5', bd: 'rgba(239,68,68,.35)' }
+              : { text: '● No models', bg: 'rgba(251,191,36,.12)', fg: '#fcd34d', bd: 'rgba(251,191,36,.32)' };
+
+    const starters = [
+      ['Write a cinematic image prompt', 'Craft a detailed visual scene prompt (subject, lighting, lens, mood, framing) I can refine and send to Image Create.'],
+      ['Refine lighting & framing', 'Help me punch up lighting, camera angle, color palette, and texture for an illustration without adding buzzwords.'],
+      ['Draft character dialogue', 'Write a grounded 6-line dialogue exchange between two characters with distinct voices and pacing.'],
+    ];
+
+    const headerCard = h('div', { className: 'dx-chat-header' },
+      h('div', { className: 'dx-chat-top-row' },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 } },
+          h('h2', { id: 'dex-chat-title', style: { margin: 0, fontSize: 18, fontWeight: 800, color: '#f8fafc', letterSpacing: '-.01em' } }, 'Chat'),
+          h('span', {
+            'data-chat-status': 'true',
+            className: 'dx-chat-pill',
+            style: { background: pill.bg, color: pill.fg, border: '1px solid ' + pill.bd }
+          }, pill.text)
+        ),
+        h('div', { className: 'dx-chat-actions' },
+          h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#94a3b8', minWidth: 0 } },
             'Model',
             window.DexModal ? window.DexModal.choiceButton(h, { id: 'chat-model', title: 'Chat model', subtitle: 'The model that answers in this conversation. Only approved, installed models are listed.',
               value: this.state.chatModel, disabled: !ready || this.state.chatRunning, placeholder: 'No model', attrs: { 'data-chat-model': 'true' },
-              style: { minHeight: 30, padding: '3px 8px', fontSize: 11, width: 'auto', maxWidth: 260 },
+              style: { minHeight: 31, padding: '3px 9px', fontSize: 11, width: 'auto', maxWidth: 260, background: '#080c12' },
               options: this.state.chatModels.map(m => ({ value: m.name, label: m.label || m.name, hint: [m.role, m.description, m.size].filter(Boolean).join(' · ') || m.name, badge: m.installed === false ? 'not installed' : undefined, disabled: m.installed === false, reason: 'Not installed on Big Mac.' })),
               onChange: v => this.setState({ chatModel: v }) })
-            : h('select', { 'data-chat-model': 'true', value: this.state.chatModel, disabled: !ready || this.state.chatRunning, onChange: e => this.setState({ chatModel: e.target.value }), style: { border: '1px solid rgba(148,163,184,.25)', background: '#111722', color: '#f8fafc', borderRadius: 6, padding: '3px 8px', fontSize: 11 } },
+            : h('select', { 'data-chat-model': 'true', value: this.state.chatModel, disabled: !ready || this.state.chatRunning, onChange: e => this.setState({ chatModel: e.target.value }), style: { border: '1px solid rgba(148,163,184,.25)', background: '#080c12', color: '#f8fafc', borderRadius: 7, padding: '4px 8px', fontSize: 11 } },
               this.state.chatModels.map(m => h('option', { key: m.name, value: m.name }, m.label || m.name)))
           ),
-          h('button', { type: 'button', 'data-chat-settings-open': 'true', 'aria-haspopup': 'dialog', onClick: () => this.setState({ chatSettingsOpen: true }), style: { border: '1px solid rgba(167,139,250,.4)', background: 'rgba(167,139,250,.1)', color: '#ddd6fe', borderRadius: 6, padding: '3px 9px', fontSize: 11, cursor: 'pointer' } }, '⚙ Settings & history'),
-          h('button', { type: 'button', 'data-chat-refresh': 'true', onClick: () => this.loadChatAvailability(), disabled: checking && a.phase === 'checking', style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Check again'),
-          h('button', { type: 'button', 'data-chat-new': 'true', onClick: () => this.newChat(), disabled: this.state.chatRunning, style: { border: '1px solid rgba(56,189,248,.35)', background: 'rgba(56,189,248,.1)', color: '#38bdf8', borderRadius: 6, padding: '3px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 600 } }, 'New temporary chat'),
-          h('button', { type: 'button', 'data-chat-delete': 'true', onClick: () => this.deleteChat(), disabled: !this.state.chatSessionId || this.state.chatRunning, style: { border: '1px solid rgba(239,68,68,.3)', background: 'transparent', color: '#fca5a5', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Delete chat'),
-          h('button', { type: 'button', 'data-chat-export': 'true', onClick: () => this.exportChat(), disabled: this.state.chatSessionMode !== 'saved' || !this.state.chatSessionId || this.state.chatRunning, style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Export saved chat')
+          h('button', { type: 'button', className: 'dx-chat-btn', 'data-chat-settings-open': 'true', 'aria-haspopup': 'dialog', onClick: () => this.setState({ chatSettingsOpen: true }), style: { border: '1px solid rgba(167,139,250,.4)', background: 'rgba(167,139,250,.1)', color: '#ddd6fe', borderRadius: 7, padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' } }, '⚙ Settings & history'),
+          h('button', { type: 'button', className: 'dx-chat-btn', 'data-chat-refresh': 'true', onClick: () => this.loadChatAvailability(), disabled: checking && a.phase === 'checking', style: { border: '1px solid rgba(148,163,184,.25)', background: 'rgba(8,12,18,.65)', color: '#cbd5e1', borderRadius: 7, padding: '5px 9px', fontSize: 11, cursor: 'pointer' } }, checking ? 'Checking…' : 'Check again'),
+          h('button', { type: 'button', className: 'dx-chat-btn', 'data-chat-new': 'true', onClick: () => this.newChat(), disabled: this.state.chatRunning, style: { border: '1px solid rgba(245,158,11,.45)', background: 'rgba(245,158,11,.12)', color: '#fbbf24', borderRadius: 7, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 } }, 'New temporary chat'),
+          h('button', { type: 'button', className: 'dx-chat-btn', 'data-chat-delete': 'true', onClick: () => this.deleteChat(), disabled: !this.state.chatSessionId || this.state.chatRunning, style: { border: '1px solid rgba(239,68,68,.3)', background: 'transparent', color: '#fca5a5', borderRadius: 7, padding: '5px 9px', fontSize: 11, cursor: !this.state.chatSessionId || this.state.chatRunning ? 'default' : 'pointer', opacity: !this.state.chatSessionId || this.state.chatRunning ? 0.45 : 1 } }, 'Delete chat'),
+          h('button', { type: 'button', className: 'dx-chat-btn', 'data-chat-export': 'true', onClick: () => this.exportChat(), disabled: this.state.chatSessionMode !== 'saved' || !this.state.chatSessionId || this.state.chatRunning, style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 7, padding: '5px 9px', fontSize: 11, cursor: this.state.chatSessionMode !== 'saved' || !this.state.chatSessionId || this.state.chatRunning ? 'default' : 'pointer', opacity: this.state.chatSessionMode !== 'saved' || !this.state.chatSessionId || this.state.chatRunning ? 0.45 : 1 } }, 'Export saved chat')
         )
       ),
-      h('div', { 'data-chat-retention-picker': 'true', role: 'group', 'aria-label': 'Chat retention mode',
-        style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 7 } },
-        h('span', { style: { fontSize: 11, color: '#cbd5e1' } }, 'Conversation mode:'),
-        h('button', { 'data-chat-mode': 'temporary', type: 'button', 'aria-pressed': String(!this.state.chatSaveNext && this.state.chatSessionMode !== 'saved'),
-          disabled: !!this.state.chatSessionId || this.state.chatRunning,
-          onClick: () => this.setState({ chatSaveNext: false }),
-          style: { padding: '5px 10px', borderRadius: 6, border: '1px solid #64748b',
-            background: !this.state.chatSaveNext && this.state.chatSessionMode !== 'saved' ? '#244257' : '#101827', color: '#e2e8f0' } }, 'Temporary'),
-        h('button', { 'data-chat-mode': 'saved', type: 'button', 'aria-pressed': String(this.state.chatSaveNext || this.state.chatSessionMode === 'saved'),
-          disabled: !!this.state.chatSessionId || this.state.chatRunning || !this.state.chatSavedSessionsLoaded,
-          onClick: () => this.setState({ chatSaveNext: true }),
-          title: this.state.chatSavedSessionsLoaded ? 'Save the new conversation on this Mac' : 'Unlock saved history first',
-          style: { padding: '5px 10px', borderRadius: 6, border: '1px solid #64748b',
-            background: this.state.chatSaveNext || this.state.chatSessionMode === 'saved' ? '#244257' : '#101827', color: '#e2e8f0' } }, 'Saved')),
-      h('p', { 'data-chat-retention-description': 'true', style: { margin: 0, color: '#aab4c3', fontSize: 12, lineHeight: 1.5 } },
-        this.state.chatSessionMode === 'saved' || (!this.state.chatSessionId && this.state.chatSaveNext)
-          ? 'Saved Chat is explicit opt-in. Messages are retained on this Mac for authorized history access, export and deletion.'
-          : 'Temporary Chat is not written to saved history. Reloading loses access to this temporary session.'),
-      // One status line stays on screen; connection details and saved-history controls live in the Settings modal.
-      // While Chat is not ready the connection and feature rows stay visible (they explain why); once ready they move into the modal.
-      h('div', { 'data-chat-settings-summary': 'true', role: 'status', 'aria-live': 'polite', style: { display: 'grid', gap: 5 } },
-        ready ? null : row('connection', 'Ollama', conn, conn.state === 'available' ? '#86efac' : conn.state === 'failed' ? '#fca5a5' : '#cbd5e1'),
-        ready ? null : row('feature', 'Chat feature', feat, '#fcd34d'),
-        row('generation', 'Chat generation', { state: ready ? 'ready' : 'unavailable', text: ready ? 'Ready for a temporary session' : 'Unavailable until Chat is enabled and an approved model is installed' }, ready ? '#86efac' : '#fcd34d')),
+      h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, paddingTop: 8, borderTop: '1px solid rgba(148,163,184,.12)' } },
+        h('div', { 'data-chat-retention-picker': 'true', role: 'group', 'aria-label': 'Chat retention mode', style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 } },
+          h('span', { style: { fontSize: 11, color: '#94a3b8', fontWeight: 600, marginRight: 2 } }, 'Conversation mode:'),
+          h('button', {
+            'data-chat-mode': 'temporary', type: 'button', 'aria-pressed': String(!this.state.chatSaveNext && this.state.chatSessionMode !== 'saved'),
+            disabled: !!this.state.chatSessionId || this.state.chatRunning,
+            onClick: () => this.setState({ chatSaveNext: false }),
+            style: {
+              padding: '4px 10px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: !!this.state.chatSessionId || this.state.chatRunning ? 'default' : 'pointer',
+              border: '1px solid ' + (!isSavedMode ? 'rgba(245,158,11,.7)' : 'rgba(148,163,184,.22)'),
+              background: !isSavedMode ? 'rgba(245,158,11,.14)' : '#080c12',
+              color: !isSavedMode ? '#fbbf24' : '#cbd5e1'
+            }
+          }, 'Temporary'),
+          h('button', {
+            'data-chat-mode': 'saved', type: 'button', 'aria-pressed': String(this.state.chatSaveNext || this.state.chatSessionMode === 'saved'),
+            disabled: !!this.state.chatSessionId || this.state.chatRunning || !this.state.chatSavedSessionsLoaded,
+            onClick: () => this.setState({ chatSaveNext: true }),
+            title: this.state.chatSavedSessionsLoaded ? 'Save the new conversation on this Mac' : 'Unlock saved history first',
+            style: {
+              padding: '4px 10px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: !!this.state.chatSessionId || this.state.chatRunning || !this.state.chatSavedSessionsLoaded ? 'default' : 'pointer',
+              border: '1px solid ' + (isSavedMode ? 'rgba(245,158,11,.7)' : 'rgba(148,163,184,.22)'),
+              background: isSavedMode ? 'rgba(245,158,11,.14)' : '#080c12',
+              color: isSavedMode ? '#fbbf24' : '#cbd5e1',
+              opacity: !this.state.chatSavedSessionsLoaded && !this.state.chatSessionId ? 0.55 : 1
+            }
+          }, 'Saved')
+        ),
+        h('p', { 'data-chat-retention-description': 'true', style: { margin: 0, color: '#94a3b8', fontSize: 11.5, lineHeight: 1.45 } },
+          isSavedMode
+            ? 'Saved Chat is explicit opt-in. Messages are retained on this Mac for authorized history access, export and deletion.'
+            : 'Temporary Chat is not written to saved history. Reloading loses access to this temporary session.')
+      )
+    );
+
+    const statusSummary = h('div', { 'data-chat-settings-summary': 'true', role: 'status', 'aria-live': 'polite', style: { display: 'grid', gap: 6 } },
+      ready ? null : row('connection', 'Ollama', conn, conn.state === 'available' ? '#86efac' : conn.state === 'failed' ? '#fca5a5' : '#cbd5e1'),
+      ready ? null : row('feature', 'Chat feature', feat, featureTone),
+      row('generation', 'Chat generation', { state: ready ? 'ready' : 'unavailable', text: ready ? (isSavedMode ? 'Ready · Saved session active' : 'Ready for a temporary session') : 'Unavailable until Chat is enabled and an approved model is installed' }, ready ? '#86efac' : '#fcd34d'));
+
+    const storageErrorBanner = !ready && storageError ? h('div', {
+      'data-chat-storage-error': 'true',
+      role: 'alert',
+      className: 'dx-chat-card',
+      style: { borderColor: 'rgba(248,113,113,.45)', background: 'rgba(127,29,29,.16)', gap: 6 }
+    },
+      h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+        h('strong', { style: { fontSize: 12.5, color: '#fca5a5' } }, 'Ollama cannot read model storage on Big Mac'),
+        h('span', { style: { fontSize: 10.5, fontFamily: "'IBM Plex Mono', monospace", color: '#fca5a5', border: '1px solid rgba(248,113,113,.35)', borderRadius: 999, padding: '2px 8px' } }, storageError.code || 'EPERM')
+      ),
+      h('div', { style: { fontSize: 12, color: '#fecaca', lineHeight: 1.5 } }, storageError.message || 'macOS denied Ollama access to its external model storage.'),
+      storageError.detail ? h('div', { style: { fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", color: '#fda4af', background: 'rgba(8,12,18,.75)', border: '1px solid rgba(248,113,113,.25)', borderRadius: 7, padding: '6px 9px', overflowWrap: 'anywhere' } }, storageError.detail) : null,
+      h('div', { style: { fontSize: 11.5, color: '#fde68a', lineHeight: 1.5 } }, 'Fix on Big Mac: System Settings → Privacy & Security → Files & Folders → grant Removable Volumes access to ollama (or /opt/homebrew/opt/ollama/libexec/ollama), restart Ollama, then click Check again.')
+    ) : null;
+
+    const catalogBanner = !ready && !storageError && a.feature === 'activated' && a.ollama === 'available' && catalog.length > 0 ? h('div', {
+      'data-chat-model-catalog': 'true',
+      className: 'dx-chat-card',
+      style: { gap: 7 }
+    },
+      h('div', { style: { fontSize: 11.5, fontWeight: 700, color: '#cbd5e1' } }, 'Approved Chat allowlist · 0 of ' + catalog.length + ' installed on Ollama'),
+      h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } }, ...catalog.map(m =>
+        h('span', { key: m.name, style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#94a3b8', background: '#091420', border: '1px solid rgba(148,163,184,.18)', borderRadius: 7, padding: '4px 8px' } },
+          h('strong', { style: { color: '#e2e8f0', fontWeight: 600 } }, m.label || m.name),
+          h('span', { style: { fontSize: 10, color: m.class === 'heavy' ? '#fbbf24' : '#38bdf8' } }, m.class || 'model'),
+          h('span', { style: { fontSize: 10, color: '#64748b' } }, 'not installed')
+        )
+      ))
+    ) : null;
+
+    return h('section', {
+      'data-chat-workspace': 'true',
+      'aria-labelledby': 'dex-chat-title'
+    },
+      headerCard,
+      statusSummary,
+      storageErrorBanner,
+      catalogBanner,
       this.state.chatSettingsOpen && window.DexModal ? window.DexModal.frame(h, { id: 'chat-settings', title: 'Chat settings & saved history', size: 'md', subtitle: 'Connection status, the saved-history credential, export format and saved conversations.', onClose: () => this.setState({ chatSettingsOpen: false }),
         footer: [h('button', { type: 'button', className: 'dx-btn dx-primary', onClick: () => this.setState({ chatSettingsOpen: false }) }, 'Done')] },
         h('div', { 'data-chat-settings-details': 'true', style: { display: 'grid', gap: 8 } },
           ready ? h('div', { role: 'status', 'aria-live': 'polite', style: { display: 'grid', gap: 5 } },
             row('connection', 'Ollama', conn, conn.state === 'available' ? '#86efac' : conn.state === 'failed' ? '#fca5a5' : '#cbd5e1'),
-            row('feature', 'Chat feature', feat, '#fcd34d')) : null,
+            row('feature', 'Chat feature', feat, featureTone)) : null,
           h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end', marginTop: 2 } },
             h('label', { style: { display: 'grid', gap: 3, flex: '1 1 200px', fontSize: 11, color: '#cbd5e1' } }, 'Saved-history credential (kept in this tab only)',
               h('input', { type: 'password', 'data-chat-history-credential': 'true', value: this.state.chatHistoryCredential, autoComplete: 'off', onInput: e => this.setState({ chatHistoryCredential: e.target.value, chatSavedSessionsLoaded: false, chatSavedSessions: [], chatSaveNext: false }), style: { border: '1px solid rgba(148,163,184,.25)', background: '#111722', color: '#f8fafc', borderRadius: 5, padding: '4px 8px', fontSize: 11 } })),
@@ -2095,41 +2213,81 @@ class Component extends DCLogic {
               onChange: v => { this.setState({ chatSettingsOpen: false }); this.openSavedChat(v); } }))
         )) : null,
       // Transcript messages
-      h('div', { 'data-chat-messages': 'true', role: 'log', 'aria-live': 'off', style: { display: 'grid', gap: 8, minHeight: 60, flex: '1 0 auto' } },
-        messages.length ? messages.map(m => h('article', { key: m.message_id, 'data-chat-message': m.role, 'data-chat-message-status': m.status, style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', border: '1px solid rgba(148,163,184,.18)', borderRadius: 8, padding: 10, background: m.role === 'user' ? 'rgba(56,189,248,.05)' : 'rgba(15,23,42,.4)' } },
-          h('strong', { style: { fontSize: 12, color: m.role === 'user' ? '#7dd3fc' : '#c4b5fd' } }, m.role === 'user' ? 'You' : `Assistant · ${m.status}`),
-          h('div', { style: { fontSize: 13, color: '#f1f5f9', marginTop: 4, lineHeight: 1.5 } }, m.content),
-          m.role === 'assistant' && m.status === 'complete' && h('div', { style: { display: 'flex', gap: 6, marginTop: 8 } },
-            h('button', { type: 'button', 'data-chat-copy': 'true', onClick: () => this.copyText('Chat reply', m.content), style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Copy'),
-            h('button', { type: 'button', 'data-chat-to-create': 'replace', onClick: () => this.handoffChatToCreate(m.message_id, 'replace'), style: { border: '1px solid rgba(245,158,11,.4)', background: 'rgba(245,158,11,.1)', color: '#fbbf24', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 } }, 'Use in Create'),
-            h('button', { type: 'button', 'data-chat-to-create': 'append', onClick: () => this.handoffChatToCreate(m.message_id, 'append'), style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer' } }, 'Append to Create')))) : h('div', { style: { fontSize: 12, color: '#64748b', fontStyle: 'italic', padding: '16px 0', textAlign: 'center' } }, 'No messages yet. Send a message below to start.'),
-        this.state.chatRunning && h('article', { 'data-chat-stream': 'true', style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', border: '1px solid rgba(56,189,248,.3)', borderRadius: 8, padding: 10, background: 'rgba(56,189,248,.06)' } }, this.state.chatStreamText || this.state.chatStatus)),
-      h('div', { role: 'status', 'aria-live': 'polite', 'data-chat-run-status': 'true', style: { fontSize: 11, color: '#94a3b8' } }, this.state.chatStatus),
-      this.state.chatError && h('p', { role: 'alert', 'data-chat-error': 'true', style: { color: '#fca5a5', fontSize: 12, margin: '4px 0' } }, this.state.chatError),
+      h('div', { 'data-chat-messages': 'true', role: 'log', 'aria-live': 'off', style: { display: 'grid', gap: 10, minHeight: 80, flex: '1 0 auto', alignContent: 'start' } },
+        messages.length ? messages.map(m => h('article', {
+          key: m.message_id,
+          'data-chat-message': m.role,
+          'data-chat-message-status': m.status,
+          className: 'dx-chat-msg ' + (m.role === 'user' ? 'is-user' : 'is-assistant')
+        },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+            h('strong', { style: { fontSize: 11.5, letterSpacing: '.02em', color: m.role === 'user' ? '#7dd3fc' : '#fbbf24' } }, m.role === 'user' ? 'You' : (activeChatLabel || 'Assistant') + ' · ' + m.status)
+          ),
+          h('div', { style: { fontSize: 13.5, color: '#f1f5f9', lineHeight: 1.6 } }, m.content),
+          m.role === 'assistant' && m.status === 'complete' && h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', paddingTop: 4 } },
+            h('button', { type: 'button', 'data-chat-copy': 'true', onClick: () => this.copyText('Chat reply', m.content), style: { border: '1px solid rgba(148,163,184,.25)', background: 'rgba(8,12,18,.5)', color: '#cbd5e1', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer' } }, 'Copy'),
+            h('button', { type: 'button', 'data-chat-to-create': 'replace', onClick: () => this.handoffChatToCreate(m.message_id, 'replace'), style: { border: '1px solid rgba(245,158,11,.45)', background: 'rgba(245,158,11,.12)', color: '#fbbf24', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 } }, 'Use in Create'),
+            h('button', { type: 'button', 'data-chat-to-create': 'append', onClick: () => this.handoffChatToCreate(m.message_id, 'append'), style: { border: '1px solid rgba(148,163,184,.25)', background: 'rgba(8,12,18,.5)', color: '#cbd5e1', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer' } }, 'Append to Create'))))
+        : ready && !this.state.chatRunning ? h('div', { className: 'dx-chat-card', style: { padding: 18, justifyItems: 'center', textAlign: 'center', gap: 10, marginTop: 8 } },
+            h('div', { style: { fontSize: 13.5, fontWeight: 700, color: '#f8fafc' } }, 'Start a conversation with ' + (activeChatLabel || 'local Chat')),
+            h('div', { style: { fontSize: 12, color: '#94a3b8' } }, 'Pick a starter prompt or type below. Replies run locally on Big Mac and stay private.'),
+            h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 4 } },
+              ...starters.map(([label, promptText]) => h('button', {
+                key: label,
+                type: 'button',
+                className: 'dx-chat-starter',
+                'data-chat-starter': label,
+                onClick: () => {
+                  this.setState({ chatDraft: promptText });
+                  setTimeout(() => { const el = document.querySelector('[data-chat-composer="true"]'); if (el) el.focus(); }, 0);
+                }
+              }, label))))
+          : h('div', { style: { fontSize: 12, color: '#64748b', fontStyle: 'italic', padding: '18px 0', textAlign: 'center' } }, 'No messages yet. Send a message below to start.'),
+        this.state.chatRunning && h('article', { 'data-chat-stream': 'true', className: 'dx-chat-msg is-assistant', style: { borderColor: 'rgba(56,189,248,.4)' } },
+          h('strong', { style: { fontSize: 11.5, color: '#38bdf8' } }, (activeChatLabel || 'Assistant') + ' · streaming'),
+          h('div', { style: { fontSize: 13.5, color: '#f1f5f9', lineHeight: 1.6 } }, this.state.chatStreamText || this.state.chatStatus))),
+      h('div', { role: 'status', 'aria-live': 'polite', 'data-chat-run-status': 'true', style: { fontSize: 11, color: '#94a3b8', minHeight: 16 } }, this.state.chatStatus),
+      this.state.chatError && h('p', { role: 'alert', 'data-chat-error': 'true', style: { color: '#fca5a5', fontSize: 12, margin: '2px 0' } }, this.state.chatError),
 
-      // PINNED BOTTOM COMPOSER: Always visible at bottom, never scrolled away!
-      h('footer', {
-        'data-chat-footer': 'true',
-        style: { position: 'sticky', bottom: 0, zIndex: 10, background: '#0d1117', borderTop: '1px solid rgba(148,163,184,.14)', padding: '10px 0 14px', marginTop: 'auto', display: 'grid', gap: 6 }
-      },
-        h('label', { style: { display: 'grid', gap: 4 } },
-          h('span', { style: { fontSize: 11, fontWeight: 600, color: '#cbd5e1' } }, 'Message'),
+      // PINNED BOTTOM COMPOSER: Solid obsidian footer, always visible cleanly at bottom.
+      h('footer', { 'data-chat-footer': 'true', className: 'dx-chat-footer' },
+        h('label', { className: 'dx-chat-composer-wrap' },
+          h('span', { style: { fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' } }, 'Message'),
           h('textarea', {
             'data-chat-composer': 'true',
-            value: this.state.chatDraft,
+            value: draft,
             onInput: e => this.setState({ chatDraft: e.target.value }),
             onChange: e => this.setState({ chatDraft: e.target.value }),
+            onKeyDown: e => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.isComposing) {
+                e.preventDefault();
+                this.sendChat();
+              }
+            },
             disabled: !ready,
             rows: 3,
-            placeholder: ready ? 'Write a message. Command or Control + Enter sends.' : 'Chat is unavailable.',
-            style: { width: '100%', boxSizing: 'border-box', resize: 'none', background: '#111722', color: '#f8fafc', border: '1px solid rgba(148,163,184,.25)', borderRadius: 7, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', lineHeight: 1.4 }
+            placeholder: ready ? 'Write a message… (⌘/Ctrl + Enter to send)' : (storageError ? 'Chat offline: resolve Ollama Removable Volumes permission on Big Mac first.' : 'Chat is unavailable.'),
+            style: { width: '100%', boxSizing: 'border-box', resize: 'vertical', background: 'transparent', color: '#f8fafc', border: 0, outline: 'none', padding: 0, fontSize: 13.5, fontFamily: 'inherit', lineHeight: 1.5 }
           })
         ),
         h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
-          h('button', { type: 'button', 'data-chat-send': 'true', onClick: () => this.sendChat(), disabled: !ready || this.state.chatRunning || !this.state.chatDraft.trim(), style: { border: 'none', background: '#38bdf8', color: '#091420', fontWeight: 700, borderRadius: 6, padding: '6px 16px', fontSize: 12, cursor: ready && !this.state.chatRunning && this.state.chatDraft.trim() ? 'pointer' : 'default' } }, 'Send'),
-          h('button', { type: 'button', 'data-chat-stop': 'true', onClick: () => this.stopChat(), disabled: !this.state.chatRunning, style: { border: '1px solid rgba(239,68,68,.4)', background: 'rgba(239,68,68,.1)', color: '#fca5a5', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: this.state.chatRunning ? 'pointer' : 'default' } }, 'Stop'),
-          h('button', { type: 'button', 'data-chat-regenerate': 'true', onClick: () => this.sendChat(lastAssistant && lastAssistant.message_id), disabled: !ready || this.state.chatRunning || !lastAssistant, style: { border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#cbd5e1', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: ready && !this.state.chatRunning && lastAssistant ? 'pointer' : 'default' } }, 'Regenerate last reply'),
-          h('span', { style: { marginLeft: 'auto', fontSize: 11, color: '#64748b' } }, '⌘/Ctrl + Enter sends')
+          h('button', {
+            type: 'button', 'data-chat-send': 'true', onClick: () => this.sendChat(),
+            disabled: !ready || this.state.chatRunning || !draft.trim(),
+            style: {
+              border: 0,
+              background: ready && !this.state.chatRunning && draft.trim() ? 'linear-gradient(90deg,#ca8a04,#eab308)' : 'rgba(148,163,184,.18)',
+              color: ready && !this.state.chatRunning && draft.trim() ? '#080c12' : '#94a3b8',
+              fontWeight: 800, borderRadius: 8, padding: '7px 18px', minHeight: 34, fontSize: 12.5,
+              cursor: ready && !this.state.chatRunning && draft.trim() ? 'pointer' : 'default',
+              fontFamily: "'DM Sans',sans-serif"
+            }
+          }, 'Send'),
+          h('button', { type: 'button', 'data-chat-stop': 'true', onClick: () => this.stopChat(), disabled: !this.state.chatRunning, style: { border: '1px solid rgba(239,68,68,.4)', background: 'rgba(239,68,68,.12)', color: '#fca5a5', borderRadius: 8, padding: '7px 13px', minHeight: 34, fontSize: 12, fontWeight: 600, cursor: this.state.chatRunning ? 'pointer' : 'default', opacity: this.state.chatRunning ? 1 : 0.5 } }, 'Stop'),
+          h('button', { type: 'button', 'data-chat-regenerate': 'true', onClick: () => this.sendChat(lastAssistant && lastAssistant.message_id), disabled: !ready || this.state.chatRunning || !lastAssistant, style: { border: '1px solid rgba(148,163,184,.25)', background: 'rgba(9,20,32,.65)', color: '#cbd5e1', borderRadius: 8, padding: '7px 13px', minHeight: 34, fontSize: 12, cursor: ready && !this.state.chatRunning && lastAssistant ? 'pointer' : 'default', opacity: ready && !this.state.chatRunning && lastAssistant ? 1 : 0.5 } }, 'Regenerate last reply'),
+          h('span', { style: { marginLeft: 'auto', display: 'inline-flex', gap: 10, alignItems: 'center', fontSize: 11, color: draft.length > 12000 ? '#fca5a5' : '#64748b' } },
+            h('span', null, draft.length.toLocaleString() + ' / 12,000'),
+            h('span', null, '⌘/Ctrl + Enter sends'))
         )
       )
     );
