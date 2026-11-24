@@ -89,7 +89,7 @@ boot. Owner records now carry the boot session. A record proven to predate the
 current boot is archived as `backend-instance.ended-*` and the backend starts.
 Same-boot, unprovable, symlinked, busy-worker and held-port cases stay blocked.
 A read-only run of the new check on Big Mac recognises the real record as ended.
-It has not been deployed, and the record is unchanged.
+It was deployed with `fc6db5f` on November 24 and archived the real record byte-identical.
 
 ### Live acceptance after the prompt was answered
 
@@ -99,16 +99,35 @@ SD 1.5 attempt exceeded a 180 s harness limit and was cancelled cleanly. Earlier
 jobs show 228 s followed minutes later by 18 s, so a cold external-volume load is
 the likely cause, not proven.
 
+### Cutover of November 24 (owner approved, `fc6db5f`)
+
+Deployed per runbook section I: worktree on `release/reconstruction-20261124`, installed
+worker equal to the commit blob, EngineHost unchanged. Restore point: Big Mac
+`~/dex-cutover-20261124/` with `rollback.sh` (3d8b885; refuses if an engine is running).
+
+- The first start selected **internal fallback**. TCC allowed EngineHost in 10 ms; the
+  drive had been asleep (disksleep 10) and its first read outlasted the runner's 3 s limit.
+- The fallback never seals idle. Its outbox holds one suspended publication from
+  November 11 (`20261111-204034-...-s12347`), and the idle check counted it. The image is
+  intact on Big Mac and byte-identical on the MacBook; only the acknowledgement is missing.
+- Operator error: a second kickstart was issued before an idle seal was confirmed. The
+  worker correctly refused to stop the backend, but launchd killed EngineHost after 20 s.
+  The worker (pid 55563) is draining without that parent and still serves; EngineHost
+  relaunches exit harmlessly on the worker lock.
+- `915495a` corrects both defects: the first bounded read is 20 s, and a suspended
+  publication does not hold an isolated fallback open. Every record is still validated.
+
 Open gates, in order:
 
-1. Ollama lists no models. Its process runs from a Homebrew version since deleted
-   (0.40.17) and logs `operation not permitted` on its volume. It needs an approved
-   restart with someone at the Big Mac screen. Attribution is likely, not proven.
-2. Approved cutover: `engine-worker.py` with a checkout containing
-   `backend-supervisor.py`. Confirm the old owner record is archived, 31337 is
-   served, and repeat the fallback drill.
-3. Only then: SD 1.5 and SDXL edits, Chat, voice, music, video, 3D and Worlds
-   under EngineHost, then Dock and production launch.
+1. Owner decision: release the stuck fallback. Either set the one stale record aside and
+   restore it afterwards, so the backend seals and the worker drains itself, or reboot
+   Big Mac. Do not kill the backend: without a seal its same-boot owner record blocks.
+2. Start external mode on `915495a` once certified. Run the fallback drill again.
+3. Ollama restart with the owner at the Big Mac screen. Pid 782 runs the deleted 0.40.17
+   binary; models are at `/Volumes/wc2tb/DexDiffusion/models/ollama`, `OLLAMA_NOPRUNE=1`.
+   Attribution is likely, not proven. An unanswered prompt would stall EngineHost.
+4. SD 1.5 and SDXL edits, Chat, Voice, Drama, Music, Video, 3D and Worlds.
+5. MacBook app replacement (separate decision). Staged at `915495a`.
 
 ## Native staging and rollback
 
