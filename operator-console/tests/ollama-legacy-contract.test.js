@@ -3,8 +3,7 @@
 // GET /api/ollama/status, POST /api/ollama/enhance, POST /api/ollama/chat and the Drama LLM parse keep their exact success
 // shapes. AUTH-6 changes, asserted here explicitly: allowlisted models only, gemma3:4b default, keep_alive 0, no download
 // advice. The new stream route is off by default and, when switched on, runs only under the shared Big Mac lease.
-// Isolation: temp state/images/media dirs, a PATH-first `ssh` stub that reports an explicit empty Ollama load for the arbiter,
-// no real Ollama, no model is ever loaded.
+// The child keeps the console isolation guard and uses an owned loopback Ollama plus a simulated arbiter probe.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -33,17 +32,17 @@ function legacyChat(body, req, res) {
 
 async function bootServer(fake, extraEnv = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ollama-legacy-'));
-  const bin = path.join(root, 'bin'); fs.mkdirSync(bin);
-  fs.writeFileSync(path.join(bin, 'ssh'), '#!/bin/sh\ncase "$*" in\n  *"ollama ps"*) printf "NAME ID SIZE PROCESSOR UNTIL\\nPROBE_DONE:0\\n";;\n  *) exit 255;;\nesac\n', { mode: 0o755 });
   for (const d of ['state', 'images', 'media']) fs.mkdirSync(path.join(root, d));
   const port = await freePort();
   const env = Object.assign({}, process.env, {
-    PATH: bin + path.delimiter + process.env.PATH, OPERATOR_CONSOLE_PORT: String(port), OLLAMA_BASE_URL: fake.url,
+    DEX_TEST_ISOLATION: '1', OPERATOR_CONSOLE_PORT: String(port), OLLAMA_BASE_URL: fake.url,
+    DEX_FAKE_OLLAMA_ROOT: root, DEX_SCRATCH_ROOT: path.join(root, 'scratch'),
     DEX_STATE_DIR: path.join(root, 'state'), DEX_IMAGES_ROOT_OVERRIDE: path.join(root, 'images'), DEX_MEDIA_ROOT_OVERRIDE: path.join(root, 'media'),
   }, extraEnv);
   delete env.OLLAMA_HOST;
   if (!('DEX_CHAT_ENABLED' in extraEnv)) delete env.DEX_CHAT_ENABLED;
-  const child = spawn(process.execPath, ['server.js'], { cwd: SERVER_DIR, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const fixture = path.join(__dirname, 'fixtures', 'isolated-ollama-console.js');
+  const child = spawn(process.execPath, ['--require', fixture, 'server.js'], { cwd: SERVER_DIR, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   child.stdout.on('data', c => { output += c; }); child.stderr.on('data', c => { output += c; });
   const exited = new Promise(r => child.on('exit', r));

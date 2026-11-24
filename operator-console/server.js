@@ -48,7 +48,7 @@ const { sortLibraryIds } = require('./library-sort');
 const SourceInfo = require('./source-info');
 const { buildLoraCards, buildVaeCards, buildEmbeddingState, serializeActiveLoras, parseLorasFromPrompt, inferAssetFamily, resolveTargetFamily } = require('./extra-networks');
 const EditModels = require('./edit-models');
-const { resolveLoraRuntimePolicy, routesFor, registeredStagedSdLora } = require('./lora-runtime-policy');
+const { resolveLoraRuntimePolicy, routesFor, registeredStagedSdLora, ADAPTERS, targetSupport } = require('./lora-runtime-policy');
 const { MODEL_CARDS, getModelCards, getModelCardById, checkModelSwitchWarnings } = require('./model-registry');
 const { isVisionDetailerAvailable, detectRegions, getDefaultDetailerPrompt, ATTEMPT_TIMEOUT_MS } = require('./detailer');
 const { ProviderRegistry, PRESETS: DETAILER_PRESETS, createPresetStore, createOwlv2Detector, validateModelManifest } = require('./detailer-providers');
@@ -767,6 +767,7 @@ function validatePromptLoras(prompt, backend, target) {
     }
   }
   for (const t of scan.tokens) {
+    if (!Number.isFinite(t.weight) || Math.abs(t.weight) > 2) return { ok: false, error: 'Prompt LoRA weight must be within −2.00–2.00.' };
     if (!allowedNames.has(t.name) && !registeredStagedSdLora(t.name, target))
       return { ok: false, error: `LoRA "${t.name}" is not in the discovered assets allowlist or approved staged adapter registry.` };
   }
@@ -774,13 +775,32 @@ function validatePromptLoras(prompt, backend, target) {
 }
 // Structured resources (LoRAs) are the source of truth in requests; they are
 // serialized to <lora:name:weight> prompt tags only here at the backend boundary.
-function validateStructuredLoras(loras) {
+function validateStructuredLoras(loras, target) {
   if (loras === undefined || loras === null) return null;
   if (!Array.isArray(loras) || loras.length > 8) return 'loras must be an array of at most 8 entries';
+  const seen = new Set();
   for (const l of loras) {
     if (!l || typeof l.name !== 'string' || !/^[A-Za-z0-9._ -]{1,120}$/.test(l.name)) return 'Invalid LoRA name';
-    if (l.weight !== undefined && l.weight !== null && !Number.isFinite(Number(l.weight))) return 'Invalid LoRA weight';
-    if (l.weight !== undefined && l.weight !== null && (Number(l.weight) < 0 || Number(l.weight) > 2)) return 'LoRA weight must be within the validated 0.00–2.00 range';
+    const id = l.name.trim().replace(/\.(safetensors|ckpt|pt|bin)$/i, '').toLowerCase();
+    if (!id || !/[a-z0-9]/.test(id)) return 'Invalid LoRA name';
+    if (seen.has(id)) return 'Duplicate LoRA adapter: ' + l.name;
+    seen.add(id);
+    if (l.weight == null) continue;
+    if ((typeof l.weight !== 'number' && (typeof l.weight !== 'string' || !l.weight.trim())) || !Number.isFinite(Number(l.weight))) return 'Invalid LoRA weight';
+    const adapter = target === 'flux2-klein-4b' && Object.hasOwn(ADAPTERS, id) ? ADAPTERS[id] : null;
+    const max = adapter && adapter.backend === 'mflux' && targetSupport(adapter, target) ? adapter.strength.max : 2;
+    if (Number(l.weight) < 0 || Number(l.weight) > max) return 'LoRA weight must be within 0.00–' + max.toFixed(2);
+  }
+  return null;
+}
+function mergeControlledLoras(params, spec) {
+  const scan = NetworkTokens.scanNetworkTokens(params.prompt);
+  if (scan.issues.length) return scan.issues[0].message;
+  if (scan.tokens.some(t => !Number.isFinite(t.weight) || Math.abs(t.weight) > 2)) return 'Prompt LoRA weight must be within −2.00–2.00.';
+  if (spec?.backend !== 'mflux') {
+    const resources = EC.resolveResources({ prompt: params.prompt, loras: params.loras });
+    params.prompt = resources.backendPrompt;
+    params.loras = resources.loras;
   }
   return null;
 }
@@ -789,7 +809,12 @@ function validateStructuredLoras(loras) {
 function resolveEditResources(body) {
   const err = validateStructuredLoras(body.loras);
   if (err) return err;
-  if (typeof body.prompt === 'string') { const sc = NetworkTokens.scanNetworkTokens(body.prompt); if (sc.issues.length) return sc.issues[0].message; body.prompt = NetworkTokens.normalizeDefaultWeights(body.prompt); }
+  if (typeof body.prompt === 'string') {
+    const scan = NetworkTokens.scanNetworkTokens(body.prompt);
+    if (scan.issues.length) return scan.issues[0].message;
+    if (scan.tokens.some(t => !Number.isFinite(t.weight) || Math.abs(t.weight) > 2)) return 'Prompt LoRA weight must be within −2.00–2.00.';
+    body.prompt = NetworkTokens.normalizeDefaultWeights(body.prompt);
+  }
   const rr = EC.resolveResources({ prompt: typeof body.prompt === 'string' ? body.prompt : '', loras: body.loras });
   if (typeof body.prompt === 'string') body.prompt = rr.backendPrompt;
   body.__loras = rr.loras;
@@ -982,7 +1007,11 @@ function imageSourceMap() {
   try {
     for (const d of fs.readdirSync(RUNS_DIR, { withFileTypes: true })) {
       if (!d.isDirectory()) continue;
-      for (const e of imageStore.readRunIndex(path.join(RUNS_DIR, d.name))) map.set(e.image_id, { runId: d.name, runFile: e.run_file, sha256: e.sha256 || null });
+      for (const e of imageStore.readRunIndex(path.join(RUNS_DIR, d.name))) {
+        const previous = map.get(e.image_id);
+        const conflict = previous?.conflict || Boolean(previous?.sha256 && e.sha256 && previous.sha256 !== e.sha256);
+        map.set(e.image_id, { runId: d.name, runFile: e.run_file, sha256: e.sha256 || previous?.sha256 || null, conflict });
+      }
     }
   } catch (_) {}
   imageSourceCache = { at: Date.now(), map };
@@ -997,7 +1026,7 @@ function imageSourceMap() {
 function sourceToWorkingPng(sourcePath) {
   const out = path.join(MASK_UPLOADS_DIR, `import-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.png`);
   try {
-    execFileSync('python3', ['-c', 'import sys\nfrom PIL import Image\nim=Image.open(sys.argv[1]); im.load(); im.convert("RGB").save(sys.argv[2])\nprint(im.size[0], im.size[1])', sourcePath, out], { timeout: 30000 });
+    execFileSync(EDIT_PYTHON, ['-c', 'import sys\nfrom PIL import Image\nim=Image.open(sys.argv[1]); im.load(); im.convert("RGB").save(sys.argv[2])\nprint(im.size[0], im.size[1])', sourcePath, out], { timeout: 30000 });
   } catch (_) { try { fs.unlinkSync(out); } catch (__) {} return { error: 'reference-invalid: image could not be decoded into a PNG working copy' }; }
   return { path: out, dims: pngSize(out) };
 }
@@ -1034,6 +1063,7 @@ function resolveImageSource(body) {
     const img = imageStore.resolveImage(body.image_id);
     if (!img) return { error: 'Source image not found in the canonical image store.' };
     const src = imageSourceMap().get(body.image_id);
+    if (src?.conflict || (src?.sha256 && currentImageDigest(img.path) !== src.sha256)) return { error: 'Source image bytes differ from the recorded SHA-256.' };
     if (!src) {
       const dims = pngSize(img.path);
       if (path.extname(img.path).toLowerCase() !== '.png') {
@@ -1136,7 +1166,7 @@ function prepareSource(srcPath, mode) {
   if (!SOURCE_PREP_MODES.has(mode)) return { error: 'Unknown source_prep mode' };
   const out = path.join(MASK_UPLOADS_DIR, `prep-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.png`);
   try {
-    const [w, h] = execFileSync('python3', ['-c', SOURCE_PREP_PY, srcPath, out, mode], { timeout: 30000 }).toString().trim().split(' ').map(Number);
+    const [w, h] = execFileSync(EDIT_PYTHON, ['-c', SOURCE_PREP_PY, srcPath, out, mode], { timeout: 30000 }).toString().trim().split(' ').map(Number);
     return { path: out, width: w, height: h };
   } catch (_) {
     try { fs.unlinkSync(out); } catch (__) {}
@@ -1148,7 +1178,7 @@ function prepareSource(srcPath, mode) {
 function resizeSource(srcPath, spec, size) {
   const out = path.join(MASK_UPLOADS_DIR, `prep-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.png`);
   try {
-    execFileSync('python3', [path.join(__dirname, 'bin', 'resize-source.py'), srcPath, out, spec.mode, String(size.width), String(size.height), spec.background_color], { timeout: 30000 });
+    execFileSync(EDIT_PYTHON, [path.join(__dirname, 'bin', 'resize-source.py'), srcPath, out, spec.mode, String(size.width), String(size.height), spec.background_color], { timeout: 30000 });
     return { path: out, width: size.width, height: size.height };
   } catch (_) {
     try { fs.unlinkSync(out); } catch (__) {}
@@ -1166,7 +1196,7 @@ function compositeOutpaint(job, stdoutText) {
   const runDir = path.join(RUNS_DIR, m[1]);
   const files = imageStore.readRunIndex(runDir).map(e => imageStore.resolveImage(e.image_id)).filter(Boolean).map(i => i.path);
   for (const f of files) {
-    try { imageStore.replacePublishedImage(runDir, path.basename(f), staged => execFileSync('python3', ['-c', OUTPAINT_COMPOSITE_PY, staged, c.src, c.mask, String(c.left), String(c.top), String(c.blur || 0), c.fit ? 'fit' : 'offset'], { timeout: 30000 })); job.stdout += `\n${job.lineageOp}: source composited outside the mask\n`; }
+    try { imageStore.replacePublishedImage(runDir, path.basename(f), staged => execFileSync(EDIT_PYTHON, ['-c', OUTPAINT_COMPOSITE_PY, staged, c.src, c.mask, String(c.left), String(c.top), String(c.blur || 0), c.fit ? 'fit' : 'offset'], { timeout: 30000 })); job.stdout += `\n${job.lineageOp}: source composited outside the mask\n`; }
     catch (err) { job.stderr += `\nmask-composite: ${err.message}`; job.status = 'FAIL'; job.firstFailedGate = 'canonicalization-failed'; }
   }
 }
@@ -1180,7 +1210,7 @@ function compositePasteBack(job, stdoutText) {
   const files = imageStore.readRunIndex(runDir).map(e => imageStore.resolveImage(e.image_id)).filter(Boolean).map(i => i.path);
   for (const f of files) {
     try {
-      imageStore.replacePublishedImage(runDir, path.basename(f), staged => execFileSync('python3', [path.join(__dirname, 'bin', 'inpaint-region.py'), 'pasteback', staged, c.src, c.mask, ...c.box.map(String), String(c.blur)], { timeout: 30000 }));
+      imageStore.replacePublishedImage(runDir, path.basename(f), staged => execFileSync(EDIT_PYTHON, [path.join(__dirname, 'bin', 'inpaint-region.py'), 'pasteback', staged, c.src, c.mask, ...c.box.map(String), String(c.blur)], { timeout: 30000 }));
       job.stdout += `\n${job.lineageOp}: only-masked result pasted back into the original (${c.box.join(',')})\n`;
     } catch (err) { job.stderr += `\npaste-back: ${err.message}`; job.status = 'FAIL'; job.firstFailedGate = 'canonicalization-failed'; }
   }
@@ -1227,6 +1257,36 @@ if (hostTools) {
   process.env.PATH = hostTools.processPath;
   Object.assign(STORAGE_ENV, hostTools.scriptEnv);
 }
+// Use the interpreter configured by the backend service, or its PATH when unset.
+const EDIT_PYTHON = process.env.DEX_IMAGE_VALIDATION_PYTHON || 'python3';
+let pillowProbe;
+function editPillowReadiness() {
+  if (pillowProbe && Date.now() - pillowProbe.checkedAt < 60000) return pillowProbe;
+  try {
+    const interpreter = execFileSync(EDIT_PYTHON, ['-c', 'import sys; from PIL import Image; print(sys.executable)'], { timeout: 3000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    pillowProbe = { ready: Boolean(interpreter), interpreter, checkedAt: Date.now() };
+  } catch (_) {
+    pillowProbe = { ready: false, interpreter: EDIT_PYTHON, checkedAt: Date.now() };
+  }
+  return pillowProbe;
+}
+function requireEditPillow(res) {
+  if (editPillowReadiness().ready) return true;
+  res.status(503).json({ error: 'Pillow is unavailable in the configured image preparation interpreter.', gate: 'pillow' });
+  return false;
+}
+async function probeSdcppEditReadiness() {
+  try {
+    const result = await execWorkflow('/bin/bash', [path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-edit-readiness.sh')], 20000);
+    return { sourceVerified: result.stdout.includes('SDCPP_UPSTREAM_VERIFIED'), scriptReady: result.stdout.includes('SDCPP_EDIT_PREFLIGHT_READY') };
+  } catch (error) {
+    return {
+      sourceVerified: String(error.stdout || '').includes('SDCPP_UPSTREAM_VERIFIED'),
+      scriptReady: false,
+      gate: /First failed gate: ([a-z-]+)/.exec(error.stderr || '')?.[1] || 'probe-unavailable'
+    };
+  }
+}
 const TARGET_MODELS = targetModelMap(path.join(WORKFLOW_ROOT, 'bin', 'sdcpp-controlled-generate.sh'),
   readSdcppEnv('REMOTE_MODEL', '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors'));
 const evidenceStore = createEvidenceStore(path.join(STATE_DIR, 'capability-evidence.json'));
@@ -1249,6 +1309,9 @@ async function refreshAssets() {
       if (!probed.localEngineReady) probed.localEngineError = 'Worker recovery has unresolved process ownership';
       probed.localEnginePid = worker.pid;
     } catch (e) { probed.localEngineError = e.message; }
+  }
+  if (probed.reachable && !TestIsolation.enabled() && !IS_INTERNAL_FALLBACK) {
+    probed.sdcppEditPreflight = await probeSdcppEditReadiness();
   }
   assetCache = { ...probed, checkedAt: new Date().toISOString() };
   return assetCache;
@@ -2268,7 +2331,7 @@ function validateControlledGenerationParams(params, allTargetById = CONTROLLED_T
   // Callers that already validated the client list and then merged prompt tags
   // into it (tags allow -2..2) pass loraShapeChecked to avoid re-judging the merge.
   if (!opts.loraShapeChecked) {
-    const loraShapeError = validateStructuredLoras(params.loras);
+    const loraShapeError = validateStructuredLoras(params.loras, params.target);
     if (loraShapeError) return loraShapeError;
   }
   if (!validateControlledTarget(params.target, allTargetById)) return 'Invalid target';
@@ -2381,7 +2444,10 @@ function buildTxt2imgPreview(body) {
   delete previewBody.debug_command_preview;
   delete previewBody.debug_json_preview;
   const params = normalizeControlledGenerationBody(previewBody);
-  const err = validateControlledGenerationParams(params, allTargetById);
+  if (params.invalidKey) return { ok: false, status: 400, error: 'Unexpected field: ' + params.invalidKey };
+  const err = validateStructuredLoras(params.loras, params.target)
+    || mergeControlledLoras(params, allTargetById[params.target])
+    || validateControlledGenerationParams(params, allTargetById, { loraShapeChecked: true });
   if (err) return { ok: false, status: 400, error: err };
   const spec = allTargetById[params.target];
   // The preview is built by the very function the job runner uses, so it can never drift from execution.
@@ -2488,7 +2554,7 @@ function validateMaskDataUrl(maskData, tempPrefix = 'validate-mask') {
     'print("painted" if mask.getbbox() else "blank")'
   ].join('\n');
   try {
-    const result = execFileSync('python3', ['-c', MASK_CHECK_PY, rawPath], { timeout: 15000 }).toString().trim();
+    const result = execFileSync(EDIT_PYTHON, ['-c', MASK_CHECK_PY, rawPath], { timeout: 15000 }).toString().trim();
     try { fs.unlinkSync(rawPath); } catch (_) {}
     if (result === 'blank') return { ok: false, status: 400, error: 'Mask has no painted pixels. Paint over the region to inpaint first.' };
   } catch (e) {
@@ -2964,8 +3030,14 @@ app.get('/api/capabilities', (req, res) => {
         ? 'CLI flags confirmed; awaiting proof run before enabling (set img2imgSupported=true in server.js).'
         : editCap.capabilities.img2img.reason)
     : 'Run POST /api/actions/probe-image-edit to check remote support.';
+  const scriptReadiness = assetCache?.sdcppEditPreflight;
+  const scriptReady = scriptReadiness?.scriptReady;
+  const scriptReason = scriptReady === false ? 'SDCPP Edit preflight blocked at ' + (scriptReadiness.gate || 'unknown') : undefined;
+  const pillowReady = editPillowReadiness().ready;
+  const pillowReason = 'Pillow is unavailable in the configured image preparation interpreter.';
   const img2imgGate = img2imgSupported
-    ? { supported: true, route: '/api/actions/img2img' }
+    ? { supported: pillowReady && (scriptReady !== false || assetCache?.localEngineReady === true), route: '/api/actions/img2img',
+      readiness: { sdcppScript: scriptReady ?? null, localEngine: assetCache?.localEngineReady ?? null }, reason: pillowReady ? scriptReason : pillowReason }
     : { supported: false, reason: img2imgProbeReason, unlock_requires: 'Run one img2img proof job via sdcpp-img2img.sh, verify output PNG, then set img2imgSupported=true.' };
 
   const inpaintProbeReason = editCap && editCap.capabilities
@@ -2974,12 +3046,12 @@ app.get('/api/capabilities', (req, res) => {
         : editCap.capabilities.inpaint.reason)
     : 'Run POST /api/actions/probe-image-edit to check remote support.';
   const inpaintGate = inpaintSupported
-    ? { supported: true, route: '/api/actions/inpaint' }
+    ? { supported: pillowReady && scriptReady !== false, route: '/api/actions/inpaint', reason: pillowReady ? scriptReason : pillowReason }
     : { supported: false, reason: inpaintProbeReason, unlock_requires: 'Requires img2img support first, plus mask-editor UI.' };
 
   // pillowUpscale — local Pillow resize upscale; script and endpoint exist, validated.
   const pillowUpscaleGate = {
-    supported: true,
+    supported: pillowReady,
     route: '/api/actions/upscale',
     reason: 'Local Pillow resize upscale for existing run images. Not Real-ESRGAN; not AI upscale.'
   };
@@ -2987,7 +3059,7 @@ app.get('/api/capabilities', (req, res) => {
   // realEsrgan — sd-cli --mode upscale on BigMac; direct CLI proof passed (512→2048, M4 Metal, 60s).
   // Gate remains false until endpoint proof run completes.
   const realEsrganGate = realEsrganSupported
-    ? { supported: true, route: '/api/actions/upscale-esrgan', caveat: '4× scale per repeat (RealESRGAN_x4plus). Not A1111 Extras parity.' }
+    ? { supported: scriptReady !== false, route: '/api/actions/upscale-esrgan', reason: scriptReason, caveat: '4× scale per repeat (RealESRGAN_x4plus). Not A1111 Extras parity.' }
     : { supported: false, reason: 'Direct CLI proof passed (512→2048, 60s, M4 Metal). Gate opens after endpoint proof.', unlock_requires: 'Run one upscale-esrgan job, verify output PNG, then set realEsrganSupported=true in server.js.' };
 
   // upscale — Pillow resize available; Real-ESRGAN implemented separately via realEsrgan gate.
@@ -3120,7 +3192,7 @@ app.get('/api/capabilities', (req, res) => {
       img2img: img2imgGate,
       inpaint: inpaintGate,
       outpaint: inpaintSupported
-        ? { supported: true, route: '/api/actions/outpaint', caveat: 'Canvas extension + generated mask through the SDCPP inpaint path (SD1.5).' }
+        ? { supported: pillowReady && scriptReady !== false, route: '/api/actions/outpaint', reason: pillowReady ? scriptReason : pillowReason, caveat: 'Canvas extension + generated mask through the SDCPP inpaint path (SD1.5).' }
         : { supported: false, reason: 'Needs the SDCPP inpaint backend.' },
       hiresRefine: { supported: true, route: '/api/actions/generate-controlled', caveat: 'Native sd-cli --hires diffusion second pass (SDCPP targets only). Distinct from Lanczos resize and Real-ESRGAN.' },
       nativeBatch: { supported: true, caveat: 'SDCPP quantity 2-16 runs as one sd-cli --batch-count invocation (seeds S..S+N-1); MFLUX is sequential.' },
@@ -3756,19 +3828,15 @@ app.post('/api/actions/generate-controlled', (req, res) => {
   const allTargetById = allControlledTargets();
   const rawControl = req.body && req.body.controlnet;
   const params = normalizeControlledGenerationBody(Object.fromEntries(Object.entries(req.body || {}).filter(([k]) => k !== 'controlnet')));
-  const loraShapeErr = params.invalidKey ? null : validateStructuredLoras(params.loras);
+  const loraShapeErr = params.invalidKey ? null : validateStructuredLoras(params.loras, params.target);
   if (loraShapeErr) return res.status(400).json({ error: loraShapeErr });
   if (!params.invalidKey) {
     params.prompt = expandWildcards(params.prompt);
     if (params.negative_prompt) {
       params.negative_prompt = expandWildcards(params.negative_prompt);
     }
-    const requestedSpec = allTargetById[params.target];
-    if (!requestedSpec || requestedSpec.backend !== 'mflux') {
-      const rr = EC.resolveResources({ prompt: params.prompt, loras: params.loras });
-      params.prompt = rr.backendPrompt;
-      params.loras = rr.loras;
-    }
+    const promptError = mergeControlledLoras(params, allTargetById[params.target]);
+    if (promptError) return res.status(400).json({ error: promptError });
   }
   const err = validateControlledGenerationParams(params, allTargetById, { loraShapeChecked: true });
   if (err) return res.status(400).json({ error: err });
@@ -3899,13 +3967,19 @@ const ALLOWED_UPSCALE_RESAMPLES = new Set(['nearest', 'bilinear', 'bicubic', 'la
 
 // Pillow upscale endpoint — local only, no SSH, no prompt fields
 app.post('/api/actions/upscale', (req, res) => {
+  if (!requireEditPillow(res)) return;
   const body = { ...(req.body || {}) };
   let upscaleSource = { imageId: null };
   if (body.image_id) {
     upscaleSource = resolveImageSource(body);
     if (upscaleSource.error) return res.status(404).json({ error: upscaleSource.error, gate: 'source' });
     body.runId = body.run_id;
-    body.image = imageSourceMap().get(body.image_id).runFile;
+    const index = imageSourceMap().get(body.image_id);
+    if (!index) {
+      cleanupRejectedSource(res, upscaleSource);
+      return res.status(409).json({ error: 'Pillow upscale requires an indexed source image.', gate: 'source-index' });
+    }
+    body.image = index.runFile;
   } else if (body.runId && body.image) {
     const hit = imageStore.resolveRunImage(path.join(RUNS_DIR, String(body.runId)), String(body.image));
     upscaleSource = { imageId: hit ? hit.id : null };
@@ -3985,6 +4059,7 @@ app.post('/api/actions/upscale', (req, res) => {
 
 // Nondestructive rotate / flip / crop: a NEW canonical image linked to its source; the source file is never modified.
 app.post('/api/actions/transform', (req, res) => {
+  if (!requireEditPillow(res)) return;
   const body = req.body || {};
   if (typeof body.image_id !== 'string' || !body.image_id) return res.status(400).json({ error: 'image_id is required', gate: 'args' });
   const img = imageStore.resolveImage(body.image_id), rec = imageSourceMap().get(body.image_id);
@@ -4102,7 +4177,7 @@ app.post('/api/actions/img2img', (req, res) => {
   if (engineSpec && engineSpec.error) return res.status(engineSpec.status).json({ error: engineSpec.error, gate: 'edit-model' });
   let editModel = { args: [] }, engineLoras = null;
   if (engineSpec) {
-    const shapeErr = validateStructuredLoras(body.loras);
+    const shapeErr = validateStructuredLoras(body.loras, engineSpec.id);
     if (shapeErr) return res.status(400).json({ error: shapeErr, gate: 'resources' });
     engineLoras = Array.isArray(body.loras) ? body.loras : [];
     body.__editTarget = engineSpec.aliasOf || engineSpec.id;
@@ -4115,6 +4190,7 @@ app.post('/api/actions/img2img', (req, res) => {
     const editLoraError = editLoraUnsupported(body);
     if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
   }
+  if (!requireEditPillow(res)) return;
   const srcInfo = resolveImageSource(body);
   cleanupRejectedSource(res, srcInfo);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
@@ -4268,6 +4344,7 @@ function handleInpaint(req, res) {
   if (editModel.error) return res.status(editModel.status).json({ error: editModel.error, gate: 'edit-model' });
   const editLoraError = editLoraUnsupported(body);
   if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
+  if (!requireEditPillow(res)) return;
   const srcInfo = resolveImageSource(body);
   cleanupRejectedSource(res, srcInfo);
   if (srcInfo.error) return res.status(404).json({ error: srcInfo.error, gate: 'source' });
@@ -4346,7 +4423,7 @@ function handleInpaint(req, res) {
 
   let maskConvResult = 'ok';
   try {
-    maskConvResult = execFileSync('python3', ['-c', MASK_PY, maskRawPath, maskPath],
+    maskConvResult = execFileSync(EDIT_PYTHON, ['-c', MASK_PY, maskRawPath, maskPath],
       { timeout: 15000 }).toString().trim();
     try { fs.unlinkSync(maskRawPath); } catch (_) {}
   } catch (e) {
@@ -4379,12 +4456,12 @@ function handleInpaint(req, res) {
         const workW = Number(params.width) || InpaintOptions.DEFAULTS.width, workH = Number(params.height) || InpaintOptions.DEFAULTS.height;
         if (!validateSize(workW) || !validateSize(workH)) throw Object.assign(new Error('Work size must be multiples of 8 between 64 and 2048'), { status: 400 });
         const ci = regionTemp('-crop.png'), cm = regionTemp('-cropmask.png');
-        const out = JSON.parse(execFileSync('python3', [regionTool, 'region', initImgPath, maskPath, ci, cm, String(inpaintOpts.padding), String(workW), String(workH), ...(inpaintOpts.content === 'fill' ? ['fill'] : [])], { timeout: 30000 }).toString().trim());
+        const out = JSON.parse(execFileSync(EDIT_PYTHON, [regionTool, 'region', initImgPath, maskPath, ci, cm, String(inpaintOpts.padding), String(workW), String(workH), ...(inpaintOpts.content === 'fill' ? ['fill'] : [])], { timeout: 30000 }).toString().trim());
         runInit = ci; runMask = cm; params.width = String(workW); params.height = String(workH);
         pasteBack = { src: initImgPath, mask: maskPath, box: out.box, blur: inpaintOpts.blur };
       } else {
         const fi = regionTemp('-fill.png');
-        execFileSync('python3', [regionTool, 'fill', initImgPath, maskPath, fi], { timeout: 30000 });
+        execFileSync(EDIT_PYTHON, [regionTool, 'fill', initImgPath, maskPath, fi], { timeout: 30000 });
         runInit = fi;
       }
     } catch (err) {
@@ -4646,8 +4723,6 @@ app.post('/api/actions/outpaint', (req, res) => {
   if (!inpaintSupported) return res.status(409).json({ error: 'Outpaint needs the inpaint backend, which is not available.', gate: 'inpaint' });
   const body = { ...(req.body || {}) };
   if (!body.image_id && !body.staged_id) return res.status(400).json({ error: 'image_id or staged_id is required' });
-  const src = resolveImageSource(body.staged_id ? { staged_id: body.staged_id } : { image_id: body.image_id });
-  cleanupRejectedSource(res, src);
   // Extension Prompt: describes only the NEW area; used instead of the main prompt when given.
   const usedExtensionPrompt = typeof body.extension_prompt === 'string' && !!body.extension_prompt.trim();
   if (usedExtensionPrompt) body.prompt = body.extension_prompt.trim();
@@ -4657,6 +4732,9 @@ app.post('/api/actions/outpaint', (req, res) => {
   if (editModel.error) return res.status(editModel.status).json({ error: editModel.error, gate: 'edit-model' });
   const editLoraError = editLoraUnsupported(body);
   if (editLoraError) return res.status(409).json({ error: editLoraError, gate: 'edit-lora', supported: false });
+  if (!requireEditPillow(res)) return;
+  const src = resolveImageSource(body.staged_id ? { staged_id: body.staged_id } : { image_id: body.image_id });
+  cleanupRejectedSource(res, src);
   if (src.error) return res.status(404).json({ error: src.error, gate: 'source' });
   if (!src.dims) return res.status(400).json({ error: 'Outpaint source must be a PNG image.' });
   const plan = planOutpaint(src.dims, body);
@@ -4671,7 +4749,7 @@ app.post('/api/actions/outpaint', (req, res) => {
   const prepPath = path.join(MASK_UPLOADS_DIR, `${tag}-canvas.png`);
   const maskPath = path.join(MASK_UPLOADS_DIR, `${tag}-mask.png`);
   try {
-    execFileSync('python3', ['-c', OUTPAINT_PREP_PY, src.path, prepPath, maskPath, String(plan.left), String(plan.top), String(plan.width), String(plan.height), '48'], { timeout: 30000 });
+    execFileSync(EDIT_PYTHON, ['-c', OUTPAINT_PREP_PY, src.path, prepPath, maskPath, String(plan.left), String(plan.top), String(plan.width), String(plan.height), '48'], { timeout: 30000 });
   } catch (e) {
     for (const f of [prepPath, maskPath]) { try { fs.unlinkSync(f); } catch (_) {} }
     return res.status(500).json({ error: 'Could not prepare the outpaint canvas.', gate: 'outpaint-prep' });
@@ -4703,7 +4781,7 @@ function imageView(id) {
   // Filename equality is not image identity. Only enrich from run metadata when
   // the current bytes match the digest recorded at canonical publication.
   const recordedMeta = imageMeta.get(id) || {};
-  const expectedIdentity = src && src.sha256;
+  const expectedIdentity = src?.conflict ? null : src?.sha256;
   const digestNow = () => onMacbook ? onMacbook.sha256 : currentImageDigest(img.path);
   const digest = expectedIdentity ? digestNow() : null;
   const meta = expectedIdentity && digest === expectedIdentity ? recordedMeta
@@ -4835,6 +4913,7 @@ app.post('/api/images/:id/keeper', (req, res) => {
   const image = onMacbook ? null : imageStore.resolveImage(req.params.id);
   if (!onMacbook && !image) return res.status(404).json({ error: 'Image not found' });
   const keeper = imageMeta.setKeeper(req.params.id, !!(req.body && req.body.keeper), onMacbook ? onMacbook.sha256 : currentImageDigest(image.path));
+  sourceBrowserCache.at = 0;
   res.json({ id: req.params.id, keeper });
 });
 // Metadata-only flag for known test/regression artifacts: the file is never
@@ -4846,6 +4925,7 @@ app.post('/api/images/:id/test-artifact', (req, res) => {
   const cur = imageMeta.get(req.params.id) || {};
   imageMeta.record(req.params.id, { test_artifact: on ? true : undefined, note: note || undefined });
   if (!on && cur.test_artifact) { const all = imageMeta.all(); delete all[req.params.id].test_artifact; delete all[req.params.id].note; imageMeta.record(req.params.id, {}); }
+  sourceBrowserCache.at = 0;
   res.json({ id: req.params.id, test_artifact: on, note });
 });
 // Explicit 3D/World source import: validate raw image bytes through the existing
@@ -5024,16 +5104,10 @@ const queueRunner = W.createQueueRunner({
     params.prompt = expandWildcards(params.prompt);
     if (params.negative_prompt) params.negative_prompt = expandWildcards(params.negative_prompt);
     const allTargetById = allControlledTargets();
-    const loraShapeError = validateStructuredLoras(params.loras);
+    const loraShapeError = validateStructuredLoras(params.loras, params.target);
     if (loraShapeError) return resolve({ ok: false, error: loraShapeError, gate: 'validation' });
-    // Match direct Create: SDCPP consumes prompt tags, while MFLUX consumes
-    // the structured adapters through its runtime policy.
-    const target = allTargetById[params.target];
-    if (target && target.backend !== 'mflux') {
-      const resources = EC.resolveResources({ prompt: params.prompt, loras: params.loras });
-      params.prompt = resources.backendPrompt;
-      params.loras = resources.loras;
-    }
+    const promptError = mergeControlledLoras(params, allTargetById[params.target]);
+    if (promptError) return resolve({ ok: false, error: promptError, gate: 'validation' });
     const err = validateControlledGenerationParams(params, allTargetById, { loraShapeChecked: true });
     if (err) return resolve({ ok: false, error: err, gate: 'validation' });
     const { jobId } = startControlledJob(params, allTargetById, {
@@ -5520,6 +5594,12 @@ app.get('/api/doctor', async (req, res) => {
   try { fs.accessSync(imageStore.root, fs.constants.R_OK | fs.constants.W_OK); add('Canonical image root', 'PASS', imageStore.root + ' readable/writable'); }
   catch (_) { add('Canonical image root', 'FAIL', imageStore.root + ' not accessible'); }
   const a = await refreshAssets();
+  const pillow = editPillowReadiness();
+  add('Image preparation interpreter', pillow.ready ? 'PASS' : 'FAIL', pillow.interpreter + (pillow.ready ? ' imports Pillow' : ' cannot import Pillow'));
+  const editPreflight = a.sdcppEditPreflight;
+  add('SDCPP upstream source', !editPreflight ? 'WARN' : editPreflight.sourceVerified ? 'PASS' : 'FAIL', !editPreflight ? 'Unverified' : editPreflight.sourceVerified ? 'Exact upstream commit and working tree verified' : editPreflight.gate);
+  add('SDCPP script preflight', !editPreflight ? 'WARN' : editPreflight.scriptReady ? 'PASS' : 'FAIL', !editPreflight ? 'Unverified' : editPreflight.scriptReady ? 'Read-only prerequisites passed' : editPreflight.gate);
+  add('SDCPP Edit generation on the running revision', 'WARN', 'Read-only Doctor did not perform inference or verify a current Edit output.');
   if (!a.reachable) add('Big Mac', 'FAIL', 'unreachable via ssh ' + SSH_TARGET_NAME);
   else {
     add('Big Mac', 'PASS', 'reachable via ssh ' + SSH_TARGET_NAME);

@@ -68,7 +68,9 @@ const { test, exitCode } = runner('source-hover');
       await page.waitForSelector('[data-lora-id="klein_anatomy_male_klein4b"]');
       const names = await page.$$eval('[data-lora-id]', e => e.map(x => x.getAttribute('data-lora-id')));
       assert.ok(names.includes('klein_fixes_nsfw_klein4b'), names.join());
-      assert.ok(!names.some(n => /klein9|sdxl_uncut/.test(n)) || true);
+      assert.ok(!names.some(n => /klein9/.test(n)), 'unstaged Klein 9B adapters are absent');
+      const blocked = page.locator('[data-lora-id="sdxl_uncut_penis_sdxl"]');
+      assert.equal(await blocked.isDisabled(), true, 'other-family adapters cannot be picked');
       await page.locator('[data-lora-id="klein_anatomy_male_klein4b"]').hover();
       await page.waitForSelector('.dsh-card code');
       const card = await page.locator('.dsh-card').innerText();
@@ -107,7 +109,7 @@ const { test, exitCode } = runner('source-hover');
       await page.locator('[data-lora-id="klein_fixes_nsfw_klein4b"]').click();
       await page.waitForFunction(() => document.querySelectorAll('[data-stack-item]').length === 3);
       await page.keyboard.press('Escape');
-      await page.evaluate(() => document.querySelector('[data-lora-picker-modal]').style.display = 'none');
+      await page.locator('[data-lora-picker-modal]').waitFor({ state: 'hidden' });
       const eff = await page.evaluate(() => __dex.getEffectiveCreateLoras().map(l => [l.id, l.weight]));
       assert.deepEqual(eff.map(x => x[0]), ['klein_anatomy_fixer_klein4b', 'klein_anatomy_male_klein4b', 'klein_fixes_nsfw_klein4b']);
       assert.equal(await page.locator('[data-stack-item]').count(), 3);
@@ -122,6 +124,75 @@ const { test, exitCode } = runner('source-hover');
       assert.equal(await page.evaluate(() => __dex.getEffectiveCreateLoras().length), 2);
       assert.match(await page.locator('[data-dex-field="lora-stack-total"]').innerText(), /Total strength 0\.50/);
       await page.evaluate(() => __dex._setStack([]));
+    });
+
+    await test('LoRA keyboard focus survives an unrelated render and Escape clears the hover card', async () => {
+      const trigger = page.locator('[data-dex-field="create-lora-adapter"]');
+      await trigger.click();
+      const dialog = page.locator('[data-lora-picker-modal]');
+      const search = dialog.getByRole('searchbox');
+      await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search LoRAs');
+      await search.press('ArrowDown');
+      assert.match(await page.locator(':focus').innerText(), /None/);
+      await page.keyboard.press('ArrowDown');
+      const focusedId = await page.locator(':focus').getAttribute('data-lora-id');
+      assert.ok(focusedId);
+      await page.evaluate(async () => {
+        __dex.setState({ prompt: 'fixture focus update' });
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      });
+      assert.equal(await page.locator(':focus').getAttribute('data-lora-id'), focusedId);
+      await dialog.getByRole('button', { name: 'Close LoRA picker' }).focus();
+      await page.keyboard.press('Shift+Tab');
+      assert.ok(await page.locator('[data-lora-picker-modal] :focus').count());
+      await page.keyboard.press('Tab');
+      assert.equal(await page.locator(':focus').getAttribute('aria-label'), 'Close LoRA picker');
+      await page.keyboard.press('Escape');
+      await dialog.waitFor({ state: 'hidden' });
+      assert.equal(await trigger.getAttribute('aria-expanded'), 'false');
+      assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+      assert.equal(await page.locator('.dsh-card').count(), 0);
+    });
+
+    await test('typing leaves the closed model and LoRA option lists intact', async () => {
+      const modelPicker = page.locator('[data-model-picker="create"]');
+      await modelPicker.locator('button[aria-haspopup="listbox"]').click();
+      await modelPicker.locator('[data-model-id="flux2-klein-4b"]').waitFor();
+      await page.keyboard.press('Escape');
+      await modelPicker.locator('[data-model-picker-modal]').waitFor({ state: 'hidden' });
+
+      const mutations = await page.evaluate(async () => {
+        const selectors = ['[data-model-id]', '[data-lora-id]'];
+        const lists = ['[data-model-picker-modal="create"]', '[data-lora-picker-modal]']
+          .map(selector => document.querySelector(selector));
+        const optionCounts = lists.map((list, i) => list.querySelectorAll(selectors[i]).length);
+        const count = [0, 0];
+        const observers = lists.map((list, i) => {
+          const observer = new MutationObserver(changes => {
+            for (const change of changes) {
+              for (const node of [...change.addedNodes, ...change.removedNodes]) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                  count[i] += Number(node.matches(selectors[i])) + node.querySelectorAll(selectors[i]).length;
+                }
+              }
+            }
+          });
+          observer.observe(list, { childList: true, subtree: true });
+          return observer;
+        });
+        const prompt = document.querySelector('[data-dex-field="prompt"]');
+        for (const text of ['closed picker fixture', 'closed picker fixture keeps typing']) {
+          prompt.value = text;
+          prompt.dispatchEvent(new Event('input', { bubbles: true }));
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        }
+        observers.forEach(observer => observer.disconnect());
+        return { optionCounts, count, prompt: __dex.state.prompt, connected: lists.every(list => list.isConnected) };
+      });
+      assert.ok(mutations.optionCounts.every(count => count > 0), 'both hidden option lists were populated');
+      assert.equal(mutations.connected, true, 'both option lists stayed mounted');
+      assert.deepEqual(mutations.count, [0, 0], 'prompt input must not rebuild either option list');
+      assert.equal(mutations.prompt, 'closed picker fixture keeps typing');
     });
 
     await test('no page errors', async () => { assert.deepEqual(errors, []); });

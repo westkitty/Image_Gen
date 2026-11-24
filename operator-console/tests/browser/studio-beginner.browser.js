@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, launchBrowser, runCleanups } = require('./helpers');
+const { startServer, launchBrowser, openStudio, runCleanups } = require('./helpers');
 (async () => {
   const {base} = await startServer();
   const browser = await launchBrowser(chromium);
@@ -9,8 +9,8 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.route('**/api/**', route => ['GET','HEAD'].includes(route.request().method()) ? route.continue() : route.fulfill({status:409,json:{error:'novice test is read-only'}}));
-  await page.goto(base + '/dexdiffusion/',{timeout:25000});
-  await page.waitForFunction(()=>window.__dex && __dex.state.version===2,{timeout:15000});
+  await page.addInitScript(() => localStorage.setItem('dex_studio_layout', 'flat'));
+  await openStudio(page, base + '/dexdiffusion/', { timeout: 25000 });
   const labels = await page.locator('[data-studio-nav] [data-studio-category]').allTextContents();
   assert.deepEqual(labels.map(s=>s.trim()),['Create','Batch','Swap','Voice','Drama','Music','Video','World','3D','Library','Edit','Enhance','Models','System']);
   for (const id of ['create','batch','swap','voice','drama','music','video','world','3d','library','edit','enhance','models','system']) {
@@ -43,7 +43,7 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
   await negBox.waitFor({state:'visible',timeout:5000});
   assert.equal(await negBox.isVisible(),true,'negative prompt revealed on demand');
   await prompt.fill('A copper observatory on a snowy hill');
-  assert.equal(await prompt.inputValue(),'A copper observatory on a snowy hill');
+  assert.equal(await prompt.evaluate(el => el.value),'A copper observatory on a snowy hill');
   await page.evaluate(()=>__dex.setState({backendOnline:false}));
   const offline=page.locator('[data-studio-offline]');
   await offline.waitFor({state:'visible'});
@@ -62,7 +62,7 @@ const { startServer, launchBrowser, runCleanups } = require('./helpers');
   await offline.getByRole('button',{name:'Retry connection'}).click();
   await page.waitForFunction(()=>__dex.state.backendOnline===true,null,{timeout:4000});
   await offline.waitFor({state:'hidden'});
-  assert.equal(await page.getByRole('textbox',{name:'Describe your image'}).inputValue(),'A copper observatory on a snowy hill','switching to System does not lose prompt');
+  assert.equal(await page.getByRole('textbox',{name:'Describe your image'}).evaluate(el => el.value),'A copper observatory on a snowy hill','switching to System does not lose prompt');
 
   const jobs=page.locator('[data-studio-jobs]');
   assert.equal(await jobs.count(),1,'exactly one Studio Jobs button');

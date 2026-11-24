@@ -1,6 +1,6 @@
 'use strict';
 // Unified Studio Phase 4 in real Chromium: the five-master layout is default, while an explicit flat rollback
-// layout (localStorage dex_studio_layout=masters) navigates, remembers leaves, roves focus, shows visible focus,
+// layout (localStorage dex_studio_layout=flat) navigates, remembers leaves, roves focus, shows visible focus,
 // keeps the page free of horizontal overflow at 390 px and desktop size, and renders an honest Chat placeholder.
 // Ollama endpoints are fixtures here: nothing reaches a model.
 const assert = require('node:assert/strict');

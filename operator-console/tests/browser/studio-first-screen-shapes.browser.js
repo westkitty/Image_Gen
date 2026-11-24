@@ -6,7 +6,7 @@ const {chromium}=require('playwright-core');
 const {startServer,launchBrowser,runCleanups}=require('./helpers');
 (async()=>{
  const {base}=await startServer();const browser=await launchBrowser(chromium);
- for(const [width,height] of [[1348,735],[390,844]]){
+ for(const [width,height] of [[1348,735],[390,844],[375,812]]){
   const page=await browser.newPage({viewport:{width,height}});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/dexdiffusion/',{waitUntil:'domcontentloaded',timeout:30000});
@@ -15,9 +15,10 @@ const {startServer,launchBrowser,runCleanups}=require('./helpers');
    const pane=document.querySelector('[data-screen-header="create"]').closest('[data-scroll-pane]');
    const footer=document.querySelector('[data-studio-primary-action]');
    const rect=el=>{const r=el?.getBoundingClientRect();return r?{y:r.y,bottom:r.bottom,height:r.height}:null};
-   return {pane:rect(pane),footer:rect(footer),quality:rect(pane.querySelector('select[aria-label="Quality preset"]')),prompt:rect(pane.querySelector('[aria-label="Describe your image"]')),model:rect(pane.querySelector('[data-model-picker="create"] > button')),shapes:[...pane.querySelectorAll('[data-studio-shape]')].map(el=>({id:el.dataset.studioShape,box:rect(el)})),generate:rect(footer.querySelector('[aria-label="Generate image"]')),guide:rect(pane.querySelector('[data-screen-header="create"] > div:nth-child(2)'))};
+   return {pane:rect(pane),footer:rect(footer),quality:rect(pane.querySelector('select[aria-label="Quality preset"]')),prompt:rect(pane.querySelector('[aria-label="Describe your image"]')),model:rect(pane.querySelector('[data-model-picker="create"] > button')),shapes:[...pane.querySelectorAll('[data-studio-shape]')].map(el=>({id:el.dataset.studioShape,box:rect(el),clipped:el.scrollWidth>el.clientWidth+1})),generate:rect(footer.querySelector('[aria-label="Generate image"]')),guide:rect(pane.querySelector('[data-screen-header="create"] > div:nth-child(2)'))};
   });
   assert.equal(result.shapes.length,4,'all four shape choices exist');
+  assert.ok(result.shapes.every(x=>!x.clipped), 'all four shape labels fit at '+width+'px');
   for(const [name,box] of [['prompt',result.prompt],['model',result.model],['quality',result.quality],...result.shapes.map(x=>[x.id,x.box])]){
    assert.ok(box&&box.y>=result.pane.y-1&&box.bottom<=result.pane.bottom+1,
     `${name} is fully visible without inspector scrolling at ${width}x${height}: ${JSON.stringify(result)}`);

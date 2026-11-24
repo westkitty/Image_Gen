@@ -3,7 +3,7 @@
 // Uses synthetic wildcard names only.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
-const { startServer, installModelSnapshots, runner, launchBrowser, openStudio } = require('./helpers');
+const { startServer, installModelSnapshots, runner, launchBrowser, openStudio, chooseModel, installDeveloperShellProfile } = require('./helpers');
 const { test, exitCode } = runner('wildcard-placement');
 
 (async () => {
@@ -15,6 +15,7 @@ const { test, exitCode } = runner('wildcard-placement');
     const errors = []; page.on('pageerror', e => errors.push(String(e)));
     await installModelSnapshots(page, srv.base);
     await page.route('**/api/extra-networks**', r => r.fulfill({ json: { loras: [], vaes: [], embeddings: { count: 0, items: [] } } }));
+    await page.route('**/api/models/secondary/activate', r => r.fulfill({ json: { modelState: {} } }));
     await openStudio(page, srv.base + '/dexdiffusion/');
     await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3 && __dex.state.capabilityData);
     await page.evaluate(() => __dex.setScreen('create'));
@@ -48,14 +49,21 @@ const { test, exitCode } = runner('wildcard-placement');
       await page.evaluate(() => { document.activeElement.blur(); __dex.setState({ prompt: 'alpha beta, __aa__', negPrompt: 'blurry' }); });
       const field = page.locator('dex-prompt-field[data-dex-field="prompt"]');
       await field.locator('[data-token="__aa__"]').waitFor();
-      const start = await field.boundingBox();
-      await field.locator('[data-token="__aa__"]').dragTo(field, { targetPosition: { x: 12, y: 12 } });
+      const textStart = await field.evaluate(el => {
+        const range = document.createRange();
+        range.setStart(el.firstChild, 0);
+        range.collapse(true);
+        const text = range.getBoundingClientRect(), box = el.getBoundingClientRect();
+        return { x: text.left - box.left + 1, y: text.top - box.top + text.height / 2 };
+      });
+      await field.locator('[data-token="__aa__"] > span').dragTo(field, { targetPosition: textStart });
       await page.waitForFunction(() => /^__aa__/.test(__dex.state.prompt));
       assert.equal((await prompts()).p, '__aa__, alpha beta');
-      assert.ok(start.width > 0);
       const neg = page.locator('dex-prompt-field[data-dex-field="negative-prompt"]');
-      await neg.evaluate(e => { e.disabled = false; e.removeAttribute('data-ctl-off'); for (let n = e.parentElement; n; n = n.parentElement) { if (n.tagName === 'DETAILS') n.open = true; if (getComputedStyle(n).display === 'none') n.style.display = 'block'; } }); // The default model has no negative prompt; a chip cannot be dropped on a disabled field.
-      await field.locator('[data-token="__aa__"]').dragTo(neg);
+      await chooseModel(page, 'sdxl-base');
+      await page.getByText('Negative prompt (what to avoid)', { exact: false }).click();
+      await neg.waitFor({ state: 'visible' });
+      await field.locator('[data-token="__aa__"] > span').dragTo(neg);
       await page.waitForFunction(() => __dex.state.negPrompt.includes('__aa__'));
       const s = await prompts();
       assert.equal(s.p, 'alpha beta'); assert.equal(s.n, 'blurry, __aa__');
@@ -95,8 +103,11 @@ const { test, exitCode } = runner('wildcard-placement');
       assert.equal(await page.locator('[data-bank-action="edit"]').isDisabled(), true, 'Edit waits for a chosen bank');
       await page.locator('[data-bank-action="add"]').click();
       await page.locator('[data-bank-field="name"]').fill('zz test bank');
-      await page.locator('[data-bank-field="entries"]').fill('# Heading becomes the description\n- solo entry\n* Solo Entry\n1. second entry\n');
-      assert.match(await page.locator('[data-bank-form-status]').innerText(), /2 entries, 1 duplicates dropped/);
+      await page.locator('[data-bank-action="save"]').click();
+      await page.locator('[data-bank-form-status]').filter({ hasText: 'There are no entries to save.' }).waitFor();
+      await page.locator('[data-bank-field="entries"]').focus();
+      await page.keyboard.insertText('# Heading becomes the description\n- solo entry\n* Solo Entry\n1. second entry\n');
+      await page.locator('[data-bank-form-status]').filter({ hasText: '2 entries, 1 duplicates dropped' }).waitFor();
       await page.locator('[data-bank-action="save"]').click();
       await page.locator('[data-bank-row="zz_test_bank"]').waitFor();
       const saved = await page.evaluate(async () => (await fetch('/api/wildcards/zz_test_bank')).json());
@@ -128,17 +139,27 @@ const { test, exitCode } = runner('wildcard-placement');
       await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
       assert.deepEqual(errors, []);
     });
-    await test('seed: Random checkbox, dice and reuse controls', async () => {
-      await page.evaluate(() => __dex.setState({ seed: '-1', lastSeed: 4242 }));
-      await page.waitForSelector('[data-dex-field="seed-random"]');
-      assert.equal(await page.locator('[data-dex-field="seed-random"]').isChecked(), true, 'new seed entries default to random (-1)');
-      await page.click('[data-dex-field="seed-reuse"]');
-      await page.waitForFunction(() => __dex.state.seed === '4242');
-      await page.waitForFunction(() => document.querySelector('[data-dex-field="seed-random"]').checked === false);
-      await page.click('[data-dex-field="seed-random"]');
-      await page.waitForFunction(() => __dex.state.seed === '-1');
-      await page.click('[data-dex-field="seed-dice"]');
-      await page.waitForFunction(() => /^\d+$/.test(String(__dex.state.seed)) && Number(__dex.state.seed) >= 0);
+    await test('Concept A seed: Random checkbox, dice and reuse controls', async () => {
+      const page = await browser.newPage();
+      try {
+        await installModelSnapshots(page, srv.base);
+        await installDeveloperShellProfile(page);
+        await page.goto(srv.base + '/dexdiffusion/');
+        await page.waitForSelector('.ca-shell');
+        await page.locator('.ca-nav-item', { hasText: 'Create' }).click();
+        await page.evaluate(() => __dex.setState({ seed: '-1', lastSeed: 4242 }));
+        await page.waitForSelector('[data-dex-field="seed-random"]');
+        assert.equal(await page.locator('[data-dex-field="seed-random"]').isChecked(), true, 'new seed entries default to random (-1)');
+        await page.click('[data-dex-field="seed-reuse"]');
+        await page.waitForFunction(() => __dex.state.seed === '4242');
+        await page.waitForFunction(() => document.querySelector('[data-dex-field="seed-random"]').checked === false);
+        await page.click('[data-dex-field="seed-random"]');
+        await page.waitForFunction(() => __dex.state.seed === '-1');
+        await page.click('[data-dex-field="seed-dice"]');
+        await page.waitForFunction(() => /^\d+$/.test(String(__dex.state.seed)) && Number(__dex.state.seed) >= 0);
+      } finally {
+        await page.close();
+      }
     });
     assert.deepEqual(errors, []);
     await ctx.close();

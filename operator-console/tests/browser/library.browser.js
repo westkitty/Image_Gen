@@ -120,7 +120,7 @@ const counter = page => page.locator('[data-lightbox-count]').innerText();
       await page.evaluate(id => __dex.selectLibraryImage(id), second);
       await page.locator('[data-lib-tag-input="' + second + '"]').fill('forest'); await page.locator('[data-lib-tag-input="' + second + '"]').press('Enter');
       await page.waitForFunction(() => /forest \(2\)/.test((document.querySelector('[data-lib-tag="forest"]') || {}).textContent || ''));
-      assert.match(await page.locator('[data-lib-tag-editor]').innerText(), /Saved in this browser/, 'where the tag lives is stated');
+      assert.match(await page.locator('[data-lib-tag-editor]').innerText(), /Storage: this browser/, 'where the tag lives is stated');
       await pick(page, 'group', 'tag');
       await page.waitForSelector('[data-lib-group="forest"]'); await page.waitForSelector('[data-lib-group="Untagged"]');
       assert.equal(await page.locator('[data-lib-group="forest"] [data-lib-thumb]').count(), 2);

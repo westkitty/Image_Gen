@@ -30,10 +30,13 @@ const until = async (fn, ms = 15000) => { const t0 = Date.now(); for (;;) { cons
 test('POST produce → live events on the bus → complete production with a downloadable master', async () => {
   const h = await boot(); try {
     const id = await castProject(h, `TIGER: ${CANARY} I warned you.\nCODEC: Hello there.\nNARRATOR: The end.`);
-    const r = await h.api('POST', `/api/drama/projects/${id}/produce`, {}); assert.equal(r.status, 202); assert.ok(r.body.job_id);
+    // The loopback fixture exercises production and event delivery with synthetic audio only.
+    const r = await h.api('POST', `/api/drama/projects/${id}/produce`, { asr: false });
+    assert.equal(r.status, 202); assert.ok(r.body.job_id);
     const pid = r.body.production.id;
     const fin = await until(async () => { const x = (await h.api('GET', `/api/drama/productions/${pid}`)).body; return TERMINALS.includes(x.production.status) ? x : null; });
     assert.equal(fin.production.status, 'complete', JSON.stringify(fin.production.errors));
+    assert.equal(fin.production.qa.asr.state, 'UNAVAILABLE');
     assert.ok(fin.project.project_master.download_url); assert.equal(fin.project.active_production, null);
     const names = h.bus.getReplaySince(0).map(e => e.event);
     assert.ok(names.includes('job.created') && names.includes('job.started') && names.includes('job.progress') && names.includes('job.completed'), names.join());

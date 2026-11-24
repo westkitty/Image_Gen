@@ -113,7 +113,7 @@
   P._controls = function () { return D.controlsFor(this._targetSpec()); };
   P._gate = function (k) { const g = ((this.state.capabilityData || {}).featureGates || {})[k]; return !!(g && g.supported === true); };
   P._api = async function (route, body, method, signal) {
-    const r = await fetch(this.state.backendUrl + route, body === undefined && !method ? undefined : {
+    const r = await fetch(this.state.backendUrl + route, body === undefined && !method ? { signal } : {
       signal, method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
     const data = await r.json().catch(() => ({ error: r.statusText }));
     return { ok: r.ok, status: r.status, data };
@@ -235,7 +235,8 @@
       const hasProductionRoute = !!route && (route.production === true || !!route.backend_override || !!route.rslora_equivalent);
       const isCompat = l.compatibility === 'Compatible';
       const routeProven = metalProven || hasProductionRoute || (provenTarget && backendMatches && modeAvailable);
-      const enabled = !!mfluxStyle || (familyMatches && !l.rs_lora && isCompat && (routeProven || (!l.proof_status && !l.proof_target_ids)));
+      const stale = !!this.state.assetsTarget && (this.state.assetsTarget !== target || (this.state.assetsBackend != null && this.state.assetsBackend !== this.state.backendUrl));
+      const enabled = !stale && (!!mfluxStyle || (familyMatches && !l.rs_lora && isCompat && (routeProven || (!l.proof_status && !l.proof_target_ids))));
       const routeStatus = mfluxStyle && l.plain_mflux
         ? 'STYLE · MFLUX · staged, UNTESTED (no inference receipt yet)'
         : mfluxStyle
@@ -254,7 +255,7 @@
         accelerator: enabled && (classification === 'ACCELERATION' || l.is_speed_adapter === true),
         route_status: routeStatus,
         classification,
-        unavailable_reason: l.unavailable_reason || (l.rs_lora && !mfluxStyle ? 'rsLoRA scaling is not verified on this backend.' : !familyMatches ? 'Adapter family does not match the selected checkpoint.' : !enabled ? 'Installed; inference is not yet proven for this checkpoint and backend.' : ''),
+        unavailable_reason: stale ? 'Catalog for this checkpoint is not loaded.' : l.unavailable_reason || (l.rs_lora && !mfluxStyle ? 'rsLoRA scaling is not verified on this backend.' : !familyMatches ? 'Adapter family does not match the selected checkpoint.' : !enabled ? 'Installed; inference is not yet proven for this checkpoint and backend.' : ''),
         selected_route: route
       });
     });
@@ -295,54 +296,71 @@
   // ── LoRA stack: several staged adapters in one generation (limits mirror lora-runtime-policy.js) ──
   const STACK_KEY = 'dex_create_lora_stack_v1', STACK_MAX = 4, STACK_SUM_MAX = 1.8;
   P._stack = function () {
-    if (Array.isArray(this.state.createLoraStack)) return this.state.createLoraStack;
-    try { const a = JSON.parse(localStorage.getItem(STACK_KEY) || '[]'); return Array.isArray(a) ? a.filter(x => x && typeof x.id === 'string' && Number.isFinite(Number(x.weight))) : []; } catch (_) { return []; }
+    let list = this.state.createLora?.stack;
+    if (!Array.isArray(list)) {
+      try { list = JSON.parse(localStorage.getItem(STACK_KEY) || '[]'); } catch (_) {}
+    }
+    const seen = new Set();
+    return (Array.isArray(list) ? list : []).filter(entry => {
+      if (!entry || typeof entry.id !== 'string' || !entry.id || seen.has(entry.id.toLowerCase())) return false;
+      if ((typeof entry.weight !== 'number' && (typeof entry.weight !== 'string' || !entry.weight.trim())) || !Number.isFinite(Number(entry.weight))) return false;
+      seen.add(entry.id.toLowerCase());
+      return true;
+    });
   };
   P._setStack = function (list) {
-    try { localStorage.setItem(STACK_KEY, JSON.stringify(list)); } catch (_) {}
-    this.setState({ createLoraStack: list });
+    this._persistCreateLora({ ...this.state.createLora, stack: list, stackEnabled: true });
   };
   P._stackItems = function () {
     const opts = this._createLoraOptions();
     return this._stack().map(e => ({ entry: e, option: opts.find(o => o.id === e.id) || null }));
   };
-  P._stackUsable = function () { return this._stackItems().filter(x => x.option && x.option.staged && x.option.use_enabled); };
+  P._stackUsable = function () { return this._stackItems().filter(({ entry, option }) => option?.staged && option.use_enabled &&
+      Number(entry.weight) >= (option.min_weight ?? 0) && Number(entry.weight) <= (option.max_weight ?? 2)); };
   P._stackSum = function (items) { return items.filter(x => !(x.option && x.option.slider)).reduce((n, x) => n + (Number(x.entry.weight) || 0), 0); };
   P.toggleCreateStack = function (id) {
-    const opts = this._createLoraOptions(), o = opts.find(x => x.id === id);
-    if (!o || !o.staged) return;
     const cur = this._stack();
-    if (cur.some(e => e.id === id)) { this._setStack(cur.filter(e => e.id !== id)); return; }
+    if (cur.some(e => e.id === id)) {
+      this._persistCreateLora({ ...this.state.createLora, stack: cur.filter(e => e.id !== id) });
+      return;
+    }
+    const o = this._createLoraOptions().find(x => x.id === id);
+    if (!o?.staged) return;
     if (!o.use_enabled) { this.toast(o.unavailable_reason || 'That LoRA is not usable with this model.', '#fbbf24'); return; }
-    if (cur.length >= STACK_MAX) { this.toast('At most ' + STACK_MAX + ' LoRAs can be combined.', '#fbbf24'); return; }
+    if (this._stackUsable().length >= STACK_MAX) { this.toast('At most ' + STACK_MAX + ' LoRAs can be combined.', '#fbbf24'); return; }
     // A stack replaces any single accelerator/style adapter, which cannot be combined with these.
-    if ((this.state.createLora || {}).selectedId) this.selectCreateLora('');
+    if ((this.state.createLora || {}).selectedId) this.selectCreateLora('', { preserveStack: true });
     this._setStack(cur.concat([{ id, weight: o.default_weight != null ? o.default_weight : 0.6 }]));
   };
   P.setCreateStackWeight = function (id, weight) {
     const o = this._createLoraOptions().find(x => x.id === id), w = Number(weight);
     if (!Number.isFinite(w)) return;
     const lo = o && o.min_weight != null ? o.min_weight : 0, hi = o && o.max_weight != null ? o.max_weight : 2;
-    this._setStack(this._stack().map(e => e.id === id ? Object.assign({}, e, { weight: Math.min(hi, Math.max(lo, w)) }) : e));
+    const stack = this._stack().map(e => e.id === id ? { ...e, weight: Math.min(hi, Math.max(lo, w)) } : e);
+    this._persistCreateLora({ ...this.state.createLora, stack });
   };
   P.buildCreateLoraStack = function () {
     const items = this._stackItems();
     if (!items.length) return null;
-    const sum = this._stackSum(items), over = sum > STACK_SUM_MAX + 1e-9, unusable = items.filter(x => !x.option || !x.option.use_enabled);
+    const activeIds = new Set(this.getEffectiveCreateLoras().filter(l => l.stacked).map(l => l.id));
+    const active = items.filter(x => activeIds.has(x.entry.id));
+    const sum = this._stackSum(active), over = sum > STACK_SUM_MAX + 1e-9, unusable = items.filter(x => !activeIds.has(x.entry.id));
     const chip = ({ entry, option }) => h('div', { key: entry.id, 'data-stack-item': entry.id, style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', border: '1px solid rgba(148,163,184,.25)', borderRadius: 7, padding: '4px 6px', opacity: option && option.use_enabled ? 1 : .55 } },
       h('b', { style: { fontSize: 12, flex: '1 1 140px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' } }, option ? option.name : entry.id),
+      activeIds.has(entry.id) ? null : h('span', { style: { fontSize: 10, color: '#fcd34d' } }, 'Parked'),
       option && option.slider ? h('span', { style: { fontSize: 10, color: '#7f8ca8' } }, 'slider') : null,
       h('input', { type: 'number', 'aria-label': 'Strength for ' + entry.id, step: 0.05, min: option ? option.min_weight : 0, max: option ? option.max_weight : 2, value: entry.weight, style: { width: 64 }, disabled: this.state.jobStatus === 'generating', onChange: e => this.setCreateStackWeight(entry.id, e.target.value) }),
       h('button', { type: 'button', 'aria-label': 'Remove ' + entry.id, disabled: this.state.jobStatus === 'generating', onClick: () => this.toggleCreateStack(entry.id), style: { border: 0, background: 'transparent', color: '#f87171', cursor: 'pointer', fontSize: 14 } }, '✕'));
     return h('div', { 'data-dex-field': 'lora-stack', style: { gridColumn: '1 / -1', display: 'grid', gap: 4 } },
-      h('div', { style: { fontSize: 11, color: '#93c5fd' } }, items.length + ' LoRA' + (items.length > 1 ? 's' : '') + ' stacked · untested'),
+      h('div', { style: { fontSize: 11, color: '#93c5fd' } }, active.length + ' active · ' + unusable.length + ' parked'),
       ...items.map(chip),
       h('small', { role: 'status', 'data-dex-field': 'lora-stack-total', style: { color: over ? '#fca5a5' : '#8193a8', fontSize: 11 } },
         'Total strength ' + sum.toFixed(2) + ' / ' + STACK_SUM_MAX + ' (slider adapters not counted)' + (over ? ' — over the limit; the request will be refused.' : '') + (unusable.length ? ' · ' + unusable.length + ' not usable with this model, ignored.' : '')));
   };
 
   P.getEffectiveCreateLoras = function () {
-    const stacked = this._stackUsable();
+    const single = this.state.createLora || {};
+    const stacked = single.stackEnabled !== false && !single.enabled ? this._stackUsable().slice(0, STACK_MAX) : [];
     if (stacked.length) {
       return stacked.map(({ entry, option }) => {
         const lo = option.min_weight != null ? option.min_weight : 0, hi = option.max_weight != null ? option.max_weight : 2;
@@ -389,6 +407,16 @@
   };
 
   P._persistCreateLora = function (next) {
+    if (!next.checkpoint) next = { ...next, checkpoint: this.state.target };
+    const rawStack = this.state.createLora?.stack;
+    if (Array.isArray(rawStack) && rawStack.length !== this._stack().length) {
+      try {
+        const key = 'dex_create_lora_stack_recovered_v1';
+        if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(rawStack));
+      } catch (_) {}
+    }
+    if (!Array.isArray(next.stack)) next = { ...next, stack: this.state.createLora?.stack || this._stack() };
+    if (next.stackEnabled === undefined) next.stackEnabled = this.state.createLora?.stackEnabled !== false;
     try { localStorage.setItem('dex_create_lora_v1', JSON.stringify(next)); } catch (_) {}
     this.setState({ createLora: next });
   };
@@ -418,17 +446,20 @@
     if (Object.keys(patch).length) this.setState(patch);
     return patch;
   };
-  P.selectCreateLora = function (adapterId) {
+  P.selectCreateLora = function (adapterId, { preserveStack = false } = {}) {
     const state = this.state.createLora || {};
     if (!adapterId) {
-      if (state.enabled) {
+      if (state.enabled && (!state.checkpoint || state.checkpoint === this.state.target)) {
         const base = state.savedSettings || {}, overrides = state.overrides || {}, restore = {};
         for (const field of ['steps', 'cfg', 'sampler', 'scheduler']) {
           if (!Object.prototype.hasOwnProperty.call(overrides, field) && base[field] !== undefined) restore[field] = base[field];
         }
         if (Object.keys(restore).length) this.setState(restore);
       }
-      const next = { enabled: false, selectedId: '', strength: 1.0, savedSettings: null, recipeSettings: null, overrides: {} };
+      const activeIds = new Set(this._stackUsable().map(x => x.entry.id));
+      const next = { enabled: false, selectedId: '', strength: 1.0, savedSettings: null, recipeSettings: null, overrides: {},
+        stack: preserveStack ? state.stack : this._stack().filter(entry => !activeIds.has(entry.id)),
+        stackEnabled: preserveStack ? state.stackEnabled : false };
       this._persistCreateLora(next);
       return;
     }
@@ -454,13 +485,18 @@
     this._persistCreateLora(next);
   };
   P.setCreateLoraEnabled = function (enabled) {
+    if (!this.state.createLora?.selectedId && this._stackUsable().length) {
+      this._persistCreateLora({ ...this.state.createLora, stackEnabled: enabled });
+      return;
+    }
     const state = Object.assign({ enabled: false, selectedId: '', strength: 1, advanced: false, savedSettings: null, overrides: {} }, this.state.createLora || {});
     const options = this._createLoraOptions(), selected = options.find(l => l.id === state.selectedId && l.use_enabled)
       || (enabled ? options.find(l => l.use_enabled) : null);
     if (enabled && !selected) { this.toast('No proven LoRA is available for this checkpoint.', '#fbbf24'); return; }
     if (enabled) {
       const savedSettings = state.savedSettings || { steps: this.state.steps, cfg: this.state.cfg, sampler: this.state.sampler, scheduler: this.state.scheduler };
-      const next = Object.assign({}, state, { enabled: true, selectedId: selected.id, savedSettings, overrides: {} });
+      const next = Object.assign({}, state, { enabled: true, selectedId: selected.id, savedSettings, overrides: {},
+        strength: selected.id === state.selectedId ? state.strength : selected.default_weight ?? 1 });
       const applied = this._applyCreateLoraRecipe(selected, savedSettings, {});
       next.recipeSettings = applied;
       this._persistCreateLora(next);
@@ -468,22 +504,23 @@
       const base = state.savedSettings || {}, overrides = state.overrides || {}, restore = {};
       for (const field of ['steps', 'cfg', 'sampler', 'scheduler']) if (!Object.prototype.hasOwnProperty.call(overrides, field) && base[field] !== undefined) restore[field] = base[field];
       if (Object.keys(restore).length) this.setState(restore);
-      this._persistCreateLora(Object.assign({}, state, { enabled: false, savedSettings: null, recipeSettings: null, overrides: {} }));
+      this._persistCreateLora(Object.assign({}, state, { enabled: false, stackEnabled: false, savedSettings: null, recipeSettings: null, overrides: {} }));
     }
   };
   P.setCreateLoraField = function (field, value) {
     const current = this.state.createLora || {}, next = Object.assign({}, current, { overrides: Object.assign({}, current.overrides || {}, { [field]: value }) });
     if (current.enabled) this._persistCreateLora(next);
     this.setState({ [field]: value });
+    this._rememberCreateCheckpoint(this.state.target);
   };
   P._restoreCreateLoraSettings = function () {
     const state = this.state.createLora || {};
-    if (!state.enabled) return;
+    if (!state.enabled || (state.checkpoint && state.checkpoint !== this.state.target)) return;
     const selected = this._createLoraOptions().find(l => l.id === state.selectedId && l.use_enabled);
     if (!selected) {
       // The checkpoint changed under an active adapter: turn it off and give the
       // user back the settings they had before the recipe was applied.
-      this.selectCreateLora('');
+      this.selectCreateLora('', { preserveStack: true });
       return;
     }
     // Still usable (e.g. a family-compatible accelerator): re-apply this
@@ -531,7 +568,7 @@
       const wrap = mk('div', 'display:flex;gap:2px;align-items:stretch;margin:2px 0;'); wrap.setAttribute('data-source-hover', 'lora:' + l.id);
       const active = l.id === props.selectedId || l.inStack === true;
       const b = mk('button', `display:grid;gap:2px;width:100%;text-align:left;border:1px solid ${active ? '#65d66e' : 'transparent'};background:${active ? 'rgba(101,214,110,.08)' : 'transparent'};color:#e8f0f7;border-radius:8px;padding:7px 9px;cursor:pointer;font:12px DM Sans,sans-serif;${l.use_enabled ? '' : 'opacity:.62;'}`);
-      b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', String(active)); b.setAttribute('data-lora-id', l.id);
+      b.type = 'button'; b.disabled = !l.use_enabled; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', String(active)); b.setAttribute('data-lora-id', l.id);
       const top = mk('div', 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;');
       top.append(mk('b', 'font-weight:700;', l.name),
         mk('span', 'font-size:10px;color:#7f8ca8;', String(l.family || '').toUpperCase()),
@@ -542,29 +579,64 @@
       b.addEventListener('click', () => { if (l.staged) { props.onPick(l.id); return; } close(); trigger.focus(); props.onPick(l.id); });
       b.style.flex = '1 1 auto'; b.style.minWidth = '0'; wrap.append(b); return wrap;
     }
+    let listSignature, triggerSignature;
     function draw() {
+      const sel = props.options.find(l => l.id === props.selectedId), stacked = props.options.filter(l => l.inStack);
+      const text = stacked.length ? stacked.length + ' stacked: ' + stacked.map(l => l.name).join(', ') : sel ? sel.name :
+        (props.options.length ? 'Select a LoRA adapter' : 'No adapters discovered');
+      const triggerKey = JSON.stringify([text, props.disabled, q.open]);
+      if (triggerKey !== triggerSignature) {
+        triggerSignature = triggerKey;
+        trigger.replaceChildren(mk('span', 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', text), mk('span', 'color:#7f8ca8;', '▾'));
+        trigger.disabled = !!props.disabled;
+        trigger.setAttribute('aria-expanded', String(q.open));
+      }
+      if (!q.open) return;
+      const signature = JSON.stringify([props.options, props.selectedId, q.query]);
+      if (signature === listSignature) return;
+      listSignature = signature;
+      const focused = document.activeElement?.getAttribute('data-lora-id');
       const qq = q.query.trim().toLowerCase();
       const opts = props.options.filter(l => !qq || (l.name + ' ' + (l.family || '') + ' ' + (l.trigger_words || []).join(' ')).toLowerCase().includes(qq));
       const none = mk('button', 'display:block;width:100%;text-align:left;border:1px solid transparent;background:transparent;color:#94a3b8;border-radius:8px;padding:7px 9px;cursor:pointer;font:12px DM Sans,sans-serif;', 'None (no LoRA)');
-      none.type = 'button'; none.setAttribute('role', 'option'); none.addEventListener('click', () => { close(); trigger.focus(); props.onPick(''); });
+      none.type = 'button'; none.setAttribute('role', 'option'); none.setAttribute('aria-selected', String(!sel && !stacked.length));
+      none.addEventListener('click', () => { close(); trigger.focus(); props.onPick(''); });
       const usable = opts.filter(l => l.use_enabled), blocked = opts.filter(l => !l.use_enabled);
       const label = t => mk('div', 'font:800 10px DM Sans,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#7f8ca8;padding:8px 4px 3px;', t);
       list.replaceChildren(none, ...(usable.length ? [label('Usable with this model'), ...usable.map(row)] : []), ...(blocked.length ? [label('Not usable with this model'), ...blocked.map(row)] : []),
-        ...(!props.options.length ? [mk('div', 'color:#8193a8;font-size:12px;padding:8px 4px;', 'No adapters discovered.')] : []));
+        ...(!opts.length ? [label(props.options.length ? 'No adapters match your search.' : 'No adapters discovered.')] : []));
       foot.textContent = opts.length + ' of ' + props.options.length + ' LoRAs';
-      const sel = props.options.find(l => l.id === props.selectedId), stacked = props.options.filter(l => l.inStack);
-      trigger.replaceChildren(mk('span', 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', stacked.length ? stacked.length + ' stacked: ' + stacked.map(l => l.name).join(', ') : sel ? sel.name : (props.options.length ? 'Select a LoRA adapter' : 'No adapters discovered')),
-        mk('span', 'color:#7f8ca8;', '▾'));
-      trigger.disabled = !!props.disabled; trigger.setAttribute('aria-expanded', String(q.open));
+      if (focused) {
+        const next = [...list.querySelectorAll('button:not(:disabled)')].find(node => node.getAttribute('data-lora-id') === focused);
+        (next || search).focus({ preventScroll: true });
+      }
     }
-    function close() { q.open = false; overlay.style.display = 'none'; draw(); }
-    function open() { if (props.disabled) return; q.open = true; overlay.style.display = 'flex'; draw(); setTimeout(() => search.focus(), 0); }
+    function close() { q.open = false; overlay.style.display = 'none'; window.DexSourceHover?.hide(); draw(); }
+    function open() { if (props.disabled) return; q.open = true; overlay.style.display = 'flex'; draw(); search.focus(); }
     trigger.addEventListener('click', () => (q.open ? close() : open()));
     closeBtn.addEventListener('click', () => { close(); trigger.focus(); });
     overlay.addEventListener('mousedown', e => { if (e.target === overlay) { close(); trigger.focus(); } });
-    dialog.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); trigger.focus(); } });
+    document.addEventListener('keydown', e => {
+      if (q.open && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); trigger.focus(); }
+    }, true);
+    dialog.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); trigger.focus(); return; }
+      const options = [...list.querySelectorAll('button:not(:disabled)')];
+      if (e.key === 'Tab') {
+        const last = options.at(-1) || search;
+        if (e.shiftKey && document.activeElement === closeBtn) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); closeBtn.focus(); }
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key) || !options.length) return;
+      const index = options.indexOf(document.activeElement);
+      if (index < 0 && ['Home', 'End'].includes(e.key)) return;
+      e.preventDefault();
+      const next = e.key === 'Home' ? 0 : e.key === 'End' ? options.length - 1 :
+        e.key === 'ArrowDown' ? (index + 1) % options.length : (index <= 0 ? options.length - 1 : index - 1);
+      options[next].focus();
+    });
     search.addEventListener('input', () => { q.query = search.value; draw(); });
-    return { shell, update(p) { Object.assign(props, p); draw(); } };
+    return { shell, close, update(p) { Object.assign(props, p); draw(); } };
   }
   P.buildLoraPicker = function (options, selectedId, disabled, onPick) {
     const pk = this._loraPickerInst || (this._loraPickerInst = makeLoraPicker());
@@ -573,6 +645,9 @@
   };
   P.buildCreateLoraControls = function () {
     const state = this.state.createLora || {}, options = this._createLoraOptions();
+    if (!options.length && this.state.assetsStatus === 'failed') return h('div', { role: 'status', 'data-dex-field': 'create-lora-controls' },
+      'LoRA catalog unavailable (' + this.state.assetsError + '). ',
+      h('button', { type: 'button', onClick: () => this.loadAssets() }, 'Retry catalog'));
     if (!options.length) return h('div', { className: 'ca-form-actions', 'data-dex-field': 'create-lora-controls', role: 'status', style: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, padding: '3px 0', color: '#8491a5', fontSize: 11 } },
       h('strong', { style: { color: '#b8c7d6', fontWeight: 700 } }, 'LoRA'),
       h('span', null, 'No adapters available for this model. Use the LoRA picker to review installed adapters.'));
@@ -580,24 +655,15 @@
     const selected = options.find(l => l.id === state.selectedId) || null;
     const enabledOptions = options.filter(l => l.use_enabled);
     const strength = Number(state.strength ?? (selected && selected.default_weight) ?? 1);
+    const effective = this.getEffectiveCreateLoras();
     const checkbox = h('label', { className: 'ca-check-row', style: { display: 'inline-flex', alignItems: 'center', gap: 7 }, title: enabledOptions.length ? 'Enable one proven adapter for this checkpoint.' : 'No adapter is proven for this checkpoint and backend.' },
-      h('input', { type: 'checkbox', 'data-dex-field': 'use-lora', checked: !!state.enabled, disabled: !selected || !selected.use_enabled || this.state.jobStatus === 'generating', onChange: e => this.setCreateLoraEnabled(e.target.checked) }), h('span', null, 'Use LoRA'));
-    const select = h('div', { className: 'ca-field', role: 'group', 'aria-label': 'Adapter', style: { minWidth: 0, width: '100%', gridColumn: narrow ? '2' : '1 / -1' } }, this.state.version === 2 ? null : h('span', null, 'Adapter'), this.buildLoraPicker(options.map(o => Object.assign({}, o, { inStack: this._stack().some(e => e.id === o.id) })), state.selectedId || '', this.state.jobStatus === 'generating', val => {
-      if (val && (options.find(x => x.id === val) || {}).staged) { this.toggleCreateStack(val); return; }
-      if (val && this._stack().length) this._setStack([]);
-      if (!val) {
-        this.selectCreateLora('');
-      } else {
-        const l = options.find(x => x.id === val);
-        if (l && l.use_enabled) {
-          this.selectCreateLora(val);
-        } else {
-          if ((this.state.createLora || {}).enabled) this.setCreateLoraEnabled(false);
-          const next = Object.assign({}, this.state.createLora || state, { selectedId: val, strength: l ? l.default_weight : 1, enabled: false, savedSettings: null, recipeSettings: null, overrides: {} });
-          this._persistCreateLora(next);
-        }
-      }
+      h('input', { type: 'checkbox', 'data-dex-field': 'use-lora', checked: effective.length > 0, disabled: !(selected?.use_enabled || this._stackUsable().length) || this.state.jobStatus === 'generating', onChange: e => this.setCreateLoraEnabled(e.target.checked) }), h('span', null, 'Use LoRA'));
+    const select = h('div', { className: 'ca-field', role: 'group', 'aria-label': 'Adapter', style: { minWidth: 0, width: '100%', gridColumn: narrow ? '2' : '1 / -1' } }, this.state.version === 2 ? null : h('span', null, 'Adapter'), this.buildLoraPicker(options.map(o => ({ ...o, inStack: effective.some(e => e.stacked && e.id === o.id) })), effective.find(e => !e.stacked)?.id || '', this.state.jobStatus === 'generating', val => {
+      if (val && (options.find(x => x.id === val) || {}).staged) this.toggleCreateStack(val);
+      else this.selectCreateLora(val);
     }));
+    const failure = this.state.assetsStatus === 'failed' ? h('div', { role: 'status', style: { gridColumn: '1 / -1' } },
+      'LoRA catalog refresh failed. ', h('button', { type: 'button', onClick: () => this.loadAssets() }, 'Retry catalog')) : null;
     const reason = !enabledOptions.length ? h('small', { className: 'ca-muted', role: 'status', 'data-dex-field': 'lora-unavailable', style: { gridColumn: '1 / -1', lineHeight: 1.25 } }, selected ? selected.unavailable_reason : 'Only adapters proven for this checkpoint and backend can be used.') : null;
     const advanced = selected ? h('details', { 'data-dex-field': 'lora-advanced', open: !!state.advanced, onToggle: e => this._persistCreateLora(Object.assign({}, this.state.createLora || {}, { advanced: e.target.open })), style: { flexBasis: '100%', gridColumn: '1 / -1' } },
       h('summary', { style: { cursor: 'pointer', color: '#b7c7d8', fontSize: 12 } }, 'Advanced'),
@@ -606,7 +672,7 @@
         h('label', { className: 'ca-field' }, h('span', null, 'Exact strength'), h('input', numText({ min: selected.min_weight, max: selected.max_weight, step: selected.step, decimal: true, value: strength, disabled: !state.enabled || !selected.use_enabled, 'aria-label': 'Exact LoRA strength', 'data-dex-field': 'lora-strength-number', onInput: e => this.setCreateLoraStrength(e.target.value, selected.min_weight, selected.max_weight) }))),
         h('div', { className: 'ca-muted', 'data-dex-field': 'lora-recipe' }, (() => { const r = this._createLoraRecipe(selected); const x = r && r.recommended || {}; return state.enabled ? 'Effective recipe: ' + (x.steps || this.state.steps) + ' steps · ' + (x.sampler || this.state.sampler) + ' · ' + (x.scheduler || 'engine default') + ' · CFG ' + (x.cfg != null ? x.cfg : this.state.cfg) + ' · ' + selected.route_status + ' (selected automatically)' : 'LoRA off · current settings: ' + this.state.steps + ' steps · ' + this.state.sampler + ' · ' + (this.state.scheduler || 'engine default') + ' · CFG ' + this.state.cfg; })()),
         h('button', { type: 'button', className: 'ca-secondary', disabled: !state.enabled || !selected.use_enabled, onClick: () => { const next = Object.assign({}, this.state.createLora || {}, { overrides: {} }); this._persistCreateLora(next); next.recipeSettings = this._applyCreateLoraRecipe(selected, next.savedSettings || {}, {}); this._persistCreateLora(next); } }, 'Reset to recommended settings'))) : null;
-    return h('div', { className: 'ca-form-actions', 'data-dex-field': 'create-lora-controls', style: { display: 'grid', gridTemplateColumns: narrow ? 'auto minmax(0,1fr)' : 'minmax(0,1fr) auto', gap: narrow ? 3 : 4, alignItems: 'center', minWidth: 0, width: '100%' } }, checkbox, select, this.buildCreateLoraStack(), advanced, reason);
+    return h('div', { className: 'ca-form-actions', 'data-dex-field': 'create-lora-controls', style: { display: 'grid', gridTemplateColumns: narrow ? 'auto minmax(0,1fr)' : 'minmax(0,1fr) auto', gap: narrow ? 3 : 4, alignItems: 'center', minWidth: 0, width: '100%' } }, checkbox, select, this.buildCreateLoraStack(), advanced, failure, reason);
   };
 
   P.onGenerate = async function (over, opts) {
@@ -1016,10 +1082,10 @@
       h('div', { style: css.mono }, 'method: ' + method + ' · ' + src.width + '×' + src.height + ' → ' + target),
       action);
     const sc = +ws.lanczosScale || 2;
-    return h('div', { style: css.panel },
+    return h('div', { 'data-dex-focus-scope': 'enhance:' + src.id, style: css.panel },
       h('div', { style: Object.assign({}, css.title, { marginBottom: 8 }) }, 'Enhance source'),
       h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(90px,140px) 1fr', gap: 10, marginBottom: 10 } },
-        h('img', { src: base + src.url, alt: 'enhance source', 'data-fullscreen': 'only', 'data-fullscreen-image-id': src.id, 'data-fullscreen-caption': src.id, style: { width: '100%', borderRadius: 7, cursor: 'zoom-in' } }),
+        h('img', { src: base + src.url, alt: 'enhance source', tabIndex: 0, 'data-fullscreen': 'only', 'data-fullscreen-return': 'enhance:' + src.id, 'data-fullscreen-image-id': src.id, 'data-fullscreen-caption': src.id, style: { width: '100%', borderRadius: 7, cursor: 'zoom-in' } }),
         h('div', { style: css.mono }, src.id + '\n' + src.width + '×' + src.height)),
       h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 8 } },
         card('Resize · Lanczos', 'deterministic resampling (not AI)', 'Pixel resampling on the MacBook. Adds no detail.', (src.width * sc) + '×' + (src.height * sc),
@@ -1139,10 +1205,12 @@
       h('span', { style: css.muted }, this._libTags.where === 'mac' ? 'Storage: this Mac · images_made/library-tags.json' : this._libTags.where === 'unavailable' ? 'Not saving: library-tags.json could not be read' : 'Storage: this browser'));
   };
   P.loadLibraryImages = async function (filter, offset) {
+    const requestId = this._libraryRequestId = (this._libraryRequestId || 0) + 1;
     const ws = this._ws(), f = filter || ws.lib.filter, lay = this._libLayout(ws.lib);
     const off = filter && filter !== ws.lib.filter ? 0 : Math.max(0, offset == null ? ws.lib.offset : offset);
     this.wsSet({ lib: Object.assign({}, ws.lib, { filter: f, loading: true, offset: off, error: null }) });
     const r = await this._libQuery(f, lay.pageSize, off);
+    if (requestId !== this._libraryRequestId) return;
     // A malformed 200 (no items array) used to store `undefined` and crash the next render.
     const items = r.ok && r.data && Array.isArray(r.data.items) ? r.data.items : [];
     const total = r.ok && r.data && Number.isFinite(r.data.total) ? r.data.total : items.length;

@@ -211,3 +211,31 @@ test('recovery still refuses a journal whose file digest is NOT vouched for by t
   const r = store.recoverPendingPublications();
   assert.equal(r.unresolved.length, 1);
 });
+
+test('reference drift does not override canonical availability, missing originals or digest conflicts', t => {
+  const { base, store } = fixture(t);
+  store.ensureRoot();
+  const digest = crypto.createHash('sha256').update(PNG).digest('hex');
+  const ids = ['local.png', 'macbook.png', 'conflict.png', 'missing.png'];
+  fs.writeFileSync(path.join(store.root, ids[0]), PNG);
+  const inspector = createImageStore({ root: store.root, macbookImages: {
+    isReachable: () => true,
+    info: id => ids.slice(1, 3).includes(id) ? { bytes: PNG.length, sha256: digest } : null,
+    fetchInto: () => assert.fail('read-only inspection must never copy files')
+  } });
+  const references = ids.map(image_id => ({
+    image_id, image_path: path.join(base, 'old-location', image_id),
+    sha256: image_id === 'conflict.png' ? '0'.repeat(64) : digest
+  }));
+  const report = inspector.inspectIntegrity({ references });
+  const byID = Object.fromEntries(report.records.map(row => [row.image_id, row]));
+  assert.equal(report.classification.reference_path_mismatches, 4);
+  assert.equal(report.classification.current_missing_references, 1);
+  assert.equal(byID['local.png'].state, 'valid');
+  assert.equal(byID['macbook.png'].held_on, 'macbook');
+  assert.equal(byID['macbook.png'].state, 'valid');
+  assert.equal(byID['conflict.png'].state, 'digest-mismatch');
+  assert.equal(byID['missing.png'].missing_classification, 'unresolved-missing-original');
+  assert.deepEqual(fs.readdirSync(store.root), ['local.png']);
+  assert.deepEqual(fs.readFileSync(path.join(store.root, ids[0])), PNG);
+});

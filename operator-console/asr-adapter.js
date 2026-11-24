@@ -67,6 +67,7 @@ function compare(expectedText, heardText) {
 
 // ── detection (read-only) ─────────────────────────────────────────────────────────────
 function detect({ env = process.env, which = defaultWhich, exists = fs.existsSync, readdir = d => { try { return fs.readdirSync(d); } catch (_) { return []; } }, home = os.homedir() } = {}) {
+  if (env.DEX_TEST_ISOLATION === '1') return { available: false, bin: null, model: null, reason: 'Host speech recognition is disabled in isolated tests.', local_only: true };
   const bin = (env.DEX_WHISPER_BIN && exists(env.DEX_WHISPER_BIN) ? env.DEX_WHISPER_BIN : null) || which('whisper-cli') || which('whisper-cpp');
   let model = env.DEX_WHISPER_MODEL && exists(env.DEX_WHISPER_MODEL) ? env.DEX_WHISPER_MODEL : null;
   if (!model) for (const d of [path.join(home, '.cache', 'whisper.cpp'), path.join(home, 'whisper.cpp', 'models'), path.join(home, 'Library', 'Application Support', 'whisper.cpp'), '/opt/homebrew/share/whisper-cpp', '/usr/local/share/whisper-cpp']) {

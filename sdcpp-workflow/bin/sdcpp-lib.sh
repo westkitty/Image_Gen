@@ -514,23 +514,45 @@ verify_remote_home() {
 }
 
 verify_repo_clean() {
-  # Repo exists, HEAD is the pinned commit, working tree clean.
+  # Keep the legacy argument/output while verifying the exact production pin.
   local want="${1:-7f0e728}"
-  local out head status
+  local out head dirty
+  if [ "$want" = 7f0e728 ]; then
+    want=7f0e728b7d42f2490dfa5dd9539082d904f2f6b2
+  fi
   remote_test "test -d \"$REMOTE_REPO/.git\"" \
     || fail "repo" "Repo not found or not a git checkout at remote \$HOME/stable-diffusion.cpp."
-  out="$(ssh_remote "cd \"$REMOTE_REPO\" && printf 'HEAD=%s\n' \"\$(git rev-parse --short HEAD)\" && printf 'STATUS=[%s]\n' \"\$(git status --short | tr '\n' ';')\"")" \
+  # The remote SSH exit code alone is insufficient. Emit the marker only
+  # after both Git commands succeed. Porcelain v1 quotes unusual pathnames.
+  out="$(ssh_remote "cd \"$REMOTE_REPO\" &&
+    dex_head=\$(git rev-parse --verify HEAD) &&
+    dex_dirty=\$(git --no-optional-locks -c core.quotePath=true status --porcelain=v1 --untracked-files=all --ignore-submodules=none) &&
+    printf 'HEAD=%s\\n' \"\$dex_head\" &&
+    while IFS= read -r dex_entry; do
+      case \"\$dex_entry\" in
+        '') continue ;;
+        '?? .DS_Store'|'?? assets/.DS_Store'|'?? examples/.DS_Store'|'?? src/.DS_Store'|'?? thirdparty/.DS_Store')
+          dex_path=\${dex_entry#???}
+          if test -f \"\$dex_path\" && ! test -L \"\$dex_path\"; then continue; fi ;;
+      esac
+      printf 'DIRTY=%s\\n' \"\$dex_entry\"
+    done <<DEX_REPO_STATUS
+\$dex_dirty
+DEX_REPO_STATUS
+    printf '%s\\n' DEX_REPO_STATUS_COMPLETE")" \
     || fail "repo" "Could not read git state at remote \$HOME/stable-diffusion.cpp."
+  [ "$(printf '%s\n' "$out" | tail -n 1)" = DEX_REPO_STATUS_COMPLETE ] \
+    || fail "repo" "Remote Git status was not confirmed."
   head="$(printf '%s\n' "$out" | sed -n 's/^HEAD=//p')"
-  status="$(printf '%s\n' "$out" | sed -n 's/^STATUS=\[\(.*\)\]$/\1/p')"
+  dirty="$(printf '%s\n' "$out" | sed -n 's/^DIRTY=//p')"
   if [ "$head" != "$want" ]; then
     fail "repo-pin" "Repo HEAD is '$head', expected pinned '$want'. Refusing to continue."
   fi
-  if [ -n "$status" ]; then
-    fail "repo-dirty" "Repo working tree is dirty: [$status]. Refusing to continue (will not modify it)."
+  if [ -n "$dirty" ]; then
+    fail "repo-dirty" "Repo working tree has unexpected changes: [$dirty]. Refusing to continue (will not modify it)."
   fi
-  log "Repo OK: HEAD=$head clean"
-  printf '%s\n' "$head"
+  log "Repo OK: HEAD=$head, no unexpected changes"
+  printf '%.7s\n' "$head"
 }
 
 get_build_dir() {

@@ -87,8 +87,9 @@ const outPath = n => WRITER.pathFor(n);
       await openStudio(page, srv.base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
       await page.evaluate(() => window.__dex.setScreen('chat'));
       await page.locator('[data-chat-refresh]').click();
-      await page.locator('[data-chat-storage-error="true"]').waitFor({ timeout: 10000 });
-      assert.match(await page.locator('[data-chat-status="true"]').innerText(), /Storage blocked/);
+      // The refresh can restart discovery after the initial Chat entry probe.
+      const storageBlocked = page.locator('[data-chat-status="true"]').filter({ hasText: 'Storage blocked' });
+      await storageBlocked.waitFor({ timeout: 10000 });
       assert.match(await page.locator('[data-chat-storage-error="true"]').innerText(), /Removable Volumes permission denied/);
       assert.equal(await page.locator('[data-chat-composer]').isDisabled(), true);
       await page.screenshot({ path: outPath('chat-storage-blocked.png') });

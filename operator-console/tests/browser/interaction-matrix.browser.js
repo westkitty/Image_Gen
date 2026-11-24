@@ -134,19 +134,61 @@ async function measure(page) {
   }, { mobile: page.viewportSize().width <= 600, tol: spec.tolerancePixels });
 }
 
-async function keyboard(page, m) {
+async function keyboard(page, m, rerenderControl) {
   const failures = [], seen = new Set(), focusedStyles = [];
-  const expected = m.controls.filter(c => !c.disabled && c.tabIndex >= 0);
-  // Real browser Tab traversal, including offscreen controls in scroll panes.
-  await page.evaluate(() => { document.activeElement?.blur(); document.body.setAttribute('tabindex','-1'); document.body.focus(); });
-  for (let i=0; i<m.controls.length+8; i++) {
+  const identity = c => JSON.stringify([c.tag, c.type, c.name]);
+  const keyed = controls => {
+    const counts = new Map();
+    return controls.map(control => {
+      const base = identity(control), index = counts.get(base) || 0;
+      counts.set(base, index + 1);
+      return { ...control, key: JSON.stringify([base, index]) };
+    });
+  };
+  let live = keyed(m.controls);
+  const expected = live.filter(c => !c.disabled && c.tabIndex >= 0);
+  const readFocus = () => page.evaluate(() => {
+    const n = document.activeElement, s = getComputedStyle(n);
+    return { id: n.getAttribute('data-matrix-control'), inDocument: n !== document.body && n !== document.documentElement,
+      outline: s.outlineStyle, width: s.outlineWidth, shadow: s.boxShadow };
+  });
+  let testedRerender = false;
+  await page.evaluate(() => { document.activeElement?.blur(); document.body.setAttribute('tabindex', '-1'); document.body.focus(); });
+  for (let i = 0; i < m.controls.length + 8; i++) {
     await page.keyboard.press('Tab');
-    const f = await page.evaluate(() => { const n=document.activeElement,s=getComputedStyle(n); return {id:n.getAttribute('data-matrix-control'),outline:s.outlineStyle,width:s.outlineWidth,shadow:s.boxShadow}; });
-    if (f.id !== null) { seen.add(Number(f.id)); focusedStyles.push(f); }
+    let f = await readFocus();
+    if (f.inDocument && f.id === null) {
+      // A VNode replacement removes test-only markers. Reidentify the live
+      // controls by their names and occurrences, while retaining the original expectations.
+      live = keyed((await measure(page)).controls);
+      f = await readFocus();
+    }
+    const control = f.id === null ? null : live[Number(f.id)];
+    if (!control) continue;
+    seen.add(control.key);
+    focusedStyles.push({ ...f, name: control.name });
+    if (!testedRerender && rerenderControl && control.name === rerenderControl) {
+      testedRerender = true;
+      await page.evaluate(async () => {
+        __dex.setState({ _wsTick: (__dex.state._wsTick || 0) + 1 });
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        window.DexA11y?.sweep();
+      });
+      live = keyed((await measure(page)).controls);
+      f = await readFocus();
+      if (f.id === null || live[Number(f.id)]?.key !== control.key) failures.push('Background update lost keyboard focus: ' + control.name);
+      else focusedStyles.push({ ...f, name: control.name });
+    }
+    if (expected.every(c => seen.has(c.key)) && (!rerenderControl || testedRerender)) break;
   }
-  for (const c of expected) if (!seen.has(c.i)) failures.push('Tab unreachable: '+c.name);
-  for (const f of focusedStyles) if ((f.outline==='none'||parseFloat(f.width)===0) && f.shadow==='none') failures.push('Focus uninspectable: '+m.controls[f.id]?.name);
-  return {failures:[...new Set(failures)], measures:{expected:expected.length,reached:seen.size,focusSamples:focusedStyles.length,unreached:expected.filter(c=>!seen.has(c.i)).map(c=>({i:c.i,name:c.name})),firstFocusSamples:focusedStyles.slice(0,8),...(process.env.DEX_MATRIX_DEBUG==='1'?{renders:await page.evaluate(()=>window.__matrixRenders.slice(-12))}:{})}};
+  if (rerenderControl && !testedRerender) failures.push('Did not exercise focus during update: ' + rerenderControl);
+  const unreached = expected.filter(c => !seen.has(c.key));
+  for (const c of unreached) failures.push('Tab unreachable: ' + c.name);
+  for (const f of focusedStyles) if ((f.outline === 'none' || parseFloat(f.width) === 0) && f.shadow === 'none') failures.push('Focus uninspectable: ' + f.name);
+  return { failures: [...new Set(failures)], measures: { expected: expected.length, reached: expected.length - unreached.length,
+    focusSamples: focusedStyles.length, testedRerender, unreached: unreached.map(c => ({ i: c.i, name: c.name })),
+    firstFocusSamples: focusedStyles.slice(0, 8),
+    ...(process.env.DEX_MATRIX_DEBUG === '1' ? { renders: await page.evaluate(() => window.__matrixRenders.slice(-12)) } : {}) } };
 }
 
 async function forms(page, m) {
@@ -194,6 +236,7 @@ async function dialogs(page) {
     const trigger=page.locator(openerSelector).first();if(!await trigger.count())continue;
     await trigger.focus();await trigger.evaluate(n=>window.__matrixDialogReturn=n);
     const detailerId=await trigger.getAttribute('data-detailer-open');
+    const returnId=await trigger.getAttribute('data-fullscreen-return');
     await page.keyboard.press('Enter');const dialog=page.locator(dialogSelector);
     try{await dialog.waitFor({timeout:5000});}catch(e){throw new Error(dialogSelector+' did not open: '+e.message.split('\n')[0]);}
     await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
@@ -210,10 +253,16 @@ async function dialogs(page) {
       else {if((focus.outline==='none'||parseFloat(focus.outlineWidth)===0)&&focus.shadow==='none')failures.push(dialogSelector+' focus uninspectable');if(!focus.name)failures.push(dialogSelector+' focused control unnamed');if(focus.width===0||focus.height===0)failures.push(dialogSelector+' zero-sized focused control');}
       measures.focusSamples=(measures.focusSamples||0)+1;
     }
+    // Reproduce the source thumbnail being remounted during a console update.
+    if(returnId) await page.evaluate(() => {
+      const original=window.__matrixDialogReturn;
+      if(original.isConnected) original.replaceWith(original.cloneNode(true));
+    });
     await page.keyboard.press('Escape');
     try{await dialog.waitFor({state:'detached',timeout:3000});}catch(_){failures.push(dialogSelector+' Escape did not close');}
     await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
-    const restored=detailerId?await page.locator(`[data-detailer-open="${detailerId}"]`).first().evaluate(n=>n===document.activeElement):await page.evaluate(()=>document.activeElement===window.__matrixDialogReturn);
+    const restored=detailerId?await page.locator(`[data-detailer-open="${detailerId}"]`).first().evaluate(n=>n===document.activeElement)
+      :await page.evaluate(id=>id?document.activeElement?.getAttribute('data-fullscreen-return')===id:document.activeElement===window.__matrixDialogReturn,returnId);
     if(!restored)failures.push(dialogSelector+' focus did not return');measures.exercised++;
   }
   return {failures:[...new Set(failures)],measures};
@@ -278,12 +327,11 @@ async function modelDisabledContract(page){
 }
 
 async function navigationLabelContract(page){
-  const sample=()=>page.locator('[data-v="2"] header nav [data-tab]').evaluateAll(nodes=>nodes.map(n=>({label:n.textContent.trim(),width:n.getBoundingClientRect().width,content:n.clientWidth,text:n.scrollWidth,clipped:n.scrollWidth>n.clientWidth+1.5})));
-  const oldRule=await page.addStyleTag({content:'[data-v="2"] header nav [data-tab]{flex:0 1 auto!important;white-space:normal!important}'});
-  const before=await sample();await oldRule.evaluate(n=>n.remove());const after=await sample();
-  const failures=after.filter(n=>n.clipped).map(n=>'Navigation label clipped '+n.label);
-  if(page.viewportSize().width<=600&&!before.some(n=>n.clipped))failures.push('Pre-repair mobile clipping reproduction did not trigger');
-  return{failures,measures:{before,after}};
+  const sample=()=>page.locator('[data-v="2"] :is([data-studio-category], [data-master-tab], [data-studio-utility], [data-subnav-leaf], [data-studio-mobile-nav] summary):visible').evaluateAll(nodes=>nodes.map(n=>({label:n.textContent.trim(),width:n.getBoundingClientRect().width,content:n.clientWidth,text:n.scrollWidth,clipped:n.scrollWidth>n.clientWidth+1.5})));
+  const tabs = await sample();
+  if (!tabs.length) throw new Error('Studio navigation labels were not rendered');
+  return { failures: tabs.filter(n => n.clipped).map(n => 'Navigation label clipped ' + n.label), measures: { tabs } };
+
 }
 
 async function studioGeometryContract(page){
@@ -311,7 +359,9 @@ async function studioGeometryContract(page){
         check(checks,'layout',true,[...(m.documentOverflow>1.5?['Document overflow '+m.documentOverflow]:[]),...m.zeroSized.map(n=>'Zero-sized rendered control '+n),...m.panes.filter(p=>p.left< -1.5||p.right>width+1.5||p.height<=0||p.width<=0).map(p=>'Primary pane clipping '+JSON.stringify(p)),...m.intersections.map(x=>'Control intersection '+JSON.stringify(x))],{documentOverflow:m.documentOverflow,panes:m.panes,zeroSized:m.zeroSized.length});
         check(checks,'controls',true,[...m.unnamed.map(c=>'No accessible name '+c.tag+' '+c.type),...m.controls.filter(c=>c.visuallyDisabled&&!c.disabled).map(c=>'Disabled styling lacks disabled state '+c.name)],{visible:m.controls.length,disabled:m.controls.filter(c=>c.disabled).length});
         if(screen==='Edit Studio'){const studio=await studioGeometryContract(page);check(checks,'studio-rail-geometry',true,studio.failures,studio.measures);}
-        const k=await keyboard(page,m);check(checks,'keyboard',k.measures.expected>0,k.failures,k.measures);
+        const rerenderControl = screen === 'Enhance' && width === 360 ? '2×'
+          : screen === 'Drama' && width === 1280 ? 'Deterministic parser' : null;
+        const k=await keyboard(page,m,rerenderControl);check(checks,'keyboard',k.measures.expected>0,k.failures,k.measures);
         const f=await forms(page,m);check(checks,'forms',m.fieldCount>0||f.measures.details>0,f.failures,f.measures);
         await settle(page);
         const d=await dialogs(page);check(checks,'dialogs',d.measures.exercised>0,d.failures,d.measures);

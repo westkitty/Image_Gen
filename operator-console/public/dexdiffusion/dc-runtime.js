@@ -118,13 +118,18 @@
       name: el.getAttribute('name') || '', label: el.getAttribute('aria-label') || '', placeholder: el.getAttribute('placeholder') || '',
     };
   }
+  // These workspaces rebuild their controls during background updates. Match only
+  // an unambiguous control within the same opted-in workspace.
+  function workspaceFocusKey(el) {
+    return JSON.stringify([el.tagName, el.type || '', el.id,
+      el.getAttribute('data-fullscreen-return'), el.getAttribute('data-parse-mode'),
+      el.getAttribute('data-fullscreen-return') ? null : el.getAttribute('aria-label'), el.textContent.trim()]);
+  }
   function captureFocus(roots) {
     const ae = document.activeElement;
     if (!ae || ae === document.body || ae === document.documentElement) return null;
     // Text-entry controls are matched across the rebuild by signature (losing focus there destroys the user's work).
-    // Any other focused element (buttons, custom widgets) is only re-focused if the very same DOM node survives the
-    // rebuild — persistent Node-valued widgets such as the model picker are moved into the new tree, and a detached
-    // node loses focus even though it is back in the document a moment later.
+    // Persistent DOM widgets keep their node identity. Other controls need an explicit workspace match.
     const textEntry = !!(ae.matches && ae.matches('input:not([type=button]):not([type=submit]):not([type=reset]):not([type=checkbox]):not([type=radio]):not([type=file]),textarea,select,[contenteditable="true"],button[data-dex-field]'));
     for (let r = 0; r < roots.length; r++) {
       const root = roots[r];
@@ -137,7 +142,10 @@
       // Fields that commit on 'change' (blur/Enter) hold typed-but-uncommitted text only in the DOM; remember it so a
       // background re-render cannot silently revert what the user is typing.
       const pending = /^(TEXTAREA|INPUT)$/.test(ae.tagName) && ae.__dexRendered !== undefined && ae.value !== ae.__dexRendered ? { value: ae.value, rendered: ae.__dexRendered } : null;
-      return { el: ae, textEntry, root: r, path, sig: fieldSignature(ae), sel, scrollTop: ae.scrollTop, scrollLeft: ae.scrollLeft, pending };
+      const scope = ae.closest('[data-dex-focus-scope]');
+      const workspace = !textEntry && scope && root.contains(scope)
+        ? { id: scope.dataset.dexFocusScope, key: workspaceFocusKey(ae) } : null;
+      return { el: ae, textEntry, workspace, root: r, path, sig: fieldSignature(ae), sel, scrollTop: ae.scrollTop, scrollLeft: ae.scrollLeft, pending };
     }
     return null;
   }
@@ -150,7 +158,16 @@
       if (document.activeElement !== cap.el) { try { cap.el.focus({ preventScroll: true }); } catch (_) {} }
       return;
     }
-    if (!cap.textEntry) return;
+    if (!cap.textEntry) {
+      if (!cap.workspace) return;
+      const scope = root.matches('[data-dex-focus-scope]') ? root : root.querySelector('[data-dex-focus-scope]');
+      if (scope?.dataset.dexFocusScope !== cap.workspace.id) return;
+      const matches = [...scope.querySelectorAll('button,a[href],summary,input,[tabindex]')].filter(el =>
+        el.tabIndex >= 0 && el.getClientRects().length && !el.matches(':disabled,[aria-disabled="true"]') &&
+        workspaceFocusKey(el) === cap.workspace.key);
+      if (matches.length === 1) matches[0].focus({ preventScroll: true });
+      return;
+    }
     const same = (a, b) => a.tag === b.tag && a.type === b.type;
     let target = null;
     const candidates = Array.from(root.querySelectorAll('input,textarea,select,button,[tabindex],[contenteditable="true"]'));

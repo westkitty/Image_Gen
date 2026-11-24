@@ -16,21 +16,21 @@
   'use strict';
 
   // ── Resources: LoRAs ────────────────────────────────────────────────────
-  const LORA_RE = /<lora:([^:>]+)(?::([^>]*))?>/g;
+  const LORA_RE = /<\s*lora\s*:([^:>]+)(?::([^>]*))?>/gi;
   const MIN_LORA_WEIGHT = -2, MAX_LORA_WEIGHT = 2;
 
   function formatWeight(w) {
     const n = Math.round(Number(w) * 100) / 100;
     return String(Number.isFinite(n) ? n : 1);
   }
-  function clampWeight(w) {
+  function clampWeight(w, max = MAX_LORA_WEIGHT) {
     const n = Number(w);
     if (!Number.isFinite(n)) return 1;
-    return Math.max(MIN_LORA_WEIGHT, Math.min(MAX_LORA_WEIGHT, Math.round(n * 100) / 100));
+    return Math.max(MIN_LORA_WEIGHT, Math.min(max, Math.round(n * 100) / 100));
   }
   function parseLoraTags(prompt) {
     const out = [];
-    const re = new RegExp(LORA_RE.source, 'g');
+    const re = new RegExp(LORA_RE.source, LORA_RE.flags);
     let m;
     while ((m = re.exec(String(prompt || ''))) !== null) {
       const raw = m[2] == null || m[2] === '' ? 1 : Number(m[2]);
@@ -39,15 +39,15 @@
     return out;
   }
   function stripLoraTags(prompt) {
-    return String(prompt || '').replace(new RegExp(LORA_RE.source, 'g'), ' ').replace(/[ \t]{2,}/g, ' ').replace(/ ?\n ?/g, '\n').trim();
+    return String(prompt || '').replace(new RegExp(LORA_RE.source, LORA_RE.flags), ' ').replace(/[ \t]{2,}/g, ' ').replace(/ ?\n ?/g, '\n').trim();
   }
   // [{name, weight}] cleaned: strings, clamped numeric weights, duplicates by name collapsed (last wins).
-  function normalizeLoras(list) {
+  function normalizeLoras(list, maxWeight = MAX_LORA_WEIGHT) {
     const seen = new Map();
     for (const l of Array.isArray(list) ? list : []) {
       if (!l || typeof l.name !== 'string' || !l.name.trim()) continue;
       const name = l.name.trim().replace(/\.(safetensors|ckpt|pt|bin)$/i, '');
-      seen.set(name, Object.assign({ name, weight: l.weight === undefined ? 1 : clampWeight(l.weight) }, l.override === true ? { override: true } : {}));
+      seen.set(name.toLowerCase(), Object.assign({ name, weight: l.weight === undefined ? 1 : clampWeight(l.weight, maxWeight) }, l.override === true ? { override: true } : {}));
     }
     return [...seen.values()];
   }
@@ -347,7 +347,7 @@
       mode: RECIPE_MODES.includes(src.mode) ? src.mode : 'create' };
     if (out.id === undefined) delete out.id;
     for (const k of RECIPE_FIELDS_V2) if (src[k] !== undefined && src[k] !== null && src[k] !== '') out[k] = src[k];
-    const loras = normalizeLoras(src.loras);
+    const loras = normalizeLoras(src.loras, out.mode === 'create' ? 3 : MAX_LORA_WEIGHT);
     if (loras.length) out.loras = loras;
     if (out.mode === 'outpaint' && src.outpaint && typeof src.outpaint === 'object') {
       const o = {}; for (const k of ['left', 'right', 'top', 'bottom', 'strength']) if (Number.isFinite(Number(src.outpaint[k]))) o[k] = Number(src.outpaint[k]);

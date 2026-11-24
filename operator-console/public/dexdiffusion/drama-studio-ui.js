@@ -418,7 +418,7 @@
         h('textarea', { rows: 12, 'data-drama-script-input': '1', value: t.script, placeholder: 'INT. WAREHOUSE - NIGHT\n[AMBIENCE: rain on a tin roof, loop]\nTIGER: I warned you.\nCODEC: [quietly] I know.\n\nThe rain hammers the roof.', style: Object.assign({}, css.input, { resize: 'vertical', fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, marginTop: 6 }), onInput: e => { t.script = e.target.value; updateUnsavedScriptIndicator(); } }),
         h('div', { style: Object.assign({}, css.row, { marginTop: 8 }) }, btn(dm.busy ? 'Parsing…' : 'Parse script', () => this.createDramaProject(), '#65d66e', { 'data-parse': '1', disabled: dm.busy })),
         dm.parseResult && dm.parseResult.ok === false ? h('div', { role: 'alert', 'data-parse-error': '1', style: { color: tone.bad, fontSize: 12, marginTop: 6 } }, '✗ ' + (dm.parseResult.errors || []).join(' · '), ...(dm.parseResult.rejected || []).slice(0, 5).map((r, i) => h('div', { key: i, style: css.mono }, 'rejected: ' + r.speaker + ': ' + r.text))) : null);
-      return h('div', { 'data-drama': '1', style: { display: 'grid', gap: 12, minWidth: 0 } }, projectList, scriptPanel,
+      return h('div', { 'data-drama': '1', 'data-dex-focus-scope': 'drama-script', style: { display: 'grid', gap: 12, minWidth: 0 } }, projectList, scriptPanel,
         h('div', { style: css.muted }, 'Drama turns a script into a multi-voice audio drama: SCRIPT → CAST → DIRECT → PRODUCE → REVIEW → MASTER → EXPORT. Everything runs on your machines; no cloud speech, ever.'),
         dm.pkgReport ? this._dmStageExport({ scenes: [], tracks: [], exports: [], project_master: null }) : null);
     }

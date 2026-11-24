@@ -72,7 +72,7 @@
   P.vpSet = function (patch, opts) {
     Object.assign(this._vp(), patch);
     const ae = document.activeElement;
-    if (opts && opts.skipIfTyping && ae && ae.closest && ae.closest('[data-voice-studio],[data-voice-profiles]') && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+    if (opts && opts.skipIfTyping && ae && ae.closest && ae.closest('[data-voice-studio],[data-voice-profiles],[data-new-voice]') && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
     this.setState({ _vpTick: (this.state._vpTick || 0) + 1 });
   };
   P._vpApi = async function (route, body, method) {
@@ -988,6 +988,7 @@
     const designedLeft = h('div', { style: { display: 'grid', gap: 10, minWidth: 0 } },
       field('Voice Description', h('textarea', {
         rows: 5,
+        'data-create-description': '1',
         value: nf.description || '',
         placeholder: 'Describe this voice (age, timbre, accent, texture, e.g. middle-aged, gravelly, British, measured pace)…',
         style: Object.assign({}, css.input, { resize: 'vertical' }),

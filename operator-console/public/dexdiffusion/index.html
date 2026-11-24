@@ -27,13 +27,21 @@
     summary::-webkit-details-marker{display:none}
     [data-v="1"] [data-nav][data-active="true"]{background:rgba(56,189,248,.11)!important;border-left-color:#38bdf8!important;color:#e8f0f7!important}
     [data-v="2"] [data-studio-shape][data-selected="true"]{background:rgba(245,158,11,.24)!important;border-color:#f59e0b!important;color:#fff7ed!important;box-shadow:inset 0 0 0 1px rgba(245,158,11,.25)}
+    @media (max-width: 600px) {
+      [data-studio-quick-settings] { grid-template-columns: minmax(78px, 1fr) minmax(201px, 2.5fr) !important; }
+      [data-studio-shapes] { display: grid !important; grid-template-columns: minmax(44px, 1fr) minmax(60px, 1.25fr) repeat(2, minmax(44px, 1fr)); }
+      [data-studio-shape] { min-width: 0; padding-inline: 3px !important; white-space: normal; }
+    }
+    @media (max-width: 350px) {
+      [data-studio-quick-settings] { grid-template-columns: minmax(0, 1fr) !important; }
+    }
     [data-v="2"] [data-tab][data-active="true"]{color:#f8fafc!important;border-bottom-color:var(--chip-tint,#f59e0b)!important;background:color-mix(in srgb,var(--chip-tint,#f59e0b) 16%,transparent)!important;font-weight:700!important}
 [data-v="2"] [data-tab][data-unavailable="true"]{font-style:italic}
 [data-v="2"] [data-tab]:hover,[data-v="2"] [data-tab]:focus-visible{color:#f8fafc!important;background:color-mix(in srgb,var(--chip-tint,#f59e0b) 12%,transparent)!important;outline:none}
 [data-v="2"] [data-tab]:focus-visible{box-shadow:inset 0 0 0 2px var(--chip-tint,#f59e0b)}
 [data-nav-scroll]{flex:0 0 auto;border:none;background:transparent;color:#7f8793;font-size:15px;cursor:pointer;padding:0 6px;font-family:inherit}
 [data-nav-scroll]:hover,[data-nav-scroll]:focus-visible{color:#f8fafc}
-/* Unified Studio masters layout (opt-in via localStorage dex_studio_layout=masters) */
+/* Unified Studio masters layout (default) */
 [data-v="2"] [data-master-tab],[data-v="2"] [data-subnav-leaf],[data-v="2"] [data-studio-utility],[data-v="2"] [data-nav-return]{border:none;background:transparent;color:#93a3b8;font:500 13px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;flex:0 0 auto;min-height:36px}
 [data-v="2"] [data-master-tab]{padding:0 14px;border-bottom:2px solid transparent;min-height:0;font-size:14px}
 [data-v="2"] [data-master-tab][aria-selected="true"]{color:#f8fafc;border-bottom-color:#f59e0b;background:rgba(245,158,11,.14);font-weight:700}
@@ -576,15 +584,15 @@
         </div>
         <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:4px;margin-bottom:2px;">
           {{ targetSelectV2 }}
-          <div data-lora-slot="V2" style="grid-column:1 / -1;">{{ createLoraControls }}</div>
-          <div style="display:grid;grid-template-columns:minmax(112px,1fr) minmax(0,2fr);gap:6px;align-items:end;">
+          <div data-studio-quick-settings style="display:grid;grid-template-columns:minmax(112px,1fr) minmax(0,2fr);gap:6px;align-items:end;">
             <div><div style="font-size:10px;color:#8888b0;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;">Quality</div><select aria-label="Quality preset" style="width:100%;border:1px solid rgba(200,180,255,.14);background:#110a1e;color:#eeeaf8;border-radius:7px;padding:7px;outline:none;font-size:12px;font-family:'DM Sans',sans-serif;" onChange="{{ onPresetChange }}"><option>Fast</option><option value="Smoke test">Quick preview</option><option>Custom</option></select></div>
             <div><div style="display:flex;justify-content:space-between;align-items:center;gap:4px;margin-bottom:4px;"><span style="font-size:10px;color:#ddd6fe;font-weight:700;">Image shape</span><span data-studio-size-readout style="font-size:9px;color:#8888b0;white-space:nowrap;">{{ pixelSizeText }}</span></div>
-              <div style="display:flex;gap:3px;flex-wrap:nowrap;">
+              <div data-studio-shapes style="display:flex;gap:3px;flex-wrap:wrap;">
                 <button data-studio-shape="square" aria-pressed="{{ shapeSquareSelected }}" data-selected="{{ shapeSquareSelected }}" onClick="{{ setDim512 }}" style="border:1px solid rgba(200,180,255,.12);background:rgba(22,15,34,.8);color:#8888b0;border-radius:5px;padding:6px 5px;min-height:32px;font-size:10px;cursor:pointer;font-weight:600;font-family:'DM Sans',sans-serif;">Square</button><button data-studio-shape="landscape" aria-pressed="{{ shapeLandscapeSelected }}" data-selected="{{ shapeLandscapeSelected }}" onClick="{{ setDim768 }}" style="border:1px solid rgba(200,180,255,.12);background:rgba(22,15,34,.8);color:#8888b0;border-radius:5px;padding:6px 5px;min-height:32px;font-size:10px;cursor:pointer;font-weight:600;font-family:'DM Sans',sans-serif;">Landscape</button><button data-studio-shape="portrait" aria-pressed="{{ shapePortraitSelected }}" data-selected="{{ shapePortraitSelected }}" onClick="{{ setDimPortrait }}" style="border:1px solid rgba(200,180,255,.12);background:rgba(22,15,34,.8);color:#8888b0;border-radius:5px;padding:6px 5px;min-height:32px;font-size:10px;cursor:pointer;font-weight:600;font-family:'DM Sans',sans-serif;">Portrait</button><button data-studio-shape="largesquare" aria-pressed="{{ shapeLargeSquareSelected }}" data-selected="{{ shapeLargeSquareSelected }}" onClick="{{ setDim1024 }}" style="border:1px solid rgba(200,180,255,.12);background:rgba(22,15,34,.8);color:#8888b0;border-radius:5px;padding:6px 5px;min-height:32px;font-size:10px;cursor:pointer;font-weight:600;font-family:'DM Sans',sans-serif;">Large square</button>
               </div>
             </div>
           </div>
+          <div data-lora-slot="V2" style="grid-column:1 / -1;">{{ createLoraControls }}</div>
         </div>
 <details data-studio-advanced style="margin-top:16px;border:1px solid rgba(200,180,255,.2);border-radius:9px;padding:12px;">
 <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#ddd6fe;">Advanced settings</summary>
@@ -670,10 +678,10 @@
     <section data-studio-layout-control style="border:1px solid rgba(148,163,184,.25);border-radius:9px;padding:12px;display:grid;gap:7px;">
       <label for="dex-studio-layout-select" style="font-weight:700;">Studio navigation layout</label>
       <select id="dex-studio-layout-select" data-studio-layout-select value="{{ studioLayout }}" onChange="{{ onStudioLayoutChange }}" style="min-height:36px;max-width:320px;">
-        <option value="flat">Flat · 14 destinations (default)</option>
-        <option value="masters">Five masters · opt-in</option>
+        <option value="flat">Flat · 14 destinations</option>
+        <option value="masters">Five masters · default</option>
       </select>
-      <small>The five-master layout groups the same creative destinations and adds Chat. Switch back here any time.</small>
+      <small>The five-master layout groups the same creative destinations and adds Chat. You can switch layouts here any time.</small>
     </section>
     <div>{{ themeEditorPanel }}</div>
     {{ truthStatusPanel }}

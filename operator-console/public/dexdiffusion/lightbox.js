@@ -6,6 +6,7 @@
 //   data-fullscreen-src="…"    → full image URL (defaults to the element's own src)
 //   data-fullscreen-caption    → caption text
 //   data-fullscreen-image-id   → canonical image id (the app can attach Edit actions)
+//   data-fullscreen-return     → stable identity for an opener that may be remounted
 // Elements inside [data-no-fullscreen] (the active inpaint mask editor) never open it,
 // so painting is never interrupted.
 //
@@ -13,7 +14,7 @@
 // returns to the opener on close. The page state underneath is never touched.
 (function () {
   'use strict';
-  let root = null, lastFocus = null, zoomed = false, onKey = null, onCloseCb = null;
+  let root = null, lastFocus = null, findOpener = null, zoomed = false, onKey = null, onCloseCb = null;
 
   function el(tag, attrs, ...kids) {
     const n = document.createElement(tag);
@@ -29,8 +30,10 @@
     document.removeEventListener('keydown', onKey, true);
     root.remove(); root = null; zoomed = false;
     const cb = onCloseCb; onCloseCb = null; if (cb) { try { cb(); } catch (_) {} }
-    if (lastFocus && document.contains(lastFocus)) { try { lastFocus.focus(); } catch (_) {} }
+    const opener = lastFocus?.isConnected ? lastFocus : findOpener?.();
+    if (opener) opener.focus({ preventScroll: true });
     lastFocus = null;
+    findOpener = null;
   }
 
   function setZoom(img, box, z) {
@@ -44,7 +47,7 @@
     }
   }
 
-  // opts: { src, caption, alt, actions, downloadUrl, downloadName, onClose,
+  // opts: { src, caption, alt, actions, downloadUrl, downloadName, onClose, opener, findOpener,
   //         collection: { items: [{ id, src, caption, downloadUrl }], index, actionsFor(id) } }
   // With a collection, Previous/Next follow exactly the supplied (filtered + sorted) list.
   function open(opts) {
@@ -53,6 +56,7 @@
     if (!o.src && !col) return false;
     close();
     lastFocus = o.opener || document.activeElement;
+    findOpener = o.findOpener || null;
     onCloseCb = typeof o.onClose === 'function' ? o.onClose : null;
     let idx = col ? Math.min(Math.max(0, o.collection.index | 0), col.items.length - 1) : 0;
     const cur = () => (col ? col.items[idx] : { src: o.src, caption: o.caption, downloadUrl: o.downloadUrl, id: null });
@@ -166,7 +170,9 @@
     // The delegated image is the opener. Clicks otherwise blur the previous
     // control to body, which cannot receive meaningful returned focus.
     if (t.tabIndex >= 0) t.focus();
-    const ok = open({ src, caption: t.getAttribute('data-fullscreen-caption') || id || '', alt: t.getAttribute('alt') || '', actions, opener: t });
+    const returnId = t.getAttribute('data-fullscreen-return');
+    const findOpener = returnId ? () => document.querySelector('[data-fullscreen-return="' + CSS.escape(returnId) + '"]') : null;
+    const ok = open({ src, caption: t.getAttribute('data-fullscreen-caption') || id || '', alt: t.getAttribute('alt') || '', actions, opener: t, findOpener });
     if (ok && t.getAttribute('data-fullscreen') === 'only') { e.stopPropagation(); e.preventDefault(); }
   }
   document.addEventListener('click', onClick, true);

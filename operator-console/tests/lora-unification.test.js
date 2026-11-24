@@ -5,14 +5,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
-// Standalone unit tests must not attempt to initialize the production
-// MacBook canonical-image directory when run on Big Mac or CI.
-if (!process.env.DEX_IMAGES_ROOT_OVERRIDE) {
-  const os = require('node:os');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-lora-unit-images-'));
-  process.env.DEX_IMAGES_ROOT_OVERRIDE = dir;
-  process.on('exit', () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {} });
-}
+// A direct server import initializes the job ledger as well as the image store.
+const testRoot = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'dex-lora-unit-'));
+process.env.DEX_STATE_DIR = path.join(testRoot, 'state');
+process.env.DEX_RUNS_DIR = path.join(testRoot, 'runs');
+process.env.DEX_IMAGES_ROOT_OVERRIDE = path.join(testRoot, 'images');
+process.env.DEX_MEDIA_ROOT_OVERRIDE = path.join(testRoot, 'media');
+process.env.DEX_SCRATCH_ROOT = path.join(testRoot, 'scratch');
+process.env.DEX_TEST_ISOLATION = '1';
+process.env.DEX_LOCAL_ENGINE_BRIDGE = '0';
+process.on('exit', () => fs.rmSync(testRoot, { recursive: true, force: true }));
 const {
   normalizeControlledGenerationBody,
   validateControlledGenerationParams,
@@ -260,21 +262,19 @@ test('P0: Single authoritative Create LoRA selection & Extra Networks unificatio
     inst.setState({
       target: 'sdxl-base',
       assets: { loras: [adapterA], vaes: [], embeddings: { count: 0, items: [] } },
-      createLora: { enabled: false, selectedId: '' },
-      createLoras: [{ name: 'legacy_stray_adapter', weight: 0.9 }]
+      createLora: { enabled: false, selectedId: '' }
     });
     await settle(w);
 
-    // 1. getEffectiveCreateLoras has no fallback to createLoras when createLora is disabled/empty
+    // With no adapter selected, generation carries no structured adapters.
     assert.equal(inst.getEffectiveCreateLoras().length, 0, 'no fallback to legacy createLoras');
 
-    // 2. Extra Networks insertLora routes to canonical createLora and clears createLoras
+    // Extra Networks uses the same selection as the Create picker.
     inst.insertLora(adapterA.filename, 1.25);
     await settle(w);
     assert.equal(inst.state.createLora.enabled, true, 'canonical createLora enabled');
     assert.equal(inst.state.createLora.selectedId, adapterA.id, 'canonical adapter selected');
     assert.equal(inst.state.createLora.strength, 1.25, 'strength updated');
-    assert.equal(inst.state.createLoras.length, 0, 'legacy createLoras cleared');
 
     // 3. getActiveLoras reflects canonical selection only
     const active = inst.getActiveLoras();
@@ -282,19 +282,18 @@ test('P0: Single authoritative Create LoRA selection & Extra Networks unificatio
     assert.equal(active[0].name, adapterA.name);
     assert.equal(active[0].weight, 1.25);
 
-    // 4. Extra Networks removeLora disables canonical adapter and clears createLoras
+    // Removing the adapter clears the request.
     inst.removeLora();
     await settle(w);
     assert.equal(inst.state.createLora.enabled, false);
     assert.equal(inst.state.createLora.selectedId, '');
     assert.equal(inst.getEffectiveCreateLoras().length, 0);
-    assert.equal(inst.state.createLoras.length, 0);
   } finally {
     close();
   }
 });
 
-test('P0: applyFavoritePreset restores adapter to canonical selection and clears legacy state', async () => {
+test('P0: applyFavoritePreset restores the canonical adapter selection', async () => {
   const { w, doc, inst, close } = boot();
   try {
     await settle(w);
@@ -316,7 +315,6 @@ test('P0: applyFavoritePreset restores adapter to canonical selection and clears
       target: 'sdxl-base',
       assets: { loras: [adapterA], vaes: [], embeddings: { count: 0, items: [] } },
       createLora: { enabled: false, selectedId: '' },
-      createLoras: [{ name: 'old_legacy', weight: 0.5 }],
       favoritePresets: [{
         id: 'fav-1',
         name: 'Fast LCM Recipe',
@@ -345,7 +343,6 @@ test('P0: applyFavoritePreset restores adapter to canonical selection and clears
     assert.equal(inst.state.createLora.enabled, true);
     assert.equal(inst.state.createLora.selectedId, adapterA.id);
     assert.equal(inst.state.createLora.strength, 0.75);
-    assert.equal(inst.state.createLoras.length, 0, 'createLoras cleared on preset load');
     assert.equal(inst.state.steps, 4);
 
     // Apply recipe without LoRA
@@ -354,7 +351,6 @@ test('P0: applyFavoritePreset restores adapter to canonical selection and clears
     assert.equal(inst.state.createLora.enabled, false);
     assert.equal(inst.state.createLora.selectedId, '');
     assert.equal(inst.getEffectiveCreateLoras().length, 0);
-    assert.equal(inst.state.createLoras.length, 0, 'createLoras remains empty');
     assert.equal(inst.state.steps, 25);
   } finally {
     close();
@@ -868,6 +864,166 @@ test('model switch keeps a family-compatible accelerator (re-applying its recipe
     await inst.onSelectTarget('sd15', { quiet: true });
     await settle(w, 120);
     assert.equal(inst.state.createLora.enabled, false, 'SDXL accelerator disabled on SD1.5');
-    assert.deepEqual(settings(inst), [30, 5, 'dpm++2m', 'karras'], 'user settings from before activation restored');
+    assert.deepEqual(settings(inst), [20, 7, 'dpm++2m', 'discrete'], 'SD1.5 receives its own defaults');
+    await inst.onSelectTarget('sdxl-lustify', { quiet: true });
+    await settle(w, 120);
+    assert.equal(inst.getEffectiveCreateLoras()[0].name, 'lcm_sdxl');
+    inst.selectCreateLora('');
+    assert.deepEqual(settings(inst), [30, 5, 'dpm++2m', 'karras'], 'original checkpoint restores its own settings');
+  } finally { close(); }
+});
+
+test('Create and Edit catalog responses are scoped to their latest request and can retry', async () => {
+  const { w, inst, close } = boot();
+  try {
+    await settle(w);
+    const pending = [];
+    w.fetch = (url, opts) => new Promise((resolve, reject) => pending.push({ url, opts, resolve, reject }));
+    const catalog = name => ({ loras: [{ id: name, name }], vaes: [] });
+    const reply = (request, data, status = 200) => request.resolve({ ok: status === 200, status, json: async () => data });
+    const createLoad = target => { inst.setState({ target }); return inst.loadAssets(); };
+    const first = createLoad('sd15');
+    assert.equal(inst.loadAssets(), first, 'same-target loads share their in-flight request');
+    const second = createLoad('sdxl-base');
+    const latest = createLoad('sd15');
+    assert.equal(pending.length, 3);
+    reply(pending[2], catalog('new'));
+    assert.equal(await latest, true);
+    reply(pending[1], catalog('middle'));
+    reply(pending[0], catalog('old'));
+    assert.equal(await first, false);
+    assert.equal(await second, false);
+    assert.equal(inst.state.assets.loras[0].id, 'new');
+    const failed = inst.loadAssets();
+    reply(pending[3], {}, 503);
+    assert.equal(await failed, false);
+    assert.equal(inst.state.assetsStatus, 'failed');
+    assert.match(inst.state.assetsError, /503/);
+    pending.length = 3;
+
+    const editLoad = editModel => {
+      inst.edSet({ state: { editModel } });
+      return inst.loadEditAssets();
+    };
+    inst.setState({ screens: { ...inst.state.screens, 2: 'create' } });
+    const older = editLoad('sd15');
+    const newer = editLoad('sdxl-base');
+    pending[4].reject(new w.DOMException('Catalog request timed out', 'TimeoutError'));
+    assert.equal(await newer, false);
+    assert.equal(inst._ed().assetsStatus, 'failed');
+    assert.match(inst._ed().assetsError, /timed out/);
+    assert.notEqual(inst._ed().assetsFor, 'sdxl-base');
+    const retry = inst.loadEditAssets();
+    assert.ok(pending[5].opts.signal, 'Edit GET has a timeout signal');
+    reply(pending[5], catalog('edit'));
+    reply(pending[3], catalog('older'));
+    assert.equal(await retry, true);
+    assert.equal(await older, false);
+    assert.equal(inst._ed().assets.loras[0].id, 'edit');
+  } finally { close(); }
+});
+
+test('Create stack uses compatible entries only and None disables the effective request', async () => {
+  const { w, inst, close } = boot();
+  try {
+    await settle(w);
+    const target = 'flux2-klein-4b';
+    const card = (id, overrides = {}) => ({
+      id, name: id, family: 'flux2', staged: true, plain_mflux: true,
+      default_weight: 0.6, min_weight: 0.1, max_weight: 2,
+      production_routes: [{ target, backend: 'mflux', plain: true, production: true }], ...overrides
+    });
+    inst.setState({ target, assetsTarget: target, assetsStatus: 'loaded', modelTargets: ACCEL_TARGETS,
+      assets: { loras: [card('fixer', { slider: true, max_weight: 3, default_weight: 2.5 }), card('style')], vaes: [] } });
+    inst._setStack([{ id: 'parked-a', weight: 1 }, { id: 'parked-b', weight: 1 }, { id: 'parked-c', weight: 1 },
+      { id: 'fixer', weight: 2.5 }, { id: 'FIXER', weight: 0.5 }]);
+    inst.toggleCreateStack('style');
+    const settings = () => JSON.parse(JSON.stringify(inst.getEffectiveCreateLoras().map(({ name, weight }) => ({ name, weight }))));
+    assert.deepEqual(settings(), [{ name: 'fixer', weight: 2.5 }, { name: 'style', weight: 0.6 }]);
+    inst.setCreateStackWeight('style', 0.8);
+    assert.equal(settings()[1].weight, 0.8);
+    inst.setCreateLoraEnabled(false);
+    assert.deepEqual(settings(), []);
+    inst.setCreateLoraEnabled(true);
+    assert.equal(settings().length, 2);
+    // The registered single adapter takes precedence, but disabling it must
+    // still turn off the entire structured request.
+    inst.selectCreateLora('style');
+    assert.deepEqual(settings(), [{ name: 'style', weight: 0.6 }]);
+    inst.setCreateLoraEnabled(false);
+    assert.deepEqual(settings(), []);
+    inst.selectCreateLora('');
+    assert.deepEqual(settings(), []);
+    assert.equal(inst._stack().length, 3, 'parked entries are retained');
+  } finally { close(); }
+});
+
+test('failed discovery never reports a refresh and 409 preserves the selected checkpoint recipe', async () => {
+  const { w, inst, close } = boot();
+  try {
+    await settle(w);
+    inst.setState({ target: 'flux2-klein-4b', modelTargets: ACCEL_TARGETS, steps: 4, cfg: 1, sampler: 'euler' });
+    inst._waitJob = async () => ({ status: 'FAIL', firstFailedGate: 'discovery' });
+    const toasts = [];
+    inst.toast = text => toasts.push(text);
+    let loads = 0;
+    inst.loadAssets = async () => { loads++; return true; };
+    w.fetch = async url => {
+      if (url.endsWith('/discover-assets')) return { ok: true, status: 200, json: async () => ({ job_id: 'fixture' }) };
+      assert.ok(url.endsWith('/secondary/activate'));
+      return { ok: false, status: 409, json: async () => ({ error: 'busy', modelState: { activeSecondaryModel: 'sdxl-lustify' } }) };
+    };
+    await inst.discoverAssets();
+    assert.deepEqual(toasts, ['Asset discovery failed: Discovery job discovery']);
+    assert.equal(loads, 0);
+    assert.equal(await inst.onSelectTarget('sdxl-base', { quiet: true }), false);
+    assert.equal(inst.state.target, 'flux2-klein-4b');
+    assert.deepEqual([inst.state.steps, inst.state.cfg, inst.state.sampler], [4, 1, 'euler']);
+    assert.equal(inst.state.modelState.activeSecondaryModel, 'sdxl-lustify');
+  } finally { close(); }
+});
+
+test('reload restores only the saved checkpoint settings and keeps parked history', async () => {
+  const target = 'flux2-klein-4b';
+  const storage = {
+    dex_create_checkpoint_settings_v1: JSON.stringify({
+      'sdxl-base': { sampling: { steps: 27, cfg: 6, sampler: 'dpm++2m', scheduler: 'karras' } },
+      [target]: { sampling: { steps: 6, cfg: 1, sampler: 'dpm++2m', scheduler: 'karras' } }
+    }),
+    dex_create_lora_stack_v1: JSON.stringify([{ id: 'sdxl-adapter', weight: 0.7 }]),
+    dex_target: target
+  };
+  const { w, inst, close } = boot({ storage });
+  try {
+    await settle(w);
+    inst.setState({ modelTargets: ACCEL_TARGETS, target: 'sd15' });
+    inst.loadAssets = () => {};
+    assert.equal(await inst.onSelectTarget(target, { quiet: true, restoreOnly: true }), true);
+    assert.deepEqual([inst.state.steps, inst.state.cfg, inst.state.sampler, inst.state.scheduler], [6, 1, 'euler', 'discrete']);
+    assert.equal(inst._stack()[0].id, 'sdxl-adapter');
+    assert.equal(w.localStorage.getItem('dex_create_lora_stack_v1'), storage.dex_create_lora_stack_v1);
+  } finally { close(); }
+});
+
+test('a model catalog loaded before activation cannot overwrite the confirmed server slot', async () => {
+  const { w, inst, close } = boot();
+  try {
+    await settle(w);
+    inst.setState({ target: 'flux2-klein-4b', modelTargets: ACCEL_TARGETS });
+    inst._initialTargetRestored = true;
+    inst.loadAssets = () => {};
+    let capResponse;
+    w.fetch = async url => {
+      if (url.endsWith('/api/capabilities')) return new Promise(resolve => { capResponse = resolve; });
+      if (url.endsWith('/api/models')) return { ok: true, json: async () => ({ models: [] }) };
+      assert.ok(url.endsWith('/secondary/activate'), url);
+      return { ok: true, json: async () => ({ modelState: { activeSecondaryModel: 'sdxl-base' } }) };
+    };
+    const older = inst.loadModels();
+    assert.equal(await inst.onSelectTarget('sdxl-base', { quiet: true }), true);
+    capResponse({ ok: true, json: async () => ({ modelTargets: ACCEL_TARGETS, modelState: { activeSecondaryModel: 'sd15' } }) });
+    await older;
+    assert.equal(inst.state.target, 'sdxl-base');
+    assert.equal(inst.state.modelState.activeSecondaryModel, 'sdxl-base');
   } finally { close(); }
 });

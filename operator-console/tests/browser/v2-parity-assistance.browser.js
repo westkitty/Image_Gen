@@ -270,11 +270,14 @@ async function open(page, base, { jobs = false } = {}) {
       await page.locator('[data-studio-offline]').waitFor({ state: 'visible' });
       assert.match(await page.locator('[data-studio-offline]').innerText(), /Connection lost/);
       await page.evaluate(() => __dex.setScreen('system'));
-      assert.match(await page.locator('[data-scroll-pane]').first().innerText(), /Offline/);
+      const system = page.locator('[data-scroll-pane]').filter({ hasText: 'Backend connection' });
+      await system.getByText('⚠ Degraded', { exact: true }).waitFor();
+      assert.match(await page.locator('[data-studio-offline]').innerText(), /Connection lost/);
       await page.unroute('**/api/version');
       await page.locator('[data-studio-offline] button', { hasText: 'Retry connection' }).click();
       await page.locator('[data-studio-offline]').waitFor({ state: 'detached' });
       assert.equal(await page.evaluate(() => __dex.state.backendOnline), true);
+      await system.getByText('✓ Online', { exact: true }).waitFor();
       // Context (System) exposes the event-stream and queue truth rather than a canned "online".
       await page.locator('[data-studio-context]').click();
       const t = await page.locator('[data-v2-drawer="context"]').innerText();

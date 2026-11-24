@@ -128,7 +128,7 @@ async function saveStyle(page, name, prompt, negative) {
       await page.waitForFunction(() => /Backend bind/.test(document.body.innerText) && /WORKERS/.test(document.body.innerText), null, { timeout: 15000 });
       const t = await page.locator('[data-scroll-pane]').first().innerText();
       assert.match(t, /Run Doctor/); assert.match(t, /Backend bind\s*127\.0\.0\.1:\d+/, 'bound to loopback only');
-      assert.match(t, /Generated images\s*\/Users\/andrew\/images_made/); assert.match(t, /Final images are stored on the MacBook only/);
+      assert.match(t, /Generated images\s*\/Users\/andrew\/images_made/); assert.match(t, /Working copies remain subject to checksum, verified write and acknowledgment, journal and idle-sweep checks\. Publication: unknown/);
       assert.match(t, /Heavy compute:[\s\S]*capacity 1/); assert.match(t, /LTX Video[\s\S]*RUNTIME MISSING/, 'a missing runtime is not shown as ready');
       assert.match(t, /DexDiffusion\.app/);
       assert.deepEqual(errors, []);

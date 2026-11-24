@@ -53,7 +53,7 @@ class Component extends DCLogic {
         const save = localStorage.getItem('dex_save_prompts') === 'true';
         const raw = JSON.parse(localStorage.getItem('dex_favorite_presets') || '[]');
         // Versioned recipes (v2: mode + resources). Legacy v0/v1 entries migrate in place as Create presets.
-        const clean = raw.map(p => DexEdit.migrateRecipe(p.params ? { id: p.id, name: p.name, target: p.params.target, width: p.params.width, height: p.params.height, steps: p.params.steps, cfg: p.params.cfg_scale, sampler: p.params.sampler, scheduler: p.params.scheduler, vae: p.params.selectedVae, preset: p.params.preset, prompt: p.params.prompt, negPrompt: p.params.negative_prompt } : p, save));
+        const clean = raw.map(p => DexEdit.migrateRecipe(p.params ? { id: p.id, name: p.name, target: p.params.target, width: p.params.width, height: p.params.height, steps: p.params.steps, cfg: p.params.cfg_scale, sampler: p.params.sampler, scheduler: p.params.scheduler, vae: p.params.selectedVae, preset: p.params.preset, loras: p.params.loras, prompt: p.params.prompt, negPrompt: p.params.negative_prompt } : p, save));
         localStorage.setItem('dex_favorite_presets', JSON.stringify(clean));
         return clean;
       } catch { return []; }
@@ -93,7 +93,7 @@ class Component extends DCLogic {
     // Extra networks / LoRA
     assets: { loras: [], vaes: [], embeddings: { count: 0, items: [], empty_state_message: 'No Textual Inversion embeddings discovered' } },
     loadingAssets: false, extraNetworksTab: 'loras',
-    loraWeights: {}, createLoras: [],
+    loraWeights: {},
     showLoraPicker: false, loraSearchQuery: '',
     createLora: (() => { try { return Object.assign({ enabled: false, selectedId: '', strength: 1, advanced: false, savedSettings: null, overrides: {} }, JSON.parse(localStorage.getItem('dex_create_lora_v1') || '{}')); } catch { return { enabled: false, selectedId: '', strength: 1, advanced: false, savedSettings: null, overrides: {} }; } })(),
     // Global
@@ -224,14 +224,18 @@ class Component extends DCLogic {
     } catch (_) { /* Unknown status remains distinct from confirmed pending. */ }
   }
 
+  _hasUnsavedDramaWork() {
+    const dm = typeof this._dm === 'function' ? this._dm() : null;
+    const dmText = this._dmText || {};
+    return !!(dm && ((dm.current && !dm.current.saved) || Object.keys(dm.pending || {}).length ||
+      this._dmFlushPromise || this._dramaSavePromise ||
+      String(dmText.script || '').trim() || String(dmText.title || '').trim()));
+  }
+
   _unsavedWorkspaceWork() {
     const edDirty = typeof this._editDraftIsDirty === 'function' && this._editDraftIsDirty();
     if (edDirty) return { workspace: 'edit', label: 'unsaved Edit changes' };
-    const dm = typeof this._dm === 'function' ? this._dm() : null;
-    const dmText = this._dmText || {};
-    if (dm && ((dm.current && !dm.current.saved) || Object.keys(dm.pending || {}).length || this._dmFlushPromise || this._dramaSavePromise || String(dmText.script || '').trim() || String(dmText.title || '').trim())) {
-      return { workspace: 'drama', label: 'Drama project or script' };
-    }
+    if (this._hasUnsavedDramaWork()) return { workspace: 'drama', label: 'Drama project or script' };
     const prompt = String(this.state.prompt || '').trim() || String(this.state.negPrompt || '').trim();
     if (prompt) return { workspace: 'generate', label: 'Create prompt' };
     return null;
@@ -1134,40 +1138,51 @@ class Component extends DCLogic {
   }
 
   // ── Assets / LoRA (Extra Networks) ────────────────────────────
-  async loadAssets() {
-    this.setState({ loadingAssets: true });
-    try {
-      const target = this.state.target || 'flux2-klein-4b';
-      const r = await fetch(this.state.backendUrl + '/api/extra-networks?target=' + encodeURIComponent(target), { signal: AbortSignal.timeout(8000) });
-      if (r.ok) {
+  loadAssets() {
+    const target = this.state.target || 'flux2-klein-4b';
+    const backend = this.state.backendUrl;
+    if (this._assetsRequest?.target === target && this._assetsRequest.backend === backend) return this._assetsRequest.promise;
+    const request = { target, backend };
+    const isCurrent = () => this._assetsRequest === request && (this.state.target || 'flux2-klein-4b') === target && this.state.backendUrl === backend;
+    this._assetsRequest = request;
+    this.setState({ loadingAssets: true, assetsStatus: this.state.assetsStatus === 'failed' ? 'retrying' : 'loading' });
+    request.promise = (async () => {
+      try {
+        const r = await fetch(backend + '/api/extra-networks?target=' + encodeURIComponent(target), { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
         const d = await r.json();
-        // Startup can request the default target before loadModels restores the
-        // saved checkpoint. Do not let that slower response replace the newer
-        // target-scoped compatibility proof.
-        if ((this.state.target || 'flux2-klein-4b') !== target) return;
-        this.setState({
-          assets: {
-            loras: d.loras || [],
-            vaes: d.vaes || [],
-            embeddings: d.embeddings || { count: 0, items: [], empty_state_message: 'No Textual Inversion embeddings discovered' }
-          },
-          assetsTarget: target,
-          loadingAssets: false
-        });
+        if (!Array.isArray(d.loras) || !Array.isArray(d.vaes)) throw new Error('Invalid asset catalog');
+        if (!isCurrent()) return false;
+        this.setState({ assets: { loras: d.loras, vaes: d.vaes, embeddings: d.embeddings || { count: 0, items: [] } },
+          assetsTarget: target, assetsBackend: backend, loadingAssets: false, assetsStatus: 'loaded', assetsError: null });
         if (typeof this._restoreCreateLoraSettings === 'function') this._restoreCreateLoraSettings();
-      } else { this.setState({ loadingAssets: false }); }
-    } catch { this.setState({ loadingAssets: false }); }
+        return true;
+      } catch (error) {
+        if (isCurrent()) this.setState({ loadingAssets: false, assetsStatus: 'failed', assetsError: error.message });
+        return false;
+      } finally {
+        if (this._assetsRequest === request) this._assetsRequest = null;
+      }
+    })();
+    return request.promise;
   }
   async discoverAssets() {
+    if (this._discoveringAssets) return;
+    this._discoveringAssets = true;
     try {
-      this.setState({ loadingAssets: true });
-      await fetch(this.state.backendUrl + '/api/actions/discover-assets', { method: 'POST' });
-      await this.loadAssets();
+      const r = await fetch(this.state.backendUrl + '/api/actions/discover-assets', { method: 'POST', signal: AbortSignal.timeout(8000) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (typeof d.job_id !== 'string' || !d.job_id) throw new Error('Discovery did not return a job');
+      const result = await this._waitJob(d.job_id);
+      if (result?.status !== 'PASS') throw new Error('Discovery job ' + (result?.firstFailedGate || result?.status || 'unavailable'));
+      // Any earlier load may have read the cache before discovery completed.
+      this._assetsRequest = null;
+      if (!await this.loadAssets()) throw new Error(this.state.assetsError || 'Catalog refresh did not complete');
       this.toast('Asset discovery refreshed', '#38bdf8');
     } catch (e) {
-      this.setState({ loadingAssets: false });
       this.toast('Asset discovery failed: ' + e.message, '#ef4444');
-    }
+    } finally { this._discoveringAssets = false; }
   }
   // LoRA selection routes through the canonical Create LoRA picker (state.createLora).
   // The API receives structured body.loras; prompt tags are never authored by the browser.
@@ -1180,7 +1195,13 @@ class Component extends DCLogic {
       this.toast(reason, '#fbbf24');
       return;
     }
-    if (typeof this.selectCreateLora === 'function') {
+    if (found.staged) {
+      if (!this._stack().some(entry => entry.id === found.id)) this.toggleCreateStack(found.id);
+      if (this._stack().some(entry => entry.id === found.id)) {
+        this.setCreateStackWeight(found.id, weight);
+        return;
+      }
+    } else if (typeof this.selectCreateLora === 'function') {
       this.selectCreateLora(found.id);
       const cur = this.state.createLora;
       if (cur && cur.enabled && cur.selectedId === found.id) {
@@ -1191,7 +1212,7 @@ class Component extends DCLogic {
         if (typeof this.setCreateLoraStrength === 'function') {
           this.setCreateLoraStrength(clamped, minW, maxW);
         }
-        this.setState(st => ({ createLoras: [], loraWeights: { ...(st.loraWeights || {}), [found.id]: clamped } }));
+        this.setState(st => ({ loraWeights: { ...(st.loraWeights || {}), [found.id]: clamped } }));
         this.toast('Selected adapter ' + found.name + ' · ' + Number(clamped).toFixed(2), '#38bdf8');
         return;
       }
@@ -1223,37 +1244,15 @@ class Component extends DCLogic {
     this.toast('Inserted trigger phrase: ' + phrase, '#65d66e');
   }
   getActiveLoras() {
-    const prompt = this.state.prompt || '';
-    const re = /<lora:([^:>]+)(?::([0-9.]+))?>/g;
-    const loras = [];
-    const knownLoras = (this.state.assets && this.state.assets.loras) || (Array.isArray(this.state.loras) ? this.state.loras : []);
-    const effective = typeof this.getEffectiveCreateLoras === 'function' ? this.getEffectiveCreateLoras() : [];
-    for (const l of effective) {
-      loras.push({ name: l.name, weight: l.weight, family: l.family || 'unknown', token: '<lora:' + l.name + ':' + (l.weight != null ? Number(l.weight).toFixed(2) : '1.00') + '>' });
-    }
-    // Only if no canonical Create adapter is active, check for up to one legacy prompt tag
-    if (loras.length === 0) {
-      let m;
-      while ((m = re.exec(prompt)) !== null) {
-        const name = m[1];
-        if (loras.some(x => x.name.toLowerCase() === name.toLowerCase())) continue;
-        const weight = m[2] != null ? parseFloat(m[2]) : 1.0;
-        const found = knownLoras.find(k => (k.name && k.name.toLowerCase() === name.toLowerCase()) || (k.filename && k.filename.replace(/\.[^.]+$/, '').toLowerCase() === name.toLowerCase()));
-        let family = found && found.family ? found.family : null;
-        if (!family) {
-          const lower = name.toLowerCase();
-          if (lower.includes('flux2')) family = 'flux2';
-          else if (lower.includes('flux')) family = 'flux1';
-          else if (lower.includes('pony')) family = 'pony';
-          else if (lower.includes('sd15') || lower.includes('sd_1_5') || lower.includes('homofidelis')) family = 'sd15';
-          else if (lower.includes('sdxl') || lower.includes('turbo') || lower.includes('photonic')) family = 'sdxl';
-          else family = 'unknown';
-        }
-        loras.push({ name, weight, family, token: m[0] });
-        break; // Never silently apply multiple adapters
-      }
-    }
-    return loras;
+    const active = this.getEffectiveCreateLoras();
+    const catalog = this.state.assets?.loras || [];
+    const spec = this._targetSpec();
+    const resources = spec?.backend === 'mflux' ? active :
+      DexEdit.resolveResources({ prompt: this.state.prompt, loras: active }).loras;
+    return resources.map(({ name, weight }) => ({
+      name, weight, family: catalog.find(l => l.name === name)?.family || 'unknown',
+      token: '<lora:' + name + ':' + weight + '>'
+    }));
   }
   getActiveWildcards() {
     const prompt = this.state.prompt || '';
@@ -1268,7 +1267,9 @@ class Component extends DCLogic {
   setLoraWeight(name, weight) {
     const createLora = this.state.createLora;
     const targetName = String(name || '').toLowerCase();
-    const baseTargetName = targetName.replace(/\.[^.]+$/, '');
+    const baseTargetName = targetName.replace(/\.(safetensors|ckpt|pt|bin)$/i, '');
+    const stacked = this.getEffectiveCreateLoras().find(l => l.stacked && [l.name, l.id, l.adapter].some(value => value.toLowerCase() === targetName));
+    if (stacked) { this.setCreateStackWeight(stacked.id, weight); return; }
     if (createLora && createLora.selectedId) {
       const options = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
       const sel = options.find(l => l.id === createLora.selectedId);
@@ -1292,15 +1293,17 @@ class Component extends DCLogic {
     }
     const prompt = this.state.prompt || '';
     const w = Number(weight).toFixed(2).replace(/\.?0+$/, '');
-    const re = new RegExp('<lora:' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?::[0-9.]+)?\\>', 'g');
+    const re = new RegExp('<lora:' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?::[+-]?[0-9.]+)?\\>', 'g');
     if (re.test(prompt)) {
       const nextPrompt = prompt.replace(re, '<lora:' + name + ':' + w + '>');
-      this.setState({ prompt: nextPrompt, createLoras: [] });
+      this.setState({ prompt: nextPrompt });
     }
   }
   removeLora(token) {
     const named = /^<lora:([^:>]+)/.exec(String(token || ''));
     const name = named ? named[1] : String(token || '');
+    const stacked = this.getEffectiveCreateLoras().find(l => l.stacked && [l.name, l.id, l.adapter].some(value => value.toLowerCase() === name.toLowerCase()));
+    if (stacked) { this.toggleCreateStack(stacked.id); return; }
     const targetName = String(name || '').toLowerCase();
     const baseTargetName = targetName.replace(/\.[^.]+$/, '');
     const createLora = this.state.createLora;
@@ -1319,12 +1322,10 @@ class Component extends DCLogic {
         if (typeof this.selectCreateLora === 'function') {
           this.selectCreateLora('');
         }
-        this.setState({ createLoras: [] });
         this.toast('Removed adapter' + (sel ? ' ' + sel.name : ''), '#94a3b8');
         return;
       }
     }
-    this.setState({ createLoras: [] });
     const prompt = this.state.prompt || '';
     const next = prompt.replace(token, '').replace(/\s{2,}/g, ' ').trim();
     this.setState({ prompt: next });
@@ -1704,6 +1705,16 @@ class Component extends DCLogic {
     if (s === 'chat' && !(this.state.version === 2 && this.state.studioLayout === 'masters')) s = 'create';
     const { version, screens } = this.state;
     const from = screens[version];
+    // Leaving unsaved Drama needs an explicit user choice. A confirmed leave
+    // retains the in-memory draft; it does not claim to save or discard it.
+    // Clean Drama and other retained workspace drafts navigate without prompts.
+    if (from === 'drama' && s !== from && this._hasUnsavedDramaWork() &&
+        !window.confirm('Leave Drama without saving? Choose Cancel to keep editing, or OK to leave. The unsaved script/project stays in memory during this session, but is not saved and may be lost when the app closes.')) return false;
+    if (s !== from) {
+      window.DexSourceHover?.hide();
+      for (const picker of Object.values(this._pickers || {})) picker.close();
+      this._loraPickerInst?.close();
+    }
     this._workspaceScrollPositions = this._workspaceScrollPositions || {};
     if (from) {
       const activePane = document.querySelector('[data-scroll-pane]');
@@ -2295,6 +2306,9 @@ class Component extends DCLogic {
 
   // ── Models — load from /api/capabilities & /api/models ───────
   async loadModels() {
+    const request = this._modelCatalogRequest = {};
+    const activation = this._modelActivationRevision;
+    const isCurrent = () => this._modelCatalogRequest === request;
     this.setState({ loadingCheckpoints: true, loadingModelCards: true });
     try {
       const [capRes, modelsRes] = await Promise.allSettled([
@@ -2303,6 +2317,7 @@ class Component extends DCLogic {
       ]);
       if (capRes.status === 'fulfilled' && capRes.value.ok) {
         const data = await capRes.value.json();
+        if (!isCurrent()) return;
         const targets = data.modelTargets || data.controlledTargets || [];
         const checkpoints = targets.map(t => ({
           title: DexClient.targetOptionLabel(t),
@@ -2310,22 +2325,29 @@ class Component extends DCLogic {
           hash: t.status || '',
           status: t.status,
         }));
-        this.setState({ checkpoints, modelTargets: targets, capabilityData: data, modelState: data.modelState || null });
+        this.setState({ checkpoints, modelTargets: targets, capabilityData: data,
+          ...(activation === this._modelActivationRevision && !this._modelActivation ? { modelState: data.modelState || null } : {}) });
         let saved = null;
         try { saved = localStorage.getItem('dex_target'); } catch {}
         const initial = DexClient.chooseInitialTarget(targets, saved, this.state.target);
         // Startup restores the remembered picker state only. Remote worker
         // activation requires an explicit user action.
-        if (initial && initial !== this.state.target) await this.onSelectTarget(initial, { quiet: true, restoreOnly: true });
+        if (initial && !this._initialTargetRestored) {
+          this._initialTargetRestored = true;
+          await this.onSelectTarget(initial, { quiet: true, restoreOnly: true });
+        }
       }
       if (modelsRes.status === 'fulfilled' && modelsRes.value.ok) {
         const data = await modelsRes.value.json();
+        if (!isCurrent()) return;
         this.setState({ modelCards: data.models || [] });
       }
+      if (!isCurrent()) return;
       this.setState({ loadingCheckpoints: false, loadingModelCards: false });
       // Successful discovery is already reflected in the model controls. Keep
       // the transient toast for failures and user actions, not routine startup.
     } catch(e) {
+      if (!isCurrent()) return;
       this.setState({ loadingCheckpoints: false, loadingModelCards: false });
       this.toast('Cannot reach backend', '#ef4444');
     }
@@ -2334,6 +2356,7 @@ class Component extends DCLogic {
   loadCheckpoint(name) { this.selectModelWithValidation(name); }
 
   async selectModelWithValidation(id) {
+    const request = this._modelCheck = {};
     const fromId = this.state.target;
     const activeLoras = this.getActiveLoras();
     try {
@@ -2351,6 +2374,7 @@ class Component extends DCLogic {
       });
       if (res.ok) {
         const data = await res.json();
+        if (this._modelCheck !== request) return;
         if (data.warnings && data.warnings.length) {
           this.setState({ modelSwitchWarning: data.warnings });
           const firstMsg = data.warnings[0].message || data.warnings[0];
@@ -2360,7 +2384,7 @@ class Component extends DCLogic {
         }
       }
     } catch (_) {}
-    await this.onSelectTarget(id, { preserveSettings: true });
+    if (this._modelCheck === request) await this.onSelectTarget(id, { preserveSettings: true });
   }
 
   // Apply a target's capability defaults (dims/steps/cfg/sampler), scaled by the
@@ -2408,9 +2432,47 @@ class Component extends DCLogic {
     this.toast(`Applied model defaults for ${name} (${w}×${h}, ${steps} steps, CFG ${cfg})`, '#38bdf8');
   }
 
+  _createCheckpointHistory() {
+    if (!this._checkpointSettings) {
+      this._checkpointSettings = Object.create(null);
+      try {
+        const saved = JSON.parse(localStorage.getItem('dex_create_checkpoint_settings_v1') || '{}');
+        if (saved && !Array.isArray(saved) && typeof saved === 'object') Object.assign(this._checkpointSettings, saved);
+      } catch (_) {}
+    }
+    return this._checkpointSettings;
+  }
+
+  _rememberCreateCheckpoint(target) {
+    const fields = ['steps', 'cfg', 'sampler', 'scheduler'];
+    const loraFields = ['enabled', 'selectedId', 'strength', 'savedSettings', 'recipeSettings', 'overrides', 'checkpoint'];
+    const history = this._createCheckpointHistory();
+    history[target] = {
+      sampling: Object.fromEntries(fields.map(field => [field, this.state[field]])),
+      lora: Object.fromEntries(loraFields.map(field => [field, this.state.createLora?.[field]]))
+    };
+    try { localStorage.setItem('dex_create_checkpoint_settings_v1', JSON.stringify(history)); } catch (_) {}
+  }
+
+  _restoreCheckpointSampling(target, defaults, saved) {
+    const next = { ...defaults };
+    if (!saved || typeof saved !== 'object') return next;
+    if (Number.isInteger(saved.steps) && saved.steps >= (target.minSteps || 1) && saved.steps <= (target.maxSteps || 150)) next.steps = saved.steps;
+    if (typeof saved.cfg === 'number' && saved.cfg >= 0 && saved.cfg <= 30 && target.fixedCfgScale == null) next.cfg = saved.cfg;
+    if (target.backend !== 'mflux') {
+      if (DexClient.SAMPLER_CHOICES.some(([id]) => id === DexClient.canonicalSamplerId(saved.sampler))) next.sampler = saved.sampler;
+      if (DexClient.SCHEDULER_CHOICES.some(([id]) => id === saved.scheduler)) next.scheduler = saved.scheduler;
+    }
+    return next;
+  }
+
   async onSelectTarget(id, options = {}) {
     const target = (this.state.modelTargets || []).find(t => t.id === id);
     if (!target) return;
+    if (this._modelActivation) {
+      if (!options.quiet) this.toast('A model switch is in progress. Try again when it finishes.', '#fbbf24');
+      return;
+    }
     if (this._enhanceNegAbort) {
       this._enhanceNegAbort.abort();
       this._enhanceNegAbort = null;
@@ -2421,17 +2483,35 @@ class Component extends DCLogic {
     }
     if (!options.restoreOnly && (target.backend || 'sdcpp') !== 'mflux') {
       if (!options.quiet) this.toast('Switching secondary model…', '#fbbf24');
+      this._modelActivation = true;
+      this._modelActivationRevision = {};
       try {
         const response = await fetch(this.state.backendUrl + '/api/models/secondary/activate', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: id }), signal: AbortSignal.timeout(45000)
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
-        this.setState({ modelState: data.modelState || data });
+        const modelState = data.modelState?.activeSecondaryModel !== undefined ? data.modelState : data;
+        if (Object.hasOwn(modelState, 'activeSecondaryModel')) this.setState({ modelState });
+        if (!response.ok) {
+          this.toast('Model switch failed: ' + (data.error || ('HTTP ' + response.status)), '#ef4444');
+          return false;
+        }
+        if (modelState.activeSecondaryModel && modelState.activeSecondaryModel !== id) throw new Error('Server reports a different active checkpoint');
       } catch (error) {
-        this.toast('Model switch failed: ' + error.message, '#ef4444');
-        return;
-      }
+        let active = null;
+        try {
+          const result = await fetch(this.state.backendUrl + '/api/models/secondary', { signal: AbortSignal.timeout(8000) });
+          if (result.ok) {
+            const modelState = await result.json();
+            this.setState({ modelState });
+            active = modelState.activeSecondaryModel;
+          }
+        } catch (_) {}
+        if (active !== id) {
+          this.toast('Model switch could not be confirmed: ' + error.message, '#ef4444');
+          return false;
+        }
+      } finally { this._modelActivation = false; }
     }
     try { localStorage.setItem('dex_target', id); } catch {}
 
@@ -2452,54 +2532,40 @@ class Component extends DCLogic {
       scheduler: target.defaultScheduler
     };
 
-    if (options.preserveSettings) {
-      // Preserve current user settings by default; apply only necessary normalization
-      const dims = DexClient.dimensionsForTarget(target, { width: this.state.width, height: this.state.height });
-      const patch = {
-        target: id,
-        activeCheckpoint: id,
-        width: dims.width,
-        height: dims.height,
-        availableModelDefaults: defaultsInfo
-      };
-      if (target.maxSteps && this.state.steps > target.maxSteps) patch.steps = target.maxSteps;
-      if (target.minSteps && this.state.steps < target.minSteps) patch.steps = target.minSteps;
-      if (target.fixedCfgScale != null) patch.cfg = target.fixedCfgScale;
-      if ((target.backend || 'sdcpp') === 'mflux') patch.sampler = 'euler';
-      else {
-        // Leaving MFLUX: its forced 'euler' is not a user choice, so adopt the new target's own default sampler/scheduler.
-        const prev = (this.state.modelTargets || []).find(x => x.id === this.state.target);
-        if (prev && prev.backend === 'mflux' && target.defaultSampler) { patch.sampler = target.defaultSampler; patch.scheduler = target.defaultScheduler || 'discrete'; }
-      }
-      this.setState(patch);
-    } else {
+    const previousTarget = this.state.target;
+    const currentLora = this.state.createLora || {};
+    const samplingFields = ['steps', 'cfg', 'sampler', 'scheduler'];
+    if (previousTarget !== id || options.restoreOnly) {
+      const history = this._createCheckpointHistory();
+      if (previousTarget && !options.restoreOnly) this._rememberCreateCheckpoint(previousTarget);
+      const saved = history[id];
       this.setState({ target: id, activeCheckpoint: id, availableModelDefaults: defaultsInfo });
       this.applyTargetDefaults(id);
-    }
-
-    const assetsWereForTarget = this.state.assetsTarget === id;
-    this.loadAssets();
-    // Check active Create LoRA compatibility with the new target
-    const currentLoraState = this.state.createLora;
-    if (currentLoraState && currentLoraState.selectedId && currentLoraState.enabled !== false) {
-      const optionsForNewTarget = typeof this._createLoraOptions === 'function' ? this._createLoraOptions(id) : [];
-      const matching = optionsForNewTarget.find(l => l.id === currentLoraState.selectedId);
-      // The loaded cards describe the previous checkpoint. A same-family accelerator
-      // may still have a route here: keep it until this target's cards arrive, when
-      // _restoreCreateLoraSettings either re-applies its recipe or restores settings.
-      const deferToTargetAssets = !assetsWereForTarget && matching && typeof this._acceleratorFamilyMayFit === 'function' && this._acceleratorFamilyMayFit(matching, id);
-      if (!deferToTargetAssets && (!matching || !matching.use_enabled)) {
-        const reason = matching ? matching.unavailable_reason : 'Incompatible with the selected checkpoint';
-        const name = matching ? matching.name : currentLoraState.selectedId;
-        this.toast(`Disabled ${name}: ${reason}`, '#fbbf24');
-        if (typeof this.selectCreateLora === 'function') {
-          this.selectCreateLora('');
-        } else if (typeof this.setCreateLoraEnabled === 'function') {
-          this.setCreateLoraEnabled(false);
-        }
+      this.setState(this._restoreCheckpointSampling(target, {
+        steps: recSteps,
+        cfg: target.fixedCfgScale ?? target.defaultCfgScale ?? (target.backend === 'mflux' ? 1 : recCfg),
+        sampler: target.defaultSampler || (target.backend === 'mflux' ? 'euler' : 'dpm++2m'),
+        scheduler: target.defaultScheduler || 'discrete'
+      }, saved?.sampling));
+      if (typeof this._persistCreateLora === 'function') {
+        const ownsRestored = options.restoreOnly && (currentLora.checkpoint === id || !currentLora.checkpoint);
+        const next = ownsRestored ? currentLora : saved?.lora || {};
+        const priorOption = this._createLoraOptions(id).find(l => l.id === currentLora.selectedId);
+        const sameFamily = !options.restoreOnly && !saved && currentLora.enabled && priorOption && this._acceleratorFamilyMayFit(priorOption, id);
+        const defaults = Object.fromEntries(samplingFields.map(field => [field, this.state[field]]));
+        this._persistCreateLora({
+          enabled: false, selectedId: '', strength: 1, savedSettings: null, recipeSettings: null, overrides: {},
+          ...(sameFamily ? { ...currentLora, savedSettings: defaults, recipeSettings: null, overrides: {} } : next),
+          stack: currentLora.stack, stackEnabled: currentLora.stackEnabled, checkpoint: id
+        });
       }
+    } else {
+      this.setState({ activeCheckpoint: id, availableModelDefaults: defaultsInfo });
+      if (!options.preserveSettings) this.applyTargetDefaults(id);
     }
+    this.loadAssets();
     if (!options.quiet) this.toast('Target set: ' + id, '#38bdf8');
+    return true;
   }
 
   async loadSystemInfo() {
@@ -2569,10 +2635,16 @@ class Component extends DCLogic {
     this.setState({ favoriteName: '' });
   }
 
-  applyFavoritePreset(id) {
+  async applyFavoritePreset(id) {
     const p = this.state.favoritePresets.find(x => x.id === id);
     if (!p) return;
     const target = p.target || this.state.target;
+    if (target !== this.state.target) {
+      if (!await this.onSelectTarget(target, { quiet: true })) return;
+      await this.loadAssets();
+      if (this.state.target !== target) return;
+    }
+    if (typeof this.selectCreateLora === 'function') this.selectCreateLora('');
     // Settings only; the current prompt is kept unless the recipe carries one.
     this.setState({
       target,
@@ -2585,11 +2657,15 @@ class Component extends DCLogic {
       sampler: p.sampler || this.state.sampler,
       scheduler: p.scheduler || this.state.scheduler,
       selectedVae: p.vae || 'default',
-      createLoras: [],
       promptOpen: true
     });
     if (this.ws && p.quantity) this.ws.quantity = p.quantity;
-    const norm = DexEdit.normalizeLoras(p.loras);
+    const norm = Array.isArray(p.loras) ? p.loras : [];
+    if (typeof this.setCreateLoras === 'function' && (norm.length > 1 || this._createLoraOptions(target).some(o => o.staged && o.name === norm[0]?.name))) {
+      this.setCreateLoras(() => norm);
+      this.toast('Applied recipe: ' + p.name, '#65d66e');
+      return;
+    }
     if (norm.length > 0 && typeof this._createLoraOptions === 'function') {
       const options = this._createLoraOptions(target);
       const match = options.find(l => (l.name && l.name.toLowerCase() === norm[0].name.toLowerCase()) || (l.filename && l.filename.replace(/\.[^.]+$/, '').toLowerCase() === norm[0].name.toLowerCase()) || l.id === norm[0].name);
@@ -3971,14 +4047,13 @@ class Component extends DCLogic {
         lorasList.length === 0 ? React.createElement('div', { style: { fontSize: 12, color: '#64748b', fontStyle: 'italic' } }, 'No LoRAs match search.') :
         (() => {
           const loraOptions = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
-          const currentCreateLora = s.createLora || {};
+          const effectiveLoras = this.getEffectiveCreateLoras();
           return lorasList.map(l => {
             const opt = loraOptions.find(o => o.id === l.id || o.name === l.name || (o.filename && o.filename === l.filename));
             const isProven = !!(opt && opt.use_enabled);
-            const isSelected = !!(currentCreateLora.enabled && currentCreateLora.selectedId === l.id && isProven);
-            const activeWeight = isSelected
-              ? Number(currentCreateLora.strength ?? (opt && opt.default_weight) ?? l.default_weight ?? 1.0)
-              : Number((s.loraWeights && s.loraWeights[l.id]) ?? (opt && opt.default_weight) ?? l.default_weight ?? 1.0);
+            const active = effectiveLoras.find(entry => entry.id === l.id);
+            const isSelected = !!active;
+            const activeWeight = Number(active?.weight ?? s.loraWeights?.[l.id] ?? opt?.default_weight ?? l.default_weight ?? 1);
             const compatTone = l.compatibility === 'Compatible' ? '#65d66e' : l.compatibility === 'Probably compatible' ? '#fbbf24' : l.compatibility === 'Incompatible' ? '#ef4444' : '#94a3b8';
 
             const isAccelerator = !!(opt && opt.accelerator);
@@ -3999,7 +4074,7 @@ class Component extends DCLogic {
 
               l.description ? React.createElement('div', { style: { fontSize: 10, lineHeight: 1.35, color: '#94a3b8' } }, l.description) : null,
               React.createElement('div', { role: 'status', style: { color: isProven && !opt.family_only ? '#65d66e' : '#fbbf24', fontSize: 10 } },
-                isProven ? (opt.family_only ? 'Family-compatible · unproven on this checkpoint (verified recipe applied)' : 'Generation verified') : (opt && opt.unavailable_reason ? opt.unavailable_reason : 'File installed; generation not verified for this checkpoint')
+                isProven ? (opt.untested ? 'Installed · inference unverified' : opt.family_only ? 'Family-compatible · unproven on this checkpoint (verified recipe applied)' : 'Generation verified') : (opt && opt.unavailable_reason ? opt.unavailable_reason : 'File installed; generation not verified for this checkpoint')
               ),
               (() => {
                 let url = null;
