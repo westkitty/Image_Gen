@@ -158,6 +158,9 @@ const clickFilter = async (page, label) => { await page.locator('[data-lib-contr
       assert.equal(loaded.status(), 200);
       assert.deepEqual(short((await loaded.json()).items.map(item => item.id)).sort(), ['a1', 'c3']);
       await page.locator(GRID + ' [data-lib-thumb="fixture-a1.png"]').waitFor({ state: 'visible' });
+      // The prior unfiltered grid can still contain a1 while the response is committing.
+      await page.locator(GRID + ' [data-lib-thumb="fixture-b2.png"]').waitFor({ state: 'hidden' });
+      await page.locator(GRID + ' [data-lib-thumb="fixture-d4.png"]').waitFor({ state: 'hidden' });
       assert.deepEqual(short(await ids(page)).sort(), ['a1', 'c3']);
       assert.deepEqual(errors, []);
       await page.close();

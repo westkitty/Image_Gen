@@ -178,12 +178,17 @@ printf 'DEX_3D_ASSETS runtime=%s shape_small=%s shape_large=%s paint_rgb=%s host
     const localRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-3d-'));
     const localOutput = path.join(localRoot, `${jobId}.glb`);
     let lease = null;
+    let preparationSent = false;
     const started = Date.now();
     try {
       lease = await arbiter.acquire(jobId, `hunyuan3d ${mode}`);
       const leaseGrantedAt = Date.now();
       if (!lease.granted) throw Object.assign(new Error('heavy-compute lease was not granted'), { gate: 'resource-wait' });
-      jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group, progress: { phase: 'preparing', label: 'Preparing Big Mac 3D worker' } });
+      const admitted = jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group, progress: { phase: 'preparing', label: 'Preparing Big Mac 3D worker' } });
+      if (admitted.status !== 'RUNNING') {
+        throw Object.assign(new Error('Could not durably record compute admission'), { gate: 'job-storage-unavailable' });
+      }
+      preparationSent = true;
       const prepared = await ssh(`set -e; mkdir -p ${q(`${remoteJobDir}/input`)} ${q(`${remoteJobDir}/output`)}; printf 'DEX_3D_PREPARED\\n'`);
       if (!/DEX_3D_PREPARED/.test(`${prepared.stdout}\n${prepared.stderr}`)) throw new Error('remote preparation missing in-band marker');
       await transport.toWorker(staged.path, remoteInput, 300000);
@@ -252,7 +257,7 @@ printf 'DEX_3D_PASS mode=%s output=%s bytes=%s sha256=%s magic=%s engine=hunyuan
       log(`asset3d ${jobId} ${error.gate || 'generation-failed'}: ${message}`);
       return { ok: false, gate: error.gate || 'generation-failed', error: message, job: jobStore.get(jobId) };
     } finally {
-      try { await ssh(`set +e; rm -rf -- ${q(`${REMOTE_ROOT}/${jobId}`)}; printf 'DEX_3D_CLEANUP_%s\\n' "$([ ! -e ${q(`${REMOTE_ROOT}/${jobId}`)} ] && echo PASS || echo FAIL)"`, 30000); } catch (_) {}
+      if (preparationSent) try { await ssh(`set +e; rm -rf -- ${q(`${REMOTE_ROOT}/${jobId}`)}; printf 'DEX_3D_CLEANUP_%s\\n' "$([ ! -e ${q(`${REMOTE_ROOT}/${jobId}`)} ] && echo PASS || echo FAIL)"`, 30000); } catch (_) {}
       try { fs.rmSync(localRoot, { recursive: true, force: true }); } catch (_) {}
       if (lease && arbiter.holds(jobId)) arbiter.release(jobId);
       try { staging.remove(staged.id); } catch (_) {}

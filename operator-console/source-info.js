@@ -6,6 +6,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { MODEL_CARDS } = require('./model-registry');
 const ROOT = path.join(__dirname, 'source-archive');
 const STAGED_ROOT = '/Volumes/wc2tb/DexDiffusion/models/loras/';
 const cache = new Map();
@@ -68,7 +69,8 @@ function loraInfo(id) {
   const pinned = (cv.versions || []).find(v => v.pinned) || {};
   const triggers = (c.trigger_words && c.trigger_words.length ? c.trigger_words : pinned.trained_words) || [];
   const sources = [];
-  if (cv.source) sources.push({ label: 'CivitAI', url: cv.source.url });
+  if (cv.source?.url) sources.push({ label: 'CivitAI', url: cv.source.url });
+  else if (/^\d+$/.test(String(c.civitai_id))) sources.push({ label: 'CivitAI', url: `https://civitai.com/models/${c.civitai_id}` });
   if (e.huggingface && e.huggingface.source) sources.push({ label: 'Hugging Face', url: e.huggingface.source.url });
   const desc = [pinned.description, cv.description].filter(Boolean).join('\n\n');
   return {
@@ -84,9 +86,9 @@ function loraInfo(id) {
   };
 }
 function modelInfo(id) {
-  const e = readJson(`models/${safe(id)}.json`);
-  if (!e) return null;
-  const card = e.card || {};
+  const e = readJson(`models/${safe(id)}.json`) || {};
+  const card = e.card || MODEL_CARDS.find(model => model.id === id);
+  if (!card) return null;
   const sources = (e.sources || []).filter(s => s.source && s.source.url).map(s => ({ label: s.source.kind === 'civitai' ? 'CivitAI' : s.source.kind === 'huggingface' ? 'Hugging Face' : 'Source', url: s.source.url }));
   if (card.source_url && !sources.some(s => s.url === card.source_url)) sources.unshift({ label: 'Source', url: card.source_url });
   const first = (e.sources || []).find(s => s.description || s.readme) || {};

@@ -68,7 +68,11 @@ function run(name, cmd, args, env = {}) {
   steps.push(step);
   writeReceipt('INCOMPLETE');
   if (step.status === 'FAIL' && process.env.CI === 'true') {
-    console.error(log.trimEnd().split('\n').slice(-50).join('\n').slice(-7000));
+    const lines = log.trimEnd().split('\n');
+    const first = lines.findIndex(line => /(?:^|\s)(?:FAIL|BLOCKED|not ok) /.test(line));
+    const end = Math.max(0, lines.length - 42);
+    if (first >= 0 && first < end) console.error(lines.slice(Math.max(0, first - 3), Math.min(end, first + 20)).join('\n').slice(0, 3500));
+    console.error(lines.slice(end).join('\n').slice(-7000));
   }
   console.log(`${step.status.padEnd(4)} ${name}  (${step.seconds}s${step.tests != null ? `, ${step.passed}/${step.tests}` : `, pass ${step.passed} fail ${step.failed}`})`);
   return step;

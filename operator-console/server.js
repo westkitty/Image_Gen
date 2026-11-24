@@ -1641,12 +1641,13 @@ function syncGenericTerminal(job) {
       timingStore.recordCompletedJob({ worker, operation: job.commandAction, durationMs: dur });
     }
     // Update library index with new canonical artifacts
-    if (st === 'COMPLETE' && libraryIndex) {
+    if (st === 'COMPLETE' && arts.length) {
+      invalidateLibraryImageSnapshots();
       for (const aId of arts) {
         // Per-image metadata wins over the job request: multi-pass workflows (hires-2pass) produce images
         // from different checkpoints and sizes within one job.
         const m = imageMeta.get(aId) || {};
-        libraryIndex.upsertItem({ id: aId, target: m.target || (job.requestParams && job.requestParams.target) || null, operation: m.operation || job.commandAction,
+        libraryIndex?.upsertItem({ id: aId, target: m.target || (job.requestParams && job.requestParams.target) || null, operation: m.operation || job.commandAction,
           width: m.width || null, height: m.height || null, dimensions: m.width && m.height ? `${m.width}x${m.height}` : null, seed: m.seed != null ? m.seed : undefined });
       }
       eventBus.publish('library.changed', { count: arts.length });
@@ -4997,8 +4998,7 @@ app.post('/api/library/images/import', express.raw({ type: () => true, limit: '2
     const ext = path.extname(source.file).toLowerCase();
     const entry = imageStore.adoptFile(source.path, { runDir, runId, runFile: 'source-' + stem + ext });
     // New import ownership must be visible immediately, not after the cache TTL.
-    imageSourceCache = { at: 0, map: new Map() };
-    sourceBrowserCache.at = 0;
+    invalidateLibraryImageSnapshots();
     let metadataStatus = 'recorded';
     try {
       imageMeta.record(entry.image_id, {
@@ -5056,7 +5056,7 @@ app.post('/api/library/images/:id/repair-provenance', (req, res) => {
     const persisted = imageMeta.get(imageId);
     if (!persisted || persisted.operation !== 'import' || persisted.runId !== src.runId ||
         persisted.source_kind !== 'user-upload') throw new Error('Recovered provenance not durable');
-    imageSourceCache.at = 0; sourceBrowserCache.at = 0;
+    invalidateLibraryImageSnapshots();
     res.json({ id: imageId, metadata_status: 'partially-recovered',
       original_name_status: 'not-recoverable',
       warning: 'Source identity, digest and import details recovered. The exact original filename was not preserved.' });
@@ -5071,6 +5071,10 @@ app.post('/api/library/images/:id/repair-provenance', (req, res) => {
 // short process-local verified snapshot; the authoritative image store is
 // rechecked at most 1.5s later and explicit imports invalidate immediately.
 let sourceBrowserCache = { at: 0, ids: [], views: new Map() };
+function invalidateLibraryImageSnapshots() {
+  imageSourceCache.at = 0;
+  sourceBrowserCache.at = 0;
+}
 // Cheap metadata-only index for filtering. The full imageView() computes
 // children/ancestors and width/height; perform that work only for a returned
 // page, not for every historical image on every search keystroke.

@@ -37,8 +37,8 @@ const domains = {
     browsers: ['omni-chat-modes'],
   },
   spatial: {
-    paths: /^operator-console\/(?:world|3d-|video|glb|.*\/(?:world|3d-|video|v2-parity-3d))/,
-    tests: /^(?:world-project|world-bridge|3d-|glb-|video-)/,
+    paths: /^operator-console\/(?:world|asset3d-|3d-|video|glb|.*\/(?:world|asset3d-|3d-|video|v2-parity-3d))/,
+    tests: /^(?:world-project|world-bridge|asset3d-|3d-|glb-|video-)/,
     browsers: ['v2-parity-3d-world'],
   },
   shell: {
@@ -91,18 +91,20 @@ function run(base, head, listOnly) {
     cwd: repo, encoding: 'utf8',
   }).split('\0').filter(Boolean);
   const selection = select(files);
-  const receipt = { base: baseCommit, mergeBase, head: headCommit, fileCount: files.length, ...selection };
+  const worker = files.some(file => file.startsWith('sdcpp-workflow/worker/'));
+  const receipt = { base: baseCommit, mergeBase, head: headCommit, fileCount: files.length, worker, ...selection };
   console.log(JSON.stringify(receipt));
   if (listOnly) return;
 
-  function step(label, args, env = {}) {
-    const result = spawnSync(process.execPath, args, {
-      cwd: consoleRoot, stdio: 'inherit', env: { ...process.env, ...env },
+  function step(label, args, env = {}, command = process.execPath, cwd = consoleRoot) {
+    const result = spawnSync(command, args, {
+      cwd, stdio: 'inherit', env: { ...process.env, ...env },
     });
     console.log(JSON.stringify({ head: headCommit, step: label, exit: result.status, signal: result.signal }));
     if (result.status !== 0) process.exitCode = 1;
   }
   step('syntax', ['--check', 'server.js']);
+  if (worker) step('worker', ['-m', 'unittest', 'discover', '-s', 'sdcpp-workflow/worker', '-p', 'test_*.py', '-v'], {}, 'python3', repo);
   if (selection.units.length) step('unit', ['--test', '--test-concurrency=1', ...selection.units.map(name => 'tests/' + name)]);
   if (selection.browsers.length) step('browser', ['tests/release-gate.js'], {
     DEX_RELEASE_PARTITION: 'browser', DEX_RELEASE_ONLY: selection.browsers.join(','),

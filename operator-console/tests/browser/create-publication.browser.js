@@ -86,6 +86,9 @@ async function main() {
   await page.route(base + route, async interception => {
     if (lostResponse) return interception.continue();
     submittedKey = interception.request().headers()['idempotency-key'];
+    // Prime the actual Library cache immediately before the worker publishes.
+    const prior = await page.request.get(base + '/api/library/images');
+    assert.equal((await prior.json()).total, 0);
     const response = await interception.fetch();
     lostResponse = await response.json();
     await interception.abort('connectionreset');

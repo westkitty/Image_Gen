@@ -215,7 +215,10 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
     try {
       lease = await arbiter.acquire(jobId, 'sharp per-view proposals and fusion');
       if (!lease.granted) return { ok: false, error: 'heavy-compute lease was not granted for SHARP per-view proposals', proposals: [] };
-      jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+      const admitted = jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+      if (admitted.status !== 'RUNNING') {
+        throw Object.assign(new Error('Could not durably record compute admission'), { gate: 'job-storage-unavailable' });
+      }
       worldStore.updateStage(project.id, 'reconstruct', { status: 'RUNNING', worker: 'sharp-reconstruct', model: SHARP_MODEL });
       worldStore.updateStage(project.id, 'align', { status: 'RUNNING', worker: 'world-compiler', model: 'erp-frame-align-v1' });
       const prepared = await ssh(`set -e; mkdir -p ${q(inputDir)} ${q(outputDir)}; printf 'WORLD_SHARP_VIEWS_PREPARED\\n'`);
@@ -294,10 +297,14 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
     const cameraManifest = path.join(localRoot, 'camera.json');
     const anchorManifest = path.join(localRoot, 'erp-reference.json');
     let lease = null;
+    let preparationSent = false;
     try {
       lease = await arbiter.acquire(jobId, 'flux2-world-completion panorama');
       if (!lease.granted) throw Object.assign(new Error('heavy-compute lease was not granted'), { gate: 'resource-wait' });
-      jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+      const admitted = jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+      if (admitted.status !== 'RUNNING') {
+        throw Object.assign(new Error('Could not durably record compute admission'), { gate: 'job-storage-unavailable' });
+      }
       worldStore.updateStage(project.id, 'camera', { status: 'RUNNING', worker: 'world-compiler', model: 'deterministic-camera-v1' });
       await runCompiler(['anchor', '--source', staged.path, '--output', localAnchor, '--mask', localMask, '--manifest', anchorManifest, '--width', String(PANORAMA_WIDTH), '--height', String(PANORAMA_HEIGHT), '--fov', String(project.parameters.fov || 70)]);
       const camera = JSON.parse(fs.readFileSync(anchorManifest, 'utf8'));
@@ -308,6 +315,7 @@ printf 'WORLD_ASSETS sharp=%s checkpoint=%s work=%s panorama=%s host=%s user=%s\
       worldStore.updateStage(project.id, 'erpReference', { status: 'READY', worker: 'world-compiler', model: 'deterministic-camera-v1', artifacts: [anchorRec.artifact_id] });
       worldStore.setManifest(project.id, { sourceCommit: process.env.DEX_WORLD_SOURCE_HEAD || null, dependencies: { erpReference: { source: project.sourceArtifactId, camera: camera.erpReferenceSha256 } } });
       worldStore.updateStage(project.id, 'complete', { status: 'RUNNING', worker: 'flux2-world-completion', model: PANORAMA_MODEL });
+      preparationSent = true;
       const prepared = await ssh(`set -e; mkdir -p ${q(`${remoteDir}/input`)} ${q(`${remoteDir}/output`)}; printf 'WORLD_PANORAMA_PREPARED\\n'`);
       if (!/WORLD_PANORAMA_PREPARED/.test(`${prepared.stdout}\n${prepared.stderr}`)) throw new Error('remote panorama preparation missing in-band marker');
       await transport.toWorker(staged.path, remoteInput, 300000);
@@ -374,7 +382,7 @@ printf 'WORLD_PANORAMA_PASS\\tpath=%s\\twidth=%s\\theight=%s\\tsha256=%s\\tmodel
       log(`world complete360 ${jobId} ${gate}: ${message}`);
       return { ok: false, gate, error: message, project: worldStore.get(project.id) };
     } finally {
-      try { await ssh(`set +e; rm -rf -- ${q(remoteJobDir)}; printf 'WORLD_CLEANUP_%s\\n' "$([ ! -e ${q(remoteJobDir)} ] && echo PASS || echo FAIL)"`, 30000); } catch (_) {}
+      if (preparationSent) try { await ssh(`set +e; rm -rf -- ${q(remoteJobDir)}; printf 'WORLD_CLEANUP_%s\\n' "$([ ! -e ${q(remoteJobDir)} ] && echo PASS || echo FAIL)"`, 30000); } catch (_) {}
       try { fs.rmSync(localRoot, { recursive: true, force: true }); } catch (_) {}
       if (lease && arbiter.holds(jobId)) arbiter.release(jobId);
       try { staging.remove(staged.id); } catch (_) {}
@@ -389,11 +397,16 @@ printf 'WORLD_PANORAMA_PASS\\tpath=%s\\twidth=%s\\theight=%s\\tsha256=%s\\tmodel
     const localTransferRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-world-'));
     const localPly = path.join(localTransferRoot, `${project.id}.ply`);
     let lease = null;
+    let preparationSent = false;
     try {
       lease = await arbiter.acquire(jobId, 'sharp-reconstruct quick3d');
       if (!lease.granted) throw Object.assign(new Error('heavy-compute lease was not granted'), { gate: 'resource-wait' });
-      jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+      const admitted = jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+      if (admitted.status !== 'RUNNING') {
+        throw Object.assign(new Error('Could not durably record compute admission'), { gate: 'job-storage-unavailable' });
+      }
       worldStore.updateStage(project.id, 'reconstruct', { status: 'RUNNING', worker: 'sharp-reconstruct', model: SHARP_MODEL });
+      preparationSent = true;
       const prepared = await ssh(`set -e; mkdir -p ${q(`${remoteDir}/input`)} ${q(remoteOutput)}; printf 'WORLD_PREPARED\\n'`);
       if (!/WORLD_PREPARED/.test(`${prepared.stdout}\n${prepared.stderr}`)) throw new Error('remote preparation missing in-band marker');
       await transport.toWorker(staged.path, remoteInput, 300000);
@@ -437,7 +450,7 @@ printf 'WORLD_SHARP_PASS\\tply=%s\\tbytes=%s\\tvertices=%s\\tsha256=%s\\tdevice=
       log(`world quick3d ${jobId} ${gate}: ${message}`);
       return { ok: false, gate, error: message, project: worldStore.get(project.id) };
     } finally {
-      try { await ssh(`set +e; rm -rf -- ${q(remoteJobDir)}; printf 'WORLD_CLEANUP_%s\\n' "$([ ! -e ${q(remoteJobDir)} ] && echo PASS || echo FAIL)"`, 30000); } catch (_) {}
+      if (preparationSent) try { await ssh(`set +e; rm -rf -- ${q(remoteJobDir)}; printf 'WORLD_CLEANUP_%s\\n' "$([ ! -e ${q(remoteJobDir)} ] && echo PASS || echo FAIL)"`, 30000); } catch (_) {}
       try { fs.rmSync(localTransferRoot, { recursive: true, force: true }); } catch (_) {}
       if (lease && arbiter.holds(jobId)) arbiter.release(jobId);
       try { staging.remove(staged.id); } catch (_) {}

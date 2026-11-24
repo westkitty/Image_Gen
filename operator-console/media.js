@@ -175,7 +175,7 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
     if (TERMINAL.has(status)) { if (!j.completed_at) j.completed_at = now(); j.resource_lease = null; }
     for (const k of ['progress', 'artifacts', 'artifact_validation', 'first_failed_gate', 'error', 'resource_lease', 'model_id']) if (patch[k] !== undefined) j[k] = patch[k];
     if (patch.error) j.error = String(patch.error).slice(0, 300);
-    if (file && (prev !== status || TERMINAL.has(status))) {
+    if (file && (prev !== status || patch.resource_lease !== undefined || TERMINAL.has(status))) {
       try { flush(); }
       catch (err) {
         for (const key of Object.keys(j)) if (!Object.prototype.hasOwnProperty.call(before, key)) delete j[key];

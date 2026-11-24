@@ -183,8 +183,11 @@ async function open(page, base, { jobs = false } = {}) {
       await page.evaluate(() => { __dex._recordConnectionProbe({ at: Date.now(), ok: false, ms: 12001, error: 'No answer within 12 s (timed out)' }); __dex.setState({ backendOnline: false, backendHealth: 'degraded', errorMsg: 'simulated failure' }); });
       const alert = page.locator('[data-studio-offline]'); await alert.waitFor({ state: 'visible' });
       await alert.locator('[data-copy-connection-report]').click();
-      await page.waitForFunction(async () => /Consecutive failed probes/.test(await navigator.clipboard.readText()), null, { timeout: 15000 });
-      const copied = await page.evaluate(() => navigator.clipboard.readText());
+      const captured = await page.waitForFunction(async () => {
+        const text = await navigator.clipboard.readText();
+        return /Consecutive failed probes/.test(text) && text;
+      }, null, { timeout: 15000 });
+      const copied = await captured.jsonValue();
       assert.match(copied, /Backend online: false/); assert.match(copied, /Last error shown: simulated failure/);
       assert.match(copied, /FAILED {2}12001 ms {2}No answer within 12 s/); assert.match(copied, /\/api\/version {2}HTTP 200/);
       await page.evaluate(() => { navigator.clipboard.write = () => Promise.reject(new Error('refused')); navigator.clipboard.writeText = () => Promise.reject(new Error('refused')); });

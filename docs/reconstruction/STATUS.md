@@ -14,14 +14,14 @@ preserved repair commit `8f0a80f`. The archive and original worktrees are separa
 | Entry point | Intended behavior and dependencies | Restoration and verification |
 |---|---|---|
 | Create | Existing target and settings, shared compute lease, SDCPP or MFLUX engine, canonical publication | Simulated worker through real Create, job ledger, publication, Library and UI passed. Corrupt output and failed ledger writes exercised. A dropped HTTP response replayed the same durable job without a second run. Big Mac submission was accepted; installed-worker health timed out before inference. No real artifact was produced. |
-| Batch and plot | Numbered prompts and parameter sweeps using the image dispatcher and owned artifacts | Existing paths carried forward. Domain verification pending. |
-| Edit and Enhance | Reuse canonical source and lineage for image-to-image, masks, outpaint, transform, upscale and refinement | Existing paths and preserved repairs carried forward. Domain verification pending. |
+| Batch and plot | Numbered prompts and parameter sweeps using the image dispatcher and owned artifacts | Existing paths carried forward. Synthetic Chat modes and shared compute checks passed. Live Ollama and prompt enhancement pending. |
+| Edit and Enhance | Reuse canonical source and lineage for image-to-image, masks, outpaint, transform, upscale and refinement | Synthetic Edit request validation and Library source handoff passed across Create, Enhance, 3D, and World. Real image-edit inference pending. |
 | Library | Canonical image and media browsing, selection, downloads, collections and handoffs | Create-to-Library and canonical bytes passed in a synthetic workflow. Other Library flows pending. |
 | Resources | Recipes, styles, macros, wildcard banks, and prompt reuse | Existing paths carried forward. Collections, recipes, macros, styles and wildcard writes now preserve prior data on a failed write. Focused synthetic checks passed. Domain verification pending. |
 | Voice and Drama | Voice profiles and engines, script production, edit, render and export | Existing paths carried forward. Synthetic production and safe cancellation passed. Simulated unavailable Kokoro blocked a cast Drama project while Create, Library and shared compute admission remained usable. Installed engine verification pending. |
-| Chat and prompt intelligence | Ollama-backed Chat and prompt review through the shared compute admission path | Existing paths carried forward. Domain verification pending. |
+| Chat and prompt intelligence | Ollama-backed Chat and prompt review through the shared compute admission path | Existing paths carried forward. Synthetic Chat modes and shared compute checks passed. Live Ollama and prompt enhancement pending. |
 | Music and video | Music and video workflows with worker-backed availability | Existing adapters carried forward. Dormant or unavailable workers need to be identified in current runtime evidence. |
-| 3D and Worlds | Library source handoff, worker capabilities, project storage and preview | Existing paths carried forward. Domain and installed worker verification pending. |
+| 3D and Worlds | Library source handoff, worker capabilities, project storage and preview | Synthetic Library handoff and world workflow passed. SHARP, Hunyuan3D and panorama inference pending. |
 | Studio shell, themes and Mac app | Existing desktop/mobile layouts, workspace navigation and native WebKit launch | Source carried forward. Synthetic Create and Library references captured. Native Swift type-check passed. Staged build, native launch and mobile acceptance are separate gates. |
 
 ## Verification
@@ -39,7 +39,11 @@ in job logs and summaries without a persistent artifact or remote cache budget.
 Production cutover requires separate approval.
 
 The first affected workflow stopped at prerequisite setup. The revised workflow
-passed setup and started cumulative domain verification.
+passed setup. It reported 382/383 Node tests and 21/25 browser suites,
+including 84/84 interaction-matrix cases. Follow-up fixes make model and LoRA
+source cards work without the optional archive, invalidate the Library cache
+after publication, and await the actual clipboard and Keeper UI results.
+Local focused reruns passed. The next Ubuntu run must verify the new head.
 [First run](https://github.com/westkitty/Image_Gen/actions/runs/45474094350)
 and [revised run](https://github.com/westkitty/Image_Gen/actions/runs/45475013685).
 
