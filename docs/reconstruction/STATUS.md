@@ -43,7 +43,10 @@ passed setup. It reported 382/383 Node tests and 21/25 browser suites,
 including 84/84 interaction-matrix cases. Follow-up fixes make model and LoRA
 source cards work without the optional archive, invalidate the Library cache
 after publication, and await the actual clipboard and Keeper UI results.
-Local focused reruns passed. The next Ubuntu run must verify the new head.
+The follow-up Ubuntu run passed its worker and Node partitions and 24 of 25
+selected browser suites. The clipboard test now synchronizes with the app's
+completed-write notification and verifies the copied text and rejection fallback.
+[Follow-up Ubuntu run](https://github.com/westkitty/Image_Gen/actions/runs/45478410938).
 [First run](https://github.com/westkitty/Image_Gen/actions/runs/45474094350)
 and [revised run](https://github.com/westkitty/Image_Gen/actions/runs/45475013685).
 
