@@ -122,9 +122,13 @@ def validate(req, registry):
                'init_image', 'strength', 'control'}
     if set(req) - allowed:
         raise ValueError('unknown fields; paths and commands are forbidden')
-    if req.get('op') not in {'generate', 'status', 'cancel', 'result', 'ack', 'health', 'activate'}:
+    if req.get('op') not in {'generate', 'status', 'cancel', 'result', 'ack', 'health', 'readiness', 'activate'}:
         raise ValueError('unknown operation')
     if req['op'] == 'health':
+        return
+    if req['op'] == 'readiness':
+        if set(req) != {'op'}:
+            raise ValueError('readiness takes no arguments')
         return
     if not RUN_ID.fullmatch(req.get('run_id', '')) or not re.fullmatch(r'[a-f0-9]{64}', req.get('token', '')):
         raise ValueError('invalid job ownership')
@@ -474,6 +478,9 @@ class Worker:
         if req['op'] == 'health':
             return self.health()
         with self.lock:
+            if req['op'] == 'readiness':
+                return {'ok': True, 'active': self.active, 'stopping': self.stopping,
+                        'recovery_uncertain': list(self.recovery_uncertain)}
             run_id = req['run_id']
             digest = hashlib.sha256(req['token'].encode()).hexdigest()
             if req['op'] == 'activate':

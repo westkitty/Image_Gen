@@ -4,14 +4,31 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { parse, publishAfterAcknowledgment } = require('../bin/local-engine-generate');
-const { ownerPath } = require('../local-engine-client');
+const { ownerPath, generationReadiness } = require('../local-engine-client');
 const { enabled } = require('../local-engine-routing');
 const { targetRuntime } = require('../capabilities');
 
-test('worker validates closed requests and owns cancellation/recovery', () => {
+if (process.env.DEX_WORKER_SEPARATE !== '1') test('worker validates closed requests and owns cancellation/recovery', () => {
   const result = spawnSync('python3', ['-m','unittest','discover','-s',path.resolve(__dirname,'../../sdcpp-workflow/worker'),'-p','test_*.py','-v'], { encoding:'utf8',timeout:120000 }); // includes the real-process handoff suite
   assert.equal(result.status,0,result.stderr + result.stdout);
   assert.match(result.stderr,/Ran \d+ tests/);
+});
+test('generation readiness uses the diagnostic probe only with older workers', async () => {
+  const calls = [];
+  const idle = { ok: true, active: null, recovery_uncertain: [] };
+  assert.equal(await generationReadiness(async ({ op }) => { calls.push(op); return idle; }), idle);
+  assert.deepEqual(calls, ['readiness']);
+  calls.length = 0;
+  assert.equal(await generationReadiness(async ({ op }) => {
+    calls.push(op);
+    if (op === 'readiness') throw new Error('Big Mac local engine: unknown operation');
+    return idle;
+  }), idle);
+  assert.deepEqual(calls, ['readiness', 'health']);
+  await assert.rejects(generationReadiness(async ({ op }) => {
+    assert.equal(op, 'readiness');
+    throw new Error('transport timed out');
+  }), /transport timed out/);
 });
 test('transport ownership forbids traversal and malformed identifiers', () => {
   assert.throws(() => ownerPath('../bad'));

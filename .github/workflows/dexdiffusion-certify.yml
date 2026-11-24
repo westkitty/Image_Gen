@@ -24,6 +24,7 @@ jobs:
         partition: [unit, browser, worker]
     env:
       DEX_TEST_ISOLATION: '1'
+      DEX_WORKER_SEPARATE: '1'
       DEX_IMAGE_VALIDATION_PYTHON: python
       DEX_GATEC_PYTHON: python
       DEX_WORLD_COMPILER_PYTHON: python

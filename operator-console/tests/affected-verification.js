@@ -91,7 +91,7 @@ function run(base, head, listOnly) {
     cwd: repo, encoding: 'utf8',
   }).split('\0').filter(Boolean);
   const selection = select(files);
-  const worker = files.some(file => file.startsWith('sdcpp-workflow/worker/'));
+  const worker = files.some(file => /^(sdcpp-workflow\/worker\/|operator-console\/(?:bin\/)?local-engine-)/.test(file));
   const receipt = { base: baseCommit, mergeBase, head: headCommit, fileCount: files.length, worker, ...selection };
   console.log(JSON.stringify(receipt));
   if (listOnly) return;
@@ -105,7 +105,9 @@ function run(base, head, listOnly) {
   }
   step('syntax', ['--check', 'server.js']);
   if (worker) step('worker', ['-m', 'unittest', 'discover', '-s', 'sdcpp-workflow/worker', '-p', 'test_*.py', '-v'], {}, 'python3', repo);
-  if (selection.units.length) step('unit', ['--test', '--test-concurrency=1', ...selection.units.map(name => 'tests/' + name)]);
+  if (selection.units.length) step('unit', ['--test', '--test-concurrency=1', ...selection.units.map(name => 'tests/' + name)], {
+    DEX_WORKER_SEPARATE: '1',
+  });
   if (selection.browsers.length) step('browser', ['tests/release-gate.js'], {
     DEX_RELEASE_PARTITION: 'browser', DEX_RELEASE_ONLY: selection.browsers.join(','),
   });

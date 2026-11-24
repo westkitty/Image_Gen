@@ -55,4 +55,14 @@ async function ownedRequest(id, op) {
   if (!owner) return null;
   return request({ ...owner, op });
 }
-module.exports = { request, ownedRequest, saveOwner, readOwner, ownerPath, OWNER_ROOT };
+async function generationReadiness(requestWorker = request) {
+  try {
+    return await requestWorker({ op: 'readiness' });
+  } catch (error) {
+    // Older workers have only the full diagnostic probe. Transport failures
+    // are not evidence that the worker lacks the new operation.
+    if (error.message !== 'Big Mac local engine: unknown operation') throw error;
+    return requestWorker({ op: 'health' });
+  }
+}
+module.exports = { request, ownedRequest, generationReadiness, saveOwner, readOwner, ownerPath, OWNER_ROOT };

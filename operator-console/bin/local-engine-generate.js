@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { request, saveOwner } = require('../local-engine-client');
+const { request, generationReadiness, saveOwner } = require('../local-engine-client');
 const { createImageStore } = require('../image-store');
 const { resolveStoragePaths, assertDataRootMount } = require('../storage-paths');
 const { createPublicationOutbox } = require('../publication-outbox');
@@ -120,8 +120,9 @@ async function main() {
   }
   // Fail before announcing a remote run when the worker cannot accept requests.
   // This keeps a missing socket from being mistaken for an orphaned inference.
-  const health = await request({op:'health'});
-  if ((health.recovery_uncertain || []).length) throw new Error('Big Mac local engine recovery requires process reconciliation');
+  const readiness = await generationReadiness();
+  if ((readiness.recovery_uncertain || []).length) throw new Error('Big Mac local engine recovery requires process reconciliation');
+  if (readiness.active || readiness.stopping) throw new Error('Big Mac local engine is busy');
   const d = new Date(), stamp = d.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
   const runId = `${stamp}-${init ? 'img2img' : 'controlled'}-${args.target}-${crypto.randomBytes(4).toString('hex')}`;
   const token = crypto.randomBytes(32).toString('hex');

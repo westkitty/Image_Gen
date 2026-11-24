@@ -52,8 +52,10 @@ isolated candidate and a direct client. Process sampling showed a request
 blocked in file open while other handlers and the supervisor waited. The
 attempted image job failed before it owned a remote run. The candidate moves
 health reads outside the lifecycle lock and limits them to one concurrent probe.
-The worker, supervisor and retention suites passed 51 local synthetic tests.
-Production worker recovery and live acceptance remain open.
+Image generation queries lifecycle readiness without opening every model.
+The worker, supervisor and retention suites passed 51 local synthetic tests,
+and the stalled-read regression passed under the installed Big Mac Python
+with synthetic input. Production worker recovery and live inference remain open.
 
 ## Native staging and rollback
 
@@ -63,6 +65,12 @@ compiles, stamps, signs and verifies the same bundle it would install, then
 writes the zip before touching Applications, Dock or Launch Services. Extract
 to an isolated directory to check its signature and stamped SHA. This stage mode
 leaves the installed app alone.
+
+Revision `dcab33a` bootstrapped Studio in real WebKit using an isolated console,
+test bundle identifier and loopback-only launcher helper. The same revision
+published three synthetic images, replayed admissions without duplicate work
+and recovered an accepted pre-dispatch job as interrupted across restart.
+Dock launch and the installed production entry point remain separate checks.
 
 For an approved cutover, preserve the installed bundle, its checkout identity
 and Dock preferences first. Use the existing installer from the verified

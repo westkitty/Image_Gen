@@ -351,6 +351,10 @@ class LifecycleTests(unittest.TestCase):
                 self.assertTrue(self.worker.lock.acquire(timeout=0.5), 'model I/O held the lifecycle lock')
                 self.worker.lock.release()
                 self.assertEqual(self.worker.request({'op': 'backend-status'})['state'], 'DISABLED')
+                self.assertEqual(self.worker.request({'op': 'readiness'}),
+                                 {'ok': True, 'active': None, 'stopping': False, 'recovery_uncertain': []})
+                with self.assertRaisesRegex(ValueError, 'takes no arguments'):
+                    self.worker.request({'op': 'readiness', 'target': 'sdxl-base'})
                 with self.assertRaisesRegex(ValueError, 'health probe already in progress'):
                     self.worker.request({'op': 'health'})
             finally:
