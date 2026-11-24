@@ -48,6 +48,24 @@ test('an unreadable publication record cannot attest to idleness', t => {
   assert.throws(() => outbox.pendingStrict(), SyntaxError);
 });
 
+test('a suspended publication does not hold an isolated fallback open, but unreadable evidence still does', t => {
+  const { publicationBlocksIdle } = require('../backend-quiescence');
+  const root = temp(t);
+  const outbox = createPublicationOutbox(path.join(root, 'outbox'));
+  const image = path.join(root, 'pending.png');
+  fs.writeFileSync(image, 'image bytes');
+  const stat = fs.statSync(image);
+  outbox.create({ image_id: 'pending.png', run_id: 'run', run_file: 'pending.png', bytes: stat.size, sha256: require('node:crypto').createHash('sha256').update('image bytes').digest('hex') }, image);
+  const before = fs.readdirSync(path.join(root, 'outbox')).map(name => fs.readFileSync(path.join(root, 'outbox', name), 'utf8'));
+  assert.equal(publicationBlocksIdle(outbox, false), true);
+  assert.equal(publicationBlocksIdle(outbox, true), false);
+  assert.deepEqual(fs.readdirSync(path.join(root, 'outbox')).map(name => fs.readFileSync(path.join(root, 'outbox', name), 'utf8')), before);
+  fs.writeFileSync(path.join(root, 'outbox', 'f'.repeat(64) + '.json'), '{');
+  assert.throws(() => publicationBlocksIdle(outbox, true), SyntaxError);
+  const server = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  assert.match(server, /&& !publicationBlocksIdle\(publicationOutbox, IS_INTERNAL_FALLBACK\)/);
+});
+
 test('shared-disk reserve matches the worker formula and keeps the 16-image limit for large or unknown work', () => {
   const { sharedDiskReserveBytes } = require('../backend-quiescence');
   const MiB = 1024 ** 2;

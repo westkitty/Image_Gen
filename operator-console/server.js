@@ -77,6 +77,7 @@ if (TestIsolation.enabled()) app.use(TestIsolation.middleware);
 const PORT = Number(process.env.OPERATOR_CONSOLE_PORT || 31337);
 const HOST = '127.0.0.1';
 const supervisorControl = process.env.DEX_BACKEND_CONTROL;
+const { publicationBlocksIdle } = require('./backend-quiescence');
 const quiescence = supervisorControl ? require('./backend-quiescence').backendQuiescence(supervisorControl, isBackendIdle) : null;
 if (quiescence) app.use(quiescence.middleware);
 const APP_VERSION = 'image-gen-console-2026-06-22-render-wrapper';
@@ -6831,7 +6832,7 @@ function isBackendIdle() {
       && !job.resource_lease && (job.owned_resources || []).every(resource => resource.state === 'succeeded'))
     && remoteWorkers.list().every(worker => ['completed', 'cancelled_verified', 'failed'].includes(worker.state))
     && engineTransferJournal && engineTransferJournal.list().length === 0
-    && !publicationOutbox.pendingStrict();
+    && !publicationBlocksIdle(publicationOutbox, IS_INTERNAL_FALLBACK);
 }
 
 app.use((error, req, res, next) => {

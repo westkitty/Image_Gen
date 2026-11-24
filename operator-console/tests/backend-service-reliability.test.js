@@ -121,7 +121,7 @@ test('SSH unavailability and timed out probes remain distinct from confirmed bac
 });
 
 test('unavailable wc2tb selects bounded isolated internal fallback without erasing external data', () => {
-  assert.match(runner, /gtimeout -k 1s 3s/);
+  assert.match(runner, /gtimeout -k 1s 20s/);
   assert.match(runner, /head -c 1/);
   assert.match(runner, /InternalFallback/);
   assert.match(runner, /DEX_STORAGE_MODE=internal-fallback/);

@@ -85,4 +85,10 @@ function sharedDiskReserveBytes(action, requestParams = {}) {
   const images = action === 'controlled-generate' && Number.isInteger(quantity) && quantity >= 1 ? Math.min(16, quantity) : 16;
   return (1024 + 4 * images * 64 + 256) * 1024 ** 2;
 }
-module.exports = { backendQuiescence, requireLedgerShape, sharedDiskReserveBytes };
+// The isolated fallback never publishes, so its unacknowledged records wait on disk
+// for external mode. They must not hold a drain open forever. Malformed evidence
+// still throws, which leaves the backend unsealed.
+function publicationBlocksIdle(outbox, suspended) {
+  return outbox.pendingStrict() && !suspended;
+}
+module.exports = { backendQuiescence, publicationBlocksIdle, requireLedgerShape, sharedDiskReserveBytes };

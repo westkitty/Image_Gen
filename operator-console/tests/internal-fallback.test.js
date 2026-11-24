@@ -43,7 +43,10 @@ test('fallback is explicit, isolated and never claims the full external model li
   const server = fs.readFileSync(path.join(root,'operator-console/server.js'),'utf8');
   const html = fs.readFileSync(path.join(root,'operator-console/public/dexdiffusion/index.html'),'utf8');
   assert.match(runner,/DEX_STORAGE_MODE=internal-fallback/);
-  assert.match(runner,/gtimeout -k 1s 3s \/bin\/ls -a "\$DATA_ROOT\/runs"/);
+  // A sleeping USB drive needs longer than 3 s to answer its first read; every probe stays bounded.
+  assert.match(runner,/gtimeout -k 1s 20s \/bin\/ls -a "\$DATA_ROOT\/state"/);
+  assert.match(runner,/gtimeout -k 1s 10s \/bin\/ls -a "\$DATA_ROOT\/runs"/);
+  assert.match(runner,/gtimeout -k 1s 10s \/bin\/sh -c/);
   assert.match(runner,/\[ ! -e "\$1" \] \|\| \/usr\/bin\/head -c 1/);
   assert.match(runner,/FALLBACK_ROOT="\/Users\/bigmac\/DexDiffusion-InternalFallback"/);
   assert.match(runner,/unset DEX_DATA_ROOT_MOUNT DEX_RUNS_DIR DEX_STATE_DIR/);
