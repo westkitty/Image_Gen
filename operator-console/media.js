@@ -34,9 +34,19 @@ const CANONICAL_ROOTS = {
 function atomicWriteJson(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${crypto.randomBytes(3).toString('hex')}.tmp`;
-  const fd = fs.openSync(tmp, 'w', 0o600);
-  try { fs.writeSync(fd, JSON.stringify(data, null, 1) + '\n'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-  fs.renameSync(tmp, file);
+  const fd = fs.openSync(tmp, 'wx', 0o600);
+  try {
+    try {
+      fs.writeFileSync(fd, JSON.stringify(data, null, 1) + '\n');
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tmp, file);
+  } catch (error) {
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw error;
+  }
   const dirFd = fs.openSync(path.dirname(file), 'r');
   try { fs.fsyncSync(dirFd); } finally { fs.closeSync(dirFd); }
 }
@@ -69,17 +79,38 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
   const notify = (kind, job) => { if (!onChange) return; try { onChange(kind, job); } catch (_) {} };
   const KIND = { RUNNING: 'started', TRANSFERRING: 'progress', COMPLETE: 'completed', FAILED: 'failed', CANCELLED: 'cancelled', INTERRUPTED: 'interrupted' };
   let timer = null;
-  function persist() { if (file) atomicWriteJson(file, { schema: 'dexdiffusion.jobs.v1', jobs: [...jobs.values()] }); }
+  let readError = null;
+  function persist() {
+    if (readError) throw readError;
+    if (file) atomicWriteJson(file, { schema: 'dexdiffusion.jobs.v1', jobs: [...jobs.values()] });
+  }
   function schedule() { clearTimeout(timer); timer = setTimeout(() => { try { persist(); } catch (_) {} }, 50); if (timer.unref) timer.unref(); }
-  function flush() { clearTimeout(timer); persist(); }
+  function flush() { clearTimeout(timer); timer = null; persist(); }
 
-  // Restart reconciliation: nothing that was in flight is pretended to resume.
+  // A malformed or unreadable ledger stays in place. Only absence initializes a new ledger.
   function load() {
     if (!file) return;
-    let data;
-    try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return; }
-    for (const j of (data && data.jobs) || []) {
+    let records;
+    try {
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (data?.schema !== 'dexdiffusion.jobs.v1' || !Array.isArray(data.jobs)) throw new Error('invalid job ledger shape');
+      const ids = new Set();
+      for (const job of data.jobs) {
+        if (!job || typeof job.job_id !== 'string' || !job.job_id || ids.has(job.job_id)
+          || !JOB_STATES.includes(job.status) || (job.owned_resources != null && !Array.isArray(job.owned_resources))) {
+          throw new Error('invalid job ledger record');
+        }
+        ids.add(job.job_id);
+      }
+      records = data.jobs;
+    } catch (error) {
+      if (error.code !== 'ENOENT') readError = error;
+      return;
+    }
+    let changed = false;
+    for (const j of records) {
       if (!TERMINAL.has(j.status)) {
+        changed = true;
         j.status = 'INTERRUPTED'; j.stage_id = 'interrupted';
         j.first_failed_gate = j.first_failed_gate || 'server-restart';
         j.error = 'console restarted before this job finished; it was not re-run';
@@ -87,10 +118,14 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
         j.resource_lease = null;
         j.retry_requires_input = !j.privacy || !j.privacy.persist_text;
       }
-      for (const r of j.owned_resources || []) if (r.state === 'pending') r.state = 'unknown';
+      for (const r of j.owned_resources || []) {
+        if (r?.state === 'pending') { r.state = 'unknown'; changed = true; }
+      }
       jobs.set(j.job_id, j);
     }
-    persist();
+    if (changed) {
+      try { persist(); } catch (error) { readError = error; }
+    }
   }
 
   function create({ job_id, media_kind, operation, worker_id, model_id = null, resource_class = 'light', params = {}, persist_text = false, artifact_required = true }) {
@@ -102,8 +137,14 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
       params: safeParams(params, persist_text), artifacts: [], first_failed_gate: null, error: null,
       privacy: { persist_text: !!persist_text },
     };
+    if (jobs.has(id)) throw new Error('job identity already exists');
     jobs.set(id, j);
-    schedule();
+    try {
+      flush();
+    } catch (error) {
+      jobs.delete(id);
+      throw error;
+    }
     notify('created', j);
     return j;
   }

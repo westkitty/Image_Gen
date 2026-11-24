@@ -1,0 +1,66 @@
+name: DexDiffusion affected verification
+
+on:
+  push:
+    branches: ['reconstruction/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: dexdiffusion-affected-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  affected:
+    if: github.repository == 'westkitty/Image_Gen' && github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      DEX_TEST_ISOLATION: '1'
+      DEX_IMAGE_VALIDATION_PYTHON: python
+      DEX_GATEC_PYTHON: python
+      DEX_WORLD_COMPILER_PYTHON: python
+      OLLAMA_BASE_URL: http://127.0.0.1:9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install locked test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r scripts/omni-test-requirements.txt
+          npm ci --prefix operator-console --ignore-scripts --no-audit --no-fund
+          printf 'DEX_BROWSER_PATH=%s\n' "$(command -v google-chrome)" >> "$GITHUB_ENV"
+          command -v ffmpeg ffprobe
+      - name: Select and verify the cumulative changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          base=origin/main
+          runs="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/dexdiffusion-affected.yml/runs" \
+            -f branch="$GITHUB_REF_NAME" -f status=success -F per_page=30 \
+            --jq '.workflow_runs[].head_sha')"
+          while IFS= read -r commit; do
+            if [[ "$commit" =~ ^[a-f0-9]{40}$ && "$commit" != "$GITHUB_SHA" ]] &&
+               git merge-base --is-ancestor "$commit" "$GITHUB_SHA"; then
+              base="$commit"
+              break
+            fi
+          done <<< "$runs"
+          node operator-console/tests/affected-verification.js "$base" "$GITHUB_SHA" | tee "$RUNNER_TEMP/dex-affected.log"
+      - name: Record the exact verification scope
+        if: always()
+        run: |
+          if [[ -s "$RUNNER_TEMP/dex-affected.log" ]]; then
+            grep '^{"base"\|^{"head"\|^PASS \|^FAIL ' "$RUNNER_TEMP/dex-affected.log" >> "$GITHUB_STEP_SUMMARY" || true
+          fi

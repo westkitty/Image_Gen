@@ -1353,6 +1353,20 @@ function createJob(action, summary, requestParams = {}) {
     }
   }
   const id = crypto.randomUUID();
+  try {
+    const tid = requestParams && requestParams.target;
+    const spec = tid && CONTROLLED_TARGET_BY_ID[tid];
+    jobStore.create({
+      job_id: id, media_kind: 'image', operation: action,
+      worker_id: action === 'upscale' ? 'local' : (spec && spec.backend === 'mflux') ? 'mflux' : 'sdcpp',
+      model_id: tid || null, resource_class: HEAVY_ACTIONS.has(action) ? 'heavy' : 'light',
+      artifact_required: HEAVY_ACTIONS.has(action) || action === 'upscale',
+      params: requestParams, persist_text: !!(requestParams && requestParams.save_prompts),
+    });
+  } catch (error) {
+    console.error('Job admission failed:', error.message);
+    throw Object.assign(new Error('Job storage unavailable'), { status: 503, code: 'job-storage-unavailable' });
+  }
   jobs[id] = {
     id,
     commandAction: action,
@@ -1368,17 +1382,6 @@ function createJob(action, summary, requestParams = {}) {
     runId: null,
     progress: null
   };
-  try {
-    const tid = requestParams && requestParams.target;
-    const spec = tid && CONTROLLED_TARGET_BY_ID[tid];
-    jobStore.create({
-      job_id: id, media_kind: 'image', operation: action,
-      worker_id: action === 'upscale' ? 'local' : (spec && spec.backend === 'mflux') ? 'mflux' : 'sdcpp',
-      model_id: tid || null, resource_class: HEAVY_ACTIONS.has(action) ? 'heavy' : 'light',
-      artifact_required: HEAVY_ACTIONS.has(action) || action === 'upscale',
-      params: requestParams, persist_text: !!(requestParams && requestParams.save_prompts),
-    });
-  } catch (_) {}
   try {
     eventBus.publish('job.created', { id, action, status: 'queued', createdAt: jobs[id].createdAt });
   } catch (_) {}
@@ -1597,13 +1600,16 @@ function syncGenericTerminal(job) {
     first_failed_gate: job.firstFailedGate || null, error: st === 'FAILED' ? `failed at gate ${job.firstFailedGate || 'unknown'}${job.failureReason ? ': ' + job.failureReason : ''}`
       : st === 'INTERRUPTED' ? 'engine result retained in the durable transfer journal; publication pending reconciliation' : null,
   });
-  if (result && result.error && !TERMINAL.has(result.status)) {
-    job.status = 'FAIL'; job.firstFailedGate = job.firstFailedGate || 'job-contract-rejected';
+  // A publication acknowledgement must follow a durable terminal receipt.
+  // If the ledger rejected that receipt, leave publication owned for recovery.
+  if (result.status !== st) {
+    job.status = 'FAIL';
+    job.firstFailedGate = job.firstFailedGate || 'job-contract-rejected';
+    job.stderr = (job.stderr || '') + '\n' + result.error;
     jobStore.transition(job.id, 'FAILED', { first_failed_gate: job.firstFailedGate, error: result.error });
+    if (!holdsLease(job)) arbiter.release(job.id);
+    return;
   }
-  // A terminal API state and its artifact receipt are one durable jobs.json
-  // write. Flush before releasing compute or reporting the terminal event.
-  try { jobStore.flush(); } catch (err) { job.stderr += `\ngeneric-job-flush: ${err.message}`; }
   if ((st === 'COMPLETE' || st === 'CANCELLED') && ids.length) {
     const acknowledged = imageStore.acknowledgePublication(job.id, ids, {
       ownerFinished: id => { const owner = jobStore.get(id); return !(jobs[id] && ['queued', 'running', 'pending', 'starting', 'cancelling'].includes(jobs[id].status)) && (!owner || TERMINAL.has(owner.status)); },
@@ -3850,7 +3856,14 @@ app.post('/api/actions/generate-controlled', (req, res) => {
   if (cn.control) params.__control = cn.control;
 
   // ControlNet runs image by image so every run gets the same control image.
-  const { jobId, spec } = startControlledJob(params, allTargetById, cn.control ? { native: false } : {});
+  let submission;
+  try {
+    submission = startControlledJob(params, allTargetById, cn.control ? { native: false } : {});
+  } catch (error) {
+    if (cn.control) fs.rmSync(cn.control.imagePath, { force: true });
+    throw error;
+  }
+  const { jobId, spec } = submission;
   if (cn.control) jobs[jobId].tempFiles = [...(jobs[jobId].tempFiles || []), cn.control.imagePath];
 
   res.json({
@@ -6766,6 +6779,11 @@ function isBackendIdle() {
     && engineTransferJournal && engineTransferJournal.list().length === 0
     && !publicationOutbox.pendingStrict();
 }
+
+app.use((error, req, res, next) => {
+  if (error.code !== 'job-storage-unavailable') return next(error);
+  res.status(503).json({ error: error.message, gate: error.code });
+});
 
 if (require.main === module) {
   app.listen(PORT, HOST, () => {

@@ -1,0 +1,70 @@
+name: DexDiffusion release certification
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['reconstruction-candidate-*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dexdiffusion-certify-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  portable:
+    if: github.repository == 'westkitty/Image_Gen' && github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        partition: [unit, browser, worker]
+    env:
+      DEX_TEST_ISOLATION: '1'
+      DEX_IMAGE_VALIDATION_PYTHON: python
+      DEX_GATEC_PYTHON: python
+      DEX_WORLD_COMPILER_PYTHON: python
+      OLLAMA_BASE_URL: http://127.0.0.1:9
+      DEX_RELEASE_PARTITION: ${{ matrix.partition }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install locked test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r scripts/omni-test-requirements.txt
+          if [[ "$DEX_RELEASE_PARTITION" != worker ]]; then
+            npm ci --prefix operator-console --ignore-scripts --no-audit --no-fund
+          fi
+          printf 'DEX_BROWSER_PATH=%s\n' "$(command -v google-chrome)" >> "$GITHUB_ENV"
+          printf 'DEX_RELEASE_OUTPUT_DIR=%s\n' "$RUNNER_TEMP/dex-certify" >> "$GITHUB_ENV"
+          command -v ffmpeg ffprobe
+      - name: Verify console partition
+        if: matrix.partition != 'worker'
+        working-directory: operator-console
+        run: npm run test:release
+      - name: Verify worker and operations partition
+        if: matrix.partition == 'worker'
+        run: |
+          set -euo pipefail
+          echo "Candidate $(git rev-parse HEAD), partition worker" >> "$GITHUB_STEP_SUMMARY"
+          python -m unittest discover -s sdcpp-workflow/worker -p 'test_*.py' -v
+          python -m unittest discover -s scripts/test -p 'test_*.py' -v
+      - name: Print the structured console receipt
+        if: ${{ always() && matrix.partition != 'worker' }}
+        run: |
+          if [[ -s "$DEX_RELEASE_OUTPUT_DIR/release-gate.json" ]]; then
+            jq -c '{gitHead,trackedFilesModified,environment,selection,verdict,steps:[.steps[]|del(.log)]}' \
+              "$DEX_RELEASE_OUTPUT_DIR/release-gate.json" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'INCOMPLETE - no console receipt' >> "$GITHUB_STEP_SUMMARY"
+          fi
