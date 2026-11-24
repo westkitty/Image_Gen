@@ -47,8 +47,14 @@ function atomicWriteJson(file, data) {
     try { fs.unlinkSync(tmp); } catch (_) {}
     throw error;
   }
-  const dirFd = fs.openSync(path.dirname(file), 'r');
-  try { fs.fsyncSync(dirFd); } finally { fs.closeSync(dirFd); }
+  try {
+    const dirFd = fs.openSync(path.dirname(file), 'r');
+    try { fs.fsyncSync(dirFd); } finally { fs.closeSync(dirFd); }
+  } catch (error) {
+    // Rename succeeded. Refuse a second write over an unconfirmed commit.
+    error.commitUncertain = true;
+    throw error;
+  }
 }
 
 // ---- Generic jobs ----------------------------------------------------------
@@ -82,7 +88,13 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
   let readError = null;
   function persist() {
     if (readError) throw readError;
-    if (file) atomicWriteJson(file, { schema: 'dexdiffusion.jobs.v1', jobs: [...jobs.values()] });
+    if (!file) return;
+    try {
+      atomicWriteJson(file, { schema: 'dexdiffusion.jobs.v1', jobs: [...jobs.values()] });
+    } catch (error) {
+      if (error.commitUncertain) readError = error;
+      throw error;
+    }
   }
   function schedule() { clearTimeout(timer); timer = setTimeout(() => { try { persist(); } catch (_) {} }, 50); if (timer.unref) timer.unref(); }
   function flush() { clearTimeout(timer); timer = null; persist(); }
@@ -92,6 +104,9 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
     if (!file) return;
     let records;
     try {
+      const existing = fs.lstatSync(file, { throwIfNoEntry: false });
+      if (!existing) return;
+      if (!existing.isFile()) throw new Error('job ledger is not a regular file');
       const data = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (data?.schema !== 'dexdiffusion.jobs.v1' || !Array.isArray(data.jobs)) throw new Error('invalid job ledger shape');
       const ids = new Set();
@@ -160,13 +175,12 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
     if (TERMINAL.has(status)) { if (!j.completed_at) j.completed_at = now(); j.resource_lease = null; }
     for (const k of ['progress', 'artifacts', 'artifact_validation', 'first_failed_gate', 'error', 'resource_lease', 'model_id']) if (patch[k] !== undefined) j[k] = patch[k];
     if (patch.error) j.error = String(patch.error).slice(0, 300);
-    if (TERMINAL.has(status) && file) {
-      clearTimeout(timer); timer = null;
-      try { persist(); }
+    if (file && (prev !== status || TERMINAL.has(status))) {
+      try { flush(); }
       catch (err) {
         for (const key of Object.keys(j)) if (!Object.prototype.hasOwnProperty.call(before, key)) delete j[key];
         Object.assign(j, before);
-        return { error: 'terminal state was not persisted: ' + err.message, status: j.status };
+        return { error: 'job state was not persisted: ' + err.message, status: j.status };
       }
     } else schedule();
     if (prev !== status) notify(KIND[status] || 'progress', j); else if (patch.progress !== undefined) notify('progress', j);

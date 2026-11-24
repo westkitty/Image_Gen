@@ -112,9 +112,9 @@
   P._targetSpec = function (id) { return (this.state.modelTargets || []).find(t => t.id === (id || this.state.target)) || null; };
   P._controls = function () { return D.controlsFor(this._targetSpec()); };
   P._gate = function (k) { const g = ((this.state.capabilityData || {}).featureGates || {})[k]; return !!(g && g.supported === true); };
-  P._api = async function (route, body, method, signal) {
+  P._api = async function (route, body, method, signal, headers) {
     const r = await fetch(this.state.backendUrl + route, body === undefined && !method ? { signal } : {
-      signal, method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+      signal, method: method || 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body || {}) });
     const data = await r.json().catch(() => ({ error: r.statusText }));
     return { ok: r.ok, status: r.status, data };
   };
@@ -703,8 +703,16 @@
     this.setState({ jobStatus: 'generating', progress: null, jobStage: null, currentImageSrc: null, errorMsg: '', lastGenerationParams: Object.assign({}, body, { preset: this.state.preset }) });
     const second = this._ws().second && this._ws().second.on && !this._ws().hires;
     if (second) { for (const k of Object.keys(body)) if (/^hires_/.test(k)) delete body[k]; delete body.quantity; }
-    const r = second ? await this._api('/api/actions/hires-2pass', Object.assign({}, body, { second_pass: this._secondPassBody() }))
-      : await this._api('/api/actions/generate-controlled', body);
+    const requestId = !second && this._gate('createIdempotency') ? globalThis.crypto?.randomUUID?.() : null;
+    const submit = () => second
+      ? this._api('/api/actions/hires-2pass', Object.assign({}, body, { second_pass: this._secondPassBody() }))
+      : this._api('/api/actions/generate-controlled', body, undefined, undefined, requestId ? { 'Idempotency-Key': requestId } : undefined);
+    let r;
+    try {
+      r = await submit().catch(error => { if (requestId) return submit(); throw error; });
+    } catch (_) {
+      r = { ok: false, data: { error: 'Create submission status unknown. Check Jobs before starting another generation.' } };
+    }
     if (!r.ok) {
       this.setState({ jobStatus: 'error', errorMsg: r.data.error || 'rejected' });
       this.toast(r.data.error || 'Generate failed', '#ef4444');

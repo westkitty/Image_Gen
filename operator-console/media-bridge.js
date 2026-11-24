@@ -333,7 +333,9 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       if (!lease.granted) return fail('resource', 'heavy-compute lease was not granted');
       const g = jobStore.get(jobId);
       if (!g || g.status !== 'QUEUED') return { ok: false, gate: 'interrupted' };
-      jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+      if (jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group }).status !== 'RUNNING') {
+        return fail('job-storage-unavailable', 'Could not durably record running');
+      }
 
       // 2. private remote job dir
       const mk = await runExec('ssh', ['-o', 'BatchMode=yes', sshTarget,
@@ -393,7 +395,9 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       if (!String(mk2.OUTPUT).startsWith(remoteDir + '/')) return fail('output-invalid', 'output outside the job directory');
 
       // 5. transfer + checksum
-      jobStore.transition(jobId, 'TRANSFERRING');
+      if (jobStore.transition(jobId, 'TRANSFERRING').status !== 'TRANSFERRING') {
+        return fail('job-storage-unavailable', 'Could not durably record transferring');
+      }
       localOut = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dexmedia-')), 'out.wav');
       await runExec('scp', ['-q', `${sshTarget}:${mk2.OUTPUT}`, localOut], 300000);
       if (!fs.existsSync(localOut) || fs.statSync(localOut).size === 0) return fail('transfer', 'WAV transfer from Big Mac failed');
@@ -419,7 +423,9 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
         });
       } catch (e) { return fail('canonicalization', String(e.message).slice(0, 200)); }
       if (rec.sha256 !== sha) return fail('checksum', 'canonical file checksum mismatch');
-      jobStore.transition(jobId, 'COMPLETE', { artifacts: [rec.artifact_id], artifact_validation: artifactReceipt([rec]) });
+      if (jobStore.transition(jobId, 'COMPLETE', { artifacts: [rec.artifact_id], artifact_validation: artifactReceipt([rec]) }).status !== 'COMPLETE') {
+        return fail('job-storage-unavailable', 'Could not durably record complete');
+      }
       evidence.pass(worker, { at: new Date().toISOString(), job_id: jobId, artifact_id: rec.artifact_id, sha256: sha });
       return { ok: true, artifact: rec };
     } catch (e) {
@@ -479,7 +485,9 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       if (!lease.granted) return fail('resource', 'heavy-compute lease was not granted');
       const g0 = jobStore.get(jobId);
       if (!g0 || g0.status !== 'QUEUED') return { ok: false, gate: 'interrupted' };
-      jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group, progress: { phase: 'preparing', chunk: 0, total } });
+      if (jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group, progress: { phase: 'preparing', chunk: 0, total } }).status !== 'RUNNING') {
+        return fail('job-storage-unavailable', 'Could not durably record running');
+      }
       const mk = await runExec('ssh', ['-o', 'BatchMode=yes', sshTarget,
         `mkdir -p "$HOME/Library/Caches/DexDiffusion/tmp" && d=$(mktemp -d "$HOME/Library/Caches/DexDiffusion/tmp/dexmedia.XXXXXX") && chmod 700 "$d" && echo "DEXMEDIA_DIR=$d"`]);
       remoteDir = parseMarkers(mk.stdout).DIR;
@@ -544,14 +552,18 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
       if (!mk2.DONE && !mk2.PASS) return fail('generation', 'Big Mac generation did not report completion (timeout or connection loss)');
       if (items.length !== total || items.some((it, k) => it.i !== k)) return fail('output-missing', `expected ${total} chunk outputs, Big Mac reported ${items.length}`);
       if (items.some(it => !it.path.startsWith(remoteDir + '/'))) return fail('output-invalid', 'output outside the job directory');
-      jobStore.transition(jobId, 'TRANSFERRING', { progress: { phase: 'transferring', chunk: total, total } });
+      if (jobStore.transition(jobId, 'TRANSFERRING', { progress: { phase: 'transferring', chunk: total, total } }).status !== 'TRANSFERRING') {
+        return fail('job-storage-unavailable', 'Could not durably record transferring');
+      }
       localDir = localDir || fs.mkdtempSync(path.join(os.tmpdir(), 'dexmedia-'));
       if (itemsMode) {
         const bad = await deliver(items);
         if (bad) return bad;
         const patch = { progress: { phase: 'complete', chunk: total, total } };
         if (records.length) Object.assign(patch, { artifacts: records.map(r => r.artifact_id), artifact_validation: artifactReceipt(records) });
-        jobStore.transition(jobId, 'COMPLETE', patch);
+        if (jobStore.transition(jobId, 'COMPLETE', patch).status !== 'COMPLETE') {
+          return fail('job-storage-unavailable', 'Could not durably record complete');
+        }
         evidence.pass(worker, { at: new Date().toISOString(), job_id: jobId, artifact_id: records[0] ? records[0].artifact_id : null, sha256: items[0].sha, chunks: total });
         return { ok: true, items: items.length, records };
       }
@@ -584,7 +596,9 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
             long_form: long ? { chunks: total, lineage } : null }, ctx.meta || {}),
         });
       } catch (e) { return fail('canonicalization', String(e.message).slice(0, 200)); }
-      jobStore.transition(jobId, 'COMPLETE', { artifacts: [rec.artifact_id], artifact_validation: artifactReceipt([rec]), progress: { phase: 'complete', chunk: total, total } });
+      if (jobStore.transition(jobId, 'COMPLETE', { artifacts: [rec.artifact_id], artifact_validation: artifactReceipt([rec]), progress: { phase: 'complete', chunk: total, total } }).status !== 'COMPLETE') {
+        return fail('job-storage-unavailable', 'Could not durably record complete');
+      }
       evidence.pass(worker, { at: new Date().toISOString(), job_id: jobId, artifact_id: rec.artifact_id, sha256: rec.sha256, chunks: total });
       return { ok: true, artifact: rec, lineage };
     } catch (e) {

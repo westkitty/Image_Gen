@@ -15,7 +15,7 @@
 //                  request without killing the server, so it stays quarantined until the scan shows no sd-server running.
 //   unknown        no run identity: verified only when the owned-process scan finds no DexDiffusion work at all.
 const fs = require('node:fs');
-const path = require('node:path');
+const { atomicWriteJson } = require('./media');
 
 const STATES = ['running', 'cancel_requested', 'stop_dispatched', 'stop_pending', 'cancelled_verified', 'stop_unverified', 'orphan_suspect', 'completed', 'failed', 'released_by_operator'];
 const QUARANTINE = new Set(['cancel_requested', 'stop_dispatched', 'stop_pending', 'stop_unverified', 'orphan_suspect']);
@@ -26,18 +26,39 @@ const MAX_RESOLVED_KEPT = 200;
 
 function createRemoteWorkerRegistry({ file = null, now = () => Date.now(), onChange = () => {} } = {}) {
   let records = {};
+  let readError = null;
+  let writeError = null;
   if (file) {
-    try { const d = JSON.parse(fs.readFileSync(file, 'utf8')); if (d && d.records && typeof d.records === 'object') records = d.records; } catch (_) {}
+    try {
+      const existing = fs.lstatSync(file, { throwIfNoEntry: false });
+      if (existing && !existing.isFile()) throw new Error('remote worker ledger is not a regular file');
+      const d = existing ? JSON.parse(fs.readFileSync(file, 'utf8')) : { schema: 'dexdiffusion.remote-workers.v1', records: {} };
+      if (d?.schema !== 'dexdiffusion.remote-workers.v1' || !d.records || Array.isArray(d.records)
+        || typeof d.records !== 'object' || Object.entries(d.records).some(([id, r]) =>
+          !r || r.job_id !== id || !STATES.includes(r.state) || !Array.isArray(r.run_ids) || !Array.isArray(r.evidence))) {
+        throw new Error('invalid remote worker ledger');
+      }
+      records = d.records;
+    } catch (error) {
+      if (error.code !== 'ENOENT') readError = error;
+    }
   }
   function persist() {
+    if (readError) throw readError;
     if (!file) return;
-    // Keep every unresolved record; trim old resolved ones.
+    // Keep every unresolved record and trim old resolved ones only after the write.
     const resolved = Object.values(records).filter(r => RESOLVED.has(r.state)).sort((a, b) => b.updated_at - a.updated_at);
-    for (const r of resolved.slice(MAX_RESOLVED_KEPT)) delete records[r.job_id];
-    const tmp = file + '.tmp-' + process.pid;
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(tmp, JSON.stringify({ schema: 'dexdiffusion.remote-workers.v1', records }, null, 1));
-    fs.renameSync(tmp, file);
+    const next = { ...records };
+    for (const r of resolved.slice(MAX_RESOLVED_KEPT)) delete next[r.job_id];
+    try {
+      atomicWriteJson(file, { schema: 'dexdiffusion.remote-workers.v1', records: next });
+    } catch (error) {
+      writeError = error;
+      if (error.commitUncertain) readError = error;
+      throw error;
+    }
+    writeError = null;
+    records = next;
   }
   const changed = r => { persist(); try { onChange(r); } catch (_) {} return r; };
   function evidence(r, kind, detail) {
@@ -46,18 +67,33 @@ function createRemoteWorkerRegistry({ file = null, now = () => Date.now(), onCha
   }
   function move(r, state, kind, detail) {
     if (!STATES.includes(state)) throw new Error('unknown worker state ' + state);
+    const before = { ...r, evidence: [...r.evidence] };
     r.state = state; r.updated_at = now();
     if (RESOLVED.has(state)) r.resolved_at = r.updated_at;
     if (kind) evidence(r, kind, detail);
-    return changed(r);
+    try {
+      return changed(r);
+    } catch (error) {
+      delete r.resolved_at;
+      Object.assign(r, before);
+      throw error;
+    }
   }
 
   function start(jobId, { action, kind = 'unknown', target = null } = {}) {
-    if (records[jobId] && !RESOLVED.has(records[jobId].state)) return records[jobId];
+    if (readError) throw readError;
+    const previous = records[jobId];
+    if (previous && !RESOLVED.has(previous.state)) return previous;
     const t = now();
     records[jobId] = { job_id: jobId, action: action || null, kind, target, run_ids: [], state: 'running', created_at: t, updated_at: t, stop_attempts: 0, evidence: [] };
     evidence(records[jobId], 'started', `${action || 'job'} (${kind})`);
-    return changed(records[jobId]);
+    try {
+      return changed(records[jobId]);
+    } catch (error) {
+      if (previous) records[jobId] = previous;
+      else delete records[jobId];
+      throw error;
+    }
   }
   function addRun(jobId, runId) {
     const r = records[jobId];
@@ -103,6 +139,7 @@ function createRemoteWorkerRegistry({ file = null, now = () => Date.now(), onCha
   const list = () => Object.values(records).sort((a, b) => b.updated_at - a.updated_at);
   const quarantined = () => list().filter(r => QUARANTINE.has(r.state));
   function quarantineReason() {
+    if (readError || writeError) return 'remote worker ledger requires recovery; heavy compute is paused';
     const q = quarantined();
     if (!q.length) return null;
     const r = q[q.length - 1];

@@ -2,6 +2,7 @@
 # Build and install the DexDiffusion macOS launcher app and pin it in the Dock.
 #
 #   scripts/install-macos-app.sh
+# Set DEXDIFFUSION_STAGE_ARCHIVE to an unused absolute .zip path for a build only.
 #
 # Result: /Applications/DexDiffusion.app (bundle id local.image-gen.wrapper,
 # kept from the original Image_Gen wrapper for continuity). Clicking it runs
@@ -45,6 +46,15 @@ RETIRED="$SUPPORT/retired-launchers"
 GIT_HEAD="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || printf 'unknown')"
 ICON_FINGERPRINT="$(shasum -a 256 "$ICON_SRC" | cut -d' ' -f1)"
 STAMP="$(date +%Y%m%d-%H%M%S)"
+STAGE_ARCHIVE="${DEXDIFFUSION_STAGE_ARCHIVE:-}"
+if [ -n "$STAGE_ARCHIVE" ]; then
+  case "$STAGE_ARCHIVE" in /*.zip) ;; *) echo "ERROR: stage archive needs an absolute .zip path" >&2; exit 2 ;; esac
+  if [ -e "$STAGE_ARCHIVE" ] || [ -L "$STAGE_ARCHIVE" ] || [ ! -d "$(dirname "$STAGE_ARCHIVE")" ]; then
+    echo "ERROR: stage archive needs a new file in an existing directory" >&2
+    exit 2
+  fi
+  git -C "$ROOT" diff --quiet HEAD -- || { echo "ERROR: stage archive requires a clean tracked tree" >&2; exit 2; }
+fi
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 [ -f "$SRC" ] || { echo "ERROR: missing Swift source: $SRC" >&2; exit 1; }
@@ -63,18 +73,20 @@ if ! python3 -c 'import PIL' 2>/dev/null; then
 fi
 
 # ---- preflight safety checks ------------------------------------------------
-avail_kb="$(df -k /Applications 2>/dev/null | awk 'NR==2 {print $4}')"
-if [ -n "$avail_kb" ] && [ "$avail_kb" -lt 500000 ]; then
-  echo "ERROR: Insufficient disk space in /Applications ($((avail_kb / 1024)) MB available, need at least 500 MB)." >&2
-  exit 1
-fi
+if [ -z "$STAGE_ARCHIVE" ]; then
+  avail_kb="$(df -k /Applications 2>/dev/null | awk 'NR==2 {print $4}')"
+  if [ -n "$avail_kb" ] && [ "$avail_kb" -lt 500000 ]; then
+    echo "ERROR: Insufficient disk space in /Applications ($((avail_kb / 1024)) MB available, need at least 500 MB)." >&2
+    exit 1
+  fi
 
-if curl -fsS --max-time 2 http://127.0.0.1:31337/api/resources 2>/dev/null | grep -q '"owner":".\+"'; then
-  echo "WARN: An inference job is currently active on Big Mac. Proceeding with caution (backend will not be interrupted)."
-fi
+  if curl -fsS --max-time 2 http://127.0.0.1:31337/api/resources 2>/dev/null | grep -q '"owner":".\+"'; then
+    echo "WARN: An inference job is currently active on Big Mac. Proceeding with caution (backend will not be interrupted)."
+  fi
 
-if pgrep -x "$EXE_NAME" >/dev/null 2>&1; then
-  echo "Notice: $EXE_NAME is currently running; bundle replacement will take effect on next launch or restart."
+  if pgrep -x "$EXE_NAME" >/dev/null 2>&1; then
+    echo "Notice: $EXE_NAME is currently running; bundle replacement will take effect on next launch or restart."
+  fi
 fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/dexdiffusion-app.XXXXXX")"
@@ -82,6 +94,7 @@ INSTALL_BACKUP=""
 DOCK_BACKUP=""
 DOCK_CHANGED=0
 INSTALL_COMPLETE=0
+ARCHIVE_TMP=""
 cleanup() {
   local result=$?
   if [ "$result" -ne 0 ] && [ "$INSTALL_COMPLETE" -ne 1 ]; then
@@ -102,6 +115,7 @@ cleanup() {
       fi
     fi
   fi
+  if [ -n "$ARCHIVE_TMP" ]; then rm -f -- "$ARCHIVE_TMP"; fi
   rm -rf -- "$WORK"
   return "$result"
 }
@@ -190,6 +204,14 @@ test "$(/usr/libexec/PlistBuddy -c 'Print :DexDiffusionProjectRoot' "$STAGE/Cont
 test "$(/usr/libexec/PlistBuddy -c 'Print :DexDiffusionSourceHead' "$STAGE/Contents/Info.plist")" = "$GIT_HEAD"
 test "$(/usr/libexec/PlistBuddy -c 'Print :DexDiffusionSourceFingerprint' "$STAGE/Contents/Info.plist")" = "$SWIFT_FINGERPRINT"
 codesign --verify --deep --strict "$STAGE" >/dev/null 2>&1 || { echo "ERROR: staged app signature verification failed." >&2; exit 1; }
+
+if [ -n "$STAGE_ARCHIVE" ]; then
+  ARCHIVE_TMP="$(mktemp "$(dirname "$STAGE_ARCHIVE")/.dexdiffusion-stage.XXXXXXXX")"
+  ditto -c -k --keepParent "$STAGE" "$ARCHIVE_TMP"
+  python3 -c 'import os, sys; os.link(sys.argv[1], sys.argv[2])' "$ARCHIVE_TMP" "$STAGE_ARCHIVE"
+  shasum -a 256 "$STAGE_ARCHIVE"
+  exit 0
+fi
 
 mkdir -p "$RETIRED"
 if [ -e "$APP" ]; then

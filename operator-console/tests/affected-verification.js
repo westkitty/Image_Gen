@@ -13,7 +13,7 @@ const browsers = fs.readdirSync(browserDir).filter(name => name.endsWith('.brows
 const domains = {
   foundation: {
     paths: /^(?:\.github\/|scripts\/|bin\/|native\/|operator-console\/(?:package|server\.js|media\.js|media-bridge|job-|remote-workers|storage-|test-isolation|backend-quiescence|operational-jobs|tests\/(?:release-gate|affected-verification|fixtures\/|browser\/(?:helpers|safe-output|server-supervisor))))/,
-    tests: /^(?:job-|media\.|media-bridge|storage-paths|server-publication|backend-quiescence|remote-cancel|browser-target|test-isolation)/,
+    tests: /^(?:job-|media\.|media-bridge|storage-paths|server-publication|backend-quiescence|remote-cancel|op7-remote-workers|browser-target|test-isolation)/,
     browsers: [],
   },
   image: {

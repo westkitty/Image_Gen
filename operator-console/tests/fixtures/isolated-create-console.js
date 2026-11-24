@@ -59,13 +59,13 @@ childProcess.spawn = function (file, args, opts) {
   return child;
 };
 
-const guardedMiddleware = isolation.middleware;
-isolation.middleware = (req, res, next) => {
-  if (req.method === 'POST' && req.socket.remoteAddress === '127.0.0.1'
-    && req.path === '/api/actions/generate-controlled') {
-    return isolation._als.run({ method: req.method, path: req.path }, next);
+const simulatedAssetProbe = isolation.simulatedAssetProbe;
+isolation.simulatedAssetProbe = options => {
+  const assets = simulatedAssetProbe(options);
+  for (const key of Object.keys(assets.dormant)) {
+    if (key.startsWith('kokoro:')) assets.dormant[key] = false;
   }
-  return guardedMiddleware(req, res, next);
+  return assets;
 };
 
 const server = require('../../server').app.listen(0, '127.0.0.1', () => process.send(server.address().port));

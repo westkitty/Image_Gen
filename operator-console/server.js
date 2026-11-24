@@ -1341,7 +1341,7 @@ function recordJobEvidence(job) {
   }
 }
 
-function createJob(action, summary, requestParams = {}) {
+function createJob(action, summary, requestParams = {}, id = crypto.randomUUID()) {
   if (quiescence && (HEAVY_ACTIONS.has(action) || action === 'upscale')) {
     const home = fs.statSync(os.homedir());
     const staging = fs.statSync(STORAGE_PATHS.imageRoot);
@@ -1352,7 +1352,6 @@ function createJob(action, summary, requestParams = {}) {
       throw Object.assign(new Error('Insufficient shared disk for durable generation and publication'), { status: 503 });
     }
   }
-  const id = crypto.randomUUID();
   try {
     const tid = requestParams && requestParams.target;
     const spec = tid && CONTROLLED_TARGET_BY_ID[tid];
@@ -1513,7 +1512,7 @@ function leaseLabel(job) {
   return (t ? t + ' ' : '') + job.commandAction;
 }
 // Run `start` now for light jobs, or once the heavy lease is granted.
-function withLease(jobId, start) {
+function withLease(jobId, start, onAdmissionFailed) {
   const job = jobs[jobId];
   if (!job || !HEAVY_ACTIONS.has(job.commandAction)) { start(); return; }
   if (arbiter.holds(jobId)) { start(); return; }
@@ -1521,8 +1520,25 @@ function withLease(jobId, start) {
   arbiter.acquire(jobId, leaseLabel(job)).then(r => {
     job.waitingForLease = false;
     if (!r.granted || job.status !== 'queued') return;
-    jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
-    try { remoteWorkers.start(jobId, { action: job.commandAction, kind: workerKind(job), target: (job.requestParams && job.requestParams.target) || null }); } catch (_) {}
+    try {
+      const admitted = jobStore.transition(jobId, 'RUNNING', { resource_lease: arbiter.state().group });
+      if (admitted.status !== 'RUNNING' || admitted.error) throw new Error(admitted.error || 'job not admitted');
+      remoteWorkers.start(jobId, { action: job.commandAction, kind: workerKind(job), target: (job.requestParams && job.requestParams.target) || null });
+    } catch (error) {
+      job.status = 'FAIL';
+      job.firstFailedGate = 'job-storage-unavailable';
+      job.failureReason = 'Could not durably record the worker start';
+      job.completedAt = Date.now();
+      job.stderr += '\n' + job.failureReason;
+      console.error('Worker admission failed:', error.message);
+      cleanupJobTempFiles(job);
+      try { syncGenericTerminal(job); } catch (error) {
+        console.error('Worker admission status could not be settled:', error.message);
+        if (!holdsLease(job)) arbiter.release(job.id);
+      }
+      if (onAdmissionFailed) { try { onAdmissionFailed(job); } catch (_) {} }
+      return;
+    }
     try {
       job.startedAt = Date.now();
       eventBus.publish('job.started', { id: jobId, status: 'running' });
@@ -1594,7 +1610,7 @@ function syncGenericTerminal(job) {
       job.stderr = (job.stderr || '') + '\n' + e.message; st = 'FAILED';
     }
   }
-  if (g.status === 'QUEUED') jobStore.transition(job.id, 'RUNNING');
+  if (g.status === 'QUEUED' && st === 'COMPLETE') jobStore.transition(job.id, 'RUNNING');
   const result = jobStore.transition(job.id, st, {
     artifacts: st === 'COMPLETE' || st === 'CANCELLED' ? ids : [], artifact_validation: receipt,
     first_failed_gate: job.firstFailedGate || null, error: st === 'FAILED' ? `failed at gate ${job.firstFailedGate || 'unknown'}${job.failureReason ? ': ' + job.failureReason : ''}`
@@ -1602,21 +1618,20 @@ function syncGenericTerminal(job) {
   });
   // A publication acknowledgement must follow a durable terminal receipt.
   // If the ledger rejected that receipt, leave publication owned for recovery.
-  if (result.status !== st) {
+  const committed = result.status === st;
+  if (!committed) {
     job.status = 'FAIL';
     job.firstFailedGate = job.firstFailedGate || 'job-contract-rejected';
     job.stderr = (job.stderr || '') + '\n' + result.error;
     jobStore.transition(job.id, 'FAILED', { first_failed_gate: job.firstFailedGate, error: result.error });
-    if (!holdsLease(job)) arbiter.release(job.id);
-    return;
-  }
-  if ((st === 'COMPLETE' || st === 'CANCELLED') && ids.length) {
+  } else if ((st === 'COMPLETE' || st === 'CANCELLED') && ids.length) {
     const acknowledged = imageStore.acknowledgePublication(job.id, ids, {
       ownerFinished: id => { const owner = jobStore.get(id); return !(jobs[id] && ['queued', 'running', 'pending', 'starting', 'cancelling'].includes(jobs[id].status)) && (!owner || TERMINAL.has(owner.status)); },
     });
     if (acknowledged.unresolved.length) console.error('Publication receipt acknowledgement unresolved:', JSON.stringify({ job_id: job.id, ...acknowledged }));
   }
   if (!holdsLease(job)) arbiter.release(job.id);
+  if (!committed) return;
   try {
     const eventName = st === 'COMPLETE' ? 'job.completed' : st === 'FAILED' ? 'job.failed' : st === 'CANCELLED' ? 'job.cancelled' : 'job.interrupted';
     eventBus.publish(eventName, { id: job.id, status: st, firstFailedGate: job.firstFailedGate || null, artifactIds: arts });
@@ -1945,7 +1960,7 @@ function runGateFrom(combined, runStdout) {
 // otherwise, or if the native command cannot be built, runs are sequential.
 // The legacy single-image job fields keep pointing at the latest output.
 function runControlledSequential(jobId, spec, params, quantity, opts = {}) {
-  withLease(jobId, () => runControlledSequentialNow(jobId, spec, params, quantity, opts));
+  withLease(jobId, () => runControlledSequentialNow(jobId, spec, params, quantity, opts), opts.onDone);
 }
 function runControlledSequentialNow(jobId, spec, params, quantity, opts = {}) {
   const job = jobs[jobId];
@@ -3174,6 +3189,7 @@ app.get('/api/capabilities', (req, res) => {
     ]),
     presets: PRESET_DEFAULTS,
     featureGates: {
+      createIdempotency: { supported: true },
       txt2img: { supported: true, route: '/api/actions/generate-single' },
       batch: { supported: true, route: '/api/actions/generate-batch' },
       xyzPlot: { supported: true, route: '/api/actions/xyz-plot' },
@@ -3804,7 +3820,11 @@ function startControlledJob(params, allTargetById, opts = {}) {
   const sensitives = [params.prompt, params.negative_prompt].filter(Boolean);
   const summary = getRedactedCommandSummary(controlledScript, args, sensitives) + (params.quantity > 1 ? ` (quantity: ${params.quantity})` : '');
   const { __control, ...recordParams } = params;
-  const jobId = createJob('controlled-generate', summary, sanitizeRequestParams({ ...recordParams, target: spec.id, ...(__control ? { controlnet: { model: __control.model, strength: __control.strength } } : {}) }, params.save_prompts));
+  const jobId = createJob('controlled-generate', summary, sanitizeRequestParams({
+    ...recordParams, target: spec.id,
+    ...(opts.requestId ? { client_request_id: opts.requestId } : {}),
+    ...(__control ? { controlnet: { model: __control.model, strength: __control.strength } } : {}),
+  }, params.save_prompts), opts.requestId);
   jobSensitives[jobId] = sensitives;
   runControlledSequential(jobId, spec, params, params.quantity, opts);
   return { jobId, spec };
@@ -3831,6 +3851,22 @@ function resolveControlnetRequest(raw, spec, params) {
 }
 
 app.post('/api/actions/generate-controlled', (req, res) => {
+  const requestId = req.get('Idempotency-Key');
+  if (requestId !== undefined) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(requestId)) {
+      return res.status(400).json({ error: 'Invalid Create request identity' });
+    }
+    const prior = jobStore.get(requestId);
+    if (prior) {
+      if (prior.operation !== 'controlled-generate' || prior.params?.client_request_id !== requestId) {
+        return res.status(409).json({ error: 'Create request identity already belongs to another operation' });
+      }
+      return res.json({
+        job_id: prior.job_id, status: jobs[prior.job_id]?.status || prior.status,
+        controlledTarget: prior.model_id, replayed: true,
+      });
+    }
+  }
   const allTargetById = allControlledTargets();
   const rawControl = req.body && req.body.controlnet;
   const params = normalizeControlledGenerationBody(Object.fromEntries(Object.entries(req.body || {}).filter(([k]) => k !== 'controlnet')));
@@ -3858,7 +3894,7 @@ app.post('/api/actions/generate-controlled', (req, res) => {
   // ControlNet runs image by image so every run gets the same control image.
   let submission;
   try {
-    submission = startControlledJob(params, allTargetById, cn.control ? { native: false } : {});
+    submission = startControlledJob(params, allTargetById, { requestId, ...(cn.control ? { native: false } : {}) });
   } catch (error) {
     if (cn.control) fs.rmSync(cn.control.imagePath, { force: true });
     throw error;

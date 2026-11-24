@@ -52,12 +52,54 @@ async function main() {
   const browser = await launchBrowser(chromium);
   const page = await browser.newPage({ viewport: { width: 1320, height: 860 } });
   await openStudio(page, base + '/dexdiffusion/');
+  const resources = async () => (await page.request.get(base + '/api/resources')).json();
+  const initial = await resources();
+  assert.equal(initial.owner, null);
+  const projectResponse = await page.request.post(base + '/api/drama/projects', {
+    data: { title: 'Isolated Drama fixture', script: 'NARRATOR: This is a synthetic line.' },
+  });
+  assert.ok(projectResponse.ok(), await projectResponse.text());
+  const { project } = await projectResponse.json();
+  const profileResponse = await page.request.post(base + '/api/voice/profiles', {
+    data: { name: 'Narrator fixture', type: 'preset', preset_voice: 'af_heart' },
+  });
+  assert.ok(profileResponse.ok(), await profileResponse.text());
+  const { profile } = await profileResponse.json();
+  const cast = await page.request.put(base + '/api/drama/projects/' + project.id + '/actors/' + project.actors[0].id, {
+    data: { voice_profile_id: profile.id },
+  });
+  assert.ok(cast.ok(), await cast.text());
+  const refused = await page.request.post(base + '/api/drama/projects/' + project.id + '/produce', { data: { asr: false } });
+  assert.equal(refused.status(), 409, await refused.text());
+  const blocked = await refused.json();
+  assert.equal(blocked.gate, 'production-blocked');
+  assert.ok(blocked.plan.cast_problems.some(problem => problem.reason === 'engine-unavailable'), JSON.stringify(blocked.plan.cast_problems));
+  const afterDrama = await resources();
+  assert.equal(afterDrama.owner, null);
+  assert.deepEqual(afterDrama.waiting, []);
+  assert.equal(afterDrama.quarantine, initial.quarantine);
+  assert.equal((await page.request.get(base + '/api/library/images')).status(), 200);
+
   await page.getByRole('textbox', { name: 'Describe your image' }).fill(fixture.prompt);
+  let lostResponse = null;
+  let submittedKey = null;
+  await page.route(base + route, async interception => {
+    if (lostResponse) return interception.continue();
+    submittedKey = interception.request().headers()['idempotency-key'];
+    const response = await interception.fetch();
+    lostResponse = await response.json();
+    await interception.abort('connectionreset');
+  });
   const admitted = page.waitForResponse(res => res.url() === base + route && res.request().method() === 'POST');
   await page.getByRole('button', { name: 'Generate image', exact: true }).click();
   const response = await admitted;
   assert.equal(response.status(), 200, await response.text());
-  const { job_id } = await response.json();
+  const { job_id, replayed } = await response.json();
+  assert.ok(submittedKey);
+  assert.equal(job_id, lostResponse.job_id);
+  assert.equal(job_id, submittedKey);
+  assert.equal(replayed, true);
+  assert.equal(response.request().headers()['idempotency-key'], submittedKey);
   await page.getByText('Saved to Library', { exact: true }).waitFor({ timeout: 15000 });
   const jobsFile = path.join(env.DEX_STATE_DIR, 'jobs.json');
   const readJob = id => JSON.parse(fs.readFileSync(jobsFile, 'utf8')).jobs.find(job => job.job_id === id);
@@ -72,6 +114,8 @@ async function main() {
     job.artifact_validation.artifacts[0].sha256);
   const library = await (await page.request.get(base + '/api/library/images')).json();
   assert.ok(library.items.some(item => item.id === id));
+  assert.equal((await resources()).owner, null);
+  assert.equal(fs.readdirSync(env.DEX_RUNS_DIR).length, 1, 'a lost response does not execute a second generation');
 
   if (process.env.DEX_CREATE_SCREENSHOTS) {
     const out = createOwnedWriter(resolveOutputDir(process.env.DEX_CREATE_SCREENSHOTS, { label: 'create-reference' }));
@@ -92,13 +136,26 @@ async function main() {
   assert.equal((await (await page.request.get(base + '/api/library/images')).json()).total, library.total);
 
   const before = fs.readdirSync(env.DEX_RUNS_DIR);
+  const workersFile = path.join(env.DEX_STATE_DIR, 'remote-workers.json');
+  fs.renameSync(workersFile, workersFile + '.saved');
+  fs.mkdirSync(workersFile);
+  const refusedWorker = await page.request.post(base + route, { data: fixture });
+  assert.equal(refusedWorker.status(), 200, await refusedWorker.text());
+  const refusedWorkerId = (await refusedWorker.json()).job_id;
+  await page.waitForFunction(async ({ id }) => (await (await fetch('/api/jobs/' + id)).json()).status === 'FAIL',
+    { id: refusedWorkerId }, { timeout: 15000 });
+  assert.equal(readJob(refusedWorkerId).first_failed_gate, 'job-storage-unavailable');
+  assert.equal((await resources()).owner, null);
+  assert.match((await resources()).quarantine, /ledger requires recovery/);
+  assert.deepEqual(fs.readdirSync(env.DEX_RUNS_DIR), before);
+
   fs.renameSync(jobsFile, jobsFile + '.saved');
   fs.mkdirSync(jobsFile);
   const rejected = await page.request.post(base + route, { data: fixture });
   assert.equal(rejected.status(), 503);
   assert.deepEqual(await rejected.json(), { error: 'Job storage unavailable', gate: 'job-storage-unavailable' });
   assert.deepEqual(fs.readdirSync(env.DEX_RUNS_DIR), before);
-  console.log('[create-publication] PASS Create, validated Library publication, corrupt output, and failed admission');
+  console.log('[create-publication] PASS Drama engine unavailable; Create and Library still work; corrupt output and failed ledger writes rejected');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {

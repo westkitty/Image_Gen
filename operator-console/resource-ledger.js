@@ -43,7 +43,9 @@ function openResourceLedger(file, { schemaKey = 'version', schema, key, label })
     try {
       atomicWriteJson(file, { [schemaKey]: schema, updatedAt, [key]: Array.from(next) });
     } catch (error) {
-      throw unavailable(error);
+      const failure = unavailable(error);
+      if (error.commitUncertain) readError = failure;
+      throw failure;
     }
   }
 
