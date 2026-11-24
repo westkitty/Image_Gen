@@ -13,9 +13,9 @@ preserved repair commit `8f0a80f`. The archive and original worktrees are separa
 
 | Entry point | Intended behavior and dependencies | Restoration and verification |
 |---|---|---|
-| Create | Existing target and settings, shared compute lease, SDCPP or MFLUX engine, canonical publication | Simulated worker through real Create, job ledger, publication, Library and UI passed. Corrupt output and failed ledger writes exercised. A dropped HTTP response replayed the same durable job without a second run. The installed Big Mac worker timed out before remote dispatch. The authorized recovery restarted EngineHost, but a model/storage health probe again stalled in file open. |
+| Create | Existing target and settings, shared compute lease, SDCPP or MFLUX engine, canonical publication | Simulated worker through real Create, job ledger, publication, Library and UI passed. Corrupt output and failed ledger writes exercised. A dropped HTTP response replayed the same durable job without a second run. Live FLUX.2 Klein passed through the isolated candidate console and worker on Big Mac: ledger, canonical bytes, Library readback, admission replay and verified remote cancellation. The installed GUI worker remains blocked by an unanswered macOS consent prompt. |
 | Batch and plot | Numbered prompts and parameter sweeps using the image dispatcher and owned artifacts | Existing paths carried forward. Synthetic Chat modes and shared compute checks passed. Live Ollama and prompt enhancement pending. |
-| Edit and Enhance | Reuse canonical source and lineage for image-to-image, masks, outpaint, transform, upscale and refinement | Synthetic Edit request validation and Library source handoff passed across Create, Enhance, 3D, and World. Real image-edit inference pending. |
+| Edit and Enhance | Reuse canonical source and lineage for image-to-image, masks, outpaint, transform, upscale and refinement | Synthetic Edit request validation and Library source handoff passed across Create, Enhance, 3D, and World. Live FLUX.2 Klein image-to-image from a published Library image passed on the isolated candidate worker. SDXL and SD 1.5 edits need the external volume. |
 | Library | Canonical image and media browsing, selection, downloads, collections and handoffs | Create-to-Library and canonical bytes passed in a synthetic workflow. Full browser suite also exercises Library browsing, collection workflows and handoffs. |
 | Resources | Recipes, styles, macros, wildcard banks, and prompt reuse | Existing paths carried forward. Collections, recipes, macros, styles and wildcard writes now preserve prior data on a failed write. Focused and full portable checks exercise the corresponding stores. |
 | Voice and Drama | Voice profiles and engines, script production, edit, render and export | Existing paths carried forward. Synthetic production and safe cancellation passed. Simulated unavailable Kokoro blocked a cast Drama project while Create, Library and shared compute admission remained usable. Installed engine verification pending. |
@@ -63,20 +63,30 @@ must match the new candidate tag.
 [First run](https://github.com/westkitty/Image_Gen/actions/runs/45474094350)
 and [revised run](https://github.com/westkitty/Image_Gen/actions/runs/45475013685).
 
-The installed Big Mac worker timed out at its Unix socket from both the
-isolated candidate and a direct client. Process sampling showed a request
-blocked in file open while other handlers and the supervisor waited. The
-attempted image job failed before it owned a remote run. The candidate moves
-health reads outside the lifecycle lock and limits them to one concurrent probe.
-Image generation queries lifecycle readiness without opening every model.
-The worker, supervisor and retention suites passed 51 local synthetic tests,
-and the stalled-read regression passed under the installed Big Mac Python
-with synthetic input. During the authorized recovery, the old worker remained
-orphaned with the worker lock after launchd stopped its host. Releasing that
-verified orphan let the existing EngineHost and worker start again. Backend
-status returned `RECOVERY_BLOCKED` with no listener and an existing owner
-record. A read-only health call again stalled in file open on the fresh worker.
-The ownership record remains in place. No live inference was dispatched.
+### Big Mac worker stall: cause and correction
+
+The stalled file open was a macOS consent wait. At 12:49:42 MST on November 24 an
+isolated MacBook console ran the SSH asset probe, whose `ls /Volumes/wc2tb` made
+`tccd` prompt for Removable Volumes access on behalf of `tailscaled`
+(`AUTHREQ_PROMPTING`, request 181.1697, never answered). Every later Removable
+Volumes decision queued behind it. The worker's `open`, Ollama and Jellyfin hung.
+EngineHost's own grant is intact: it was allowed at 12:48 and 12:49:03. The
+orphaned probe processes were ended after identity checks. The prompt persists
+without them and needs an owner answer on the Big Mac screen.
+
+The installed worker made the stall total by probing under its lifecycle lock
+(corrected in `d15e21a`). The SSH probe no longer opens the volume (`bc56755`).
+Other user-triggered SSH tools (model header inspection, asset discovery and
+inventory, legacy generation) still can. Answering the prompt with Don't Allow
+records a decision, so they fail promptly instead of prompting again.
+
+`RECOVERY_BLOCKED` was separate. Big Mac panicked (kernel watchdog timeout) at
+12:09 MST on November 23 and left a `backend-instance` record from the previous
+boot. Owner records now carry the boot session. A record proven to predate the
+current boot is archived as `backend-instance.ended-*` and the backend starts.
+Same-boot, unprovable, symlinked, busy-worker and held-port cases stay blocked.
+A read-only run of the new check on Big Mac recognises the real record as ended.
+It has not been deployed, and the record is unchanged.
 
 ## Native staging and rollback
 
@@ -103,15 +113,23 @@ present, re-registers that bundle and verifies the prior console identity with
 working trees intact. A zip build and verification do not exercise Dock launch
 or live hardware.
 
+The installer's automatic rollback (failure injected after the bundle swap) and the
+documented manual rollback were rehearsed in an isolated Applications, home and
+Dock-preference fixture. Both restored the prior bundle's bytes and signature.
+Launch Services, the real Dock and the production entry point were not exercised.
+
 ## Continuation
 
-The full Ubuntu certification for `4c40a28` is tracked in
-[run 45485238609](https://github.com/westkitty/Image_Gen/actions/runs/45485238609).
-[Affected run 45485238013](https://github.com/westkitty/Image_Gen/actions/runs/45485238013)
-found a timing-dependent Chat FIFO test. The follow-up injects a clock into
-that fixture so it can assert the admission result deterministically. The 20
-local Chat tests passed. Certify that follow-up SHA and stage its native archive.
-Big Mac acceptance requires the existing backend owner record to be reconciled
-and health to complete in the graphical worker context. Then run one isolated
-FLUX.2 Klein render and verify its bytes, ledger, and Library readback. Production
-installation and rollback acceptance require the separate cutover boundary.
+1. Owner: answer the `tailscaled` removable-volume dialog on the Big Mac screen.
+   Don't Allow is recommended.
+2. Then, read-only: confirm the installed worker answers `backend-status` and
+   `health`, and that Ollama and Jellyfin respond.
+3. Remaining live acceptance needs the external volume: SDXL and SD 1.5 Create and
+   Edit, Ollama Chat and prompt enhancement, voice, music, video, 3D and Worlds.
+4. Owner approval for cutover: deploy `engine-worker.py` and the checkout containing
+   `backend-supervisor.py` together, restart EngineHost's worker, confirm the prior
+   owner record is archived and 31337 is served, then run a new fallback drill
+   because the rollback proof is revision-bound.
+
+Big Mac still holds `~/.dex-accept-bc56755` (isolated acceptance root, worker stopped,
+no images retained). It can be deleted.
