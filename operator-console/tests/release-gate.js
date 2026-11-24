@@ -62,12 +62,21 @@ function run(name, cmd, args, env = {}) {
   const pass = (log.match(/^\[[^\]]+\] PASS |^(?!\[)[^\n]*\/[^\n]*\/[^\n]* PASS\s*$/gm) || []).length;
   const fail = (log.match(/^\[[^\]]+\] FAIL |^(?!\[)[^\n]*\/[^\n]*\/[^\n]* (?:FAIL|BLOCKED)(?: [^\r\n]*)?$/gm) || []).length;
   const step = { name, status: r.status === 0 ? 'PASS' : 'FAIL', exit: r.status, signal: r.signal || null, seconds: Math.round((Date.now() - t0) / 100) / 10, log: logPath };
-  const tally = /ℹ tests (\d+)[\s\S]*?ℹ pass (\d+)[\s\S]*?ℹ fail (\d+)[\s\S]*?ℹ skipped (\d+)/.exec(log);
+  const tally = /^(?:ℹ|#) tests (\d+)[\s\S]*?^(?:ℹ|#) pass (\d+)[\s\S]*?^(?:ℹ|#) fail (\d+)[\s\S]*?^(?:ℹ|#) skipped (\d+)/m.exec(log);
   if (tally) Object.assign(step, { tests: +tally[1], passed: +tally[2], failed: +tally[3], skipped: +tally[4] });
   else Object.assign(step, { passed: pass, failed: fail });
+  if (name === 'unit') {
+    step.failures = [...log.matchAll(/^not ok (\d+) - ([^\n]+)\r?\n([\s\S]*?)(?:^\s+\.\.\.$|(?=^# Subtest:))/gm)]
+      .map(([, index, test, diagnostic]) => ({
+        index: Number(index), test,
+        location: /^\s+location:\s+(.+)$/m.exec(diagnostic)?.[1] || null,
+        error: /^\s+error:\s+(.+)$/m.exec(diagnostic)?.[1]?.slice(0, 280) || null,
+      }));
+  }
   steps.push(step);
   writeReceipt('INCOMPLETE');
   if (step.status === 'FAIL' && process.env.CI === 'true') {
+    if (step.failures?.length) for (const failure of step.failures) console.error(JSON.stringify({ unitFailure: failure }));
     const lines = log.trimEnd().split('\n');
     const first = lines.findIndex(line => /(?:^|\s)(?:FAIL|BLOCKED|not ok) /.test(line));
     const end = Math.max(0, lines.length - 42);
@@ -80,7 +89,7 @@ function run(name, cmd, args, env = {}) {
 
 if (partition !== 'browser') {
   run('check', process.execPath, ['--check', 'server.js']);
-  run('unit', process.execPath, ['--test', '--test-concurrency=1', ...fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js')).map(f => path.join('tests', f))]);
+  run('unit', process.execPath, ['--test', '--test-reporter=tap', '--test-concurrency=1', ...fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js')).map(f => path.join('tests', f))]);
 }
 for (const s of suites) {
   const env = { DEX_BROWSER_OUTPUT_DIR: path.join(out, s) };

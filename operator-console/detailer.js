@@ -29,7 +29,7 @@ class DetailerError extends Error {
 }
 
 function isVisionDetailerAvailable() {
-  return fs.existsSync(VISION_DETAILER_BIN);
+  return process.platform === 'darwin' && fs.existsSync(VISION_DETAILER_BIN);
 }
 
 // option name → [CLI flag, min, max, default]
@@ -130,6 +130,9 @@ function createDetector({ spawnWorker = spawn, binary = VISION_DETAILER_BIN, att
   }
   return async function detect(imagePath, options = {}) {
     if (!fs.existsSync(imagePath)) throw new DetailerError(`Source image not found: ${imagePath}`, 'not_found');
+    if (binary === VISION_DETAILER_BIN && process.platform !== 'darwin') {
+      throw new DetailerError('Apple Vision detailer requires macOS.', 'unavailable');
+    }
     if (!fs.existsSync(binary)) throw new DetailerError('Native Apple Vision detailer binary not found.', 'unavailable');
     const ownedMask = options.outputMask ? options.outputMask + '.detector-' + require('crypto').randomBytes(6).toString('hex') + '.png' : null;
     const { args } = buildArgs(imagePath, { ...options, outputMask: ownedMask || undefined });
