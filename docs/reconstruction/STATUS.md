@@ -13,9 +13,9 @@ preserved repair commit `8f0a80f`. The archive and original worktrees are separa
 
 | Entry point | Intended behavior and dependencies | Restoration and verification |
 |---|---|---|
-| Create | Existing target and settings, shared compute lease, SDCPP or MFLUX engine, canonical publication | Simulated worker through real Create, job ledger, publication, Library and UI passed. Corrupt output and failed ledger writes exercised. A dropped HTTP response replayed the same durable job without a second run. Live FLUX.2 Klein passed through the isolated candidate console and worker on Big Mac: ledger, canonical bytes, Library readback, admission replay and verified remote cancellation. The installed GUI worker remains blocked by an unanswered macOS consent prompt. |
+| Create | Existing target and settings, shared compute lease, SDCPP or MFLUX engine, canonical publication | Simulated worker through real Create, job ledger, publication, Library and UI passed. Corrupt output and failed ledger writes exercised. A dropped HTTP response replayed the same durable job without a second run. Live FLUX.2 Klein passed through the isolated candidate console and worker on Big Mac: ledger, canonical bytes, Library readback, admission replay and verified remote cancellation. Through the installed EngineHost worker: FLUX.2 Klein, SD 1.5 and SDXL base text-to-image passed with canonical bytes and Library readback. |
 | Batch and plot | Numbered prompts and parameter sweeps using the image dispatcher and owned artifacts | Existing paths carried forward. Synthetic Chat modes and shared compute checks passed. Live Ollama and prompt enhancement pending. |
-| Edit and Enhance | Reuse canonical source and lineage for image-to-image, masks, outpaint, transform, upscale and refinement | Synthetic Edit request validation and Library source handoff passed across Create, Enhance, 3D, and World. Live FLUX.2 Klein image-to-image from a published Library image passed on the isolated candidate worker. SDXL and SD 1.5 edits need the external volume. |
+| Edit and Enhance | Reuse canonical source and lineage for image-to-image, masks, outpaint, transform, upscale and refinement | Synthetic Edit request validation and Library source handoff passed across Create, Enhance, 3D, and World. Live FLUX.2 Klein image-to-image from a published Library image passed on the isolated candidate worker. Klein image-to-image also passed on the installed worker. SD 1.5 edit failed from a MacBook-hosted console, whose edit scripts run the engine over SSH without volume access. The same scripts run on-host through `bin/on-host/ssh` when the backend runs on Big Mac, which is unverified until that backend starts. |
 | Library | Canonical image and media browsing, selection, downloads, collections and handoffs | Create-to-Library and canonical bytes passed in a synthetic workflow. Full browser suite also exercises Library browsing, collection workflows and handoffs. |
 | Resources | Recipes, styles, macros, wildcard banks, and prompt reuse | Existing paths carried forward. Collections, recipes, macros, styles and wildcard writes now preserve prior data on a failed write. Focused and full portable checks exercise the corresponding stores. |
 | Voice and Drama | Voice profiles and engines, script production, edit, render and export | Existing paths carried forward. Synthetic production and safe cancellation passed. Simulated unavailable Kokoro blocked a cast Drama project while Create, Library and shared compute admission remained usable. Installed engine verification pending. |
@@ -71,14 +71,17 @@ isolated MacBook console ran the SSH asset probe, whose `ls /Volumes/wc2tb` made
 (`AUTHREQ_PROMPTING`, request 181.1697, never answered). Every later Removable
 Volumes decision queued behind it. The worker's `open`, Ollama and Jellyfin hung.
 EngineHost's own grant is intact: it was allowed at 12:48 and 12:49:03. The
-orphaned probe processes were ended after identity checks. The prompt persists
-without them and needs an owner answer on the Big Mac screen.
+orphaned probe processes were ended after identity checks. The owner answered
+Don't Allow at about 15:26 MST. The stall cleared: worker health answers at once and
+Jellyfin returned 200.
 
 The installed worker made the stall total by probing under its lifecycle lock
 (corrected in `d15e21a`). The SSH probe no longer opens the volume (`bc56755`).
 Other user-triggered SSH tools (model header inspection, asset discovery and
-inventory, legacy generation) still can. Answering the prompt with Don't Allow
-records a decision, so they fail promptly instead of prompting again.
+inventory, legacy generation) still can. The recorded denial makes them fail
+promptly instead of prompting again. SD 1.5 and SDXL edit scripts from a MacBook-hosted
+console are in the same group; they report gate `img2img-remote-png` and the engine
+log's "unknown format" hides the denied read.
 
 `RECOVERY_BLOCKED` was separate. Big Mac panicked (kernel watchdog timeout) at
 12:09 MST on November 23 and left a `backend-instance` record from the previous
@@ -87,6 +90,25 @@ current boot is archived as `backend-instance.ended-*` and the backend starts.
 Same-boot, unprovable, symlinked, busy-worker and held-port cases stay blocked.
 A read-only run of the new check on Big Mac recognises the real record as ended.
 It has not been deployed, and the record is unchanged.
+
+### Live acceptance after the prompt was answered
+
+Isolated MacBook console at `fc6db5f`, installed worker, seed 424242: Klein 17 s,
+SD 1.5 23 s and 19 s (identical bytes), SDXL base 376 s, Klein edit 15 s. The first
+SD 1.5 attempt exceeded a 180 s harness limit and was cancelled cleanly. Earlier
+jobs show 228 s followed minutes later by 18 s, so a cold external-volume load is
+the likely cause, not proven.
+
+Open gates, in order:
+
+1. Ollama lists no models. Its process runs from a Homebrew version since deleted
+   (0.40.17) and logs `operation not permitted` on its volume. It needs an approved
+   restart with someone at the Big Mac screen. Attribution is likely, not proven.
+2. Approved cutover: `engine-worker.py` with a checkout containing
+   `backend-supervisor.py`. Confirm the old owner record is archived, 31337 is
+   served, and repeat the fallback drill.
+3. Only then: SD 1.5 and SDXL edits, Chat, voice, music, video, 3D and Worlds
+   under EngineHost, then Dock and production launch.
 
 ## Native staging and rollback
 
