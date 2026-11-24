@@ -6004,6 +6004,7 @@ app.post('/api/collections', (req, res) => {
     const col = collectionStore.create(req.body || {});
     res.json({ ok: true, collection: col });
   } catch (err) {
+    if (err.code === 'resource-storage-unavailable') throw err;
     res.status(400).json({ error: err.message });
   }
 });
@@ -6020,6 +6021,7 @@ app.put('/api/collections/:id', (req, res) => {
     if (!col) return res.status(404).json({ error: 'Collection not found' });
     res.json({ ok: true, collection: col });
   } catch (err) {
+    if (err.code === 'resource-storage-unavailable') throw err;
     res.status(400).json({ error: err.message });
   }
 });
@@ -6055,6 +6057,7 @@ app.post('/api/recipes', (req, res) => {
     const r = recipeStore.create(req.body || {});
     res.json({ ok: true, recipe: r });
   } catch (err) {
+    if (err.code === 'resource-storage-unavailable') throw err;
     res.status(400).json({ error: err.message });
   }
 });
@@ -6071,6 +6074,7 @@ app.put('/api/recipes/:id', (req, res) => {
     if (!r) return res.status(404).json({ error: 'Recipe not found' });
     res.json({ ok: true, recipe: r });
   } catch (err) {
+    if (err.code === 'resource-storage-unavailable') throw err;
     res.status(400).json({ error: err.message });
   }
 });
@@ -6096,7 +6100,12 @@ app.post('/api/recipes/import-legacy', (req, res) => {
 app.get('/api/styles', (req, res) => res.json({ styles: stylesStore.list(), placeholder: PromptStyles.PLACEHOLDER }));
 
 app.post('/api/styles', (req, res) => {
-  try { res.status(201).json({ ok: true, style: stylesStore.create(req.body || {}) }); } catch (err) { res.status(400).json({ error: err.message }); }
+  try {
+    res.status(201).json({ ok: true, style: stylesStore.create(req.body || {}) });
+  } catch (err) {
+    if (err.code === 'resource-storage-unavailable') throw err;
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.put('/api/styles/:id', (req, res) => {
@@ -6104,7 +6113,10 @@ app.put('/api/styles/:id', (req, res) => {
     const style = stylesStore.update(req.params.id, req.body || {});
     if (!style) return res.status(404).json({ error: 'Style not found' });
     res.json({ ok: true, style });
-  } catch (err) { res.status(400).json({ error: err.message }); }
+  } catch (err) {
+    if (err.code === 'resource-storage-unavailable') throw err;
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.delete('/api/styles/:id', (req, res) => {
@@ -6140,6 +6152,7 @@ app.post('/api/macros', (req, res) => {
     const m = macroStore.create(req.body || {});
     res.json({ ok: true, macro: m });
   } catch (err) {
+    if (err.code === 'resource-storage-unavailable') throw err;
     res.status(400).json({ error: err.message });
   }
 });
@@ -6781,7 +6794,7 @@ function isBackendIdle() {
 }
 
 app.use((error, req, res, next) => {
-  if (error.code !== 'job-storage-unavailable') return next(error);
+  if (!['job-storage-unavailable', 'resource-storage-unavailable'].includes(error.code)) return next(error);
   res.status(503).json({ error: error.message, gate: error.code });
 });
 

@@ -6,8 +6,7 @@
 // Prompt text is saved ONLY if explicitly enabled with user confirmation.
 // Provides CRUD and migration import from legacy localStorage styles.
 
-const fs = require('fs');
-const path = require('path');
+const { openResourceLedger } = require('./resource-ledger');
 const crypto = require('crypto');
 
 const SCHEMA_VERSION = 'dexdiffusion.recipe.v1';
@@ -15,49 +14,20 @@ const SCHEMA_VERSION = 'dexdiffusion.recipe.v1';
 const ALLOWED_CATEGORIES = new Set(['generation', 'edit', 'enhance', 'voice', 'music']);
 
 function createRecipeStore(filePath) {
-  let recipes = new Map(); // id -> recipe
+  const ledger = openResourceLedger(filePath, { schema: SCHEMA_VERSION, key: 'recipes', label: 'Recipes' });
+  let recipes = new Map(ledger.items.map(item => [item.id, item]));
 
-  function load() {
-    if (!filePath) return;
-    try {
-      if (fs.existsSync(filePath)) {
-        const raw = fs.readFileSync(filePath, 'utf8');
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.version === SCHEMA_VERSION && Array.isArray(parsed.recipes)) {
-          recipes.clear();
-          for (const r of parsed.recipes) {
-            if (r && r.id) {
-              recipes.set(r.id, r);
-            }
-          }
-        }
-      }
-    } catch (_) {
-      recipes = new Map();
-    }
+  function commit(next) {
+    ledger.write(next.values());
+    recipes = next;
   }
-
-  function save() {
-    if (!filePath) return;
-    try {
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const tmp = `${filePath}.tmp.${Date.now()}`;
-      const payload = {
-        version: SCHEMA_VERSION,
-        updatedAt: Date.now(),
-        recipes: Array.from(recipes.values())
-      };
-      fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), 'utf8');
-      fs.renameSync(tmp, filePath);
-    } catch (err) {
-      console.error('Failed to save recipes:', err.message);
-    }
+  function save(record) {
+    commit(new Map(recipes).set(record.id, record));
+    return record;
   }
-
-  load();
 
   function list({ category = null, search = '' } = {}) {
+    ledger.assertReadable();
     let items = Array.from(recipes.values());
     if (category && ALLOWED_CATEGORIES.has(category)) {
       items = items.filter(r => r.category === category);
@@ -75,10 +45,11 @@ function createRecipeStore(filePath) {
   }
 
   function get(id) {
+    ledger.assertReadable();
     return recipes.get(id) || null;
   }
 
-  function create({
+  function makeRecipe({
     name,
     description = '',
     category = 'generation',
@@ -117,14 +88,17 @@ function createRecipeStore(filePath) {
       updatedAt: now
     };
 
-    recipes.set(id, recipe);
-    save();
     return recipe;
   }
 
+  function create(input) {
+    return save(makeRecipe(input));
+  }
+
   function update(id, patch = {}) {
-    const r = recipes.get(id);
-    if (!r) return null;
+    const existing = get(id);
+    if (!existing) return null;
+    const r = { ...existing };
     if (patch.name !== undefined) {
       if (!patch.name || typeof patch.name !== 'string' || !patch.name.trim()) throw new Error('Name cannot be empty');
       r.name = patch.name.trim();
@@ -150,20 +124,19 @@ function createRecipeStore(filePath) {
       }
     }
     r.updatedAt = Date.now();
-    save();
-    return r;
+    return save(r);
   }
 
   function remove(id) {
-    if (recipes.delete(id)) {
-      save();
-      return true;
-    }
-    return false;
+    if (!get(id)) return false;
+    const next = new Map(recipes);
+    next.delete(id);
+    commit(next);
+    return true;
   }
 
   function duplicate(id, newName = null) {
-    const orig = recipes.get(id);
+    const orig = get(id);
     if (!orig) return null;
     const name = newName || `${orig.name} (Copy)`;
     return create({
@@ -182,9 +155,10 @@ function createRecipeStore(filePath) {
   function importLegacyStyles(legacyStylesArray = []) {
     let importedCount = 0;
     if (!Array.isArray(legacyStylesArray)) return { importedCount: 0 };
+    const next = new Map(recipes);
     for (const item of legacyStylesArray) {
       if (item && item.name) {
-        create({
+        const recipe = makeRecipe({
           name: item.name,
           description: item.description || 'Imported from browser styles',
           category: 'generation',
@@ -192,9 +166,11 @@ function createRecipeStore(filePath) {
           parameters: item.parameters || item.settings || {},
           tags: ['imported']
         });
+        next.set(recipe.id, recipe);
         importedCount++;
       }
     }
+    if (importedCount) commit(next);
     return { importedCount };
   }
 

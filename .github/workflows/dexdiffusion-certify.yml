@@ -45,9 +45,22 @@ jobs:
           if [[ "$DEX_RELEASE_PARTITION" != worker ]]; then
             npm ci --prefix operator-console --ignore-scripts --no-audit --no-fund
           fi
-          printf 'DEX_BROWSER_PATH=%s\n' "$(command -v google-chrome)" >> "$GITHUB_ENV"
+          if ! command -v ffmpeg || ! command -v ffprobe; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
+          command -v ffmpeg && command -v ffprobe
+          if [[ "$DEX_RELEASE_PARTITION" != worker ]]; then
+            if ! command -v google-chrome; then
+              (cd operator-console && npx --no-install playwright-core install --with-deps chromium)
+              chrome="$(node -p 'require("./operator-console/node_modules/playwright-core").chromium.executablePath()')"
+            else
+              chrome="$(command -v google-chrome)"
+            fi
+            test -x "$chrome"
+            printf 'DEX_BROWSER_PATH=%s\n' "$chrome" >> "$GITHUB_ENV"
+          fi
           printf 'DEX_RELEASE_OUTPUT_DIR=%s\n' "$RUNNER_TEMP/dex-certify" >> "$GITHUB_ENV"
-          command -v ffmpeg ffprobe
       - name: Verify console partition
         if: matrix.partition != 'worker'
         working-directory: operator-console

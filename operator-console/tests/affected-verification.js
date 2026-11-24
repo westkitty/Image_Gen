@@ -22,8 +22,8 @@ const domains = {
     browsers: ['create-publication', 'edit-img2img-parity', 'edit-workbench', 'v2-parity-library-flow'],
   },
   resources: {
-    paths: /^(?:operator-console\/(?:collections|recipes|styles|macro|wildcard|library|.*\/(?:prompt-|library|macro|wildcard)))/,
-    tests: /^(?:collection|recipe|macro|wildcard|library-organize|prompt-styles)/,
+    paths: /^(?:operator-console\/(?:collections|recipes|styles|macro|wildcard|library|resource-ledger|.*\/(?:prompt-|library|macro|wildcard)))/,
+    tests: /^(?:collection|recipe|macro|wildcard|library-organize|prompt-styles|resource-ledger)/,
     browsers: ['v2-parity-prompt-assets', 'v2-parity-library-flow', 'wildcard-placement'],
   },
   audio: {

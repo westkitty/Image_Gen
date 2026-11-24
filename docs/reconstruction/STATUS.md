@@ -13,11 +13,11 @@ preserved repair commit `8f0a80f`. The archive and original worktrees are separa
 
 | Entry point | Intended behavior and dependencies | Restoration and verification |
 |---|---|---|
-| Create | Existing target and settings, shared compute lease, SDCPP or MFLUX engine, canonical publication | Simulated worker through real Create, job ledger, publication, Library and UI passed. Corrupt output and failed admission exercised. Big Mac integration pending. |
+| Create | Existing target and settings, shared compute lease, SDCPP or MFLUX engine, canonical publication | Simulated worker through real Create, job ledger, publication, Library and UI passed. Corrupt output and failed admission exercised. Big Mac submission was accepted; installed-worker health timed out before inference. No real artifact was produced. |
 | Batch and plot | Numbered prompts and parameter sweeps using the image dispatcher and owned artifacts | Existing paths carried forward. Domain verification pending. |
 | Edit and Enhance | Reuse canonical source and lineage for image-to-image, masks, outpaint, transform, upscale and refinement | Existing paths and preserved repairs carried forward. Domain verification pending. |
 | Library | Canonical image and media browsing, selection, downloads, collections and handoffs | Create-to-Library and canonical bytes passed in a synthetic workflow. Other Library flows pending. |
-| Resources | Recipes, styles, macros, wildcard banks, and prompt reuse | Existing paths carried forward. Durability and domain verification pending. |
+| Resources | Recipes, styles, macros, wildcard banks, and prompt reuse | Existing paths carried forward. Collections, recipes, macros, styles and wildcard writes now preserve prior data on a failed write. Focused synthetic checks passed. Domain verification pending. |
 | Voice and Drama | Voice profiles and engines, script production, edit, render and export | Existing paths carried forward. Explicit Drama fault isolation and engine verification pending. |
 | Chat and prompt intelligence | Ollama-backed Chat and prompt review through the shared compute admission path | Existing paths carried forward. Domain verification pending. |
 | Music and video | Music and video workflows with worker-backed availability | Existing adapters carried forward. Dormant or unavailable workers need to be identified in current runtime evidence. |
@@ -38,6 +38,5 @@ The repository is public. Workflows use standard Ubuntu runners. Receipts stay
 in job logs and summaries without a persistent artifact or remote cache budget.
 Production cutover requires separate approval.
 
-Active work is the first real Big Mac slice, selective CI, and shared resource
-persistence. The previous interrupted aggregate run does not qualify the present
+Active work is diagnosis of the Big Mac worker timeout, affected verification, and the Drama isolation experiment. The first affected workflow run stopped at prerequisite setup; the next revision provisions missing Ubuntu tools. The previous interrupted aggregate run does not qualify the present
 candidate. No production runtime is certified by this document.

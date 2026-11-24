@@ -5,68 +5,36 @@
 // Versioned schema `dexdiffusion.collections.v1`, atomic persistence.
 // Does NOT duplicate image bytes.
 
-const fs = require('fs');
-const path = require('path');
+const { openResourceLedger } = require('./resource-ledger');
 const crypto = require('crypto');
 
 const SCHEMA_VERSION = 'dexdiffusion.collections.v1';
 
 function createCollectionStore(filePath) {
-  let collections = new Map(); // id -> collection
+  const ledger = openResourceLedger(filePath, { schema: SCHEMA_VERSION, key: 'collections', label: 'Collections' });
+  let collections = new Map(ledger.items.map(item => [item.id, {
+      ...item, name: item.name || 'Untitled Collection', description: item.description || '',
+      tags: Array.isArray(item.tags) ? item.tags : [],
+      artifactIds: Array.isArray(item.artifactIds) ? item.artifactIds : [],
+      createdAt: item.createdAt || Date.now(), updatedAt: item.updatedAt || Date.now(),
+    }]));
 
-  function load() {
-    if (!filePath) return;
-    try {
-      if (fs.existsSync(filePath)) {
-        const raw = fs.readFileSync(filePath, 'utf8');
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.version === SCHEMA_VERSION && Array.isArray(parsed.collections)) {
-          collections.clear();
-          for (const c of parsed.collections) {
-            if (c && c.id) {
-              collections.set(c.id, {
-                id: c.id,
-                name: c.name || 'Untitled Collection',
-                description: c.description || '',
-                tags: Array.isArray(c.tags) ? c.tags : [],
-                artifactIds: Array.isArray(c.artifactIds) ? c.artifactIds : [],
-                createdAt: c.createdAt || Date.now(),
-                updatedAt: c.updatedAt || Date.now()
-              });
-            }
-          }
-        }
-      }
-    } catch (_) {
-      collections = new Map();
-    }
+  function commit(next) {
+    ledger.write(next.values());
+    collections = next;
   }
-
-  function save() {
-    if (!filePath) return;
-    try {
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const tmp = `${filePath}.tmp.${Date.now()}`;
-      const payload = {
-        version: SCHEMA_VERSION,
-        updatedAt: Date.now(),
-        collections: Array.from(collections.values())
-      };
-      fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), 'utf8');
-      fs.renameSync(tmp, filePath);
-    } catch (err) {
-      console.error('Failed to save collections:', err.message);
-    }
+  function save(record) {
+    commit(new Map(collections).set(record.id, record));
+    return record;
   }
-
-  load();
 
   function list() {
+    ledger.assertReadable();
     return Array.from(collections.values()).sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   function get(id) {
+    ledger.assertReadable();
     return collections.get(id) || null;
   }
 
@@ -85,14 +53,13 @@ function createCollectionStore(filePath) {
       createdAt: now,
       updatedAt: now
     };
-    collections.set(id, col);
-    save();
-    return col;
+    return save(col);
   }
 
   function update(id, { name, description, tags, artifactIds }) {
-    const col = collections.get(id);
-    if (!col) return null;
+    const existing = get(id);
+    if (!existing) return null;
+    const col = { ...existing };
     if (name !== undefined) {
       if (!name || typeof name !== 'string' || !name.trim()) throw new Error('Name cannot be empty');
       col.name = name.trim();
@@ -101,39 +68,38 @@ function createCollectionStore(filePath) {
     if (tags !== undefined && Array.isArray(tags)) col.tags = tags.map(String);
     if (artifactIds !== undefined && Array.isArray(artifactIds)) col.artifactIds = [...new Set(artifactIds.map(String))];
     col.updatedAt = Date.now();
-    save();
-    return col;
+    return save(col);
   }
 
   function addArtifacts(id, newIds = []) {
-    const col = collections.get(id);
-    if (!col) return null;
+    const existing = get(id);
+    if (!existing) return null;
+    const col = { ...existing };
     const set = new Set(col.artifactIds);
     for (const aId of newIds) {
       if (aId) set.add(String(aId));
     }
     col.artifactIds = Array.from(set);
     col.updatedAt = Date.now();
-    save();
-    return col;
+    return save(col);
   }
 
   function removeArtifacts(id, targetIds = []) {
-    const col = collections.get(id);
-    if (!col) return null;
+    const existing = get(id);
+    if (!existing) return null;
+    const col = { ...existing };
     const removeSet = new Set(targetIds.map(String));
     col.artifactIds = col.artifactIds.filter(aId => !removeSet.has(aId));
     col.updatedAt = Date.now();
-    save();
-    return col;
+    return save(col);
   }
 
   function remove(id) {
-    if (collections.delete(id)) {
-      save();
-      return true;
-    }
-    return false;
+    if (!get(id)) return false;
+    const next = new Map(collections);
+    next.delete(id);
+    commit(next);
+    return true;
   }
 
   return {
