@@ -31,6 +31,23 @@ def group_exists(group):
         return False
 
 
+BOOT_MARGIN_SECONDS = 300
+
+
+def boot_session():
+    """(session UUID, boot epoch) of the running kernel, or None when unprovable."""
+    try:
+        out = subprocess.run(['/usr/sbin/sysctl', '-n', 'kern.bootsessionuuid', 'kern.boottime'],
+                             capture_output=True, text=True, timeout=4, check=True).stdout
+        session, started = out.splitlines()[:2]
+        match = re.search(r'\bsec = (\d+)', started)
+        if not match or not re.fullmatch(r'[0-9A-F-]{36}', session.strip()):
+            return None
+        return session.strip(), int(match.group(1))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
 def port_available(port):
     # No SO_REUSEPORT. The child must also win its own bind.
     with socket.socket() as probe:
@@ -63,6 +80,7 @@ class Supervisor:
         self.retry_at = 0
         self.drain_since = None
         self.owner = self.root / 'backend-instance'
+        self.boot = boot_session
         self.cwd = None
         self.log_path = None
         self.profile = 'external'
@@ -91,19 +109,50 @@ class Supervisor:
         except OSError:
             return False
 
+    def _owner_ended_with_boot(self, boot):
+        """True only when the recorded owner belongs to an earlier boot, so no
+        process of it can exist. Within one boot a record is never retired."""
+        try:
+            info = self.owner.lstat()
+            if not boot or not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+                return False
+            lines = self.owner.read_text().splitlines()
+        except (OSError, UnicodeDecodeError):
+            return False
+        if not lines or Path(lines[0]).parent != self.root or not Path(lines[0]).name.startswith('bc-'):
+            return False
+        session, started = boot
+        if len(lines) == 2 and lines[1].startswith('boot '):
+            return lines[1][5:] != session
+        # Records written before boot identity was recorded: age must be unambiguous.
+        return len(lines) == 1 and info.st_mtime < started - BOOT_MARGIN_SECONDS
+
     def _spawn(self):
+        boot = None
+        ended = False
         if self.owner.exists() or self.owner.is_symlink():
-            self.state = 'RECOVERY_BLOCKED'
-            return
+            # This worker holds the flock its backends inherit, the worker is
+            # idle, and a reboot has ended every process the record could name.
+            boot = self.boot()
+            ended = self.profile == 'external' and self._owner_ended_with_boot(boot)
+            if not ended:
+                self.state = 'RECOVERY_BLOCKED'
+                return
         if not port_available(self.port):
             self.state = 'PORT_HELD'
             return
+        boot = boot or self.boot()
         try:
+            if ended:
+                # Kept as evidence, never deleted. The backend reconciles its own
+                # interrupted jobs and publications at startup.
+                os.link(self.owner, self.owner.with_name('backend-instance.ended-%s' % uuid.uuid4().hex))
+                self.owner.unlink()
             self.identity = executable_identity(self.executable)
             self.instance = Path(tempfile.mkdtemp(prefix='bc-', dir=self.root))
             # A later worker never adopts or signals an unknown survivor.
             with self.owner.open('x') as owner:
-                owner.write(str(self.instance) + '\n')
+                owner.write(str(self.instance) + '\n' + (f'boot {boot[0]}\n' if boot else ''))
                 owner.flush()
                 os.fsync(owner.fileno())
             fd = os.open(self.root, os.O_RDONLY)

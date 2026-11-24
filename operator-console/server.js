@@ -5659,7 +5659,8 @@ app.get('/api/doctor', async (req, res) => {
     add('Big Mac identity', a.identity === 'bigmac@bigmac' ? 'PASS' : 'WARN', a.identity || 'unknown');
     add('wc2tb mounted', a.wc2tb ? 'PASS' : 'FAIL', '/Volumes/wc2tb' + (a.wc2tb ? '' : ' not mounted'));
     if (a.localEngineEnabled) add('Big Mac local engine bridge', a.localEngineReady ? 'PASS' : 'FAIL', a.localEngineReady ? `GUI worker pid ${a.localEnginePid}; private Unix socket; model reads occur locally` : a.localEngineError || 'worker unavailable');
-    add('wc2tb readable by SSH worker', a.wc2tbReadable === true ? 'PASS' : a.wc2tbReadable === false ? 'FAIL' : 'WARN',
+    if (a.wc2tbAccessProbed === false) add('wc2tb readable by SSH worker', 'WARN', 'not opened over SSH: the Big Mac worker reports external model access');
+    else add('wc2tb readable by SSH worker', a.wc2tbReadable === true ? 'PASS' : a.wc2tbReadable === false ? 'FAIL' : 'WARN',
       a.wc2tbReadable === true ? 'remote SSH can list external model content' : 'mounted does not imply readable: DexDiffusion SSH cannot open /Volumes/wc2tb');
     add('MFLUX runtime', a.mfluxRuntime ? 'PASS' : 'FAIL', 'internal venv');
     add('MFLUX model (FLUX.2 Klein 4B 4-bit)', a.mfluxModel ? 'PASS' : 'FAIL', '$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit');

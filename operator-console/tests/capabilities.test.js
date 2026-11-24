@@ -157,3 +157,29 @@ test('volume permission failure blocks external targets, not internal MFLUX and 
   assert.equal(targetRuntime({ id: 'sdxl-photonic' }, assets, map), 'available');
   assert.equal(targetRuntime({ id: 'flux2-klein-4b', backend: 'mflux' }, assets, map), 'available');
 });
+
+test('the SSH asset probe never opens the removable volume', async () => {
+  // Listing wc2tb from an SSH session raises a macOS consent prompt that stalls
+  // every other process waiting on that volume, so access is left to the GUI worker.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ssh-probe-'));
+  const captured = path.join(dir, 'command');
+  const ssh = path.join(dir, 'ssh');
+  fs.writeFileSync(ssh, `#!/bin/sh\nfor last; do :; done\nprintf '%s' "$last" > '${captured}'\nprintf 'wc2tb=1\\nmodel0=1\\n'\nprintf '%s' "$last" | grep -o "wc2tbReadable=[01]" \nprintf 'probe=done\\n'\n`, { mode: 0o755 });
+  const previous = { PATH: process.env.PATH, host: process.env.DEX_LOCAL_HOST };
+  process.env.PATH = `${dir}:${previous.PATH}`;
+  delete process.env.DEX_LOCAL_HOST;
+  try {
+    const external = '/Volumes/wc2tb/ImageGen/checkpoints/sd15/v1-5-pruned-emaonly.safetensors';
+    const assets = await require('../capabilities').probeAssets({ sshTarget: 'probe.invalid', targetModels: { sd15: external } });
+    const command = fs.readFileSync(captured, 'utf8');
+    assert.doesNotMatch(command, /\b(ls|cat|head|dd|find|base64)\b[^;|]*\/Volumes\//);
+    assert.equal(assets.reachable, true);
+    assert.equal(assets.wc2tbReadable, false);
+    assert.equal(assets.wc2tbAccessProbed, false);
+    assert.equal(assets.models[external], false);
+  } finally {
+    process.env.PATH = previous.PATH;
+    if (previous.host !== undefined) process.env.DEX_LOCAL_HOST = previous.host;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
