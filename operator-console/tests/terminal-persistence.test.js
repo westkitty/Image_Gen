@@ -27,11 +27,16 @@ test('terminal job state and its artifact receipt are persisted together before 
 test('failed durable terminal write restores the prior nonterminal state', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-terminal-fail-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const store = M.createJobStore(root); // An existing directory cannot be atomically replaced by jobs.json.
+  const file = path.join(root, 'jobs.json');
+  const store = M.createJobStore(file);
   const id = 'terminal-write-failure';
   store.create({ job_id: id, media_kind: 'image', operation: 'generate', worker_id: 'sdcpp', artifact_required: false });
-  store.transition(id, 'RUNNING');
+  assert.equal(store.transition(id, 'RUNNING').status, 'RUNNING');
+  const prior = fs.readFileSync(file, 'utf8');
+  fs.renameSync(file, file + '.saved');
+  fs.mkdirSync(file); // Fail specifically at the terminal write, after durable admission.
   const outcome = store.transition(id, 'COMPLETE');
   assert.match(outcome.error, /not persisted/);
   assert.equal(store.get(id).status, 'RUNNING');
+  assert.equal(fs.readFileSync(file + '.saved', 'utf8'), prior);
 });

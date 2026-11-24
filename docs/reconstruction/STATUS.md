@@ -47,6 +47,19 @@ The follow-up Ubuntu run passed its worker and Node partitions and 24 of 25
 selected browser suites. The clipboard test now synchronizes with the app's
 completed-write notification and verifies the copied text and rejection fallback.
 [Follow-up Ubuntu run](https://github.com/westkitty/Image_Gen/actions/runs/45478410938).
+
+Revision `74336a0` passed Ubuntu affected verification (401 Node, 90 worker,
+25 browser suites) plus all 62 full browser suites and 111 release-worker
+and operations tests. Its full unit partition failed. The unit-only diagnostic
+identified the test-owned transfer worker's hardcoded Mac Python path and a
+terminal-write fixture failing at admission. The candidate fixes both fixtures
+and records macOS-only Apple Vision coverage separately. Final cloud evidence
+must match the new candidate tag.
+
+[Affected run](https://github.com/westkitty/Image_Gen/actions/runs/45480996277) ·
+[First certification](https://github.com/westkitty/Image_Gen/actions/runs/45481064947) ·
+[Unit diagnostic](https://github.com/westkitty/Image_Gen/actions/runs/45483231724)
+
 [First run](https://github.com/westkitty/Image_Gen/actions/runs/45474094350)
 and [revised run](https://github.com/westkitty/Image_Gen/actions/runs/45475013685).
 

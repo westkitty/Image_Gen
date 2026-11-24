@@ -18,7 +18,7 @@ const domains = {
   },
   image: {
     paths: /^(?:sdcpp-workflow\/|operator-console\/(?:controlled-|local-engine-|controlnet|image-|lora-|publication-|workstation|.*\/(?:edit-|lora-|workstation-ui|source-hover)))/,
-    tests: /^(?:canonical-publication|publication-recovery|queued-lora|lora-unification|edit-resources|edit-core|sdcpp-upstream|local-engine-bridge|image-store)/,
+    tests: /^(?:canonical-publication|publication-recovery|engine-transfer-crash|terminal-persistence|detector-recovery|detailer|queued-lora|lora-unification|edit-resources|edit-core|sdcpp-upstream|local-engine-bridge|image-store)/,
     browsers: ['create-publication', 'edit-img2img-parity', 'edit-workbench', 'v2-parity-library-flow'],
   },
   resources: {
