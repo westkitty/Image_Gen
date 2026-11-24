@@ -13,11 +13,11 @@ preserved repair commit `8f0a80f`. The archive and original worktrees are separa
 
 | Entry point | Intended behavior and dependencies | Restoration and verification |
 |---|---|---|
-| Create | Existing target and settings, shared compute lease, SDCPP or MFLUX engine, canonical publication | Simulated worker through real Create, job ledger, publication, Library and UI passed. Corrupt output and failed ledger writes exercised. A dropped HTTP response replayed the same durable job without a second run. Big Mac submission was accepted; installed-worker health timed out before inference. No real artifact was produced. |
+| Create | Existing target and settings, shared compute lease, SDCPP or MFLUX engine, canonical publication | Simulated worker through real Create, job ledger, publication, Library and UI passed. Corrupt output and failed ledger writes exercised. A dropped HTTP response replayed the same durable job without a second run. The installed Big Mac worker timed out before remote dispatch. The authorized recovery restarted EngineHost, but a model/storage health probe again stalled in file open. |
 | Batch and plot | Numbered prompts and parameter sweeps using the image dispatcher and owned artifacts | Existing paths carried forward. Synthetic Chat modes and shared compute checks passed. Live Ollama and prompt enhancement pending. |
 | Edit and Enhance | Reuse canonical source and lineage for image-to-image, masks, outpaint, transform, upscale and refinement | Synthetic Edit request validation and Library source handoff passed across Create, Enhance, 3D, and World. Real image-edit inference pending. |
-| Library | Canonical image and media browsing, selection, downloads, collections and handoffs | Create-to-Library and canonical bytes passed in a synthetic workflow. Other Library flows pending. |
-| Resources | Recipes, styles, macros, wildcard banks, and prompt reuse | Existing paths carried forward. Collections, recipes, macros, styles and wildcard writes now preserve prior data on a failed write. Focused synthetic checks passed. Domain verification pending. |
+| Library | Canonical image and media browsing, selection, downloads, collections and handoffs | Create-to-Library and canonical bytes passed in a synthetic workflow. Full browser suite also exercises Library browsing, collection workflows and handoffs. |
+| Resources | Recipes, styles, macros, wildcard banks, and prompt reuse | Existing paths carried forward. Collections, recipes, macros, styles and wildcard writes now preserve prior data on a failed write. Focused and full portable checks exercise the corresponding stores. |
 | Voice and Drama | Voice profiles and engines, script production, edit, render and export | Existing paths carried forward. Synthetic production and safe cancellation passed. Simulated unavailable Kokoro blocked a cast Drama project while Create, Library and shared compute admission remained usable. Installed engine verification pending. |
 | Chat and prompt intelligence | Ollama-backed Chat and prompt review through the shared compute admission path | Existing paths carried forward. Synthetic Chat modes and shared compute checks passed. Live Ollama and prompt enhancement pending. |
 | Music and video | Music and video workflows with worker-backed availability | Existing adapters carried forward. Dormant or unavailable workers need to be identified in current runtime evidence. |
@@ -71,7 +71,12 @@ health reads outside the lifecycle lock and limits them to one concurrent probe.
 Image generation queries lifecycle readiness without opening every model.
 The worker, supervisor and retention suites passed 51 local synthetic tests,
 and the stalled-read regression passed under the installed Big Mac Python
-with synthetic input. Production worker recovery and live inference remain open.
+with synthetic input. During the authorized recovery, the old worker remained
+orphaned with the worker lock after launchd stopped its host. Releasing that
+verified orphan let the existing EngineHost and worker start again. Backend
+status returned `RECOVERY_BLOCKED` with no listener and an existing owner
+record. A read-only health call again stalled in file open on the fresh worker.
+The ownership record remains in place. No live inference was dispatched.
 
 ## Native staging and rollback
 
@@ -82,7 +87,7 @@ writes the zip before touching Applications, Dock or Launch Services. Extract
 to an isolated directory to check its signature and stamped SHA. This stage mode
 leaves the installed app alone.
 
-Revision `dcab33a` bootstrapped Studio in real WebKit using an isolated console,
+Revisions `dcab33a` and `4c40a28` bootstrapped Studio in real WebKit using an isolated console,
 test bundle identifier and loopback-only launcher helper. The same revision
 published three synthetic images, replayed admissions without duplicate work
 and recovered an accepted pre-dispatch job as interrupted across restart.
@@ -97,3 +102,16 @@ present, re-registers that bundle and verifies the prior console identity with
 `bin/dexdiffusion status` and `GET /api/version`. Keep the candidate and prior
 working trees intact. A zip build and verification do not exercise Dock launch
 or live hardware.
+
+## Continuation
+
+The full Ubuntu certification for `4c40a28` is tracked in
+[run 45485238609](https://github.com/westkitty/Image_Gen/actions/runs/45485238609).
+[Affected run 45485238013](https://github.com/westkitty/Image_Gen/actions/runs/45485238013)
+found a timing-dependent Chat FIFO test. The follow-up injects a clock into
+that fixture so it can assert the admission result deterministically. The 20
+local Chat tests passed. Certify that follow-up SHA and stage its native archive.
+Big Mac acceptance requires the existing backend owner record to be reconciled
+and health to complete in the graphical worker context. Then run one isolated
+FLUX.2 Klein render and verify its bytes, ledger, and Library readback. Production
+installation and rollback acceptance require the separate cutover boundary.

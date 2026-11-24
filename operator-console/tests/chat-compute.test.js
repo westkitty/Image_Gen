@@ -54,7 +54,13 @@ test('a happy request takes the heavy lease, owns the load, verifies unload and 
 test('FIFO with images: Chat (Gemma too) waits behind a heavy image job and an image waits behind Chat', async () => {
   let release;
   const gate = new Promise(res => { release = res; });
-  const r = await chatRig({ chat: async (b, req, res, st) => { await gate; return scripted([{ write: delta('x') }, { write: doneLine() }])(b, req, res, st); } });
+  const r = await chatRig({
+    arbiterNow: () => 100, // Immediate admission must be independent of the wall-clock tick.
+    chat: async (b, req, res, st) => {
+      await gate;
+      return scripted([{ write: delta('x') }, { write: doneLine() }])(b, req, res, st);
+    },
+  });
   try {
     assert.deepEqual(await r.arbiter.acquire('img-1', 'flux txt2img'), { granted: true, waitedMs: 0 });
     const sid = await r.newSession('gemma3:4b');
