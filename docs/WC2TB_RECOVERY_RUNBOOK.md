@@ -77,12 +77,13 @@ On the MacBook:
 - Bytes are verified by SHA-256 before the acknowledgement is sent.
 - Pending items stay on Big Mac until they are acknowledged.
 
-## G. Restart or cutover to a revision (the gate is mandatory)
+## G. Restart the running revision (the gate is mandatory)
 
 ```bash
 ssh westcat 'bash ~/Image_Gen-wc2tb-20261120/scripts/request-worker-backend.sh --restart --expect-revision <full sha>'
 ```
 
+- **Limit (seen 2026-11-24):** this restarts the revision already running. After a new revision is staged, `backend_revision` is BLOCKED (running backend differs from the worktree) and the gate refuses. Activating a new revision uses section I.
 - **Result:** if the release gate refuses, the backend is left running (exit 78).
   - `BLOCKED` cannot be overridden.
   - `UNVERIFIED` can be overridden only with `--override-unverified "<20+ character reason>"`, after you verify the failing fact by hand. The override is logged.

@@ -175,7 +175,8 @@ start; no backend was running when the cutover began.
 Open items:
 
 1. Deploy `6d48433` (tag `reconstruction-candidate-20261124-6d48433`, certified in run 45524196726) so
-   ACE-Step is refused (owner approval for one restart). Until then
+   ACE-Step is refused. An approved attempt on November 24 was refused before any restart (see "Refused
+   cutover to `6d48433`"); it needs a new decision on how the revision is activated. Until then
    production `915495a` still lists ACE-Step as PROVEN and would accept a song job: do not start one.
 2. Not run live: matrix and XYZ plot, textured mesh, Qwen voices, OpenVoice. Video runtime is not installed.
 3. Chat and prompt enhancement need an empty Ollama; otherwise `compute_unavailable` after 30 s.
@@ -194,6 +195,21 @@ media bridge refuses `ace-step` (`worker-disabled`, 409) before any job, lease o
 reports TEMPORARILY DISABLED with the reason, and Studio disables Generate. Runtime, models and bridge
 are untouched; removing the entry re-enables it. Magenta is unchanged. The internal fallback refuses
 ACE-Step already, because it probes no music runtime. `engine-worker.py` and the supervisor are unchanged.
+
+### Refused cutover to `6d48433`, November 24
+
+The owner approved a gated backend restart, with a logged override for the rollback proof only. The deployed
+worktree was staged on a new branch, `release/reconstruction-20261124-6d48433`. The doctor then reported
+`backend_revision` BLOCKED (the running `915495a` does not match the staged tree) as well as the three
+expected UNVERIFIED items. BLOCKED cannot be overridden, so nothing was restarted and no override was logged.
+The worktree was returned to `release/reconstruction-20261124` at `915495a`. The doctor passes all 19 checks,
+the backend (78176) and EngineHost (75667) are the same processes, and the idle seal is fresh.
+
+Cause: `--restart` runs the gate and restarts in one step, and the gate requires the running backend to equal
+the worktree. It can restart the current revision but cannot activate a new one, so runbook section G's
+"cutover" wording does not hold. Earlier cutovers used the section I worker kickstart, which also replaces
+EngineHost. The owner handoff (external to fallback to external) would start the staged revision without
+replacing EngineHost. Neither was inside this approval.
 
 ### MacBook app install, November 24
 
