@@ -14,12 +14,12 @@ preserved repair commit `8f0a80f`. The archive and original worktrees are separa
 | Entry point | Intended behavior and dependencies | Restoration and verification |
 |---|---|---|
 | Create | Existing target and settings, shared compute lease, SDCPP or MFLUX engine, canonical publication | Synthetic path passed (ledger, corrupt output, failed writes, replay). Live on production `915495a` through Studio: FLUX.2 Klein, delivered to the MacBook Library. SD 1.5 and SDXL base text-to-image passed earlier through the installed worker. |
-| Batch and plot | Numbered prompts and parameter sweeps using the image dispatcher and owned artifacts | Existing paths carried forward; synthetic checks passed. Not run live. |
-| Edit and Enhance | Reuse canonical source and lineage for image-to-image, masks, outpaint, transform, upscale and refinement | Live on production through Studio: SD 1.5 edit, SDXL edit, FLUX reference edit, Real-ESRGAN 4x, all delivered to the MacBook with matching readback. Inpaint and outpaint were not run separately. From a MacBook-hosted console the SD 1.5 and SDXL edit scripts still fail (`img2img-remote-png`); production runs them on-host, so no routing change was made. |
+| Batch and plot | Numbered prompts and parameter sweeps using the image dispatcher and owned artifacts | Prompts-from-list passed live on production through Studio (two jobs, both delivered). Matrix and XYZ plot were not run live; synthetic checks passed. |
+| Edit and Enhance | Reuse canonical source and lineage for image-to-image, masks, outpaint, transform, upscale and refinement | Live on production through Studio: SD 1.5 edit, SDXL edit, FLUX reference edit, Real-ESRGAN 4x, all delivered to the MacBook with matching readback. SD 1.5 outpaint and inpaint also passed, with every pixel outside the mask or new area (and its blend) unchanged. At 8 steps the inpaint did not follow the colour asked for and the outpaint shows a seam; output quality is not certified. From a MacBook-hosted console the SD 1.5 and SDXL edit scripts still fail (`img2img-remote-png`); production runs them on-host, so no routing change was made. |
 | Library | Canonical image and media browsing, selection, downloads, collections and handoffs | Create-to-Library and canonical bytes passed in a synthetic workflow. Full browser suite also exercises Library browsing, collection workflows and handoffs. |
 | Resources | Recipes, styles, macros, wildcard banks, and prompt reuse | Existing paths carried forward. Collections, recipes, macros, styles and wildcard writes now preserve prior data on a failed write. Focused and full portable checks exercise the corresponding stores. |
 | Voice and Drama | Voice profiles and engines, script production, edit, render and export | Live on production through Studio: Kokoro speech; a two-line Drama cast with VoxCPM2 and Kokoro, produced, mastered, proofed and saved. Drama speech recognition QA is unavailable (reported by the app). Qwen voices and OpenVoice were not re-run. |
-| Chat and prompt intelligence | Ollama-backed Chat and prompt review through the shared compute admission path | BLOCKED on the Ollama restart. Synthetic checks passed. |
+| Chat and prompt intelligence | Ollama-backed Chat and prompt review through the shared compute admission path | Live on production through Studio after the Ollama restart: one Chat reply (gemma3:4b) and one prompt enhancement applied in Create. Both wait for an empty Ollama: a model another client left loaded fails them after 30 s as `compute_unavailable`, and Chat shows only that code. |
 | Music and video | Music and video workflows with worker-backed availability | Live on production: Magenta RealTime clip. ACE-Step was withheld for host safety (see below). Video has no installed generator and Studio says so. |
 | 3D and Worlds | Library source handoff, worker capabilities, project storage and preview | Live on production through Studio: SHARP quick geometry, 360 world (normal PARTIAL label, viewer opened), Hunyuan3D mesh (preview opened). Textured mesh was not re-run. |
 | Studio shell, themes and Mac app | Existing desktop/mobile layouts, workspace navigation and native WebKit launch | Source carried forward. Synthetic Create and Library references captured. Native Swift type-check passed. Staged build, native launch and mobile acceptance are separate gates. |
@@ -147,6 +147,21 @@ to fallback to external passed and the release doctor passes every check, includ
 | Quick 3D | `3279b81a` | 105 | 66 MB PLY, sha `1ec18562` |
 | 360 world | `aea068eb` | 247 | 21 artifacts; memory stayed at or above 45% free, no swap |
 | Mesh | `5000e739` | 175 | 6.8 MB GLB, sha `df2abc20` |
+| Chat | `12816087` | 5 | gemma3:4b, temporary mode |
+| Prompt enhancement | `6e4aef65` | 12 | applied in Create |
+| Batch from list | `cf2af2c3`, `43a6b397` | 18 each | `20261125-001351-...`, `20261125-001410-...` |
+| SD 1.5 outpaint | `1199c12e` | 190 | 640x512, sha `15ad5e11` |
+| SD 1.5 inpaint | `2c909229` | 16 | 512x512, sha `e487f288` |
+
+### Ollama restart, November 24
+
+With the owner at the screen, one graceful SIGTERM through launchd at 17:08:25 MST replaced
+pid 782 (deleted 0.40.17 binary) with pid 26076 (0.40.18). One Removable Volumes prompt for
+`ollama` appeared and the owner chose Allow. The six documented models are listed,
+`OLLAMA_NOPRUNE=1` and the model path are unchanged, and the launch agent file is
+byte-identical. Nothing was downloaded or pruned. The grant names the 0.40.18 Cellar path,
+so a Homebrew upgrade of Ollama will probably prompt again; do it at the screen. After the
+last workflow the release doctor passed all 19 checks and the rollback check was READY.
 
 ### ACE-Step and the November 23 panic
 
@@ -159,14 +174,12 @@ start; no backend was running when the cutover began.
 
 Open items:
 
-1. Ollama restart with the owner at the Big Mac screen, then Chat and prompt enhancement.
-   Pid 782 runs the deleted 0.40.17 binary; models are at
-   `/Volumes/wc2tb/DexDiffusion/models/ollama`, `OLLAMA_NOPRUNE=1`. Attribution is likely,
-   not proven. An unanswered prompt would stall EngineHost.
-2. MacBook app replacement (separate decision). Staged and signed at `915495a`.
-3. Owner decision on ACE-Step.
-4. Console doctor WARN: storage integrity reports 1070 problems. Probably files the owner
-   moved to Google Drive and `images_made_nah`; not investigated.
+1. MacBook app replacement (owner decision). Staged and signed at `915495a`.
+2. ACE-Step (owner decision): leave it, hide it, or test it when a reboot is acceptable.
+3. Not run live: matrix and XYZ plot, textured mesh, Qwen voices, OpenVoice. Video is not installed.
+4. Storage integrity reports 1071 missing and 463 valid image records. Every missing record is
+   dated November 6 or earlier, plus one old fixture. The owner's `images_made_nah` folder is in
+   a Google Drive archive; contents were not matched file by file.
 
 ## Native staging and rollback
 
