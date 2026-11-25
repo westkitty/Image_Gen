@@ -322,4 +322,10 @@ Let `OLD` and `NEW` be full commits, `W=~/Image_Gen-wc2tb-20261120`. Close Studi
 
 **Going back** is the same procedure with the two revisions exchanged. If `NEW` exits before it is ready (`HANDOFF_FAILED`, port free, no `backend-instance`), switch `W` back to `OLD`'s branch and run `--return-external --expect-revision OLD`. If a `NEW` child is alive but not ready, it is kept as evidence and never signalled: see "When the handoff fails" in section H.
 
+**ACE-Step and any move to an older revision.** The refusal of ACE-Step jobs is source (`DISABLED_WORKERS` in `operator-console/media.js`, checked in `media-bridge.js`), first present in `6d48433`. Every older revision (`915495a`, `3d8b885`, `774815d`) accepts ACE-Step jobs again as soon as it serves. The v2 fallback package (`3f0abf5`) has no refusal either, and its fallback filter covers `/api/actions` only, not `/api/media/generate`. The ACE-Step models are on the external drive, so a fallback without the drive should refuse for a missing model; that was not run and must not be relied on.
+
+- Do not go back to a bare older revision. Make the target **contained**: a new branch at `OLD`, `git cherry-pick 6d48433`, the media unit tests and `v2-parity-music`, certification, then this section with that commit as `NEW`. The cherry-pick merges without conflict on `3d8b885` (`git merge-tree`; tests not run). On `915495a` the result is the code of `6d48433` itself (apart from one example-config line), so there is nothing to gain by going back to `915495a`.
+- Before a move, check the target: `git grep -c DISABLED_WORKERS <commit> -- operator-console/media-bridge.js` must print a count. After it serves, `/api/workers` must show ACE-Step not enabled. Never check by submitting a job.
+- During any fallback leg, and if an emergency forces a bare older revision, keep Studio and the Mac app closed and submit no music job until a contained revision serves. Do not remove ACE-Step's files.
+
 Tests: `test_revision_transition_*` in `sdcpp-workflow/worker/test_backend_handoff.py`.

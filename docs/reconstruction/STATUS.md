@@ -182,7 +182,7 @@ Open items:
    a Google Drive archive. That they are the same files is suspected, not confirmed. No record was deleted.
 5. Opening the Library in the Mac app loads about 100 full-size images (`_libThumb` uses `url`,
    not the existing `thumbnailUrl`). For about 90 s the health probe waits behind them and Studio shows
-   "Connection lost". It clears by itself; the backend and tunnel stay healthy.
+   "Connection lost". It clears by itself; the backend and tunnel stay healthy. Corrected in a candidate, not deployed (below).
 6. Rollback is checked READY and has not been executed. Its target `3d8b885` accepts ACE-Step.
 
 ### ACE-Step containment
@@ -209,6 +209,7 @@ was still running and matched its files.
   `start` and `startBatch`, the only two entries to the bridge, before any job or lease. Magenta PROVEN, generate true.
   ACE-Step was not executed and no request was submitted; refusal rests on that code and the certified tests.
 - Fallback records and the 617 MacBook publication receipts are byte-identical; staging empty.
+- **Rollback re-enables ACE-Step** unless the target contains `6d48433`: see the end of runbook section J.
 - Rollback: `kit/rollback.py` READY (to `3d8b885`, which accepts ACE-Step). The nearer target is `915495a` by
   section J, branch `release/reconstruction-20261124`. Neither was executed.
 - MacBook app: installed `915495a`. `native/`, `bin/` and `scripts/` do not differ from `6d48433`, so it was not
@@ -239,24 +240,104 @@ zip that was extracted and passed signature verification. The app runs `bin/dexd
 worktree (`~/Image_Gen-reconstruction-20261124`), so keep the worktree. The generation check planned inside
 the app was not run; no job was submitted from it.
 
-### Audio waveform and text flicker (`90a2d0b`, source only, not deployed, not recommended yet)
+### Audio waveform and text flicker (`90a2d0b`, superseded, never release)
 
-`public/dexdiffusion/audio-wave.js` draws a transparent azure waveform over Studio while an `<audio>` element
-plays, and flickers bright text (whites, oranges, the DexDiffusion brand) with the same loudness value. It decodes a
-second copy of the file and never reroutes playback. Files over 128 MB get no picture. CI run 45533031399 passed
-(audio-wave 4/4, voice-drama 10/10). A visible WebKit window on the MacBook, real playback of a 240 s stereo WAV,
-isolated console, load average 17:
+The first version redrew a full-screen path and repainted page text every frame, decoded the whole file (about 530 MB
+for a moment on a 240 s WAV), was on by default, and had no off switch. Its measurements (9% to 93% of a core on a
+loaded MacBook) are in git history. It is still in `reconstruction/stable-foundation`; **do not release that branch
+head**. The replacement is the waveform candidate below.
+
+## Optimization candidates, November 25 (neither deployed)
+
+Production stays Big Mac `6d48433` and MacBook app `915495a`. Two independent branches, each in its own worktree.
+Everything used synthetic images and audio; the real Library was not opened. Harnesses and raw results:
+receipts folder `optimization-20261125/`.
+
+### Library thumbnails: `reconstruction/library-thumbnails`, `aab8701` (on `6d48433`)
+
+Cause, reproduced: the mixed-media grid (`_libThumb`, up to 120 images) used each full-resolution `url`, and
+`/api/library` gave it no thumbnail. The originals took all six connections to the backend, so `/api/version` waited,
+two probes hit their 12 s limit, and Studio said "Connection lost" with a healthy backend.
+
+Change (two lines): `/api/library` image items carry `thumbnailUrl` as the other two lists do; the grid uses it and
+passes the original in `data-fullscreen-src`, so the viewer and its edit actions still get full resolution.
+
+120 synthetic 2.8 MB PNGs, MacBook image service, both links limited to 4 MB/s, 1280x800:
+
+| | Image requests, traffic | Health probes answered | Median, worst | "Connection lost" |
+|---|---|---|---|---|
+| WebKit before (75 s) | 115 full, 313.7 MB, 110 of 120 loaded | 0 of 13 | none answered | at 40.7 s |
+| WebKit after (60 s) | 120 thumbnails, 2.8 MB, all loaded | 57 of 57 | 4 ms, 3.0 s (cold thumbnails) | never |
+| Chrome before (60 s) | 115 full, 290.7 MB | 12 of 12, late | 22.4 s, 52.3 s | at 41.2 s |
+| Chrome after (60 s) | 120 thumbnails, 2.8 MB | 58 of 58 | 4 ms, 1.6 s | never |
+
+Returning to the Library requested nothing again. A second idea was tried and rejected: setting `loading="lazy"`
+before `src` makes WebKit honour lazy loading, but Studio rebuilds that DOM often, so the same 104 thumbnails were
+requested 923 times and never stayed loaded. The grid stays eager at 23 KB an image, capped at 120. Dragging or saving
+a grid image directly now gives the thumbnail, as in the other Library grid; the viewer and Export give the original.
+
+Focused checks: `library` 12/12 (with a new test that fails without the change), `v2-parity-library-flow` 8/8,
+`studio-source-handoff` 1/1, `source-hover` 10/10, `studio-connectivity-recovery` 2/2 locally; CI affected verification
+45552672300 passed. `edit-upload`, `folder-first-library`/`library-organize` and the last `macbook-images` test fail
+locally in the same way without the change (the MacBook has no Pillow for the last three); CI ran what it covers.
+
+### Waveform: `reconstruction/waveform-economy`, `ff4daf5` (on `d882883`)
+
+Measured cost of the old version by leaving parts out, in points of one core over audio alone: the per-frame path fill
+about 8, its outline about 11, text repainting about 26, the loop 1. Canvas resolution made no difference.
+
+Now: each four-second strip is drawn once (1280x512) and slid under the playhead at 15 to 22 Hz. Byte spans of four
+seconds around the playhead are read one at a time with low priority, and only when playback has run half a second
+undisturbed with six seconds buffered; a seek or a low buffer drops the read. At most six strips of data are kept.
+Files that are not WAV are decoded only up to 6 MB and 10 minutes, at 8 kHz. Text flicker is a separate switch, on
+visible text only, at most three changes a second and without the glow. Both are off until chosen in System > Audio
+visuals or the command palette, persist, stop at once, and never run in a hidden window or with Reduce Motion.
+
+Visible WebKit, isolated Studio, the same synthetic 240 s stereo WAV, off and on alternated four times, medians
+(`ab-1.txt` to `ab-4.txt`; `med.py` reproduces them). Points of one core added over audio alone with the feature off.
+Compositor is all of WindowServer, so other apps disturb it. 0 media events (waiting, stalled, seeking), drift within
+4 ms everywhere:
+
+| Run | WebKit | Compositor | Sum | fps, off to on |
+|---|---|---|---|---|
+| Old, round 1 | +42.7 | +11.9 | +54.6 | 28.5 to 26.6 |
+| Old, round 2 | +54.0 | +13.8 | +67.8 | 29.1 to 27.6 |
+| Old, round 3 | +32.1 | +19.7 | +51.8 | 28.8 to 29.2 |
+| New waveform, round 1 (earlier draft) | +2.4 | +7.6 | +10.0 | 29.2 to 28.6 |
+| New waveform and text, round 1 (earlier draft) | +3.9 | +9.2 | +13.1 | 29.2 to 29.2 |
+| New waveform, round 2 (noisy: compositor 32 with it off) | +1.1 | +21.3 | +22.4 | 28.5 to 27.6 |
+| New waveform and text, round 2 (noisy) | +5.7 | +8.1 | +13.8 | 28.5 to 27.6 |
+| New waveform, round 3 (earlier draft) | +1.6 | +11.2 | +12.8 | 29.1 to 29.1 |
+| New waveform and text, round 3 (earlier draft) | +6.0 | +11.5 | **+17.5** | 29.1 to 28.9 |
+| **As committed**, waveform, round 4 | +1.6 | +6.1 | +7.7 | 29.1 to 29.6 |
+| **As committed**, waveform and text, round 4 | +2.6 | +7.7 | +10.3 | 29.1 to 29.1 |
+
+The drafts differ from the commit mainly in when they read spans. The commit itself was measured in one round of four, with a
+compositor baseline of 10, so its smaller compositor figure may be flattered.
 
 | | Result |
 |---|---|
-| Playback | 10 s with and without: drift 0, no stalls, pause works |
-| CPU, all WebKit processes | 9% of a core without, **93% with** |
-| Frames | 29 fps without, 19 with (the machine was already loaded) |
-| Memory (RSS) | 61 MB without, 108 MB with, about 530 MB for the moment of decoding |
-| Reduce Motion | turned on mid-play: overlay and flicker gone, audio continues. The query was overridden in WebKit; Chrome emulated the real one. The macOS switch was not toggled |
-| Off switch | **none** except macOS Reduce Motion |
+| Memory | medians +33 to +36 MB for the waveform and +40 to +47 MB with text (+70 and +100 in the noisy round); about the same for 240 s and 3600 s files; 243 to 265 MB with no trend over 3.5 minutes; back to within about 15 MB of the start when off. Seek-heavy runs reached 300 to 355 MB, one sample 538 MB, then fell |
+| Reads | largest 768 KB; the whole file is never read or held (`blob:` included) |
+| Slow link, 600 kB/s, 3600 s file | steady playback drift 0 with it on. After bursts of seeks playback re-buffers with it off too (up to 0.6 s lost) and on (up to 1.4 s); four of eight phases each |
+| Off switch, pause, hidden, Reduce Motion | overlay, animation and data gone at once; the sound continues |
 
-Before recommending deployment: lower the CPU cost and add an off switch. Photosensitivity was not assessed.
+Against the targets: no drift and no stalls in normal playback, memory bounded by construction, immediate release.
+CPU: under 15 points in every round counting WebKit alone. Counting the compositor, the waveform is under in every
+quiet round and as committed; waveform and text reached 17.5 in round 3, so that target is **met only in part**. What
+is left is WindowServer compositing a translucent full-screen layer, which scales with the frame rate, and the text
+repaint. Not demonstrated: the native app itself, a 60 Hz
+display, real audio through the tunnel, VoiceOver, the macOS Reduce Motion switch (the query was overridden), and any
+photosensitivity assessment beyond the rate limit. So it stays off by default.
+
+Focused checks: `audio-wave` unit 7/7 and browser 7/7. The ablation, memory, read and slow-link figures were read from
+console output; the receipts keep their scenarios and harness, not every raw row.
+
+### Releasing either one
+
+Both leave `sdcpp-workflow/worker/` as in `6d48433`, so Section J applies. Neither is certified; certification belongs
+to whichever is chosen. The two branches merge without conflict. The Library change is in the backend and its pages,
+so it reaches the Mac app without a new app build. Nothing is deployed without a separate approval.
 
 ## Native staging and rollback
 
@@ -290,5 +371,18 @@ Launch Services, the real Dock and the production entry point were not exercised
 
 ## Continuation
 
-The open items above are the whole list. Big Mac still holds `~/.dex-accept-bc56755`
-(isolated acceptance root, worker stopped, no images retained). It can be deleted.
+As of November 25. Production is untouched by the optimization work.
+
+1. Owner decision: certify and release `reconstruction/library-thumbnails` (`aab8701`). Push a
+   `reconstruction-candidate-*` tag for certification, then section J with its prerequisites. Check its first open of
+   the real Library afterwards by timing and request counts only; do not capture the images.
+2. Owner decision, separately and later: `reconstruction/waveform-economy` (`ff4daf5`). It sits on `d882883`. To release
+   it together with the Library change, merge the two into a new branch and certify that commit.
+3. Never release `reconstruction/stable-foundation` at `d882883`: it carries the old waveform, on by default.
+4. ACE-Step stays disabled. Any older revision accepts it again: read the end of runbook section J before a rollback.
+5. This checkpoint is on `reconstruction/checkpoint-20261125`, because an edit to the runbook in the
+   stable-foundation worktree was refused by the permission check. That worktree stays at `d882883` (the Mac app runs
+   its `bin/dexdiffusion`), so its copy of this file is older than this one.
+
+Big Mac still holds `~/.dex-accept-bc56755` (isolated acceptance root, worker stopped, no images retained). It can be
+deleted.
