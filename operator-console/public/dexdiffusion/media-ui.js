@@ -182,6 +182,7 @@
     const flag = (k, v) => h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 } }, h('span', { style: { color: '#94a3b8' } }, k), h('span', { style: { color: v === null ? tone.off : v ? tone.ok : tone.warn, fontWeight: 700 } }, v === null ? 'Unknown' : v ? 'Yes' : 'No'));
     return h('div', { style: Object.assign({}, css.panel, { marginBottom: 0 }) },
       h('div', { style: Object.assign({}, css.row, { marginBottom: 6 }) }, h('span', { style: { fontWeight: 800, color: '#e2e8f0' } }, 'Worker: ' + w.label), chip(w.state, w.enabled ? tone.ok : tone.warn)),
+      w.disabled_reason ? h('div', { role: 'note', style: Object.assign({}, css.muted, { color: tone.warn, marginBottom: 6 }) }, w.disabled_reason) : null,
       flag('Architecture ready', w.architecture_available), flag('Big Mac connected', w.remote_reachable),
       flag('Runtime installed', w.remote_reachable === false ? null : w.runtime_available),
       flag('Model installed', w.remote_reachable === false ? null : w.model_available),
@@ -195,6 +196,7 @@
   const MEDIA_JOBS_KEY = 'dex_media_jobs'; // job ids only (no text) for reload recovery
   P._disabledReason = function (w) {
     if (!w) return 'Checking worker…';
+    if (w.disabled_reason) return 'Temporarily disabled';
     if (w.remote_reachable === false) return 'Big Mac unreachable';
     if (w.state === 'MODEL INACCESSIBLE (wc2tb)') return 'Model drive inaccessible';
     if (!w.runtime_available) return 'Runtime not installed';

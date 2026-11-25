@@ -5693,8 +5693,8 @@ app.get('/api/doctor', async (req, res) => {
   add('Heavy-compute lease', 'PASS', `${rs.group} capacity ${rs.capacity}; owner ${rs.owner ? rs.owner.label : 'none'}; waiting ${rs.waiting.length}`);
   add('External heavy load (Big Mac)', rs.external.occupied ? 'WARN' : 'PASS', rs.external.occupied ? rs.external.detail : (rs.external.checkedAt ? 'none detected (ollama ps)' : 'not yet checked'));
   for (const w of workerRegistry.describe(workerAssets())) {
-    if (w.bridged) add(`Worker · ${w.label} (${w.media_kind})`, w.proven ? 'PASS' : w.enabled ? 'WARN' : 'FAIL',
-      `${w.state}; enabled ${w.enabled}; proven ${w.proven}${w.lastPass ? ' (last proof ' + String(w.lastPass.at).slice(0, 16) + ')' : ''}`);
+    if (w.bridged) add(`Worker · ${w.label} (${w.media_kind})`, w.proven ? 'PASS' : w.enabled || w.disabled_reason ? 'WARN' : 'FAIL',
+      `${w.state}${w.disabled_reason ? ' — ' + w.disabled_reason : ''}; enabled ${w.enabled}; proven ${w.proven}${w.lastPass ? ' (last proof ' + String(w.lastPass.at).slice(0, 16) + ')' : ''}`);
     else if (w.dormant) add(`Worker · ${w.label} (${w.media_kind})`, 'WARN', w.installed
       ? `AVAILABLE / INSTALLED — execution bridge disabled/unproven (enabled ${w.enabled}, proven ${w.proven})`
       : `${w.state}; enabled ${w.enabled}; proven ${w.proven} — not installed`);

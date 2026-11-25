@@ -151,6 +151,14 @@ test('run: cleanup failure after canonicalization keeps the verified output and 
   assert.equal(fs.readdirSync(h.roots.voice).filter(f => f.endsWith('.wav')).length, 1);
 });
 
+test('start: a disabled worker is refused with its reason before any job, lease or remote call', () => {
+  const h = harness({ remoteOut: okOut(wav()), scpBytes: wav() });
+  const r = h.bridge.start('ace-step', { prompt: 'x', duration: 30 }, { probe: { ...probe, enabled: true, proven: true } });
+  assert.deepEqual([r.gate, r.status, r.error], ['worker-disabled', 409, M.DISABLED_WORKERS['ace-step']]);
+  assert.equal(h.bridge.startBatch('ace-step', { items: [{ text: 'a' }] }, { probe }).gate, 'worker-disabled');
+  assert.equal(h.jobStore.list().length, 0); assert.equal(h.arbiter.state().owner, null); assert.deepEqual(h.calls, []);
+});
+
 test('start: gating and reference validation happen before any lease; clone uploads only a server-resolved staged file', async () => {
   const h = harness({ remoteOut: okOut(wav()), scpBytes: wav() });
   assert.equal(h.bridge.start('kokoro', { text: 'x' }, { probe: { runtime_available: false, model_available: true } }).gate, 'runtime-missing');

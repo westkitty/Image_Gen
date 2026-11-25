@@ -126,7 +126,7 @@ test('workers: bridged voice/music workers promote only on live probe + real Dex
   let ev = {};
   const reg = M.createWorkerRegistry({ getEvidence: () => ev });
   const d = Object.fromEntries(reg.describe({}).map(w => [w.id, w]));
-  const bridged = ['kokoro', 'qwen3-tts-base', 'qwen3-tts-voice-design', 'ace-step', 'magenta-rt'];
+  const bridged = ['kokoro', 'qwen3-tts-base', 'qwen3-tts-voice-design', 'magenta-rt'];
   for (const id of ['mflux', 'sdcpp', ...bridged, 'ltx-video']) assert.ok(d[id], id);
   for (const id of [...bridged, 'ltx-video']) {
     const w = reg.get(id);
@@ -135,7 +135,7 @@ test('workers: bridged voice/music workers promote only on live probe + real Dex
     assert.equal(d[id].state, 'RUNTIME MISSING');
     assert.equal(w.capabilities().cancel_supported, false);
   }
-  assert.deepEqual(bridged.map(id => d[id].media_kind), ['voice', 'voice', 'voice', 'music', 'music']);
+  assert.deepEqual(bridged.map(id => d[id].media_kind), ['voice', 'voice', 'voice', 'music']);
   // installed (live probe) -> enabled but NOT proven until real DexDiffusion evidence exists
   for (const id of bridged) {
     const p = reg.get(id).probe(allKeys(id));
@@ -148,9 +148,18 @@ test('workers: bridged voice/music workers promote only on live probe + real Dex
   assert.equal(reg.get('kokoro').probe({}).proven, false, 'evidence never overrides a failed live probe');
   assert.equal(reg.get('qwen3-tts-base').probe(allKeys('qwen3-tts-base')).proven, false, 'evidence is per worker');
   // one missing checkpoint -> MODEL MISSING with per-variant truth
-  const partial = { ...allKeys('ace-step'), 'ace-step:model:lm-0.6b': false };
-  assert.equal(reg.get('ace-step').probe(partial).state, 'MODEL MISSING');
-  assert.equal(reg.get('ace-step').probe(partial).model_variants['lm-0.6b'], false);
+  const partial = { ...allKeys('kokoro'), 'kokoro:model:voices': false };
+  assert.equal(reg.get('kokoro').probe(partial).state, 'MODEL MISSING');
+  assert.equal(reg.get('kokoro').probe(partial).model_variants.voices, false);
+  // ACE-Step: operator-disabled. Installed assets and past evidence stay visible but never enable it.
+  ev['ace-step'] = { lastPass: { at: '2026-09-26T00:00:00Z', job_id: 'j', artifact_id: 'a.wav' } };
+  const ace = reg.get('ace-step').probe(allKeys('ace-step'));
+  assert.deepEqual([ace.runtime_available, ace.model_available, ace.installed, ace.enabled, ace.proven], [true, true, true, false, false]);
+  assert.match(ace.state, /^TEMPORARILY DISABLED/); assert.equal(ace.disabled_reason, M.DISABLED_WORKERS['ace-step']);
+  assert.equal(reg.get('ace-step').probe({ ...allKeys('ace-step'), 'ace-step:model:lm-0.6b': false }).model_variants['lm-0.6b'], false);
+  assert.equal(reg.get('ace-step').capabilities().generate, false);
+  assert.equal(reg.get('magenta-rt').probe(allKeys('magenta-rt')).enabled, true, 'Magenta is unaffected');
+  assert.deepEqual(Object.keys(M.DISABLED_WORKERS), ['ace-step']);
   // LTX: dormant, even with fake assets it is never enabled
   assert.equal(reg.get('ltx-video').probe(allKeys('ltx-video')).enabled, false);
   assert.equal(reg.get('ltx-video').execute({}).gate, 'runtime-missing');

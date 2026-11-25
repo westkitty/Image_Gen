@@ -18,7 +18,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
-const { WORKER_PATHS } = require('./media');
+const { WORKER_PATHS, DISABLED_WORKERS } = require('./media');
 const A = require('./voice-audio');
 const { artifactReceipt, TERMINAL } = require('./job-contract');
 const { cleanupCommand } = require('./cleanup-owner');
@@ -443,6 +443,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
   function start(worker, body, { probe, saveText }) {
     const spec = BRIDGES[worker];
     if (!spec) return { error: 'worker has no execution bridge', gate: 'worker-unavailable', status: 409 };
+    if (DISABLED_WORKERS[worker]) return { error: DISABLED_WORKERS[worker], gate: 'worker-disabled', status: 409 };
     if (probe.remote_reachable === false) return { error: 'Big Mac connection unavailable (SSH probe failed)', gate: 'remote-unreachable', status: 503 };
     if (!probe.runtime_available) return { error: 'Runtime not installed', gate: 'runtime-missing', status: 409 };
     if (!probe.model_available) return { error: 'Model not installed', gate: 'model-missing', status: 409 };
@@ -616,6 +617,7 @@ function createMediaBridge({ jobStore, arbiter, mediaStore, staging, sshTarget =
   function startBatch(worker, plan, ctx) {
     const spec = BRIDGES[worker];
     if (!spec) return { error: 'worker has no execution bridge', gate: 'worker-unavailable', status: 409 };
+    if (DISABLED_WORKERS[worker]) return { error: DISABLED_WORKERS[worker], gate: 'worker-disabled', status: 409 };
     const probe = ctx.probe;
     if (probe.remote_reachable === false) return { error: 'Big Mac connection unavailable (SSH probe failed)', gate: 'remote-unreachable', status: 503 };
     if (!probe.runtime_available) return { error: 'Runtime not installed', gate: 'runtime-missing', status: 409 };

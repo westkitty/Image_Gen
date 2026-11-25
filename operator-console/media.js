@@ -335,6 +335,11 @@ const WORKER_PATHS = {
     models: { main: `${GEN_MODELS}/video/ltx` },
   },
 };
+// Operator-disabled workers (id -> reason). Their runtime, models and bridge stay installed;
+// media-bridge refuses new jobs and the probe reports the reason. Remove the entry to re-enable.
+const DISABLED_WORKERS = {
+  'ace-step': 'Temporarily disabled for Big Mac stability: the only recorded song job was running when the host ran out of memory and restarted (Nov 23)',
+};
 // Flat [probeKey, path] list for the read-only Big Mac existence probe.
 const WORKER_PROBE_PATHS = Object.entries(WORKER_PATHS).flatMap(([id, p]) => [
   ...Object.entries(p.runtime).map(([k, v]) => [`${id}:runtime:${k}`, v]),
@@ -363,16 +368,17 @@ function bridgedWorker({ id, media_kind, label, getEvidence }) {
     probe(assets = {}) {
       const s = installState(id, assets);
       const ev = (getEvidence() || {})[id] || {};
-      const enabled = s.rt && s.md;
+      const disabled = DISABLED_WORKERS[id] || null;
+      const enabled = s.rt && s.md && !disabled;
       const proven = enabled && !!ev.lastPass;
       return { architecture_available: true, remote_reachable: assets.reachable === false ? false : assets.reachable === true ? true : null,
-        runtime_available: s.rt, model_available: s.md, model_variants: s.variants, installed: enabled,
-        enabled, proven, lastPass: ev.lastPass || null,
-        state: assets.reachable === false ? 'BIG MAC UNREACHABLE' : !s.rt ? 'RUNTIME MISSING' : assets.wc2tbReadable === false ? 'MODEL INACCESSIBLE (wc2tb)' : !s.md ? 'MODEL MISSING' : proven ? 'PROVEN' : 'ENABLED — awaiting first DexDiffusion proof',
+        runtime_available: s.rt, model_available: s.md, model_variants: s.variants, installed: s.rt && s.md,
+        enabled, proven, lastPass: ev.lastPass || null, disabled_reason: disabled,
+        state: disabled ? 'TEMPORARILY DISABLED' : assets.reachable === false ? 'BIG MAC UNREACHABLE' : !s.rt ? 'RUNTIME MISSING' : assets.wc2tbReadable === false ? 'MODEL INACCESSIBLE (wc2tb)' : !s.md ? 'MODEL MISSING' : proven ? 'PROVEN' : 'ENABLED — awaiting first DexDiffusion proof',
         runtimePath: s.runtimePath, modelPath: s.modelPath };
     },
     capabilities() { return id === 'openvoice-v2' ? { generate: false, voice_conversion: true, source_and_target_embeddings: true, watermark: 'OpenVoice default watermark enabled', device: 'cpu', cancel_supported: false }
-      : { generate: true, cancel_supported: false, cancel_reason: 'Targeted termination of the remote Big Mac generator via Tailscale SSH is not proven safe; jobs run to completion.' }; },
+      : { generate: !DISABLED_WORKERS[id], cancel_supported: false, cancel_reason: 'Targeted termination of the remote Big Mac generator via Tailscale SSH is not proven safe; jobs run to completion.' }; },
     prepare() { return { ok: true }; }, execute() { return { ok: false, gate: 'worker-unavailable', error: 'execution runs through media-bridge.js' }; },
     status() { return null; }, cancel() { return { ok: false, reason: 'cancel not supported' }; }, cleanup() { return { ok: true }; },
   };
@@ -677,6 +683,6 @@ function createStaging({ root, limits = STAGING_LIMITS, now = () => Date.now() }
 
 module.exports = {
   MEDIA_KINDS, JOB_ONLY_KINDS, CANONICAL_ROOTS, JOB_STATES, FAILURE_GATES, PRIVATE_KEYS, safeParams,
-  createJobStore, createResourceArbiter, parseOllamaPs, createWorkerRegistry, WORKER_PATHS, WORKER_PROBE_PATHS, createMediaStore, createStaging,
+  createJobStore, createResourceArbiter, parseOllamaPs, createWorkerRegistry, WORKER_PATHS, DISABLED_WORKERS, WORKER_PROBE_PATHS, createMediaStore, createStaging,
   sniff, imageDims, wavInfo, atomicWriteJson, STAGING_LIMITS, validateGlb,
 };

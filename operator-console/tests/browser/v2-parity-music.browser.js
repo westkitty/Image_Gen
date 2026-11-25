@@ -149,6 +149,21 @@ const tabs = page => page.locator('[data-scroll-pane]').first();
       await page.close();
     });
 
+    await test('a temporarily disabled ACE-Step shows its reason and cannot be started; Magenta stays usable', async () => {
+      const reason = require('../../media').DISABLED_WORKERS['ace-step'];
+      const workers = baseWorkers(); Object.assign(workers[0], { enabled: false, proven: false, state: 'TEMPORARILY DISABLED', disabled_reason: reason });
+      const { page, errors, posts } = await open(browser, srv.base, { workers });
+      const gen = page.getByRole('button', { name: /^Generate/ }).first();
+      assert.match(await gen.innerText(), /Temporarily disabled/); assert.equal(await gen.isDisabled(), true);
+      const t = await tabs(page).innerText(); assert.match(t, /TEMPORARILY DISABLED/); assert.ok(t.includes(reason));
+      await gen.click({ force: true }).catch(() => {}); await page.waitForTimeout(200); assert.deepEqual(posts, []);
+      await page.getByRole('button', { name: /Magenta RT · short loops/ }).click();
+      await page.waitForFunction(() => /2–60 s/.test(document.body.innerText));
+      assert.equal(await page.getByRole('button', { name: /^Generate/ }).first().isEnabled(), true);
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
     await test('row 47: V2 Music offers no stems or mastering controls (truthful boundary, no dead buttons)', async () => {
       const { page, errors } = await open(browser, srv.base);
       for (const w of ['ace-step', 'magenta-rt']) {
