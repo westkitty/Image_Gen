@@ -1947,7 +1947,7 @@ class Component extends DCLogic {
       await client.readSse(response, ({ event, payload }) => {
         if (payload.request_id !== requestId || payload.session_id !== id) throw new Error('chat-event-mismatch');
         if (payload.job_id) this.setState({ chatJobId: payload.job_id });
-        if (event === 'queued') this.setState({ chatStatus: `Queued${Number.isInteger(payload.position) ? ' · position ' + payload.position : ''}` });
+        if (event === 'queued') this.setState({ chatStatus: payload.blocked_reason === 'external' ? 'Waiting · another app has a model loaded on Big Mac' : `Queued${Number.isInteger(payload.position) ? ' · position ' + payload.position : ''}` });
         else if (event === 'started') this.setState({ chatStatus: 'Generating…' });
         else if (event === 'delta') {
           this._chatPendingDelta += payload.text;
@@ -1955,7 +1955,7 @@ class Component extends DCLogic {
         }
         else if (event === 'done') { completed = true; this.setState({ chatStatus: 'Complete' }); }
         else if (event === 'stopped') this.setState({ chatStatus: payload.stop === 'verified' ? 'Stopped · verified' : 'Stop requested · verification pending' });
-        else if (event === 'error') this.setState({ chatStatus: 'Failed', chatError: payload.code || 'stream-error' });
+        else if (event === 'error') this.setState({ chatStatus: 'Failed', chatError: payload.message || payload.code || 'stream-error' });
       });
     } catch (e) {
       // A transport loss is not a verified Stop. The draft remains available; the session refresh shows any accepted user turn.

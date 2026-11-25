@@ -1,6 +1,7 @@
 'use strict';
 // Phase 3: Chat admission through the real heavy-compute arbiter, model ownership, verified release, Stop truth,
 // restart recovery and privacy (Phase 0 contract D.5, D.6, E.3; C-06..C-09, C-12, C-18, C-20 with fakes only).
+const { refusalText } = require('../chat-refusals');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -122,6 +123,10 @@ test('UNKNOWN and external OCCUPIED never admit; the wait is bounded and leaves 
       const out = await r.send(await r.newSession(), 'q');
       assert.ok(out.events.some(e => e.event === 'queued' && e.data.blocked_reason === why), why);
       assert.deepEqual(terminals(out.events).map(e => [e.event, e.data.code]), [['error', 'compute_unavailable']]);
+      const said = terminals(out.events)[0].data.message;
+      assert.equal(said, refusalText(why), 'the person is told the real condition, not only a code');
+      assert.match(said, why === 'external' ? /Another app has an Ollama model loaded.*Nothing was generated.*Try again/ : /could not read which model.*Nothing was generated.*try again/);
+      assert.ok(!/hermes|gemma/.test(said), 'the other app\'s model is not named');
       assert.equal(r.fake.chatRequests().length, 0, 'no generation into an occupied or unknown Ollama');
       assert.equal(r.fake.unloadRequests().length, 0, 'an external model is never unloaded');
       const [job] = chatJobs(r);
