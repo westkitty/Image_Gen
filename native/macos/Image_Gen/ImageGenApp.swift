@@ -173,6 +173,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var failureDetailLabel: NSTextField?
     private var autoRetryPolicy = FailureAutoRetryPolicy()
     private var autoRetryActive = false
+    private var downloadDestinations: [WKDownload: URL] = [:]
+    private var downloadRefusals: [WKDownload: String] = [:]
 
     private let projectRoot: String = {
         if let env = ProcessInfo.processInfo.environment["IMAGE_GEN_ROOT"], !env.isEmpty {
@@ -298,6 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func applicationWillTerminate(_ notification: Notification) {
         // The console is started detached by bin/dexdiffusion and intentionally
         // outlives this window app (tailnet users keep access).
+        cancelDownloads()
     }
 
     // MARK: - Menu actions
@@ -679,23 +682,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         webView?.pageZoom = 1.0
     }
 
-    // MARK: - Same-origin media downloads
+    // MARK: - Studio downloads
+
+    private func isStudioOrigin(_ url: URL?) -> Bool {
+        guard let url = url else { return false }
+        // A blob: URL carries the origin that made it ("blob:http://127.0.0.1:31337/<uuid>").
+        if url.scheme == "blob" { return url.absoluteString.hasPrefix("blob:http://127.0.0.1:31337/") }
+        return url.scheme == "http" && url.host == "127.0.0.1" && url.port == 31337
+    }
 
     private func isDexMediaDownload(_ url: URL?) -> Bool {
-        guard let url = url,
-              url.scheme == "http",
-              url.host == "127.0.0.1",
-              url.port == 31337 else { return false }
+        guard let url = url, url.scheme == "http", isStudioOrigin(url) else { return false }
         let parts = url.pathComponents.filter { $0 != "/" }
         return parts.count == 4 && parts[0] == "api" && parts[1] == "media" && parts[3] == "download"
     }
 
+    // Every Studio Download control is a link with a `download` attribute. Allowing it as a navigation
+    // replaced the whole Studio with the raw file, so it becomes a download here.
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if isDexMediaDownload(navigationAction.request.url) {
+        let url = navigationAction.request.url
+        if isDexMediaDownload(url) || (navigationAction.shouldPerformDownload && isStudioOrigin(url)) {
             decisionHandler(.download)
         } else {
             decisionHandler(.allow)
+        }
+    }
+
+    // The same for an attachment reached without that attribute. Anything else keeps WebKit's default.
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        let http = navigationResponse.response as? HTTPURLResponse
+        let disposition = http?.value(forHTTPHeaderField: "Content-Disposition")?.lowercased() ?? ""
+        if disposition.hasPrefix("attachment"), isStudioOrigin(navigationResponse.response.url) {
+            decisionHandler(.download)
+        } else {
+            decisionHandler(navigationResponse.canShowMIMEType ? .allow : .cancel)
         }
     }
 
@@ -709,13 +731,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
                   suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
+        // An error page must never be saved under the name of the file that was asked for.
+        if let code = (response as? HTTPURLResponse)?.statusCode, !(200...299).contains(code) {
+            downloadRefusals[download] = "the server answered \(code)"
+            completionHandler(nil)
+            return
+        }
         let manager = FileManager.default
         guard let directory = manager.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
+            downloadRefusals[download] = "the Downloads folder is not available"
             completionHandler(nil)
             return
         }
         let proposed = (suggestedFilename as NSString).lastPathComponent
         guard !proposed.isEmpty, proposed != ".", proposed != ".." else {
+            downloadRefusals[download] = "the server gave no usable file name"
             completionHandler(nil)
             return
         }
@@ -723,22 +753,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let ext = (proposed as NSString).pathExtension
         var destination = directory.appendingPathComponent(proposed)
         var suffix = 2
-        while manager.fileExists(atPath: destination.path) {
+        while manager.fileExists(atPath: destination.path) || downloadDestinations.values.contains(destination) {
             let name = ext.isEmpty ? "\(stem)-\(suffix)" : "\(stem)-\(suffix).\(ext)"
             destination = directory.appendingPathComponent(name)
             suffix += 1
         }
+        downloadDestinations[download] = destination
+        setStatus("Saving \(destination.lastPathComponent) to Downloads...")
         completionHandler(destination)
     }
 
     func downloadDidFinish(_ download: WKDownload) {
-        setStatus("Audio download finished in Downloads.")
-        appendLog("media-download: finished")
+        let name = downloadDestinations.removeValue(forKey: download)?.lastPathComponent ?? "the file"
+        setStatus("Saved \(name) to Downloads.")
+        appendLog("studio-download: finished")
     }
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        setStatus("Audio download failed: \(error.localizedDescription)")
-        appendLog("media-download: failed: \(error.localizedDescription)")
+        // Only the unfinished file this download itself created, under a name that was free when it started.
+        if let partial = downloadDestinations.removeValue(forKey: download) { try? FileManager.default.removeItem(at: partial) }
+        let reason = downloadRefusals.removeValue(forKey: download) ?? error.localizedDescription
+        setStatus("File not saved: \(reason)")
+        appendLog("studio-download: not saved: \(reason)")
+    }
+
+    // WebKit does not call the delegate for a cancellation the app asks for, so the unfinished file goes here.
+    @objc private func cancelDownloads() {
+        let running = downloadDestinations
+        guard !running.isEmpty else { return }
+        downloadDestinations.removeAll()
+        for (download, partial) in running {
+            download.cancel(nil)
+            try? FileManager.default.removeItem(at: partial)
+        }
+        setStatus("Download cancelled. Nothing was saved.")
+        appendLog("studio-download: cancelled")
     }
 
     // MARK: - Navigation delegate lifecycle and error recovery
@@ -920,6 +969,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let fileItem = NSMenuItem()
         let fileMenu = NSMenu(title: "File")
         fileMenu.addItem(NSMenuItem(title: "Open Logs", action: #selector(openLogs), keyEquivalent: "l"))
+        fileMenu.addItem(NSMenuItem(title: "Cancel Downloads in Progress", action: #selector(cancelDownloads), keyEquivalent: ""))
         fileMenu.addItem(.separator())
         fileMenu.addItem(NSMenuItem(title: "Close Window", action: #selector(closeWindow), keyEquivalent: "w"))
         fileItem.submenu = fileMenu
@@ -1307,7 +1357,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     private func setStatus(_ text: String) {
-        statusLabel.stringValue = text
+        statusLabel?.stringValue = text // The window may have closed while a download was still running.
     }
 
     private func appendLog(_ text: String) {
