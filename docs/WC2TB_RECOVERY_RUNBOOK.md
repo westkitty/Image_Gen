@@ -288,7 +288,7 @@ Older journals, isolated-test drills, other revisions or workers, mixed drills, 
    - The running backend is unaffected until step 5.
 5. **Activate.**
    - Run `launchctl kickstart -k gui/503/local.dexdiffusion.engine-worker`. This is the one window-authorized exception to the "no kickstart" rule above; the same step was proven in the 2026-11-21 cutover.
-   - First confirm `backend-status` reports `IDLE`. A backend that cannot seal makes the worker wait past launchd's 20 s limit: launchd kills EngineHost, the worker is left draining without it, and relaunches exit on the lock.
+   - First confirm `backend-status` reports `IDLE`. A backend that cannot seal makes the worker wait past launchd's 20 s limit: launchd kills EngineHost, the worker is left draining without it, and relaunches exit on the lock. Close every Studio tab first: any request to 31337 clears the idle seal.
    - The worker drains and stops its own sealed backend, relaunches under the same signed EngineHost, loads the new supervisor (loaded only at worker start), and spawns the staged revision.
    - Expect about 5 s of interruption.
    - EngineHost is not rebuilt or re-signed, and TCC is unchanged.

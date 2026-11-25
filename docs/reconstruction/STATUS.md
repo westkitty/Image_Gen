@@ -13,15 +13,15 @@ preserved repair commit `8f0a80f`. The archive and original worktrees are separa
 
 | Entry point | Intended behavior and dependencies | Restoration and verification |
 |---|---|---|
-| Create | Existing target and settings, shared compute lease, SDCPP or MFLUX engine, canonical publication | Simulated worker through real Create, job ledger, publication, Library and UI passed. Corrupt output and failed ledger writes exercised. A dropped HTTP response replayed the same durable job without a second run. Live FLUX.2 Klein passed through the isolated candidate console and worker on Big Mac: ledger, canonical bytes, Library readback, admission replay and verified remote cancellation. Through the installed EngineHost worker: FLUX.2 Klein, SD 1.5 and SDXL base text-to-image passed with canonical bytes and Library readback. |
-| Batch and plot | Numbered prompts and parameter sweeps using the image dispatcher and owned artifacts | Existing paths carried forward. Synthetic Chat modes and shared compute checks passed. Live Ollama and prompt enhancement pending. |
-| Edit and Enhance | Reuse canonical source and lineage for image-to-image, masks, outpaint, transform, upscale and refinement | Synthetic Edit request validation and Library source handoff passed across Create, Enhance, 3D, and World. Live FLUX.2 Klein image-to-image from a published Library image passed on the isolated candidate worker. Klein image-to-image also passed on the installed worker. SD 1.5 edit failed from a MacBook-hosted console, whose edit scripts run the engine over SSH without volume access. The same scripts run on-host through `bin/on-host/ssh` when the backend runs on Big Mac, which is unverified until that backend starts. |
+| Create | Existing target and settings, shared compute lease, SDCPP or MFLUX engine, canonical publication | Synthetic path passed (ledger, corrupt output, failed writes, replay). Live on production `915495a` through Studio: FLUX.2 Klein, delivered to the MacBook Library. SD 1.5 and SDXL base text-to-image passed earlier through the installed worker. |
+| Batch and plot | Numbered prompts and parameter sweeps using the image dispatcher and owned artifacts | Existing paths carried forward; synthetic checks passed. Not run live. |
+| Edit and Enhance | Reuse canonical source and lineage for image-to-image, masks, outpaint, transform, upscale and refinement | Live on production through Studio: SD 1.5 edit, SDXL edit, FLUX reference edit, Real-ESRGAN 4x, all delivered to the MacBook with matching readback. Inpaint and outpaint were not run separately. From a MacBook-hosted console the SD 1.5 and SDXL edit scripts still fail (`img2img-remote-png`); production runs them on-host, so no routing change was made. |
 | Library | Canonical image and media browsing, selection, downloads, collections and handoffs | Create-to-Library and canonical bytes passed in a synthetic workflow. Full browser suite also exercises Library browsing, collection workflows and handoffs. |
 | Resources | Recipes, styles, macros, wildcard banks, and prompt reuse | Existing paths carried forward. Collections, recipes, macros, styles and wildcard writes now preserve prior data on a failed write. Focused and full portable checks exercise the corresponding stores. |
-| Voice and Drama | Voice profiles and engines, script production, edit, render and export | Existing paths carried forward. Synthetic production and safe cancellation passed. Simulated unavailable Kokoro blocked a cast Drama project while Create, Library and shared compute admission remained usable. Installed engine verification pending. |
-| Chat and prompt intelligence | Ollama-backed Chat and prompt review through the shared compute admission path | Existing paths carried forward. Synthetic Chat modes and shared compute checks passed. Live Ollama and prompt enhancement pending. |
-| Music and video | Music and video workflows with worker-backed availability | Existing adapters carried forward. Dormant or unavailable workers need to be identified in current runtime evidence. |
-| 3D and Worlds | Library source handoff, worker capabilities, project storage and preview | Synthetic Library handoff and world workflow passed. SHARP, Hunyuan3D and panorama inference pending. |
+| Voice and Drama | Voice profiles and engines, script production, edit, render and export | Live on production through Studio: Kokoro speech; a two-line Drama cast with VoxCPM2 and Kokoro, produced, mastered, proofed and saved. Drama speech recognition QA is unavailable (reported by the app). Qwen voices and OpenVoice were not re-run. |
+| Chat and prompt intelligence | Ollama-backed Chat and prompt review through the shared compute admission path | BLOCKED on the Ollama restart. Synthetic checks passed. |
+| Music and video | Music and video workflows with worker-backed availability | Live on production: Magenta RealTime clip. ACE-Step was withheld for host safety (see below). Video has no installed generator and Studio says so. |
+| 3D and Worlds | Library source handoff, worker capabilities, project storage and preview | Live on production through Studio: SHARP quick geometry, 360 world (normal PARTIAL label, viewer opened), Hunyuan3D mesh (preview opened). Textured mesh was not re-run. |
 | Studio shell, themes and Mac app | Existing desktop/mobile layouts, workspace navigation and native WebKit launch | Source carried forward. Synthetic Create and Library references captured. Native Swift type-check passed. Staged build, native launch and mobile acceptance are separate gates. |
 
 ## Verification
@@ -117,17 +117,56 @@ worker equal to the commit blob, EngineHost unchanged. Restore point: Big Mac
 - `915495a` corrects both defects: the first bounded read is 20 s, and a suspended
   publication does not hold an isolated fallback open. Every record is still validated.
 
-Open gates, in order:
+### Recovery and production state, November 24
 
-1. Owner decision: release the stuck fallback. Either set the one stale record aside and
-   restore it afterwards, so the backend seals and the worker drains itself, or reboot
-   Big Mac. Do not kill the backend: without a seal its same-boot owner record blocks.
-2. Start external mode on `915495a` once certified. Run the fallback drill again.
-3. Ollama restart with the owner at the Big Mac screen. Pid 782 runs the deleted 0.40.17
-   binary; models are at `/Volumes/wc2tb/DexDiffusion/models/ollama`, `OLLAMA_NOPRUNE=1`.
-   Attribution is likely, not proven. An unanswered prompt would stall EngineHost.
-4. SD 1.5 and SDXL edits, Chat, Voice, Drama, Music, Video, 3D and Worlds.
-5. MacBook app replacement (separate decision). Staged at `915495a`.
+Production is `915495a` on external storage, started by EngineHost. The drill external
+to fallback to external passed and the release doctor passes every check, including
+`rollback_activation_proof`. It passed again after the live workflows.
+
+- The suspended Nov 11 (UTC Nov 12 03:40) record was set aside, the fallback owner wrote
+  `idle` then `drained`, and the worker stopped it. The record was restored byte-identical
+  to its original path. No signal was sent to the backend.
+- The idle seal is cleared by any HTTP request, so an open Studio tab keeps the backend
+  busy. Close Studio before a handoff. With it closed, `kit/rollback.py` reports READY.
+- Rollback is checked read-only and not executed. Its target `3d8b885` still has the 3 s
+  probe and the undrainable fallback.
+- `REMOTE_ESRGAN_MODEL` was set only in the MacBook's untracked `sdcpp.env`, so Real-ESRGAN
+  failed at gate `config` on Big Mac. The line was added to the Big Mac `sdcpp.env` (backup
+  `sdcpp.env.before-esrgan`) and to the tracked example. No code or restart was needed.
+
+| Workflow | Job | Seconds | Result |
+|---|---|---|---|
+| Klein create | `222c529b` | 22 | `20261124-232138-...` |
+| SD 1.5 edit | `3447f334` | 187 | sha `d39a48c2` |
+| SDXL edit | `aab1b2db` | 299 | sha `bef3a260` |
+| Reference edit | `2a39464e` | 28 | sha `4871d354` |
+| Real-ESRGAN | `e9ee8dc0` | 62 | 2048 px, sha `da413d39` |
+| Kokoro | `d336eaa3` | 13 | 2.1 s, sha `6b93408d` |
+| Magenta | `f18ae5a1` | 29 | 4 s, sha `c13fd006` |
+| Drama | `7ef3aac8` | 191 | 3.9 s master, sha `d2c2d521` |
+| Quick 3D | `3279b81a` | 105 | 66 MB PLY, sha `1ec18562` |
+| 360 world | `aea068eb` | 247 | 21 artifacts; memory stayed at or above 45% free, no swap |
+| Mesh | `5000e739` | 175 | 6.8 MB GLB, sha `df2abc20` |
+
+### ACE-Step and the November 23 panic
+
+The panic at 12:09 MST came 6.5 minutes into a 30 s ACE-Step song (job `e5ea1a1b`). The
+panic report shows a Python process holding 37.8 GB on this 32 GiB host, 11 swap files and
+low swap. The link is strong but the process was not identified by name. ACE-Step was not
+run, because an unplanned reboot takes down the other sites on this host. Studio still
+offers it as PROVEN. The song's record was closed as interrupted on the first external
+start; no backend was running when the cutover began.
+
+Open items:
+
+1. Ollama restart with the owner at the Big Mac screen, then Chat and prompt enhancement.
+   Pid 782 runs the deleted 0.40.17 binary; models are at
+   `/Volumes/wc2tb/DexDiffusion/models/ollama`, `OLLAMA_NOPRUNE=1`. Attribution is likely,
+   not proven. An unanswered prompt would stall EngineHost.
+2. MacBook app replacement (separate decision). Staged and signed at `915495a`.
+3. Owner decision on ACE-Step.
+4. Console doctor WARN: storage integrity reports 1070 problems. Probably files the owner
+   moved to Google Drive and `images_made_nah`; not investigated.
 
 ## Native staging and rollback
 
@@ -161,16 +200,5 @@ Launch Services, the real Dock and the production entry point were not exercised
 
 ## Continuation
 
-1. Owner: answer the `tailscaled` removable-volume dialog on the Big Mac screen.
-   Don't Allow is recommended.
-2. Then, read-only: confirm the installed worker answers `backend-status` and
-   `health`, and that Ollama and Jellyfin respond.
-3. Remaining live acceptance needs the external volume: SDXL and SD 1.5 Create and
-   Edit, Ollama Chat and prompt enhancement, voice, music, video, 3D and Worlds.
-4. Owner approval for cutover: deploy `engine-worker.py` and the checkout containing
-   `backend-supervisor.py` together, restart EngineHost's worker, confirm the prior
-   owner record is archived and 31337 is served, then run a new fallback drill
-   because the rollback proof is revision-bound.
-
-Big Mac still holds `~/.dex-accept-bc56755` (isolated acceptance root, worker stopped,
-no images retained). It can be deleted.
+The open items above are the whole list. Big Mac still holds `~/.dex-accept-bc56755`
+(isolated acceptance root, worker stopped, no images retained). It can be deleted.
