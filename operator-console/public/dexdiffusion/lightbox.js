@@ -158,8 +158,9 @@
   // Delegated, capture-phase: works for elements re-created by every render.
   function onClick(e) {
     if (e.defaultPrevented && e.__dexLightbox) return;
-    const t = e.target && e.target.closest ? e.target.closest('[data-fullscreen]') : null;
+    let t = e.target && e.target.closest ? e.target.closest('[data-fullscreen]') : null;
     if (!t) return;
+    if (t === over && t.previousElementSibling) t = t.previousElementSibling; // the thumbnail under it is the opener
     if (t.closest('[data-no-fullscreen]')) return;
     if (root && root.contains(t)) return;
     const src = t.getAttribute('data-fullscreen-src') || t.currentSrc || t.getAttribute('src');
@@ -181,6 +182,48 @@
     if (!opener || opener.closest('[data-no-fullscreen]') || opener.matches('button,a[href]')) return;
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); opener.click(); }
   });
+
+  // A thumbnail (data-fullscreen-src differs from its src) still drags, saves and copies as its original: while the pointer
+  // rests on it or presses it, the original itself lies over it. One at a time, dropped when the pointer moves on.
+  // A drag begun before the original has arrived is refused; it never hands over the thumbnail.
+  let over = null, restTimer = 0, resting = null, failedSrc = null;
+  const thumbOf = t => { const i = t && t.closest && t.closest('img[data-fullscreen-src]'); return i && !i.hasAttribute('data-original') && i.getAttribute('src') !== i.getAttribute('data-fullscreen-src') ? i : null; };
+  function dropOriginal() { if (over) { over.onload = over.onerror = null; over.remove(); if (!over.complete) over.removeAttribute('src'); over = null; } }
+  function layOriginal(thumb) {
+    const src = thumb.getAttribute('data-fullscreen-src');
+    if (!over || over.getAttribute('src') !== src) {
+      dropOriginal();
+      over = el('img', { alt: '', 'aria-hidden': 'true', 'data-original': '1', style: 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in;' });
+      for (const n of ['data-fullscreen', 'data-fullscreen-src', 'data-fullscreen-image-id', 'data-fullscreen-caption']) if (thumb.hasAttribute(n)) over.setAttribute(n, thumb.getAttribute(n));
+      over.style.pointerEvents = 'none'; // until it has arrived, the thumbnail below stays the one in hand
+      over.onload = () => { failedSrc = null; if (over) over.style.pointerEvents = ''; };
+      over.onerror = () => { failedSrc = src; dropOriginal(); };
+      over.fetchPriority = 'low';
+      over.src = src;
+    }
+    if (over.previousElementSibling !== thumb) thumb.after(over); // a re-render replaces the cell; the loaded original moves across
+  }
+  document.addEventListener('pointerover', e => {
+    if (e.buttons || (e.pointerType && e.pointerType !== 'mouse')) return; // a pressed pointer is holding its image
+    if (over && over.parentElement && over.parentElement.contains(e.target)) return;
+    const thumb = thumbOf(e.target), src = thumb && thumb.getAttribute('data-fullscreen-src');
+    clearTimeout(restTimer); resting = thumb;
+    if (over && over.getAttribute('src') === src) { layOriginal(thumb); return; }
+    dropOriginal();
+    if (thumb) restTimer = setTimeout(() => { if (resting === thumb && thumb.isConnected) layOriginal(thumb); }, 150);
+  }, true);
+  document.addEventListener('mousedown', e => {
+    const thumb = thumbOf(e.target); if (!thumb) return;
+    layOriginal(thumb);
+    if (e.button === 2 || e.ctrlKey) over.style.pointerEvents = ''; // the menu's Save and Copy Address use the address, loaded or not
+  }, true);
+  document.addEventListener('dragstart', e => {
+    const thumb = thumbOf(e.target); if (!thumb) return;
+    e.preventDefault();
+    layOriginal(thumb);
+    const app = window.__dex;
+    if (app && app.toast) app.toast(thumb.getAttribute('data-fullscreen-src') === failedSrc ? 'The original image could not be loaded, so it was not dragged.' : 'Loading the original image. Drag it again in a moment.', '#fbbf24');
+  }, true);
 
   window.DexLightbox = { open, close, isOpen: () => !!root };
 })();

@@ -180,6 +180,65 @@ const counter = page => page.locator('[data-lightbox-count]').innerText();
       await ctx.close();
     });
 
+    await test('a grid thumbnail is dragged, saved and opened as its original, fetched only for the image in hand', async () => {
+      const images = ALL.map(i => ({ ...i, kind: 'image', artifact_id: i.id })), BIG = makePng(96, 96);
+      const { page, ctx, errors } = await newPage(browser, srv.base, undefined, images);
+      const full = [], hold = { on: false, wait: [] };
+      await page.route(/\/api\/images\/[^/]+$/, async r => {
+        full.push(decodeURIComponent(new URL(r.request().url()).pathname.split('/').pop()));
+        if (hold.on) await new Promise(ok => hold.wait.push(ok));
+        await r.fulfill({ contentType: 'image/png', body: BIG }).catch(() => {});
+      });
+      // Playwright performs the whole native drag; the drop target reads what it carries.
+      await page.evaluate(() => { const z = document.createElement('div'); z.id = 'zone'; z.style.cssText = 'position:fixed;left:0;bottom:0;width:60px;height:60px;z-index:99999';
+        z.ondragover = e => e.preventDefault(); z.ondrop = e => { e.preventDefault(); window.__drop = e.dataTransfer.getData('text/uri-list'); }; document.body.append(z); });
+      const sel = id => '[data-media-library-grid] [data-lib-thumb="' + id + '"] img';
+      // A point where the image itself is on top (its Details button covers part of it).
+      const at = id => page.evaluate(q => { const i = document.querySelector(q); i.scrollIntoView({ block: 'center' }); const b = i.getBoundingClientRect();
+        const x = b.x + 14, y = b.bottom - 14; return document.elementFromPoint(x, y) === i ? { x, y } : null; }, sel(id));
+      // One accepted drag per page: after an intercepted drop, headless Chrome does not start the next one.
+      const pull = async p => { await page.evaluate(() => { window.__drop = null; }); await page.mouse.down(); await page.mouse.move(p.x + 20, p.y + 10, { steps: 4 });
+        await page.mouse.move(30, 870, { steps: 6 }); await page.mouse.up(); return page.evaluate(() => window.__drop); };
+      await page.waitForFunction(() => document.querySelectorAll('[data-media-library-grid] [data-lib-thumb] img').length > 50);
+      await page.waitForTimeout(800);
+      assert.deepEqual(full, [], 'browsing fetches no original');
+
+      // Passing over thumbnails fetches nothing; resting on one fetches that one only, and lays it over the thumbnail.
+      for (let i = 1; i < 9; i++) { const p = await at(ALL[i].id); await page.mouse.move(p.x, p.y); }
+      const a = ALL[10].id, pa = await at(a);
+      await page.mouse.move(pa.x, pa.y); await page.waitForTimeout(600);
+      assert.deepEqual(full, [a]);
+      assert.ok((await page.locator('[data-original]').getAttribute('src')).endsWith('/api/images/' + a));
+      // A drag begun before the original arrived is refused and says why; it never hands over the thumbnail.
+      const b = ALL[14].id; hold.on = true;
+      const pb = await at(b); await page.mouse.move(pb.x, pb.y);
+      assert.equal(await pull(pb), null, 'no drag with only a thumbnail in hand');
+      await page.getByText('Loading the original image').first().waitFor();
+      hold.on = false; hold.wait.splice(0).forEach(ok => ok()); await page.waitForTimeout(400);
+      await page.mouse.move(pb.x + 1, pb.y); const d2 = await pull(pb); assert.ok(String(d2).endsWith('/api/images/' + b), 'the second attempt carries it: ' + d2);
+
+      // The context menu ("Save image", "Copy image address") belongs to the element on top: it is the original.
+      const c = ALL[18].id, pc = await at(c); await page.mouse.move(pc.x, pc.y);
+      await page.evaluate(() => addEventListener('contextmenu', e => { e.preventDefault(); window.__menu = document.elementFromPoint(e.clientX, e.clientY).src; }));
+      await page.mouse.click(pc.x, pc.y, { button: 'right' });
+      assert.ok(String(await page.evaluate(() => window.__menu)).endsWith('/api/images/' + c));
+      // A re-render replaces the cell; the loaded original is laid over the new one without another request.
+      await page.waitForTimeout(300); const before = full.length;
+      await page.evaluate(() => __dex.setState({ __tick: Date.now() })); await page.waitForTimeout(400);
+      await page.mouse.move(pc.x + 1, pc.y); await page.mouse.move(pc.x, pc.y); await page.waitForTimeout(400);
+      assert.equal(full.length, before, 'no second request for the image in hand');
+      // A click opens the viewer on the original, with focus returning to the thumbnail.
+      await page.mouse.click(pc.x, pc.y); await page.waitForSelector('[data-lightbox]');
+      assert.ok((await page.locator('[data-lightbox-image]').getAttribute('src')).endsWith('/api/images/' + c));
+      await page.keyboard.press('Escape');
+      assert.equal(await page.evaluate(() => document.activeElement.alt), c);
+      assert.deepEqual([...new Set(full)], [a, b, c], 'only the three handled images were fetched at full resolution');
+      await page.mouse.move(640, 5); await page.waitForTimeout(300);
+      assert.equal(await page.locator('[data-original]').count(), 0, 'moving on drops the original');
+      assert.deepEqual(errors, []);
+      await ctx.close();
+    });
+
     await test('viewer: opens full size, Previous/Next, counter, boundaries, keyboard, original Download, Escape returns focus', async () => {
       const { page, ctx } = await newPage(browser, srv.base);
       await page.evaluate(() => localStorage.removeItem('dexdiffusion.library.prefs.v1'));
