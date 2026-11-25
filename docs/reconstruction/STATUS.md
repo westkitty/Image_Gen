@@ -20,7 +20,7 @@ preserved repair commit `8f0a80f`. The archive and original worktrees are separa
 | Resources | Recipes, styles, macros, wildcard banks, and prompt reuse | Existing paths carried forward. Collections, recipes, macros, styles and wildcard writes now preserve prior data on a failed write. Focused and full portable checks exercise the corresponding stores. |
 | Voice and Drama | Voice profiles and engines, script production, edit, render and export | Live on production through Studio: Kokoro speech; a two-line Drama cast with VoxCPM2 and Kokoro, produced, mastered, proofed and saved. Drama speech recognition QA is unavailable (reported by the app). Qwen voices and OpenVoice were not re-run. |
 | Chat and prompt intelligence | Ollama-backed Chat and prompt review through the shared compute admission path | Live on production through Studio after the Ollama restart: one Chat reply (gemma3:4b) and one prompt enhancement applied in Create. Both wait for an empty Ollama: a model another client left loaded fails them after 30 s as `compute_unavailable`, and Chat shows only that code. |
-| Music and video | Music and video workflows with worker-backed availability | Live on production: Magenta RealTime clip. ACE-Step admission is disabled in source at `6d48433`, not yet deployed (see below). Video has no installed generator and Studio says so. |
+| Music and video | Music and video workflows with worker-backed availability | Live on production: Magenta RealTime clip. ACE-Step admission is disabled in production (`6d48433`, see below). Video has no installed generator and Studio says so. |
 | 3D and Worlds | Library source handoff, worker capabilities, project storage and preview | Live on production through Studio: SHARP quick geometry, 360 world (normal PARTIAL label, viewer opened), Hunyuan3D mesh (preview opened). Textured mesh was not re-run. |
 | Studio shell, themes and Mac app | Existing desktop/mobile layouts, workspace navigation and native WebKit launch | Mac app `915495a` installed on the MacBook November 24 and launched: Studio bootstrap verified, saved settings intact. Create, System, Audio, 3D, Models and Library opened natively. Mobile acceptance was not run. |
 
@@ -174,10 +174,7 @@ start; no backend was running when the cutover began.
 
 Open items:
 
-1. Deploy `6d48433` (tag `reconstruction-candidate-20261124-6d48433`, certified in run 45524196726) so
-   ACE-Step is refused. An approved attempt on November 24 was refused before any restart (see "Refused
-   cutover to `6d48433`"); it needs a new decision on how the revision is activated. Until then
-   production `915495a` still lists ACE-Step as PROVEN and would accept a song job: do not start one.
+1. ACE-Step stays disabled until its memory use on a 32 GiB host is understood. Re-enabling is one entry in `media.js`.
 2. Not run live: matrix and XYZ plot, textured mesh, Qwen voices, OpenVoice. Video runtime is not installed.
 3. Chat and prompt enhancement need an empty Ollama; otherwise `compute_unavailable` after 30 s.
 4. Storage integrity reports 1071 missing and 463 valid image records. Every missing record is
@@ -196,7 +193,29 @@ reports TEMPORARILY DISABLED with the reason, and Studio disables Generate. Runt
 are untouched; removing the entry re-enables it. Magenta is unchanged. The internal fallback refuses
 ACE-Step already, because it probes no music runtime. `engine-worker.py` and the supervisor are unchanged.
 
-### Refused cutover to `6d48433`, November 24
+### Production is `6d48433`, November 24
+
+Deployed through runbook section J with no override and no EngineHost restart (pid 75667 throughout, worker
+`7d2ffcb18f59` unchanged). The release gate passed 20/20 for `6d48433` from a separate worktree while `915495a`
+was still running and matched its files.
+
+| Handoff | Revision | Result |
+|---|---|---|
+| Crossing `32e70c`, 19:31:45 to 19:32:02 MST | left `915495a`, arrived `6d48433` | seq 25 to 32 |
+| Proof drill `90f81f`, 19:32:16 to 19:32:25 MST | `6d48433` both ways | seq 33 to 40 |
+
+- Backend 55192, external storage. Release doctor PASS 19/19, including `rollback_activation_proof` for `6d48433`.
+- `/api/workers`: ACE-Step TEMPORARILY DISABLED, generate false. The deployed `media-bridge.js` refuses it in
+  `start` and `startBatch`, the only two entries to the bridge, before any job or lease. Magenta PROVEN, generate true.
+  ACE-Step was not executed and no request was submitted; refusal rests on that code and the certified tests.
+- Fallback records and the 617 MacBook publication receipts are byte-identical; staging empty.
+- Rollback: `kit/rollback.py` READY (to `3d8b885`, which accepts ACE-Step). The nearer target is `915495a` by
+  section J, branch `release/reconstruction-20261124`. Neither was executed.
+- MacBook app: installed `915495a`. `native/`, `bin/` and `scripts/` do not differ from `6d48433`, so it was not
+  reinstalled; `bin/dexdiffusion status` reports the source fingerprint MATCHES and labels the stamp OUTDATED.
+  It was launched against `6d48433`: six live connections through the tunnel, signature valid, one Dock entry.
+
+### Earlier refused attempt, November 24
 
 The owner approved a gated backend restart, with a logged override for the rollback proof only. The deployed
 worktree was staged on a new branch, `release/reconstruction-20261124-6d48433`. The doctor then reported
@@ -220,14 +239,24 @@ zip that was extracted and passed signature verification. The app runs `bin/dexd
 worktree (`~/Image_Gen-reconstruction-20261124`), so keep the worktree. The generation check planned inside
 the app was not run; no job was submitted from it.
 
-### Audio waveform and text flicker (source only, not deployed)
+### Audio waveform and text flicker (`90a2d0b`, source only, not deployed, not recommended yet)
 
 `public/dexdiffusion/audio-wave.js` draws a transparent azure waveform over Studio while an `<audio>` element
 plays, and flickers bright text (whites, oranges, the DexDiffusion brand) with the same loudness value. It decodes a
-second copy of the file to get the real samples and never reroutes playback, so a failure costs only the picture.
-Files over 128 MB get no picture. Reduce Motion turns it off. Smoothing limits strobing, but photosensitivity
-was not assessed. Chrome ran real playback tests. In WebKit, decoding, drawing and text were checked with a
-synthetic clock, because a windowless page cannot play media. It was not run in the installed Mac app.
+second copy of the file and never reroutes playback. Files over 128 MB get no picture. CI run 45533031399 passed
+(audio-wave 4/4, voice-drama 10/10). A visible WebKit window on the MacBook, real playback of a 240 s stereo WAV,
+isolated console, load average 17:
+
+| | Result |
+|---|---|
+| Playback | 10 s with and without: drift 0, no stalls, pause works |
+| CPU, all WebKit processes | 9% of a core without, **93% with** |
+| Frames | 29 fps without, 19 with (the machine was already loaded) |
+| Memory (RSS) | 61 MB without, 108 MB with, about 530 MB for the moment of decoding |
+| Reduce Motion | turned on mid-play: overlay and flicker gone, audio continues. The query was overridden in WebKit; Chrome emulated the real one. The macOS switch was not toggled |
+| Off switch | **none** except macOS Reduce Motion |
+
+Before recommending deployment: lower the CPU cost and add an off switch. Photosensitivity was not assessed.
 
 ## Native staging and rollback
 

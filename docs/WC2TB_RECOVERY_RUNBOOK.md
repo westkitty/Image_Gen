@@ -26,7 +26,7 @@ Read the failing check IDs in the output. Each one maps to a step below.
 | `restart_authority` / `legacy_agent` / `process_ancestry` BLOCKED | D |
 | `disk_reserve` BLOCKED, or jobs refused "Insufficient shared disk" | E |
 | `macbook_ack` pending, images not reaching the MacBook | F |
-| a code regression after a cutover | G |
+| a code regression after a cutover | J (going back) |
 
 ## A. Backend down (this never stops a working backend)
 
@@ -83,7 +83,7 @@ On the MacBook:
 ssh westcat 'bash ~/Image_Gen-wc2tb-20261120/scripts/request-worker-backend.sh --restart --expect-revision <full sha>'
 ```
 
-- **Limit (seen 2026-11-24):** this restarts the revision already running. After a new revision is staged, `backend_revision` is BLOCKED (running backend differs from the worktree) and the gate refuses. Activating a new revision uses section I.
+- **Limit (seen 2026-11-24):** this restarts the revision already running. After a new revision is staged, `backend_revision` is BLOCKED (running backend differs from the worktree) and the gate refuses. Activating a new revision uses section J.
 - **Result:** if the release gate refuses, the backend is left running (exit 78).
   - `BLOCKED` cannot be overridden.
   - `UNVERIFIED` can be overridden only with `--override-unverified "<20+ character reason>"`, after you verify the failing fact by hand. The override is logged.
@@ -305,3 +305,21 @@ Older journals, isolated-test drills, other revisions or workers, mixed drills, 
 - Any `HANDOFF_REFUSED` ends the drill with production untouched.
 - If `HANDOFF_FAILED` occurs, follow "When the handoff fails" above.
 - If step 5 fails, reset the deployed worktree to `352e508` (still clean, no history rewrite: check out the frozen branch), restore the frozen `engine-worker.py`, and run the same kickstart. That rollback is proven by the 2026-11-21 cutover.
+
+## J. Activate another certified revision (no EngineHost restart)
+
+Use this when `sdcpp-workflow/worker/` is the same in both revisions. If the worker or supervisor changed, use section I, because they load only at worker start. First used 2026-11-24, `915495a` to `6d48433`.
+
+The rule: the deployed worktree moves **only while the fallback is running**. Staging it while external runs makes the backend differ from its disk, and the gate correctly refuses. Each handoff request is checked against the files on disk and journaled with its own revision, so the two legs name two revisions.
+
+Let `OLD` and `NEW` be full commits, `W=~/Image_Gen-wc2tb-20261120`. Close Studio and the Mac app first. Read the result of each step before the next; stop on any refusal.
+
+1. **Gate, nothing changed.** Fetch `NEW`'s tag. Add a detached worktree of `NEW` outside `W` and link its `operator-console/node_modules` to the deployed one (only if `package-lock.json` is unchanged). Then run `bash $W/scripts/release-gate.sh --expect-revision NEW --target-worktree <that worktree>`. It must print `RELEASE_GATE_PASS` without an override. This also proves the rollback path for `OLD`.
+2. **Leave `OLD`:** `request-worker-backend.sh --handoff-fallback --expect-revision OLD --reason "..."`. Check `internal-fallback`, publication disabled, 3 models, Studio 200.
+3. **Move the source:** `git -C $W switch` to a *new* local branch at `NEW`. Check HEAD, clean, and the worker digest. Keep `OLD`'s branch where it is.
+4. **Arrive on `NEW`:** `--return-external --expect-revision NEW`. The doctor then shows only `rollback_activation_proof`, `return_to_external` and `recovery_plan` UNVERIFIED: a crossing is not proof for either revision.
+5. **Prove `NEW`:** one round trip with `--expect-revision NEW` both ways. The doctor must then PASS every check.
+
+**Going back** is the same procedure with the two revisions exchanged. If `NEW` exits before it is ready (`HANDOFF_FAILED`, port free, no `backend-instance`), switch `W` back to `OLD`'s branch and run `--return-external --expect-revision OLD`. If a `NEW` child is alive but not ready, it is kept as evidence and never signalled: see "When the handoff fails" in section H.
+
+Tests: `test_revision_transition_*` in `sdcpp-workflow/worker/test_backend_handoff.py`.
