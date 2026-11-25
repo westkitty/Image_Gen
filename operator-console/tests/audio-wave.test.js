@@ -2,48 +2,78 @@
 // The waveform must be the file's own samples: exact envelope, right moment, and no invented sound.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { analyse, columns, levelAt, isBright } = require('../public/dexdiffusion/audio-wave.js');
+const { parseWav, samples, strip, levelAt, isBright, WINDOW_S, BUCKETS, LEVELS } = require('../public/dexdiffusion/audio-wave.js');
 
-const RATE = 22050;
-// 0-2 s at 0.8, 2-4 s silence, 4-6 s at 0.4
-const signal = Float32Array.from({ length: RATE * 6 }, (_, i) => { const t = i / RATE; return (t < 2 ? 0.8 : t < 4 ? 0 : 0.4) * Math.sin(2 * Math.PI * 440 * t); });
-const track = analyse([signal], RATE);
+const RATE = 22050, FRAMES = RATE * WINDOW_S;
+// First strip: 0-2 s at 0.8, 2-4 s silence. Second, shorter: 4-6 s at 0.4.
+const value = t => (t < 2 ? 0.8 : t < 4 ? 0 : 0.4) * Math.sin(2 * Math.PI * 440 * t);
+const first = Float32Array.from({ length: FRAMES }, (_, i) => value(i / RATE));
+const second = Float32Array.from({ length: RATE * 2 }, (_, i) => value(4 + i / RATE));
+const a = strip(first, 1, FRAMES), b = strip(second, 1, FRAMES);
 
-test('the envelope is the true minimum and maximum of every bucket', () => {
-  const size = Math.round(RATE / track.perSecond);
-  for (const b of [0, 17, 900, 1500, 3000]) {
-    const part = signal.subarray(b * size, (b + 1) * size);
-    assert.ok(track.max[b] === Math.max(0, ...part) && track.min[b] === Math.min(0, ...part), 'bucket ' + b);
+// A WAV file of the given kind holding `frames` frames of [left, right].
+function wavFile({ bits = 16, float = false, extensible = false, junk = 0, frames }) {
+  const block = 2 * bits / 8, fmt = extensible ? 40 : 16, data = Buffer.alloc(frames.length * block);
+  frames.forEach((f, i) => f.forEach((v, c) => {
+    const at = i * block + c * bits / 8;
+    if (float) data.writeFloatLE(v, at);
+    else if (bits === 8) data.writeUInt8(Math.round(v * 127) + 128, at);
+    else data.writeIntLE(Math.round(v * (2 ** (bits - 1) - 1)), at, bits / 8);
+  }));
+  const chunk = (id, body) => { const h = Buffer.alloc(8); h.write(id, 0); h.writeUInt32LE(body.length, 4); return Buffer.concat([h, body, Buffer.alloc(body.length & 1)]); };
+  const f = Buffer.alloc(fmt);
+  f.writeUInt16LE(extensible ? 0xFFFE : float ? 3 : 1, 0); f.writeUInt16LE(2, 2); f.writeUInt32LE(48000, 4); f.writeUInt32LE(48000 * block, 8); f.writeUInt16LE(block, 12); f.writeUInt16LE(bits, 14);
+  if (extensible) f.writeUInt16LE(float ? 3 : 1, 24);
+  const body = Buffer.concat([chunk('fmt ', f), ...(junk ? [chunk('LIST', Buffer.alloc(junk))] : []), chunk('data', data)]), head = Buffer.alloc(12);
+  head.write('RIFF', 0); head.writeUInt32LE(4 + body.length, 4); head.write('WAVE', 8);
+  const file = Buffer.concat([head, body]);
+  return file.buffer.slice(file.byteOffset, file.byteOffset + file.length);
+}
+
+test('the envelope is the true minimum and maximum of every column', () => {
+  for (const c of [0, 17, 300, 639, 640, 900, 1279]) {
+    const part = first.subarray(Math.floor(c * FRAMES / BUCKETS), Math.ceil((c + 1) * FRAMES / BUCKETS));
+    assert.ok(a.max[c] === Math.max(0, ...part) && a.min[c] === Math.min(0, ...part), 'column ' + c);
   }
-  assert.ok(Math.abs(track.peak - 0.8) < 0.005);
+  assert.ok(Math.abs(a.peak - 0.8) < 0.005 && Math.abs(b.peak - 0.4) < 0.005);
 });
 
-test('the playhead column shows the sound at that moment, in proportion', () => {
-  const centre = t => { const c = columns(track, t, 800); let hi = 0, lo = 0; for (let x = 396; x < 404; x++) { hi = Math.max(hi, c.hi[x]); lo = Math.min(lo, c.lo[x]); } return [hi, lo]; };
-  assert.ok(centre(1)[0] > 0.97 && centre(1)[1] < -0.97, 'loud passage reaches the file peak');
-  assert.deepEqual(centre(3), [0, 0], 'silence is flat');
-  assert.ok(Math.abs(centre(5)[0] - 0.5) < 0.02, 'half the amplitude draws half the height');
+test('time runs left to right, and everything past the end of the file is flat', () => {
+  assert.ok(Math.max(...a.max.subarray(300, 310)) > 0.78, 'the loud half is on the left');
+  assert.equal(Math.max(...a.max.subarray(642)), 0); assert.equal(Math.min(...a.min.subarray(642)), 0);
+  assert.ok(Math.max(...b.max.subarray(300, 310)) > 0.38); assert.equal(Math.max(...b.max.subarray(642)), 0, 'the file ends halfway through this strip');
 });
 
-test('time runs left to right and everything outside the file is flat', () => {
-  const c = columns(track, 2, 800);                 // window 0-4 s: sound on the left half, silence on the right
-  assert.ok(c.hi[200] > 0.9); assert.equal(c.hi[600], 0);
-  const start = columns(track, 0, 800);             // window -2-2 s
-  assert.equal(start.hi[100], 0); assert.ok(start.hi[700] > 0.9);
-  const end = columns(track, 6, 800);               // window 4-8 s
-  assert.ok(end.hi[100] > 0.4); assert.equal(end.hi[700], 0);
+test('the level follows the sound at the playhead and silence is zero', () => {
+  assert.ok(levelAt(a, a.loud, 1) > 0.95); assert.equal(levelAt(a, a.loud, 3), 0);
+  assert.ok(Math.abs(levelAt(b, a.loud, 5) - 0.5) < 0.04, 'measured against the loudest passage of the file');
+  assert.equal(levelAt(null, 1, 1), 0); assert.equal(levelAt(strip(new Float32Array(FRAMES), 1, FRAMES), 0, 1), 0, 'a silent file never flickers');
+  assert.equal(a.rms.length, LEVELS);
 });
 
-test('the flicker level follows loudness at the playhead', () => {
-  assert.ok(levelAt(track, 1) > 0.95); assert.equal(levelAt(track, 3), 0); assert.ok(Math.abs(levelAt(track, 5) - 0.5) < 0.05);
-  assert.equal(levelAt(track, 99), 0);
+test('every PCM layout the studio can meet decodes to the same passage, and other files are refused', () => {
+  const frames = Array.from({ length: 4800 }, (_, i) => [0.5 * Math.sin(i / 20), 0.25 * Math.sin(i / 20)]), bytes = [];
+  for (const kind of [{ bits: 8 }, { bits: 16 }, { bits: 24 }, { bits: 32 }, { bits: 32, float: true }, { bits: 16, extensible: true }, { bits: 24, junk: 71 }]) {
+    const file = wavFile({ ...kind, frames }), wav = parseWav(file), label = JSON.stringify(kind);
+    assert.ok(wav && wav.channels === 2 && wav.rate === 48000, label);
+    const part = samples(file.slice(wav.dataAt, wav.dataAt + wav.dataBytes), wav), s = strip(part.data, 2, 4800, part.scale);
+    assert.ok(Math.abs(s.peak - 0.5) < 0.012, label + ' peak ' + s.peak);
+    bytes.push(wav.dataBytes);
+  }
+  assert.deepEqual(bytes, [9600, 19200, 28800, 38400, 38400, 19200, 28800]);
+  for (const bad of [new ArrayBuffer(10), wavFile({ frames }).slice(0, 30), Buffer.from('ID3'.padEnd(200, '.')).buffer.slice(0, 200)]) assert.equal(parseWav(bad), null);
 });
 
-test('every channel counts, and a silent file stays silent', () => {
-  const right = analyse([new Float32Array(RATE), signal.subarray(0, RATE)], RATE);
-  assert.ok(columns(right, 0.5, 100).hi[50] > 0.9, 'sound in the second channel only');
-  const silent = analyse([new Float32Array(RATE)], RATE);
-  assert.equal(levelAt(silent, 0.5), 0); assert.ok(columns(silent, 0.5, 100).hi.every(v => v === 0));
+test('a half-read frame at the end of a span is ignored', () => {
+  const wav = { float: false, bits: 16, block: 4, channels: 2 };
+  assert.equal(samples(new ArrayBuffer(4 * 10 + 3), wav).data.length, 20);
+});
+
+test('sound in the second channel only still shows', () => {
+  const stereo = new Float32Array(FRAMES * 2);
+  for (let i = 0; i < FRAMES; i++) stereo[2 * i + 1] = first[i];
+  const s = strip(stereo, 2, FRAMES);
+  assert.deepEqual([s.max[300], s.min[300]], [a.max[300], a.min[300]]);
 });
 
 test('bright text is whites and oranges, not muted greys, blues or reds', () => {

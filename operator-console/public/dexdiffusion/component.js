@@ -4542,6 +4542,8 @@ class Component extends DCLogic {
       savePrompts, onSavePrompts: e=>{ const v=e.target.checked; this.setState({savePrompts:v}); localStorage.setItem('dex_save_prompts',String(v)); },
       onRefreshRuns: ()=>this.loadRuns(), onRefreshAll: ()=>this.refreshAll(), onDiscoverAssets: ()=>this.discoverAssets(),
       settingsDrawer, runInspector, truthStatusPanel, systemInfoPanel, keyboardHelp, validationPanel,
+      audioWaveOn: !!window.DexAudioWave?.settings?.().wave, audioWaveTextOn: !!window.DexAudioWave?.settings?.().text, audioWaveTextDisabled: !window.DexAudioWave?.settings?.().wave,
+      onAudioWaveChange: e => { window.DexAudioWave?.set?.({ wave: e.target.checked }); this.setState({}); }, onAudioWaveTextChange: e => { window.DexAudioWave?.set?.({ text: e.target.checked }); this.setState({}); },
       themeEditorPanel: screen === 'system' && window.DexTheme && window.DexTheme.panelSlot ? window.DexTheme.panelSlot() : null,
       libraryCards, runsCount: String(runs.length), jobLogDisplay, worldWorkspace: this.buildWorldWorkspace(), asset3dWorkspace: this.buildAsset3dWorkspace(),
       libraryFilters, libraryLoadMore, extraNetworksDisplay,

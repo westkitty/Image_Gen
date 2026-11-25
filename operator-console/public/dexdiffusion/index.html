@@ -683,6 +683,12 @@
       </select>
       <small>The five-master layout groups the same creative destinations and adds Chat. You can switch layouts here any time.</small>
     </section>
+    <section data-audio-wave-control style="border:1px solid rgba(148,163,184,.25);border-radius:9px;padding:12px;display:grid;gap:7px;">
+      <div style="font-weight:700;">Audio visuals</div>
+      <label style="display:flex;gap:8px;align-items:center;min-height:30px;cursor:pointer;"><input type="checkbox" data-audio-wave-setting="wave" checked="{{ audioWaveOn }}" onChange="{{ onAudioWaveChange }}" /> Azure waveform over the studio while audio plays</label>
+      <label style="display:flex;gap:8px;align-items:center;min-height:30px;cursor:pointer;"><input type="checkbox" data-audio-wave-setting="text" checked="{{ audioWaveTextOn }}" disabled="{{ audioWaveTextDisabled }}" onChange="{{ onAudioWaveTextChange }}" /> Bright text flickers with the waveform</label>
+      <small>Both are off by default and stop at once when switched off. Reduce Motion always turns them off. The waveform can also be toggled from the command palette.</small>
+    </section>
     <div>{{ themeEditorPanel }}</div>
     {{ truthStatusPanel }}
     <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:15px;">
