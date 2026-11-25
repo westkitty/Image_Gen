@@ -67,8 +67,10 @@ A: operational and verified. D: deliberately unavailable. E: outside this releas
 
 Native evidence for `6c89afb`: 13 scenarios in the off-screen harness (twice); the same source against production saved a
 synthetic image twice, byte-identical, with Studio kept, then loaded the Library (120 thumbnails). The bundle's
-signature, source fingerprint, root, single Dock tile and single registration are verified. **Not done:** the
-installed bundle was not launched, because the owner was using the desktop. Its first launch is the owner's.
+signature, source fingerprint, root, single Dock tile and single registration are verified. The installed bundle was then
+launched twice while the owner was away, verified Studio against production in 8 to 9 s each time, quit on a normal quit request and
+reopened. It was opened by path, not by clicking the Dock tile. `open -g -j` does not keep it in the background: the app
+brings itself to the front at launch.
 
 ## Never release or go back to
 
