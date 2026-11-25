@@ -202,6 +202,74 @@ app.listen(Number(process.env.PORT), '127.0.0.1', () => setInterval(gate.checkpo
         self.assertEqual(self.supervisor.state, 'RECOVERY_BLOCKED')
         self.assertIsNone(self.supervisor.child)
 
+    # A process cannot outlive the boot that started it. Anything short of that
+    # proof keeps the record and stays blocked.
+    def interrupted_owner(self, boot, age=0):
+        instance = self.root / 'bc-prior'
+        instance.mkdir()
+        record = str(instance) + '\n' + (f'boot {boot}\n' if boot else '')
+        self.supervisor.owner.write_text(record)
+        stamp = time.time() - age
+        os.utime(self.supervisor.owner, (stamp, stamp))
+        return record
+
+    def blocked(self, record):
+        self.supervisor.tick()
+        self.assertEqual(self.supervisor.state, 'RECOVERY_BLOCKED')
+        self.assertIsNone(self.supervisor.child)
+        self.assertEqual(self.supervisor.owner.read_text(), record)
+
+    def test_owner_from_an_earlier_boot_is_archived_and_backend_starts(self):
+        self.supervisor.boot = lambda: ('BOOT-B', time.time() - 60)
+        record = self.interrupted_owner('BOOT-A')
+        self.start()
+        archived = list(self.root.glob('backend-instance.ended-*'))
+        self.assertEqual([p.read_text() for p in archived], [record])
+        self.assertIn('boot BOOT-B\n', self.supervisor.owner.read_text())
+
+    def test_owner_from_this_boot_stays_blocked(self):
+        self.supervisor.boot = lambda: ('BOOT-A', time.time() - 60)
+        self.blocked(self.interrupted_owner('BOOT-A', age=86400))
+
+    def test_unknown_boot_identity_stays_blocked(self):
+        self.supervisor.boot = lambda: None
+        self.blocked(self.interrupted_owner('BOOT-A', age=86400))
+
+    def test_unstamped_owner_needs_to_clearly_predate_boot(self):
+        self.supervisor.boot = lambda: ('BOOT-B', time.time() - 3600)
+        record = self.interrupted_owner(None, age=3660)
+        self.blocked(record)
+        self.supervisor.state = 'WAITING'
+        os.utime(self.supervisor.owner, (time.time() - 7200,) * 2)
+        self.start()
+
+    def test_earlier_boot_owner_is_kept_while_another_listener_holds_the_port(self):
+        self.supervisor.boot = lambda: ('BOOT-B', time.time() - 60)
+        record = self.interrupted_owner('BOOT-A')
+        with socket.socket() as foreign:
+            foreign.bind(('127.0.0.1', self.port))
+            foreign.listen()
+            self.supervisor.tick()
+            self.assertEqual(self.supervisor.state, 'PORT_HELD')
+            self.assertEqual(self.supervisor.owner.read_text(), record)
+
+    def test_earlier_boot_owner_is_kept_while_worker_recovery_is_uncertain(self):
+        self.supervisor.boot = lambda: ('BOOT-B', time.time() - 60)
+        record = self.interrupted_owner('BOOT-A')
+        self.busy = True
+        self.supervisor.tick()
+        self.assertIsNone(self.supervisor.child)
+        self.assertEqual(self.supervisor.owner.read_text(), record)
+
+    def test_symlinked_owner_is_never_archived(self):
+        self.supervisor.boot = lambda: ('BOOT-B', time.time() - 60)
+        target = self.root / 'elsewhere'
+        target.write_text(str(self.root / 'bc-prior') + '\nboot BOOT-A\n')
+        self.supervisor.owner.symlink_to(target)
+        self.supervisor.tick()
+        self.assertEqual(self.supervisor.state, 'RECOVERY_BLOCKED')
+        self.assertTrue(self.supervisor.owner.is_symlink())
+
 
 if __name__ == '__main__':
     unittest.main()

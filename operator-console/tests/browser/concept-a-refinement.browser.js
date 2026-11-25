@@ -310,7 +310,7 @@ async function openConcept(page, base) {
       await page.close();
     });
 
-    await test('unsaved Drama script survives a cancelled command-palette navigation', async () => {
+    await test('unsaved Drama script survives confirmed leaving through the command palette', async () => {
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       const errors = await openConcept(page, srv.base);
       assert.equal(await page.evaluate(() => __dex.caNavigate('drama')), true);
@@ -319,29 +319,83 @@ async function openConcept(page, base) {
       await page.locator('[data-drama-script] textarea').fill(script);
       assert.equal(await page.locator('[data-drama-draft-state]').getAttribute('data-drama-draft-state'), 'unsaved');
       assert.match(await page.locator('[data-drama-draft-state]').innerText(), /held in memory only/);
-      const navDialogPromise = page.waitForEvent('dialog');
-      const navPromise = page.evaluate(() => __dex.caNavigate('media'));
-      const navDialog = await navDialogPromise;
-      assert.match(navDialog.message(), /Drama project or script/);
-      await navDialog.dismiss();
-      assert.equal(await navPromise, false);
-      assert.equal(await page.evaluate(() => __dex.state.screens[__dex.state.version]), 'drama');
       await page.locator('.ca-search').click();
       await page.locator('#v12-palette-input').fill('Go to Library');
       const item = page.locator('.v12-palette-item').filter({ hasText: 'Go to Library' });
       assert.equal(await item.count(), 1);
-      const dialogPromise = page.waitForEvent('dialog');
+      const leaveDialogPromise = page.waitForEvent('dialog');
       const clickPromise = item.click();
-      const dialog = await dialogPromise;
-      assert.match(dialog.message(), /Drama project or script/);
-      await dialog.dismiss();
+      const leaveDialog = await leaveDialogPromise;
+      assert.match(leaveDialog.message(), /Leave Drama without saving/);
+      await leaveDialog.accept();
       await clickPromise;
-      assert.equal(await page.evaluate(() => __dex.state.screens[__dex.state.version]), 'drama');
+      await page.waitForFunction(() => __dex.state.screens[__dex.state.version] === 'library');
+      assert.equal(await page.evaluate(() => __dex._dmText.script), script, 'the draft stays in memory while away');
+      assert.equal(await page.evaluate(() => __dex.caNavigate('drama')), true);
+      await page.waitForSelector('.ca-shell[data-ca-module="drama"]');
       assert.equal(await page.locator('[data-drama-script] textarea').inputValue(), script);
       assert.equal(await page.evaluate(() => __dex._dmText.script), script);
-      await page.screenshot({ path: outPath('drama-unsaved-script-navigation-cancelled.png') });
+      await page.screenshot({ path: outPath('drama-unsaved-script-navigation-preserved.png') });
       assert.deepEqual(errors, []);
       await page.close();
+    });
+    await test('unsaved Drama Cancel protects both direct navigation and the command palette', async () => {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      try {
+        const errors = await openConcept(page, srv.base);
+        assert.equal(await page.evaluate(() => __dex.caNavigate('drama')), true);
+        await page.waitForSelector('.ca-shell[data-ca-module="drama"]');
+        const script = 'UNSAVED DRAMA DRAFT - CANCEL MUST KEEP THIS';
+        await page.locator('[data-drama-script] textarea').fill(script);
+        assert.equal(await page.locator('[data-drama-draft-state]').getAttribute('data-drama-draft-state'), 'unsaved');
+
+        const directDialogPromise = page.waitForEvent('dialog');
+        const directNav = page.evaluate(() => __dex.caNavigate('media'));
+        const directDialog = await directDialogPromise;
+        assert.match(directDialog.message(), /Leave Drama without saving/);
+        assert.match(directDialog.message(), /Cancel to keep editing/);
+        await directDialog.dismiss();
+        assert.equal(await directNav, false);
+        assert.equal(await page.evaluate(() => __dex.state.screens[__dex.state.version]), 'drama');
+        assert.equal(await page.locator('[data-drama-script] textarea').inputValue(), script);
+
+        await page.locator('.ca-search').click();
+        await page.locator('#v12-palette-input').fill('Go to Library');
+        const item = page.locator('.v12-palette-item').filter({ hasText: 'Go to Library' });
+        const paletteDialogPromise = page.waitForEvent('dialog');
+        const paletteClick = item.click();
+        const paletteDialog = await paletteDialogPromise;
+        assert.match(paletteDialog.message(), /Leave Drama without saving/);
+        await paletteDialog.dismiss();
+        await paletteClick;
+        assert.equal(await page.evaluate(() => __dex.state.screens[__dex.state.version]), 'drama');
+        assert.equal(await page.evaluate(() => __dex._dmText.script), script);
+        assert.equal(await page.locator('[data-drama-script] textarea').inputValue(), script);
+        assert.deepEqual(errors, []);
+      } finally {
+        await page.close();
+      }
+    });
+
+    await test('same-screen, clean Drama and retained Create prompt navigation do not prompt', async () => {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      try {
+        const errors = await openConcept(page, srv.base);
+        const dialogs = [];
+        page.on('dialog', async dialog => { dialogs.push(dialog.message()); await dialog.dismiss(); });
+        assert.equal(await page.evaluate(() => __dex.caNavigate('drama')), true);
+        await page.waitForSelector('.ca-shell[data-ca-module="drama"]');
+        assert.equal(await page.evaluate(() => __dex.caNavigate('drama')), true, 'same screen is harmless');
+        assert.equal(await page.evaluate(() => __dex.caNavigate('media')), true, 'clean Drama is harmless');
+        assert.equal(await page.evaluate(() => __dex.caNavigate('generate')), true);
+        await page.evaluate(() => __dex.setState({ prompt: 'retained Create fixture' }));
+        assert.equal(await page.evaluate(() => __dex.caNavigate('music')), true, 'retained Create draft is harmless');
+        assert.equal(await page.evaluate(() => __dex.state.prompt), 'retained Create fixture');
+        assert.deepEqual(dialogs, [], 'no confirmation for harmless route transitions');
+        assert.deepEqual(errors, []);
+      } finally {
+        await page.close();
+      }
     });
   } finally {
     await runCleanups();

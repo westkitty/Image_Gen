@@ -240,12 +240,33 @@
   };
 
   // ── resources (LoRA / VAE) — shared by Create and Edit ───────────────────
-  P.loadEditAssets = async function () {
-    const ed = this._ed(), t = ed.state && ed.state.editModel;
-    if (!t || ed.assetsFor === t) return;
-    ed.assetsFor = t;
-    const r = await this._api('/api/extra-networks?target=' + encodeURIComponent(t));
-    if (r.ok) this.edSet({ assets: { loras: r.data.loras || [], vaes: r.data.vaes || [] } });
+  P.loadEditAssets = function () {
+    const ed = this._ed(), target = ed.state?.editModel, backend = this.state.backendUrl;
+    if (!target) return;
+    const pending = this._editAssetsRequest;
+    if (pending?.target === target && pending.backend === backend) return pending.promise;
+    if (ed.assetsFor === target && ed.assetsBackend === backend && ed.assetsStatus === 'loaded') return;
+    const request = { target, backend };
+    const isCurrent = () => this._editAssetsRequest === request && this._ed().state?.editModel === target && this.state.backendUrl === backend;
+    this._editAssetsRequest = request;
+    this.edSet({ assetsStatus: ed.assetsStatus === 'failed' ? 'retrying' : 'loading' });
+    request.promise = (async () => {
+      try {
+        const r = await this._api('/api/extra-networks?target=' + encodeURIComponent(target), undefined, undefined, AbortSignal.timeout(8000));
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!Array.isArray(r.data?.loras) || !Array.isArray(r.data?.vaes)) throw new Error('Invalid asset catalog');
+        if (!isCurrent()) return false;
+        this.edSet({ assetsFor: target, assetsBackend: backend, assetsStatus: 'loaded', assetsError: null,
+          assets: { loras: r.data.loras, vaes: r.data.vaes } });
+        return true;
+      } catch (error) {
+        if (isCurrent()) this.edSet({ assetsStatus: 'failed', assetsError: error.message });
+        return false;
+      } finally {
+        if (this._editAssetsRequest === request) this._editAssetsRequest = null;
+      }
+    })();
+    return request.promise;
   };
   function compatOf(l, catalog) {
     const c = (catalog || []).find(x => String(x.filename || x.name || '').replace(/\.[^.]+$/, '') === l.name || x.name === l.name);
@@ -255,15 +276,20 @@
     if (c.compatibility === 'Incompatible') return { state: 'bad', label: 'incompatible', color: tone.bad, item: c };
     return { state: 'unknown', label: c.compatibility || 'unverified', color: tone.off, item: c };
   }
-  // LoRAs that will actually be sent: incompatible ones are held back unless the user overrides.
+  // The current catalogue supplies target-specific structured weight bounds.
   P._effectiveLoras = function (loras, catalog) {
-    return E.normalizeLoras(loras).filter(l => l.override || compatOf(l, catalog).state !== 'bad').map(l => ({ name: l.name, weight: l.weight }));
+    return E.normalizeLoras(loras, 3).filter(l => {
+      const { state, item } = compatOf(l, catalog);
+      return state !== 'bad' && l.weight >= (item?.min_weight ?? 0) && l.weight <= (item?.max_weight ?? 2);
+    }).map(({ name, weight }) => ({ name, weight }));
   };
   // cfg: { scope, loras, setLoras(fn(loras)->loras), catalog, vaes, vae, setVae, showVae, onTrigger, modelLabel }
   P.buildResourcesControl = function (cfg) {
     const loras = cfg.loras || [], catalog = cfg.catalog || [];
     const rows = loras.map(l => {
       const cp = compatOf(l, catalog), item = cp.item;
+      const minWeight = item?.min_weight ?? 0, maxWeight = item?.max_weight ?? 2;
+      const boundedWeight = value => Math.max(minWeight, E.clampWeight(value, maxWeight));
       const out = h('span', { style: { color: '#38bdf8', fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, minWidth: 34 } }, E.formatWeight(l.weight));
       return h('div', { key: l.name, 'data-lora': l.name, style: { border: '1px solid ' + (cp.state === 'bad' ? '#f8717177' : 'rgba(148,163,184,.18)'), borderRadius: 8, padding: 8, display: 'grid', gap: 6, background: 'rgba(8,14,24,.7)' } },
         h('div', { style: css.row }, h('b', { style: { color: '#e2e8f0', fontSize: 12, fontFamily: "'IBM Plex Mono',monospace" } }, l.name),
@@ -271,10 +297,11 @@
           h('div', { style: { flex: 1 } }),
           h('button', { type: 'button', 'aria-label': 'Remove LoRA ' + l.name, onClick: () => cfg.setLoras(a => a.filter(x => x.name !== l.name)), style: { border: 0, background: 'transparent', color: '#f87171', cursor: 'pointer', fontSize: 16, minWidth: 32, minHeight: 32 } }, '×')),
         h('div', { style: css.row }, h('span', { style: css.muted }, 'Weight'),
-          h('input', { type: 'range', min: '-2', max: '2', step: '0.05', value: String(l.weight), 'aria-label': 'Weight for ' + l.name, style: { flex: '1 1 140px', minHeight: 28 },
-            onInput: e => { const w = E.clampWeight(e.target.value); l.weight = w; out.textContent = E.formatWeight(w); cfg.quiet && cfg.quiet(l.name, w); }, onChange: e => cfg.setLoras(a => a.map(x => x.name === l.name ? Object.assign({}, x, { weight: E.clampWeight(e.target.value) }) : x)) }), out),
-        cp.state === 'bad' ? h('div', { role: 'alert', style: { color: tone.bad, fontSize: 11 } }, '⚠ Incompatible with ' + (cfg.modelLabel || 'this model') + ' — held back from the request. ',
-          h('button', { type: 'button', onClick: () => cfg.setLoras(a => a.map(x => x.name === l.name ? Object.assign({}, x, { override: !x.override }) : x)), style: { border: 0, background: 'transparent', color: '#fde68a', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 } }, l.override ? 'Excluding again' : 'Use anyway')) : null,
+          h('input', { type: 'range', min: minWeight, max: maxWeight, step: '0.05', value: String(l.weight), 'aria-label': 'Weight for ' + l.name, style: { flex: '1 1 140px', minHeight: 28 },
+            onInput: e => { const w = boundedWeight(e.target.value); l.weight = w; out.textContent = E.formatWeight(w); cfg.quiet && cfg.quiet(l.name, w); }, onChange: e => cfg.setLoras(a => a.map(x => x.name === l.name ? Object.assign({}, x, { weight: boundedWeight(e.target.value) }) : x)) }), out),
+        cp.state === 'bad' ? h('div', { role: 'alert', style: { color: tone.bad, fontSize: 11 } },
+          'Incompatible with ' + (cfg.modelLabel || 'this model') + ' · excluded from the edit request.') : null,
+        (l.weight < minWeight || l.weight > maxWeight) ? h('div', { role: 'alert', style: { color: tone.bad, fontSize: 11 } }, 'Saved strength outside the supported range · excluded from this edit request.') : null,
         item && item.trigger_words && item.trigger_words.length ? h('div', { style: css.row }, h('span', { style: css.muted }, 'Triggers'), ...item.trigger_words.map(w => h('button', { key: w, type: 'button', onClick: () => cfg.onTrigger && cfg.onTrigger(w), title: 'Add to prompt', style: { border: '1px solid rgba(56,189,248,.3)', background: 'rgba(56,189,248,.08)', color: '#7dd3fc', borderRadius: 5, padding: '2px 7px', fontSize: 10, cursor: 'pointer' } }, '+ ' + w))) : null);
     });
     const chosen = new Set(loras.map(l => l.name));
@@ -301,7 +328,10 @@
         : null,
       ...rows,
       ...(isCreate ? [] : [add]),
-      !isCreate && !catalog.length ? h('div', { style: css.muted }, 'No LoRAs are installed on Big Mac (expected at /Volumes/wc2tb/ImageGen/loras), so none can be added. Active ones recalled from a source image still show above.') : null,
+      !isCreate && !catalog.length ? h('div', { style: css.muted, role: 'status' },
+        cfg.catalogStatus === 'loaded' ? 'No LoRAs in this catalog.' :
+          cfg.catalogStatus === 'failed' ? 'LoRA catalog unavailable (' + cfg.catalogError + ').' : 'LoRA catalog ' + (cfg.catalogStatus || 'unverified') + '.',
+        cfg.catalogStatus === 'failed' ? h('button', { type: 'button', onClick: cfg.retryCatalog }, 'Retry catalog') : null) : null,
       vae);
   };
 
@@ -343,10 +373,27 @@
     const foot = document.createElement('div'); foot.style.cssText = 'margin-top:6px;font:11px DM Sans,sans-serif;color:#8193a8;';
     panel.append(search, chips, list, foot); dialog.append(head, panel); overlay.append(dialog); root.append(trigger, overlay);
     const mk = (tag, css2, text) => { const n = document.createElement(tag); n.style.cssText = css2; if (text != null) n.textContent = text; return n; };
-    const chipEl = (text, active, fn) => { const b = mk('button', `border:1px solid ${active ? '#38bdf8' : 'rgba(148,163,184,.25)'};background:${active ? 'rgba(56,189,248,.16)' : 'transparent'};color:${active ? '#7dd3fc' : '#a8b6c8'};border-radius:999px;padding:3px 10px;min-height:28px;font:700 11px DM Sans,sans-serif;cursor:pointer;`, text); b.type = 'button'; b.addEventListener('click', fn); return b; };
+    const chipEl = (text, active, fn) => { const b = mk('button', `border:1px solid ${active ? '#38bdf8' : 'rgba(148,163,184,.25)'};background:${active ? 'rgba(56,189,248,.16)' : 'transparent'};color:${active ? '#7dd3fc' : '#a8b6c8'};border-radius:999px;padding:3px 10px;min-height:28px;font:700 11px DM Sans,sans-serif;cursor:pointer;`, text); b.type = 'button'; b.setAttribute('data-model-filter', text); b.addEventListener('click', fn); return b; };
+    let listSignature, triggerSignature;
     function draw() {
-      const g = E.groupModels(props.targets, props.cards, { query: q.query, family: q.family, readyOnly: q.readyOnly, activeId: props.activeId });
+      const a = props.targets.find(t => t.id === props.activeId), c = props.cards.find(x => x.id === props.activeId), fam = a ? E.familyOf(c && c.family ? { family: c.family, id: a.id } : a) : '';
+      const rd = E.readinessOf(a);
+      const triggerKey = JSON.stringify([a?.label, props.activeId, fam, rd, q.open]);
+      if (triggerKey !== triggerSignature) {
+        triggerSignature = triggerKey;
+        trigger.replaceChildren(mk('span', 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', (a && (a.label || a.id)) || props.activeId || 'Choose a model'),
+          mk('span', 'font-size:10px;color:#7f8ca8;', E.FAMILY_LABEL[fam] || ''), mk('span', `font-size:10px;font-weight:700;color:${rd.ok ? '#86efac' : '#fca5a5'};`, a ? rd.label : ''), mk('span', 'color:#7f8ca8;', q.open ? '▴' : '▾'));
+        trigger.setAttribute('aria-expanded', String(q.open));
+      }
+      if (!q.open) return;
       const fv = favs();
+      const signature = JSON.stringify([props.targets, props.cards, props.activeId, q, [...fv]]);
+      if (signature === listSignature) return;
+      listSignature = signature;
+      const focused = document.activeElement;
+      const focusAttr = ['data-model-id', 'data-model-fav', 'data-model-filter'].find(attr => focused?.hasAttribute(attr));
+      const focusValue = focusAttr ? focused.getAttribute(focusAttr) : null;
+      const g = E.groupModels(props.targets, props.cards, { query: q.query, family: q.family, readyOnly: q.readyOnly, activeId: props.activeId });
       if (q.favOnly) { g.groups = g.groups.map(gr => Object.assign({}, gr, { items: gr.items.filter(it => fv.has(it.id)) })).filter(gr => gr.items.length); g.shown = g.groups.reduce((n, gr) => n + gr.items.length, 0); }
       chips.replaceChildren(chipEl('All', q.family === 'all', () => { q.family = 'all'; draw(); }), ...g.families.map(f => chipEl(f.label, q.family === f.family, () => { q.family = f.family; draw(); })), chipEl('★ Favorites', q.favOnly, () => { q.favOnly = !q.favOnly; draw(); }), chipEl('Ready only', q.readyOnly, () => { q.readyOnly = !q.readyOnly; draw(); }));
       list.replaceChildren(...(g.groups.length ? g.groups.flatMap(gr => [mk('div', 'font:800 10px DM Sans,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#7f8ca8;padding:8px 4px 3px;', gr.label + ' · ' + gr.items.length),
@@ -365,11 +412,10 @@
           star.addEventListener('click', ev => { ev.stopPropagation(); const f2 = favs(); if (f2.has(it.id)) f2.delete(it.id); else f2.add(it.id); saveFavs(f2); draw(); });
           const wrap = mk('div', 'display:flex;gap:2px;align-items:stretch;'); row.style.flex = '1 1 auto'; row.style.minWidth = '0'; wrap.append(row, star); return wrap; })]) : [mk('div', 'color:#8193a8;font-size:12px;padding:10px;', 'No models match.')]));
       foot.textContent = g.shown + ' of ' + g.total + ' models';
-      const a = props.targets.find(t => t.id === props.activeId), c = props.cards.find(x => x.id === props.activeId), fam = a ? E.familyOf(c && c.family ? { family: c.family, id: a.id } : a) : '';
-      const rd = E.readinessOf(a);
-      trigger.replaceChildren(mk('span', 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', (a && (a.label || a.id)) || props.activeId || 'Choose a model'),
-        mk('span', 'font-size:10px;color:#7f8ca8;', E.FAMILY_LABEL[fam] || ''), mk('span', `font-size:10px;font-weight:700;color:${rd.ok ? '#86efac' : '#fca5a5'};`, a ? rd.label : ''), mk('span', 'color:#7f8ca8;', q.open ? '▴' : '▾'));
-      trigger.setAttribute('aria-expanded', String(q.open));
+      if (focusAttr) {
+        const next = [...dialog.querySelectorAll('[' + focusAttr + ']')].find(node => node.getAttribute(focusAttr) === focusValue);
+        (next && !next.disabled ? next : search).focus({ preventScroll: true });
+      }
     }
     // A model switch is asynchronous (a secondary-model activation takes seconds, then the screen re-renders and can drop focus to
     // <body>). Until the switch settles, give focus back to the picker whenever it falls to <body>; any key press or pointer
@@ -387,10 +433,13 @@
       document.addEventListener('keydown', user, true); document.addEventListener('pointerdown', user, true);
       Promise.resolve(done).catch(() => {}).then(() => setTimeout(() => { tick(); stop(); }, 1500));
     }
-    function close() { q.open = false; overlay.style.display = 'none'; trigger.setAttribute('aria-expanded', 'false'); draw(); }
-    function open() { q.open = true; overlay.style.display = 'flex'; draw(); setTimeout(() => search.focus(), 0); }
+    function close() { q.open = false; overlay.style.display = 'none'; window.DexSourceHover?.hide(); draw(); }
+    function open() { q.open = true; overlay.style.display = 'flex'; draw(); search.focus(); }
     closeBtn.addEventListener('click', () => { close(); trigger.focus(); });
     overlay.addEventListener('mousedown', e => { if (e.target === overlay) { close(); trigger.focus(); } });
+    document.addEventListener('keydown', e => {
+      if (q.open && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); trigger.focus(); }
+    }, true);
     dialog.addEventListener('keydown', e => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); trigger.focus(); return; }
       if (e.key !== 'Tab') return;
@@ -415,7 +464,7 @@
     document.addEventListener('click', e => { if (q.open && !root.contains(e.target) && !e.target.closest('[data-dex-modal]')) close(); }, true);
     const shell = document.createElement('div');
     if (ctx === 'create') { const lb = document.createElement('div'); lb.textContent = 'Model'; lb.style.cssText = 'font-size:10px;color:#6090a8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;'; shell.append(lb, root); } else shell.append(root);
-    const picker = { root, shell, update(p) {
+    const picker = { root, shell, close, update(p) {
       const had = document.activeElement === search; Object.assign(props, p); draw();
       if (had && q.open) requestAnimationFrame(() => { if (q.open && document.activeElement !== search) { const s0 = search.selectionStart; search.focus(); try { search.setSelectionRange(s0, s0); } catch (_) {} } });
     } };
@@ -620,11 +669,11 @@
   };
   P._editRequest = function () {
     const ed = this._ed(), st = ed.state, p = st.params, op = ed.op, src = ed.source;
-    const catalog = (ed.assets && ed.assets.loras) || [];
+    const catalog = ed.assetsFor === st.editModel && ed.assetsStatus === 'loaded' ? ed.assets.loras : [];
     const seed = Number.isInteger(+p.seed) && +p.seed >= 0 ? +p.seed : Math.floor(Math.random() * 2000000000) + 1;
     const body = Object.assign(src.staged ? { staged_id: src.stagedId } : { image_id: src.imageId }, {
       prompt: String(st.prompt || '').trim(), negative_prompt: st.negative || '', steps: +p.steps || 20, cfg_scale: +p.cfg || 7, seed,
-      sampler: p.sampler, scheduler: p.scheduler, vae: p.vae || 'auto', loras: this._effectiveLoras(st.loras, catalog), save_prompts: !!this.state.savePrompts });
+      sampler: p.sampler, scheduler: p.scheduler, vae: D.controlsFor((this.state.modelTargets || []).find(t => t.id === st.editModel)).vae ? (p.vae || 'auto') : 'auto', loras: this._effectiveLoras(st.loras, catalog), save_prompts: !!this.state.savePrompts });
     if (!body.prompt) delete body.prompt;
     // Per-request edit model: only when the server can honour it (otherwise the worker's configured model runs).
     const selectable = this._editModelIds();
@@ -809,10 +858,14 @@
         ...(op === 'img2img' ? D.STRENGTH_PRESETS.map(([n, v]) => btn(n, () => { p.strength = v; this.edSet({}); }, Math.abs(p.strength - v) < 0.001 ? '#a78bfa' : '#94a3b8')) : []))));
   };
   P._edResources = function () {
-    const ed = this._ed(), st = ed.state, cat = (ed.assets && ed.assets.loras) || [];
+    const ed = this._ed(), st = ed.state;
+    const catalog = ed.assetsFor === st.editModel && ed.assetsStatus === 'loaded' ? ed.assets : null;
+    const cat = catalog?.loras || [];
     const spec = (this.state.modelTargets || []).find(t => t.id === st.editModel);
-    return this.buildResourcesControl({ scope: 'edit', loras: st.loras, catalog: cat, vaes: ed.assets && ed.assets.vaes, vae: st.params.vae, showVae: true, modelLabel: spec && (spec.label || spec.id),
-      setLoras: fn => this.edSet({ state: Object.assign({}, st, { loras: E.normalizeLoras(fn(st.loras)) }) }),
+    return this.buildResourcesControl({ scope: 'edit', loras: st.loras, catalog: cat, vaes: catalog?.vaes, vae: st.params.vae,
+      showVae: spec?.backend !== 'mflux' && D.controlsFor(spec).vae,
+      catalogStatus: catalog ? 'loaded' : ed.assetsStatus || 'idle', catalogError: ed.assetsError, retryCatalog: () => this.loadEditAssets(), modelLabel: spec && (spec.label || spec.id),
+      setLoras: fn => this.edSet({ state: Object.assign({}, st, { loras: E.normalizeLoras(fn(st.loras), 3) }) }),
       quiet: (name, w) => { const l = st.loras.find(x => x.name === name); if (l) l.weight = w; },
       setVae: v => { st.params.vae = v; this.edSet({}); },
       onTrigger: w => { st.prompt = (st.prompt ? st.prompt.replace(/[,\s]+$/, '') + ', ' : '') + w; this.edSet({}); } });
@@ -1088,35 +1141,40 @@
   };
 
   // ── Create integration ───────────────────────────────────────────────
-  P._createLoras = function () {
-    if (this.state.createLoras && this.state.createLoras.length) return this.state.createLoras;
-    const eff = typeof this.getEffectiveCreateLoras === 'function' ? this.getEffectiveCreateLoras() : [];
-    if (eff.length) return eff.map(l => ({ name: l.name, weight: l.weight }));
-    return [];
-  };
-  P.setCreateLoras = function (fn) {
-    const nextList = E.normalizeLoras(fn(this._createLoras()));
-    this.setState({ createLoras: nextList });
-    if (nextList.length > 0) {
-      const first = nextList[0];
-      const options = typeof this._createLoraOptions === 'function' ? this._createLoraOptions() : [];
-      const match = options.find(l => (l.name && l.name.toLowerCase() === first.name.toLowerCase()) || (l.filename && l.filename.replace(/\.[^.]+$/, '').toLowerCase() === first.name.toLowerCase()) || l.id === first.name);
-      if (match && match.use_enabled) {
-        if (typeof this.selectCreateLora === 'function') this.selectCreateLora(match.id);
-        if (typeof this.setCreateLoraStrength === 'function') this.setCreateLoraStrength(first.weight, match.min_weight, match.max_weight);
-      } else {
-        if (typeof this.selectCreateLora === 'function') this.selectCreateLora('');
-      }
+  P.setCreateLoras = function (change) {
+    const next = change(this.getEffectiveCreateLoras());
+    const options = this._createLoraOptions();
+    const resolved = next.map(entry => ({
+      entry, option: options.find(o => o.use_enabled && [o.id, o.name, o.filename?.replace(/\.safetensors$/i, '')]
+        .some(name => name && name.toLowerCase() === entry.name.toLowerCase()))
+    })).filter(item => item.option);
+    this.selectCreateLora('');
+    if (!resolved.length) return;
+    if (resolved[0].option.staged) {
+      this._setStack(this._stack().concat(resolved.filter(x => x.option.staged).slice(0, 4)
+        .map(({ entry, option }) => ({ id: option.id, weight: entry.weight ?? option.default_weight }))));
     } else {
-      if (typeof this.selectCreateLora === 'function') this.selectCreateLora('');
+      const { entry, option } = resolved[0];
+      this.selectCreateLora(option.id);
+      this.setCreateLoraStrength(entry.weight ?? option.default_weight);
     }
   };
   P.buildCreateResources = function () {
-    const s = this.state, spec = this._targetSpec(), ctl = this._controls();
-    if (!ctl.lora) return h('div', { 'data-resources': 'create', style: Object.assign({}, css.panel, { borderStyle: 'dashed' }) }, h('div', { style: css.title }, 'Resources · LoRA'), h('div', { style: css.muted }, (spec && spec.label || s.target) + ' does not use LoRAs or VAE overrides (MFLUX). Choose an SDCPP model to use them.'));
-    return this.buildResourcesControl({ scope: 'create', loras: this._createLoras(), catalog: (s.assets && s.assets.loras) || [], vaes: s.assets && s.assets.vaes, vae: s.selectedVae === 'default' ? 'auto' : s.selectedVae, showVae: true, modelLabel: spec && (spec.label || spec.id),
-      setLoras: fn => this.setCreateLoras(fn), setVae: v => this.setState({ selectedVae: v === 'auto' ? 'default' : v }),
-      quiet: (name, w) => { const l = this._createLoras().find(x => x.name === name); if (l) l.weight = w; }, onTrigger: w => this.addTriggerWord(w) });
+    const s = this.state, ctl = this._controls();
+    const body = this._createBody();
+    const structured = body.loras || [];
+    const supportsTags = this._targetSpec()?.backend !== 'mflux';
+    const merged = supportsTags ? E.resolveResources({ prompt: body.prompt, loras: structured }).loras : structured;
+    return h('div', { 'data-resources': 'create', style: css.panel },
+      h('div', { style: css.title }, 'Resources'),
+      h('div', { style: css.muted, 'data-create-adapter-receipt': '' }, merged.length
+        ? merged.map(l => l.name + ' × ' + E.formatWeight(l.weight)).join(' · ')
+        : 'No active adapters'),
+      h('div', { style: css.muted }, supportsTags ? 'Manage adapters in the LoRA picker. Structured selections take precedence over matching prompt tags.'
+        : 'Manage adapters in the LoRA picker. This checkpoint uses structured selections.'),
+      ctl.vae ? label('VAE', h('select', { value: s.selectedVae, style: css.input, onChange: e => this.setState({ selectedVae: e.target.value }) },
+        h('option', { value: 'default' }, 'Default / backend-selected'), h('option', { value: 'none' }, 'None'),
+        ...((s.assets && s.assets.vaes) || []).map(v => h('option', { value: v.id || v.filename }, v.name || v.filename)))) : null);
   };
   P.createPresetSettings = function () { const s = this.state; const loras = typeof this.getEffectiveCreateLoras === 'function' ? this.getEffectiveCreateLoras().map(l => ({ name: l.name, weight: l.weight })) : []; return { target: s.target, width: +s.width, height: +s.height, steps: +s.steps, cfg: +s.cfg, sampler: s.sampler, scheduler: s.scheduler, vae: s.selectedVae, preset: s.preset, quantity: this.ws ? this.ws.quantity : 1, loras, prompt: s.prompt, negPrompt: s.negPrompt }; };
 

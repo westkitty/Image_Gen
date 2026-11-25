@@ -20,22 +20,22 @@ const FAST_STREAM = { headersMs: 400, firstTokenLightMs: 400, firstTokenHeavyMs:
 const FAST_COMPUTE = { probeTimeoutMs: 300, pollMs: 10, ownershipWaitMs: 150, unloadTimeoutMs: 300, unloadVerifyMs: 250, settleMs: 25 };
 const rid = () => 'cr_' + require('node:crypto').randomBytes(16).toString('hex');
 
-function stores(dir) {
+function stores(dir, { arbiterNow } = {}) {
   let compute = null;
   const logs = [];
   const eventBus = createEventBus({ heartbeatMs: 3600000 });
   const publishGeneric = createGenericJobEventPublisher(eventBus);
   const jobStore = M.createJobStore(path.join(dir, 'jobs.json'), { onChange: (kind, job) => publishGeneric(kind, job) });
   const remoteWorkers = RW.createRemoteWorkerRegistry({ file: path.join(dir, 'remote-workers.json'), onChange: r => { try { eventBus.publish('remote.worker', { job_id: r.job_id, state: r.state, action: r.action }); } catch (_) {} if (compute) compute.workerChanged(r); } });
-  const arbiter = M.createResourceArbiter({ quarantineCheck: () => remoteWorkers.quarantineReason() });
+  const arbiter = M.createResourceArbiter({ now: arbiterNow, quarantineCheck: () => remoteWorkers.quarantineReason() });
   const cancelManager = createCancellationManager({ arbiter, jobStore, eventBus });
   return { eventBus, jobStore, remoteWorkers, arbiter, cancelManager, logs, setCompute: c => { compute = c; } };
 }
 
-async function chatRig({ ps, unload, chat, gate, compute: computeOpts = {}, stream = FAST_STREAM, dir, savedFile, historyAccounts = { andrew: createHash('sha256').update('a'.repeat(32)).digest('hex'), other: createHash('sha256').update('b'.repeat(32)).digest('hex') } } = {}) {
+async function chatRig({ ps, unload, chat, gate, compute: computeOpts = {}, stream = FAST_STREAM, dir, savedFile, arbiterNow, historyAccounts = { andrew: createHash('sha256').update('a'.repeat(32)).digest('hex'), other: createHash('sha256').update('b'.repeat(32)).digest('hex') } } = {}) {
   dir = dir || fs.mkdtempSync(path.join(os.tmpdir(), 'dex-chat-p3-'));
   const fake = await startFakeOllama({ chat, ps, unload });
-  const s = stores(dir);
+  const s = stores(dir, { arbiterNow });
   const compute = createChatCompute(Object.assign({ arbiter: s.arbiter, jobStore: s.jobStore, remoteWorkers: s.remoteWorkers, cancelManager: s.cancelManager, baseUrl: fake.url, gate, log: m => s.logs.push(m), publish: (e, d) => s.eventBus.publish(e, d) }, FAST_COMPUTE, computeOpts));
   s.setCompute(compute);
   const reconciler = RW.createReconciler({ registry: s.remoteWorkers, checkRun: async () => { throw new Error('not an sd run'); }, stopRun: async () => { throw new Error('not an sd run'); }, scanOwned: async () => { throw new Error('scanOwned must not decide Chat records'); }, checkOllamaModel: r => compute.checkOllamaModel(r) });

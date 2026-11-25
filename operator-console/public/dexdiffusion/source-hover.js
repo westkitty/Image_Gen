@@ -17,7 +17,7 @@
     '.dsh-item{padding:6px 9px;border-radius:5px;cursor:pointer;display:flex;gap:8px;align-items:baseline}' +
     '.dsh-item[aria-selected=true]{background:rgba(96,144,168,.22)}.dsh-item:hover,.dsh-item.dsh-hot{background:rgba(96,144,168,.38)}' +
     '.dsh-item[aria-disabled=true]{opacity:.5}' +
-    '.dsh-card{position:fixed;z-index:99999;width:min(340px,calc(100vw - 16px));max-height:min(70vh,560px);overflow:auto;overflow-wrap:anywhere;background:#101a29;border:1px solid rgba(148,163,184,.35);border-radius:9px;box-shadow:0 14px 36px rgba(0,0,0,.55);padding:12px;font:12px/1.45 "DM Sans",system-ui,sans-serif;color:#dbe6f1;pointer-events:none}.dsh-card .dsh-btn{pointer-events:auto}' +
+    '.dsh-card{position:fixed;z-index:99999;box-sizing:border-box;width:min(340px,calc(100vw - 16px));max-height:min(70vh,560px);overflow:auto;overflow-wrap:anywhere;background:#101a29;border:1px solid rgba(148,163,184,.35);border-radius:9px;box-shadow:0 14px 36px rgba(0,0,0,.55);padding:12px;font:12px/1.45 "DM Sans",system-ui,sans-serif;color:#dbe6f1;pointer-events:none}.dsh-card .dsh-btn{pointer-events:auto}' +
     '.dsh-card h4{margin:0 0 4px;font-size:13px;color:#fff}.dsh-card .dsh-badge{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:1px 6px;border-radius:9px;background:#27384d;color:#9fc2dd;margin-bottom:6px}' +
     '.dsh-card p{margin:6px 0;color:#c4d3e2}.dsh-card ul{margin:4px 0 6px 16px;padding:0}.dsh-card li{margin:2px 0}' +
     '.dsh-card .dsh-k{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#7f9bb5;margin-top:8px}' +
@@ -120,15 +120,20 @@
   }
 
   var showTimer = null, anchorEl = null;
-  function hideCard() { if (card) { card.remove(); card = null; } anchorEl = null; }
+  function hideCard() { clearTimeout(showTimer); clearTimeout(hideTimer); if (card) { card.remove(); card = null; } anchorEl = null; }
   function scheduleHide() { clearTimeout(hideTimer); hideTimer = setTimeout(function () { if (card && !card.matches(':hover') && !(anchorEl && anchorEl.matches(':hover'))) hideCard(); }, 350); }
+  function anchorVisible(el) { return el && el.isConnected && el.getClientRects().length > 0; }
+  new MutationObserver(function () {
+    if (anchorEl && !anchorVisible(anchorEl)) hideCard();
+  }).observe(document.body, { childList: true, subtree: true });
   function show(el) {
+    if (!anchorVisible(el)) return;
     var spec = String(el.getAttribute('data-source-hover') || '').split(':');
     var kind = spec.shift(), id = spec.join(':');
     if (!kind || !id) return;
     anchorEl = el;
     renderCard({ loading: true }, el);
-    getInfo(kind, id).then(function (info) { if (anchorEl === el) renderCard(info, el); });
+    getInfo(kind, id).then(function (info) { if (anchorEl === el && anchorVisible(el)) renderCard(info, el); });
   }
   document.addEventListener('mouseover', function (e) {
     var el = e.target && e.target.closest && e.target.closest('[data-source-hover]');

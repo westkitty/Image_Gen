@@ -105,3 +105,20 @@ test('wildcards: bad names and oversized banks are refused', () => {
   assert.equal(getWildcardItems('../evil', shipped, 2000, user), null);
   assert.equal(removeBank(user, shipped, '../evil'), false);
 });
+
+test('wildcards: a failed replacement leaves the existing user bank readable', () => {
+  const { shipped, user } = bankDirs();
+  saveBank(user, shipped, 'colors', ['green']);
+  const rename = fs.renameSync;
+  fs.renameSync = (from, to) => {
+    if (to === path.join(user, 'colors.txt')) throw new Error('fixture write refused');
+    return rename(from, to);
+  };
+  try {
+    assert.throws(() => saveBank(user, shipped, 'colors', ['blue']), /fixture write refused/);
+    assert.deepEqual(getWildcardItems('colors', shipped, Infinity, user).items, ['green']);
+    assert.ok(fs.readdirSync(user).every(name => !name.endsWith('.tmp')));
+  } finally {
+    fs.renameSync = rename;
+  }
+});

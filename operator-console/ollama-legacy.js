@@ -7,9 +7,12 @@
 // No request or reply text is logged or written to a job.
 
 const ChatModels = require('./chat-models');
+const { refusalText } = require('./chat-refusals');
 
 // Same refusal shape as the other compute admissions: the Big Mac lease was not obtained within the bounded wait.
 const OLLAMA_COMPUTE_BUSY = Object.freeze({ error: 'Big Mac compute is busy', gate: 'compute-busy' });
+// Same status and gate. The text names the condition when it is not another DexDiffusion job holding the lease.
+const busyBody = run => (run.reason && run.reason !== 'compute-busy' ? { error: refusalText(run.reason), gate: OLLAMA_COMPUTE_BUSY.gate } : OLLAMA_COMPUTE_BUSY);
 const LEGACY_WAIT_MS = 20000;
 const DRAMA_WAIT_MS = 60000;
 
@@ -82,7 +85,7 @@ function registerLegacyOllamaRoutes(app, { ollamaRequest, resolveModel, runPromp
     }) });
 
     if (gone.signal.aborted) return;   // the client already left; nothing to send
-    if (!run.ok) return res.status(503).json(OLLAMA_COMPUTE_BUSY);
+    if (!run.ok) return res.status(503).json(busyBody(run));
     const result = run.value;
     if (!result.ok) {
       return res.status(500).json({
@@ -126,7 +129,7 @@ function registerLegacyOllamaRoutes(app, { ollamaRequest, resolveModel, runPromp
       messages: [{ role: 'user', content: message }]
     }, 120000, signal) });
     if (gone.signal.aborted) return;
-    if (!run.ok) return res.status(503).json(OLLAMA_COMPUTE_BUSY);
+    if (!run.ok) return res.status(503).json(busyBody(run));
     const result = run.value;
     if (!result.ok) return res.status(result.status).json({ error: result.error });
     const reply = result.json && result.json.message && typeof result.json.message.content === 'string'
@@ -143,7 +146,7 @@ function createLegacyLlmChat({ ollamaRequest, resolveModel, getCompute, waitMs =
     const { model, resource_class, error } = await resolveModel();
     if (error) throw new Error(error);
     const run = await getCompute().runExclusive({ operation: 'drama-parse', model, resource_class, waitMs, call: signal => ollamaRequest('/api/chat', { model, stream: false, format: 'json', keep_alive: 0, options: { temperature: 0 }, messages }, 180000, signal) });
-    if (!run.ok) throw new Error(OLLAMA_COMPUTE_BUSY.error);
+    if (!run.ok) throw new Error(busyBody(run).error);
     const r = run.value;
     if (!r.ok) throw new Error(r.error || 'ollama request failed');
     return r.json && r.json.message && r.json.message.content || '';

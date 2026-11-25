@@ -32,6 +32,19 @@ const { results, test, phase, exitCode } = runner('drama-studio');
     await openStudio(page, srv.base + '/dexdiffusion/'); await page.waitForFunction(() => window.__dex && __dex.state.modelTargets && __dex.state.modelTargets.length > 3);
     return { ctx, page, errors, blocked };
   };
+  const confirmLeave = async (page, action, accept = true) => {
+    const observed = page.waitForEvent('dialog', { timeout: 5000 });
+    const navigation = action();
+    const dialog = await observed;
+    const type = dialog.type(), message = dialog.message();
+    if (accept) await dialog.accept();
+    else await dialog.dismiss();
+    const result = await navigation;
+    assert.equal(type, 'confirm');
+    assert.match(message, /Leave Drama without saving/);
+    assert.match(message, /stays in memory.*not saved/);
+    return result;
+  };
   const FIX = {
     produce: () => ({ job_id: 'job-fixture', production: FIX.prod('planning'), plan: {} }),
     prod: (status, extra) => Object.assign({ id: 'pr-fixture1', project_id: 'x', job_id: 'job-fixture', status, phase: status, progress: { phase: status, label: status === 'rendering' ? 'Scene 1/2 · line 2/3 · chunk 1/1' : status, done: status === 'rendering' ? 1 : 3, total: 3, waiting: false }, source_rev: 1, noop: false, superseded: false, lines: { total: 3, reused: 0, generated: status === 'complete' ? 3 : 1, failed: 0 }, chunks: { total: 3, cached: 0, generated: status === 'complete' ? 3 : 1, failed: 0, retries: 0, invalid: 0 }, scenes: [], errors: [], warnings: [], artifacts: { master: null, scenes: [], outputs: {}, stems: {} } }, extra || {}),
@@ -79,14 +92,16 @@ const { results, test, phase, exitCode } = runner('drama-studio');
       } finally { await ctx.close(); }
     });
 
-    await scenario('a Drama script remains in memory when switching modules, with no prompt', async () => {
+    await scenario('an unsaved Drama script stays in memory on both Cancel and confirmed Leave', async () => {
       const { ctx, page, errors } = await open();
       try {
         const draftState = await page.evaluate(() => { __dex.setScreen('drama'); __dex._dmText.script = 'draft not yet parsed into a saveable project'; return { screen: __dex.state.screens[__dex.state.version], dirty: __dex._unsavedWorkspaceWork() }; });
         assert.equal(draftState.screen, 'drama'); assert.equal(draftState.dirty.workspace, 'drama');
-        const navigation = await page.evaluate(() => { window.__confirmMessage = ''; window.confirm = message => { window.__confirmMessage = message; return true; }; return __dex.setScreen('voice'); });
-        assert.equal(navigation, true);
-        assert.equal(await page.evaluate(() => window.__confirmMessage), '', 'page switch asks nothing');
+        const leave = () => page.evaluate(() => __dex.setScreen('voice'));
+        assert.equal(await confirmLeave(page, leave, false), false);
+        assert.equal(await page.evaluate(() => __dex.state.screens[2]), 'drama');
+        assert.equal(await page.evaluate(() => __dex._dmText.script), 'draft not yet parsed into a saveable project');
+        assert.equal(await confirmLeave(page, leave), true);
         await page.waitForFunction(() => __dex.state.version === 2 && __dex.state.screens[2] === 'voice');
         assert.equal(await page.evaluate(() => __dex._dmText.script), 'draft not yet parsed into a saveable project');
         assert.deepEqual(errors, []);
@@ -226,7 +241,10 @@ const { results, test, phase, exitCode } = runner('drama-studio');
           assert.ok(o.doc <= 1 && !o.bad.length, `${stage}: ${JSON.stringify(o)}`);
           if (width === 375) await page.screenshot({ path: outPath(`studio-${stage}-375.png`) });
         }
-        await page.evaluate(() => { __dex.vpSet({ tab: 'designer' }); __dex.setScreen('voice'); });
+        assert.equal(await page.evaluate(() => __dex._dm().current?.saved), false, 'the responsive fixture uses an unsaved working project');
+        if (width < 700) await page.locator('[data-studio-mobile-nav] summary').press('Enter');
+        const voices = page.locator(width < 700 ? '[data-mobile-subroute="voices"]' : '[data-subnav-leaf="voices"]');
+        await confirmLeave(page, () => voices.press('Enter'));
         await page.waitForSelector('[data-voice-designer]'); await page.waitForTimeout(400);
         const o = await page.evaluate(() => { const bad = []; document.querySelectorAll('[data-scroll-pane]').forEach(p => { if (p.scrollWidth > p.clientWidth + 1) { const r = p.getBoundingClientRect(); const wide = [...p.querySelectorAll('*')].filter(e => e.getBoundingClientRect().right > r.right + 1).slice(0, 3).map(e => e.tagName + (e.getAttribute('data-stage') || e.getAttribute('data-drama-field') || e.className || '').toString().slice(0, 40) + ':' + Math.round(e.getBoundingClientRect().width)); bad.push(p.scrollWidth + '>' + p.clientWidth + ' ' + wide.join('|')); } }); return { doc: document.documentElement.scrollWidth - innerWidth, bad }; });
         assert.ok(o.doc <= 1 && !o.bad.length, `designer: ${JSON.stringify(o)}`); assert.deepEqual(errors, []); await ctx.close();

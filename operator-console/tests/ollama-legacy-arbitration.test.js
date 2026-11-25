@@ -109,6 +109,9 @@ for (const [op, call] of Object.entries(CALLERS)) {
       try {
         const out = await call(h);
         assert.ok(out.status === 503 || out.status === 'thrown', JSON.stringify(out));
+        const said = out.status === 503 ? out.body.error : out.body;
+        assert.match(said, ps().status === 200 ? /Another app has an Ollama model loaded/ : /could not read which model/);
+        if (out.status === 503) assert.equal(out.body.gate, 'compute-busy');
         assert.equal(h.fake.chatRequests().length, 0);
         assert.equal(h.fake.unloadRequests().length, 0);
         assert.equal(h.arbiter.state().owner, null);

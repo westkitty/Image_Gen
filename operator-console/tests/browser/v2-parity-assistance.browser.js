@@ -183,8 +183,10 @@ async function open(page, base, { jobs = false } = {}) {
       await page.evaluate(() => { __dex._recordConnectionProbe({ at: Date.now(), ok: false, ms: 12001, error: 'No answer within 12 s (timed out)' }); __dex.setState({ backendOnline: false, backendHealth: 'degraded', errorMsg: 'simulated failure' }); });
       const alert = page.locator('[data-studio-offline]'); await alert.waitFor({ state: 'visible' });
       await alert.locator('[data-copy-connection-report]').click();
-      await page.waitForFunction(async () => /Consecutive failed probes/.test(await navigator.clipboard.readText()), null, { timeout: 15000 });
+      // The command's own success notification follows the asynchronous clipboard write.
+      await page.getByText('Connection report copied', { exact: true }).waitFor({ timeout: 15000 });
       const copied = await page.evaluate(() => navigator.clipboard.readText());
+      assert.match(copied, /Consecutive failed probes/);
       assert.match(copied, /Backend online: false/); assert.match(copied, /Last error shown: simulated failure/);
       assert.match(copied, /FAILED {2}12001 ms {2}No answer within 12 s/); assert.match(copied, /\/api\/version {2}HTTP 200/);
       await page.evaluate(() => { navigator.clipboard.write = () => Promise.reject(new Error('refused')); navigator.clipboard.writeText = () => Promise.reject(new Error('refused')); });
@@ -270,11 +272,14 @@ async function open(page, base, { jobs = false } = {}) {
       await page.locator('[data-studio-offline]').waitFor({ state: 'visible' });
       assert.match(await page.locator('[data-studio-offline]').innerText(), /Connection lost/);
       await page.evaluate(() => __dex.setScreen('system'));
-      assert.match(await page.locator('[data-scroll-pane]').first().innerText(), /Offline/);
+      const system = page.locator('[data-scroll-pane]').filter({ hasText: 'Backend connection' });
+      await system.getByText('⚠ Degraded', { exact: true }).waitFor();
+      assert.match(await page.locator('[data-studio-offline]').innerText(), /Connection lost/);
       await page.unroute('**/api/version');
       await page.locator('[data-studio-offline] button', { hasText: 'Retry connection' }).click();
       await page.locator('[data-studio-offline]').waitFor({ state: 'detached' });
       assert.equal(await page.evaluate(() => __dex.state.backendOnline), true);
+      await system.getByText('✓ Online', { exact: true }).waitFor();
       // Context (System) exposes the event-stream and queue truth rather than a canned "online".
       await page.locator('[data-studio-context]').click();
       const t = await page.locator('[data-v2-drawer="context"]').innerText();

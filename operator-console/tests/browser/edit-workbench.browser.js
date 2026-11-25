@@ -295,7 +295,7 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
         window.__editProgressObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
       });
       await clickRun(page);
-      await page.waitForSelector('[data-edit-results] img[data-fullscreen]');
+      await page.waitForSelector('[data-edit-results] img[data-fullscreen]', { timeout: 25000 });
       const all = await page.evaluate(() => { window.__editProgressObserver.disconnect(); return [...new Set(window.__editProgressSeen)].join(' || '); });
       assert.match(all, /Waiting for Big Mac/); assert.match(all, /Uploading source image/); assert.match(all, /Sampling step 3\/10/);
       const req = posts.find(p => p.url === '/api/actions/img2img').body;
@@ -539,14 +539,15 @@ const { results, test, phase, exitCode } = runner('edit-workbench');
     await test('resources: LoRAs visible in Create and Edit, weight changes are structured, incompatible ones excluded', async () => {
       const { page, ctx } = await newPage(browser, srv.base);
       // style_a is an SDXL adapter; keep Create on its compatible family before asserting visibility.
-      await page.evaluate(() => __dex.onSelectTarget('sdxl-base', { quiet: true })); await page.waitForTimeout(300);
+      await page.evaluate(() => __dex.onSelectTarget('sdxl-base', { quiet: true }));
+      await page.waitForFunction(() => __dex.state.assetsTarget === 'sdxl-base' && __dex.state.assetsStatus === 'loaded');
       await page.evaluate(() => { __dex.setCreateLoras(() => [{ name: 'style_a', weight: 0.8 }, { name: 'bad_lora', weight: 1 }]); __dex.setState({ prompt: 'x' }); });
       const advanced = page.locator('details').filter({ has: page.getByText('Advanced settings', { exact: true }) });
       if (await advanced.count() && !(await advanced.first().evaluate(el => el.open))) await advanced.first().locator(':scope > summary').click();
-      const createCard = page.locator('[data-resources="create"] [data-lora="style_a"]:visible');
+      const createCard = page.locator('[data-resources="create"] [data-create-adapter-receipt]');
       await createCard.waitFor();
       assert.equal(await createCard.count(), 1, 'compatible adapter is visible in the active Create UI');
-      assert.match(await page.innerText('[data-resources="create"]'), /incompatible/i);
+      assert.equal(await createCard.innerText(), 'style_a × 0.8');
       const body = await page.evaluate(() => __dex._createBody({}));
       assert.deepEqual(body.loras, [{ name: 'style_a', weight: 0.8 }]);
       page.once('dialog', dialog => dialog.accept()); // Keep the dirty Create draft in memory while testing Edit's source resource display.

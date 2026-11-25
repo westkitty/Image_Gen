@@ -39,7 +39,7 @@ const run = async (page, posts) => {
 const commit = page => page.keyboard.press('Tab');
 
 (async () => {
-  const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer();
+  const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer({ seedCanonicalImage: { id: 'fixture-img2img-parity.png', width: 640, height: 480 } });
   const browser = await launchBrowser(chromium);
   try {
     await test('crop-and-resize to a size: request carries mode, size, colour; legacy quick prep is disabled and not sent', async () => {
@@ -100,9 +100,9 @@ const commit = page => page.keyboard.press('Tab');
     });
 
     await test('server validator (real source, no job starts): bad modes, size XOR scale, colour, exact-steps limits, both prep styles', async () => {
-      const lib = await (await fetch(srv.base + '/api/library/images?limit=1')).json().catch(() => ({}));
-      const id = (lib.items || [])[0] && lib.items[0].id;
-      if (!id) { console.log('  (no canonical image in this environment; HTTP validator checks skipped)'); return; }
+      const id = 'fixture-img2img-parity.png';
+      const source = await fetch(srv.base + '/api/images/' + id);
+      assert.equal(source.status, 200, 'owned synthetic canonical source is available');
       const post = async body => { const r = await fetch(srv.base + '/api/actions/img2img', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ image_id: id, prompt: 'p', strength: 0.5, steps: 8 }, body)) }); return { status: r.status, data: await r.json() }; };
       const cases = [
         [{ resize_mode: 'latent', resize_by: 2 }, /latent upscale is not available/],

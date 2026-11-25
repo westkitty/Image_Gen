@@ -6,8 +6,7 @@
 // NO arbitrary shell strings, NO file paths, NO arbitrary URLs.
 // Prompt privacy: prompts requested at execution time or explicitly saved with user confirmation.
 
-const fs = require('fs');
-const path = require('path');
+const { openResourceLedger } = require('./resource-ledger');
 const crypto = require('crypto');
 
 const SCHEMA_VERSION = 'dexdiffusion.macro.v1';
@@ -38,53 +37,25 @@ function validateMacroDefinition(macro) {
 }
 
 function createMacroStore(filePath) {
-  let macros = new Map(); // id -> macro
+  const ledger = openResourceLedger(filePath, { schema: SCHEMA_VERSION, key: 'macros', label: 'Macros' });
+  let macros = new Map(ledger.items.map(item => [item.id, item]));
 
-  function load() {
-    if (!filePath) return;
-    try {
-      if (fs.existsSync(filePath)) {
-        const raw = fs.readFileSync(filePath, 'utf8');
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.version === SCHEMA_VERSION && Array.isArray(parsed.macros)) {
-          macros.clear();
-          for (const m of parsed.macros) {
-            if (m && m.id) {
-              macros.set(m.id, m);
-            }
-          }
-        }
-      }
-    } catch (_) {
-      macros = new Map();
-    }
+  function commit(next) {
+    ledger.write(next.values());
+    macros = next;
   }
-
-  function save() {
-    if (!filePath) return;
-    try {
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const tmp = `${filePath}.tmp.${Date.now()}`;
-      const payload = {
-        version: SCHEMA_VERSION,
-        updatedAt: Date.now(),
-        macros: Array.from(macros.values())
-      };
-      fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), 'utf8');
-      fs.renameSync(tmp, filePath);
-    } catch (err) {
-      console.error('Failed to save macros:', err.message);
-    }
+  function save(record) {
+    commit(new Map(macros).set(record.id, record));
+    return record;
   }
-
-  load();
 
   function list() {
+    ledger.assertReadable();
     return Array.from(macros.values()).sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   function get(id) {
+    ledger.assertReadable();
     return macros.get(id) || null;
   }
 
@@ -131,14 +102,13 @@ function createMacroStore(filePath) {
       updatedAt: now
     };
 
-    macros.set(id, macro);
-    save();
-    return macro;
+    return save(macro);
   }
 
   function update(id, patch = {}) {
-    const m = macros.get(id);
-    if (!m) return null;
+    const existing = get(id);
+    if (!existing) return null;
+    const m = { ...existing };
     if (patch.name !== undefined) {
       if (!patch.name || typeof patch.name !== 'string' || !patch.name.trim()) throw new Error('Name cannot be empty');
       m.name = patch.name.trim();
@@ -150,16 +120,15 @@ function createMacroStore(filePath) {
       m.steps = patch.steps;
     }
     m.updatedAt = Date.now();
-    save();
-    return m;
+    return save(m);
   }
 
   function remove(id) {
-    if (macros.delete(id)) {
-      save();
-      return true;
-    }
-    return false;
+    if (!get(id)) return false;
+    const next = new Map(macros);
+    next.delete(id);
+    commit(next);
+    return true;
   }
 
   return {

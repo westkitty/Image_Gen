@@ -6,6 +6,7 @@ import os
 import shutil
 from pathlib import Path
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -322,6 +323,45 @@ class LifecycleTests(unittest.TestCase):
         for key in ['ok','models','secondary','pid','uid','active','access','recovery_uncertain']: self.assertIn(key,health)
         self.worker.interpreter_check=lambda:'interpreter /x was removed'
         self.assertFalse(self.worker.request({'op':'health'})['interpreter_ok'])
+
+    def test_stalled_health_read_leaves_worker_lifecycle_responsive(self):
+        model = self.worker.registry['models'][self.req['target']]['path']
+        opened, release = threading.Event(), threading.Event()
+        observed = []
+        real_open = open
+
+        def stall_model(path, *args, **kwargs):
+            if str(path) == model:
+                opened.set()
+                if not release.wait(5):
+                    raise TimeoutError('fixture did not release the model read')
+            return real_open(path, *args, **kwargs)
+
+        def health():
+            try:
+                observed.append(self.worker.request({'op': 'health'}))
+            except Exception as error:
+                observed.append(error)
+
+        with patch('builtins.open', side_effect=stall_model):
+            thread = threading.Thread(target=health, daemon=True)
+            thread.start()
+            try:
+                self.assertTrue(opened.wait(2), 'health entered the model read')
+                self.assertTrue(self.worker.lock.acquire(timeout=0.5), 'model I/O held the lifecycle lock')
+                self.worker.lock.release()
+                self.assertEqual(self.worker.request({'op': 'backend-status'})['state'], 'DISABLED')
+                self.assertEqual(self.worker.request({'op': 'readiness'}),
+                                 {'ok': True, 'active': None, 'stopping': False, 'recovery_uncertain': []})
+                with self.assertRaisesRegex(ValueError, 'takes no arguments'):
+                    self.worker.request({'op': 'readiness', 'target': 'sdxl-base'})
+                with self.assertRaisesRegex(ValueError, 'health probe already in progress'):
+                    self.worker.request({'op': 'health'})
+            finally:
+                release.set()
+                thread.join(timeout=6)
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(observed[0]['models'][self.req['target']])
 
     def test_serve_exits_zero_and_cleans_socket_when_interpreter_removed(self):
         fake_python=self.root/'fake-python'; fake_python.write_text('')

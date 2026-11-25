@@ -6,13 +6,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const EC = require('../public/dexdiffusion/edit-core');
-const { resolveLoraRuntimePolicy } = require('../lora-runtime-policy');
+const NetworkTokens = require('../public/dexdiffusion/network-tokens');
+const { resolveLoraRuntimePolicy, ADAPTERS, targetSupport } = require('../lora-runtime-policy');
 const source = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
 function load(name, next, context) {
   const start = source.indexOf('function ' + name + '(');
   return vm.runInNewContext(source.slice(start, source.indexOf(next, start)) + '\n' + name, context);
 }
-const validateStructuredLoras = load('validateStructuredLoras', '// Edit routes:', {});
+const validateStructuredLoras = load('validateStructuredLoras', 'function mergeControlledLoras', { ADAPTERS, targetSupport });
+const mergeControlledLoras = load('mergeControlledLoras', '// Edit routes:', { EC, NetworkTokens });
 const spec = { id: 'sd15', backend: 'sdcpp', label: 'fixture SD1.5', defaultWidth: 512, defaultHeight: 512, defaultSteps: 4, minSteps: 1, maxSteps: 150, defaultCfgScale: 1.5 };
 const validate = load('validateControlledGenerationParams', 'function buildGenerateArgs', {
   validateStructuredLoras, validateControlledTarget: target => target === 'sd15', validatePrompt: () => true,
@@ -44,7 +46,7 @@ function queueHarness() {
     W: {createQueueRunner: config => config}, path, STATE_DIR: '/unused-fixture-state',
     normalizeControlledGenerationBody: body => body, expandWildcards: text => text,
     allControlledTargets: () => ({sd15:spec, 'flux2-klein-4b':{id:'flux2-klein-4b',backend:'mflux'}}),
-    validateStructuredLoras, EC, validateControlledGenerationParams: p => validateStructuredLoras(p.loras),
+    validateStructuredLoras, mergeControlledLoras, validateControlledGenerationParams: p => validateStructuredLoras(p.loras),
     startControlledJob: (p, targets, opts) => {
       dispatched = p;
       queueMicrotask(() => opts.onDone({status:'PASS',results:[],seeds:[]}));

@@ -72,7 +72,8 @@ function createPublicationOutbox(root) {
     let names;
     try { names = fs.readdirSync(dir); }
     catch (error) { if (error.code === 'ENOENT') return false; throw error; }
-    return names.some(name => {
+    // Every record is validated: an early pending one must not hide a corrupt later one.
+    return names.filter(name => {
       if (!/^[a-f0-9]{64}\.json$/.test(name)) throw new Error('unexpected publication evidence');
       const source = path.join(dir, name);
       if (!fs.lstatSync(source).isFile()) throw new Error('invalid publication evidence');
@@ -81,7 +82,7 @@ function createPublicationOutbox(root) {
         throw new Error('invalid publication receipt identity');
       }
       return row.state !== 'CANONICAL_VERIFIED';
-    });
+    }).length > 0;
   }
   function update(id, patch) { const old = read(id); if (!old) return null; const next = { ...old, ...patch, updated_at: new Date().toISOString() }; atomicWrite(file(id), next); return next; }
   return { create, read, all, pendingStrict, update, artifactPath: (imageRoot, id) => path.join(path.resolve(imageRoot), path.basename(id)) };

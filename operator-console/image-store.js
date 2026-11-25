@@ -539,10 +539,31 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
       const file = safe ? path.join(rootDir, image_id) : null;
       let st; try { if (file) st = fs.lstatSync(file); } catch (_) {}
       const row = { image_id, path: file, inspected_at, owners, reference_state: owners.length ? 'referenced' : 'unreferenced', known_digests: [...new Set(owners.map(r => r.sha256).filter(Boolean))], state: safe ? (st ? 'valid' : 'missing') : 'broken', sha256: null, bytes: null };
-      const held = !st && macbookImages ? macbookImages.info(image_id) : null;
-      if (held) { row.state = 'valid'; row.bytes = held.bytes; row.sha256 = held.sha256; row.held_on = 'macbook'; }
+      const held = safe && !st && macbookImages ? macbookImages.info(image_id) : null;
+      if (held) {
+        row.bytes = held.bytes;
+        row.sha256 = held.sha256;
+        row.held_on = 'macbook';
+        row.digest_source = 'macbook-inventory';
+        const digestKnown = /^[a-f0-9]{64}$/i.test(row.sha256 || '');
+        const matches = digestKnown && row.known_digests.length > 0 && row.known_digests.every(digest => digest === row.sha256);
+        if (digestKnown && row.known_digests.some(digest => digest !== row.sha256)) {
+          row.state = 'digest-mismatch';
+          row.reason = 'recorded-digest-mismatch';
+        } else if (!matches || macbookImages.isReachable?.() === false) {
+          row.state = 'unknown';
+          row.reason = !matches ? 'macbook-identity-unverified' : 'macbook-inventory-stale';
+        } else { row.state = 'valid'; }
+      }
       if (st && !st.isFile()) { row.state = 'broken'; row.reason = 'not-regular-file'; }
-      if (st && st.isFile()) { row.bytes = st.size; row.sha256 = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); row.decode = true; }
+      if (st?.isFile()) {
+        try {
+          row.sha256 = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+          row.bytes = st.size;
+          row.decode = true;
+          row.digest_source = 'local-bytes';
+        } catch (_) { row.state = 'unknown'; row.reason = 'local-original-unreadable'; }
+      }
       return row;
     });
     const toDecode = rows.filter(r => r.decode);
@@ -555,33 +576,32 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
         row.format = d.format; row.dimensions = d.dimensions;
         if (row.owners.some(r => r.sha256 && r.sha256 !== row.sha256)) row.state = 'digest-mismatch';
         else if (!row.owners.length) row.state = 'orphan';
-        const logical = row.owners.map(r => [r.run_id || r.job_id || r.metadata_path || '', r.run_file || r.image_id].join(':'));
-        if (logical.some(key => logicalCounts.get(key) > 1)) row.duplicate_logical_reference = true;
       }
     });
     for (const row of rows) {
-      if (row.owners.some(r => r.image_path && path.resolve(r.image_path) !== row.path)) { row.state = 'broken'; row.reason = 'reference-path-mismatch'; }
+      const logical = row.owners.map(r => [r.run_id || r.job_id || r.metadata_path || '', r.run_file || r.image_id].join(':'));
+      if (logical.some(key => logicalCounts.get(key) > 1)) row.duplicate_logical_reference = true;
+      if (row.owners.some(r => typeof r.image_path === 'string' && r.image_path && path.resolve(r.image_path) !== row.path)) {
+        row.reference_state = 'reference-path-mismatch';
+      }
       if (pending.has(row.image_id)) row.state = 'pending';
     }
 
-    // A missing path is not automatically a current runtime failure. Classify a
-    // fully dated, strictly older missing cohort as historical only when it does
-    // not overlap the retained dated cohort. Any ambiguity or overlap stays a
-    // current problem; the underlying references are always preserved.
+    // Preserve historical absence while surfacing unresolved, relocated originals.
     const validDated = rows.filter(r => r.state === 'valid').map(r => datedImageKey(r.image_id)).filter(Boolean).sort();
     const missingRows = rows.filter(r => r.state === 'missing');
-    const missingDated = missingRows.map(r => datedImageKey(r.image_id)).filter(Boolean).sort();
-    // A reference to an absent path is historical information. Current
-    // publication failures are represented by pending journals, active owners,
-    // invalid records, digest mismatches and ownership conflicts below.
-    const historicalGap = missingRows.length > 0;
+
+    const historicalRows = missingRows.filter(row => row.reference_state !== 'reference-path-mismatch');
+    const missingDated = historicalRows.map(r => datedImageKey(r.image_id)).filter(Boolean).sort();
     for (const row of missingRows) {
-      row.missing_classification = 'historical-missing-reference';
-      row.classification_basis = 'absent canonical path is an informational historical reference; publication failures are classified separately';
+      const stalePath = row.reference_state === 'reference-path-mismatch';
+      row.missing_classification = stalePath ? 'unresolved-missing-original' : 'historical-missing-reference';
+      row.classification_basis = stalePath ? 'recorded path differs and no original is available through the configured image stores'
+        : 'absent canonical path is an informational historical reference; publication failures are classified separately';
     }
     const counts = { valid: 0, missing: 0, orphan: 0, 'digest-mismatch': 0, broken: metadata_errors.length, duplicate: 0, pending: 0, unknown: 0 };
     for (const row of rows) { counts[row.state]++; if (row.duplicate_logical_reference) counts.duplicate++; }
-    const historical_missing_references = missingRows.filter(r => r.missing_classification === 'historical-missing-reference').length;
+    const historical_missing_references = historicalRows.length;
     const current_missing_references = missingRows.length - historical_missing_references;
     const current_problems = current_missing_references + counts.broken + counts['digest-mismatch'] + counts.pending + counts.unknown;
     const classification = {
@@ -589,7 +609,8 @@ function createImageStore({ root = (process.env.DEX_IMAGES_ROOT_OVERRIDE || CANO
       current_missing_references,
       historical_missing_references,
       retained_dated_cohort_start: validDated[0] || null,
-      historical_missing_cohort_end: historicalGap ? missingDated[missingDated.length - 1] : null,
+      historical_missing_cohort_end: missingDated.at(-1) || null,
+      reference_path_mismatches: rows.filter(row => row.reference_state === 'reference-path-mismatch').length,
       basis: 'historical absence is informational; active publication integrity is counted from journals, ownership, decodability and digests'
     };
     const pending_publications = [];

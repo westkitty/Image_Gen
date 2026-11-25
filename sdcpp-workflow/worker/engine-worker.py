@@ -122,9 +122,13 @@ def validate(req, registry):
                'init_image', 'strength', 'control'}
     if set(req) - allowed:
         raise ValueError('unknown fields; paths and commands are forbidden')
-    if req.get('op') not in {'generate', 'status', 'cancel', 'result', 'ack', 'health', 'activate'}:
+    if req.get('op') not in {'generate', 'status', 'cancel', 'result', 'ack', 'health', 'readiness', 'activate'}:
         raise ValueError('unknown operation')
     if req['op'] == 'health':
+        return
+    if req['op'] == 'readiness':
+        if set(req) != {'op'}:
+            raise ValueError('readiness takes no arguments')
         return
     if not RUN_ID.fullmatch(req.get('run_id', '')) or not re.fullmatch(r'[a-f0-9]{64}', req.get('token', '')):
         raise ValueError('invalid job ownership')
@@ -280,6 +284,7 @@ class Worker:
         self.external_probe = external_probe or (lambda: subprocess.run(['/bin/ps','-axo','comm='],capture_output=True,text=True).stdout)
         self.registry = json.loads((self.root / 'registry.json').read_text())
         self.lock = threading.RLock()
+        self.health_lock = threading.Lock()
         self.jobs = {}
         self.active = None
         self.supervisor = None
@@ -386,6 +391,50 @@ class Worker:
     def public(self, job):
         return {k: v for k, v in job.items() if k not in {'token_hash'}}
 
+    def health(self):
+        # A volume read can hang inside the OS. Limit it to one probe without
+        # blocking status, cancellation, or the backend supervisor.
+        if not self.health_lock.acquire(blocking=False):
+            raise ValueError('worker health probe already in progress')
+        try:
+            access = {}
+            for key, name in self.registry['access_probe'].items():
+                try:
+                    with open(os.path.expandvars(name), 'rb') as f:
+                        f.read(1)
+                    access[key] = True
+                except OSError as e:
+                    access[key] = str(e)
+            model_access = {}
+            for key,spec in self.registry['models'].items():
+                try:
+                    with open(os.path.expandvars(spec['path']),'rb') as f:
+                        f.read(1)
+                    model_access[key] = True
+                except OSError:
+                    model_access[key] = False
+            # ControlNet models and the ControlNet build are readable only when WC2TB is mounted and granted.
+            control_access = {}
+            for key, cn in self.registry.get('controlnets', {}).items():
+                try:
+                    with open(cn['path'], 'rb') as f:
+                        f.read(1)
+                    control_access[key] = os.access(self.registry.get('sdcli_control', ''), os.X_OK)
+                except OSError:
+                    control_access[key] = False
+            try:
+                secondary = json.loads((Path.home() / 'Library/Caches/DexDiffusion/secondary-model/current/state.json').read_text())
+            except (OSError,ValueError):
+                secondary = {}
+            interpreter_ok = self.interpreter_check() is None
+        finally:
+            self.health_lock.release()
+        with self.lock:
+            return {'ok': True, 'models': model_access, 'controlnets': control_access, 'secondary': secondary,
+                    'pid': os.getpid(), 'uid': os.getuid(), 'active': self.active, 'access': access,
+                    'recovery_uncertain': list(self.recovery_uncertain), 'retention': self.retention_summary(),
+                    'interpreter_ok': interpreter_ok, 'interpreter_path': self.interpreter['executable']}
+
     def request(self, req):
         if req.get('op') == 'backend-prepare-fixture':
             with self.lock:
@@ -426,39 +475,12 @@ class Worker:
                     self.supervisor.paused = True
                 return {'ok': True, **self.supervisor.status()}
         validate(req, self.registry)
+        if req['op'] == 'health':
+            return self.health()
         with self.lock:
-            if req['op'] == 'health':
-                access = {}
-                for key, name in self.registry['access_probe'].items():
-                    try:
-                        with open(os.path.expandvars(name), 'rb') as f:
-                            f.read(1)
-                        access[key] = True
-                    except OSError as e:
-                        access[key] = str(e)
-                model_access = {}
-                for key,spec in self.registry['models'].items():
-                    try:
-                        with open(os.path.expandvars(spec['path']),'rb') as f:
-                            f.read(1)
-                        model_access[key] = True
-                    except OSError:
-                        model_access[key] = False
-                # ControlNet models and the ControlNet build are readable only when WC2TB is mounted and granted.
-                control_access = {}
-                for key, cn in self.registry.get('controlnets', {}).items():
-                    try:
-                        with open(cn['path'], 'rb') as f:
-                            f.read(1)
-                        control_access[key] = os.access(self.registry.get('sdcli_control', ''), os.X_OK)
-                    except OSError:
-                        control_access[key] = False
-                try:
-                    secondary = json.loads((Path.home() / 'Library/Caches/DexDiffusion/secondary-model/current/state.json').read_text())
-                except (OSError,ValueError):
-                    secondary = {}
-                return {'ok': True, 'models': model_access, 'controlnets': control_access, 'secondary': secondary, 'pid': os.getpid(), 'uid': os.getuid(), 'active': self.active, 'access': access, 'recovery_uncertain': self.recovery_uncertain, 'retention': self.retention_summary(),
-                        'interpreter_ok': self.interpreter_check() is None, 'interpreter_path': self.interpreter['executable']}
+            if req['op'] == 'readiness':
+                return {'ok': True, 'active': self.active, 'stopping': self.stopping,
+                        'recovery_uncertain': list(self.recovery_uncertain)}
             run_id = req['run_id']
             digest = hashlib.sha256(req['token'].encode()).hexdigest()
             if req['op'] == 'activate':

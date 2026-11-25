@@ -163,6 +163,7 @@ function probeInternalFallbackAssets({ targetModels = {}, home = os.homedir(), f
 
 function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 12000 } = {}) {
   const paths = [...new Set(Object.values(targetModels))];
+  const isLocal = sshTarget === 'local' || (sshTarget === 'westcat' && (os.hostname() === 'bigmac' || process.env.DEX_LOCAL_HOST === '1'));
   const checks = [
     `printf 'mfluxRuntime=%s\\n' "$(test -x "$HOME/Library/Caches/DexDiffusion/mflux/venv/bin/mflux-generate-flux2" && echo 1 || echo 0)"`,
     `printf 'mfluxModel=%s\\n' "$(test -s "$HOME/Library/Caches/DexDiffusion/mflux/flux2-klein-4b-4bit/transformer/model.safetensors.index.json" && echo 1 || echo 0)"`,
@@ -175,14 +176,18 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
     ...paths.map((p, i) => `printf 'model${i}=%s\\n' "$(test -s ${JSON.stringify(p).replace(/^"\$HOME/, '"$HOME')} && echo 1 || echo 0)"`),
     `printf 'identity=%s@%s\\n' "$(whoami)" "$(hostname -s)"`,
     `printf 'wc2tb=%s\\n' "$(test -d /Volumes/wc2tb/ImageGen && echo 1 || echo 0)"`,
-    `printf 'wc2tbReadable=%s\\n' "$(/bin/ls /Volumes/wc2tb >/dev/null 2>&1 && echo 1 || echo 0)"`,
+    // Opening the volume from an SSH session raises a macOS consent prompt on Big Mac.
+    // Until someone answers it, every other process opening that volume stalls behind
+    // it, including the worker. The worker reports external access instead.
+    isLocal
+      ? `printf 'wc2tbReadable=%s\\n' "$(/bin/ls /Volumes/wc2tb >/dev/null 2>&1 && echo 1 || echo 0)"`
+      : "printf 'wc2tbReadable=0\\n'",
     `printf 'secondaryStateB64=%s\\n' "$(test -s "$HOME/Library/Caches/DexDiffusion/secondary-model/current/state.json" && /usr/bin/base64 < "$HOME/Library/Caches/DexDiffusion/secondary-model/current/state.json" | tr -d '\\n' || true)"`,
     // Dormant future workers: existence checks only (nothing is installed or started).
     ...DORMANT_PATHS.map(([k, pth]) => `printf '${k}=%s\\n' "$(test -e "${pth}" && echo 1 || echo 0)"`),
     `printf 'probe=done\\n'`,
   ].join('; ');
   return new Promise(resolve => {
-    const isLocal = sshTarget === 'local' || (sshTarget === 'westcat' && (os.hostname() === 'bigmac' || process.env.DEX_LOCAL_HOST === '1'));
     const runner = isLocal
       ? cb => execFile('/bin/sh', ['-c', checks], { timeout: timeoutMs, encoding: 'utf8' }, cb)
       : cb => execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=6', sshTarget, checks], { timeout: timeoutMs, encoding: 'utf8' }, cb);
@@ -204,7 +209,7 @@ function probeAssets({ sshTarget = 'westcat', targetModels = {}, timeoutMs = 120
         reachable: true,
         mfluxRuntime: flag('mfluxRuntime'), mfluxModel: flag('mfluxModel'),
         sdCli: flag('sdCli'), sd15Model: externalBlocked ? false : flag('sd15Model'), photonicModel: flag('photonicModel'), sdxlBaseModel: externalBlocked ? false : flag('sdxlBaseModel'), sdxlTurboModel: externalBlocked ? false : flag('sdxlTurboModel'), esrganModel: externalBlocked ? false : flag('esrganModel'),
-        identity: kv.identity || null, wc2tb: flag('wc2tb'), wc2tbReadable,
+        identity: kv.identity || null, wc2tb: flag('wc2tb'), wc2tbReadable, wc2tbAccessProbed: isLocal,
         dormant: Object.fromEntries(DORMANT_PATHS.map(([k, path]) => [k, externalBlocked && path.startsWith('/Volumes/wc2tb/') ? false : flag(k)])),
         models,
         secondaryModelState: secondary.secondaryModelState || 'inactive',

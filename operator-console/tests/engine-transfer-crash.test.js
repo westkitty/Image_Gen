@@ -18,7 +18,11 @@ const { spawn, spawnSync } = require('node:child_process');
 
 const IMPL = path.resolve(process.env.DEX_GATEC_IMPL_ROOT || path.join(__dirname, '../..'));
 const FIX = path.join(__dirname, 'fixtures/gatec');
-const PY = process.env.DEX_GATEC_PYTHON || '/usr/bin/python3';
+const requestedPython = process.env.DEX_GATEC_PYTHON || '/usr/bin/python3';
+const pythonProbe = spawnSync(requestedPython, ['-c', 'import os, sys; from PIL import Image; print(sys.executable); print(os.path.dirname(os.path.dirname(Image.__file__)))'], { encoding: 'utf8' });
+assert.equal(pythonProbe.status, 0, 'Gate C requires a working Pillow install in ' + requestedPython + '\n' + (pythonProbe.stderr || pythonProbe.error));
+const [PY, PIL_PATH] = pythonProbe.stdout.trim().split('\n');
+assert.ok(path.isAbsolute(PY) && path.isAbsolute(PIL_PATH));
 const HAS_JOURNAL = fs.existsSync(path.join(IMPL, 'operator-console/engine-transfer-journal.js'));
 const TARGET = 'sd15';
 const PROMPT = 'gatec private prompt 7f3a';
@@ -32,11 +36,6 @@ n = int(a[a.index('-b') + 1]) if '-b' in a else 1
 seed = int(a[a.index('--seed') + 1])
 for i in range(n): Image.new('RGB', (w, h), ((seed + i * 50) % 256, 40, 90)).save(out % i if n > 1 else out)
 `;
-// /usr/bin/python3 finds PIL in the user site-packages, which follows HOME; the
-// fixture swaps HOME, so pin PIL's location from the real environment once.
-const pillowProbe = spawnSync(PY, ['-c', 'import os; from PIL import Image; print(os.path.dirname(os.path.dirname(Image.__file__)))'], { encoding: 'utf8' });
-assert.equal(pillowProbe.status, 0, 'Gate C requires a working Pillow install in ' + PY + '\n' + (pillowProbe.stderr || pillowProbe.error));
-const PIL_PATH = pillowProbe.stdout.trim();
 const bridgeRegistry = JSON.parse(spawnSync(process.execPath, [path.join(IMPL, 'sdcpp-workflow/worker/build-registry.js')], { encoding: 'utf8' }).stdout);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -58,7 +57,7 @@ function fixture(t, { count = 1, engineSleep = 0 } = {}) {
     adapters: {}, access_probe: {}, vaes: {}, controlnets: {}, sdcli: engine, image_python: PY }));
   for (const d of ['runs', 'images', 'state', 'tmp']) fs.mkdirSync(path.join(home, d));
   const jobId = crypto.randomUUID();
-  const env = { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: home, TMPDIR: path.join(home, 'tmp'), DEX_LOCAL_ENGINE_DIRECT: '1',
+  const env = { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', DEX_GATEC_PYTHON: PY, HOME: home, TMPDIR: path.join(home, 'tmp'), DEX_LOCAL_ENGINE_DIRECT: '1',
     DEX_RUNS_DIR: path.join(home, 'runs'), DEX_IMAGES_ROOT_OVERRIDE: path.join(home, 'images'), DEX_STATE_DIR: path.join(home, 'state'),
     DEX_WORKFLOW_ROOT: path.join(IMPL, 'sdcpp-workflow'), DEXDIFFUSION_JOB_ID: jobId, DEX_GATEC_IMPL_ROOT: IMPL, GATEC_COUNT: String(count),
     GATEC_ENGINE_SLEEP: String(engineSleep), PYTHONPATH: PIL_PATH, DEX_IMAGE_VALIDATION_PYTHON: PY };
@@ -86,12 +85,12 @@ function fixture(t, { count = 1, engineSleep = 0 } = {}) {
     child.on('exit', (code, signal) => resolve({ code, signal, out, runId: (out.match(/SDCPP_RUN_ID: (\S+)/) || [])[1] }));
   });
   f.recover = (extra = null) => {
-    const args = extra ? ['--require', path.join(FIX, 'fault-preload.js'), path.join(FIX, 'recover.js')] : [path.join(FIX, 'recover.js')];
+    const args = ['--require', path.join(FIX, 'fault-preload.js'), path.join(FIX, 'recover.js')];
     const r = spawnSync(process.execPath, args, { env: { ...env, ...(extra || {}) }, encoding: 'utf8', timeout: 60000 });
     try { return JSON.parse(r.stdout.trim().split('\n').pop()); } catch (_) { return { error: r.stdout + r.stderr }; }
   };
   f.recoverAsync = () => new Promise(resolve => {
-    const c = spawn(process.execPath, [path.join(FIX, 'recover.js')], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const c = spawn(process.execPath, ['--require', path.join(FIX, 'fault-preload.js'), path.join(FIX, 'recover.js')], { env, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = ''; c.stdout.on('data', d => { out += d; });
     c.on('exit', () => { try { resolve(JSON.parse(out.trim().split('\n').pop())); } catch (_) { resolve({ error: out }); } });
   });

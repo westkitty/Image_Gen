@@ -1,7 +1,6 @@
 'use strict';
-// Edit "Import image": a real PNG upload through the real /api/staging, rejection of non-images, truncated files and oversize
-// files, and hand-off of the uploaded source (staged_id, never a client file path) to a real Edit action request.
-// Generation POSTs are intercepted so no inference runs.
+// PNG imports retain their exact bytes and canonical ID. JPEG stays temporary
+// and passes its staging ID to Edit. Generation POSTs are intercepted.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
 const { makePng, startServer, installModelSnapshots, runner, launchBrowser, openStudio } = require('./helpers');
@@ -25,26 +24,65 @@ const toasts = page => page.evaluate(() => __dex.state.toasts.map(t => t.msg));
     await page.waitForSelector('input[type="file"][accept*="image/png"]', { state: 'attached' });
     const input = () => page.locator('input[type="file"][accept*="image/png"]').first();
 
-    await test('a valid PNG uploads, becomes a temporary Edit source with its real dimensions', async () => {
-      await input().setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: makePng(320, 192) });
-      await page.waitForFunction(() => __dex._ed().source && __dex._ed().source.staged === true, null, { timeout: 15000 });
-      const s = await page.evaluate(() => { const x = __dex._ed().source; return { w: x.width, h: x.height, id: x.stagedId, op: x.meta.operation }; });
-      assert.deepEqual([s.w, s.h], [320, 192]); assert.match(s.id, /^stg-/); assert.equal(s.op, 'imported (temporary)');
-      assert.ok((await toasts(page)).some(t => /Imported 320×192/.test(t)));
+    await test('a valid PNG becomes the exact canonical Edit source with its original bytes', async () => {
+      const png = makePng(320, 192);
+      await input().setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: png });
+      await page.waitForFunction(() => typeof __dex._ed().source?.imageId === 'string', null, { timeout: 15000 });
+      const source = await page.evaluate(() => __dex._ed().source);
+      assert.deepEqual([source.width, source.height], [320, 192]);
+      const response = await fetch(srv.base + '/api/images/' + encodeURIComponent(source.imageId));
+      assert.equal(response.status, 200);
+      assert.deepEqual(Buffer.from(await response.arrayBuffer()), png);
+      assert.ok((await toasts(page)).some(t => /PNG saved to Library and opened in Edit/.test(t)));
     });
-    await test('the uploaded source is handed to a real Edit action as staged_id (never a path), with the page unchanged on error', async () => {
-      await page.evaluate(() => { const ed = __dex._ed(); if (ed.op !== 'img2img') __dex.edSet({ op: 'img2img' }); });
-      await page.evaluate(() => __dex.setState({}));
-      const btn = page.locator('[data-run-edit]');
-      await btn.waitFor({ state: 'visible', timeout: 10000 });
-      await page.evaluate(() => { const st = __dex._ed().state; if (st) { st.prompt = 'a small red cube'; __dex.edSet({ state: st }); } });
-      await btn.click();
-      await page.waitForFunction(() => true);
-      for (let i = 0; i < 30 && !posts.length; i++) await new Promise(r => setTimeout(r, 200));
-      const blocker = await page.locator('[data-run-blocker]').innerText();
-      assert.equal(posts.length, 1, 'Run sent exactly one img2img request; blocker text: ' + JSON.stringify(blocker));
-      assert.match(posts[0].staged_id, /^stg-/, 'the staged id is sent');
-      for (const k of ['path', 'init_image_file', 'image_path']) assert.ok(!(k in posts[0]) || posts[0][k] === undefined, 'no client path field ' + k);
+
+    async function editRequest() {
+      await page.evaluate(() => {
+        const ed = __dex._ed();
+        __dex.edSet({ op: 'img2img', state: { ...ed.state, prompt: 'a small red cube' } });
+      });
+      const previous = posts.length;
+      const response = page.waitForResponse(r => new URL(r.url()).pathname === '/api/actions/img2img' && r.request().method() === 'POST');
+      await page.locator('[data-run-edit]').click();
+      assert.equal((await response).status(), 400, 'the test intercepted the inference request');
+      assert.equal(posts.length, previous + 1);
+      const body = posts.at(-1);
+      for (const key of ['path', 'init_image_file', 'image_path']) assert.equal(body[key], undefined, 'no client path field ' + key);
+      return body;
+    }
+
+    await test('Edit sends the exact canonical image ID for an imported PNG and retains the source on error', async () => {
+      const id = await page.evaluate(() => __dex._ed().source.imageId);
+      const body = await editRequest();
+      assert.equal(body.image_id, id);
+      assert.equal(body.staged_id, undefined);
+      assert.equal(await page.evaluate(() => __dex._ed().source.imageId), id);
+    });
+
+    await test('pasting a JPEG uses temporary staging and Edit sends its exact staging ID', async () => {
+      const confirm = dialog => dialog.accept();
+      page.on('dialog', confirm);
+      try {
+        await page.evaluate(async () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 320; canvas.height = 192;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#add';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          const image = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
+          const data = new DataTransfer();
+          data.items.add(new File([image], 'photo.jpg', { type: 'image/jpeg' }));
+          window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, cancelable: true }));
+        });
+        await page.waitForFunction(() => __dex._ed().source?.staged === true, null, { timeout: 15000 });
+      } finally { page.off('dialog', confirm); }
+      const source = await page.evaluate(() => __dex._ed().source);
+      assert.deepEqual([source.width, source.height], [320, 192]);
+      assert.match(source.stagedId, /^stg-/);
+      const body = await editRequest();
+      assert.equal(body.staged_id, source.stagedId);
+      assert.equal(body.image_id, undefined);
+      assert.equal(await page.evaluate(() => __dex._ed().source.stagedId), source.stagedId);
     });
     await test('a text file renamed .png is rejected by the server with a clear message and nothing becomes the source', async () => {
       await page.evaluate(() => { __dex.wsSet({ editSourceId: null, editSource: null }); __dex.edSet({ source: null, state: null }); });
@@ -65,8 +103,16 @@ const toasts = page => page.evaluate(() => __dex.state.toasts.map(t => t.msg));
       let staged = 0;
       await page.evaluate(() => { __dex.wsSet({ editSourceId: null, editSource: null }); __dex.edSet({ source: null, state: null }); });
       await page.waitForSelector('input[type="file"][accept*="image/png"]', { state: 'attached' });
-      await page.route('**/api/staging**', r => { if (r.request().method() === 'POST') staged++; r.fallback(); });
-      await input().setInputFiles({ name: 'huge.png', mimeType: 'image/png', buffer: Buffer.concat([makePng(8, 8), Buffer.alloc(26 * 1024 * 1024)]) });
+      await page.route(/\/api\/(?:staging|library\/images\/import)(?:\?|$)/, r => {
+        if (r.request().method() === 'POST') staged++;
+        return r.fallback();
+      });
+      await input().evaluate(el => {
+        const data = new DataTransfer();
+        data.items.add(new File([new Uint8Array(26 * 1024 * 1024)], 'huge.png', { type: 'image/png' }));
+        el.files = data.files;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      });
       await page.waitForFunction(() => __dex.state.toasts.some(t => /too large \(25 MB max\)/.test(t.msg)), null, { timeout: 10000 });
       assert.equal(staged, 0, 'no network upload for an oversized file');
     });

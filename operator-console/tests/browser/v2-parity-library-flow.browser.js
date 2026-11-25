@@ -58,6 +58,42 @@ const clickFilter = async (page, label) => { await page.locator('[data-lib-contr
       await page.close();
     });
 
+    await test('an older Library filter response cannot replace the current results', async () => {
+      const page = await browser.newPage({ viewport: { width: 1348, height: 900 } });
+      try {
+        const errors = await open(page, srv.base);
+        let releaseOlder;
+        const olderMayFinish = new Promise(resolve => { releaseOlder = resolve; });
+        await page.route('**/api/library/images?*', async route => {
+          if (new URL(route.request().url()).searchParams.get('filter') === 'sd15') await olderMayFinish;
+          await route.continue();
+        });
+        const isFilter = (request, filter) => new URL(request.url()).searchParams.get('filter') === filter;
+        const requestStarted = page.waitForRequest(request => isFilter(request, 'sd15'));
+        // Keep a completion handle so the final assertion runs after the older response was processed.
+        await page.evaluate(() => { window.olderLibraryRequest = __dex.loadLibraryImages('sd15'); });
+        try {
+          await requestStarted;
+          await page.evaluate(() => __dex.loadLibraryImages('flux2-klein-4b'));
+          await page.waitForFunction(() => {
+            const rows = document.querySelectorAll('[data-lib-grid] [data-lib-thumb]');
+            return rows.length === 1 && rows[0].getAttribute('data-lib-thumb') === 'fixture-b2.png';
+          });
+          assert.deepEqual(short(await ids(page)), ['b2']);
+        } finally {
+          releaseOlder();
+        }
+        await page.evaluate(async () => {
+          await window.olderLibraryRequest;
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        });
+        assert.deepEqual(short(await ids(page)), ['b2']);
+        assert.deepEqual(errors, []);
+      } finally {
+        await page.close();
+      }
+    });
+
     await test('row 30: a selected image stays selected when the sort changes; the run filter narrows the loaded runs', async () => {
       const page = await browser.newPage({ viewport: { width: 1348, height: 900 } });
       const errors = await open(page, srv.base);
@@ -104,13 +140,27 @@ const clickFilter = async (page, label) => { await page.locator('[data-lib-contr
       await page.locator(GRID).getByRole('button', { name: 'Select fixture-a1.png for details' }).click();
       await page.locator('[data-library-generation-metadata="fixture-a1.png"]').waitFor();
       await page.locator('summary', { hasText: 'More image actions' }).click();
+      const mutation = page.waitForResponse(r => r.url().endsWith('/api/images/fixture-a1.png/keeper') && r.request().method() === 'POST');
       await page.getByRole('button', { name: /☆ Keeper/ }).click();
-      await page.waitForFunction(async () => (await (await fetch('/api/library/images?filter=keepers')).json()).items.some(i => i.id === 'fixture-a1.png'));
+      const written = await mutation;
+      assert.equal(written.status(), 200);
+      assert.deepEqual(await written.json(), { id: 'fixture-a1.png', keeper: true });
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.waitForFunction(() => window.__dex && __dex.state.version === 2 && __dex.state.modelTargets?.length > 3);
       await page.evaluate(() => __dex.setScreen('library'));
       await page.waitForFunction(() => document.querySelectorAll('[data-lib-grid] [data-lib-thumb]').length > 0);
-      await clickFilter(page, '★ Keepers');
+      const collection = page.waitForResponse(r => {
+        const url = new URL(r.url());
+        return url.pathname === '/api/library/images' && url.searchParams.get('filter') === 'keepers';
+      });
+      await page.locator('[data-lib-controls]').locator('xpath=ancestor::div[1]').getByRole('button', { name: '★ Keepers', exact: true }).click();
+      const loaded = await collection;
+      assert.equal(loaded.status(), 200);
+      assert.deepEqual(short((await loaded.json()).items.map(item => item.id)).sort(), ['a1', 'c3']);
+      await page.locator(GRID + ' [data-lib-thumb="fixture-a1.png"]').waitFor({ state: 'visible' });
+      // The prior unfiltered grid can still contain a1 while the response is committing.
+      await page.locator(GRID + ' [data-lib-thumb="fixture-b2.png"]').waitFor({ state: 'hidden' });
+      await page.locator(GRID + ' [data-lib-thumb="fixture-d4.png"]').waitFor({ state: 'hidden' });
       assert.deepEqual(short(await ids(page)).sort(), ['a1', 'c3']);
       assert.deepEqual(errors, []);
       await page.close();

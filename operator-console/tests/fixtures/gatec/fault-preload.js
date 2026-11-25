@@ -30,6 +30,22 @@ if (decisionErr) {
     return readFile.call(fs, file, ...rest);
   };
 }
+// Redirect the production Mac Python path only for this owned test worker.
+const assert = require('node:assert/strict');
+const cp = require('node:child_process');
+const ownedPython = process.env.DEX_GATEC_PYTHON;
+const ownClient = path.join(process.env.HOME, '.dexdiffusion-engine', 'engine-worker.py');
+assert.match(process.env.HOME, /^\/tmp\/dgc-[A-Za-z0-9]+$/);
+assert.equal(process.env.DEX_LOCAL_ENGINE_DIRECT, '1');
+assert.ok(path.isAbsolute(ownedPython));
+const spawn = cp.spawn;
+cp.spawn = function (file, args, options) {
+  if (file === '/opt/homebrew/bin/python3' && args?.[0] === ownClient && args[1] === 'client') {
+    return spawn.call(this, ownedPython, args, options);
+  }
+  return spawn.apply(this, arguments);
+};
+
 const client = require(path.join(impl, 'local-engine-client'));
 const realRequest = client.request;
 let results = 0, statuses = 0, workerCompleted = false;

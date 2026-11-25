@@ -123,7 +123,7 @@ function resolveStack(params, loras) {
   if (loras.length > MAX_STACK) return { ok: false, error: `At most ${MAX_STACK} LoRAs can be combined in one generation.` };
   const seen = new Set(), items = [];
   for (const l of loras) {
-    const id = adapterId(l.name), spec = ADAPTERS[id];
+    const id = adapterId(l.name), spec = Object.hasOwn(ADAPTERS, id) ? ADAPTERS[id] : null;
     if (!spec) return { ok: false, error: `LoRA "${l.name}" has no verified production route.` };
     if (!spec.staged) return { ok: false, error: `${l.name} cannot be combined with other LoRAs; use it on its own.` };
     if (seen.has(id)) return { ok: false, error: `${l.name} is selected more than once.` };
@@ -152,7 +152,7 @@ function resolveLoraRuntimePolicy(params) {
   if (!loras.length) return { ok: true, route: null };
   if (loras.length > 1) return resolveStack(params, loras);
   const id = adapterId(loras[0].name);
-  const spec = ADAPTERS[id];
+  const spec = Object.hasOwn(ADAPTERS, id) ? ADAPTERS[id] : null;
   if (!spec) return { ok: false, error: `LoRA "${loras[0].name}" has no verified production route.` };
   if (spec.disabled) return { ok: false, error: `${loras[0].name} is unavailable: ${spec.disabled}` };
   const support = targetSupport(spec, params.target);
@@ -194,7 +194,7 @@ function resolveLoraRuntimePolicy(params) {
 }
 
 function routesFor(target, name) {
-  const id = adapterId(name), spec = ADAPTERS[id];
+  const id = adapterId(name), spec = Object.hasOwn(ADAPTERS, id) ? ADAPTERS[id] : null;
   const support = targetSupport(spec, target);
   if (!support) return [];
   if (spec.backend === 'mflux') return [{ target, backend: 'mflux', production: true, ...(spec.plain ? { plain: true, untested: true } : { rslora_equivalent: true }) }];

@@ -27,12 +27,14 @@ test('backend identity reports stable process-start timestamp across requests', 
     APP_VERSION: 'test',
     process: { pid: 1234 },
     HOST: '127.0.0.1', PORT: 31337, WORKFLOW_ROOT: '/project/runs',
+    BACKEND_STORAGE: { mode: 'fixture' },
     first: null, second: null
   };
   vm.runInNewContext(section + '\nfirst = getBuildInfo(); second = getBuildInfo();', context);
   assert.equal(context.first.startedAt, context.second.startedAt);
   assert.equal(clockReads, 1, 'process start time must be measured once, not per request');
   assert.equal(context.first.pid, 1234);
+  assert.strictEqual(context.first.storage, context.BACKEND_STORAGE);
   assert.equal(context.second.gitHead, 'abc123');
   assert.equal(context.first.gitHead, 'abc123');
   assert.equal(gitReads, 1, 'commit identity must be captured once per process');

@@ -133,7 +133,7 @@ test('bin/dexdiffusion status is read-only and degrades when services are unavai
   });
   assert.match(out, /status:\s+DOWN/);
   assert.match(out, /Big Mac:\s+ssh dexdiffusion-test-unreachable\.invalid — DOWN/);
-  assert.match(out, /images:\s+\/Users\/andrew\/images_made/);
+  assert.match(out, /canonical images \(MacBook\):\s+\/Users\/andrew\/images_made/);
   assert.match(out, /sd-cli:\s+unknown/);
   assert.match(out, /server down — capability status unavailable/);
   const src = fs.readFileSync(path.join(ROOT, 'bin', 'dexdiffusion'), 'utf8');

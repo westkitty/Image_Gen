@@ -21,10 +21,11 @@ fi
 
 # The mount table alone is NOT evidence that APFS data is accessible. Never
 # rely on unbounded stat/open/read on a potentially wedged USB device.
+# The first read is longer because a sleeping drive needs seconds to spin up.
 if /sbin/mount | /usr/bin/grep -F " on $VOLUME_MOUNT (" >/dev/null &&
-   /opt/homebrew/bin/gtimeout -k 1s 3s /bin/ls -a "$DATA_ROOT/state" >/dev/null 2>&1 &&
-   /opt/homebrew/bin/gtimeout -k 1s 3s /bin/ls -a "$DATA_ROOT/runs" >/dev/null 2>&1 &&
-   /opt/homebrew/bin/gtimeout -k 1s 3s /bin/sh -c '[ ! -e "$1" ] || /usr/bin/head -c 1 "$1" >/dev/null' sh "$DATA_ROOT/state/jobs.json" >/dev/null 2>&1; then
+   /opt/homebrew/bin/gtimeout -k 1s 20s /bin/ls -a "$DATA_ROOT/state" >/dev/null 2>&1 &&
+   /opt/homebrew/bin/gtimeout -k 1s 10s /bin/ls -a "$DATA_ROOT/runs" >/dev/null 2>&1 &&
+   /opt/homebrew/bin/gtimeout -k 1s 10s /bin/sh -c '[ ! -e "$1" ] || /usr/bin/head -c 1 "$1" >/dev/null' sh "$DATA_ROOT/state/jobs.json" >/dev/null 2>&1; then
   # The external SSD supplies models and durable job state, NEVER the final
   # image library. Generated images are short-lived Big Mac internal staging
   # files until the checksum-verified MacBook pull acknowledges them.

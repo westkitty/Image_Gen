@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const { randomUUID } = require('node:crypto');
 const path = require('path');
 
 const DEFAULT_WILDCARDS_DIR = path.join(__dirname, 'wildcards');
@@ -11,9 +12,22 @@ const MAX_ITEM_CHARS = 4000;
 
 const REMOVED_FILE = '.removed.json';
 
-function readRemoved(userDir) {
+function readRemoved(userDir, { strict = false } = {}) {
   if (!userDir) return new Set();
-  try { return new Set(JSON.parse(fs.readFileSync(path.join(userDir, REMOVED_FILE), 'utf8')).map(n => String(n).toLowerCase())); } catch (_) { return new Set(); }
+  try {
+    const file = path.join(userDir, REMOVED_FILE);
+    const existing = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (!existing) return new Set();
+    if (!existing.isFile()) throw new Error('Wildcard removal ledger is unavailable');
+    const names = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!Array.isArray(names) || names.some(name => typeof name !== 'string' || !BANK_NAME.test(name))) {
+      throw new Error('Wildcard removal ledger is invalid');
+    }
+    return new Set(names.map(name => name.toLowerCase()));
+  } catch (error) {
+    if (strict) throw error;
+    return new Set();
+  }
 }
 
 /**
@@ -178,9 +192,13 @@ function bankError(name, items) {
   return null;
 }
 function writeAtomic(file, text) {
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, text);
-  fs.renameSync(tmp, file);
+  const tmp = `${file}.${randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(tmp, text, { flag: 'wx', mode: 0o600, flush: true });
+    fs.renameSync(tmp, file);
+  } finally {
+    try { fs.unlinkSync(tmp); } catch (_) {}
+  }
 }
 // The previous version of a Studio-edited bank is kept, never overwritten or deleted.
 function keepHistory(userDir, entry) {
@@ -188,7 +206,8 @@ function keepHistory(userDir, entry) {
   const history = path.join(userDir, '.history');
   fs.mkdirSync(history, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  fs.renameSync(entry.filePath, path.join(history, `${entry.originalName}-${stamp}.txt`));
+  const backup = path.join(history, `${entry.originalName}-${stamp}-${randomUUID()}.txt`);
+  fs.copyFileSync(entry.filePath, backup, fs.constants.COPYFILE_EXCL);
 }
 function writeRemoved(userDir, set) { writeAtomic(path.join(userDir, REMOVED_FILE), JSON.stringify([...set].sort(), null, 2)); }
 
@@ -213,21 +232,25 @@ function saveBank(userDir, wildcardsDir, name, items, { description = '', tags =
   if (tagList.length) header.push('# tags: ' + tagList.join(', '));
   keepHistory(userDir, entry);
   writeAtomic(path.join(userDir, finalName + '.txt'), header.concat(clean).join('\n') + '\n');
-  const removed = readRemoved(userDir);
-  if (removed.delete(finalName.toLowerCase())) writeRemoved(userDir, removed);
   return { name: finalName, count: clean.length };
 }
 
 /** Removes a bank from Studio. An edited copy goes to history; a shipped bank is hidden, and its file stays. -> bool */
 function removeBank(userDir, wildcardsDir, name) {
   if (typeof name !== 'string' || !BANK_NAME.test(name)) return false;
-  let entry = buildWildcardIndex(wildcardsDir, userDir).get(name.toLowerCase());
+  const entry = buildWildcardIndex(wildcardsDir, userDir).get(name.toLowerCase());
   if (!entry) return false;
   fs.mkdirSync(userDir, { recursive: true });
   keepHistory(userDir, entry);
   // Removing an edited copy of a shipped bank must not bring the shipped one back.
-  const removed = readRemoved(userDir);
-  if (buildWildcardIndex(wildcardsDir, null).has(name.toLowerCase())) { removed.add(name.toLowerCase()); writeRemoved(userDir, removed); }
+  if (buildWildcardIndex(wildcardsDir, null).has(name.toLowerCase())) {
+    const removed = readRemoved(userDir, { strict: true });
+    if (!removed.has(name.toLowerCase())) {
+      removed.add(name.toLowerCase());
+      writeRemoved(userDir, removed);
+    }
+  }
+  if (entry.user) fs.unlinkSync(entry.filePath);
   return true;
 }
 

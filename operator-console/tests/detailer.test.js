@@ -18,8 +18,17 @@ const {
 
 const TEST_IMAGE = '/Users/andrew/images_made/20260928-174616-controlled-sdxl-photonic-s1391613307-controlled-sdxl-photonic.png';
 
-test('detailer: binary is compiled and available', () => {
-  assert(isVisionDetailerAvailable(), 'vision-detailer binary must exist');
+const nativeVision = { skip: process.platform !== 'darwin' && 'Apple Vision runtime requires macOS' };
+
+test('detailer: native binary availability matches the host', async () => {
+  if (process.platform === 'darwin') {
+    assert(isVisionDetailerAvailable(), 'vision-detailer binary must exist');
+    return;
+  }
+  assert.equal(isVisionDetailerAvailable(), false);
+  const image = tmpFile('portable.png');
+  fs.writeFileSync(image, flatPng(8, 8));
+  await assert.rejects(detectRegions(image), { code: 'unavailable', message: 'Apple Vision detailer requires macOS.' });
 });
 
 test('detailer: provides delta-oriented default prompts', () => {
@@ -35,7 +44,7 @@ test('detailer: provides delta-oriented default prompts', () => {
   assert(personPrompt.includes('preserve pose'));
 });
 
-test('detailer: executes face detection and generates valid mask PNG', async () => {
+test('detailer: executes face detection and generates valid mask PNG', nativeVision, async () => {
   if (!fs.existsSync(TEST_IMAGE)) {
     return; // skip if image absent
   }
@@ -65,7 +74,7 @@ test('detailer: executes face detection and generates valid mask PNG', async () 
   }
 });
 
-test('detailer: executes hand detection and marks is_derived_roi: true', async () => {
+test('detailer: executes hand detection and marks is_derived_roi: true', nativeVision, async () => {
   if (!fs.existsSync(TEST_IMAGE)) {
     return;
   }
@@ -132,7 +141,7 @@ test('detailer: options are validated before the native binary runs', () => {
   assert(args.includes('--max-targets') && args.includes('--dilate') && args.includes('--target-selection'));
 });
 
-test('detailer: no target is a valid empty result and an all-transparent alpha mask', async () => {
+test('detailer: no target is a valid empty result and an all-transparent alpha mask', nativeVision, async () => {
   const img = tmpFile('flat.png'), mask = tmpFile('mask.png');
   fs.writeFileSync(img, flatPng(256, 192));
   for (const mode of ['face', 'hand', 'person']) {
@@ -146,7 +155,7 @@ test('detailer: no target is a valid empty result and an all-transparent alpha m
   }
 });
 
-test('detailer: mask is source-sized, alpha-painted, bounded by the padded target and leaves the rest untouched', async () => {
+test('detailer: mask is source-sized, alpha-painted, bounded by the padded target and leaves the rest untouched', nativeVision, async () => {
   if (!fs.existsSync(TEST_IMAGE)) return;
   const mask = tmpFile('mask.png');
   const res = await detectRegions(TEST_IMAGE, { mode: 'face', outputMask: mask, feather: 8, padding: 0.2 });
@@ -162,7 +171,7 @@ test('detailer: mask is source-sized, alpha-painted, bounded by the padded targe
   assert(res.mask.coverage > 0 && res.mask.coverage < 0.2, `face mask covers ${res.mask.coverage}`);
 });
 
-test('detailer: selection is deterministic (same detections, same mask bytes)', async () => {
+test('detailer: selection is deterministic (same detections, same mask bytes)', nativeVision, async () => {
   if (!fs.existsSync(TEST_IMAGE)) return;
   const a = tmpFile('a.png'), b = tmpFile('b.png');
   const strip = r => { const c = JSON.parse(JSON.stringify(r)); delete c.timings_ms; delete c.attempts; delete c.mask.path; return JSON.stringify(c); };
@@ -172,7 +181,7 @@ test('detailer: selection is deterministic (same detections, same mask bytes)', 
   assert(fs.readFileSync(a).equals(fs.readFileSync(b)));
 });
 
-test('detailer: a stalled detector is killed within the budget and the error names the stage', async () => {
+test('detailer: a stalled detector is killed within the budget and the error names the stage', nativeVision, async () => {
   if (!fs.existsSync(TEST_IMAGE)) return;
   const t0 = Date.now();
   await assert.rejects(
@@ -182,7 +191,7 @@ test('detailer: a stalled detector is killed within the budget and the error nam
   assert(Date.now() - t0 < 5000, 'bounded');
 });
 
-test('detailer: unreadable image fails with an actionable message, not a hang', async () => {
+test('detailer: unreadable image fails with an actionable message, not a hang', nativeVision, async () => {
   const bad = tmpFile('bad.png');
   fs.writeFileSync(bad, 'not an image');
   await assert.rejects(detectRegions(bad, { mode: 'face' }), err => err instanceof DetailerError && err.code === 'vision_failed' && /failed to load image/.test(err.message));

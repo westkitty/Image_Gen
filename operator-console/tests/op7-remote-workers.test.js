@@ -213,3 +213,26 @@ test('batch cells announce unique per-cell run tags; cli-generate announces its 
   const announce = cli.indexOf("printf 'SDCPP_RUN_ID: %s\\n' \"$RUN_TAG\""), firstGen = cli.indexOf('ssh_remote', cli.indexOf('RUN_TAG='));
   assert.ok(announce > 0 && announce < firstGen, 'announced before the first remote command that uses the tag');
 });
+
+test('a damaged ledger blocks heavy compute and a failed stop write keeps the quarantine', t => {
+  const file = tmpFile();
+  t.after(() => fs.rmSync(path.dirname(file), { recursive: true, force: true }));
+  const registry = RW.createRemoteWorkerRegistry({ file });
+  registry.start('owned', { action: 'controlled-generate', kind: 'per-run' });
+  registry.cancelRequested('owned');
+  fs.renameSync(file, file + '.saved');
+  fs.mkdirSync(file);
+  assert.throws(() => registry.verified('owned', 'fixture verified'));
+  assert.equal(registry.get('owned').state, 'cancel_requested');
+  assert.match(registry.quarantineReason(), /ledger requires recovery/);
+  fs.rmdirSync(file);
+  fs.renameSync(file + '.saved', file);
+  assert.equal(registry.verified('owned', 'fixture verified').state, 'cancelled_verified');
+  assert.equal(registry.quarantineReason(), null);
+
+  fs.writeFileSync(file, '{ damaged');
+  const blocked = RW.createRemoteWorkerRegistry({ file });
+  assert.match(blocked.quarantineReason(), /ledger requires recovery/);
+  assert.throws(() => blocked.start('new', { action: 'controlled-generate' }));
+  assert.equal(fs.readFileSync(file, 'utf8'), '{ damaged');
+});

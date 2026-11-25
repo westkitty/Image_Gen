@@ -41,3 +41,28 @@ test('job labels come from the safe progress label and fall back to the operatio
   assert.equal(O.genericJobLabel({ operation: 'speech', progress: null }), 'speech');
   assert.equal(O.genericJobLabel({ operation: 'x', progress: { label: 'a'.repeat(300) } }).length, 120);
 });
+
+test('admission persists before notification, refuses duplicate IDs, and preserves corrupt ledgers', t => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-job-admission-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'jobs.json');
+  const observed = [];
+  const store = M.createJobStore(file, { onChange: (_, job) => {
+    observed.push(JSON.parse(fs.readFileSync(file, 'utf8')).jobs.find(item => item.job_id === job.job_id)?.status);
+  } });
+  const request = { media_kind: 'image', operation: 'controlled-generate', worker_id: 'sdcpp' };
+  const job = store.create({ ...request, job_id: 'kept' });
+  assert.deepEqual(observed, ['QUEUED']);
+  assert.throws(() => store.create({ ...request, job_id: 'kept' }), /already exists/);
+  assert.equal(store.get('kept'), job);
+
+  const invalid = '{ "schema": "dexdiffusion.jobs.v1", "jobs": [null] }';
+  fs.writeFileSync(file, invalid);
+  const blocked = M.createJobStore(file);
+  assert.throws(() => blocked.create({ ...request, job_id: 'blocked' }), /invalid job ledger/);
+  assert.equal(blocked.get('blocked'), null);
+  assert.equal(fs.readFileSync(file, 'utf8'), invalid);
+});

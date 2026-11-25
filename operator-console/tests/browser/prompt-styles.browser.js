@@ -11,7 +11,7 @@ const { chromium } = require('playwright-core');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-styles-browser-'));
 const stylesFile = path.join(tmp, 'styles.json');
 process.env.DEX_STYLES_FILE = stylesFile;
-const { startServer, installModelSnapshots, runner, launchBrowser, runCleanups, openStudio } = require('./helpers');
+const { startServer, installModelSnapshots, runner, launchBrowser, runCleanups, openStudio, chooseModel } = require('./helpers');
 
 const { test, results, exitCode } = runner('prompt-styles');
 
@@ -21,24 +21,18 @@ async function open(page, base) {
   await installModelSnapshots(page, base);
   await page.route('**/api/models/secondary/activate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ modelState: {} }) }));
   await openStudio(page, base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
-  await page.locator('[data-studio-nav]').waitFor();
-  await page.locator('[data-studio-category="create"]').click();
-  await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
-  await page.locator('[data-dex-field="styles-panel"]').waitFor({ state: 'attached' });
-  await page.waitForTimeout(300);
+  await page.getByRole('textbox', { name: 'Describe your image' }).waitFor();
   return errors;
 }
 const api = async (base, route, method = 'GET', body) => {
   const r = await fetch(base + route, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   return { status: r.status, data: await r.json() };
 };
-async function chooseTarget(page, id) {
-  const select = page.locator('select', { has: page.locator(`option[value="${id}"]`) }).first();
-  await select.waitFor({ state: 'visible' });
-  await select.selectOption(id);
-  await page.waitForTimeout(400);
+async function openPanel(page) {
+  const advanced = page.locator('[data-studio-advanced]');
+  if (!(await advanced.evaluate(el => el.open))) await advanced.locator('summary').first().click();
+  await advanced.locator('[data-dex-field="styles-panel"] > summary').click();
 }
-const openPanel = page => page.locator('[data-dex-field="styles-panel"] > summary').click();
 
 (async () => {
   const srv = process.env.DEX_TEST_BASE ? { base: process.env.DEX_TEST_BASE, stop() {} } : await startServer();
@@ -80,11 +74,12 @@ const openPanel = page => page.locator('[data-dex-field="styles-panel"] > summar
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       page.on('dialog', d => d.accept());
       const errors = await open(page, srv.base);
-      await chooseTarget(page, 'sdxl-base');
+      await chooseModel(page, 'sdxl-base');
       await openPanel(page);
       await page.waitForFunction(() => /No styles yet/.test(document.querySelector('[data-dex-field="styles-empty"]')?.textContent || ''));
       await page.locator('[aria-label="Describe your image"]').fill('a red fox');
-      await page.locator('[aria-label="Negative prompt"]').fill('blurry');
+      await page.getByText('Negative prompt (what to avoid)', { exact: false }).click();
+      await page.getByRole('textbox', { name: 'Negative prompt' }).fill('blurry');
       await page.locator('[data-dex-field="style-from-prompt"]').click();
       await page.locator('[data-dex-field="style-editor"]').waitFor({ state: 'visible' });
       assert.match(await page.locator('[data-dex-field="style-editor"]').innerText(), /saves the text below on disk/);
@@ -100,11 +95,11 @@ const openPanel = page => page.locator('[data-dex-field="styles-panel"] > summar
       await page.locator('[data-dex-field="style-preview-prompt"]').waitFor({ state: 'visible' });
       assert.equal(await page.locator('[data-dex-field="style-preview-prompt"]').innerText(), 'golden hour, a red fox, sharp focus');
       assert.equal(await page.locator('[data-dex-field="style-preview-negative"]').innerText(), 'blurry, lowres');
-      assert.equal(await page.locator('[aria-label="Describe your image"]').inputValue(), 'a red fox', 'preview does not change the prompt');
+      assert.equal(await page.locator('[aria-label="Describe your image"]').evaluate(el => el.value), 'a red fox', 'preview does not change the prompt');
       // Apply writes the materialised text into both boxes.
       await page.locator('[data-dex-field="style-apply"]').click();
       await page.waitForFunction(() => document.querySelector('[aria-label="Describe your image"]').value === 'golden hour, a red fox, sharp focus');
-      assert.equal(await page.locator('[aria-label="Negative prompt"]').inputValue(), 'blurry, lowres');
+      assert.equal(await page.locator('[aria-label="Negative prompt"]').evaluate(el => el.value), 'blurry, lowres');
       // Edit + rename keeps the style, changes the name.
       await page.locator('[data-dex-field="style-edit"]').first().click();
       await page.locator('[data-dex-field="style-name"]').fill('Golden Hour');
@@ -131,18 +126,22 @@ const openPanel = page => page.locator('[data-dex-field="styles-panel"] > summar
     await test('UI: applying a style the target cannot run is refused with the reason and leaves the prompt unchanged', async () => {
       const made = await api(srv.base, '/api/styles', 'POST', { name: 'Alt', prompt: '[a|b] {prompt}' });
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-      const errors = await open(page, srv.base);
-      await chooseTarget(page, 'sdxl-base');
-      await openPanel(page);
-      await page.locator('[aria-label="Describe your image"]').fill('a fox');
-      await page.locator('[data-dex-field="style-check"]').first().check();
-      await page.locator('[data-dex-field="style-apply"]').click();
-      await page.locator('[data-dex-field="style-note"]').waitFor({ state: 'visible' });
-      await page.waitForFunction(() => /Not applied/.test(document.querySelector('[data-dex-field="style-note"]')?.textContent || ''));
-      assert.equal(await page.locator('[aria-label="Describe your image"]').inputValue(), 'a fox', 'prompt unchanged when refused');
-      assert.deepEqual(errors, []);
-      await page.close();
-      await api(srv.base, '/api/styles/' + made.data.style.id, 'DELETE');
+      assert.equal(made.status, 201);
+      try {
+        const errors = await open(page, srv.base);
+        await chooseModel(page, 'sdxl-base');
+        await openPanel(page);
+        await page.locator('[aria-label="Describe your image"]').fill('a fox');
+        await page.locator('[data-dex-field="style-check"]').first().check();
+        await page.locator('[data-dex-field="style-apply"]').click();
+        await page.locator('[data-dex-field="style-note"]').waitFor({ state: 'visible' });
+        await page.waitForFunction(() => /Not applied/.test(document.querySelector('[data-dex-field="style-note"]')?.textContent || ''));
+        assert.equal(await page.locator('[aria-label="Describe your image"]').evaluate(el => el.value), 'a fox', 'prompt unchanged when refused');
+        assert.deepEqual(errors, []);
+      } finally {
+        await page.close();
+        await api(srv.base, '/api/styles/' + made.data.style.id, 'DELETE');
+      }
     });
 
     await test('persistence: the styles file is versioned and holds only user templates', async () => {

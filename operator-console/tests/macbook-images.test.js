@@ -162,6 +162,9 @@ test('the real server lists and streams MacBook images, and says when the MacBoo
     assert.equal(row.path, '/Users/andrew/images_made/' + ID);
     assert.deepEqual(Buffer.from(await (await fetch(srv.base + '/api/images/' + ID)).arrayBuffer()), PNG);
     assert.equal((await fetch(srv.base + '/api/thumbnails/' + ID)).status, 200);
+    const mixed = (await (await fetch(srv.base + '/api/library?kind=all')).json()).items.find(x => x.artifact_id === ID);
+    assert.equal(mixed.thumbnailUrl, '/api/thumbnails/' + ID, 'the mixed-media list offers a thumbnail for browsing');
+    assert.equal(mixed.url, '/api/images/' + ID, 'and keeps the full-resolution original');
     assert.equal((await fetch(srv.base + '/api/images/' + ID + '/meta')).status, 200);
     assert.equal((await fetch(srv.base + '/api/images/' + ID + '/export')).status, 200, 'routes that need a real file still work');
     const bulk = await fetch(srv.base + '/api/images/export', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids: [ID], format: 'png', metadata: 'none' }) });

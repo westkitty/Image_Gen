@@ -75,7 +75,13 @@ function createChatCompute({
     if (refusal) return { admitted: false, code: 'compute_unavailable', reason: refusal };
     if (!arbiter || !jobStore || !remoteWorkers || !cancelManager) return { admitted: false, code: 'compute_unavailable', reason: 'compute-owner-missing' };
 
-    const job = jobStore.create({ media_kind: 'chat', operation, worker_id: 'ollama', model_id: model, resource_class, params: { request_id }, persist_text: false, artifact_required: false });
+    let job;
+    try {
+      job = jobStore.create({ media_kind: 'chat', operation, worker_id: 'ollama', model_id: model, resource_class, params: { request_id }, persist_text: false, artifact_required: false });
+    } catch (error) {
+      log('chat job admission failed: ' + error.message);
+      return { admitted: false, code: 'compute_unavailable', reason: 'job-storage-unavailable' };
+    }
     let settle;
     const ctrl = {
       job_id: job.job_id, request_id, model, resource_class, owner, onStop, phase: 'queued', upstreamStarted: false, upstreamClosed: false,
@@ -115,8 +121,19 @@ function createChatCompute({
     if ((signal && signal.aborted) || terminal(job.job_id)) return notStarted(ctrl, 'cancelled as the lease was granted');
 
     ctrl.phase = 'owner-check';
-    transition(job.job_id, 'RUNNING', { resource_lease: arbiter.state().group });
-    remoteWorkers.start(job.job_id, { action: ACTION, kind: KIND, target: model });
+    try {
+      const started = transition(job.job_id, 'RUNNING', { resource_lease: arbiter.state().group });
+      if (started?.status !== 'RUNNING' || started.error) throw new Error(started?.error || 'job not admitted');
+      remoteWorkers.start(job.job_id, { action: ACTION, kind: KIND, target: model });
+    } catch (error) {
+      log('chat worker admission failed: ' + error.message);
+      transition(job.job_id, 'FAILED', { error: 'Could not durably record the worker start', first_failed_gate: 'job-storage-unavailable' });
+      live.delete(job.job_id);
+      arbiter.release(job.job_id);
+      resourceChanged();
+      ctrl.settle({ verified: true, not_started: true });
+      return { admitted: false, code: 'compute_unavailable', reason: 'job-storage-unavailable' };
+    }
     cancelManager.registerActiveJob(job.job_id, { target: ACTION, stopHook: () => stop(job.job_id) });
     resourceChanged();
 

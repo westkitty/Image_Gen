@@ -13,7 +13,7 @@ const {startServer,launchBrowser,installImageFixtures,runCleanups, openStudio }=
  await openStudio(page, base+'/dexdiffusion/',{waitUntil:'domcontentloaded',timeout:30000});
  await page.waitForFunction(()=>window.__dex?.state?.version===2,{timeout:15000});
  await page.evaluate(()=>__dex.setState({runs:[{id:'recent-different-run',imageFile:'fixture-newest.png',model:'sd15'}]}));
- await page.locator('[data-studio-category="library"]').click();
+ await page.locator('[data-studio-utility="library"]').click();
  const selected=page.getByRole('button',{name:'Select '+id+' for details'});
  await selected.waitFor({state:'visible',timeout:12000});await selected.click();
  const actions=page.locator('[data-library-primary-actions="'+id+'"]');
@@ -28,7 +28,7 @@ const {startServer,launchBrowser,installImageFixtures,runCleanups, openStudio }=
  await page.waitForFunction(id=>document.querySelector('select[aria-label=\"3D source image\"]')?.value===id,id,{timeout:6000});
  assert.equal(await source3d.inputValue(),id,'3D receives the older exact Library image');
  assert.ok(await source3d.locator('option[value="'+id+'"]').count(), '3D must show selected source even if not in recent runs');
- await page.locator('[data-studio-category="library"]').click();
+ await page.locator('[data-studio-utility="library"]').click();
  const actionsAgain=page.locator('[data-library-primary-actions="'+id+'"]');
  await actionsAgain.waitFor({state:'visible'});
  await actionsAgain.getByRole('button',{name:'Use for World'}).click();

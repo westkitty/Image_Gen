@@ -240,7 +240,7 @@ async function webglOk(browser) { const p = await browser.newPage(); const ok = 
       // Reload re-reads the durable project list (a project added meanwhile appears).
       list = list.concat([{ id: 'wp-later', mode: 'quick3d', status: 'COMPLETE', currentStage: 'viewer', sourceArtifactId: SRC, artifacts: {} }]);
       const before = gets; await page.getByRole('button', { name: 'Reload' }).click();
-      await page.getByText('wp-later').waitFor(); assert.ok(gets > before);
+      await page.getByText('quick3d · wp-later', { exact: true }).waitFor(); assert.ok(gets > before);
       // Retry on a FAILED project re-submits the same mode and the same source image (a new project request).
       const n = reqs.length; await page.getByRole('button', { name: 'Retry' }).click();
       for (let i = 0; i < 40 && reqs.length === n; i++) await page.waitForTimeout(100);

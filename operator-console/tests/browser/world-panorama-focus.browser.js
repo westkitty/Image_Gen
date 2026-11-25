@@ -57,7 +57,7 @@ const project = {
     await openStudio(page,srv.base+'/dexdiffusion/',{waitUntil:'domcontentloaded'});
     await page.waitForFunction(()=>!!window.__dex && window.__dex.state.version === 2);
     await page.evaluate(()=>__dex.setScreen('world'));
-    await page.getByText(ID).waitFor();
+    await page.getByText('complete360 · ' + ID, { exact: true }).waitFor();
     await page.locator('[data-world-progress="'+ID+'"]').getByText('9 of 9 processing stages complete').waitFor();
     assert.match(await page.locator('[data-world-quality-warning="'+ID+'"]').innerText(),/Quality NOT verified/);
     assert.equal(await page.locator('[data-world-progress="'+ID+'"] [data-stage-id="quality"]').getAttribute('aria-label'),'Quality report recorded; quality not verified');
@@ -98,14 +98,14 @@ const project = {
     await page.locator('[data-focus-close]').click();
     await page.locator('[data-focus-viewer]').waitFor({state:'detached',timeout:6000});
     assert.deepEqual(errors,[],'zero Studio / iframe page errors');
-    console.log('PASS world panorama focus: honest 9/9 status, 2:1 WebGL, keyboard orbit pixel change, diagnostic switch/back, stable iframe, close');
+    console.log('[world-panorama-focus] PASS world panorama focus: honest 9/9 status, 2:1 WebGL, keyboard orbit pixel change, diagnostic switch/back, stable iframe, close');
     // No panorama: deliberately refuse unsupported 3D claim and expose fallback.
     const missing=await browser.newPage({viewport:{width:650,height:440}});
     await missing.route('**/api/world/projects/'+ID,r=>json(r,{...project,artifacts:{finalPly:project.artifacts.finalPly},viewerArtifact:project.viewerArtifact}));
     await missing.goto(srv.base+'/dexdiffusion/world-panorama-viewer.html?project='+ID,{waitUntil:'domcontentloaded'});
     await missing.waitForFunction(()=>document.querySelector('#world-state')?.textContent?.includes('Panorama preview unavailable'));
     assert.ok(await missing.locator('#world-points').isVisible(),'diagnostic fallback without panorama');
-    console.log('PASS missing panorama fails visibly without inventing imagery');
+    console.log('[world-panorama-focus] PASS missing panorama fails visibly without inventing imagery');
     await missing.close();
   }finally{await page.close();await browser.close();await srv.stop();await runCleanups();}
 })().catch(e=>{console.error(e.stack);process.exitCode=1});

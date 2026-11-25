@@ -5,6 +5,7 @@
 // No transcript text is logged or handed to the admitter: it sees ids, model and resource class only.
 
 const { createNdjsonParser } = require('./ollama-ndjson');
+const { refusalText } = require('./chat-refusals');
 
 const SCHEMA = 'dex.chat.v1';
 // The only upstream routes this client may call; pull/push/create/copy/delete/embed are unreachable from here.
@@ -115,12 +116,13 @@ function createChatStreamRunner({
         } catch (_) { lease = null; }
       }
       // A refusal that proves nothing reached Ollama (left the queue, cancelled before the upstream call) is a verified stop.
+      const refusal = lease && lease.admitted !== true && typeof lease.reason === 'string' ? lease.reason : null;
       if (lease && lease.admitted !== true) { notStarted = lease.not_started === true; if (lease.code === 'cancelled' && !abortCode) { stopReason = stopReason || 'user'; abortCode = 'user'; } lease = null; }
       if (abortCode) {
         outcome = { event: 'stopped', status: 'stopped' };
       } else if (!lease || lease.admitted !== true) {
         lease = null;
-        outcome = { event: 'error', status: 'failed', code: 'compute_unavailable' };
+        outcome = { event: 'error', status: 'failed', code: 'compute_unavailable', message: refusalText(refusal) };
       } else {
         base.job_id = typeof lease.job_id === 'string' ? lease.job_id : null;
         outcome = await generate();
@@ -153,6 +155,7 @@ function createChatStreamRunner({
       outcome.payload = { stop: verdict, reason: stopReason || 'user', partial_chars: partialChars };
     } else if (outcome.event === 'error') {
       outcome.payload = { code: outcome.code, partial_chars: partialChars };
+      if (outcome.message) outcome.payload.message = outcome.message;
     }
     const persisted = store.finish(turn.session_id, turn.request_id, { status: outcome.status, done_reason: outcome.done_reason || null, eval_count: outcome.eval_count ?? null, prompt_eval_count: outcome.prompt_eval_count ?? null });
     if (persisted !== true) {

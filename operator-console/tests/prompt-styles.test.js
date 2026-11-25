@@ -72,7 +72,7 @@ test('store: rename and edit keep the id, reject clashes, report unknown ids; de
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('store: persists atomically across instances, versioned, and survives a corrupt file', () => {
+test('store: persists atomically across instances, versioned, and preserves a corrupt file', () => {
   const { dir, file, store } = tmpStore();
   try {
     store.create({ name: 'Keep', prompt: 'k', negative_prompt: 'n' });
@@ -82,7 +82,8 @@ test('store: persists atomically across instances, versioned, and survives a cor
     assert.deepEqual(createStylesStore(file).list().map(s => s.name), ['Keep']);
     fs.writeFileSync(file, '{not json');
     const fresh = createStylesStore(file);
-    assert.deepEqual(fresh.list(), []);
-    assert.equal(fresh.create({ name: 'After', prompt: 'x' }).name, 'After');
+    assert.throws(() => fresh.list(), { code: 'resource-storage-unavailable' });
+    assert.throws(() => fresh.create({ name: 'After', prompt: 'x' }), { code: 'resource-storage-unavailable' });
+    assert.equal(fs.readFileSync(file, 'utf8'), '{not json');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

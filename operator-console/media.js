@@ -34,11 +34,27 @@ const CANONICAL_ROOTS = {
 function atomicWriteJson(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${crypto.randomBytes(3).toString('hex')}.tmp`;
-  const fd = fs.openSync(tmp, 'w', 0o600);
-  try { fs.writeSync(fd, JSON.stringify(data, null, 1) + '\n'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-  fs.renameSync(tmp, file);
-  const dirFd = fs.openSync(path.dirname(file), 'r');
-  try { fs.fsyncSync(dirFd); } finally { fs.closeSync(dirFd); }
+  const fd = fs.openSync(tmp, 'wx', 0o600);
+  try {
+    try {
+      fs.writeFileSync(fd, JSON.stringify(data, null, 1) + '\n');
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tmp, file);
+  } catch (error) {
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw error;
+  }
+  try {
+    const dirFd = fs.openSync(path.dirname(file), 'r');
+    try { fs.fsyncSync(dirFd); } finally { fs.closeSync(dirFd); }
+  } catch (error) {
+    // Rename succeeded. Refuse a second write over an unconfirmed commit.
+    error.commitUncertain = true;
+    throw error;
+  }
 }
 
 // ---- Generic jobs ----------------------------------------------------------
@@ -69,17 +85,47 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
   const notify = (kind, job) => { if (!onChange) return; try { onChange(kind, job); } catch (_) {} };
   const KIND = { RUNNING: 'started', TRANSFERRING: 'progress', COMPLETE: 'completed', FAILED: 'failed', CANCELLED: 'cancelled', INTERRUPTED: 'interrupted' };
   let timer = null;
-  function persist() { if (file) atomicWriteJson(file, { schema: 'dexdiffusion.jobs.v1', jobs: [...jobs.values()] }); }
+  let readError = null;
+  function persist() {
+    if (readError) throw readError;
+    if (!file) return;
+    try {
+      atomicWriteJson(file, { schema: 'dexdiffusion.jobs.v1', jobs: [...jobs.values()] });
+    } catch (error) {
+      if (error.commitUncertain) readError = error;
+      throw error;
+    }
+  }
   function schedule() { clearTimeout(timer); timer = setTimeout(() => { try { persist(); } catch (_) {} }, 50); if (timer.unref) timer.unref(); }
-  function flush() { clearTimeout(timer); persist(); }
+  function flush() { clearTimeout(timer); timer = null; persist(); }
 
-  // Restart reconciliation: nothing that was in flight is pretended to resume.
+  // A malformed or unreadable ledger stays in place. Only absence initializes a new ledger.
   function load() {
     if (!file) return;
-    let data;
-    try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return; }
-    for (const j of (data && data.jobs) || []) {
+    let records;
+    try {
+      const existing = fs.lstatSync(file, { throwIfNoEntry: false });
+      if (!existing) return;
+      if (!existing.isFile()) throw new Error('job ledger is not a regular file');
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (data?.schema !== 'dexdiffusion.jobs.v1' || !Array.isArray(data.jobs)) throw new Error('invalid job ledger shape');
+      const ids = new Set();
+      for (const job of data.jobs) {
+        if (!job || typeof job.job_id !== 'string' || !job.job_id || ids.has(job.job_id)
+          || !JOB_STATES.includes(job.status) || (job.owned_resources != null && !Array.isArray(job.owned_resources))) {
+          throw new Error('invalid job ledger record');
+        }
+        ids.add(job.job_id);
+      }
+      records = data.jobs;
+    } catch (error) {
+      if (error.code !== 'ENOENT') readError = error;
+      return;
+    }
+    let changed = false;
+    for (const j of records) {
       if (!TERMINAL.has(j.status)) {
+        changed = true;
         j.status = 'INTERRUPTED'; j.stage_id = 'interrupted';
         j.first_failed_gate = j.first_failed_gate || 'server-restart';
         j.error = 'console restarted before this job finished; it was not re-run';
@@ -87,10 +133,14 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
         j.resource_lease = null;
         j.retry_requires_input = !j.privacy || !j.privacy.persist_text;
       }
-      for (const r of j.owned_resources || []) if (r.state === 'pending') r.state = 'unknown';
+      for (const r of j.owned_resources || []) {
+        if (r?.state === 'pending') { r.state = 'unknown'; changed = true; }
+      }
       jobs.set(j.job_id, j);
     }
-    persist();
+    if (changed) {
+      try { persist(); } catch (error) { readError = error; }
+    }
   }
 
   function create({ job_id, media_kind, operation, worker_id, model_id = null, resource_class = 'light', params = {}, persist_text = false, artifact_required = true }) {
@@ -102,8 +152,14 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
       params: safeParams(params, persist_text), artifacts: [], first_failed_gate: null, error: null,
       privacy: { persist_text: !!persist_text },
     };
+    if (jobs.has(id)) throw new Error('job identity already exists');
     jobs.set(id, j);
-    schedule();
+    try {
+      flush();
+    } catch (error) {
+      jobs.delete(id);
+      throw error;
+    }
     notify('created', j);
     return j;
   }
@@ -119,13 +175,12 @@ function createJobStore(file, { now = () => Date.now(), onChange = null } = {}) 
     if (TERMINAL.has(status)) { if (!j.completed_at) j.completed_at = now(); j.resource_lease = null; }
     for (const k of ['progress', 'artifacts', 'artifact_validation', 'first_failed_gate', 'error', 'resource_lease', 'model_id']) if (patch[k] !== undefined) j[k] = patch[k];
     if (patch.error) j.error = String(patch.error).slice(0, 300);
-    if (TERMINAL.has(status) && file) {
-      clearTimeout(timer); timer = null;
-      try { persist(); }
+    if (file && (prev !== status || patch.resource_lease !== undefined || TERMINAL.has(status))) {
+      try { flush(); }
       catch (err) {
         for (const key of Object.keys(j)) if (!Object.prototype.hasOwnProperty.call(before, key)) delete j[key];
         Object.assign(j, before);
-        return { error: 'terminal state was not persisted: ' + err.message, status: j.status };
+        return { error: 'job state was not persisted: ' + err.message, status: j.status };
       }
     } else schedule();
     if (prev !== status) notify(KIND[status] || 'progress', j); else if (patch.progress !== undefined) notify('progress', j);
@@ -280,6 +335,11 @@ const WORKER_PATHS = {
     models: { main: `${GEN_MODELS}/video/ltx` },
   },
 };
+// Operator-disabled workers (id -> reason). Their runtime, models and bridge stay installed;
+// media-bridge refuses new jobs and the probe reports the reason. Remove the entry to re-enable.
+const DISABLED_WORKERS = {
+  'ace-step': 'Temporarily disabled for Big Mac stability: the only recorded song job was running when the host ran out of memory and restarted (Nov 23)',
+};
 // Flat [probeKey, path] list for the read-only Big Mac existence probe.
 const WORKER_PROBE_PATHS = Object.entries(WORKER_PATHS).flatMap(([id, p]) => [
   ...Object.entries(p.runtime).map(([k, v]) => [`${id}:runtime:${k}`, v]),
@@ -308,16 +368,17 @@ function bridgedWorker({ id, media_kind, label, getEvidence }) {
     probe(assets = {}) {
       const s = installState(id, assets);
       const ev = (getEvidence() || {})[id] || {};
-      const enabled = s.rt && s.md;
+      const disabled = DISABLED_WORKERS[id] || null;
+      const enabled = s.rt && s.md && !disabled;
       const proven = enabled && !!ev.lastPass;
       return { architecture_available: true, remote_reachable: assets.reachable === false ? false : assets.reachable === true ? true : null,
-        runtime_available: s.rt, model_available: s.md, model_variants: s.variants, installed: enabled,
-        enabled, proven, lastPass: ev.lastPass || null,
-        state: assets.reachable === false ? 'BIG MAC UNREACHABLE' : !s.rt ? 'RUNTIME MISSING' : assets.wc2tbReadable === false ? 'MODEL INACCESSIBLE (wc2tb)' : !s.md ? 'MODEL MISSING' : proven ? 'PROVEN' : 'ENABLED — awaiting first DexDiffusion proof',
+        runtime_available: s.rt, model_available: s.md, model_variants: s.variants, installed: s.rt && s.md,
+        enabled, proven, lastPass: ev.lastPass || null, disabled_reason: disabled,
+        state: disabled ? 'TEMPORARILY DISABLED' : assets.reachable === false ? 'BIG MAC UNREACHABLE' : !s.rt ? 'RUNTIME MISSING' : assets.wc2tbReadable === false ? 'MODEL INACCESSIBLE (wc2tb)' : !s.md ? 'MODEL MISSING' : proven ? 'PROVEN' : 'ENABLED — awaiting first DexDiffusion proof',
         runtimePath: s.runtimePath, modelPath: s.modelPath };
     },
     capabilities() { return id === 'openvoice-v2' ? { generate: false, voice_conversion: true, source_and_target_embeddings: true, watermark: 'OpenVoice default watermark enabled', device: 'cpu', cancel_supported: false }
-      : { generate: true, cancel_supported: false, cancel_reason: 'Targeted termination of the remote Big Mac generator via Tailscale SSH is not proven safe; jobs run to completion.' }; },
+      : { generate: !DISABLED_WORKERS[id], cancel_supported: false, cancel_reason: 'Targeted termination of the remote Big Mac generator via Tailscale SSH is not proven safe; jobs run to completion.' }; },
     prepare() { return { ok: true }; }, execute() { return { ok: false, gate: 'worker-unavailable', error: 'execution runs through media-bridge.js' }; },
     status() { return null; }, cancel() { return { ok: false, reason: 'cancel not supported' }; }, cleanup() { return { ok: true }; },
   };
@@ -622,6 +683,6 @@ function createStaging({ root, limits = STAGING_LIMITS, now = () => Date.now() }
 
 module.exports = {
   MEDIA_KINDS, JOB_ONLY_KINDS, CANONICAL_ROOTS, JOB_STATES, FAILURE_GATES, PRIVATE_KEYS, safeParams,
-  createJobStore, createResourceArbiter, parseOllamaPs, createWorkerRegistry, WORKER_PATHS, WORKER_PROBE_PATHS, createMediaStore, createStaging,
+  createJobStore, createResourceArbiter, parseOllamaPs, createWorkerRegistry, WORKER_PATHS, DISABLED_WORKERS, WORKER_PROBE_PATHS, createMediaStore, createStaging,
   sniff, imageDims, wavInfo, atomicWriteJson, STAGING_LIMITS, validateGlb,
 };

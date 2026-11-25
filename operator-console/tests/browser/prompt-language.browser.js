@@ -15,8 +15,7 @@ async function open(page, base) {
     await page.route('**/api/models/secondary/activate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ modelState: {} }) }));
   await openStudio(page, base + '/dexdiffusion/', { waitUntil: 'domcontentloaded' });
 
-  await page.locator('[data-studio-nav]').waitFor();
-  await page.locator('[data-studio-category="create"]').click();
+  await page.getByRole('textbox', { name: 'Describe your image' }).waitFor();
   await page.locator('[data-studio-advanced]').evaluate(el => { el.open = true; });
   await page.waitForTimeout(300);
   return errors;
@@ -78,7 +77,7 @@ async function chooseTarget(page, id) {
       await page.waitForTimeout(150);
       assert.match(await page.locator('[data-dex-field="prompt-notes"]').innerText(), /does not apply emphasis weights/);
       assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('[data-dex-field="prompt"]')), true, 'focus retained');
-      assert.equal(await box.inputValue(), 'a red fox (snowy:1.4) forest');
+      assert.equal(await box.evaluate(el => el.value), 'a red fox (snowy:1.4) forest');
       await box.fill('a red fox');
       await page.waitForTimeout(150);
       assert.equal(await page.locator('[data-dex-field="prompt-notes"]').isHidden(), true);
@@ -94,15 +93,15 @@ async function chooseTarget(page, id) {
       const box = page.locator('[data-dex-field="prompt"]');
       await box.fill('a red fox, snow, forest');
       await box.evaluate(el => el.setSelectionRange(3, 3));   // caret inside "red"
-      await page.keyboard.press('Control+ArrowUp');
-      assert.equal(await box.inputValue(), 'a (red:1.1) fox, snow, forest');
-      await page.keyboard.press('Control+ArrowUp');
-      assert.equal(await box.inputValue(), 'a (red:1.2) fox, snow, forest');
+      await page.keyboard.press('ControlOrMeta+ArrowUp');
+      assert.equal(await box.evaluate(el => el.value), 'a (red:1.1) fox, snow, forest');
+      await page.keyboard.press('ControlOrMeta+ArrowUp');
+      assert.equal(await box.evaluate(el => el.value), 'a (red:1.2) fox, snow, forest');
       await page.waitForTimeout(150);
       assert.equal(await page.evaluate(() => __dex.state.prompt), 'a (red:1.2) fox, snow, forest', 'component state follows the edit');
       await box.evaluate(el => el.setSelectionRange(20, 20));  // inside "snow"
       await page.keyboard.press('Alt+ArrowRight');
-      assert.equal(await box.inputValue(), 'a (red:1.2) fox, forest, snow');
+      assert.equal(await box.evaluate(el => el.value), 'a (red:1.2) fox, forest, snow');
       assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('[data-dex-field="prompt"]')), true, 'focus retained');
       assert.deepEqual(errors, []);
       await page.close();
