@@ -1,5 +1,9 @@
 # DexDiffusion reconstruction
 
+> **Historical record. The current state is [RELEASE_1.0.0.md](RELEASE_1.0.0.md)** (production and Mac app `6c89afb`, November 25).
+> "Production is", "not deployed", "not run" and "Open items" below were true when written. Every deployment step here
+> has been carried out or superseded; do not run one from this file.
+
 ## Baseline and preservation
 
 The verified local bundle is under the MacBook Codex archives directory at
@@ -247,7 +251,7 @@ for a moment on a 240 s WAV), was on by default, and had no off switch. Its meas
 loaded MacBook) are in git history. It is still in `reconstruction/stable-foundation`; **do not release that branch
 head**. The replacement is the waveform candidate below.
 
-## Optimization candidates, November 25 (neither deployed)
+## Optimization candidates, November 25 (both now in `6c89afb`)
 
 Production stays Big Mac `6d48433` and MacBook app `915495a`. Two independent branches, each in its own worktree.
 Everything used synthetic images and audio; the real Library was not opened. Harnesses and raw results:
@@ -374,7 +378,7 @@ photosensitivity assessment beyond the rate limit. So it stays off by default.
 Focused checks: `audio-wave` unit 7/7 and browser 7/7; CI affected verification 45564004341 passed. The ablation, memory, read and slow-link figures were read from
 console output; the receipts keep their scenarios and harness, not every raw row.
 
-### Deploying the Library candidate (prepared, needs the owner's approval)
+### Deploying the Library candidate (done November 25, superseded by `6c89afb`)
 
 `OLD` = `6d48433c4393162e207e352cda96271c50cd340f` (production, certified 45524196726, branch
 `release/reconstruction-20261124-6d48433` on Big Mac). `NEW` = `e4cf1956074be57b3ad439602605974143200125`, tag
@@ -437,18 +441,6 @@ Launch Services, the real Dock and the production entry point were not exercised
 
 ## Continuation
 
-As of November 25. Production is untouched by the optimization work.
-
-1. Owner decision: deploy the certified Library candidate `e4cf195` (section "Deploying the Library candidate").
-2. `reconstruction/waveform-economy` (`ff4daf5`) stays isolated and undeployed. It sits on `d882883` and is not to be
-   merged into the Library candidate.
-3. Never release `reconstruction/stable-foundation` at `d882883`: it carries the old waveform, on by default.
-4. ACE-Step stays disabled. Any older revision accepts it again: read the end of runbook section J before a rollback.
-5. This checkpoint is on `reconstruction/checkpoint-20261125`, because an edit to the runbook in the
-   stable-foundation worktree was refused by the permission check. That worktree stays at `d882883` (the Mac app runs
-   its `bin/dexdiffusion`), so its copy of this file is older than this one.
-6. Not corrected: image Download links in the Mac app (see the Library release candidate).
-
-Big Mac holds `~/dex-cutover-20261125-library` (102 MB clone for the gate, keep until deployment) and
-`~/.dex-accept-bc56755` (isolated acceptance root, worker stopped, no images retained). Both can be
-deleted.
+Closed on November 25. `e4cf195` and then `6c89afb` were deployed, the waveform was included off by default, native
+downloads were corrected and the Mac app was installed from `~/Image_Gen-release`. See [RELEASE_1.0.0.md](RELEASE_1.0.0.md).
+Still true: never release `reconstruction/stable-foundation`; ACE-Step stays disabled.

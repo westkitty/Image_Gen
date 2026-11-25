@@ -12,9 +12,7 @@ Run these steps from the MacBook with `ssh westcat`, which reaches `bigmac@bigma
 ssh westcat 'cd ~/Image_Gen-wc2tb-20261120 && /opt/homebrew/bin/python3 scripts/wc2tb-release-doctor.py'
 ```
 
-> Until the prevention branch is merged and deployed, run the doctor from a checkout of
-> `codex/wc2tb-prevention-20261121`, for example
-> `ssh westcat '/opt/homebrew/bin/python3 -' < scripts/wc2tb-release-doctor.py`.
+> Current release, rollback target and what not to go back to: `docs/reconstruction/RELEASE_1.0.0.md`.
 
 Read the failing check IDs in the output. Each one maps to a step below.
 
@@ -324,7 +322,7 @@ Let `OLD` and `NEW` be full commits, `W=~/Image_Gen-wc2tb-20261120`. Close Studi
 
 **ACE-Step and any move to an older revision.** The refusal of ACE-Step jobs is source (`DISABLED_WORKERS` in `operator-console/media.js`, checked in `media-bridge.js`), first present in `6d48433`. Every older revision (`915495a`, `3d8b885`, `774815d`) accepts ACE-Step jobs again as soon as it serves. The v2 fallback package (`3f0abf5`) has no refusal either, and its fallback filter covers `/api/actions` only, not `/api/media/generate`. The ACE-Step models are on the external drive, so a fallback without the drive should refuse for a missing model; that was not run and must not be relied on.
 
-- Do not go back to a bare older revision. Make the target **contained**: a new branch at `OLD`, `git cherry-pick 6d48433`, the media unit tests and `v2-parity-music`, certification, then this section with that commit as `NEW`. The cherry-pick merges without conflict on `3d8b885` (`git merge-tree`; tests not run). On `915495a` the result is the code of `6d48433` itself (apart from one example-config line), so there is nothing to gain by going back to `915495a`.
+- Do not go back to a bare older revision. Make the target **contained**: a new branch at `OLD`, `git cherry-pick 6d48433`, the media unit tests and `v2-parity-music`, certification, then this section with that commit as `NEW`. The cherry-pick merges without conflict on `3d8b885` (`git merge-tree`; tests not run). On `915495a` the result is the code of `6d48433` itself (apart from one example-config line), so there is nothing to gain by going back to `915495a`. From November 25 the contained rollback target is `e4cf195`, already certified and on its own branch.
 - Before a move, check the target: `git grep -c DISABLED_WORKERS <commit> -- operator-console/media-bridge.js` must print a count. After it serves, `/api/workers` must show ACE-Step not enabled. Never check by submitting a job.
 - During any fallback leg, and if an emergency forces a bare older revision, keep Studio and the Mac app closed and submit no music job until a contained revision serves. Do not remove ACE-Step's files.
 

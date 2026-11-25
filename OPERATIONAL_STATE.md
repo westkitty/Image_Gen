@@ -1,5 +1,12 @@
 # Operational State: Image_Gen / DexDiffusion
 
+## 2026-11-25 - CURRENT: DexDiffusion 1.0.0 (`6c89afb`) on both machines
+
+- Read [docs/reconstruction/RELEASE_1.0.0.md](docs/reconstruction/RELEASE_1.0.0.md) first: deployed identities, inventory, evidence, rollback, limits.
+- Big Mac `6c89afb` on external storage, release doctor PASS 19/19. MacBook app `6c89afb`, root `~/Image_Gen-release`.
+- Rollback `e4cf195` by runbook section J. ACE-Step disabled; video not installed. Waveform present, off by default.
+- Everything below this section is history. Do not follow a deployment, rollback or "next step" from it.
+
 ## 2026-11-21 (EST) - MacBook checkout reconciliation after WC2TB release
 
 - MacBook MacBook-Air.local, user andrew, repository /Users/andrew/Image_Gen: local main was fast-forwarded from 39534f2 to the published af6fcc239ccb60d9c7c6d48e7a5498d2b473857c (PR #31 documentation merge). Git status was clean and matched origin/main immediately after synchronization.
