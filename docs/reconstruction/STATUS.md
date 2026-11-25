@@ -174,7 +174,8 @@ start; no backend was running when the cutover began.
 
 Open items:
 
-1. Deploy `6d48433` so ACE-Step is refused (owner approval for one restart). Until then
+1. Deploy `6d48433` (tag `reconstruction-candidate-20261124-6d48433`, certified in run 45524196726) so
+   ACE-Step is refused (owner approval for one restart). Until then
    production `915495a` still lists ACE-Step as PROVEN and would accept a song job: do not start one.
 2. Not run live: matrix and XYZ plot, textured mesh, Qwen voices, OpenVoice. Video runtime is not installed.
 3. Chat and prompt enhancement need an empty Ollama; otherwise `compute_unavailable` after 30 s.
