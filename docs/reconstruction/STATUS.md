@@ -20,9 +20,9 @@ preserved repair commit `8f0a80f`. The archive and original worktrees are separa
 | Resources | Recipes, styles, macros, wildcard banks, and prompt reuse | Existing paths carried forward. Collections, recipes, macros, styles and wildcard writes now preserve prior data on a failed write. Focused and full portable checks exercise the corresponding stores. |
 | Voice and Drama | Voice profiles and engines, script production, edit, render and export | Live on production through Studio: Kokoro speech; a two-line Drama cast with VoxCPM2 and Kokoro, produced, mastered, proofed and saved. Drama speech recognition QA is unavailable (reported by the app). Qwen voices and OpenVoice were not re-run. |
 | Chat and prompt intelligence | Ollama-backed Chat and prompt review through the shared compute admission path | Live on production through Studio after the Ollama restart: one Chat reply (gemma3:4b) and one prompt enhancement applied in Create. Both wait for an empty Ollama: a model another client left loaded fails them after 30 s as `compute_unavailable`, and Chat shows only that code. |
-| Music and video | Music and video workflows with worker-backed availability | Live on production: Magenta RealTime clip. ACE-Step was withheld for host safety (see below). Video has no installed generator and Studio says so. |
+| Music and video | Music and video workflows with worker-backed availability | Live on production: Magenta RealTime clip. ACE-Step admission is disabled in production (`6d48433`, see below). Video has no installed generator and Studio says so. |
 | 3D and Worlds | Library source handoff, worker capabilities, project storage and preview | Live on production through Studio: SHARP quick geometry, 360 world (normal PARTIAL label, viewer opened), Hunyuan3D mesh (preview opened). Textured mesh was not re-run. |
-| Studio shell, themes and Mac app | Existing desktop/mobile layouts, workspace navigation and native WebKit launch | Source carried forward. Synthetic Create and Library references captured. Native Swift type-check passed. Staged build, native launch and mobile acceptance are separate gates. |
+| Studio shell, themes and Mac app | Existing desktop/mobile layouts, workspace navigation and native WebKit launch | Mac app `915495a` installed on the MacBook November 24 and launched: Studio bootstrap verified, saved settings intact. Create, System, Audio, 3D, Models and Library opened natively. Mobile acceptance was not run. |
 
 ## Verification
 
@@ -174,12 +174,236 @@ start; no backend was running when the cutover began.
 
 Open items:
 
-1. MacBook app replacement (owner decision). Staged and signed at `915495a`.
-2. ACE-Step (owner decision): leave it, hide it, or test it when a reboot is acceptable.
-3. Not run live: matrix and XYZ plot, textured mesh, Qwen voices, OpenVoice. Video is not installed.
+1. ACE-Step stays disabled until its memory use on a 32 GiB host is understood. Re-enabling is one entry in `media.js`.
+2. Not run live: matrix and XYZ plot, textured mesh, Qwen voices, OpenVoice. Video runtime is not installed.
+3. Chat and prompt enhancement need an empty Ollama; otherwise `compute_unavailable` after 30 s.
 4. Storage integrity reports 1071 missing and 463 valid image records. Every missing record is
    dated November 6 or earlier, plus one old fixture. The owner's `images_made_nah` folder is in
-   a Google Drive archive; contents were not matched file by file.
+   a Google Drive archive. That they are the same files is suspected, not confirmed. No record was deleted.
+5. Opening the Library in the Mac app loads about 100 full-size images (`_libThumb` uses `url`,
+   not the existing `thumbnailUrl`). For about 90 s the health probe waits behind them and Studio shows
+   "Connection lost". It clears by itself; the backend and tunnel stay healthy. Corrected in a candidate, not deployed (below).
+6. Rollback is checked READY and has not been executed. Its target `3d8b885` accepts ACE-Step.
+
+### ACE-Step containment
+
+No configuration or capability switch existed. `6d48433` adds `DISABLED_WORKERS` in `media.js`: the
+media bridge refuses `ace-step` (`worker-disabled`, 409) before any job, lease or remote call, the probe
+reports TEMPORARILY DISABLED with the reason, and Studio disables Generate. Runtime, models and bridge
+are untouched; removing the entry re-enables it. Magenta is unchanged. The internal fallback refuses
+ACE-Step already, because it probes no music runtime. `engine-worker.py` and the supervisor are unchanged.
+
+### Production is `6d48433`, November 24
+
+Deployed through runbook section J with no override and no EngineHost restart (pid 75667 throughout, worker
+`7d2ffcb18f59` unchanged). The release gate passed 20/20 for `6d48433` from a separate worktree while `915495a`
+was still running and matched its files.
+
+| Handoff | Revision | Result |
+|---|---|---|
+| Crossing `32e70c`, 19:31:45 to 19:32:02 MST | left `915495a`, arrived `6d48433` | seq 25 to 32 |
+| Proof drill `90f81f`, 19:32:16 to 19:32:25 MST | `6d48433` both ways | seq 33 to 40 |
+
+- Backend 55192, external storage. Release doctor PASS 19/19, including `rollback_activation_proof` for `6d48433`.
+- `/api/workers`: ACE-Step TEMPORARILY DISABLED, generate false. The deployed `media-bridge.js` refuses it in
+  `start` and `startBatch`, the only two entries to the bridge, before any job or lease. Magenta PROVEN, generate true.
+  ACE-Step was not executed and no request was submitted; refusal rests on that code and the certified tests.
+- Fallback records and the 617 MacBook publication receipts are byte-identical; staging empty.
+- **Rollback re-enables ACE-Step** unless the target contains `6d48433`: see the end of runbook section J.
+- Rollback: `kit/rollback.py` READY (to `3d8b885`, which accepts ACE-Step). The nearer target is `915495a` by
+  section J, branch `release/reconstruction-20261124`. Neither was executed.
+- MacBook app: installed `915495a`. `native/`, `bin/` and `scripts/` do not differ from `6d48433`, so it was not
+  reinstalled; `bin/dexdiffusion status` reports the source fingerprint MATCHES and labels the stamp OUTDATED.
+  It was launched against `6d48433`: six live connections through the tunnel, signature valid, one Dock entry.
+
+### Earlier refused attempt, November 24
+
+The owner approved a gated backend restart, with a logged override for the rollback proof only. The deployed
+worktree was staged on a new branch, `release/reconstruction-20261124-6d48433`. The doctor then reported
+`backend_revision` BLOCKED (the running `915495a` does not match the staged tree) as well as the three
+expected UNVERIFIED items. BLOCKED cannot be overridden, so nothing was restarted and no override was logged.
+The worktree was returned to `release/reconstruction-20261124` at `915495a`. The doctor passes all 19 checks,
+the backend (78176) and EngineHost (75667) are the same processes, and the idle seal is fresh.
+
+Cause: `--restart` runs the gate and restarts in one step, and the gate requires the running backend to equal
+the worktree. It can restart the current revision but cannot activate a new one, so runbook section G's
+"cutover" wording does not hold. Earlier cutovers used the section I worker kickstart, which also replaces
+EngineHost. The owner handoff (external to fallback to external) would start the staged revision without
+replacing EngineHost. Neither was inside this approval.
+
+### MacBook app install, November 24
+
+The staged archive (`0ea71e9a...`) was verified and installed with the installer's own swap, rollback and
+Dock steps; it was not rebuilt. One Dock tile, same order; one Launch Services registration. The previous
+app (`18245241`) is kept as `retired-launchers/DexDiffusion-previous-20261124-200313.app.retired` and as a
+zip that was extracted and passed signature verification. The app runs `bin/dexdiffusion` from this
+worktree (`~/Image_Gen-reconstruction-20261124`), so keep the worktree. The generation check planned inside
+the app was not run; no job was submitted from it.
+
+### Audio waveform and text flicker (`90a2d0b`, superseded, never release)
+
+The first version redrew a full-screen path and repainted page text every frame, decoded the whole file (about 530 MB
+for a moment on a 240 s WAV), was on by default, and had no off switch. Its measurements (9% to 93% of a core on a
+loaded MacBook) are in git history. It is still in `reconstruction/stable-foundation`; **do not release that branch
+head**. The replacement is the waveform candidate below.
+
+## Optimization candidates, November 25 (neither deployed)
+
+Production stays Big Mac `6d48433` and MacBook app `915495a`. Two independent branches, each in its own worktree.
+Everything used synthetic images and audio; the real Library was not opened. Harnesses and raw results:
+receipts folder `optimization-20261125/`.
+
+### Library thumbnails: `reconstruction/library-thumbnails`, `aab8701` (on `6d48433`), superseded by `e4cf195`
+
+Cause, reproduced: the mixed-media grid (`_libThumb`, up to 120 images) used each full-resolution `url`, and
+`/api/library` gave it no thumbnail. The originals took all six connections to the backend, so `/api/version` waited,
+two probes hit their 12 s limit, and Studio said "Connection lost" with a healthy backend.
+
+Change (two lines): `/api/library` image items carry `thumbnailUrl` as the other two lists do; the grid uses it and
+passes the original in `data-fullscreen-src`, so the viewer and its edit actions still get full resolution.
+
+120 synthetic 2.8 MB PNGs, MacBook image service, both links limited to 4 MB/s, 1280x800:
+
+| | Image requests, traffic | Health probes answered | Median, worst | "Connection lost" |
+|---|---|---|---|---|
+| WebKit before (75 s) | 115 full, 313.7 MB, 110 of 120 loaded | 0 of 13 | none answered | at 40.7 s |
+| WebKit after (60 s) | 120 thumbnails, 2.8 MB, all loaded | 57 of 57 | 4 ms, 3.0 s (cold thumbnails) | never |
+| Chrome before (60 s) | 115 full, 290.7 MB | 12 of 12, late | 22.4 s, 52.3 s | at 41.2 s |
+| Chrome after (60 s) | 120 thumbnails, 2.8 MB | 58 of 58 | 4 ms, 1.6 s | never |
+
+Returning to the Library requested nothing again. A second idea was tried and rejected: setting `loading="lazy"`
+before `src` makes WebKit honour lazy loading, but Studio rebuilds that DOM often, so the same 104 thumbnails were
+requested 923 times and never stayed loaded. The grid stays eager at 23 KB an image, capped at 120.
+
+Focused checks for `aab8701`: CI affected verification 45552672300 passed. `edit-upload`, `folder-first-library`/
+`library-organize` and the last `macbook-images` test fail locally in the same way without the change (the MacBook has
+no Pillow for the last three); CI ran what it covers.
+
+### Library release candidate: `e4cf195` (on `aab8701`)
+
+`aab8701` had a regression: dragging a grid image handed over the thumbnail. Measured in WebKit by intercepting the drag
+before it reaches the system and reading the promised file: `6d48433` gave the original (1024x1024 PNG, 2,784,732
+bytes); `aab8701` gave a 384x384, 23,384-byte JPEG named `....png.jpeg`, without the metadata.
+
+Download links are not a substitute in the Mac app. With its navigation policy (only `/api/media/<id>/download` becomes a
+download) an image Download link replaces Studio with the raw image. This was seen in a WebKit replica of that policy, not
+in the installed app; it is the same at `6d48433` and is not corrected here. So the drag itself is preserved.
+
+`lightbox.js`: while the mouse rests on a grid thumbnail for 150 ms, or presses it, the original lies over it and is what
+a drag, "Save image" or "Copy image" takes. One original at a time, low priority, dropped or cancelled when the pointer
+moves on. A drag begun before it has arrived is refused with a message; it never hands over the thumbnail.
+
+| WebKit, synthetic | Result |
+|---|---|
+| Drag after resting | the original, 2,784,732 bytes, two images of two; one request each, 120 thumbnails otherwise |
+| Immediate press, original delayed 600 ms | no drag, message shown |
+| Real Chrome drag to a drop target (browser test) | refused, then the original address once loaded |
+
+Behaviour differences from `6d48433`:
+
+1. A drag needs the original to have arrived. A quick grab on a slow link is refused once, with a message.
+2. "Copy image" from the context menu before the original arrives is not guaranteed to be the original. "Save image" and
+   "Copy image address" are, because they use the address.
+3. Touch: long-press on a grid image gives the thumbnail. Open the viewer for the original.
+4. The other Library grid (Images) already used thumbnails for browsing and dragging in `6d48433`; unchanged.
+5. Resting the pointer on an image downloads that one original.
+
+Focused checks for `e4cf195`: `library` 13/13 (new test: nothing fetched while browsing or passing over, one original
+for the image in hand, refused and accepted drags, context menu, no second request after a re-render, viewer and focus),
+`v2-parity-library-flow` 8/8, `studio-source-handoff` 1/1, `source-hover` 10/10, `transform` 4/4,
+`studio-connectivity-recovery` and `omni-viewer-inspector` exit 0. The benchmark above is reused: the load path is
+unchanged since `aab8701`.
+
+**Certified November 25:** commit `e4cf1956074be57b3ad439602605974143200125`, tag
+`reconstruction-candidate-20261125-e4cf195`, release certification 45569881630 passed on the first attempt: unit gate
+2 of 2 steps, browser gate 62 of 62 (library 13/13, v2-parity-library-flow 8/8, v2-parity-music 12/12), worker 97 and 21
+tests. Affected verification 45569877955 passed on the same commit. Nothing was rerun.
+
+The checkpoint branch's own CI failed once (45565845321, `drama-studio`: a production row did not appear within 5 s). That
+commit changes two documents only, and the suite passed in the certification above. The cause was not investigated.
+
+### Waveform: `reconstruction/waveform-economy`, `ff4daf5` (on `d882883`)
+
+Measured cost of the old version by leaving parts out, in points of one core over audio alone: the per-frame path fill
+about 8, its outline about 11, text repainting about 26, the loop 1. Canvas resolution made no difference.
+
+Now: each four-second strip is drawn once (1280x512) and slid under the playhead at 15 to 22 Hz. Byte spans of four
+seconds around the playhead are read one at a time with low priority, and only when playback has run half a second
+undisturbed with six seconds buffered; a seek or a low buffer drops the read. At most six strips of data are kept.
+Files that are not WAV are decoded only up to 6 MB and 10 minutes, at 8 kHz. Text flicker is a separate switch, on
+visible text only, at most three changes a second and without the glow. Both are off until chosen in System > Audio
+visuals or the command palette, persist, stop at once, and never run in a hidden window or with Reduce Motion.
+
+Visible WebKit, isolated Studio, the same synthetic 240 s stereo WAV, off and on alternated four times, medians
+(`ab-1.txt` to `ab-4.txt`; `med.py` reproduces them). Points of one core added over audio alone with the feature off.
+Compositor is all of WindowServer, so other apps disturb it. 0 media events (waiting, stalled, seeking), drift within
+4 ms everywhere:
+
+| Run | WebKit | Compositor | Sum | fps, off to on |
+|---|---|---|---|---|
+| Old, round 1 | +42.7 | +11.9 | +54.6 | 28.5 to 26.6 |
+| Old, round 2 | +54.0 | +13.8 | +67.8 | 29.1 to 27.6 |
+| Old, round 3 | +32.1 | +19.7 | +51.8 | 28.8 to 29.2 |
+| New waveform, round 1 (earlier draft) | +2.4 | +7.6 | +10.0 | 29.2 to 28.6 |
+| New waveform and text, round 1 (earlier draft) | +3.9 | +9.2 | +13.1 | 29.2 to 29.2 |
+| New waveform, round 2 (noisy: compositor 32 with it off) | +1.1 | +21.3 | +22.4 | 28.5 to 27.6 |
+| New waveform and text, round 2 (noisy) | +5.7 | +8.1 | +13.8 | 28.5 to 27.6 |
+| New waveform, round 3 (earlier draft) | +1.6 | +11.2 | +12.8 | 29.1 to 29.1 |
+| New waveform and text, round 3 (earlier draft) | +6.0 | +11.5 | **+17.5** | 29.1 to 28.9 |
+| **As committed**, waveform, round 4 | +1.6 | +6.1 | +7.7 | 29.1 to 29.6 |
+| **As committed**, waveform and text, round 4 | +2.6 | +7.7 | +10.3 | 29.1 to 29.1 |
+
+The drafts differ from the commit mainly in when they read spans. The commit itself was measured in one round of four, with a
+compositor baseline of 10, so its smaller compositor figure may be flattered.
+
+| | Result |
+|---|---|
+| Memory | medians +33 to +36 MB for the waveform and +40 to +47 MB with text (+70 and +100 in the noisy round); about the same for 240 s and 3600 s files; 243 to 265 MB with no trend over 3.5 minutes; back to within about 15 MB of the start when off. Seek-heavy runs reached 300 to 355 MB, one sample 538 MB, then fell |
+| Reads | largest 768 KB; the whole file is never read or held (`blob:` included) |
+| Slow link, 600 kB/s, 3600 s file | steady playback drift 0 with it on. After bursts of seeks playback re-buffers with it off too (up to 0.6 s lost) and on (up to 1.4 s); four of eight phases each |
+| Off switch, pause, hidden, Reduce Motion | overlay, animation and data gone at once; the sound continues |
+
+Against the targets: no drift and no stalls in normal playback, memory bounded by construction, immediate release.
+CPU: under 15 points in every round counting WebKit alone. Counting the compositor, the waveform is under in every
+quiet round and as committed; waveform and text reached 17.5 in round 3, so that target is **met only in part**. What
+is left is WindowServer compositing a translucent full-screen layer, which scales with the frame rate, and the text
+repaint. Not demonstrated: the native app itself, a 60 Hz
+display, real audio through the tunnel, VoiceOver, the macOS Reduce Motion switch (the query was overridden), and any
+photosensitivity assessment beyond the rate limit. So it stays off by default.
+
+Focused checks: `audio-wave` unit 7/7 and browser 7/7; CI affected verification 45564004341 passed. The ablation, memory, read and slow-link figures were read from
+console output; the receipts keep their scenarios and harness, not every raw row.
+
+### Deploying the Library candidate (prepared, needs the owner's approval)
+
+`OLD` = `6d48433c4393162e207e352cda96271c50cd340f` (production, certified 45524196726, branch
+`release/reconstruction-20261124-6d48433` on Big Mac). `NEW` = `e4cf1956074be57b3ad439602605974143200125`, tag
+`reconstruction-candidate-20261125-e4cf195`. `W` = `~/Image_Gen-wc2tb-20261120`, untouched so far.
+
+Five files differ from `OLD`: `server.js` and `workstation-ui.js` (one line each), `lightbox.js`, two tests. Identical:
+all of `sdcpp-workflow/` (worker `7d2ffcb1...`, supervisor `f04a921b...`), `native/`, `bin/`, `scripts/`, `package.json`,
+the lockfile, `media.js` and `media-bridge.js` (ACE-Step containment). No waveform file or reference; neither `90a2d0b`
+nor `ff4daf5` is an ancestor. So section J applies, no EngineHost restart and no Mac app build is needed.
+
+Section J step 1 is done, read-only, against a separate clone (`~/dex-cutover-20261125-library/target` on Big Mac, not
+a worktree of production): PASS in all 20 checks. It must be repeated at the time of deployment.
+
+1. Owner approves. Studio and the Mac app closed, no job running, no music submitted during the fallback legs.
+2. Repeat the gate: `bash $W/scripts/release-gate.sh --expect-revision NEW --target-worktree ~/dex-cutover-20261125-library/target`.
+   Then `git -C $W fetch origin tag reconstruction-candidate-20261125-e4cf195` (objects only; no checkout).
+3. Seal: `kit/wait_idle.py`. `request-worker-backend.sh --handoff-fallback --expect-revision OLD --reason "library release"`.
+4. While the fallback runs: `git -C $W switch -c release/library-20261125-e4cf195 NEW`. Check HEAD, clean, worker digest.
+5. `--return-external --expect-revision NEW`.
+6. One round trip with `--expect-revision NEW` both ways. Doctor PASS in every check.
+7. Check `/api/version` is `e4cf195` and `/api/workers` shows ACE-Step not enabled, Magenta enabled. Reopen the app (its
+   pages come from the backend). Library check by request counts only, no images captured.
+
+**Rollback target: `6d48433`** by the same steps exchanged (`git -C $W switch release/reconstruction-20261124-6d48433`
+during a fallback leg). It contains the ACE-Step containment, so this rollback keeps ACE-Step disabled. Do not use
+`kit/rollback.py` (its target `3d8b885` accepts ACE-Step) or any bare older revision. The fallback package itself has no
+refusal, so nothing is submitted while it runs.
+
+The waveform candidate is not part of this. It stays at `ff4daf5`, undeployed, with its figures and limits above.
 
 ## Native staging and rollback
 
@@ -213,5 +437,18 @@ Launch Services, the real Dock and the production entry point were not exercised
 
 ## Continuation
 
-The open items above are the whole list. Big Mac still holds `~/.dex-accept-bc56755`
-(isolated acceptance root, worker stopped, no images retained). It can be deleted.
+As of November 25. Production is untouched by the optimization work.
+
+1. Owner decision: deploy the certified Library candidate `e4cf195` (section "Deploying the Library candidate").
+2. `reconstruction/waveform-economy` (`ff4daf5`) stays isolated and undeployed. It sits on `d882883` and is not to be
+   merged into the Library candidate.
+3. Never release `reconstruction/stable-foundation` at `d882883`: it carries the old waveform, on by default.
+4. ACE-Step stays disabled. Any older revision accepts it again: read the end of runbook section J before a rollback.
+5. This checkpoint is on `reconstruction/checkpoint-20261125`, because an edit to the runbook in the
+   stable-foundation worktree was refused by the permission check. That worktree stays at `d882883` (the Mac app runs
+   its `bin/dexdiffusion`), so its copy of this file is older than this one.
+6. Not corrected: image Download links in the Mac app (see the Library release candidate).
+
+Big Mac holds `~/dex-cutover-20261125-library` (102 MB clone for the gate, keep until deployment) and
+`~/.dex-accept-bc56755` (isolated acceptance root, worker stopped, no images retained). Both can be
+deleted.

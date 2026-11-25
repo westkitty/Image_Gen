@@ -395,6 +395,57 @@ class HandoffTests(unittest.TestCase):
                          {(self.rev, 'isolated-test', module.SUPERVISOR_SHA256)})
         self.assertEqual([h.get('authorized', {}).get('target') for h in history if h.get('authorized')], ['fallback', 'external'])
 
+    # ================================================== revision transition (runbook J)
+    def next_revision(self):
+        git = ['git', '-C', self.config['project'], '-c', 'user.name=t', '-c', 'user.email=t@example.invalid']
+        subprocess.run(git + ['commit', '-q', '--allow-empty', '-m', 'candidate'], check=True)
+        target = subprocess.run(git + ['rev-parse', 'HEAD'], capture_output=True, text=True, check=True).stdout.strip()
+        self.checkout(self.rev)
+        return target
+
+    def checkout(self, revision):
+        subprocess.run(['git', '-C', self.config['project'], 'checkout', '-q', '--detach', revision], check=True)
+
+    def test_revision_transition_moves_the_source_only_while_the_fallback_runs(self):
+        before, target = self.snapshot(), self.next_revision()
+        old = self.start_external()
+        # A candidate that is not what is on disk cannot be named on entry.
+        self.refused(self.ask('fallback', expect_revision=target), 'SOURCE_REVISION')
+        self.assert_untouched(old)
+        fallback = self.enter_fallback()
+        self.checkout(target)
+        # The return is bound to what is now on disk: the revision that was left is refused.
+        self.refused(self.ask('external'), 'SOURCE_REVISION')
+        self.assert_fallback_kept(fallback)
+        self.assertTrue(self.ask('external', expect_revision=target)['ok'])
+        self.until(lambda: self.handoff.journal['state'] == 'RUNNING_EXTERNAL')
+        self.until(lambda: self.sup.state == 'IDLE')
+        history = self.journal()['history']
+        self.assertEqual([h['revision'] for h in history], [self.rev] * 4 + [target] * 4)
+        # A crossing names two revisions, so it proves neither; a round trip on the target alone does.
+        self.assertTrue(self.ask('fallback', expect_revision=target)['ok'])
+        self.until(lambda: self.handoff.journal['state'] == 'RUNNING_FALLBACK')
+        self.assertTrue(self.ask('external', expect_revision=target)['ok'])
+        self.until(lambda: self.handoff.journal['state'] == 'RUNNING_EXTERNAL')
+        self.assertEqual({h['revision'] for h in self.journal()['history'][8:]}, {target})
+        self.assertEqual(self.snapshot(), before)
+
+    def test_revision_transition_failed_candidate_returns_to_the_previous_revision(self):
+        target = self.next_revision()
+        self.enter_fallback()
+        self.checkout(target)
+        good = self.handoff.profiles['external']['command']
+        self.handoff.profiles['external']['command'] = [sys.executable, '-c', 'raise SystemExit(3)']
+        self.assertTrue(self.ask('external', expect_revision=target)['ok'])
+        self.until(lambda: self.handoff.journal['state'] == 'HANDOFF_FAILED')
+        self.assertIsNone(self.sup.child)
+        self.assertEqual(module.lsof_listeners(self.port), [])
+        self.handoff.profiles['external']['command'] = good
+        self.checkout(self.rev)
+        self.assertTrue(self.ask('external')['ok'])
+        self.until(lambda: self.handoff.journal['state'] == 'RUNNING_EXTERNAL')
+        self.assertEqual(self.journal()['history'][-1]['revision'], self.rev)
+
     # ===================================================== external-side refusals
     def test_B_C_D_active_job_lease_or_pending_publication_refuse(self):
         child = self.start_external()
