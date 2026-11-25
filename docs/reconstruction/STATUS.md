@@ -20,9 +20,9 @@ preserved repair commit `8f0a80f`. The archive and original worktrees are separa
 | Resources | Recipes, styles, macros, wildcard banks, and prompt reuse | Existing paths carried forward. Collections, recipes, macros, styles and wildcard writes now preserve prior data on a failed write. Focused and full portable checks exercise the corresponding stores. |
 | Voice and Drama | Voice profiles and engines, script production, edit, render and export | Live on production through Studio: Kokoro speech; a two-line Drama cast with VoxCPM2 and Kokoro, produced, mastered, proofed and saved. Drama speech recognition QA is unavailable (reported by the app). Qwen voices and OpenVoice were not re-run. |
 | Chat and prompt intelligence | Ollama-backed Chat and prompt review through the shared compute admission path | Live on production through Studio after the Ollama restart: one Chat reply (gemma3:4b) and one prompt enhancement applied in Create. Both wait for an empty Ollama: a model another client left loaded fails them after 30 s as `compute_unavailable`, and Chat shows only that code. |
-| Music and video | Music and video workflows with worker-backed availability | Live on production: Magenta RealTime clip. ACE-Step was withheld for host safety (see below). Video has no installed generator and Studio says so. |
+| Music and video | Music and video workflows with worker-backed availability | Live on production: Magenta RealTime clip. ACE-Step admission is disabled in source at `6d48433`, not yet deployed (see below). Video has no installed generator and Studio says so. |
 | 3D and Worlds | Library source handoff, worker capabilities, project storage and preview | Live on production through Studio: SHARP quick geometry, 360 world (normal PARTIAL label, viewer opened), Hunyuan3D mesh (preview opened). Textured mesh was not re-run. |
-| Studio shell, themes and Mac app | Existing desktop/mobile layouts, workspace navigation and native WebKit launch | Source carried forward. Synthetic Create and Library references captured. Native Swift type-check passed. Staged build, native launch and mobile acceptance are separate gates. |
+| Studio shell, themes and Mac app | Existing desktop/mobile layouts, workspace navigation and native WebKit launch | Mac app `915495a` installed on the MacBook November 24 and launched: Studio bootstrap verified, saved settings intact. Create, System, Audio, 3D, Models and Library opened natively. Mobile acceptance was not run. |
 
 ## Verification
 
@@ -174,12 +174,34 @@ start; no backend was running when the cutover began.
 
 Open items:
 
-1. MacBook app replacement (owner decision). Staged and signed at `915495a`.
-2. ACE-Step (owner decision): leave it, hide it, or test it when a reboot is acceptable.
-3. Not run live: matrix and XYZ plot, textured mesh, Qwen voices, OpenVoice. Video is not installed.
+1. Deploy `6d48433` so ACE-Step is refused (owner approval for one restart). Until then
+   production `915495a` still lists ACE-Step as PROVEN and would accept a song job: do not start one.
+2. Not run live: matrix and XYZ plot, textured mesh, Qwen voices, OpenVoice. Video runtime is not installed.
+3. Chat and prompt enhancement need an empty Ollama; otherwise `compute_unavailable` after 30 s.
 4. Storage integrity reports 1071 missing and 463 valid image records. Every missing record is
    dated November 6 or earlier, plus one old fixture. The owner's `images_made_nah` folder is in
-   a Google Drive archive; contents were not matched file by file.
+   a Google Drive archive. That they are the same files is suspected, not confirmed. No record was deleted.
+5. Opening the Library in the Mac app loads about 100 full-size images (`_libThumb` uses `url`,
+   not the existing `thumbnailUrl`). For about 90 s the health probe waits behind them and Studio shows
+   "Connection lost". It clears by itself; the backend and tunnel stay healthy.
+6. Rollback is checked READY and has not been executed. Its target `3d8b885` accepts ACE-Step.
+
+### ACE-Step containment
+
+No configuration or capability switch existed. `6d48433` adds `DISABLED_WORKERS` in `media.js`: the
+media bridge refuses `ace-step` (`worker-disabled`, 409) before any job, lease or remote call, the probe
+reports TEMPORARILY DISABLED with the reason, and Studio disables Generate. Runtime, models and bridge
+are untouched; removing the entry re-enables it. Magenta is unchanged. The internal fallback refuses
+ACE-Step already, because it probes no music runtime. `engine-worker.py` and the supervisor are unchanged.
+
+### MacBook app install, November 24
+
+The staged archive (`0ea71e9a...`) was verified and installed with the installer's own swap, rollback and
+Dock steps; it was not rebuilt. One Dock tile, same order; one Launch Services registration. The previous
+app (`18245241`) is kept as `retired-launchers/DexDiffusion-previous-20261124-200313.app.retired` and as a
+zip that was extracted and passed signature verification. The app runs `bin/dexdiffusion` from this
+worktree (`~/Image_Gen-reconstruction-20261124`), so keep the worktree. The generation check planned inside
+the app was not run; no job was submitted from it.
 
 ## Native staging and rollback
 
