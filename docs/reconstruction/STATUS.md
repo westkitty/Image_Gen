@@ -253,7 +253,7 @@ Production stays Big Mac `6d48433` and MacBook app `915495a`. Two independent br
 Everything used synthetic images and audio; the real Library was not opened. Harnesses and raw results:
 receipts folder `optimization-20261125/`.
 
-### Library thumbnails: `reconstruction/library-thumbnails`, `aab8701` (on `6d48433`)
+### Library thumbnails: `reconstruction/library-thumbnails`, `aab8701` (on `6d48433`), superseded by `e4cf195`
 
 Cause, reproduced: the mixed-media grid (`_libThumb`, up to 120 images) used each full-resolution `url`, and
 `/api/library` gave it no thumbnail. The originals took all six connections to the backend, so `/api/version` waited,
@@ -273,13 +273,54 @@ passes the original in `data-fullscreen-src`, so the viewer and its edit actions
 
 Returning to the Library requested nothing again. A second idea was tried and rejected: setting `loading="lazy"`
 before `src` makes WebKit honour lazy loading, but Studio rebuilds that DOM often, so the same 104 thumbnails were
-requested 923 times and never stayed loaded. The grid stays eager at 23 KB an image, capped at 120. Dragging or saving
-a grid image directly now gives the thumbnail, as in the other Library grid; the viewer and Export give the original.
+requested 923 times and never stayed loaded. The grid stays eager at 23 KB an image, capped at 120.
 
-Focused checks: `library` 12/12 (with a new test that fails without the change), `v2-parity-library-flow` 8/8,
-`studio-source-handoff` 1/1, `source-hover` 10/10, `studio-connectivity-recovery` 2/2 locally; CI affected verification
-45552672300 passed. `edit-upload`, `folder-first-library`/`library-organize` and the last `macbook-images` test fail
-locally in the same way without the change (the MacBook has no Pillow for the last three); CI ran what it covers.
+Focused checks for `aab8701`: CI affected verification 45552672300 passed. `edit-upload`, `folder-first-library`/
+`library-organize` and the last `macbook-images` test fail locally in the same way without the change (the MacBook has
+no Pillow for the last three); CI ran what it covers.
+
+### Library release candidate: `e4cf195` (on `aab8701`)
+
+`aab8701` had a regression: dragging a grid image handed over the thumbnail. Measured in WebKit by intercepting the drag
+before it reaches the system and reading the promised file: `6d48433` gave the original (1024x1024 PNG, 2,784,732
+bytes); `aab8701` gave a 384x384, 23,384-byte JPEG named `....png.jpeg`, without the metadata.
+
+Download links are not a substitute in the Mac app. With its navigation policy (only `/api/media/<id>/download` becomes a
+download) an image Download link replaces Studio with the raw image. This was seen in a WebKit replica of that policy, not
+in the installed app; it is the same at `6d48433` and is not corrected here. So the drag itself is preserved.
+
+`lightbox.js`: while the mouse rests on a grid thumbnail for 150 ms, or presses it, the original lies over it and is what
+a drag, "Save image" or "Copy image" takes. One original at a time, low priority, dropped or cancelled when the pointer
+moves on. A drag begun before it has arrived is refused with a message; it never hands over the thumbnail.
+
+| WebKit, synthetic | Result |
+|---|---|
+| Drag after resting | the original, 2,784,732 bytes, two images of two; one request each, 120 thumbnails otherwise |
+| Immediate press, original delayed 600 ms | no drag, message shown |
+| Real Chrome drag to a drop target (browser test) | refused, then the original address once loaded |
+
+Behaviour differences from `6d48433`:
+
+1. A drag needs the original to have arrived. A quick grab on a slow link is refused once, with a message.
+2. "Copy image" from the context menu before the original arrives is not guaranteed to be the original. "Save image" and
+   "Copy image address" are, because they use the address.
+3. Touch: long-press on a grid image gives the thumbnail. Open the viewer for the original.
+4. The other Library grid (Images) already used thumbnails for browsing and dragging in `6d48433`; unchanged.
+5. Resting the pointer on an image downloads that one original.
+
+Focused checks for `e4cf195`: `library` 13/13 (new test: nothing fetched while browsing or passing over, one original
+for the image in hand, refused and accepted drags, context menu, no second request after a re-render, viewer and focus),
+`v2-parity-library-flow` 8/8, `studio-source-handoff` 1/1, `source-hover` 10/10, `transform` 4/4,
+`studio-connectivity-recovery` and `omni-viewer-inspector` exit 0. The benchmark above is reused: the load path is
+unchanged since `aab8701`.
+
+**Certified November 25:** commit `e4cf1956074be57b3ad439602605974143200125`, tag
+`reconstruction-candidate-20261125-e4cf195`, release certification 45569881630 passed on the first attempt: unit gate
+2 of 2 steps, browser gate 62 of 62 (library 13/13, v2-parity-library-flow 8/8, v2-parity-music 12/12), worker 97 and 21
+tests. Affected verification 45569877955 passed on the same commit. Nothing was rerun.
+
+The checkpoint branch's own CI failed once (45565845321, `drama-studio`: a production row did not appear within 5 s). That
+commit changes two documents only, and the suite passed in the certification above. The cause was not investigated.
 
 ### Waveform: `reconstruction/waveform-economy`, `ff4daf5` (on `d882883`)
 
@@ -333,11 +374,36 @@ photosensitivity assessment beyond the rate limit. So it stays off by default.
 Focused checks: `audio-wave` unit 7/7 and browser 7/7; CI affected verification 45564004341 passed. The ablation, memory, read and slow-link figures were read from
 console output; the receipts keep their scenarios and harness, not every raw row.
 
-### Releasing either one
+### Deploying the Library candidate (prepared, needs the owner's approval)
 
-Both leave `sdcpp-workflow/worker/` as in `6d48433`, so Section J applies. Neither is certified; certification belongs
-to whichever is chosen. The two branches merge without conflict. The Library change is in the backend and its pages,
-so it reaches the Mac app without a new app build. Nothing is deployed without a separate approval.
+`OLD` = `6d48433c4393162e207e352cda96271c50cd340f` (production, certified 45524196726, branch
+`release/reconstruction-20261124-6d48433` on Big Mac). `NEW` = `e4cf1956074be57b3ad439602605974143200125`, tag
+`reconstruction-candidate-20261125-e4cf195`. `W` = `~/Image_Gen-wc2tb-20261120`, untouched so far.
+
+Five files differ from `OLD`: `server.js` and `workstation-ui.js` (one line each), `lightbox.js`, two tests. Identical:
+all of `sdcpp-workflow/` (worker `7d2ffcb1...`, supervisor `f04a921b...`), `native/`, `bin/`, `scripts/`, `package.json`,
+the lockfile, `media.js` and `media-bridge.js` (ACE-Step containment). No waveform file or reference; neither `90a2d0b`
+nor `ff4daf5` is an ancestor. So section J applies, no EngineHost restart and no Mac app build is needed.
+
+Section J step 1 is done, read-only, against a separate clone (`~/dex-cutover-20261125-library/target` on Big Mac, not
+a worktree of production): PASS in all 20 checks. It must be repeated at the time of deployment.
+
+1. Owner approves. Studio and the Mac app closed, no job running, no music submitted during the fallback legs.
+2. Repeat the gate: `bash $W/scripts/release-gate.sh --expect-revision NEW --target-worktree ~/dex-cutover-20261125-library/target`.
+   Then `git -C $W fetch origin tag reconstruction-candidate-20261125-e4cf195` (objects only; no checkout).
+3. Seal: `kit/wait_idle.py`. `request-worker-backend.sh --handoff-fallback --expect-revision OLD --reason "library release"`.
+4. While the fallback runs: `git -C $W switch -c release/library-20261125-e4cf195 NEW`. Check HEAD, clean, worker digest.
+5. `--return-external --expect-revision NEW`.
+6. One round trip with `--expect-revision NEW` both ways. Doctor PASS in every check.
+7. Check `/api/version` is `e4cf195` and `/api/workers` shows ACE-Step not enabled, Magenta enabled. Reopen the app (its
+   pages come from the backend). Library check by request counts only, no images captured.
+
+**Rollback target: `6d48433`** by the same steps exchanged (`git -C $W switch release/reconstruction-20261124-6d48433`
+during a fallback leg). It contains the ACE-Step containment, so this rollback keeps ACE-Step disabled. Do not use
+`kit/rollback.py` (its target `3d8b885` accepts ACE-Step) or any bare older revision. The fallback package itself has no
+refusal, so nothing is submitted while it runs.
+
+The waveform candidate is not part of this. It stays at `ff4daf5`, undeployed, with its figures and limits above.
 
 ## Native staging and rollback
 
@@ -373,16 +439,16 @@ Launch Services, the real Dock and the production entry point were not exercised
 
 As of November 25. Production is untouched by the optimization work.
 
-1. Owner decision: certify and release `reconstruction/library-thumbnails` (`aab8701`). Push a
-   `reconstruction-candidate-*` tag for certification, then section J with its prerequisites. Check its first open of
-   the real Library afterwards by timing and request counts only; do not capture the images.
-2. Owner decision, separately and later: `reconstruction/waveform-economy` (`ff4daf5`). It sits on `d882883`. To release
-   it together with the Library change, merge the two into a new branch and certify that commit.
+1. Owner decision: deploy the certified Library candidate `e4cf195` (section "Deploying the Library candidate").
+2. `reconstruction/waveform-economy` (`ff4daf5`) stays isolated and undeployed. It sits on `d882883` and is not to be
+   merged into the Library candidate.
 3. Never release `reconstruction/stable-foundation` at `d882883`: it carries the old waveform, on by default.
 4. ACE-Step stays disabled. Any older revision accepts it again: read the end of runbook section J before a rollback.
 5. This checkpoint is on `reconstruction/checkpoint-20261125`, because an edit to the runbook in the
    stable-foundation worktree was refused by the permission check. That worktree stays at `d882883` (the Mac app runs
    its `bin/dexdiffusion`), so its copy of this file is older than this one.
+6. Not corrected: image Download links in the Mac app (see the Library release candidate).
 
-Big Mac still holds `~/.dex-accept-bc56755` (isolated acceptance root, worker stopped, no images retained). It can be
+Big Mac holds `~/dex-cutover-20261125-library` (102 MB clone for the gate, keep until deployment) and
+`~/.dex-accept-bc56755` (isolated acceptance root, worker stopped, no images retained). Both can be
 deleted.
