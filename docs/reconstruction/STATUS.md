@@ -330,7 +330,7 @@ repaint. Not demonstrated: the native app itself, a 60 Hz
 display, real audio through the tunnel, VoiceOver, the macOS Reduce Motion switch (the query was overridden), and any
 photosensitivity assessment beyond the rate limit. So it stays off by default.
 
-Focused checks: `audio-wave` unit 7/7 and browser 7/7. The ablation, memory, read and slow-link figures were read from
+Focused checks: `audio-wave` unit 7/7 and browser 7/7; CI affected verification 45564004341 passed. The ablation, memory, read and slow-link figures were read from
 console output; the receipts keep their scenarios and harness, not every raw row.
 
 ### Releasing either one
