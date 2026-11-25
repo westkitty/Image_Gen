@@ -5420,7 +5420,7 @@ app.get('/api/library', (req, res) => {
     ids.sort((a, b) => b.localeCompare(a));
     items = ids.slice(0, 200).map(id => {
       const meta = (imageView(id) || {}).meta || {};
-      return { artifact_id: id, kind: 'image', url: imageStore.imageUrl(id), keeper: !!meta.keeper,
+      return { artifact_id: id, kind: 'image', url: imageStore.imageUrl(id), thumbnailUrl: `/api/thumbnails/${encodeURIComponent(id)}`, keeper: !!meta.keeper,
         operation: meta.operation || null, model: meta.target || null, seed: meta.seed ?? null, parent: meta.parent || null,
         width: meta.width ?? null, height: meta.height ?? null, test_artifact: !!meta.test_artifact };
     });

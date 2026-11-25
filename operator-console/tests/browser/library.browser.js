@@ -163,6 +163,23 @@ const counter = page => page.locator('[data-lightbox-count]').innerText();
       await ctx.close();
     });
 
+    await test('the mixed-media grid browses with thumbnails and still opens the full-resolution original with its edit actions', async () => {
+      const images = ALL.map(i => ({ ...i, kind: 'image', artifact_id: i.id }));
+      const { page, ctx, reqs } = await newPage(browser, srv.base, undefined, images);
+      await page.waitForFunction(() => document.querySelectorAll('[data-media-library-grid] [data-lib-thumb] img').length > 50);
+      await page.waitForTimeout(1500);
+      assert.equal(reqs.full, 0, 'browsing requests no full-resolution image');
+      assert.ok(reqs.thumbs > 0 && new Set(reqs.thumbIds).size === reqs.thumbs, 'each thumbnail is requested once: ' + reqs.thumbs);
+      assert.equal(await page.evaluate(() => [...document.querySelectorAll('[data-media-library-grid] [data-lib-thumb] img')].every(i => /\/api\/thumbnails\//.test(i.getAttribute('src')))), true);
+      const id = ALL[1].id;
+      await page.evaluate(x => document.querySelector('[data-media-library-grid] [data-lib-thumb="' + x + '"] img').click(), id);
+      await page.waitForSelector('[data-lightbox]');
+      assert.match(await page.locator('[data-lightbox] img').first().getAttribute('src'), new RegExp('/api/images/' + id.replace(/\./g, '\\.') + '$'));
+      assert.equal(reqs.full, 1, 'only the opened image is fetched at full resolution');
+      await page.locator('[data-lightbox]').getByRole('button', { name: '↻ Rotate', exact: true }).waitFor();
+      await ctx.close();
+    });
+
     await test('viewer: opens full size, Previous/Next, counter, boundaries, keyboard, original Download, Escape returns focus', async () => {
       const { page, ctx } = await newPage(browser, srv.base);
       await page.evaluate(() => localStorage.removeItem('dexdiffusion.library.prefs.v1'));

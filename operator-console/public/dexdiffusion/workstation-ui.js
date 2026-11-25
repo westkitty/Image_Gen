@@ -1265,7 +1265,7 @@
   P._libThumb = function (it, selected) {
     const base = this.state.backendUrl, id = it.id || it.artifact_id, url = base + it.url;
     return h('div', { key: id, 'data-lib-thumb': id, style: { position: 'relative', border: '2px solid ' + (selected ? '#38bdf8' : 'rgba(148,163,184,.16)'), borderRadius: 8, overflow: 'hidden', background: '#0a0e14', aspectRatio: '1 / 1' } },
-      h('img', { src: url, alt: id, loading: 'lazy', tabIndex: 0, 'data-fullscreen': 'only', 'data-fullscreen-image-id': id, 'data-fullscreen-caption': id, style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'zoom-in' } }),
+      h('img', { src: it.thumbnailUrl ? base + it.thumbnailUrl : url, alt: id, loading: 'lazy', decoding: 'async', tabIndex: 0, 'data-fullscreen': 'only', 'data-fullscreen-src': url, 'data-fullscreen-image-id': id, 'data-fullscreen-caption': id, style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'zoom-in' } }),
       h('button', { type: 'button', 'aria-label': 'Select ' + id + ' for details', title: 'Details, lineage and actions', onClick: () => this.selectLibraryImage(id),
         style: { position: 'absolute', top: 4, right: 4, minWidth: 30, minHeight: 30, borderRadius: 15, border: '1px solid rgba(148,163,184,.5)', background: 'rgba(4,8,14,.85)', color: '#e2e8f0', cursor: 'pointer', fontSize: 14 } }, 'Tags / Details'),
       h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, background: 'rgba(4,8,14,.78)', color: '#dbe4ee', fontSize: 10, padding: '3px 5px', pointerEvents: 'none', fontFamily: "'IBM Plex Mono',monospace" } },
