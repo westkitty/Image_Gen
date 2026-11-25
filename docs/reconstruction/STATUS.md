@@ -220,6 +220,15 @@ zip that was extracted and passed signature verification. The app runs `bin/dexd
 worktree (`~/Image_Gen-reconstruction-20261124`), so keep the worktree. The generation check planned inside
 the app was not run; no job was submitted from it.
 
+### Audio waveform and text flicker (source only, not deployed)
+
+`public/dexdiffusion/audio-wave.js` draws a transparent azure waveform over Studio while an `<audio>` element
+plays, and flickers bright text (whites, oranges, the DexDiffusion brand) with the same loudness value. It decodes a
+second copy of the file to get the real samples and never reroutes playback, so a failure costs only the picture.
+Files over 128 MB get no picture. Reduce Motion turns it off. Smoothing limits strobing, but photosensitivity
+was not assessed. Chrome ran real playback tests. In WebKit, decoding, drawing and text were checked with a
+synthetic clock, because a windowless page cannot play media. It was not run in the installed Mac app.
+
 ## Native staging and rollback
 
 From a clean reconstruction checkout, set `DEXDIFFUSION_STAGE_ARCHIVE` to an

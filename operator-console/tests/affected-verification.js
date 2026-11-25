@@ -28,8 +28,8 @@ const domains = {
   },
   audio: {
     paths: /^operator-console\/(?:asr-|audio|voice|drama|music|.*\/(?:voice|drama|music|audio))/,
-    tests: /^(?:asr-adapter|audio-qa|voice-production|drama-production-routes|drama-cancel-policy|voice-connection-status)/,
-    browsers: ['voice-drama', 'drama-studio'],
+    tests: /^(?:asr-adapter|audio-qa|audio-wave|voice-production|drama-production-routes|drama-cancel-policy|voice-connection-status)/,
+    browsers: ['voice-drama', 'drama-studio', 'audio-wave'],
   },
   chat: {
     paths: /^operator-console\/(?:chat-|ollama-|.*\/(?:chat-|omni-chat|prompt-intelligence))/,
